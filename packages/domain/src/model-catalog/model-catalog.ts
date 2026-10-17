@@ -382,7 +382,7 @@ export function getModelCatalog(): ModelCatalog {
   };
 
   for (const modality of MODALITIES) {
-    // Per CLAUDE.md "core/shared/domain write no logs" mandate, parse
+    // Per `AGENTS.md#library-packages-do-not-log`, parse
     // errors throw inside getFullModelConfig so the application boot path
     // catches + logs with the right context (catalog load is at server
     // startup — a malformed YAML should fail-fast, not silently drop the

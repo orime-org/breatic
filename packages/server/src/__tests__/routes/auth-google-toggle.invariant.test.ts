@@ -35,6 +35,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 import { createApp } from "../../app.js";
+import { withPeer } from "../helpers/peer.js";
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -44,7 +45,7 @@ describe("POST /auth/google — env toggle invariant (锁现状回归)", () => {
   });
 
   it("returns 503 when GOOGLE_CLIENT_ID is empty (implicit toggle)", async () => {
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/google", {
       method: "POST",
       headers: JSON_HEADERS,
@@ -62,7 +63,7 @@ describe("POST /auth/google — env toggle invariant (锁现状回归)", () => {
   });
 
   it("does NOT return 404 — endpoint exists, just surfaces misconfig (route mounted unconditionally)", async () => {
-    const app = createApp();
+    const app = withPeer(createApp());
     const res = await app.request("/api/v1/auth/google", {
       method: "POST",
       headers: JSON_HEADERS,

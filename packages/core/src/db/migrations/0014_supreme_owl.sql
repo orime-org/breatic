@@ -1,5 +1,5 @@
 -- Add `created_at` to `yjs_documents` so it conforms to the project-wide
--- rule (CLAUDE.md "关键规范"): every PG table has a createdAt timestamp.
+-- rule (packages/core/AGENTS.md#every-table-has-created_at): every PG table has a createdAt timestamp.
 --
 -- Backfill strategy for existing rows (user 2026-05-23, option A.1):
 --   created_at = updated_at, because the earliest update is the create

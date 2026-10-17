@@ -503,9 +503,8 @@ function ProjectWorkspace({
     }
   }, [projectId, tabs.openIds]);
 
-  // Note: NO URL ↔ active-space reconcile. Per user decision
-  // `[[feedback_space_type_vs_route]]`, Space is a type/template, not a
-  // route segment. What survives a reload is the whole strip, and it comes
+  // Note: NO URL ↔ active-space reconcile. Space is a type/template, not a
+  // route segment (a product decision). What survives a reload is the whole strip, and it comes
   // from this browser's storage rather than from the address — a URL carries
   // one Space, and pasting it to somebody else would hand them a strip that
   // is not theirs. URL stays `/project/:id`.

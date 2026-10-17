@@ -12,7 +12,7 @@ import { createRule } from "#rules/create-rule";
  * looked at. That is not hypothetical — three borderless words shipped in the
  * canvas written as bare `<button>`, while the border check of the day looked
  * at the component and reported clean. That check is gone (borders are judged
- * by a person looking at the screen; see `packages/web/CLAUDE.md`), but its
+ * by a person looking at the screen; see `packages/web/AGENTS.md#button-borders`), but its
  * lesson outlives it: whatever asks a question about buttons next, machine or
  * human, should have one element to ask it about.
  *

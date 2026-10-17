@@ -36,6 +36,13 @@ const CJK =
  */
 const SCANNED = /\.(ts|mts|cts|tsx|css|ya?ml|sh|mjs|cjs)(\.template)?$/;
 
+/**
+ * Agent rules and project skills: every contributor's coding agent reads
+ * them, so they are written in the project's shared language like the code
+ * they govern.
+ */
+const AGENT_RULES = /(^|\/)AGENTS\.md$|^\.claude\/skills\/.+\.md$/;
+
 /** Product translations — the one place non-English text belongs. */
 const LOCALE_CATALOG = /^locales\//;
 
@@ -79,9 +86,9 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
  * every tracked file of these kinds adds no findings beyond the two
  * allowlisted files, so this closes the hole without a cleanup.
  *
- * Documentation is deliberately absent from the scan: prose specs are read
- * by AI as much as by people and are allowed to be Chinese. The rule is
- * about what compiles into the product or gets run.
+ * Documentation outside the agent rules is absent from the scan: `docs/`
+ * and the READMEs carry localized editions. The agent rules are in it,
+ * because they steer what gets written into the product.
  */
 export const noCjk = {
   name: "no-cjk",
@@ -90,7 +97,7 @@ export const noCjk = {
     assertAllowlistIsLive(context, ALLOWED);
     const files = context.files(
       (path) =>
-        SCANNED.test(path) &&
+        (SCANNED.test(path) || AGENT_RULES.test(path)) &&
         !GENERATED.test(path) &&
         !LOCALE_CATALOG.test(path) &&
         !TEST_FILE.test(path) &&

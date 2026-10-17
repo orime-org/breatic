@@ -15,7 +15,7 @@ import { cn } from '@web/lib/utils';
 //     boundary → click lands on adjacent tab → native dblclick selects
 //     the tab text). HTML's native `disabled` attribute already swallows
 //     the click without forwarding; `pointer-events-none` is redundant
-//     and harmful. See memory `feedback_disabled_button_pointer_events_trap`.
+//     and harmful.
 const buttonVariants = cva(
   'inline-flex items-center justify-center whitespace-nowrap rounded-chrome text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
   {

@@ -11,6 +11,7 @@
  * which the SDK passes to `onChunk` only when asked for.
  */
 
+import type { PromptCacheTtl } from "@breatic/core";
 import {
   handOffLookups,
   isGenerationId,
@@ -46,11 +47,12 @@ export interface ModelCallWatch {
  * @param call - The model the stream calls, and what a ledger row says the charge was for.
  * @param call.model - The model id.
  * @param call.description - What the ledger row says the charge was for.
+ * @param call.cacheTtl - How long the stream asks the provider to cache, if it caches.
  * @returns The watch.
  */
 export function watchModelCalls(
   usage: UsageRecorder,
-  call: { model: string; description: string },
+  call: { model: string; description: string; cacheTtl?: PromptCacheTtl },
 ): ModelCallWatch {
   const provider = resolveProvider(call.model);
   const open = trackOpenGeneration();
@@ -73,13 +75,14 @@ export function watchModelCalls(
         usage: event.usage,
         providerMetadata: event.providerMetadata,
         generationId,
+        ...(call.cacheTtl === undefined ? {} : { cacheTtl: call.cacheTtl }),
       });
     },
     async handOff() {
       if (provider !== "openrouter") return;
       const cutOff = open.pending();
       const ids = cutOff === undefined ? usage.awaitingLookup() : [...usage.awaitingLookup(), cutOff];
-      await handOffLookups(ids, usage.operation, { ...call, charge: true });
+      await handOffLookups(ids, usage.operation, { model: call.model, description: call.description, charge: true });
     },
   };
 }

@@ -49,7 +49,7 @@
  * What the server does about that is settled and is the opposite of a
  * per-entry ownership question: it writes the identity it authenticated onto
  * every entry it is handed, and asking whose an entry is has been banned
- * outright (`packages/collab/CLAUDE.md`, #1887). This particular frame never
+ * outright (`packages/collab/AGENTS.md#stamp-every-awareness-entry`, #1887). This particular frame never
  * reaches that rule anyway — the server builds a scratch awareness per frame
  * and hands the rule its states, and a removal carries a null state, which
  * never puts an entry into a scratch that never had one. Nothing is deleted;

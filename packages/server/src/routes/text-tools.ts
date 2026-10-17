@@ -85,8 +85,8 @@ textTools.post(
           await s.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
         }
 
-        // Audit log moved from text-tool.service.ts per CLAUDE.md
-        // "core and shared must not log" mandate (2026-05-27 PR
+        // Audit log moved from text-tool.service.ts per
+        // AGENTS.md#library-packages-do-not-log (2026-05-27 PR
         // `feat/2026-05-27-collab-infra-resilience`).
         if (event.type === "done") {
           logger.info(

@@ -36,7 +36,7 @@ import { env } from "@core/config/env.js";
  * connection-lifecycle configuration that keeps long-running
  * pools from accumulating connections in stale states.
  *
- * Per the CLAUDE.md "industrial-grade server standards" mandate and the
+ * Per `packages/core/AGENTS.md#connection-lifetimes-are-explicit` and the
  * 2026-05-27 long-running collab investigation:
  *
  * - `idle_timeout: 30` - close any idle connection after 30s so

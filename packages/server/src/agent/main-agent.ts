@@ -10,9 +10,9 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { StopCondition, Tool, ToolSet, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { ModelMessage, StopCondition, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
-import { getModel, reasoningFor, resolveProvider } from "@breatic/domain";
+import { callOptionsFor, getModel, resolveProvider } from "@breatic/domain";
 import {
   buildAgentConfig,
   finalizeTurn,
@@ -30,15 +30,21 @@ import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
-import { userTurnForModel } from "@server/agent/user-turn.js";
+import { openSpaceKey, userMessageForModel } from "@server/agent/user-turn.js";
+import type { UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
+import { requestTokens } from "@server/agent/request-size.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { getContext } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { toModelMessages } from "@server/agent/model-messages.js";
+import { lastFullSnapshotKey, prefixHash, replayRows } from "@server/agent/history-replay.js";
+import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
+import { endingNote } from "@server/agent/model-messages.js";
+import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
+import { measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
@@ -56,7 +62,7 @@ const FAILED_TEXT = "The assistant could not finish this turn.";
  *
  * Reads who is speaking and where -- userId, conversationId, projectId -- from
  * the AsyncLocalStorage request context (set by the route handler). What the
- * turn runs against is not in there: the memories and the compressed history
+ * turn runs against is not in there: the memories and the history
  * are read here, after the turn has said what it holds, because they are this
  * turn's own working rather than anything about the request.
  */
@@ -132,21 +138,20 @@ export class MainAgent {
     );
 
     // Everything slow happens inside the stream, not before it. The three
-    // round trips for memory, the conversation and its history, and then the
-    // compression, all used to run before the stream was even opened -- so
+    // round trips for memory, the conversation and its history all used to
+    // run before the stream was even opened -- so
     // nothing of the turn could reach the reader until they were done, the
     // first word of the reply included, which is the one thing they were
     // waiting for.
     //
     // The reader's clock opens this turn's message, on its own line, ahead of
     // any attached content, so it never sits under the "User message"
-    // heading. It is never stored, and the system prompt does not carry it,
-    // so a provider's prefix cache still matches everything up to the last
-    // turn's user message: that message went out with its note last time and
-    // goes out without it from here on. The reader's Spaces follow it on the
-    // same terms: read fresh with each message, never stored.
-    const forModel = `${readerClockNote(new Date(), timeZone)}\n\n${userTurnForModel({ ...space, chips: attached, message: said })}`;
-    return this.runStream(forModel, turnIndex, title, openDocumentOf(space), signal);
+    // heading. The system prompt does not carry it. The reader's Spaces
+    // follow it, read fresh with each message. The message is kept as it was
+    // sent and later turns send it again as it is, so a provider's prefix
+    // cache matches everything up to the new message.
+    const ask = { clockNote: readerClockNote(new Date(), timeZone), turn: { ...space, chips: attached, message: said } };
+    return this.runStream(ask, turnIndex, title, openDocumentOf(space), signal);
   }
 
   /**
@@ -168,12 +173,15 @@ export class MainAgent {
    * front of the reply, on the turn whose assembled request it can shorten.
    * Assembling what the model is asked happens inside `execute`, not before
    * the stream is built. Everything it takes -- the two memory reads,
-   * the conversation and its history, then the compression -- is time the
+   * the conversation and its history -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
-   * @param forModel - This turn's user message as the model is sent it: the
-   *   reader's clock, the attachments, then the typed words. Put in front of
-   *   the model on its own.
+   * @param ask - This turn's user message before it is laid out: the
+   *   reader's clock, and the Spaces, attachments and typed words. Laid out
+   *   with each assembly, which knows whether the history already holds the
+   *   open Space, and put in front of the model on its own.
+   * @param ask.clockNote - The line saying what time it is for the reader.
+   * @param ask.turn - What the message is made of.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -190,7 +198,7 @@ export class MainAgent {
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
-    forModel: string,
+    ask: { clockNote: string; turn: UserTurn },
     turnIndex: number,
     title: string | null,
     openDocument: OpenDocument | null,
@@ -291,6 +299,68 @@ export class MainAgent {
     /** What a tool answered, for calls whose result chunk never got read. */
     const whatToolAnswered = new Map<string, unknown>();
 
+    // What the reply row keeps of what was sent (`for_model`). Each finished
+    // step's messages, in order; a step went out as it is once a later request
+    // carried it. The hash is of the request the turn's first call sent; the
+    // provider's counts size the turn for the fold.
+    const steps: ModelMessage[][] = [];
+    // True while the last finished step ended on a provider error and no later
+    // request has started: that step is partial and went nowhere.
+    let lastStepUnsent = false;
+    let reported: ReportedUsage = {};
+    // The assembly the turn's first call sent, once the model has been asked.
+    let sent: Assembly | undefined;
+
+    /**
+     * What the reply row keeps of what was sent: the finished steps, the step
+     * the turn ended inside, and a note when it did not end on its own.
+     * @param ended - How the turn ended and what it left behind.
+     * @param ended.exit - How the turn ended.
+     * @param ended.stored - The reply's parts as they are stored, which say how
+     *   the turn ended.
+     * @param ended.parts - The reply's parts, as the reader received them.
+     * @param ended.tools - The turn's tools.
+     * @param ended.settled - How the turn's calls ended.
+     * @returns The copy, or undefined when the model was never asked.
+     * @throws {never} Never; a step that cannot be rebuilt is left out.
+     */
+    const keptOfReply = async (ended: {
+      exit: "aborted" | "failed" | "blocked" | "completed";
+      stored: readonly MessagePart[];
+      parts: UIMessage["parts"];
+      tools: ToolSet;
+      settled: SettledCalls;
+    }): Promise<ReplyForModel | undefined> => {
+      if (sent === undefined) return undefined;
+      // A partial step nothing carried on is rebuilt from what reached the reader.
+      const sentOn = lastStepUnsent ? steps.slice(0, -1) : steps;
+      const collected = sentOn.flat();
+      let unfinished: ModelMessage[] = [];
+      if (ended.exit === "aborted" || ended.exit === "failed") {
+        try {
+          unfinished = await inProgressStep(ended.parts, sentOn.length, ended.tools, ended.settled, collected);
+        } catch (err) {
+          // Left out, the step reaches later turns only as the note below.
+          logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
+        }
+      }
+      const note = endingNote(ended.stored);
+      const messages: ModelMessage[] = [
+        ...collected,
+        ...unfinished,
+        ...(note === undefined ? [] : [{ role: "assistant" as const, content: note }]),
+      ];
+      return {
+        messages,
+        prefixHash: prefixHash(sent.agentConfig, sent.messages),
+        ...replyTokens(reported, {
+          user: measureMessages(sent.userKept.messages),
+          reply: measureMessages(messages),
+          request: requestTokens(sent),
+        }),
+      };
+    };
+
     /**
      * Read everything the model is given, and lay it out as it will be sent.
      *
@@ -303,10 +373,8 @@ export class MainAgent {
     const assemble = async (): Promise<Assembly> => {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the
-      // history would be the same question asked twice -- and it would be a
-      // candidate for compression, which could shorten the very thing being
-      // asked.
-      const { memoryContext, compressedHistory, watermark } = await buildTurnContext(
+      // history would be the same question asked twice.
+      const { memoryContext, history, watermark } = await buildTurnContext(
         userId,
         conversationId,
         projectId,
@@ -320,11 +388,26 @@ export class MainAgent {
         memoryContext,
       });
 
+      // The open Space goes as one line while it is what the history,
+      // folded as it is now, last sent of it in full.
+      const open = openSpaceKey(ask.turn.current_space);
+      const unchanged = open !== undefined && lastFullSnapshotKey(history, open.spaceId) === open.key;
+      const userMessage: ModelMessage = {
+        role: "user",
+        content: userMessageForModel(ask.clockNote, ask.turn, unchanged),
+      };
+      const replayed = replayRows(history, agentConfig);
+      // Kept as it is so what is stored is what went out.
+      const userKept: UserForModel = {
+        messages: [userMessage],
+        ...(open === undefined ? {} : { snapshot: { ...open, full: !unchanged } }),
+      };
       return {
         agentConfig,
-        history: compressedHistory,
+        replayed,
         watermark,
-        messages: [...toModelMessages(compressedHistory), { role: "user", content: forModel }],
+        userKept,
+        messages: [...replayed.flatMap((one) => one.messages), userMessage],
       };
     };
 
@@ -365,7 +448,7 @@ export class MainAgent {
           // The fold moved the watermark, so the window is out of the history
           // whichever way it ended. Failing here would spend it and give the
           // reader nothing, and the reply is what was promised. What is still
-          // in hand is the pre-fold assembly, over the character budget by
+          // in hand is the pre-fold assembly, over the token budget by
           // however much this conversation had grown: sending it is the one
           // move left that answers at all, and the provider is what decides
           // whether it fits.
@@ -378,20 +461,40 @@ export class MainAgent {
 
       const { agentConfig, messages } = assembly;
       modelId = agentConfig.modelId;
+      sent = assembly;
+
+      // Kept as it is about to go out, after any fold, so later turns send it
+      // again as it is. Losing the copy costs this turn nothing: later turns
+      // render the message from its parts the way they always did, so the
+      // cache stops matching from this message on and this turn's reply goes
+      // back without its thinking.
+      try {
+        await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
+      } catch (err) {
+        logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
+      }
       turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
-      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" });
+      const watch = watchModelCalls(usage, {
+        model: agentConfig.modelId,
+        description: "Agent chat",
+        cacheTtl: agentCfg.prompt_cache_ttl,
+      });
       calls = watch;
 
       const result = streamTextRetry({
         model: getModel(agentConfig.modelId),
         // Chat is the one call site that asks for reasoning: it plans,
-        // searches and decides between tools, and shows its working. Said
-        // outright in both directions, because leaving the field off means a
-        // different thing to every provider.
-        ...reasoningFor(agentConfig.modelId, true),
+        // searches and decides between tools, and shows its working. It is
+        // also the one whose prefix repeats -- every step of a turn and every
+        // later turn resends it -- so it is the one that asks for caching.
+        ...callOptionsFor(agentConfig.modelId, {
+          thinking: true,
+          cache: agentCfg.prompt_cache_ttl,
+          session: conversationId,
+        }),
         system: agentConfig.instructions,
         messages,
         tools: agentConfig.tools,
@@ -449,9 +552,19 @@ export class MainAgent {
         // Fires when a model response is parsed, before the tools it asked
         // for run: a turn stopped while a tool is running has still paid for
         // the call that asked for it.
-        onLanguageModelCallEnd: (event) => watch.callEnded(event),
-        onStepFinish: ({ content }) => {
-          for (const part of content) {
+        onLanguageModelCallEnd: (event) => {
+          watch.callEnded(event);
+          reported = noteUsage(reported, event.usage);
+        },
+        // Fires as each request is about to go out, after the previous
+        // step's onStepFinish: the request carries that step as it is.
+        onStepStart: () => {
+          lastStepUnsent = false;
+        },
+        onStepFinish: (step) => {
+          steps.push(step.response.messages);
+          lastStepUnsent = step.finishReason === "error";
+          for (const part of step.content) {
             // A question, reaching the reader as words rather than as a payload
             // on a tool part, and written here rather than inside the tool
             // because the stream is on this side of it. A turn asks one
@@ -650,6 +763,14 @@ export class MainAgent {
         // is where what the model was given gets written down beside each.
         const storedParts = await withModelOutputs(replyParts, turnTools, { conversationId });
 
+        const replyForModel = await keptOfReply({
+          exit,
+          stored: storedParts,
+          parts: responseMessage.parts,
+          tools: turnTools,
+          settled: { answered: whatToolAnswered, ended: howToolEnded },
+        });
+
         let creditsUsed = 0;
         const failures = await finalizeTurn({
           steps: {
@@ -658,11 +779,11 @@ export class MainAgent {
             // reply with nothing in it, which is what draws "No reply this
             // turn" when the conversation is opened again.
             persist: async () => {
-              await messageRepo.addMessage(conversationId, {
-                role: "assistant",
-                parts: storedParts,
-                turnIndex,
-              });
+              await messageRepo.addMessage(
+                conversationId,
+                { role: "assistant", parts: storedParts, turnIndex },
+                replyForModel,
+              );
             },
             bill: async () => {
               // An OpenRouter call whose cost is not in hand is looked up and

@@ -199,7 +199,8 @@ describe('the box that opens at the drop point', () => {
   it('never scrolls itself -- the panel around it does', () => {
     // A textarea left to scroll itself draws the browser's scrollbar, which
     // is a different shape in every engine, and every visible scroller in
-    // this app belongs to `ScrollArea` (packages/web/CLAUDE.md). Measured on
+    // this app belongs to `ScrollArea`
+    // (packages/web/AGENTS.md#every-scroller-is-a-scrollarea). Measured on
     // a real board before this: all three of the note's boxes scrolled
     // themselves, against the chat composer next door, which does not.
     const box = open();

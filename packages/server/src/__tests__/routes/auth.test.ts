@@ -42,6 +42,7 @@ import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 import { settleAfterReply } from "@server/utils/after-reply.js";
 import { t } from "@breatic/shared";
+import { withPeer } from "../helpers/peer.js";
 
 const SESSION_COOKIE = { Cookie: "breatic_session=valid-token" };
 const JSON_HEADERS = { "Content-Type": "application/json" };
@@ -85,7 +86,7 @@ describe("Auth routes", () => {
         token: "new-token",
       });
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/register", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -117,7 +118,7 @@ describe("Auth routes", () => {
     });
 
     it("rejects invalid email with 422", async () => {
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/register", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -128,7 +129,7 @@ describe("Auth routes", () => {
     });
 
     it("rejects short password with 422", async () => {
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/register", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -147,7 +148,7 @@ describe("Auth routes", () => {
         createdByUserId: "user-1", type: "personal",
       });
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/setup-studio", {
         method: "POST",
         headers: { ...SESSION_COOKIE, ...JSON_HEADERS },
@@ -170,7 +171,7 @@ describe("Auth routes", () => {
     });
 
     it("rejects an unauthenticated caller with 401 (setup-studio is gated)", async () => {
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/setup-studio", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -180,7 +181,7 @@ describe("Auth routes", () => {
     });
 
     it("rejects a malformed slug with 422 (uppercase / too short — schema guard)", async () => {
-      const app = createApp();
+      const app = withPeer(createApp());
       const bad = await app.request("/api/v1/auth/setup-studio", {
         method: "POST",
         headers: { ...SESSION_COOKIE, ...JSON_HEADERS },
@@ -202,7 +203,7 @@ describe("Auth routes", () => {
         avatarUrl: "https://cdn/alice.png",
       });
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/login", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -238,7 +239,7 @@ describe("Auth routes", () => {
       });
       mocks.studioService.getPersonalStudio.mockResolvedValue(null);
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/login", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -260,7 +261,7 @@ describe("Auth routes", () => {
     it("clears the session cookie and 200s", async () => {
       mocks.authService.logout.mockResolvedValue(undefined);
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/logout", {
         method: "POST",
         headers: SESSION_COOKIE,
@@ -277,7 +278,7 @@ describe("Auth routes", () => {
     });
 
     it("rejects unauthenticated logout with 401", async () => {
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/logout", {
         method: "POST",
       });
@@ -298,7 +299,7 @@ describe("Auth routes", () => {
         }),
       );
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/forgot-password", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -320,7 +321,7 @@ describe("Auth routes", () => {
       const err = new Error("smtp refused");
       mocks.authService.forgotPassword.mockRejectedValue(err);
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/forgot-password", {
         method: "POST",
         headers: JSON_HEADERS,
@@ -348,7 +349,7 @@ describe("Auth routes", () => {
         avatarUrl: "https://cdn/alice.png",
       });
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/me", {
         headers: SESSION_COOKIE,
       });
@@ -383,7 +384,7 @@ describe("Auth routes", () => {
       });
       mocks.studioService.getPersonalStudio.mockResolvedValue(null);
 
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/me", {
         headers: SESSION_COOKIE,
       });
@@ -394,7 +395,7 @@ describe("Auth routes", () => {
     });
 
     it("rejects without the session cookie", async () => {
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/me");
 
       expect(res.status).toBe(401);
@@ -404,7 +405,7 @@ describe("Auth routes", () => {
       // After the migration, Bearer auth must be a hard 401 — leaving
       // the legacy fallback open would silently re-create the XSS
       // exfiltration surface the cookie migration removed.
-      const app = createApp();
+      const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/me", {
         headers: { Authorization: "Bearer valid-token" },
       });

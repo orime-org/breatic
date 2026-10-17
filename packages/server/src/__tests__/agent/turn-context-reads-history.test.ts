@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The assembly really does compress what it read (#148, C3).
+ * What the assembly reads for a turn.
  *
- * Every other test of the turn replaces this module with a double, so the one
- * line that shortens tool results is executed by nothing: deleting it and
- * returning the stored history unchanged left the whole suite green. This is
- * the one place that calls it for real.
+ * Every other test of the turn replaces this module with a double, so this is
+ * the one place it runs for real. The history goes to the model as stored:
+ * a turn is replayed as it was sent so the provider's cached prefix still
+ * matches, and shortening an old tool result would change it (inner#1549).
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -33,7 +33,7 @@ function toolPart(n: number): MessagePart {
   };
 }
 
-/** Six turns, one tool use each: twice the keep window. */
+/** Six turns, one tool use each. */
 const HISTORY: MessageData[] = Array.from({ length: 6 }, (_, i) => i + 1).flatMap((t) => [
   { role: "user", content: `q${t}`, parts: [{ type: "text", text: `q${t}` }], ts: "", turnIndex: t },
   {
@@ -63,20 +63,18 @@ vi.mock("@server/modules", () => ({
 }));
 
 describe("what the assembly hands the turn", () => {
-  it("has the old tool results replaced, and the recent ones whole", async () => {
+  it("hands over every tool result whole, old ones included", async () => {
     const { buildTurnContext } = await import("@server/agent/turn-context.js");
 
-    const { compressedHistory, watermark } = await buildTurnContext("u1", "c1", "p1", 7);
+    const { history, watermark } = await buildTurnContext("u1", "c1", "p1", 7);
 
-    const results = compressedHistory
+    const results = history
       .flatMap((m) => m.parts)
       .filter((p) => p.type === "tool")
       .map((p) => (p.type === "tool" && p.forModel?.type === "text" ? p.forModel.value : ""));
 
     expect(results).toHaveLength(6);
-    // `tool_result_keep` is 3 in the config double.
-    expect(results.slice(-3).every((r) => r.includes(BODY))).toBe(true);
-    expect(results.slice(0, -3).some((r) => r.includes(BODY))).toBe(false);
+    expect(results.every((r) => r.includes(BODY))).toBe(true);
     expect(watermark).toBe(0);
   });
 

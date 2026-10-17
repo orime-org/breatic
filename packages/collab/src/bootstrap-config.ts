@@ -15,7 +15,7 @@
  * validates it against the Zod schema and stores the result for the
  * `@breatic/core` `env` Proxy / `getConfig()` / `getRawEnvVar()`
  * accessors. `@breatic/core` itself never touches `process.env`
- * (CLAUDE.md "core/shared must not read env vars" mandate).
+ * (AGENTS.md#library-packages-do-not-read-env).
  *
  * `process.env` carries the host `PATH` / `HOME` too, which the
  * agent script sandbox forwards via `getRawEnvVar` - no separate

@@ -64,7 +64,9 @@ packages/*/wrangler.toml
 
 # Docs (not needed at runtime)
 README.md
-CLAUDE.md
+**/AGENTS.md
+**/CLAUDE.md
+.claude/
 CONTRIBUTING.md
 CODE_OF_CONDUCT.md
 LICENSE

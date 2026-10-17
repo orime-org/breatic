@@ -38,7 +38,7 @@ export const yjsDocuments = pgTable("yjs_documents", {
   name: text("name").primaryKey(),
   data: bytea("data").notNull(),
   // `createdAt` aligns with the project-wide rule: every PG table has
-  // a createdAt timestamp (see CLAUDE.md "key conventions").
+  // a createdAt timestamp (see packages/core/AGENTS.md#every-table-has-created_at).
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
