@@ -312,8 +312,8 @@
       "quick": {
         "findReference": "Find cyberpunk-style reference images",
         "writeScript": "Write a script for a three-minute short film",
-        "buildWorkflow": "Build a flow on the canvas that makes a character turnaround",
-        "annotateDocument": "Comment on this Document and point out what could be better",
+        "buildWorkflow": "Build a character turnaround on the canvas",
+        "annotateDocument": "Suggest edits to this Document",
         "writePrompt": "Write a prompt for an illustration"
       }
     },

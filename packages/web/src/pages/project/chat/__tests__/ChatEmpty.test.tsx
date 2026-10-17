@@ -47,10 +47,18 @@ describe('ChatEmpty', () => {
     expect(offered).toEqual([
       ['chat-empty-qa-find-reference', 'Find cyberpunk-style reference images'],
       ['chat-empty-qa-write-script', 'Write a script for a three-minute short film'],
-      ['chat-empty-qa-build-workflow', 'Build a flow on the canvas that makes a character turnaround'],
-      ['chat-empty-qa-annotate-document', 'Comment on this Document and point out what could be better'],
+      ['chat-empty-qa-build-workflow', 'Build a character turnaround on the canvas'],
+      ['chat-empty-qa-annotate-document', 'Suggest edits to this Document'],
       ['chat-empty-qa-write-prompt', 'Write a prompt for an illustration'],
     ]);
+  });
+
+  it('lets a long suggestion wrap within the panel', () => {
+    render(<ChatEmpty />);
+    for (const button of screen.getAllByTestId(/^chat-empty-qa-/)) {
+      expect(button.className).toContain('whitespace-normal');
+      expect(button.className).not.toMatch(/(^|\s)h-\[/);
+    }
   });
 
   it('clicking a quick action fires onQuickAction with the label', async () => {

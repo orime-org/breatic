@@ -83,7 +83,7 @@ export function ChatEmpty({
               size={null}
               disabled={frozen}
               onClick={() => onQuickAction?.(label)}
-              className='flex h-[var(--btn-inline)] items-center rounded-full border border-border bg-transparent px-3 text-xs text-foreground transition-colors hover:bg-accent'
+              className='flex min-h-[var(--btn-inline)] items-center whitespace-normal rounded-full border border-border bg-transparent px-3 py-1 text-xs text-foreground transition-colors hover:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}
             >
               {label}
