@@ -43,8 +43,8 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
  *
  * The newest reply sent again as it was sent says how big the conversation
  * was when its turn ended, by the provider's count; what came after it is
- * added on. Without one -- the conversation was folded since, or nothing was
- * kept -- it is the system prompt and tools, what each turn added, and this
+ * added on. Without one -- the conversation was folded since, the system
+ * prompt, tools or model changed, or nothing was kept -- it is the system prompt and tools, what each turn added, and this
  * turn's question.
  * @param assembly - What this turn would send.
  * @param turns - What each turn of its history added.

@@ -475,7 +475,7 @@ describe("the turn after one that ended", () => {
     let nextTurn = 1;
     addMessage.mockImplementation(async (_id, message, forModel) => {
       const turnIndex = message.role === "user" ? nextTurn++ : (message.turnIndex as number);
-      // Through JSON, as a JSONB column hands it back.
+      // Through JSON, as the `json` column hands it back: key order kept.
       const kept = forModel === undefined ? null : (JSON.parse(JSON.stringify(forModel)) as unknown);
       store.push({ role: message.role as "user" | "assistant", content: "", parts: message.parts as never, ts: "", turnIndex, forModel: kept });
       return turnIndex;

@@ -98,8 +98,10 @@ function toMessageData(row: StoredRow): MessageData {
  * @param message - The message. A question opens a turn and is numbered here;
  *   a reply says which turn it answers, because nothing readable off the table
  *   can tell one turn's answer from a later turn's
- * @param forModel - The message as it was sent to the model, kept so later
- *   turns replay it as it is. Absent on a message nothing was sent of
+ * @param forModel - The reply as it was sent to the model, kept so later
+ *   turns replay it as it is. Absent on a user message, whose copy
+ *   `setUserForModel` writes once the turn has assembled its request, and on
+ *   a reply whose turn never asked the model
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.

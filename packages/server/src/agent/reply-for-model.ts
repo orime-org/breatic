@@ -154,7 +154,8 @@ export interface MeasuredChars {
  * How much the turn added to the conversation, and how big it ended.
  *
  * Both from the provider's own count, inputs including cache reads and
- * writes. A turn with no count -- its first call stopped or failed before
+ * writes; the turn's figure adds this turn's user message in characters. A
+ * turn with no count -- its first call stopped or failed before
  * one came back -- is measured in characters, a character counted as a
  * token: never fewer than the tokens, so a fold can only come early.
  * @param usage - What the provider reported.

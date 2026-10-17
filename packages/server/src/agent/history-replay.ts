@@ -15,10 +15,12 @@
  * the hash of its turn's prefix, and a row whose hash no longer matches goes
  * back without its thinking. Taking a block out changes every byte after it,
  * so the replies made while it was there stop matching too, and the ones made
- * after it was gone still match. Putting it back -- the system prompt changes
- * and changes back -- does the same to the replies made while it was gone, so
- * the blocks kept need not be one run: after A, B, A, A, the first and third
- * keep theirs and the second does not (Anthropic answered all four).
+ * after it was gone still match. Putting it back -- the tools or the system
+ * prompt change and change back, as the tools do when the reader switches the
+ * interface language and switches it back -- does the same to the replies
+ * made while it was gone, so the blocks kept need not be one run: after A, B,
+ * A, A, the first and third keep theirs and the second does not (Anthropic
+ * answered all four, with the interface language switched).
  *
  * A row written before any of this was kept is rendered from its parts the
  * way it always was.

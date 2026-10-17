@@ -76,7 +76,8 @@ export interface ConsolidationWindow {
    * The window, as the model would have been sent it.
    *
    * The assembled messages rather than the stored rows: the summary covers
-   * what the model was given, in the form it was given it.
+   * what the model was given, in the form it was given it, less the model's
+   * own working.
    */
   transcript: readonly ModelMessage[];
   /** Where the watermark stood before this window was taken. */

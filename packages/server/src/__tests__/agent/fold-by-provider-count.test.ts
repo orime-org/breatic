@@ -144,8 +144,8 @@ describe("deciding to fold", () => {
 describe("sizing a fold", () => {
   it("takes the oldest turns by what each added until what is left is under the keep line", async () => {
     // Every reply went out under an older system prompt, so the size is what
-    // the turns added: 1 + 300 + 300 + 300 + the question, over 1,000 once
-    // the budget is lowered to 800. Taking turn 1 leaves about 600, turn 2
+    // the turns added: 1 + 300 + 300 + 300 + the question, about 909, under
+    // the budget of 1,000 and over it once the budget is lowered to 800. Taking turn 1 leaves about 600, turn 2
     // about 300, under the keep line of 400.
     LINES.budget = 800;
     const old = { ...AGENT, instructions: "older" };

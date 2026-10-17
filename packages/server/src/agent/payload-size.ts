@@ -13,9 +13,10 @@
  *
  * Characters are the fallback: the fold is decided by the provider's own
  * token counts, and these measure only what no count covers -- a turn whose
- * calls reported nothing, what came after the newest counted reply, this
- * turn's question, and the system prompt and tools when no reply went out as
- * it was sent. A character is never more than a token in the tokenizers
+ * reply kept no count (its calls reported nothing, or it was stored before
+ * any copy was kept), what came after the newest reply sent again as it was
+ * sent, this turn's question, and the system prompt and tools when no reply
+ * goes out as it was sent. A character is never more than a token in the tokenizers
  * this build meets, so counting one as a token can only make a fold come
  * early. There is no library that counts tokens for a model reached through
  * OpenRouter — see the design's DD section.

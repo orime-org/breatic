@@ -465,8 +465,9 @@ export class MainAgent {
 
       // Kept as it is about to go out, after any fold, so later turns send it
       // again as it is. Losing the copy costs this turn nothing: later turns
-      // render the message from its parts the way they always did, and only
-      // the cache match past it is lost.
+      // render the message from its parts the way they always did, so the
+      // cache stops matching from this message on and this turn's reply goes
+      // back without its thinking.
       try {
         await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
       } catch (err) {

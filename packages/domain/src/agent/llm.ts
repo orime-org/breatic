@@ -20,8 +20,9 @@
  * Reasoning is settled here rather than by the caller. Each vendor takes the
  * request its own way -- one wants `thinking: { type }`, another an effort
  * level, a third a token budget -- and a caller that had to know which is
- * which would be a fifth copy of this table. Callers say whether they want
- * the model's working and nothing else.
+ * which would be a fifth copy of this table. Callers say what they want --
+ * the model's working, a cache lifetime, a temperature, the conversation --
+ * and nothing about how any vendor spells it.
  */
 
 import { createOpenAI } from "@ai-sdk/openai";
@@ -34,7 +35,8 @@ import { env } from "@breatic/core";
 import type { CoreConfig, PromptCacheTtl } from "@breatic/core";
 
 /**
- * What a model call carries to ask for reasoning, if it asks at all.
+ * What a model call carries to ask its provider for reasoning, caching and a
+ * sticky session, and the temperature where the model takes one.
  *
  * Taken off the call's own parameter rather than restated: the SDK does not
  * export this type by name, and a hand-written copy of it would be a second
@@ -293,8 +295,8 @@ export function resolveProvider(modelString: string | undefined): string {
 }
 
 /**
- * What to send so this model's provider reasons, or does not, and caches the
- * prompt prefix, or does not.
+ * What to send so this model's provider reasons, or does not, caches the
+ * prompt prefix, or does not, and keeps a conversation on one provider.
  *
  * The caller says what it wants; which vendor is being called and how that
  * vendor takes each request are settled here. Reasoning is stated in both
@@ -302,8 +304,9 @@ export function resolveProvider(modelString: string | undefined): string {
  * every provider and those defaults are theirs to change -- except for
  * Claude, where leaving it off is the one spelling every version accepts.
  * @param modelString - Model identifier, or undefined for the fallback.
- * @param wants - Whether the call wants reasoning, how long to cache, and
- *   the temperature it would like where the model takes one.
+ * @param wants - Whether the call wants reasoning, how long to cache, the
+ *   temperature it would like where the model takes one, and the
+ *   conversation it belongs to (sent to OpenRouter as its session id).
  * @returns Provider options to spread into the model call.
  * @throws {never} Never.
  */
