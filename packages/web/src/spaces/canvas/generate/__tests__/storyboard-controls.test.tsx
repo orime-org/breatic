@@ -10,7 +10,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { AddShotRow, ShotList } from '@web/spaces/canvas/generate/StoryboardControls';
+import { AddShotRow, ShotList } from '@web/spaces/canvas/generate/storyboard-controls';
 
 const NOOP = (): void => {};
 

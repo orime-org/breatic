@@ -39,7 +39,7 @@ import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
-import { PreviewImg } from '@web/components/preview-img';
+import { PreviewImg } from '@web/components/PreviewImg';
 
 /**
  * Project activity feed surfaced by the Activity icon on the

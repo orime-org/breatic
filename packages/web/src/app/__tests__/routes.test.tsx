@@ -40,7 +40,7 @@ vi.mock('@web/data/api', async original => {
 });
 
 import { AppRouter } from '@web/app/AppRouter';
-import { behindLoadingScreen } from '@web/app/loading-boundary';
+import { behindLoadingScreen } from '@web/app/LoadingBoundary';
 import { baseRoutes } from '@web/app/routes';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';

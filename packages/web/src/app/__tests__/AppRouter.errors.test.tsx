@@ -8,7 +8,7 @@ import { createMemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { AppRouter } from '@web/app/AppRouter';
-import { behindLoadingScreen } from '@web/app/loading-boundary';
+import { behindLoadingScreen } from '@web/app/LoadingBoundary';
 
 vi.mock('@sentry/react', async (original) => ({
   ...await original<typeof import('@sentry/react')>(),

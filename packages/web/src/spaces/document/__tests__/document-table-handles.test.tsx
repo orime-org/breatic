@@ -43,7 +43,7 @@ vi.mock('@blocknote/react', () => ({
 
 const { setBubbleBarUp } = await import('@web/spaces/document/document-bars');
 const { DocumentTableHandle } = await import(
-  '@web/spaces/document/DocumentTableHandles'
+  '@web/spaces/document/DocumentTableHandle'
 );
 
 const mounted: Editor[] = [];

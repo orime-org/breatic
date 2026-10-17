@@ -22,7 +22,7 @@ import {
   fetchCreditLots,
   requestCreditLotRefund,
 } from '@web/data/api/credits';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   ScrollCard,
   ListEnd,

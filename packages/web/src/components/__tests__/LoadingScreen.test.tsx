@@ -5,7 +5,7 @@ import { describe, it, expect } from 'vitest';
 import * as React from 'react';
 import { render, screen } from '@testing-library/react';
 
-import { LoadingScreen, LoadingScreenHost } from '@web/components/loading-screen';
+import { LoadingScreen, LoadingScreenHost } from '@web/components/LoadingScreen';
 
 // Two waits that sit at different places in the tree, the way the auth gate,
 // the route boundary and the project page do.

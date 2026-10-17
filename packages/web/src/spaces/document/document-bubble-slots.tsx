@@ -32,7 +32,7 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { cn } from '@web/lib/utils';
-import { DocumentBubbleMenu } from '@web/spaces/document/document-bubble-menu';
+import { DocumentBubbleMenu } from '@web/spaces/document/DocumentBubbleMenu';
 import { UNAVAILABLE } from '@web/spaces/document/document-unavailable-control';
 import {
   BLOCK_TYPE_ITEMS,
@@ -66,13 +66,13 @@ import {
 import {
   DocumentColourPanel,
   type CellFillRow,
-} from '@web/spaces/document/document-colour-panel';
+} from '@web/spaces/document/DocumentColourPanel';
 import {
   cellFillFace,
   cellsUnder,
   setCellFill,
 } from '@web/spaces/document/document-table-run';
-import { MenuTick } from '@web/spaces/document/document-menu-tick';
+import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   ALIGN_ITEMS,
   alignFaceIcon,

@@ -9,7 +9,7 @@ import type { CreditOverview } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import type { CreditPack } from '@web/data/api/payment';
 import { BuyConfirmDialog } from '@web/features/credits/sections/BuyConfirmDialog';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   Card,
   Figure,

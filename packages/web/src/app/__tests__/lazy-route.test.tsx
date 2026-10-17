@@ -15,7 +15,7 @@ vi.mock('@sentry/react', async (importOriginal) => ({
 // Imported for its type: `freshDocument` re-imports the module for each case,
 // and the cases should stop compiling when its signatures change.
 import * as lazyRouteModule from '@web/app/lazy-route';
-import { LoadingBoundary } from '@web/app/loading-boundary';
+import { LoadingBoundary } from '@web/app/LoadingBoundary';
 
 /**
  * Replace `window.location.reload` with a spy for one test.

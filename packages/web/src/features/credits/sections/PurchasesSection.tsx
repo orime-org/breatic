@@ -9,7 +9,7 @@ import type { PurchaseRow } from '@breatic/shared';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import { paymentApi } from '@web/data/api/payment';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   ScrollCard,
   ListEnd,

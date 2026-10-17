@@ -9,7 +9,7 @@
 import { act, render } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { DocumentTableScroller, overflowSides } from '@web/spaces/document/document-table-scroller';
+import { DocumentTableScroller, overflowSides } from '@web/spaces/document/DocumentTableScroller';
 
 describe('which sides of a table frame still have more to scroll', () => {
   it.each([

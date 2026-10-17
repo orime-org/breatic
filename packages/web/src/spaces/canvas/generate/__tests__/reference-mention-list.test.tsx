@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render } from '@testing-library/react';
 import * as React from 'react';
 
-import { MentionList, type MentionListRef } from '@web/features/reference-mention/mention-list';
+import { MentionList, type MentionListRef } from '@web/features/reference-mention/MentionList';
 import { referenceKey, renderReferenceRow } from '@web/spaces/canvas/generate/reference-mention-list';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { resetPreviewRecords } from '@web/lib/preview-src';
