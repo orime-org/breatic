@@ -47,7 +47,7 @@ describe('HTML carrying media', () => {
 
   it.each([
     ['a line', [{ type: 'paragraph', content: 'lead' }], ['paragraph:leada', 'image[pending|]', 'paragraph:b']],
-    ['a table cell', [TABLE], ['table', 'image[pending|]']],
+    ['a table cell', [TABLE], ['table', 'image[pending|]', 'paragraph:']],
   ])('a picture given only by srcset, pasted on %s, is fetched from its densest candidate', async (_where, blocks, expected) => {
     const { editor, sink } = open(blocks);
     caretIn(editor, 0);
@@ -193,14 +193,15 @@ describe('where a pasted picture stands and what it shows (inner#1351 A3, A5)', 
     expect(editor.prosemirrorView!.state.doc.textContent).toContain('![x](https://e.example/i.png)');
   });
 
-  it('web content pasted into code goes in as its words, with nothing told left out', async () => {
+  it('web content pasted into code puts its words in the code, and a medium it could not read is told as left out', async () => {
     const { editor, sink } = open([{ type: 'codeBlock', content: 'x' }]);
     caretIn(editor, 0);
 
     paste(editor, '<p>words</p><object data="https://e.example/x.swf"><img src="https://e.example/f.png"></object>', 'words');
     await settled();
 
-    expect(sink.onLeftOut).not.toHaveBeenCalled();
+    // BlockNote reads no <object>, so the picture inside it is not read.
+    expect(sink.onLeftOut).toHaveBeenCalledWith(1);
     expect(editor.prosemirrorView!.state.doc.textContent).toContain('words');
   });
 
@@ -273,8 +274,9 @@ describe('a web table whose cells hold media', () => {
     [
       'a figure around the whole table',
       '<figure><table><tr><td><img src="https://elsewhere.example/a.png"> x</td></tr></table><figcaption>T</figcaption></figure>',
-      '<figure><table><tr><td> x</td></tr></table><figcaption>T</figcaption></figure>',
-      '',
+      '<figure><table><tr><td> x</td></tr></table></figure>',
+      // The figure's only medium takes its caption, as BlockNote reads a figure.
+      'T',
     ],
   ])('with %s, lands as it does without the medium, the medium after the table', async (_what, html, plainHtml, caption) => {
     const plain = open([{ type: 'paragraph', content: 'lead' }]);
@@ -335,7 +337,7 @@ describe('with the caret in a table cell (A7)', () => {
     );
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|Cap]', `image[${OURS}b.png|]`]);
+    expect(shape(editor)).toEqual(['table', 'image[pending|Cap]', `image[${OURS}b.png|]`, 'paragraph:']);
     expect(firstCell(editor, 0)).toBe('cell words');
   });
 
@@ -387,7 +389,9 @@ describe('with the caret in a table cell (A7)', () => {
     await settled();
 
     const expected = shape(plain.editor);
-    expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]');
+    // The picture lands under the table it was pasted in, and the caret
+    // gets a line of its own before the table that follows.
+    expected.splice(expected.indexOf('table') + 1, 0, 'image[pending|]', 'paragraph:');
     expect(shape(withPicture.editor)).toEqual(expected);
     expect(withPicture.sink.start).toHaveBeenCalledOnce();
   });
@@ -612,21 +616,20 @@ describe('a paste or a drop is an undo step of its own (A6)', () => {
   });
 });
 
-describe('a paste the editor does not put in', () => {
-  it('counts its media as left out when another hook takes the paste instead', async () => {
+describe('an address and pictures pasted over selected words', () => {
+  it('lands all of it: the address is no link to make of the selection', async () => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead word' }]);
     select(editor, 8, 12);
 
-    // The link hook takes a paste whose words are one address, over a selection.
     paste(editor, '<p><a href="https://x.example/">https://x.example/</a></p><img src="https://elsewhere.example/a.png">', 'https://x.example/');
     await settled();
-    await Promise.resolve();
 
-    expect(sink.start).not.toHaveBeenCalled();
-    expect(sink.onLeftOut).toHaveBeenCalledWith(1);
+    expect(sink.start).toHaveBeenCalledOnce();
+    expect(sink.onLeftOut).not.toHaveBeenCalled();
+    expect(editor.prosemirrorView!.state.doc.textContent).toContain('https://x.example/');
   });
 
-  it('tells how many were left out once, counting those it could not fetch with those the hook kept out', async () => {
+  it('tells only the pictures it could not fetch as left out', async () => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead word' }]);
     select(editor, 8, 12);
 
@@ -638,9 +641,11 @@ describe('a paste the editor does not put in', () => {
     );
     await settled();
 
-    expect(sink.onLeftOut.mock.calls).toEqual([[2]]);
+    expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+    expect(sink.start).toHaveBeenCalledOnce();
   });
 });
+
 
 /**
  * Every block but the media, nested ones too, without ids.
@@ -698,6 +703,6 @@ describe('the body\'s own HTML pasted into a table cell', () => {
     await settled();
 
     expect(firstCell(withMedium.editor, 0)).toBe(firstCell(plain.editor, 0));
-    expect(shape(withMedium.editor)).toEqual(['table', 'image[pending|]']);
+    expect(shape(withMedium.editor)).toEqual(['table', 'image[pending|]', 'paragraph:']);
   });
 });

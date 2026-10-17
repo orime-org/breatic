@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { srcsetCandidates } from '@web/spaces/document/document-paste-html';
+import { srcsetCandidates } from '@web/spaces/document/document-paste-read';
 
 describe('srcset candidates', () => {
   it.each([

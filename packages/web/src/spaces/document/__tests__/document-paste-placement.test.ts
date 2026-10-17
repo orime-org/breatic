@@ -42,7 +42,9 @@ function lines(editor: Editor): string[] {
     }
     if (block.type === 'table') return `table${quoted}`;
     const level = block.type === 'heading' ? `#${String(block.props['level'])}` : '';
-    const words = Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : '';
+    const text = (items: readonly { text?: string; content?: unknown }[]): string =>
+      items.map((c) => c.text ?? (Array.isArray(c.content) ? text(c.content as { text?: string }[]) : '')).join('');
+    const words = Array.isArray(block.content) ? text(block.content as { text?: string }[]) : '';
     return `${block.type}${level}${quoted}:${words}`;
   };
   const walk = (blocks: Block[], depth: number): string[] =>

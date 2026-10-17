@@ -32,7 +32,9 @@ type Block = {
  * @returns Its words.
  */
 function words(block: Block): string {
-  return Array.isArray(block.content) ? (block.content as { text?: string }[]).map((c) => c.text ?? '').join('') : '';
+  const text = (items: readonly { text?: string; content?: unknown }[]): string =>
+    items.map((c) => c.text ?? (Array.isArray(c.content) ? text(c.content as { text?: string }[]) : '')).join('');
+  return Array.isArray(block.content) ? text(block.content as { text?: string }[]) : '';
 }
 
 /**
@@ -121,6 +123,18 @@ describe('a medium inside a table', () => {
   it('in a cell lands under that table', async () => {
     const { editor } = await read(`<table><tr><td>x <img src="${A}"></td><td>y</td></tr></table>`);
     expect(tree(editor)).toEqual(['table', `image(${A}||)`, 'paragraph:end']);
+  });
+
+  it.each([
+    ['in the middle of its words, one space between them', `a <img src="${A}"> b`, 'a b'],
+    ['at the start of its words', `<img src="${A}"> x`, 'x'],
+    ['at the end of its words', `x <img src="${A}">`, 'x'],
+    ['between words with no space', `a<img src="${A}">b`, 'ab'],
+    ['two of them, the space before the first', `a <img src="${A}"><img src="${A}">b`, 'a b'],
+  ])('%s leaves the cell its words as they read without it', async (_where, cell, words) => {
+    const { editor } = await read(`<table><tr><td>${cell}</td></tr></table>`);
+    const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0]!;
+    expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '').join('')).toBe(words);
   });
 
   it('in the caption lands under that table', async () => {

@@ -39,12 +39,14 @@ export type PasteHandler = NonNullable<
   BlockNoteEditorOptions<never, never, never>['pasteHandler']
 >;
 
-/** Files that arrived, with the gap they go into. */
+/** Files that arrived, and where they go. */
 export interface FilesArrival {
   readonly files: readonly File[];
-  readonly gap: UploadGap;
-  /** Whether the files were aimed at the empty line right after the gap. */
-  readonly aimed: boolean;
+  /**
+   * The gap a drop puts them in, or null for a paste, which puts them at the
+   * selection by the body's placement (inner#1351 design §5.4.3).
+   */
+  readonly gap: UploadGap | null;
 }
 
 /** Where arriving files are handed over. */
@@ -99,43 +101,6 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
   return { pos: gapAtDrop(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
 }
 
-/** Where a paste of files goes, and whether the reader aimed it at a line. */
-export interface PasteTarget {
-  readonly gap: UploadGap;
-  /** The caret is in an empty line and the gap is right above it. */
-  readonly aimed: boolean;
-}
-
-/**
- * Where a paste goes: after the block a position is in, or above it when it
- * is an empty line, which keeps the caret and counts as aimed at it. In a
- * table cell the block is the whole table, so the gap is below it.
- * @param state - The editor state.
- * @param $at - The position; the caret's when left out.
- * @returns The gap, and whether it is aimed at the empty line.
- */
-export function pasteTarget(state: EditorState, $at: ResolvedPos = state.selection.$head): PasteTarget {
-  const line = lineAt($at);
-  if (line === null) return { gap: state.doc.content.size - 1, aimed: false };
-  if (line.empty) return { gap: line.start, aimed: true };
-  return { gap: line.start + line.container.nodeSize, aimed: false };
-}
-
-/**
- * The block a position is in, and whether it is an empty line.
- * @param $at - The position.
- * @returns The block's start and node, or null outside any block.
- */
-function lineAt($at: ResolvedPos): { start: number; container: PMNode; empty: boolean } | null {
-  for (let depth = $at.depth; depth > 0; depth -= 1) {
-    const container = $at.node(depth);
-    if (container.type.name !== 'blockContainer') continue;
-    const empty = container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
-    return { start: $at.before(depth), container, empty };
-  }
-  return null;
-}
-
 /**
  * Whether a position is inside a table cell.
  * @param $at - The position.
@@ -169,17 +134,16 @@ export function quotedAs(blocks: readonly BlockSpec[], quoted: boolean): BlockSp
 }
 
 /**
- * Whether the line beside a gap is quoted: the line the reader aimed at,
- * else the block before the gap (the block after it at the start of the
- * body) — the way a block made there by typing would be.
+ * Whether the line beside a gap is quoted: the block before the gap (the
+ * block after it at the start of the body) — the way a block made there by
+ * typing would be.
  * @param doc - The document.
  * @param gap - The gap.
- * @param aimed - Whether the reader aimed at the line right after the gap.
  * @returns True when that line is quoted.
  */
-function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boolean {
+function quotedBeside(doc: PMNode, gap: UploadGap): boolean {
   const $gap = doc.resolve(gap);
-  const beside: PMNode | null = aimed ? $gap.nodeAfter : ($gap.nodeBefore ?? $gap.nodeAfter);
+  const beside: PMNode | null = $gap.nodeBefore ?? $gap.nodeAfter;
   return beside?.firstChild?.attrs[QUOTED] === true;
 }
 
@@ -187,17 +151,15 @@ function quotedBeside(doc: PMNode, gap: UploadGap, aimed: boolean): boolean {
  * A transaction inserting blocks at a gap, quoted as the line beside it.
  * @param state - The state they go into.
  * @param gap - Where they go.
- * @param aimed - Whether the reader aimed at the line right after the gap.
  * @param blocks - The blocks, in order.
  * @returns The transaction.
  */
 export function insertAtGapTr(
   state: EditorState,
   gap: UploadGap,
-  aimed: boolean,
   blocks: readonly BlockSpec[],
 ): Transaction {
-  const nodes = quotedAs(blocks, quotedBeside(state.doc, gap, aimed)).map((block) =>
+  const nodes = quotedAs(blocks, quotedBeside(state.doc, gap)).map((block) =>
     blockToNode({ id: newId(), ...block } as never, state.schema),
   );
   return state.tr.insert(gap, Fragment.from(nodes));
@@ -225,7 +187,7 @@ export function documentFileDropExtension(sink?: FilesSink): ExtensionFactoryIns
               const files = Array.from(event.dataTransfer?.files ?? []);
               const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
               if (sink === undefined || files.length === 0 || at === null) return true;
-              sink({ files, gap: gapAtDrop(view.state.doc, at.pos), aimed: false });
+              sink({ files, gap: gapAtDrop(view.state.doc, at.pos) });
               return true;
             },
           },
@@ -246,10 +208,7 @@ export function filesPasteHandler(sink: FilesSink, next: PasteHandler): PasteHan
     const data = context.event.clipboardData;
     const files = data === null ? null : pastedFiles(data);
     if (files === null) return next(context);
-    const view = context.editor.prosemirrorView;
-    if (view !== undefined && view !== null) {
-      sink({ files, ...pasteTarget(view.state) });
-    }
+    sink({ files, gap: null });
     return true;
   };
 }

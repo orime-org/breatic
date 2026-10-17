@@ -131,7 +131,7 @@ describe('text only, in a code block', () => {
 });
 
 describe('with media', () => {
-  it('lands after the caret\'s line as text and pending blocks in reading order, and starts each upload', () => {
+  it('lands at the caret as text and pending blocks in reading order, and starts each upload', () => {
     const { editor, sink } = open([{ type: 'paragraph', content: 'lead' }], 0);
     paste(
       editor,
@@ -140,8 +140,9 @@ describe('with media', () => {
         { id: 'i', type: 'image', position: { x: 0, y: 200 }, data: { name: 'Hero', content: OURS } },
       ),
     );
-    expect(shape(editor)).toEqual(['paragraph:lead', 'paragraph:Words', 'image[id|Hero|]']);
-    const image = (editor.document as { type: string; props: Record<string, unknown> }[])[2]!;
+    // At the end of a line, the leading words join it (§5.4.3).
+    expect(shape(editor)).toEqual(['paragraph:leadWords', 'image[id|Hero|]', 'paragraph:']);
+    const image = (editor.document as { type: string; props: Record<string, unknown> }[])[1]!;
     expect(sink.start).toHaveBeenCalledExactlyOnceWith(image.props['uploadId'], { kind: 'ours', url: OURS });
   });
 
@@ -206,7 +207,7 @@ describe('what could not be pasted', () => {
         { id: 'i', type: 'image', position: { x: 0, y: 300 }, data: { name: 'Hero', content: OURS } },
       ),
     );
-    expect(shape(editor)).toEqual(['paragraph:lead', 'image[id|Hero|]']);
+    expect(shape(editor)).toEqual(['paragraph:lead', 'image[id|Hero|]', 'paragraph:']);
     expect(sink.notPasted).toHaveBeenCalledExactlyOnceWith(1);
   });
 });

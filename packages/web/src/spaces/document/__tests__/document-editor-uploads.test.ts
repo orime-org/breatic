@@ -119,14 +119,14 @@ function shape(handle: ReturnType<typeof getDocumentEditor>): string[] {
 const PNG = (): File => new File([new Uint8Array(8)], 'shot.png', { type: 'image/png' });
 
 describe('a file pasted into a body built for a Space', () => {
-  it('becomes a pending block under the caret\'s line and uploads with the project and the Space, no node', async () => {
+  it('becomes a pending block at the caret and uploads with the project and the Space, no node', async () => {
     upload.media.mockReturnValue(new Promise(() => undefined));
     const handle = openBody([{ type: 'paragraph', content: 'lead' }], 0);
     const file = PNG();
 
     paste(handle, { files: [file] });
 
-    expect(shape(handle)).toEqual(['paragraph:lead', 'image[id|shot.png]']);
+    expect(shape(handle)).toEqual(['paragraph:lead', 'image[id|shot.png]', 'paragraph:']);
     await vi.waitFor(() => {
       expect(upload.media).toHaveBeenCalledTimes(1);
     });

@@ -4,9 +4,9 @@
 /**
  * The body's paste of a canvas clipboard (inner#1351 + inner#1390 design
  * §5.1, §5.2): nodes copied on the canvas or a picture copied in the Agent
- * panel land as text and pending media blocks, in one transaction, so one
- * undo takes the whole paste away; the uploads behind the blocks start once
- * it is in.
+ * panel land as text and pending media blocks, put at the selection by the
+ * body's placement (§5.4.3) in the paste event, so one undo takes the whole
+ * paste away; the uploads behind the blocks start once it is in.
  */
 
 import { blockToNode } from '@blocknote/core';
@@ -16,13 +16,8 @@ import { newId } from '@breatic/shared';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
-import {
-  inTableCell,
-  insertAtGapTr,
-  pasteTarget,
-  type BlockSpec,
-  type PasteHandler,
-} from '@web/spaces/document/document-file-input';
+import { inTableCell, type BlockSpec, type PasteHandler } from '@web/spaces/document/document-file-input';
+import { putContent } from '@web/spaces/document/document-put';
 import { pendingBlock } from '@web/spaces/document/document-uploads';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
 
@@ -79,7 +74,6 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
         const lines = items.flatMap((item) => (item.kind === 'text' ? item.lines : []));
         view.dispatch(view.state.tr.replaceSelection(textSlice(view.state.selection.$from, lines)));
       } else {
-        const { gap, aimed } = pasteTarget(view.state);
         const started: { uploadId: string; source: UploadSource }[] = [];
         const blocks = items.flatMap((item): BlockSpec[] => {
           if (item.kind === 'text') return item.lines.map((line) => ({ type: 'paragraph', content: line }));
@@ -92,7 +86,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
             }),
           ];
         });
-        view.dispatch(insertAtGapTr(view.state, gap, aimed, blocks));
+        putContent(editor, blocks, { caller: 'canvas', judge: (props) => props });
         for (const { uploadId, source } of started) sink.start(uploadId, source);
       }
     }

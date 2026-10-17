@@ -142,6 +142,21 @@ describe('a pasted picture file, on a line of words', () => {
     expect({ lines: lines(handle), caret: caret(handle) }).toEqual({ lines: ['paragraph:abcd', 'image', 'paragraph:'], caret: '@0' });
   });
 
+  it('on an empty line goes above it, the caret staying in it', () => {
+    const handle = openBody([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }, { type: 'paragraph', content: 'tail' }]);
+    let empty = -1;
+    handle.editor.prosemirrorView!.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.content.size === 0) empty = pos + 1;
+      return empty < 0;
+    });
+    select(handle.editor, empty);
+    pasteFile(handle);
+    expect({ lines: lines(handle), caret: caret(handle) }).toEqual({
+      lines: ['paragraph:lead', 'image', 'paragraph:', 'paragraph:tail'],
+      caret: '@0',
+    });
+  });
+
   it('over a few selected words replaces them', () => {
     const handle = openBody([{ type: 'paragraph', content: 'abcd' }]);
     select(handle.editor, positionOf(handle.editor, 'abcd', 1), positionOf(handle.editor, 'abcd', 3));

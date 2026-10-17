@@ -10,12 +10,15 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { NodeSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { ownMediaOnly } from '@web/spaces/document/document-external-media';
+
+import { drop, pasteFormats } from './paste-harness';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -52,6 +55,7 @@ function open(prefix: string | null, sink: Sink = { onLeftOut: vi.fn(), start: v
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [{ type: 'paragraph' }] as never);
   editor.setTextCursorPosition((editor.document[0] as { id: string }).id, 'start');
+  editor.prosemirrorView!.focus();
   return editor;
 }
 
@@ -119,7 +123,7 @@ describe('an outside medium in pasted HTML', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML('<p>before</p><img src="https://elsewhere.example/a.png"><p>after</p>');
+    pasteFormats(editor, { 'text/html': '<p>before</p><img src="https://elsewhere.example/a.png"><p>after</p>' });
     await settled();
 
     expect(types(editor)).toEqual(['paragraph', 'image', 'paragraph']);
@@ -134,7 +138,7 @@ describe('an outside medium in pasted HTML', () => {
 
   it('never reaches the shared document by its outside address', async () => {
     const editor = open(OURS);
-    editor.pasteHTML('<p>x</p><img src="https://elsewhere.example/a.png">');
+    pasteFormats(editor, { 'text/html': '<p>x</p><img src="https://elsewhere.example/a.png">' });
     await settled();
     expect(JSON.stringify(editor.document)).not.toContain('elsewhere');
   });
@@ -143,9 +147,9 @@ describe('an outside medium in pasted HTML', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML(
-      '<p>x</p><img src="https://a.example/1.png"><video src="https://a.example/2.mp4"></video><audio src="https://a.example/3.mp3"></audio>',
-    );
+    pasteFormats(editor, {
+      'text/html': '<p>x</p><img src="https://a.example/1.png"><video src="https://a.example/2.mp4"></video><audio src="https://a.example/3.mp3"></audio>',
+    });
     await settled();
 
     expect(media(editor).map((m) => m.type)).toEqual(['image', 'video', 'audio']);
@@ -154,7 +158,7 @@ describe('an outside medium in pasted HTML', () => {
 
   it('carries the caption of its figure', async () => {
     const editor = open(OURS);
-    editor.pasteHTML('<figure><img src="https://a.example/1.png"><figcaption>Seen here</figcaption></figure>');
+    pasteFormats(editor, { 'text/html': '<figure><img src="https://a.example/1.png"><figcaption>Seen here</figcaption></figure>' });
     await settled();
     expect(media(editor)[0]).toMatchObject({ caption: 'Seen here', url: '' });
   });
@@ -163,7 +167,7 @@ describe('an outside medium in pasted HTML', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteMarkdown('words\n\n![alt](https://elsewhere.example/a.png)');
+    pasteFormats(editor, { 'text/plain': 'words\n\n![alt](https://elsewhere.example/a.png)' });
     await settled();
 
     expect(media(editor)).toHaveLength(1);
@@ -183,7 +187,7 @@ describe('an outside medium in pasted HTML', () => {
     const html = await source.blocksToFullHTML(source.document);
     const editor = open(OURS);
 
-    editor.pasteHTML(html, true);
+    pasteFormats(editor, { 'blocknote/html': html });
     await settled();
 
     expect((editor.document[0] as { children: { type: string }[] }).children.map((c) => c.type)).toEqual(['image']);
@@ -196,7 +200,7 @@ describe('media that stay as they are', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
+    pasteFormats(editor, { 'text/html': `<p>x</p><img src="${OURS}image/2026-10-07/a.png">` });
     await settled();
 
     expect(media(editor)).toEqual([{ type: 'image', url: `${OURS}image/2026-10-07/a.png`, uploadId: '', caption: '' }]);
@@ -210,7 +214,7 @@ describe('media that stay as they are', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML(html, true);
+    pasteFormats(editor, { 'blocknote/html': html });
     await settled();
 
     expect(media(editor)).toEqual([{ type: 'image', url: '', uploadId: 'u1', caption: 'Hero' }]);
@@ -223,7 +227,7 @@ describe('while our addresses are not known yet', () => {
     const s = sink();
     const editor = open(null, s);
 
-    editor.pasteHTML(`<p>x</p><img src="${OURS}image/2026-10-07/a.png">`);
+    pasteFormats(editor, { 'text/html': `<p>x</p><img src="${OURS}image/2026-10-07/a.png">` });
     await settled();
 
     expect(media(editor)[0]).toMatchObject({ url: '' });
@@ -232,20 +236,28 @@ describe('while our addresses are not known yet', () => {
 });
 
 describe('a row dragged within the body', () => {
-  it('is left as it is, even while our addresses are not known yet', async () => {
+  it('is ProseMirror\'s own move, left as it is even while our addresses are not known yet', async () => {
     const s = sink();
     const editor = open(null, s);
-    editor.replaceBlocks(editor.document, [{ type: 'image', props: { url: `${OURS}image/2026-10-07/a.png` } }] as never);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'lead' },
+      { type: 'image', props: { url: `${OURS}image/2026-10-07/a.png` } },
+    ] as never);
     const view = editor.prosemirrorView!;
-    const slice = view.state.doc.slice(1, view.state.doc.content.size - 1);
+    let image = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') image = pos;
+      return image === -1;
+    });
+    // What a block handle's drag carries: the row selected as a node.
+    const slice = NodeSelection.create(view.state.doc, image - 1).content();
     view.dragging = { slice, move: true } as never;
 
-    let out = slice;
-    view.someProp('transformPasted', (transform) => {
-      out = transform(out, view, false);
-    });
+    drop(editor as never, 3, '', '');
+    await settled();
 
-    expect(out.content.eq(slice.content)).toBe(true);
+    expect(types(editor)).toEqual(['image', 'paragraph']);
+    expect(media(editor).map((m) => m.url)).toEqual([`${OURS}image/2026-10-07/a.png`]);
     expect(s.start).not.toHaveBeenCalled();
   });
 });
@@ -255,7 +267,7 @@ describe('a medium that cannot be fetched', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML('<p>before</p><img src="http://elsewhere.example/a.png"><p>after</p>');
+    pasteFormats(editor, { 'text/html': '<p>before</p><img src="http://elsewhere.example/a.png"><p>after</p>' });
     await settled();
 
     expect(types(editor)).not.toContain('image');
@@ -280,7 +292,7 @@ describe('a medium that cannot be fetched', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML(html, true);
+    pasteFormats(editor, { 'blocknote/html': html });
     await settled();
 
     expect(types(editor)).not.toContain('image');
@@ -295,7 +307,7 @@ describe('a paste with no media in it', () => {
     const s = sink();
     const editor = open(OURS, s);
 
-    editor.pasteHTML('<p>just words</p>');
+    pasteFormats(editor, { 'text/html': '<p>just words</p>' });
     await settled();
 
     expect(s.onLeftOut).not.toHaveBeenCalled();

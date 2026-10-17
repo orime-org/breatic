@@ -47,7 +47,7 @@ describe('a page that is not a secure context', () => {
     paste(editor, '<p>w</p><img src="https://e.example/a.png">', 'w');
     await settled();
 
-    expect(shape(editor)).toEqual(['table', 'image[pending|]']);
+    expect(shape(editor)).toEqual(['table', 'image[pending|]', 'paragraph:']);
   });
 
   it('lands a canvas paste of a picture and words', async () => {

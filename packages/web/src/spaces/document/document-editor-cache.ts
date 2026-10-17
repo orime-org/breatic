@@ -84,6 +84,7 @@ import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { createFileUploads, type FileUploads } from '@web/spaces/document/document-uploads';
 import { insertAtGapTr, type FilesArrival } from '@web/spaces/document/document-file-input';
+import { putContent } from '@web/spaces/document/document-put';
 import { openPageBodyUploads } from '@web/spaces/document/document-page-uploads';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 
@@ -225,7 +226,8 @@ function createDocumentEditor(
         const view = viewOf(editor);
         const prepared = view === null ? null : files.prepare(arrival.files);
         if (view === null || prepared === null) return;
-        view.dispatch(insertAtGapTr(view.state, arrival.gap, arrival.aimed, prepared.blocks));
+        if (arrival.gap === null) putContent(editor, prepared.blocks, { caller: 'files', judge: (props) => props });
+        else view.dispatch(insertAtGapTr(view.state, arrival.gap, prepared.blocks));
         prepared.start();
       },
     }),
