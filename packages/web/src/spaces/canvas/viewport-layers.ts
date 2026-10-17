@@ -7,10 +7,11 @@
  */
 
 /**
- * Where a pin paints: above every other node's highest z (a member of a
- * selected group, 1001; see {@link FOCUS_TARGET_Z}), so a note stays visible
- * while the thing it points at is being worked on. A selected pin gets
- * xyflow's +1000 on top.
+ * Where a pin paints: above every node but the focus-crop target (a member of
+ * a selected group reaches 1001; see {@link FOCUS_TARGET_Z}), so a note stays
+ * visible while the thing it points at is being worked on. The focus-crop
+ * target comes out on top of it, since that gesture owns the screen while it
+ * runs. A selected pin gets xyflow's +1000 on top.
  */
 export const ANNOTATION_PIN_Z = 1002;
 
