@@ -79,7 +79,7 @@ describe("buildAgentConfig", () => {
       ...getAgentConfig(),
       default_model: sentinel,
     });
-    expect(buildAgentConfig({}).modelId).toBe(sentinel);
+    expect(buildAgentConfig({ basePrompt: "base" }).modelId).toBe(sentinel);
   });
 
   it("keeps the base prompt, the project's memory and the conversation's memory as three parts", () => {

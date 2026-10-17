@@ -30,7 +30,7 @@ export interface AgentConfigRequest {
    * Passed in rather than built here because what belongs in it is an
    * application decision.
    */
-  basePrompt?: string;
+  basePrompt: string;
   /** The conversation and project layers, when the caller has any. */
   memoryContext?: MemoryContext;
 }
@@ -66,7 +66,7 @@ export function buildAgentConfig(
   return {
     modelId: getAgentConfig().default_model,
     instructions: {
-      base: basePrompt ?? "",
+      base: basePrompt,
       ...(memoryContext?.projectMemory ? { project: `## Project Context\n${memoryContext.projectMemory}` } : {}),
       ...(memoryContext?.conversationMemory
         ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }

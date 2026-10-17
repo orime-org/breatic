@@ -98,7 +98,7 @@ export function measureMessages(messages: readonly ModelMessage[]): number {
 /**
  * How long the system prompt and the tool definitions are, in characters.
  * @param request - What the request carries besides its messages.
- * @param request.instructions - The system prompt, persona through memory, in its two parts.
+ * @param request.instructions - The system prompt, persona through memory, in its parts.
  * @param request.tools - The tools as the factory resolved them, keyed by name.
  * @returns The total length.
  */

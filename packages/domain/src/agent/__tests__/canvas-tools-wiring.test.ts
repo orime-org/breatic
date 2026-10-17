@@ -33,7 +33,7 @@ beforeAll(() => {
 
 describe("who reaches the canvas tools", () => {
   it("offers them to a plain chat turn", () => {
-    const offered = Object.keys(buildAgentConfig({}).tools);
+    const offered = Object.keys(buildAgentConfig({ basePrompt: "base" }).tools);
     // A name in the list that the map cannot build is dropped silently, so a
     // typo would leave the plain-chat turn without the tool and nothing red.
     // The count guards the loop itself: over an empty list it asserts nothing.
