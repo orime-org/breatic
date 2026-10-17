@@ -39,7 +39,7 @@ const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
 const { requestTokens } = await import("@server/agent/request-size.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 
-const AGENT: RequestPrefix = { instructions: "s", tools: {}, modelId: "test" };
+const AGENT: RequestPrefix = { instructions: { shared: "s" }, tools: {}, modelId: "test" };
 const QUESTION: ModelMessage = { role: "user", content: "and now?" };
 
 /** A long answer, so measuring characters would say something else. */
@@ -135,7 +135,7 @@ describe("deciding to fold", () => {
     // Folded since: the system prompt now carries the memory, so this reply's
     // end size counted turns that are gone. What it added is still what it
     // added.
-    const history = keptTurn(3, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: "before the fold" });
+    const history = keptTurn(3, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: { shared: "before the fold" } });
 
     expect(await check(history)).toBe(false);
   });
@@ -148,7 +148,7 @@ describe("sizing a fold", () => {
     // the budget of 1,000 and over it once the budget is lowered to 800. Taking turn 1 leaves about 600, turn 2
     // about 300, under the keep line of 400.
     LINES.budget = 800;
-    const old = { ...AGENT, instructions: "older" };
+    const old = { ...AGENT, instructions: { shared: "older" } };
     const history = [
       ...keptTurn(1, [], { turnTokens: 300, endTokens: 300 }, old),
       ...keptTurn(2, [], { turnTokens: 300, endTokens: 600 }, old),
@@ -186,7 +186,7 @@ describe("how big a request is", () => {
   });
 
   it("adds up what each turn added when no reply goes out as it was sent", () => {
-    const history = keptTurn(1, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: "older" });
+    const history = keptTurn(1, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: { shared: "older" } });
 
     // The system prompt and the empty tool set, then the turn and the question.
     expect(requestTokens(assembled(history))).toBe(1 + 300 + "and now?".length);

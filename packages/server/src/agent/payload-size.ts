@@ -24,6 +24,8 @@
 
 import { asSchema } from "ai";
 import type { ModelMessage, Tool } from "ai";
+import { instructionsText } from "@breatic/domain";
+import type { Instructions } from "@breatic/domain";
 
 /**
  * The length of one content part, by what the model is shown of it.
@@ -96,16 +98,16 @@ export function measureMessages(messages: readonly ModelMessage[]): number {
 /**
  * How long the system prompt and the tool definitions are, in characters.
  * @param request - What the request carries besides its messages.
- * @param request.instructions - The system prompt, persona through memory.
+ * @param request.instructions - The system prompt, persona through memory, in its two parts.
  * @param request.tools - The tools as the factory resolved them, keyed by name.
  * @returns The total length.
  */
 export function measureInstructionsAndTools(request: {
-  instructions: string;
+  instructions: Instructions;
   tools: Readonly<Record<string, Tool>>;
 }): number {
   return Object.entries(request.tools).reduce(
     (sum, [name, definition]) => sum + measureTool(name, definition),
-    request.instructions.length,
+    instructionsText(request.instructions).length,
   );
 }

@@ -104,7 +104,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test",
-      instructions: "system",
+      instructions: { shared: "system" },
       tools: {
         ask_user: makeAskUserTool(),
         search_images: imageSearch,

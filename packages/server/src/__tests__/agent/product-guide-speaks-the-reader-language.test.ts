@@ -56,7 +56,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test",
-      instructions: "system",
+      instructions: { shared: "system" },
       tools: { get_product_guide: productGuide },
     }),
     finalizeTurn: async () => [],

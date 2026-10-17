@@ -50,7 +50,7 @@ vi.mock("@breatic/domain", async () => {
     ...base,
     // Which model and which tools a turn gets is decided elsewhere and tested
     // there.
-    buildAgentConfig: () => ({ modelId: "test", instructions: "system", tools: {} }),
+    buildAgentConfig: () => ({ modelId: "test", instructions: { shared: "system" }, tools: {} }),
     finalizeTurn: async () => [],
     streamTextRetry,
     getModel: () => ({ modelId: "test" }),

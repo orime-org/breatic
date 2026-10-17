@@ -124,8 +124,10 @@ describe("a consolidation that lands", () => {
       basePrompt: "system",
       memoryContext: context,
     });
-    expect(instructions).toContain("noir look");
-    expect(instructions).toContain("noir short");
+    // The conversation's own memory rides apart from the shared part, which
+    // carries the project's.
+    expect(instructions.conversation).toContain("noir look");
+    expect(instructions.shared).toContain("noir short");
   });
 
   it("hands the injection only as much memory as the ceiling allows", async () => {

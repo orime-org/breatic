@@ -17,7 +17,7 @@ import {
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 const PREFIX: RequestPrefix = {
-  instructions: "You are the AI core of Breatic.",
+  instructions: { shared: "You are the AI core of Breatic." },
   tools: {
     web_search: tool({ description: "Search the web.", inputSchema: z.object({ query: z.string() }) }),
   },
@@ -158,7 +158,7 @@ describe("replaying the history as it was sent", () => {
   });
 
   it.each([
-    ["the system prompt", { ...PREFIX, instructions: "Memory changed." }],
+    ["the system prompt", { ...PREFIX, instructions: { shared: "Memory changed." } }],
     ["the model", { ...PREFIX, modelId: "deepseek/deepseek-v4-pro" }],
     ["the tool set", { ...PREFIX, tools: {} }],
   ])("takes a reply's thinking out when %s is no longer what its turn sent", (_, now) => {
@@ -186,7 +186,7 @@ describe("replaying the history as it was sent", () => {
   });
 
   it("keeps the first and third replies' thinking after the system prompt goes A, B, A, A", () => {
-    const B: RequestPrefix = { ...PREFIX, instructions: "The reader switched language." };
+    const B: RequestPrefix = { ...PREFIX, instructions: { shared: "The reader switched language." } };
     const q1: ModelMessage = { role: "user", content: "one" };
     const q2: ModelMessage = { role: "user", content: "two" };
     const q3: ModelMessage = { role: "user", content: "three" };
@@ -342,8 +342,16 @@ describe("the hash of a request's prefix", () => {
 
     expect(prefixHash(PREFIX, [ASKED])).toBe(base);
     expect(prefixHash(PREFIX, [ASKED, ...ANSWERED])).not.toBe(base);
-    expect(prefixHash({ ...PREFIX, instructions: "x" }, [ASKED])).not.toBe(base);
+    expect(prefixHash({ ...PREFIX, instructions: { shared: "x" } }, [ASKED])).not.toBe(base);
     expect(prefixHash(PREFIX, [{ role: "user", content: "time note\n\nfind me references" }])).not.toBe(base);
+  });
+
+  it("depends on the system prompt's text, not on where it is split", () => {
+    // Rows stored when the prompt was one text keep their hash: the split
+    // reads as the same text, so it hashes the same.
+    const split = { ...PREFIX, instructions: { shared: "base", conversation: "## Conversation Memory\nc" } };
+    const whole = { ...PREFIX, instructions: { shared: "base\n\n## Conversation Memory\nc" } };
+    expect(prefixHash(split, [ASKED])).toBe(prefixHash(whole, [ASKED]));
   });
 
   it("changes when a tool call's arguments are written in another order", () => {

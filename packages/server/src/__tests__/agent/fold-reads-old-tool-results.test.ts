@@ -14,7 +14,7 @@ import type * as CoreModule from "@breatic/core";
 import type { ReplayRow } from "@server/agent/history-replay.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 
-const AGENT = { modelId: "test", instructions: "system", tools: {} };
+const AGENT = { modelId: "test", instructions: { shared: "system" }, tools: {} };
 const QUESTION = { role: "user" as const, content: "and now?" };
 
 /**
@@ -127,7 +127,7 @@ describe("folding a history kept as it was sent", () => {
         turnIndex: 1,
         forModel: {
           messages: answered,
-          prefixHash: prefixHash({ instructions: "system", tools: {}, modelId: "test" }, [asked]),
+          prefixHash: prefixHash({ instructions: { shared: "system" }, tools: {}, modelId: "test" }, [asked]),
           turnTokens: 1,
           endTokens: 2,
         },

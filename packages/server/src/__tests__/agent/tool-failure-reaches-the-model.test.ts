@@ -59,7 +59,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test",
-      instructions: "system",
+      instructions: { shared: "system" },
       tools: {
         // A tool that fails the way ours do: it throws, and the error carries
         // both halves of the reason. What it says is the real tools' business

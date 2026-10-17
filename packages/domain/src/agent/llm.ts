@@ -33,6 +33,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel, SystemModelMessage, streamText } from "ai";
 import { env } from "@breatic/core";
 import type { CoreConfig, PromptCacheTtl } from "@breatic/core";
+import type { Instructions } from "@domain/agent/instructions.js";
 
 /**
  * What a model call carries to ask its provider for reasoning, caching and a
@@ -351,7 +352,7 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
  */
 export function systemFor(
   modelString: string | undefined,
-  parts: { shared: string; conversation?: string },
+  parts: Instructions,
   cache: PromptCacheTtl | false,
 ): SystemModelMessage[] {
   const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;

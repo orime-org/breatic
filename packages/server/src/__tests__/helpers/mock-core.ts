@@ -40,6 +40,7 @@ import {
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 import { creditsForUsd as REAL_CREDITS_FOR_USD } from "../../../../domain/src/credit/usage-cost.js";
+import { instructionsText as REAL_INSTRUCTIONS_TEXT } from "../../../../domain/src/agent/instructions.js";
 import { containerCostUsd as REAL_CONTAINER_COST_USD } from "../../../../domain/src/credit/container-cost.js";
 // Real: the tracker is pure, and what a turn hands off depends on it.
 import {
@@ -605,6 +606,17 @@ export const domainMock = () => ({
   // which reads as "this turn sent no provider options" -- the one thing
   // the real function never does.
   callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
+  // The real return's shape, unmarked like `callOptionsFor` above: the
+  // shared part first, this conversation's memory after it when there is any.
+  systemFor: vi.fn((_model: string, parts: { shared: string; conversation?: string }) =>
+    parts.conversation === undefined
+      ? [{ role: "system", content: parts.shared }]
+      : [
+          { role: "system", content: parts.shared },
+          { role: "system", content: parts.conversation },
+        ],
+  ),
+  instructionsText: REAL_INSTRUCTIONS_TEXT,
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with
