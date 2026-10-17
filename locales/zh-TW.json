@@ -284,7 +284,7 @@
   "chat": {
     "composer": {
       "chipsAria": "已選 chips",
-      "placeholder": "問點什麼，或者把畫布上的東西交給我…",
+      "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",
       "inputAria": "Chat 輸入",
       "send": "傳送",
       "sending": "傳送中",
@@ -308,11 +308,11 @@
     "empty": {
       "greetingWithName": "嗨, {name}!",
       "greetingDefault": "嗨!",
-      "capabilities": "我可以幫你找素材、寫文章和劇本、在畫布上搭生成流程、修改 Document",
+      "capabilities": "我可以幫你找素材、寫文章和劇本、在 Canvas 上搭生成流程、修改 Document",
       "quick": {
         "findReference": "幫我找賽博龐克風格的參考圖",
         "writeScript": "幫我寫一個三分鐘短片的劇本",
-        "buildWorkflow": "幫我在畫布上搭一個生成角色三視圖的流程",
+        "buildWorkflow": "幫我在 Canvas 上搭一個生成角色三視圖的流程",
         "annotateDocument": "幫我給 Document 提修改意見",
         "writePrompt": "幫我寫一個生成插畫的提示詞"
       }
@@ -357,7 +357,7 @@
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
-      "checkingCanvas": "正在查畫布能做什麼",
+      "checkingCanvas": "正在查 Canvas 能做什麼",
       "proposingNodes": "正在擬一份提議",
       "proposingDocumentEdit": "正在擬一份修改提議",
       "savingImage": "正在儲存圖片",
@@ -411,7 +411,7 @@
       "building": "正在建…",
       "failed": "沒建成，可以再試一次。",
       "expired": "這張提議已過期，請讓 Agent 重新提議。",
-      "needCanvas": "先開啟一個畫布。",
+      "needCanvas": "先開啟一個 Canvas。",
       "promptReady": "提示詞已寫好，右鍵節點選「生成」，在開啟的生成面板裡查看",
       "settingsReady": "設定已配好，右鍵節點選「生成」，在開啟的生成面板裡查看"
     },
@@ -443,7 +443,7 @@
     "thinkingNow": "思考中",
     "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
     "attachment": {
-      "kind": "{kind, select, canvas {畫布} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
+      "kind": "{kind, select, canvas {Canvas} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
       "nodes": "{count} 個節點",
       "more": "還有 {count} 個"
     }
@@ -471,8 +471,8 @@
       "nodeAudio": "音訊"
     },
     "emptyState": {
-      "title": "畫布是空的",
-      "hint": "拖入素材到畫布,或從左側選單選擇節點類型建立"
+      "title": "Canvas 是空的",
+      "hint": "拖入素材到 Canvas,或從左側選單選擇節點類型建立"
     },
     "nodePlaceholder": {
       "text": "雙擊書寫",
@@ -524,8 +524,8 @@
       "focus": "聚焦",
       "reference": "參考",
       "focusTip": "取節點上的一塊區域作為參考",
-      "referenceTip": "從畫布選圖作為參考",
-      "referenceTipAudio": "從畫布選文字作為參考",
+      "referenceTip": "從 Canvas 選圖作為參考",
+      "referenceTipAudio": "從 Canvas 選文字作為參考",
       "emptyImageReference": "尚未生成或上傳",
       "emptyTextReference": "暫無內容",
       "refuseInsertModeOff": "這一檔不使用參考素材",
@@ -554,12 +554,12 @@
       "voiceVolume": "音量",
       "sfxDuration": "時長",
       "sfxDurationSeconds": "{n} 秒",
-      "selectFromCanvas": "從畫布選擇參考",
-      "selectFirstFrameFromCanvas": "在畫布上選一張圖片作為首幀",
-      "selectEndFrameFromCanvas": "在畫布上選一張圖片作為尾幀",
-      "selectCharacterImageFromCanvas": "在畫布上選一張圖片作為角色",
-      "selectDrivingVideoFromCanvas": "在畫布上選一段影片來驅動動作",
-      "selectDrivingAudioFromCanvas": "在畫布上選一段音訊，口型跟著它動",
+      "selectFromCanvas": "從 Canvas 選擇參考",
+      "selectFirstFrameFromCanvas": "在 Canvas 上選一張圖片作為首幀",
+      "selectEndFrameFromCanvas": "在 Canvas 上選一張圖片作為尾幀",
+      "selectCharacterImageFromCanvas": "在 Canvas 上選一張圖片作為角色",
+      "selectDrivingVideoFromCanvas": "在 Canvas 上選一段影片來驅動動作",
+      "selectDrivingAudioFromCanvas": "在 Canvas 上選一段音訊，口型跟著它動",
       "exitSelect": "退出",
       "locateSource": "定位到來源節點",
       "camera": "攝影機",
@@ -630,17 +630,17 @@
       "sourceVideoTip": "挑一段影片",
       "removeSourceVideo": "移除影片",
       "errorNoSourceVideo": "先挑一段影片",
-      "selectSourceVideoFromCanvas": "在畫布上選一段影片",
+      "selectSourceVideoFromCanvas": "在 Canvas 上選一段影片",
       "leftAudio": "左側音訊",
       "leftAudioTip": "挑左邊那個人的音訊",
       "removeLeftAudio": "移除左側音訊",
       "errorNoLeftAudio": "先挑左側音訊",
-      "selectLeftAudioFromCanvas": "在畫布上選左邊那個人的音訊",
+      "selectLeftAudioFromCanvas": "在 Canvas 上選左邊那個人的音訊",
       "rightAudio": "右側音訊",
       "rightAudioTip": "挑右邊那個人的音訊",
       "removeRightAudio": "移除右側音訊",
       "errorNoRightAudio": "先挑右側音訊",
-      "selectRightAudioFromCanvas": "在畫布上選右邊那個人的音訊",
+      "selectRightAudioFromCanvas": "在 Canvas 上選右邊那個人的音訊",
       "drivingAudio": "驅動音訊",
       "drivingVideoTip": "挑一段影片，它的動作會被套到角色上",
       "drivingAudioTip": "挑一段音訊，口型會跟著它動",
@@ -753,8 +753,8 @@
       "refuseStoryboardShotTooLong": "鏡頭 {shot, number} 超過 {limit, number} 字上限",
       "refuseStoryboardDurationMismatch": "鏡頭時長合計 {shots, number} 秒，影片時長 {total, number} 秒",
       "style": "風格",
-      "styleTip": "從畫布選最多 3 張圖作為風格參考",
-      "selectStyleFromCanvas": "從畫布選擇風格參考",
+      "styleTip": "從 Canvas 選最多 3 張圖作為風格參考",
+      "selectStyleFromCanvas": "從 Canvas 選擇風格參考",
       "removeStyle": "移除風格參考",
       "errorNoStyleImage": "先挑一張風格圖",
       "cameraCommands": "運鏡",
@@ -811,7 +811,7 @@
       "failed": "貼上失敗。"
     },
     "minimap": {
-      "label": "畫布縮略圖"
+      "label": "Canvas 縮略圖"
     },
     "connection": {
       "rejected": "{source}無法接入{target}",
@@ -1368,7 +1368,7 @@
     },
     "kind": {
       "canvas": "Canvas",
-      "canvasSub": "無限畫布 + 節點",
+      "canvasSub": "無限 Canvas + 節點",
       "document": "Document",
       "documentSub": "富文本 + 協作",
       "timeline": "Timeline",
@@ -1398,10 +1398,10 @@
     "document": {
       "loading": "正在載入編輯器…",
       "unavailable": {
-        "text": "這個文件開不了。它可能已被刪除，或者你已經沒有存取權限了。",
+        "text": "這個 Document 開不了。它可能已被刪除，或者你已經沒有存取權限了。",
         "action": "重試"
       },
-      "refusedNotice": "與這個文件的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
+      "refusedNotice": "與這個 Document 的連線被拒絕了。你看到的內容可能不是最新的，變更也不會被儲存。",
       "placeholder": "開始寫作…",
       "clearConfirm": {
         "title": "刪除全部內容？",
@@ -1461,7 +1461,7 @@
         "filterOpen": "未解決",
         "filterAll": "全部",
         "closeRail": "關閉批註欄",
-        "empty": "這份文件還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
+        "empty": "這個 Document 還沒有批註。選取正文裡的文字，或者點行左邊的握把。",
         "nothingUnresolved": "沒有未解決的批註。",
         "writeFailed": "這次改動沒能儲存。",
         "unknownAuthor": "未知",
@@ -1476,7 +1476,7 @@
         "deleteReply": "刪除這條回覆"
       },
       "schemaOutdated": {
-        "headline": "文件編輯器已更新",
+        "headline": "Document 編輯器已更新",
         "body": "這個頁面用的還是舊版本，繼續編輯會破壞別人寫的內容。",
         "published": "新版本發布於{when}。",
         "risksLead": "重新整理前請留意：",
@@ -1484,7 +1484,7 @@
         "action": "重新整理頁面"
       },
       "docMenu": {
-        "label": "整篇文件的命令",
+        "label": "整個 Document 的命令",
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
         "notOpenYet": "未開放",
@@ -1553,7 +1553,7 @@
     "item": {
       "nodes": "節點庫",
       "upload": "上傳素材(多檔案混合)",
-      "comment": "在畫布加註解",
+      "comment": "在 Canvas 加註解",
       "collection": "Collection(敬請期待)",
       "help": "說明(敬請期待)",
       "feedback": "意見回饋 / 客服(敬請期待)"
@@ -1762,7 +1762,7 @@
         "new": "新增 Project",
         "createError": "建立 Project 失敗",
         "emptyTitle": "還沒有 Projects",
-        "emptyHint": "Project 是你在無限畫布上創作的地方。建立第一個 Project,開始你的創作。"
+        "emptyHint": "Project 是你在無限 Canvas 上創作的地方。建立第一個 Project,開始你的創作。"
       },
       "collections": {
         "new": "新增 Collection",
@@ -2137,7 +2137,7 @@
       "projectsPerStudio": "每個 Studio 可建 Project",
       "studioMembers": "每個 Studio 成員上限",
       "projectMembers": "每個 Project 成員上限",
-      "concurrentEditors": "每份文件同時可編輯"
+      "concurrentEditors": "每個 Document 同時可編輯"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 個",
@@ -2191,7 +2191,7 @@
     "card": {
       "storage": "{value} 儲存",
       "teamStudios": "{count, plural, =0 {不含團隊 Studio} other {# 個團隊 Studio}}",
-      "connections": "{count, plural, other {每份文件 # 條連線}}",
+      "connections": "{count, plural, other {每個 Document # 條連線}}",
       "enterpriseScale": "容量按協議約定",
       "enterpriseGovernance": "SSO、稽核、智慧財產保障"
     },
