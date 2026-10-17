@@ -245,7 +245,7 @@ export function renderProductGuide(): string {
       "renames; and a plus sign, which starts a new conversation. In the list, click a conversation to switch to " +
       "it; hovering one shows three dots with " +
       `${quoted(t("chat.conversation.rename"))} and ${quoted(t("chat.conversation.delete"))}, which asks first.`,
-    `A new conversation shows a greeting, ${quoted(t("chat.empty.hintDirect"))} and three suggestions; ` +
+    `A new conversation shows a greeting, ${quoted(t("chat.empty.capabilities"))} and five suggestions; ` +
       "clicking one puts its words in the message box without sending them. The empty box reads " +
       `${quoted(t("chat.composer.placeholder"))}. Enter sends the message and Shift+Enter starts a new line. The ` +
       `dark square button with an upward arrow at the right of the box (hovering it shows ` +

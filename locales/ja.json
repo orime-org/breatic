@@ -308,11 +308,13 @@
     "empty": {
       "greetingWithName": "やあ、{name} さん!",
       "greetingDefault": "やあ!",
-      "hintDirect": "下の入力欄からどうぞ ↓",
+      "capabilities": "素材探し、記事や脚本の執筆、キャンバスでの生成フロー作成、Document の修正をお手伝いします",
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
-        "writePrompt": "イラスト生成のプロンプトを書いて",
-        "refinePrompt": "このプロンプトをもっと具体的にして"
+        "writeScript": "3分の短編映画の脚本を書いて",
+        "buildWorkflow": "キャラ三面図のフローをキャンバスに組んで",
+        "annotateDocument": "Document の修正案を出して",
+        "writePrompt": "イラスト生成のプロンプトを書いて"
       }
     },
     "history": {
