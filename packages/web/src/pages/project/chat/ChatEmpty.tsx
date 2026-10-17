@@ -71,7 +71,7 @@ export function ChatEmpty({
       className='flex h-full flex-col items-center justify-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
-      <p className='leading-relaxed'>{t('chat.empty.capabilities')}</p>
+      <p className='text-balance leading-relaxed'>{t('chat.empty.capabilities')}</p>
       <div className='mt-4 flex flex-wrap items-center justify-center gap-2'>
         {QUICK_ACTIONS.map((qa) => {
           const label = t(`chat.empty.quick.${qa.labelKey}`);
@@ -83,7 +83,7 @@ export function ChatEmpty({
               size={null}
               disabled={frozen}
               onClick={() => onQuickAction?.(label)}
-              className='flex min-h-[var(--btn-inline)] items-center whitespace-normal rounded-full border border-border bg-transparent px-3 py-1 text-xs text-foreground transition-colors hover:bg-accent'
+              className='flex min-h-[var(--btn-inline)] items-center whitespace-normal rounded-full border border-border bg-transparent px-3 py-1 text-xs text-foreground transition-colors hover-enabled:bg-accent'
               data-testid={`chat-empty-qa-${qa.id}`}
             >
               {label}

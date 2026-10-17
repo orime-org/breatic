@@ -61,6 +61,20 @@ describe('ChatEmpty', () => {
     }
   });
 
+  it('does not light up a suggestion on hover while it cannot be pressed', () => {
+    render(<ChatEmpty frozen />);
+    for (const button of screen.getAllByTestId(/^chat-empty-qa-/)) {
+      expect(button.className).toContain('hover-enabled:bg-accent');
+      expect(button.className).not.toMatch(/(^|\s)hover:/);
+    }
+  });
+
+  it('balances the lines of what the agent can do', () => {
+    render(<ChatEmpty />);
+    const line = screen.getByText(/I can find material/);
+    expect(line.className).toContain('text-balance');
+  });
+
   it('clicking a quick action fires onQuickAction with the label', async () => {
     const user = userEvent.setup();
     const onQuickAction = vi.fn();
