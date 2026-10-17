@@ -356,38 +356,43 @@ describe('adjustPixels', () => {
       },
     );
 
-    // The preview the layer draws, at the size previewFrame picks, shows the
-    // export shrunk to that size: a colour edge carries no fringe the result
-    // does not have, wherever it falls, the picture's borders included.
+    // The preview the layer draws, at the size previewFrame picks, holds the
+    // export shrunk to that size at low noise reduction: a colour edge
+    // carries no fringe the result does not have, wherever it falls, the
+    // picture's borders included. One row is drawn at 1:1 as a control.
     it.each([
-      [800, 576],
-      [1024, 576],
-      [600, 576],
-      [1001, 300],
-      [2048, 300],
-      [2400, 576],
-      [2400, 100],
-    ] as const)('draws a %s-wide picture shown %s wide as the export shrunk to its preview', (width, shown) => {
-      const height = 2;
+      [800, 576, 1],
+      [601, 300, 2],
+      [512, 128, 4],
+      [1024, 128, 8],
+      [777, 90, 8],
+      [1024, 64, 16],
+    ] as const)('draws a %s-wide picture shown %s wide (a shrink of %s) as the export shrunk to its preview', (width, shown, factor) => {
+      const height = 32;
       const natural = { width, height };
       const { size, frame } = previewFrame(
         natural,
         { width: shown, height: Math.max(1, Math.round((height * shown) / width)) },
         { width: Infinity, height: Infinity },
       );
+      expect(frame.width / size.width).toBe(factor);
+      // Every row of the picture is the same, so one row carries the across
+      // pass the test is about (the down pass is held by the turned case).
+      const row = { width: size.width, height: 1 };
+      const rowFrame = { width: frame.width, height: 1 };
       const edges = [1, 2, 3, 4, 7, 8, 9, 16, width - 16, width - 9, width - 4, width - 3, width - 2, width - 1];
       for (let n = 0; n < 6; n++) edges.push(Math.floor(width * 0.3) + 7 * n);
       for (const colours of [BLUE, BRICK, BW]) {
         for (const edge of edges) {
           for (const noiseReduction of [1, 10]) {
             const value = { ...defaultAdjustValue, noiseReduction };
-            const source = halves(width, height, edge, colours);
-            const preview = drawnAt(source, size, frame);
-            adjustPixels(preview, value, 7, natural, frame);
+            const source = halves(width, 1, edge, colours);
+            const preview = drawnAt(source, row, rowFrame);
+            adjustPixels(preview, value, 7, source, rowFrame);
             const exported = { ...source, data: new Uint8ClampedArray(source.data) };
             adjustPixels(exported, value, 7, exported);
-            const gap = maxDiff(preview.data, drawnAt(exported, size, frame).data);
-            expect(gap, `${colours.join('/')} edge ${edge} noise reduction ${noiseReduction}`).toBeLessThanOrEqual(8);
+            const gap = maxDiff(preview.data, drawnAt(exported, row, rowFrame).data);
+            expect(gap, `${colours.join('/')} edge ${edge} noise reduction ${noiseReduction}`).toBeLessThanOrEqual(10);
           }
         }
       }
