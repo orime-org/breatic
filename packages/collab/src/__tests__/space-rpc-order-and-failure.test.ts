@@ -1217,8 +1217,10 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
       ].sort(),
     );
   });
+});
 
-  it("space:restore answers INTERNAL and lists nothing when its content row cannot come back", async () => {
+describe("space:restore when its content row cannot come back", () => {
+  it("answers INTERNAL and lists nothing when its content row cannot come back", async () => {
     activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
     restoreByNameMock.mockRejectedValue(new Error('relation "yjs_documents" is unreachable'));
     armBroadcastMarker();

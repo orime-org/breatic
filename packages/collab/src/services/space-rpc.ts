@@ -251,15 +251,13 @@ interface ContentRowsOutcome {
  * Run one content-row write per kind variant and keep BOTH halves of the
  * answer: what changed, and what failed.
  * @param write - The per-kind repo write; resolves true when it changed the row.
- * @param kinds - The variants to write.
  * @returns The kinds that changed + the first rejection (null when none).
  */
 async function moveContentRows(
   write: (kind: Exclude<DocKind, "meta">) => Promise<boolean>,
-  kinds: TouchedKinds,
 ): Promise<ContentRowsOutcome> {
   const settled = await Promise.allSettled(
-    kinds.map(async (kind) => ({
+    SPACE_CONTENT_KINDS.map(async (kind) => ({
       kind,
       changed: await write(kind),
     })),
@@ -296,28 +294,6 @@ async function softDeleteSpaceContentRows(
       yjsDocumentsRepo.softDeleteByName(
         spaceContentDocName(projectId, spaceId, kind),
       ),
-    SPACE_CONTENT_KINDS,
-  );
-}
-
-/**
- * Restore (clear deleted_at on) the content-doc row of a Space's own type —
- * the one row the meta entry lists, by the same definition the handshake and
- * the Space count use.
- * @param projectId - Project the content doc belongs to.
- * @param spaceId - Space whose content-doc row has its `deleted_at` cleared.
- * @param kind - The Space's type, from its deletion snapshot.
- * @returns The kinds this call restored + the first failure, if any.
- */
-async function restoreSpaceContentRow(
-  projectId: string,
-  spaceId: string,
-  kind: Exclude<DocKind, "meta">,
-): Promise<ContentRowsOutcome> {
-  return moveContentRows(
-    (k) =>
-      yjsDocumentsRepo.restoreByName(spaceContentDocName(projectId, spaceId, k)),
-    [kind],
   );
 }
 
@@ -1200,8 +1176,10 @@ async function runRestore(
     );
   }
   const snapshotRecord = snapshot as Record<string, unknown>;
-  // Meta entries are written only by `runCreate`, which validates the type,
-  // so a snapshot without a valid one is a corrupted record.
+  // A Space's entry is first written through `writeSpaceEntry` (by
+  // `runCreate` and by the project's first-Space seed), which takes a typed
+  // `type`; the snapshot is a copy of that entry, so one without a valid type
+  // is a corrupted record.
   const kind = SpaceTypeSchema.safeParse(snapshotRecord["type"]);
   if (!kind.success) {
     logger.error(
@@ -1234,20 +1212,16 @@ async function runRestore(
 
     // ── Content rows, BEFORE the broadcast ──────────────────────────
     // A Space must never be visible without its content, so the rows come
-    // back first; nobody has seen anything yet if this fails — put back
-    // what DID come back, and stop.
-    const restored = await restoreSpaceContentRow(projectId, spaceId, kind.data);
-    if (restored.failure !== null) {
-      logger.error(
-        { err: restored.failure, ...logCtx },
-        "space_rpc_restore_content_rows_failed",
+    // back first; nobody has seen anything yet if this fails.
+    let restored: boolean;
+    try {
+      restored = await yjsDocumentsRepo.restoreByName(
+        spaceContentDocName(projectId, spaceId, kind.data),
       );
-      await undoContentRows(
-        "soft-delete",
-        projectId,
-        spaceId,
-        restored.touched,
-        logCtx,
+    } catch (error) {
+      logger.error(
+        { err: error, ...logCtx },
+        "space_rpc_restore_content_rows_failed",
       );
       return err(req.id, "INTERNAL", "Could not restore the Space");
     }
@@ -1270,12 +1244,12 @@ async function runRestore(
       err(req.id, "INTERNAL", "Could not restore the Space"),
     );
     if (settled.response) {
-      if (settled.undo) {
+      if (settled.undo && restored) {
         await undoContentRows(
           "soft-delete",
           projectId,
           spaceId,
-          restored.touched,
+          [kind.data],
           logCtx,
         );
       }
