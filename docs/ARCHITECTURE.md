@@ -107,12 +107,12 @@ config/ locales/ (git-tracked)
 |---|---|---|---|
 | 输入 | `user_message_max_chars` | 15,000 | 一条用户消息进得来多长(浏览器同一道闸在 10,000 字先拦一次,后端这道是真判据) |
 | 输出 | `max_output_tokens` | 16,384 | **一次模型调用**答得出多长 —— 一轮可以调很多次(上限 `max_tool_iterations`),每次各受它约束;撞上它这一轮标 `truncated` |
-| 归纳线 | `memory_budget_chars` | 850,000 | 装配后的请求超过它,这一轮回复之前先归纳 |
-| 归纳后 | `memory_keep_chars` | 500,000 | 归纳取到剩余落在它以下 |
+| 归纳线 | `memory_budget_tokens` | 850,000 | 装配后的请求超过它(token),这一轮回复之前先归纳 |
+| 归纳后 | `memory_keep_tokens` | 500,000 | 归纳取到剩余落在它以下(token) |
 
 
-- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求长度超过 `memory_budget_chars`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_chars`(默认 500,000)**再减去这次归纳自己可能写回去的量**以下(`effectiveKeepChars`,预留 = 两个记忆上限之和的两倍 —— 请求按 UTF-16 码元量,记忆按码点裁,基本平面以外一个字占两个码元)。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
-- **Context 压缩**:按工具调用对切,不按轮切。超出最近 `tool_result_keep`(默认 3)对的工具**结果**换成占位文本,`tool-call` 记录、助手文本、用户原文一律保留。`thinking` 字段永远不发回 LLM。**归纳按整轮取,所以读历史那一步必须把 `turnIndex` 留着**:归纳的边界是一个轮次号,水位线记的也是它,`getMessagesForLlm` 剥掉它就没有边界可算
+- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求超过 `memory_budget_tokens`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_tokens`(默认 500,000)**再减去这次归纳自己可能写回去的量**以下(`effectiveKeepTokens`,预留 = 两个记忆上限之和的两倍,一个码元按一个 token 算)。**请求有多大,用 provider 报回来的计数**(`request-size.ts`):最新一条原样发回的回复行存着那一轮结束时整个会话的 token 数,再加上它之后的消息。**没有这个计数时**(归纳过、或这条没存),按系统提示和工具 + 每一轮 + 这一轮的提问相加,**拿不到计数的部分按一个字符一个 token 估**(`payload-size.ts`),字符估只会让归纳提前、不会推迟。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
+- **历史按发出去的原样回放**:提供方缓存请求的前缀,只有下一次请求的前缀逐字节相同才读得回来。所以每条消息发给模型的那一份存在 `conversation_messages.for_model`,下一轮原样发回(`history-replay.ts` 的 `replayRows`),这一轮的请求 = 上一轮的请求末尾再接上新消息。**没有滑动压缩**,长会话只靠归纳收住。回复的思考块只在「它之前发过的一切都没变」时才发回(Anthropic preserved thinking 的要求,系统提示和工具定义都算):每条回复行存它那一轮的前缀哈希(`prefixHash`),哈希对不上的那行不带思考发回,逐行判。一轮停在中途(读者按停止、provider 中途报错)时,没被后续请求带出去的那一步由读者看到的零件重建(`reply-for-model.ts` 的 `inProgressStep`),哪些步已原样发出由 SDK 发起过几次请求判定(`main-agent.ts` 的 `onStepStart`)。打开的 Space 跟回放历史里最新那份完整快照是同一个 Space、同一个哈希时,只发一行说明它没变。没有 `for_model` 的旧行照旧从零件渲染(`model-messages.ts`)。**归纳按整轮取,所以读历史那一步必须把 `turnIndex` 留着**:归纳的边界是一个轮次号,水位线记的也是它,`getMessagesForLlm` 剥掉它就没有边界可算
 - **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool` / `interrupted` / `failed` / `truncated`)。**一次工具调用连同它的结果是一个零件**,靠 `status` 说它停在哪儿 —— 调用和结果是同一件发生过的事,拆成两个零件就要再按 id 配对回去;线上那一侧 SDK 的部件名是 `tool-<工具名>`,跟存储这边不是同一套名字。**成功的工具零件另存一份这一轮交给模型的结果**(`forModel`,只收 `text` / `json`,不发给前端):落库前由 `packages/server/src/agent/stored-model-output.ts` 的 `withModelOutputs` 按 SDK 自己的规则算出,之后每一轮回灌原样交回。没有这一份的旧行,字符串结果原样交回,结构化结果换成一句「这条结果已经拿不到,需要就再调一次」—— 回灌从不拿当前的工具代码去读旧版本写下的结构化答复,工具答复以后加减字段,存下的会话照常能聊。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
 ### Chat conversation ownership
@@ -261,9 +261,9 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **线上格式就是 AI SDK 的 UI message stream 协议**:server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用 SDK 的 chunk 类型。**我们自己定名字、自己定含义的 data part 有四个**:心跳(`data-heartbeat`,transient)· 归纳中(`data-memory-consolidating`,transient)· 撞到输出上限(`data-truncated`,非 transient)· 会话自动命名(`data-conversation-titled`,非 transient)。**另有两个名字不走这条流,但两端都在写**(`data-interrupted` / `data-failed`):浏览器在流断掉或读者按停止时给这一轮的回复打上去(`stores/chat-sessions.ts` 的 `markTheReply`),服务端在 `onFinish` 里按 `exit` 落库(`main-agent.ts`),再由会话历史响应原样发回(`message-part-mapping.ts` 的 `toUiMessages`)。**流上不发它们** —— 一轮正在跑的时候,这两件事只有浏览器这一端知道。
 
-**要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这四个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`reasoningFor`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
+**要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这四个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`callOptionsFor`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
 
-**每条流的第一帧是心跳**,服务端一拿到 socket 就写一次、不等任何工作做完(`routes/chat.ts`)。它带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进消息、不推 `status` —— 所以它到达不代表这一轮开口了,前端判「服务端开始答了」的判据是**第一个不是 transient 的帧**(`stores/chat-sessions.ts` 的 `isAnswering`)。线上紧跟其后的通常是 `data-conversation-titled`(这一轮的会话名字,每轮都写,哪怕名字没变)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这一轮 Agent 自己的输出。**次序仍然是硬的**:鉴权 → 把用户这句话落库 → 开流 → 才去读记忆、压缩历史、调模型;落库排在最前,是因为一轮跑到一半断掉时,这句话必须已经在库里。**压缩必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):它刚落库,压进去等于把用户这句话喂给模型两遍,一遍在历史里一遍在提问里。**流里出错的出口**:`createUIMessageStream` 的 `execute` 抛出的异常由路由层接住,`logger.error({ err, userId, conversationId, projectId })` 之后写一帧 `error` 再关流 —— 框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样,屏幕上会留一个没人解释的空回复。
+**每条流的第一帧是心跳**,服务端一拿到 socket 就写一次、不等任何工作做完(`routes/chat.ts`)。它带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进消息、不推 `status` —— 所以它到达不代表这一轮开口了,前端判「服务端开始答了」的判据是**第一个不是 transient 的帧**(`stores/chat-sessions.ts` 的 `isAnswering`)。线上紧跟其后的通常是 `data-conversation-titled`(这一轮的会话名字,每轮都写,哪怕名字没变)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这一轮 Agent 自己的输出。**次序仍然是硬的**:鉴权 → 把用户这句话落库 → 开流 → 才去读记忆、读历史、调模型;落库排在最前,是因为一轮跑到一半断掉时,这句话必须已经在库里。**读历史必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):它刚落库,读进去等于把用户这句话喂给模型两遍,一遍在历史里一遍在提问里。**流里出错的出口**:`createUIMessageStream` 的 `execute` 抛出的异常由路由层接住,`logger.error({ err, userId, conversationId, projectId })` 之后写一帧 `error` 再关流 —— 框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样,屏幕上会留一个没人解释的空回复。
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;客户端连着三个间隔没收到就当这条流没了,走跟用户点停止**完全同一条路**(标中断、输入框恢复可按),**只多一句话** —— 向正在看的人闪一句「网络错误」,四个字、不解释也不建议;它是一次性事件不是常驻提示条,4 秒后自己消失,而用户自己点停止是零提示的(他知道自己干了什么)。
 
@@ -273,7 +273,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 <a id="agent-provider-routing"></a>
 
-**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。三个消费方(`getModel` · `resolveProvider` · `reasoningFor`)读的是同一张表。
+**一张表答三个问题**:这次调用打给谁 · 积分流水记谁的账 · 怎么跟这家说「要 / 不要思考」。表在 `packages/domain/src/agent/llm.ts`,拆成两个导出:`DIRECT_ROUTES` 四条(`anthropic/` · `google/` · `openai/` · `deepseek/`)带前缀,`FALLBACK_ROUTE` 一条不带 —— 前缀是不是必有,由类型分开而不是由一个可选字段。三个消费方(`getModel` · `resolveProvider` · `callOptionsFor`)读的是同一张表。
 
 **判定要前缀和 key 两样都对**:模型 id 带某条的前缀、**且**这个部署配了它那把 key,才走直连;缺任何一样都落兜底。所以一把 OpenRouter key 足够跑起**全部文本模型调用**(聊天 · 记忆归纳 · text mini-tool · nano-banana 的提示词扩写),而补上哪家的 key,哪家就自动改走直连 —— 不改代码、不改配置。**图片 / 视频 / 音频 / 3D 生成不在其列**,它们走 `config/models/*/providers.yaml` 的 `api_key_env` 指的那把 key(当前五个模态都只有 WaveSpeed 一家,即 `WAVESPEED_API_KEY`)。直连时前缀被剥掉(厂商只认自己的 id),走兜底时原样保留(OpenRouter 认带前缀的)。
 
@@ -281,9 +281,9 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **兜底那条打的是 `/chat/completions`**,由 `@openrouter/ai-sdk-provider` 决定;它把上游的 `usage.cost` 搬进 `providerMetadata.openrouter.usage.cost`。**直连那四条各自的端点不同**(DeepSeek 走 `/chat/completions`,Anthropic 走 `/v1/messages`,Google 走 `:generateContent`,OpenAI 走 `/responses`),响应形状也各不相同。
 
-**有偏好的调用自己说,怎么说由表决定**。调用方传一个布尔进 `reasoningFor(modelId, thinking)`,拿回一个可以直接摊进模型调用的 `providerOptions`。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。
+**有偏好的调用自己说,怎么说由表决定**。调用方把想要的东西交给 `callOptionsFor(modelId, { thinking, cache, session?, temperature? })`,拿回一份可以直接摊进模型调用的选项。五家的写法各不相同 —— 一家要 `thinking: { type }`、一家要努力档位、一家要 token 预算 —— 让调用方知道自己在跟谁说话,等于把这张表抄第五遍。`cache` 是提示词缓存的时长(`config/agent.yaml` 的 `prompt_cache_ttl`,聊天用 `1h`)或 `false`;`session` 只在走 OpenRouter 时作为 `session_id` 发出,让同一会话的请求落回同一家 provider、读得到上一轮写下的缓存;Claude 不接受非默认 `temperature`,表里直接丢掉。
 
-**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**当前有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余各处(text mini-tool · nano-banana · understand)拿它们各自 provider 的默认值。
+**说了就把开和关都明写,不靠「不表态」**:字段留空对每家的含义不同,而那是各家自己的默认值、它们随时可以改。**唯一的例外是 Claude 关思考**:Opus 5.5 对 `{ type: "disabled" }` 答 400,所以关的时候不发思考字段,4.x 由此不思考,5.5 落回它关不掉的自适应思考。**当前有两处在说** —— 聊天要 reasoning、记忆归纳不要;其余各处(text mini-tool · nano-banana · understand)拿它们各自 provider 的默认值。
 
 **这里没有全局开关** —— 一个跨所有调用点的设置必然对其中一处是错的。
 
@@ -298,7 +298,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 | `.env` | 运行时配置(从 `.env.dev` 或 `.env.docker` 复制) |
 | `.env.dev` | 本地开发模板(localhost URLs) |
 | `.env.docker` | Docker 部署模板(容器名 URLs) |
-| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、四道闸(输入 15,000 字 / 输出 16,384 token / 归纳线 850,000 字 / 归纳后留 500,000 字)、留几对工具结果(`tool_result_keep` 3)|
+| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、四道闸(输入 15,000 字 / 输出 16,384 token / 归纳线 850,000 token / 归纳后留 500,000 token)、提示词缓存时长(`prompt_cache_ttl` 1h)|
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/worker.yaml` | Worker 并发(按队列:`tasks` 50、其余 5)、重试、问结果的间隔 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制、一条 socket 承载多少文档。**单文档并发可写连接数上限不在这里**——它来自档位,见 `config/membership.yaml` 的 `concurrent_editors` |
