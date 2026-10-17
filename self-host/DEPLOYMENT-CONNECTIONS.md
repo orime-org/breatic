@@ -44,6 +44,33 @@ The Update button reloads the page using the existing Project `beforeunload` gua
 
 No environment variables are added or removed. Changing `VITE_APP_VERSION` requires rebuilding the frontend, not restarting the backend.
 
+## Product analytics (off by default)
+
+A self-hosted instance sends nothing to any analytics or advertising service. With every variable below empty, the backend never starts an analytics client, the ad-conversion queue stays empty, and the web build contains no Amplitude, Google tag or consent-banner code. The hosted service at breatic.ai sets them; you only need this section to measure your own instance with your own accounts.
+
+| Variable | Where it is read | Turns on |
+|---|---|---|
+| `AMPLITUDE_API_KEY` | server, worker, collab at startup | Server-side product events (sign-up, project and Space creation, first generation, invitations, purchases, subscriptions) |
+| `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_CONVERSION_ACTIONS`, `GOOGLE_DATA_MANAGER_CREDENTIALS` | server, worker, collab at startup | Server-side Google Ads conversion upload through the Data Manager API. Set all three or none; a partial or malformed set leaves uploads off and logs `google_ads_config_invalid` |
+| `VITE_AMPLITUDE_API_KEY` | web build | Browser product events; with this or `VITE_GOOGLE_ADS_TAG_ID` set, the build ships the consent banner and Cookie settings |
+| `VITE_GOOGLE_ADS_TAG_ID`, `VITE_GOOGLE_ADS_CONVERSION_LABELS` | web build | The Google tag and browser conversions, deduplicated with the server upload by transaction id |
+| `VITE_CONSENT_COOKIE_DOMAIN` | web build | Where the `breatic_consent` cookie is written; empty means the current host |
+
+The `VITE_*` values are embedded in the bundle like the connection settings above: changing them means rebuilding the frontend, not restarting a container. Dockerfile.web accepts them as build arguments. When the pages and the API sit on two subdomains, set `VITE_CONSENT_COOKIE_DOMAIN` to the parent domain they share (for example `example.com`), so the API and collab read the visitor's choice; the backend `COOKIE_DOMAIN` stays empty.
+
+The consent choice lives in a cookie the banner library writes from script, so browsers apply their own limits to it: Safari and the other browsers on iPhone and iPad delete it after 7 days without interaction on the site (24 hours when it was written on a page reached from an ad link), and Brave 180 days after it was written. The visitor is then asked again, or the rule for their region applies.
+
+What leaves when it is on:
+
+- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China, and visitors whose region cannot be told, are asked first. The region comes from Cloudflare's `/cdn-cgi/trace`, so on an instance not behind Cloudflare every visitor is asked first. Elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off; a visitor who turns advertising on in the banner or Cookie settings is followed. Backend events follow the choice of the browser that caused them.
+- The account keeps the latest report. A signed-in browser sends its choice to `PUT /api/v1/users/me/consent` after sign-in and after each change; the account keeps only the latest one and never sends it back to a browser. Events without a browser (renewals, completed refunds, and the owner's ad conversion when a collaborator first acts in the owner's project) follow that report and are not sent for an account that never reported.
+- Only listed properties. Every event we send passes a per-event allowlist in `@breatic/shared`; the browser SDK also sends Amplitude's own session start and end events and its session number. Prompts, document text, file names, email addresses and sign-in session tokens never leave. URLs are reduced to their path. Session Replay is not installed.
+- Only to the accounts you configure. Events go to your Amplitude project in its US data centre and conversions to your Google Ads customer.
+
+To turn it off again, empty the variables, restart the backend and rebuild the frontend.
+
+When you delete an account on request, soft-delete it first (set `users.deleted_at`), then run `pnpm analytics:delete-users <users.id> …` from the repository root. The command refuses any account that is not soft-deleted and lists those ids. It clears the account's latest consent report and the consent kept on its orders, upload tickets and ad uploads. When `AMPLITUDE_API_KEY` is set, pass `AMPLITUDE_SECRET_KEY=<project secret key>` for that run and the command also asks Amplitude to delete the account's events; the secret key is in the Amplitude project's settings, Amplitude schedules the deletion within 30 days and the command prints the scheduled day. Without `AMPLITUDE_API_KEY` it says there is nothing to delete at Amplitude and stops. How long Amplitude keeps events is set in its organization settings (Time to Live).
+
 ## Back office internal API
 
 `INTERNAL_API_ENABLED=true` starts a second server listener, called only by the Breatic back office, on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), plus the loop that finishes the credit-pack refunds it accepts. Every request carries an HMAC-SHA256 signature made with `INTERNAL_API_SECRET`, the same value the back office holds; with the API enabled and that secret empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited to 120 per 60 seconds per connection address (`internal-api` in `config/rate-limits.yaml`).

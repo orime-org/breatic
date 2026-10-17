@@ -1209,7 +1209,7 @@
     "terms": {
       "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
       "termsLink": "이용약관",
-      "privacyLink": "개인정보처리방침"
+      "privacyLink": "개인정보 처리방침"
     }
   },
   "roleTag": {
@@ -2343,5 +2343,36 @@
   "pageLoadError": {
     "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
     "retry": "다시 시도"
+  },
+  "consent": {
+    "link": "쿠키 설정",
+    "banner": {
+      "text": "사이트가 정상적으로 작동하도록 쿠키를 사용합니다. 동의하시면 제품 이용 현황 파악(제품 분석)과 광고 효과 측정(광고)에도 사용합니다. 언제든지 「쿠키 설정」에서 변경할 수 있습니다.",
+      "privacy": "개인정보 처리방침",
+      "acceptAll": "모두 허용",
+      "rejectAll": "모두 거부",
+      "settings": "설정",
+      "gpc": "브라우저가 Global Privacy Control을 보내고 있어 광고는 기본적으로 꺼져 있습니다."
+    },
+    "settings": {
+      "title": "쿠키 설정",
+      "save": "저장",
+      "close": "닫기",
+      "status": {
+        "gpc": "브라우저가 Global Privacy Control을 보내고 있어 광고는 기본적으로 꺼져 있습니다."
+      },
+      "necessary": {
+        "title": "필수",
+        "description": "로그인, 테마와 언어 설정, 그리고 이 선택 자체입니다. 항상 켜져 있습니다."
+      },
+      "analytics": {
+        "title": "제품 분석",
+        "description": "기능 사용 현황을 집계합니다. Project 안의 내용은 포함하지 않습니다."
+      },
+      "ads": {
+        "title": "광고",
+        "description": "어떤 광고가 가입, 구매 등 주요 행동으로 이어졌는지 측정합니다."
+      }
+    }
   }
 }

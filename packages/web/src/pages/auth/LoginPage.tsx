@@ -9,6 +9,7 @@ import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
 import { authApi } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
+import { attributionBody, reportConversion, trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
@@ -72,10 +73,12 @@ export default function LoginPage(): React.JSX.Element {
     pending.current = true;
     setSubmitting(true);
     setFormError(null);
+    trackEvent('signup_started', { method: 'google' });
     try {
-      const { user } = await authApi.google({ credential });
+      const { user, created } = await authApi.google({ credential, ...attributionBody() });
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
+      if (created) reportConversion('signup', `signup:${user.id}`);
       changeLocale(user.locale);
       navigate(params.get('next') ?? '/studio', { replace: true });
     } catch (err) {

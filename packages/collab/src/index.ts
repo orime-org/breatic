@@ -29,6 +29,9 @@ import {
   startHealthServer,
   runGracefulShutdown,
   InfraNotReadyError,
+  flushServerAnalytics,
+  adsConversionState,
+  initServerAnalytics,
   taskEventsStreamKey,
   lifecycleStreamKey,
   listenProjectMemberChanges,
@@ -54,6 +57,14 @@ initLogger("collab");
 
 const logger = createLogger("main");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
+if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 
 /**
  * Deadline (ms) for the concurrent teardown drains.
@@ -442,6 +453,7 @@ async function main(): Promise<void> {
       releaseListenSocket: () => server.httpServer.close(),
       drains: [
         () => server.destroy(),
+        () => flushServerAnalytics(),
         () => healthServer.stop(),
         () => stopProjectControlSync(),
         () => memberChanges.stop(),

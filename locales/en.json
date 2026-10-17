@@ -2343,5 +2343,36 @@
   "pageLoadError": {
     "message": "This page could not be loaded. Please try again.",
     "retry": "Try again"
+  },
+  "consent": {
+    "link": "Cookie settings",
+    "banner": {
+      "text": "We use cookies to keep the site working. With your consent we also use them to see how the product is used (product analytics) and to measure our ads (advertising). You can change this anytime in Cookie settings.",
+      "privacy": "Privacy Policy",
+      "acceptAll": "Accept all",
+      "rejectAll": "Reject all",
+      "settings": "Settings",
+      "gpc": "Your browser sends Global Privacy Control, so advertising is off by default."
+    },
+    "settings": {
+      "title": "Cookie settings",
+      "save": "Save",
+      "close": "Close",
+      "status": {
+        "gpc": "Your browser sends Global Privacy Control, so advertising is off by default."
+      },
+      "necessary": {
+        "title": "Necessary",
+        "description": "Sign-in, theme and language, and this choice itself. Always on."
+      },
+      "analytics": {
+        "title": "Product analytics",
+        "description": "Counts how features are used. Never includes the content of your Projects."
+      },
+      "ads": {
+        "title": "Advertising",
+        "description": "Measures which ads lead to sign-ups, purchases and other key steps."
+      }
+    }
   }
 }

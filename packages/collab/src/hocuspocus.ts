@@ -13,6 +13,8 @@
  * All tunable parameters are loaded from `config/collab.yaml`.
  */
 
+import { runWithConsent } from "@breatic/core";
+import { NO_CONSENT } from "@breatic/shared";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 import { Server } from "@hocuspocus/server";
@@ -560,11 +562,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         return;
       }
 
-      const response = await handleSpaceRpc(
-        { hocuspocus: wsServer.hocuspocus },
-        parsed.projectId,
-        { userId: callerId, role: callerRole },
-        req,
+      // Events this request causes follow the consent its sender attached.
+      const response = await runWithConsent(req.analyticsConsent ?? NO_CONSENT, () =>
+        handleSpaceRpc(
+          { hocuspocus: wsServer.hocuspocus },
+          parsed.projectId,
+          { userId: callerId, role: callerRole },
+          req,
+        ),
       );
       document.broadcastStateless(JSON.stringify(response));
     },

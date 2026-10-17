@@ -31,3 +31,20 @@ export async function findOwnerStudioId(
     .limit(1);
   return rows[0]?.studioId;
 }
+
+/**
+ * Reads who created a project and the studio it belongs to, for the
+ * collaboration milestone (inner#1442 design §4.8).
+ * @param projectId - Project to look up.
+ * @returns Both, or undefined when no live project has that id.
+ */
+export async function findCreatorAndStudio(
+  projectId: string,
+): Promise<{ createdByUserId: string; studioId: string } | undefined> {
+  const rows = await db
+    .select({ createdByUserId: projects.createdByUserId, studioId: projects.studioId })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
+    .limit(1);
+  return rows[0];
+}

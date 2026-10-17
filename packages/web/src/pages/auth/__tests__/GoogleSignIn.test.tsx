@@ -96,7 +96,7 @@ describe('official Google login', () => {
     respond();
     expect(authApi.google).toHaveBeenCalledExactlyOnceWith({ credential: 'signed-google-id-token' });
     expect(screen.getByRole('button', { name: 'Signing in...' })).toHaveAttribute('aria-disabled', 'true');
-    await act(async () => finish({ user: { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' } }));
+    await act(async () => finish({ user: { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' }, created: false }));
     expect(useCurrentUserStore.getState().user?.id).toBe('g-1');
     expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();
   });
@@ -131,7 +131,7 @@ describe('official Google login', () => {
     const view = setup();
     respond();
     view.unmount();
-    await act(async () => finish({ user: { id: 'late', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' } }));
+    await act(async () => finish({ user: { id: 'late', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' }, created: false }));
     expect(useCurrentUserStore.getState().user).toBeNull();
   });
 
@@ -144,6 +144,7 @@ describe('official Google login', () => {
   it('switches the interface to the account language', async () => {
     vi.mocked(authApi.google).mockResolvedValue({
       user: { id: 'g-2', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'zh-TW' },
+      created: false,
     });
     try {
       setup();

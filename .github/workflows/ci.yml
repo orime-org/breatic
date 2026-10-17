@@ -255,10 +255,75 @@ jobs:
       - name: Integration tests
         run: pnpm turbo run test:integration
 
+  consent-network-audit:
+    name: Consent network audit
+    runs-on: ubuntu-latest
+    # What the web app sends to analytics and advertising services (inner#1442),
+    # in a real browser against the real server. playwright.consent.config.ts
+    # builds the app twice, without the vendor variables and with test values,
+    # serves both builds, and starts the server from its build. Every request
+    # to a vendor is answered inside the browser.
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: breatic
+          POSTGRES_PASSWORD: breatic
+          POSTGRES_DB: breatic
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U breatic"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://breatic:breatic@localhost:5432/breatic
+      YJS_DATABASE_URL: postgres://breatic:breatic@localhost:5432/breatic_yjs
+      REDIS_URL: redis://localhost:6379/0
+      REDIS_QUEUE_URL: redis://localhost:6379/1
+      REDIS_STREAM_URL: redis://localhost:6379/2
+      REDIS_COLLAB_URL: redis://localhost:6379/3
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
+      # Local compose creates the Yjs database from an init script, which a
+      # service container cannot mount; psql runs inside the container.
+      - name: Create the Yjs database
+        run: docker exec ${{ job.services.postgres.id }} psql -U breatic -c "CREATE DATABASE breatic_yjs"
+
+      # The server and its dependencies; the suite builds the web app itself.
+      - name: Build the server
+        run: pnpm turbo run build --filter=@breatic/server...
+
+      - name: Migrate
+        run: pnpm db:migrate
+
+      - name: Install Chromium
+        run: pnpm --filter @breatic/web exec playwright install --with-deps chromium
+
+      - name: Consent suite
+        run: pnpm --filter @breatic/web test:consent
+
+      - name: Keep the failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: consent-network-audit
+          path: packages/web/test-results/
+          retention-days: 7
+
   docker:
     name: Docker Build (${{ matrix.image }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [lint-typecheck-test, integration-tests, dev-proxy-guard, auth-bypass-residue]
+    needs: [lint-typecheck-test, integration-tests, consent-network-audit, dev-proxy-guard, auth-bypass-residue]
     strategy:
       fail-fast: false
       matrix:
@@ -284,7 +349,7 @@ jobs:
           REF: ${{ github.ref }}
           REVISION: ${{ github.sha }}
         run: |
-          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs scripts/backfill-previews-plan.test.mjs
+          node --test scripts/release.test.mjs scripts/backend-sourcemaps.test.mjs scripts/publish-images.test.mjs scripts/backfill-previews-plan.test.mjs scripts/analytics-delete-users.test.mjs scripts/load-env.test.mjs
           node scripts/release.mjs ci "$REF" "$REVISION" >> "$GITHUB_OUTPUT"
           if [[ "$REF" == refs/tags/* ]]; then
             git merge-base --is-ancestor "$REVISION" origin/main

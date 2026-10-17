@@ -39,7 +39,7 @@ import * as notificationService from "@server/modules/notification/notification.
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db, getLimitsForStudio } from "@breatic/core";
+import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
@@ -178,6 +178,11 @@ export async function createInvite(
     }, { userId: invitee.id, subject: "studio_invite" });
   }
 
+  trackServerEvent("member_invited", {
+    userId: inviterUserId,
+    insertId: `invite:${invitationId}`,
+    properties: { studio_id: studio.id, scope: "studio", role },
+  });
   return {
     invitationId,
     inviteeUserId: invitee.id,
@@ -214,7 +219,25 @@ export async function confirmInvite(
   invitationId: string,
   receiverUserId: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
+  const accepted = await acceptInTransaction(invitationId, receiverUserId);
+  trackServerEvent("invitation_accepted", {
+    userId: receiverUserId,
+    insertId: `invite-accepted:${invitationId}`,
+    properties: { studio_id: accepted.studioId, scope: "studio", role: accepted.role },
+  });
+}
+
+/**
+ * The transaction behind {@link confirmInvite}.
+ * @param invitationId - The `studio_invitations` row id
+ * @param receiverUserId - The invitee confirming
+ * @returns The accepted invite
+ */
+async function acceptInTransaction(
+  invitationId: string,
+  receiverUserId: string,
+): Promise<{ studioId: string; role: string }> {
+  return db.transaction(async (tx) => {
     // Which studio this invite is for, read WITHOUT a lock. The id is only
     // reachable through the invitation row, and the row lock below has to come
     // before the accept CAS, so it has to be read first. Safe: an invitation's
@@ -309,6 +332,7 @@ export async function confirmInvite(
       },
       tx,
     });
+    return { studioId: accepted.studioId, role: accepted.role };
   });
 }
 

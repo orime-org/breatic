@@ -23,6 +23,7 @@ import { holdsActionableSubscription } from '@breatic/shared';
 import { confirmMembershipCheckout } from '@web/data/api/subscription';
 import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { useTranslation } from '@web/i18n/use-translation';
+import { reportConversion } from '@web/data/analytics';
 import { toast } from '@web/lib/toast';
 import { refreshCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 
@@ -79,6 +80,13 @@ export function useMembershipCheckoutReturn(): void {
       }
       // Opening the panel next reads the confirmed answer straight away.
       queryClient.setQueryData(membershipQueryKey(userId), membership);
+      const { conversion } = membership;
+      if (conversion) {
+        reportConversion('subscription', conversion.transactionId, {
+          amountCents: conversion.amountCents,
+          currency: conversion.currency,
+        });
+      }
 
       const held = membership.subscription;
       if (

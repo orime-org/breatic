@@ -32,7 +32,7 @@ import {
   sendMail,
 } from "@breatic/core";
 import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { UserEntity } from "@breatic/shared";
+import type { Attribution, UserEntity } from "@breatic/shared";
 
 const CODE_SPACE = 1_000_000;
 const CODE_DIGITS = 6;
@@ -311,13 +311,18 @@ return {0}
  * when it was made, the same as the other two ways an account is created.
  * @param ticket - The browser's ticket, or `null` when it has none.
  * @param code - The code the reader typed.
+ * @param attribution - Campaign source the browser recorded before sign-up.
  * @returns The new account.
  * @throws {AppError} 410 when there is no such pending sign-up.
  * @throws {AppError} 422 when this code has used up its comparisons.
  * @throws {AppError} 400 when the code does not match.
  * @throws {ConflictError} when the address got an account in the meantime.
  */
-export async function verifySignupCode(ticket: string | null, code: string): Promise<UserEntity> {
+export async function verifySignupCode(
+  ticket: string | null,
+  code: string,
+  attribution: Attribution | null = null,
+): Promise<UserEntity> {
   if (ticket === null) throw new AppError(HTTP_GONE, t("server.auth.signup_expired"));
   const { maxAttemptsPerCode } = getSignupCodeConfig();
   const reply = (await getRedis().eval(
@@ -344,5 +349,5 @@ export async function verifySignupCode(ticket: string | null, code: string): Pro
   if (await userRepo.getUserByEmail(email)) {
     throw new ConflictError(t("server.auth.email_taken"));
   }
-  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true });
+  return createAccount({ email, hashedPassword, locale: getActiveLocale(), emailVerified: true, attribution });
 }

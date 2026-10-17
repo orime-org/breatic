@@ -19,9 +19,10 @@ import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, signupCodeService, studioService } from "@server/modules";
-import { env, NotFoundError } from "@breatic/core";
+import { randomUUID } from "node:crypto";
+import { env, NotFoundError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { emailSchema, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
@@ -112,7 +113,7 @@ auth.get("/options", (c) => {
  * @throws {AppError} `503` when the code mail was not sent
  */
 auth.post("/register", rateLimitFor("register"), validate("json", registerSchema), async (c) => {
-  const { email, password } = c.req.valid("json");
+  const { email, password, attribution } = c.req.valid("json");
 
   if (signupCodeService.emailVerificationEnabled()) {
     const sent = await signupCodeService.startSignup({
@@ -131,7 +132,7 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
     }, 202);
   }
 
-  const { user, recoveryCode } = await authService.register(email, password);
+  const { user, recoveryCode } = await authService.register(email, password, parseAttribution(attribution));
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
   // Audit log moved here from auth.service.ts per
@@ -190,8 +191,12 @@ auth.post(
     if (!signupCodeService.emailVerificationEnabled()) {
       throw new NotFoundError(t("server.error.not_found"));
     }
-    const { code } = c.req.valid("json");
-    const user = await signupCodeService.verifySignupCode(readSignupTicketCookie(c), code);
+    const { code, attribution } = c.req.valid("json");
+    const user = await signupCodeService.verifySignupCode(
+      readSignupTicketCookie(c),
+      code,
+      parseAttribution(attribution),
+    );
     clearSignupTicketCookie(c);
     setSessionCookie(c, await authService.createSession(user.id));
     logger.info({ userId: user.id, email: user.email }, "user_registered");
@@ -252,6 +257,11 @@ auth.post(
     ]);
     // Audit log moved from auth.service.ts (17B mandate).
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
+    trackServerEvent("login_completed", {
+      userId: user.id,
+      insertId: `login:${randomUUID()}`,
+      properties: { method: "email" },
+    });
     return c.json({
       data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
     });
@@ -267,6 +277,7 @@ auth.post(
  */
 const googleAuthSchema = z.object({
   credential: z.string().min(1),
+  attribution: z.unknown().optional(),
 });
 
 /**
@@ -301,7 +312,7 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
   }
 
-  const { credential } = c.req.valid("json");
+  const { credential, attribution } = c.req.valid("json");
 
   let payload: TokenPayload | undefined;
 
@@ -336,10 +347,11 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   }
 
   const email = normalizeEmail(payload.email);
-  const { user, token } = await authService.loginOrCreateGoogle(
+  const { user, token, created } = await authService.loginOrCreateGoogle(
     payload.sub,
     email,
     email.endsWith("@gmail.com") || Boolean(payload.hd),
+    parseAttribution(attribution),
   );
 
   setSessionCookie(c, token);
@@ -349,8 +361,17 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   ]);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
+  // A first Google sign-in is a sign-up, already counted as `signup_completed`.
+  if (!created) {
+    trackServerEvent("login_completed", {
+      userId: user.id,
+      insertId: `login:${randomUUID()}`,
+      properties: { method: "google" },
+    });
+  }
+  // `created` tells the page to report the sign-up conversion (inner#1442 §4.9).
   return c.json({
-    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
+    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created },
   });
 });
 

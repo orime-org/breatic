@@ -39,7 +39,8 @@ import {
 import * as refundCopyRepo from "@server/modules/credit-refund/refund-copy.repo.js";
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import type { RefundMail, RefundMailKind } from "@server/modules/credit-refund/refund-mail.repo.js";
-import { sendOperationMailsLater, sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
+import { sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
+import { followUpOperationLater } from "@server/modules/credit-refund/refund-follow-up.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
 import {
@@ -210,7 +211,7 @@ export async function requestOneShot(
     return { ...newOperation(kind, req, facts.payment), ...body };
   }, { readDisputed: kind === "restore_credits" });
   if ("replay" in outcome) return answerReplay(outcome.replay);
-  sendOperationMailsLater(outcome.op.id);
+  followUpOperationLater(outcome.op.id);
   return answerOperation(outcome.op);
 }
 
@@ -255,7 +256,7 @@ async function decide(
 async function copyStripe(payment: PaymentEntity): Promise<void> {
   const listed = await readStripe(payment, () => listRefundsForPayment(payment.id));
   const rejudged = await db.transaction((tx) => applyRefundSnapshot(tx, payment.id, listed, "request"));
-  if (rejudged !== null) sendOperationMailsLater(rejudged);
+  if (rejudged !== null) followUpOperationLater(rejudged);
 }
 
 /**

@@ -20,6 +20,7 @@ import * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { paymentApi } from '@web/data/api/payment';
+import { reportConversion } from '@web/data/analytics';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
 
 /** How long to keep the buyer behind the wait. */
@@ -125,6 +126,14 @@ export function useCheckoutReturn(
       setWaiting(true);
       void paymentApi
         .confirm(sessionId)
+        .then((order) => {
+          if (order.paid) {
+            reportConversion('credit_purchase', `purchase:${sessionId}`, {
+              amountCents: order.amountCents,
+              currency: order.currency,
+            });
+          }
+        })
         .catch(() => undefined)
         .finally(land);
       return;
