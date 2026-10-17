@@ -407,3 +407,17 @@ describe('canvas words pasted with a picture', () => {
     expect(lines(editor)).toEqual(['paragraph:pick https://example.com/src', 'image(pending)', 'paragraph: here']);
   });
 });
+
+describe.each(SOURCES)('%s with words then a picture, over the whole of a line that is not a paragraph', (_source, put, img) => {
+  it('gives the line\'s type to the leading words', async () => {
+    const editor = open([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'bulletListItem', content: 'abcd' },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    select(editor, positionOf(editor, 'abcd', 0), positionOf(editor, 'abcd', 4));
+    put(editor, [W, P]);
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', 'bulletListItem:w', img(PIC), 'paragraph:tail']);
+  });
+});

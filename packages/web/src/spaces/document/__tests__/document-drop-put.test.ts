@@ -180,3 +180,12 @@ describe('the formats a drop reads, as a paste reads them', () => {
     expect(lines(editor).slice(1, 3)).toEqual(['heading:H', `image(${PIC})`]);
   });
 });
+
+describe('a drop between two blocks', () => {
+  it('lands there, leaving no empty line', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'tail' }]);
+    dropFormats(editor, positionOf(editor, 'lead', 4) + 2, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
+    await settled();
+    expect(lines(editor)).toEqual(['paragraph:lead', `image(${PIC})`, 'paragraph:tail']);
+  });
+});

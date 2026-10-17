@@ -202,3 +202,18 @@ describe('content with a picture, in a code block', () => {
     expect(lines(editor)).toEqual(['codeBlock:cowra text', `image(${PIC})`, 'paragraph:']);
   });
 });
+
+describe('words selected in a table cell, a picture alone pasted', () => {
+  it.each([
+    ['web content', (editor: Editor): void => paste(editor, `<img src="${PIC}">`, '')],
+    ['a canvas node', (editor: Editor): void => pasteFormats(editor, { 'text/plain': canvasPicture() })],
+  ])('from %s: the words go, the picture lands under the table', async (_name, put) => {
+    const { editor } = open([TABLE('xyz'), { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'xyz', 1), positionOf(editor, 'xyz', 2));
+    put(editor);
+    await settled();
+    expect(firstCell(editor, 0)).toBe('xz');
+    expect(lines(editor)[0]).toBe('table');
+    expect(lines(editor)[1]).toMatch(/^image\(/);
+  });
+});
