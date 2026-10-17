@@ -16,9 +16,10 @@
  * `adjust-ffmpeg.test.ts` holds it to what ffmpeg makes of the video's own
  * filter string.
  *
- * Distances are in source pixels, as ffmpeg's are, and are handed to the
- * filters as shares of the source, so the preview drawn at the node's size
- * shows the export's effect scaled. Each custom filter carries a WebGL shader
+ * Distances are in source pixels, as ffmpeg's are: the blur and unsharp
+ * filters take one source pixel as a share of the picture, and the grain and
+ * the vignette take the source's size and find each drawn pixel's place in it,
+ * so the preview drawn at the node's size shows the export's effect scaled. Each custom filter carries a WebGL shader
  * and the same work on a pixel array, which Fabric runs where there is no
  * WebGL.
  *

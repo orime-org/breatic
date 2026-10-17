@@ -834,7 +834,8 @@ export function renderProductGuide(): string {
       "selected, moved, resized, restyled or deleted with Delete or Backspace, which then deletes that object and " +
       "not the node. Shapes, lines and pen strokes are picked by pressing on or right beside their line, and a " +
       "press inside an outlined shape reaches what is under it, except that the selected one can be dragged from " +
-      "anywhere inside its frame; a text is picked anywhere in its box. While the panel is open, Cmd+Z or Ctrl+Z and the view bar's undo and redo step through the " +
+      "anywhere inside its frame, unless the press lands on something drawn above it, which is picked instead; a " +
+      "text is picked anywhere in its box. While the panel is open, Cmd+Z or Ctrl+Z and the view bar's undo and redo step through the " +
       "markup as a whole, and the [ and ] keys step the size of the selected object, or of the next one drawn when " +
       "none is selected; while a text is being typed, these keys act on the text itself. " +
       "The arrow stays greyed out until something is drawn or written, and the result is a plain " +
