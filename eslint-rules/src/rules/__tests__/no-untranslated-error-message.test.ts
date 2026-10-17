@@ -20,6 +20,11 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     // a caller has no message argument to get wrong.
     { code: "throw new ConflictLockedError({ holdingBy, holdingByName, taskId, startedAt, estimatedSeconds });" },
     { code: "class NodeLocked extends AppError { constructor(d) { super(409, t('server.canvas.node_locked')); } }" },
+    // `super()` reads the argument the extended class takes its message in,
+    // so a class outside the family is not read at all.
+    { code: "class Retry extends Error { constructor(n) { super(n, 'attempt failed'); } }" },
+    { code: "class Retry extends Base { constructor(n) { super(n, 'attempt failed'); } }" },
+    { code: "class Gone extends NotFoundError { constructor() { super(t('server.node.gone')); } }" },
     // Not our error family.
     { code: 'throw new Error("internal invariant broken");' },
     { code: 'throw new TypeError("expected a number");' },
@@ -54,6 +59,15 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     // watching callers alone said nothing about the sentence on the wire.
     {
       code: "class NodeLocked extends AppError { constructor(d) { super(409, 'Node is locked'); } }",
+      errors: [{ messageId: "untranslatedMessage", line: 1 }],
+    },
+    // A message-first subclass carries its message in the first argument.
+    {
+      code: "class Gone extends NotFoundError { constructor() { super('Node is gone'); } }",
+      errors: [{ messageId: "untranslatedMessage", line: 1 }],
+    },
+    {
+      code: "const Gone = class extends ConflictError { constructor() { super(`Taken: ${x}`); } };",
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
   ],
