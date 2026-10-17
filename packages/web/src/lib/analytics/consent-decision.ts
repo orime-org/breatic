@@ -86,9 +86,9 @@ export function adsViewFor(input: { ads: Pick<BrowserChoice, 'value' | 'source'>
 }
 
 /**
- * The cookie's data and accepted categories after a write (design §4.4.4
- * `setConsent()`): each category written gets the same time; a category left
- * out keeps the choice in force before the press.
+ * The cookie's data and accepted categories after a write (design §4.4.4):
+ * each category written gets the same time; a category left out keeps the
+ * choice in force before the press.
  * @param writes - The categories to write.
  * @param prior - The choices in force before this write.
  * @param stored - The cookie's data entries as stored.

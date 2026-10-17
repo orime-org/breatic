@@ -4,8 +4,8 @@
 /**
  * Open the request's analytics consent context from the browser's cookie.
  *
- * The page writes `breatic_consent` on the site's parent domain, so it rides
- * along with API calls, SSE streams and agent chat requests alike; reading it
+ * The page writes `breatic_consent` on its own host, or on the parent domain
+ * `VITE_CONSENT_COOKIE_DOMAIN` names, so it rides along with API calls, SSE streams and agent chat requests alike; reading it
  * here covers all three without each client attaching anything (inner#1442
  * design §4.4.5).
  */

@@ -491,10 +491,6 @@ export default [
     files: ['src/**/*.{ts,tsx}'],
     ignores: [
       'src/components/ui/button.tsx',
-      // The consent windows are drawn by vanilla-cookieconsent outside React,
-      // so `Button` cannot render into them; the confirmation's two buttons
-      // join the library's own `pm__btn` buttons there.
-      'src/lib/analytics/consent-banner.ts',
       'src/pages/_dev/**',
       '**/__tests__/**',
       '**/*.test.{ts,tsx}',

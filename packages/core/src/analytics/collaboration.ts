@@ -65,7 +65,7 @@ export async function reportCollaboratorFirstAction(
     );
     const ownerId = await getOwner(input.projectId);
     if (!ownerId) return;
-    // No browser of the owner's is behind this, so only the owner's account events count.
+    // No browser of the owner's is behind this, so the owner's latest reported consent decides.
     await enqueueAdsConversion(
       {
         userId: ownerId,

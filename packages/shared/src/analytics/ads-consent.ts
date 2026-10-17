@@ -14,7 +14,7 @@ import { z } from "zod";
 import { revisionInForce } from "@shared/analytics/consent.js";
 import type { BrowserChoice } from "@shared/analytics/consent-choices.js";
 
-/** This browser's ads consent with GPC applied, as stored on orders, tasks and upload jobs. */
+/** This browser's ads consent with GPC applied, as an ad-conversion upload job stores it. */
 export const BrowserAdsSnapshotSchema = z.object({ consent: z.boolean() }).strict();
 
 /** This browser's ads consent with GPC applied. */

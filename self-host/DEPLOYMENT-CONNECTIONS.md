@@ -52,7 +52,7 @@ A self-hosted instance sends nothing to any analytics or advertising service. Wi
 |---|---|---|
 | `AMPLITUDE_API_KEY` | server, worker, collab at startup | Server-side product events (sign-up, project and Space creation, first generation, invitations, purchases, subscriptions) |
 | `GOOGLE_ADS_CUSTOMER_ID`, `GOOGLE_ADS_CONVERSION_ACTIONS`, `GOOGLE_DATA_MANAGER_CREDENTIALS` | server, worker, collab at startup | Server-side Google Ads conversion upload through the Data Manager API. Set all three or none; a partial or malformed set leaves uploads off and logs `google_ads_config_invalid` |
-| `VITE_AMPLITUDE_API_KEY` | web build | Browser product events and the consent banner |
+| `VITE_AMPLITUDE_API_KEY` | web build | Browser product events; with this or `VITE_GOOGLE_ADS_TAG_ID` set, the build ships the consent banner and Cookie settings |
 | `VITE_GOOGLE_ADS_TAG_ID`, `VITE_GOOGLE_ADS_CONVERSION_LABELS` | web build | The Google tag and browser conversions, deduplicated with the server upload by transaction id |
 | `VITE_CONSENT_COOKIE_DOMAIN` | web build | Where the `breatic_consent` cookie is written; empty means the current host |
 
@@ -62,9 +62,9 @@ The consent choice lives in a cookie the banner library writes from script, so b
 
 What leaves when it is on:
 
-- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China are asked first; elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off; a visitor who turns advertising on in the banner or Cookie settings is followed. Backend events follow the choice of the browser that caused them.
-- The account keeps the latest report. A signed-in browser sends its choice to `PUT /api/v1/users/me/consent` after sign-in and after each change; the account keeps only the latest one and never sends it back to a browser. Events without a browser (renewals, completed refunds, a collaborator's first action in an owner's project) follow that report and are not sent for an account that never reported.
-- Only listed properties. Every event passes a per-event allowlist in `@breatic/shared`; prompts, document text, file names, email addresses and session ids never leave. URLs are reduced to their path. Session Replay is not installed.
+- Only after consent. Visitors in the EEA, the UK, Switzerland and mainland China, and visitors whose region cannot be told, are asked first. The region comes from Cloudflare's `/cdn-cgi/trace`, so on an instance not behind Cloudflare every visitor is asked first. Elsewhere both categories start on and can be turned off. A browser sending Global Privacy Control starts with advertising off; a visitor who turns advertising on in the banner or Cookie settings is followed. Backend events follow the choice of the browser that caused them.
+- The account keeps the latest report. A signed-in browser sends its choice to `PUT /api/v1/users/me/consent` after sign-in and after each change; the account keeps only the latest one and never sends it back to a browser. Events without a browser (renewals, completed refunds, and the owner's ad conversion when a collaborator first acts in the owner's project) follow that report and are not sent for an account that never reported.
+- Only listed properties. Every event we send passes a per-event allowlist in `@breatic/shared`; the browser SDK also sends Amplitude's own session start and end events and its session number. Prompts, document text, file names, email addresses and sign-in session tokens never leave. URLs are reduced to their path. Session Replay is not installed.
 - Only to the accounts you configure. Events go to your Amplitude project in its US data centre and conversions to your Google Ads customer.
 
 To turn it off again, empty the variables, restart the backend and rebuild the frontend.

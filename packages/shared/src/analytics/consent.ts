@@ -6,7 +6,8 @@
  * website and the backend that reads it from the cookie.
  *
  * The cookie is written by `vanilla-cookieconsent` on the page and travels to
- * the API and the collab socket because both sit on the same site. Its name,
+ * the API and the collab socket on the page's host, or on any host under the
+ * parent domain `VITE_CONSENT_COOKIE_DOMAIN` names. Its name,
  * category names and revision are a contract with the website repo (inner#1442
  * design §4.4.3): changing any of them here changes it there too.
  */

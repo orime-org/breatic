@@ -5,7 +5,7 @@
  * Subscription starts and renewals for analytics and the ad platform
  * (inner#1442 design §4.8, §4.9). A start follows the consent the subscribing
  * browser left on the subscription's metadata; a renewal has no browser
- * behind it and follows the account's consent receipts (§4.4.6).
+ * behind it and follows the account's latest reported consent (§4.4.6).
  */
 
 import { accountOnlyConsent, enqueueAdsConversion, getSubscriptionPlan, logger, trackServerEvent } from "@breatic/core";
