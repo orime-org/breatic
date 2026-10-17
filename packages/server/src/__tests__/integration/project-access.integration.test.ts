@@ -6,7 +6,7 @@
  * `projectService.listByStudioForViewer` and `projectService.loadForViewer`
  * against a real Postgres.
  *
- * Access is a CLAUDE.md critical path (鉴权 + 数据完整性): every studio member
+ * Access is a critical path (AGENTS.md#critical-paths: auth + data integrity): every studio member
  * sees every project, only a project member may enter one, and opening a
  * project never writes a member row.
  *

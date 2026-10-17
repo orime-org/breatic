@@ -699,8 +699,8 @@ describe('the bubble bar shell', () => {
       ]);
     });
 
-    // `packages/web/CLAUDE.md` makes carrying both platforms mandatory, and a
-    // hardcoded glyph reads as a chord Windows readers cannot press.
+    // `packages/web/AGENTS.md#keyboard-shortcuts-on-both-platforms` makes
+    // carrying both platforms mandatory, and a hardcoded glyph reads as a chord Windows readers cannot press.
     it('spells the shortcuts the Mac way on a Mac', async () => {
       vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
       const editor = openSharedBody('<p>the quick brown fox</p>');

@@ -48,7 +48,7 @@
  *
  * The meta doc's socket carries more than presence — the Space and tab RPCs
  * ride it as stateless messages, and carets ride the canvas and document files
- * (see the package's CLAUDE.md; publishing a caret onto a meta document is a
+ * (see packages/collab/AGENTS.md#no-carets-on-meta-awareness; publishing a caret onto a meta document is a
  * bug) — but none of that reaches this module.
  */
 

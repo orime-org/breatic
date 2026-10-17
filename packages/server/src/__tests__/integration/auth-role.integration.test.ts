@@ -9,8 +9,8 @@
  * `requireRole` middleware + collab `onAuthenticate`, both via
  * `loadProjectRole`). It resolves a caller's role on a project by an
  * inner-join of `project_members` and `projects`, filtering BOTH
- * `deleted_at IS NULL`. The mandated invariants (CLAUDE.md 关键路径 —
- * 鉴权 → 100% + invariant + property-based) are:
+ * `deleted_at IS NULL`. The mandated invariants (AGENTS.md#critical-paths —
+ * auth → 100% + invariant + property-based) are:
  *
  *   1. active member of an active project → that member's role
  *   2. non-member of an active project → null (never leaks existence)

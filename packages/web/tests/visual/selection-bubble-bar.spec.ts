@@ -333,8 +333,8 @@ test('每个下拉都能悬停打开，内容照 demo，点一项只写控制台
   // Two rows of eight and a reset, and the cell's own measurements: 28 square
   // with the letter at 15px. The demo draws the cell 30 square; the cell stands
   // on `--btn-inline`, the step the controls above it use, which is 28
-  // (`document-bubble-slots.ts`'s `COLOUR_CELL`, and CLAUDE.md's "values come
-  // from our own tokens, shapes from the demo").
+  // (`document-bubble-slots.ts`'s `COLOUR_CELL`, and
+  // `packages/web/AGENTS.md#demo-decides-structure-tokens-decide-values`).
   expect(await colour.locator('[data-testid^="doc-bubble-color-text-"]').count()).toBe(8);
   expect(await colour.locator('[data-testid^="doc-bubble-color-fill-"]').count()).toBe(8);
   await expect(colour.getByTestId('doc-bubble-color-reset')).toBeVisible();

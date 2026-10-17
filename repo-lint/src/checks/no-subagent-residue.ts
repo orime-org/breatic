@@ -90,7 +90,7 @@ export const DELETED_NAMES: ReadonlyArray<readonly [string, string, string]> = [
  * Scope is every tracked file whose bytes are text. That is subtraction from
  * the whole tree rather than a list of extensions to select from: residues
  * sit in files with no extension (a Dockerfile), in README, in `docs/` and in
- * each package's `CLAUDE.md`, and a list of paths misses some of them.
+ * each package's `AGENTS.md`, and a list of paths misses some of them.
  *
  * Comments are not stripped, deliberately. A comment explaining how the
  * deleted machinery used to work still tells a reader it exists, and it does

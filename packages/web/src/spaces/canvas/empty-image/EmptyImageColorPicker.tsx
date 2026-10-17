@@ -40,7 +40,8 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   // Track the node with the canvas while the popover is open (mandatory
-  // in-canvas overlay pattern; see web/CLAUDE.md).
+  // in-canvas overlay pattern; see
+  // packages/web/AGENTS.md#canvas-overlays-follow-the-viewport).
   useFollowCanvasViewport(open);
   return (
     <Popover open={open} onOpenChange={setOpen}>
