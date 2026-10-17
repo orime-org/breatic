@@ -39,7 +39,7 @@ describe('ChatEmpty', () => {
     );
   });
 
-  it('offers one suggestion for each thing the agent can do', () => {
+  it('offers the five suggestions in order', () => {
     render(<ChatEmpty />);
     const offered = screen
       .getAllByTestId(/^chat-empty-qa-/)
@@ -48,7 +48,7 @@ describe('ChatEmpty', () => {
       ['chat-empty-qa-find-reference', 'Find cyberpunk-style reference images'],
       ['chat-empty-qa-write-script', 'Write a script for a three-minute short film'],
       ['chat-empty-qa-build-workflow', 'Build a character turnaround on the canvas'],
-      ['chat-empty-qa-annotate-document', 'Suggest edits to this Document'],
+      ['chat-empty-qa-annotate-document', 'Suggest edits to my Document'],
       ['chat-empty-qa-write-prompt', 'Write a prompt for an illustration'],
     ]);
   });

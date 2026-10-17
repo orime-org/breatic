@@ -312,8 +312,8 @@
       "quick": {
         "findReference": "サイバーパンク風の参考画像を探して",
         "writeScript": "3分の短編映画の脚本を書いて",
-        "buildWorkflow": "キャンバスに三面図の生成フローを組んで",
-        "annotateDocument": "この Document に改善コメントを付けて",
+        "buildWorkflow": "キャンバスにキャラクター三面図の生成フローを組んで",
+        "annotateDocument": "Document の修正案を出して",
         "writePrompt": "イラスト生成のプロンプトを書いて"
       }
     },

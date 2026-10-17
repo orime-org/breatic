@@ -313,7 +313,7 @@
         "findReference": "幫我找賽博龐克風格的參考圖",
         "writeScript": "幫我寫一個三分鐘短片的劇本",
         "buildWorkflow": "幫我在畫布上搭一個生成角色三視圖的流程",
-        "annotateDocument": "幫我給這個 Document 提修改意見",
+        "annotateDocument": "幫我給 Document 提修改意見",
         "writePrompt": "幫我寫一個生成插畫的提示詞"
       }
     },

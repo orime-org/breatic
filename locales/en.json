@@ -313,7 +313,7 @@
         "findReference": "Find cyberpunk-style reference images",
         "writeScript": "Write a script for a three-minute short film",
         "buildWorkflow": "Build a character turnaround on the canvas",
-        "annotateDocument": "Suggest edits to this Document",
+        "annotateDocument": "Suggest edits to my Document",
         "writePrompt": "Write a prompt for an illustration"
       }
     },

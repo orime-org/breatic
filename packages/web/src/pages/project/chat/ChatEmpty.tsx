@@ -15,9 +15,9 @@ interface QuickAction {
 }
 
 /**
- * One suggestion for each thing the line above them says the agent can do:
- * find material, write long text, propose a generation flow on the canvas,
- * propose edits to an open Document, and write prompts.
+ * One suggestion for each thing the line above them says the agent can do
+ * (find material, write long text, propose a generation flow on the canvas,
+ * propose edits to an open Document), plus writing prompts.
  */
 const QUICK_ACTIONS: ReadonlyArray<QuickAction> = [
   { id: 'find-reference', labelKey: 'findReference' },
@@ -73,9 +73,9 @@ export function ChatEmpty({
       className='flex h-full flex-col items-center justify-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
-      {/* The page declares no language, so the line names its own: browsers
-          break Japanese and Korean between phrases only when they know which
-          language the text is in. */}
+      {/* index.html declares English whatever the locale, so the line names
+          its own language: browsers break Japanese and Korean between phrases
+          only when they know which language the text is in. */}
       <p lang={getLocale()} className='text-balance leading-relaxed [word-break:auto-phrase]'>
         {t('chat.empty.capabilities')}
       </p>

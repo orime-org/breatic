@@ -313,7 +313,7 @@
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
         "writeScript": "3분짜리 단편 영화 대본을 써줘",
         "buildWorkflow": "캔버스에 캐릭터 삼면도를 생성하는 흐름을 만들어줘",
-        "annotateDocument": "이 Document에 코멘트를 달고 개선할 점을 짚어줘",
+        "annotateDocument": "Document 수정안을 제안해줘",
         "writePrompt": "일러스트 생성 프롬프트를 써줘"
       }
     },
