@@ -42,6 +42,8 @@ import {
 import { CONSENT_COOKIE_NAME, CONSENT_REVISION } from "@breatic/shared";
 import type { Hono } from "hono";
 
+import { withPeer } from "../helpers/peer.js";
+
 try {
   initCore(process.env);
 } catch {
@@ -57,7 +59,7 @@ const sent: OutgoingEvent[] = [];
 beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false });
   const { createApp } = await import("@server/app.js");
-  app = createApp();
+  app = withPeer(createApp());
   initServerAnalytics({
     apiKey: "0123456789abcdef0123456789abcdef",
     createClient: () => ({ track: (event) => void sent.push(event), flush: async () => undefined }),
