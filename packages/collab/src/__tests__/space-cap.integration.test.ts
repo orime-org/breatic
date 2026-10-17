@@ -17,7 +17,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import { Redis as RedisExtension } from "@hocuspocus/extension-redis";
 import * as Y from "yjs";
 
-import { initCore, createRedisClient, env, getCollabRedis, rawPg as sql, writeSpaceEntry } from "@breatic/core";
+import { initCore, createRedisClient, getCollabRedis, rawPg as sql, writeSpaceEntry } from "@breatic/core";
 import {
   MAX_SPACES_PER_PROJECT,
   projectMetaDocName,
@@ -30,6 +30,7 @@ import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { readListedContentDocNames } from "@collab/services/project-space-list.js";
 import { handleSpaceRpc } from "@collab/services/space-rpc.js";
+import { spaceCountLockKey } from "@collab/services/space-count-lock.js";
 
 type RpcBody = Omit<SpaceRpcRequest, "id">;
 
@@ -162,7 +163,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  const keys = await getCollabRedis().keys(`${env.ENV}:collab:lock:space-delete:*`);
+  const keys = await getCollabRedis().keys(spaceCountLockKey("*"));
   if (keys.length > 0) await getCollabRedis().del(...keys);
 });
 
@@ -230,7 +231,7 @@ describe("the Space cap on real Postgres and Redis", () => {
 
   it("answers BUSY when the lock stays held through the whole wait", async () => {
     const { projectId, ownerId } = await projectWith(1);
-    await getCollabRedis().set(`${env.ENV}:collab:lock:space-delete:${projectId}`, "held-elsewhere", "EX", 30);
+    await getCollabRedis().set(spaceCountLockKey(projectId), "held-elsewhere", "EX", 30);
 
     expect(outcome(await rpc(instanceA, projectId, ownerId, create("waits")))).toBe("BUSY");
     expect(await yjsRepo.countLiveSpaceDocs(projectId)).toBe(1);

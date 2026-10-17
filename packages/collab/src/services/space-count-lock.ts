@@ -87,7 +87,7 @@ export class SpaceCountLockBusyError extends Error {
  * @param projectId - Project the lock scopes.
  * @returns Redis key `{env}:collab:lock:space-delete:{projectId}`.
  */
-function lockKey(projectId: string): string {
+export function spaceCountLockKey(projectId: string): string {
   return `${env.ENV}:collab:lock:space-delete:${projectId}`;
 }
 
@@ -126,7 +126,7 @@ export async function withSpaceCountLock<T>(
   const attempts = opts?.retryAttempts ?? DEFAULT_RETRY_ATTEMPTS;
   const retryDelayMs = opts?.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   const redis = getCollabRedis();
-  const key = lockKey(projectId);
+  const key = spaceCountLockKey(projectId);
   const token = randomUUID();
 
   let acquired = false;
