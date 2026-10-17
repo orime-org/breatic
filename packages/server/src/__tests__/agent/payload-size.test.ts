@@ -41,9 +41,9 @@ const EMPTY: ModelMessage[] = [];
 
 describe("the payload the budget is measured against", () => {
   it("counts the instructions", () => {
-    const short = measureInstructionsAndTools({ instructions: "abc", tools: NO_TOOLS });
+    const short = measureInstructionsAndTools({ instructions: { base: "abc" }, tools: NO_TOOLS });
     const long = measureInstructionsAndTools({
-      instructions: `abc${"x".repeat(1000)}`,
+      instructions: { base: `abc${"x".repeat(1000)}` },
       tools: NO_TOOLS,
     });
 
@@ -57,9 +57,9 @@ describe("the payload the budget is measured against", () => {
   it("counts the tool definitions", () => {
     // The assertion that fails when `tools` is left out of the sum. The
     // instructions are identical in both calls; only the tool set differs.
-    const withoutTools = measureInstructionsAndTools({ instructions: "system", tools: NO_TOOLS });
+    const withoutTools = measureInstructionsAndTools({ instructions: { base: "system" }, tools: NO_TOOLS });
     const withTools = measureInstructionsAndTools({
-      instructions: "system",
+      instructions: { base: "system" },
       tools: { web_search: sizedTool("fetches a page", 8) },
     });
 
@@ -68,11 +68,11 @@ describe("the payload the budget is measured against", () => {
 
   it("grows by exactly what a longer tool description adds", () => {
     const base = measureInstructionsAndTools({
-      instructions: "",
+      instructions: { base: "" },
       tools: { web_search: sizedTool("fetches") },
     });
     const longer = measureInstructionsAndTools({
-      instructions: "",
+      instructions: { base: "" },
       tools: { web_search: sizedTool(`fetches${"z".repeat(300)}`) },
     });
 
@@ -83,11 +83,11 @@ describe("the payload the budget is measured against", () => {
     // Same name, same description, different schema: the only assertion here
     // that fails when the schema is left out of a tool's measurement.
     const narrow = measureInstructionsAndTools({
-      instructions: "",
+      instructions: { base: "" },
       tools: { web_search: sizedTool("fetches a page", 1) },
     });
     const wide = measureInstructionsAndTools({
-      instructions: "",
+      instructions: { base: "" },
       tools: { web_search: sizedTool("fetches a page", 12) },
     });
 
@@ -96,11 +96,11 @@ describe("the payload the budget is measured against", () => {
 
   it("counts every tool in the set, not just the first", () => {
     const one = measureInstructionsAndTools({
-      instructions: "",
+      instructions: { base: "" },
       tools: { a: sizedTool("first tool") },
     });
     const two = measureInstructionsAndTools({
-      instructions: "",
+      instructions: { base: "" },
       tools: { a: sizedTool("first tool"), b: sizedTool("second tool") },
     });
 
@@ -159,7 +159,7 @@ describe("the payload the budget is measured against", () => {
   });
 
   it("returns zero for an empty request", () => {
-    expect(measureInstructionsAndTools({ instructions: "", tools: NO_TOOLS })).toBe(0);
+    expect(measureInstructionsAndTools({ instructions: { base: "" }, tools: NO_TOOLS })).toBe(0);
     expect(measureMessages(EMPTY)).toBe(0);
   });
 });

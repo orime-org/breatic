@@ -46,7 +46,8 @@ export function loadEnv(root: string): void {
     if (eqIndex === -1) continue;
     const key = trimmed.slice(0, eqIndex).trim();
     let value = trimmed.slice(eqIndex + 1).trim();
-    // Strip inline comments outside quoted values
+    // Strip inline comments outside quoted values; an empty value leaves the comment first.
+    if (value.startsWith("#")) value = "";
     if (!value.startsWith('"') && !value.startsWith("'")) {
       const commentIndex = value.indexOf(" #");
       if (commentIndex !== -1) value = value.slice(0, commentIndex).trim();

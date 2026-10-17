@@ -31,7 +31,7 @@ import { createLogger } from "@breatic/core";
 import { parseDocName } from "@breatic/shared";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
-import { lazySeedMeta } from "@collab/services/lazy-seed.js";
+import { lazySeedMeta, type SeedOpener } from "@collab/services/lazy-seed.js";
 import {
   beginStore,
   commitStore,
@@ -55,16 +55,19 @@ const logger = createLogger("collab-persistence");
  * start empty until first used).
  * @param args - Fetch payload.
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
+ * @param args.opener - The loading connection's handshake, for the seeded Space's event.
  * @returns The stored (or freshly lazy-seeded) Yjs bytes, or null.
  */
 export async function fetchDoc({
   documentName,
+  opener,
 }: {
   documentName: string;
+  opener?: SeedOpener;
 }): Promise<Uint8Array | null> {
   const existing = await yjsDocumentsRepo.fetchDocData(documentName);
   if (existing) return existing;
-  return lazySeedMeta(documentName);
+  return lazySeedMeta(documentName, opener);
 }
 
 /**
@@ -179,7 +182,7 @@ export function staysLoaded(driver: Hocuspocus, documentName: string): boolean {
 /** Collaborators the extension needs, overridable so tests can count them. */
 export interface PersistenceDeps {
   /** Read a document's stored bytes. */
-  fetch(args: { documentName: string }): Promise<Uint8Array | null>;
+  fetch(args: { documentName: string; opener?: SeedOpener }): Promise<Uint8Array | null>;
   /** Write a document's bytes. */
   store(args: { documentName: string; state: Uint8Array }): Promise<void>;
   /** Turn a live document into the bytes to store. */
@@ -190,7 +193,12 @@ export interface PersistenceDeps {
 
 /** The two hooks hocuspocus drives persistence through. */
 export interface PersistenceExtension {
-  onLoadDocument(args: { documentName: string; document: Y.Doc }): Promise<void>;
+  onLoadDocument(args: {
+    documentName: string;
+    document: Y.Doc;
+    requestHeaders?: Headers;
+    context?: unknown;
+  }): Promise<void>;
   onStoreDocument(args: { documentName: string; document: Y.Doc }): Promise<void>;
 }
 
@@ -208,8 +216,8 @@ export function createPersistenceExtension(
   const recordEdit = deps.recordEdit ?? recordProjectEdit;
 
   return {
-    onLoadDocument: async ({ documentName, document }): Promise<void> => {
-      const update = await fetch({ documentName });
+    onLoadDocument: async ({ documentName, document, requestHeaders, context }): Promise<void> => {
+      const update = await fetch({ documentName, opener: { requestHeaders, context } });
       if (update) applyUpdate(document, update);
     },
 

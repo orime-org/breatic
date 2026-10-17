@@ -20,6 +20,7 @@ import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
+import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
@@ -46,13 +47,14 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName, type GenerationSource } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
 import { isModelTool, miniToolById } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
+import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 
 /**
  * What a provider's figure is worth in credits, by the same conversion every
@@ -78,6 +80,11 @@ export interface TaskJobData {
   taskId: string;
   taskType: string;
   userId: string;
+  /**
+   * The requesting browser's analytics consent when the task was queued
+   * (inner#1442 §4.4.5). Absent on jobs queued before it existed; read as no consent.
+   */
+  analyticsConsent?: ConsentSnapshot;
   /**
    * Project the task is scoped to. Required for any task that writes
    * back to a canvas node (v10: every canvas-bound mini-tool / AIGC
@@ -286,7 +293,7 @@ export async function runTask(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  return await runTaskBody(job, token);
+  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => runTaskBody(job, token));
 }
 
 /**
@@ -716,6 +723,7 @@ async function runTaskBody(
   // retry (shouldn't happen given the re-entry guard above, but defense
   // in depth) reads `wasFirst = false` and skips the deduct step.
   const wasFirst = await taskService.markCompletedAndBill(taskId, result, creditsUsed, durationMs);
+  if (wasFirst) await reportFirstGeneration({ taskId, taskType, userId, projectId });
 
   const usedModel = (result.model as string | undefined) ?? model;
   const usedProvider = providerOf(taskType, usedModel);
@@ -933,7 +941,10 @@ async function recordGenerationActivity(args: {
       });
       changed = inserted !== null;
     }
-    if (changed) await publishActivityNew(args.projectId);
+    if (changed) {
+      await publishActivityNew(args.projectId);
+      await reportCollaboratorFirstAction({ projectId: args.projectId, userId: args.userId, action: "generation" });
+    }
   } catch (err) {
     logger.warn(
       { err, taskId: args.taskId, projectId: args.projectId },

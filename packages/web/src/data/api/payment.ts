@@ -62,6 +62,14 @@ export interface CheckoutRequest {
   consented: true;
 }
 
+/** The answer to settling a returned checkout. */
+export interface ConfirmedPayment {
+  status: string;
+  paid: boolean;
+  amountCents: number;
+  currency: string;
+}
+
 export const paymentApi = {
   /**
    * The packs on offer, and how long the return page may wait for a
@@ -89,10 +97,11 @@ export const paymentApi = {
   /**
    * Settle the purchase a buyer has just come back from.
    * @param sessionId - The Checkout Session they returned on.
-   * @returns What settling it did.
+   * @returns What settling it did, and whether the order is paid with its
+   *   amount and currency (the ad conversion reads these, inner#1442 §4.9).
    */
-  confirm(sessionId: string): Promise<{ status: string }> {
-    return apiPost<{ status: string }, { session_id: string }>(
+  confirm(sessionId: string): Promise<ConfirmedPayment> {
+    return apiPost<ConfirmedPayment, { session_id: string }>(
       '/payment/confirm',
       { session_id: sessionId },
     );

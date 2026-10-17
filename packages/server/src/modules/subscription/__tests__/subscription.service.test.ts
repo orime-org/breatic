@@ -28,6 +28,11 @@ vi.mock("@server/infra/stripe.js", () => ({
 }));
 
 vi.mock("@breatic/core", () => ({
+  trackServerEvent: vi.fn(),
+  currentConsent: vi.fn(() => ({ analytics: false, ads: false })),
+  getAccountAttribution: vi.fn(async () => null),
+  enqueueAdsConversion: vi.fn(async () => false),
+  markFirstActive: vi.fn(async () => false),
   listSubscriptions: vi.fn(),
   upsertSubscription: vi.fn(),
   subscriptionSituation: vi.fn(),
@@ -86,6 +91,7 @@ import {
   ConflictError,
   ValidationError,
   logger,
+  trackServerEvent,
 } from "@breatic/core";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as service from "@server/modules/subscription/subscription.service.js";
@@ -261,7 +267,13 @@ describe("startCheckout — no live subscription (#106 §7.2)", () => {
         mode: "subscription",
         customer: "cus_1",
         line_items: [{ price: "price_team_month", quantity: 1 }],
-        subscription_data: { metadata: { userId: USER } },
+        subscription_data: {
+          // The subscribing browser's consent rides along (inner#1442 §4.4.5).
+          metadata: {
+            userId: USER,
+            analyticsConsent: JSON.stringify({ analytics: false, ads: false }),
+          },
+        },
       }),
     );
   });
@@ -895,6 +907,18 @@ describe("cancel and resume (#106 §7.5)", () => {
     expect(stripe.subscriptions.update).toHaveBeenCalledWith("sub_1", {
       cancel_at_period_end: true,
       expand: ["latest_invoice"],
+    });
+  });
+
+  it("reports the cancellation with the tier and the day it ends", async () => {
+    situationIs("active", { stripeSubscriptionId: "sub_1", tier: "pro" });
+
+    await service.cancel(USER);
+
+    expect(trackServerEvent).toHaveBeenCalledWith("subscription_cancelled", {
+      userId: USER,
+      insertId: expect.stringMatching(/^cancel:sub_1:/),
+      properties: { tier: "pro", ends_at: new Date(1_789_000_000 * 1000).toISOString() },
     });
   });
 

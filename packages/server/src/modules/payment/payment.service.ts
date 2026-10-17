@@ -53,6 +53,8 @@ import {
 import * as consentRepo from "@server/modules/payment/purchase-consent.repo.js";
 import * as mailRepo from "@server/modules/payment/purchase-mail.repo.js";
 import { randomUUID } from "node:crypto";
+import { enqueueAdsConversion, trackServerEvent } from "@breatic/core";
+import { readCheckoutSnapshot, takeCheckoutSnapshot } from "@server/modules/analytics/checkout-snapshot.js";
 import type Stripe from "stripe";
 
 /**
@@ -396,8 +398,40 @@ export async function fulfillPayment(
     // outcome, and a row left behind by a process that went away still offers
     // its resend.
     void startConfirmationMail(payment.id);
+    reportPurchase(payment);
   }
   return outcome;
+}
+
+/**
+ * Report a granted credit purchase to analytics and the ad platform, under
+ * the consent of the browser that placed the order (inner#1442 design §4.8, §4.9).
+ * @param payment - The order, as read before the grant.
+ */
+function reportPurchase(payment: PaymentEntity): void {
+  const { consent, click } = readCheckoutSnapshot(payment.metadata);
+  const transactionId = `purchase:${payment.stripeSessionId}`;
+  trackServerEvent(
+    "credit_purchase_completed",
+    {
+      userId: payment.userId,
+      insertId: transactionId,
+      properties: { credits: payment.creditsGranted, amount_cents: payment.amountCents, currency: payment.currency },
+    },
+    consent,
+  );
+  enqueueAdsConversion(
+    {
+      userId: payment.userId,
+      conversion: "credit_purchase",
+      transactionId,
+      click,
+      value: { amountCents: payment.amountCents, currency: payment.currency },
+    },
+    { consent: consent.ads },
+  ).catch((err: unknown) => {
+    logger.error({ err, paymentId: payment.id }, "ads_conversion_enqueue_failed");
+  });
 }
 
 /**
@@ -577,6 +611,7 @@ export async function createCheckout(input: {
     metadata: { userId: input.userId, credits: String(tier.credits) },
   }, stripeCallBounds());
 
+  const snapshot = await takeCheckoutSnapshot(input.userId);
   // One transaction, because a payment shares its receipt's primary key —
   // see `createSource` for why the receipt is opened here and not later.
   const payment = await db.transaction(async (tx) => {
@@ -599,6 +634,10 @@ export async function createCheckout(input: {
           consentTextVersion: CONSENT_CREDITS_VERSION,
           refundTextVersion: REFUND_CREDITS_VERSION,
           consentedAt: consentedAt.toISOString(),
+          // The buying browser's consent and ad click: the purchase
+          // completes in a webhook or a later visit without its cookie.
+          analyticsConsent: snapshot.consent,
+          ...(snapshot.click ? { adClick: snapshot.click } : {}),
         },
       },
       tx,
@@ -627,6 +666,15 @@ export async function handlePaymentFailed(
   if (!payment) return { status: "unknown" };
   if (payment.status !== "pending") return { status: "replay" };
   await paymentRepo.updatePaymentStatus(payment.id, "failed");
+  trackServerEvent(
+    "credit_purchase_failed",
+    {
+      userId: payment.userId,
+      insertId: `purchase-failed:${payment.id}`,
+      properties: { success: false, error_code: "async_payment_failed" },
+    },
+    readCheckoutSnapshot(payment.metadata).consent,
+  );
   return { status: "failed" };
 }
 
@@ -709,6 +757,22 @@ export async function confirmCheckout(
     throw new NotFoundError(t("server.payment.not_found"));
   }
   return fulfillPayment(stripeSessionId, null);
+}
+
+/**
+ * Whether an order is paid, whichever pass granted it, and for how much.
+ * @param stripeSessionId - The order's Checkout Session.
+ * @returns `paid` from the order row, with its amount and currency.
+ */
+export async function paidOrder(
+  stripeSessionId: string,
+): Promise<{ paid: boolean; amountCents: number; currency: string }> {
+  const payment = await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
+  return {
+    paid: payment?.status === "completed",
+    amountCents: payment?.amountCents ?? 0,
+    currency: payment?.currency ?? "",
+  };
 }
 
 /**

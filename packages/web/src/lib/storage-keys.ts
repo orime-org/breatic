@@ -57,6 +57,12 @@ export const STORAGE_KEYS = {
   sessionSeen: 'breatic.sessionSeen',
   /** sessionStorage: app versions this tab chose to defer. See `use-app-update`. */
   deferredAppVersions: 'breatic.deferredAppVersions',
+  /**
+   * The campaign source of this browser's first and latest visit, kept only
+   * while a consent category is accepted; the website writes the same key
+   * (inner#1442 §4.5). See `data/analytics/attribution`.
+   */
+  attribution: 'breatic.attribution',
 } as const;
 
 /** Union of every valid persisted key value. */

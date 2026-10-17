@@ -32,7 +32,8 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { MessagePart } from "@breatic/shared";
+import type { Attribution, ConsentRecord, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -131,6 +132,12 @@ export const users = pgTable(
     // negotiated in, and changed only when the user switches the interface
     // language.
     locale: varchar("locale", { length: 10 }).default("en").notNull(),
+    // The consent a signed-in browser last reported (0097, inner#1442 §4.4.6),
+    // read by events no browser is behind.
+    consentSeen: jsonb("consent_seen").$type<ConsentRecord>(),
+    // First-touch and last-touch campaign source, written at sign-up from
+    // what the browser kept after consent (0097, inner#1442).
+    attribution: jsonb("attribution").$type<Attribution>(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -1135,6 +1142,11 @@ export const subscriptions = pgTable(
     // subscription object in the 2025-03-31 release; nullable because a
     // subscription whose first invoice never settled has no period.
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    // When this subscription first came into force (0097, inner#1442).
+    // Written once in the same transaction that first lifts the account off
+    // `base`; `subscription_started` is sent only on that write, so a lapsed
+    // subscription that recovers does not count as a new start.
+    firstActiveAt: timestamp("first_active_at", { withTimezone: true }),
     cancelAtPeriodEnd: boolean("cancel_at_period_end")
       .default(false)
       .notNull(),
@@ -2596,6 +2608,12 @@ export const uploadGrants = pgTable(
     /** Why the grant was voided, written with `voided_at`. */
     failureReason: text("failure_reason"),
     /**
+     * The uploading browser's analytics consent when the ticket was issued
+     * (0097, inner#1442). Every finish path that writes `asset:uploaded`
+     * reads it here, since none of them has the browser's request.
+     */
+    analyticsConsent: jsonb("analytics_consent").$type<ConsentSnapshot>(),
+    /**
      * How long the ticket itself stays usable. The same instant is signed into
      * the ticket, and the Worker checks that copy once, when the browser asks
      * it to start; an upload already running is never cut off by it. This
@@ -2737,3 +2755,44 @@ export const storageReclaimQueue = pgTable(
     ),
   ],
 );
+
+// ── Ad conversion uploads (0097, inner#1442 §4.9) ───────────────────
+
+/**
+ * One row per conversion reported to the ad platform. The key makes a
+ * conversion queue once however many paths report it.
+ */
+export const adsConversionUploads = pgTable(
+  "ads_conversion_uploads",
+  {
+    conversion: varchar("conversion", { length: 32 }).notNull(),
+    transactionId: varchar("transaction_id", { length: 255 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull(),
+    /** The job to upload. */
+    job: jsonb("job").$type<AdsConversionJob>().notNull(),
+    /** The platform's id for the accepted upload. */
+    requestId: varchar("request_id", { length: 128 }),
+    /** Why the row stopped short of the platform, e.g. `consent_withdrawn`. */
+    failureReason: varchar("failure_reason", { length: 32 }),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.conversion, table.transactionId] }),
+    check(
+      "ads_conversion_uploads_status_check",
+      sql`${table.status} IN ('queued', 'uploaded', 'failed')`,
+    ),
+  ],
+);
+
+// ── Analytics milestones (0097, inner#1442 §4.8) ────────────────────
+
+/**
+ * One row per product milestone that is reported once, keyed by what it is
+ * about (`collab:<projectId>:<userId>`). The insert is the claim: the process
+ * whose insert lands reports it, every later one finds the key taken.
+ */
+export const analyticsMilestones = pgTable("analytics_milestones", {
+  key: varchar("key", { length: 255 }).primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});

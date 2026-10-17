@@ -45,7 +45,7 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db, getLimitsForStudio } from "@breatic/core";
+import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
 import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
@@ -206,6 +206,11 @@ export async function createInvite(
     );
   }
 
+  trackServerEvent("member_invited", {
+    userId: inviterUserId,
+    insertId: `invite:${invitationId}`,
+    properties: { studio_id: project.studioId, project_id: projectId, scope: "project", role },
+  });
   return {
     invitationId,
     inviteeUserId: invitee.id,
@@ -241,7 +246,7 @@ export async function confirmInvite(
   invitationId: string,
   receiverUserId: string,
 ): Promise<void> {
-  let joinedActivity: { projectId: string; role: ProjectRole } | null = null;
+  let joinedActivity: { projectId: string; studioId: string; role: ProjectRole } | null = null;
   await db.transaction(async (tx) => {
     // Which project this invite is for, read WITHOUT a lock. The id is only
     // reachable through the invitation row, and the row lock below has to come
@@ -338,13 +343,18 @@ export async function confirmInvite(
       },
       tx,
     });
-    joinedActivity = { projectId: accepted.projectId, role: accepted.role };
+    joinedActivity = { projectId: accepted.projectId, studioId: project.studioId, role: accepted.role };
   });
   // Activity row AFTER the membership transaction committed (the feed
   // records outcomes; recordProjectActivity is best-effort and
   // announces the live signal itself).
   if (joinedActivity !== null) {
-    const joined = joinedActivity as { projectId: string; role: ProjectRole };
+    const joined = joinedActivity as { projectId: string; studioId: string; role: ProjectRole };
+    trackServerEvent("invitation_accepted", {
+      userId: receiverUserId,
+      insertId: `invite-accepted:${invitationId}`,
+      properties: { studio_id: joined.studioId, project_id: joined.projectId, scope: "project", role: joined.role },
+    });
     await recordProjectActivity({
       projectId: joined.projectId,
       actorUserId: receiverUserId,

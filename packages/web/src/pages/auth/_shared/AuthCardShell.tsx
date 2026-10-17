@@ -7,6 +7,8 @@ import { Link } from 'react-router-dom';
 import { LangSwitcher } from '@web/features/preferences/LangSwitcher';
 import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { useTranslation } from '@web/i18n/use-translation';
+import { Button } from '@web/components/ui/button';
+import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 import { PRIVACY_URL, TERMS_URL } from '@web/lib/official-home';
 import { BrandHomeLink } from '@web/ui/BrandHomeLink';
 import { TopBar } from '@web/ui/TopBar';
@@ -126,6 +128,11 @@ function AuthPageFooter(): React.JSX.Element {
       <a href={PRIVACY_URL} target='_blank' rel='noreferrer' className={FOOTER_LINK_CLASS}>
         {t('auth.terms.privacyLink')}
       </a>
+      {COOKIE_SETTINGS_AVAILABLE ? (
+        <Button type='button' variant={null} size={null} onClick={openCookieSettings} className={FOOTER_LINK_CLASS}>
+          {t('consent.link')}
+        </Button>
+      ) : null}
     </footer>
   );
 }

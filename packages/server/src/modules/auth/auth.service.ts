@@ -21,7 +21,15 @@ import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
-import { env, getHonouredTierForUser } from "@breatic/core";
+import {
+  currentConsent,
+  enqueueAdsConversion,
+  env,
+  getHonouredTierForUser,
+  logger,
+  recordReportedConsent,
+  trackServerEvent,
+} from "@breatic/core";
 import {
   setSession,
   getSession,
@@ -32,8 +40,8 @@ import {
   ConflictError,
   UnauthorizedError,
 } from "@breatic/core";
-import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
-import type { UserEntity } from "@breatic/shared";
+import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
+import type { Attribution, ReportedConsent, UserEntity } from "@breatic/shared";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -51,17 +59,38 @@ export function hashPassword(password: string): Promise<string> {
  * sign-up for the same mailbox wrote first. Every sign-up checks the address
  * before it writes, and two that arrive together both pass that check; the
  * unique index is what decides between them.
+ *
+ * Every way of signing up ends here, so this is where `signup_completed` is
+ * sent. The campaign source is kept only when the signing-up browser accepted
+ * a consent category (inner#1442 design §4.5).
  * @param data - The account to create, as `userRepo.createUser` takes it.
  * @returns The created account.
  * @throws {ConflictError} When the address already belongs to an account.
  */
 export async function createAccount(data: Parameters<typeof userRepo.createUser>[0]): Promise<UserEntity> {
+  const consent = currentConsent();
+  const attribution = consent.analytics || consent.ads ? (data.attribution ?? null) : null;
+  let user: UserEntity;
   try {
-    return await userRepo.createUser(data);
+    user = await userRepo.createUser({ ...data, attribution });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
     throw err;
   }
+  trackServerEvent("signup_completed", {
+    userId: user.id,
+    insertId: `signup:${user.id}`,
+    properties: { method: data.googleId ? "google" : "email" },
+  });
+  enqueueAdsConversion({
+    userId: user.id,
+    conversion: "signup",
+    transactionId: `signup:${user.id}`,
+    click: adClickFrom(attribution, Date.now()),
+  }).catch((err: unknown) => {
+    logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
+  });
+  return user;
 }
 
 /**
@@ -81,6 +110,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
  * a "save this now" UX; only the bcrypt hash is persisted server-side.
  * @param email - The user's email address
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
+ * @param attribution - Campaign source the browser recorded before sign-up
  * @returns `{ user, recoveryCode }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
@@ -88,6 +118,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
 export async function register(
   email: string,
   password: string,
+  attribution: Attribution | null = null,
 ): Promise<{ user: UserEntity; recoveryCode: string }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
@@ -95,7 +126,7 @@ export async function register(
   }
 
   const hashedPassword = await hashPassword(password);
-  const user = await createAccount({ email, hashedPassword, locale: getActiveLocale() });
+  const user = await createAccount({ email, hashedPassword, locale: getActiveLocale(), attribution });
 
   // Generate + store recovery code. Done after createUser so we have
   // a user.id to attach to. Failures here bubble up; the user row will
@@ -186,15 +217,18 @@ export async function loginEmail(
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
  * @param authoritativeEmail - Whether Google owns verification of this email (Gmail or Workspace).
+ * @param attribution - Campaign source the browser recorded, kept only on a new account.
  * @throws {UnauthorizedError} If linking would claim an unproven or differently bound email.
- * @returns The user and a session token
+ * @returns The user, a session token, and whether this call created the account
  */
 export async function loginOrCreateGoogle(
   googleId: string,
   email: string,
   authoritativeEmail = false,
-): Promise<{ user: UserEntity; token: string }> {
+  attribution: Attribution | null = null,
+): Promise<{ user: UserEntity; token: string; created: boolean }> {
   let user = await userRepo.getUserByGoogleId(googleId);
+  let created = false;
 
   if (!user) {
     user = await userRepo.getUserByEmail(email);
@@ -206,7 +240,8 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await createAccount({ email, googleId, locale: getActiveLocale() });
+      user = await createAccount({ email, googleId, locale: getActiveLocale(), attribution });
+      created = true;
     }
   }
 
@@ -218,7 +253,7 @@ export async function loginOrCreateGoogle(
 
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
-  return { user, token };
+  return { user, token, created };
 }
 
 /**
@@ -243,6 +278,17 @@ export async function getUserById(userId: string): Promise<UserEntity | null> {
  */
 export async function setLocale(userId: string, locale: string): Promise<void> {
   await userRepo.updateUser(userId, { locale });
+}
+
+/**
+ * Keep what a signed-in browser reports as the account's latest consent
+ * (`PUT /users/me/consent`, inner#1442 design §4.4.6); a deleted account is
+ * left as it is.
+ * @param userId - The account.
+ * @param report - The browser's consent in force.
+ */
+export async function reportConsent(userId: string, report: ReportedConsent): Promise<void> {
+  await recordReportedConsent(userId, report);
 }
 
 /**

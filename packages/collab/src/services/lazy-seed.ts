@@ -35,15 +35,24 @@ import {
   createLogger,
   defaultSpaceName,
   encodeInitialMetaState,
+  getRedis,
+  getSession,
   loadInitialSpaceType,
   projectActivitiesRepo,
+  runWithConsent,
+  serverAnalyticsOn,
+  sessionCookieName,
 } from "@breatic/core";
 import {
+  CONSENT_COOKIE_NAME,
   deriveId,
   encodeInitialSpaceContent,
+  parseConsentCookie,
   parseDocName,
   spaceContentDocName,
 } from "@breatic/shared";
+import { readCookie } from "@collab/hooks/auth.js";
+import { reportSpaceCreated } from "@collab/services/space-analytics.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
 const logger = createLogger("lazy-seed");
@@ -57,10 +66,12 @@ const SYSTEM_ACTOR = "system";
  * chosen at create time — and return the meta bytes; otherwise return
  * null (the caller's fetch result stands).
  * @param documentName - Full Yjs doc name being loaded
+ * @param opener - The connection whose load triggered this, when there is one
  * @returns The seeded meta bytes, or null when no seed applies
  */
 export async function lazySeedMeta(
   documentName: string,
+  opener?: SeedOpener,
 ): Promise<Uint8Array | null> {
   const parsed = parseDocName(documentName);
   if (!parsed || parsed.kind !== "meta") return null;
@@ -110,9 +121,51 @@ export async function lazySeedMeta(
     } catch (e) {
       logger.error({ err: e, projectId, spaceId }, "activity_seed_failed");
     }
+    await reportSeededSpace({ projectId, spaceId, spaceType: kind }, opener);
     return bytes;
   }
   // Lost the insert race (another connection/instance seeded first):
   // return the persisted winner so every loader converges on one doc.
   return (await yjsDocumentsRepo.fetchDocData(documentName)) ?? bytes;
+}
+
+/** The handshake of the connection that loaded the meta doc first. */
+export interface SeedOpener {
+  /** The WebSocket upgrade request's headers, carrying its cookies. */
+  readonly requestHeaders?: Headers;
+  /** The connection context the auth hook returned, when this load came from one. */
+  readonly context?: unknown;
+}
+
+/**
+ * Report the project's first Space as created by whoever opened the project,
+ * under that browser's consent cookie (inner#1442 design §4.4.5). A load
+ * started by an auth-time lookup carries the cookies but no user, so the
+ * user is read from the session cookie then.
+ * @param space - The seeded Space.
+ * @param space.projectId - Its project.
+ * @param space.spaceId - Its id.
+ * @param space.spaceType - Its kind.
+ * @param opener - The loading connection's handshake.
+ */
+async function reportSeededSpace(
+  space: { projectId: string; spaceId: string; spaceType: string },
+  opener: SeedOpener | undefined,
+): Promise<void> {
+  if (!opener || !serverAnalyticsOn()) return;
+  // Reporting is best-effort: a cookie it cannot read must not fail the project's load.
+  try {
+    const cookies = opener.requestHeaders?.get("cookie") ?? undefined;
+    const gpc = opener.requestHeaders?.get("sec-gpc") === "1";
+    const consent = parseConsentCookie(readCookie(cookies, CONSENT_COOKIE_NAME) ?? undefined, Date.now(), gpc);
+    if (!consent.analytics) return;
+    const fromContext = (opener.context as { user?: { id?: string } } | undefined)?.user?.id;
+    const token = readCookie(cookies, sessionCookieName());
+    const userId =
+      fromContext && fromContext !== SYSTEM_ACTOR ? fromContext : token ? await getSession(getRedis(), token) : null;
+    if (!userId) return;
+    await runWithConsent(consent, () => reportSpaceCreated({ ...space, userId, via: "seed" }));
+  } catch (err) {
+    logger.warn({ err, projectId: space.projectId }, "space_created_report_failed");
+  }
 }

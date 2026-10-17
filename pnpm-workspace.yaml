@@ -77,6 +77,8 @@ catalog:
   "@types/nodemailer": ^8.0.1
   "bcryptjs": ^3.0.3
   "bullmq": ^5.81.3
+  "@amplitude/analytics-node": 1.5.76
+  "@google-ads/datamanager": 1.1.0
   "dotenv": ^16.6.1
   "drizzle-orm": ^0.45.2
   "google-auth-library": ^10.9.1

@@ -246,6 +246,16 @@ export const coreConfigSchema = z.object({
   // value that is not a DSN also leaves it off; each service logs that once.
   SENTRY_DSN: z.string().trim().default(""),
 
+  // ── Product analytics and ad conversions ─────────
+  // All blank on a self-hosted instance, which then loads no vendor client
+  // and sends nothing. A deployment fills in its own accounts.
+  AMPLITUDE_API_KEY: z.string().trim().default(""),
+  GOOGLE_ADS_CUSTOMER_ID: z.string().trim().default(""),
+  // JSON object: conversion name → Google Ads conversion action id.
+  GOOGLE_ADS_CONVERSION_ACTIONS: z.string().trim().default(""),
+  // Service account JSON key for the Data Manager API. Secret.
+  GOOGLE_DATA_MANAGER_CREDENTIALS: z.string().trim().default(""),
+
   // ── Agent Tools ───────────────────────────────────
   BRAVE_SEARCH_API_KEY: z.string().default(""),
 

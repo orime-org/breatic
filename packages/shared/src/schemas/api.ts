@@ -36,9 +36,17 @@ export function normalizeEmail(email: string): string {
 /** An email address field, returned in its normalized form. */
 export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email());
 
+/**
+ * Campaign source a browser recorded before sign-up (inner#1442 §4.5). Left
+ * unchecked here and read with `parseAttribution`, which drops whatever is
+ * malformed: a bad source must never fail the sign-up it rides on.
+ */
+const attributionField = z.unknown().optional();
+
 export const registerSchema = z.object({
   email: emailSchema,
   password: z.string().min(8),
+  attribution: attributionField,
 });
 export type RegisterInput = z.infer<typeof registerSchema>;
 
@@ -46,6 +54,7 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export const SIGNUP_CODE_REGEX = /^\d{6}$/;
 export const signupVerifySchema = z.object({
   code: z.string().regex(SIGNUP_CODE_REGEX),
+  attribution: attributionField,
 });
 export type SignupVerifyInput = z.infer<typeof signupVerifySchema>;
 

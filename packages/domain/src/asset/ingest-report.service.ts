@@ -42,8 +42,9 @@ import {
   getStorageConfig,
   getStreamRedis,
   NotFoundError,
+  reportCollaboratorFirstAction,
 } from "@breatic/core";
-import { canvasSpaceDocName, t, uprightKeyFor } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, t, uprightKeyFor } from "@breatic/shared";
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
@@ -751,10 +752,11 @@ export async function applyIngestReport(
   // wants announced.
   let activityAppendFailed = false;
   if (historyIsNew && grant.projectId !== null && grant.derived !== true) {
+    const type = grant.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded";
     const appended = await appendProjectActivity({
       projectId: grant.projectId,
       actorUserId: grant.userId,
-      type: grant.source === "mini_tool" ? "generation:succeeded" : "asset:uploaded",
+      type,
       spaceId: grant.spaceId,
       nodeId: grant.nodeId,
       payload:
@@ -769,6 +771,12 @@ export async function applyIngestReport(
           : { fileUrl: asset.fileUrl, kind: asset.kind },
     });
     activityAppendFailed = !appended.ok;
+    if (appended.ok) {
+      await reportCollaboratorFirstAction(
+        { projectId: grant.projectId, userId: grant.userId, action: type === "asset:uploaded" ? "asset" : "generation" },
+        grant.analyticsConsent ?? NO_CONSENT,
+      );
+    }
   }
 
   const countsPublishFailed = await announceSuccess(grant, result, historyEntryId);

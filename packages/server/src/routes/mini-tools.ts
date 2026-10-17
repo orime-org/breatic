@@ -9,6 +9,7 @@
  * export uploads like any other file.
  */
 
+import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import { taskService } from "@breatic/domain";
@@ -79,6 +80,8 @@ miniTools.post(
         {
           taskId: task.id,
           userId: user.id,
+          // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
+          analyticsConsent: currentConsent(),
           projectId: body.project_id,
           spaceId: body.space_id,
           source: "mini_tool",

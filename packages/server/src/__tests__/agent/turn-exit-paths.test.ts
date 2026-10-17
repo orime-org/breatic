@@ -234,7 +234,7 @@ describe("what a plain chat turn hands the model", () => {
 });
 
 describe("what a turn hands the model", () => {
-  const stubConfig = { modelId: "m", instructions: "s", tools: {} };
+  const stubConfig = { modelId: "m", instructions: { base: "s" }, tools: {} };
 
   it("passes the caller's prompt and memory", async () => {
     // Every argument, so dropping any one of them goes red here.

@@ -22,9 +22,9 @@ import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { studioAuthService } from "@breatic/domain";
-import { db, getLimitsForStudio, projectEditsRepo } from "@breatic/core";
+import { claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { adClickFrom, t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, ROLE_RANK } from "@breatic/shared";
 import { getStudioProjectPageLimits } from "@server/config/limits.js";
@@ -101,7 +101,7 @@ export async function assertAccess(
  * @param spaceType - Initial Space type seeded on first open (canvas
  *   today; document/timeline accepted but disabled in the create picker)
  * @param description - Optional description
- * @returns The newly created project entity
+ * @returns The newly created project entity, and whether it is the first one the caller ever created
  * @throws {ForbiddenError} if the caller is not an `admin` or `maintainer`
  *   of `studioId` — which is also what a missing or soft-deleted studio
  *   produces, since the role lookup inner-joins a live `studios` row
@@ -115,12 +115,13 @@ export async function create(
   slug: string,
   spaceType: SpaceType,
   description?: string,
-): Promise<ProjectEntity> {
+): Promise<ProjectEntity & { isFirst: boolean }> {
   await requireStudioCreateAccess(userId, studioId);
 
-  return db.transaction(async (tx) => {
+  const { project, isFirst } = await db.transaction(async (tx) => {
     await assertStudioHasProjectRoom(studioId, tx);
-    return projectRepo.createProject(
+    const isFirst = await claimFirstMilestone("first-project", userId, tx);
+    const created = await projectRepo.createProject(
       tx,
       studioId,
       userId,
@@ -129,6 +130,41 @@ export async function create(
       spaceType,
       description,
     );
+    return { project: created, isFirst };
+  });
+  reportProjectCreated(project, { via: "create", is_first: isFirst, space_type: spaceType });
+  if (isFirst) await reportFirstProjectConversion(userId);
+  // The page reports the first-project ad conversion from this (inner#1442 §4.9).
+  return { ...project, isFirst };
+}
+
+/**
+ * Queue the first-project ad conversion, credited to the account's sign-up click.
+ * @param userId - The account that created its first project
+ */
+async function reportFirstProjectConversion(userId: string): Promise<void> {
+  try {
+    await enqueueAdsConversion({
+      userId,
+      conversion: "first_project",
+      transactionId: `first-project:${userId}`,
+      click: adClickFrom(await getAccountAttribution(userId), Date.now()),
+    });
+  } catch (err) {
+    logger.error({ err, userId }, "ads_conversion_enqueue_failed");
+  }
+}
+
+/**
+ * Send `project_created` once the project row is committed.
+ * @param project - The new project
+ * @param properties - How it came about: `via`, `is_first`, and the Space type when known
+ */
+function reportProjectCreated(project: ProjectEntity, properties: Record<string, unknown>): void {
+  trackServerEvent("project_created", {
+    userId: project.createdByUserId,
+    insertId: `project:${project.id}`,
+    properties: { ...properties, studio_id: project.studioId, project_id: project.id },
   });
 }
 
@@ -529,7 +565,7 @@ export async function setCover(
  * lock is taken.
  * @param sourceId - UUID of the project to duplicate
  * @param userId - Authenticated user UUID (becomes new project owner)
- * @returns The newly created duplicate project entity
+ * @returns The newly created duplicate, and whether it is the first project the caller ever created
  * @throws {NotFoundError} if the source project does not exist, or the caller
  *   is not in its studio
  * @throws {ForbiddenError} if the caller is neither the studio's admin nor the
@@ -540,17 +576,23 @@ export async function setCover(
 export async function duplicate(
   sourceId: string,
   userId: string,
-): Promise<ProjectEntity> {
+): Promise<ProjectEntity & { isFirst: boolean }> {
   await assertMayManage(sourceId, userId);
 
-  return db.transaction(async (tx) => {
+  const { project, isFirst } = await db.transaction(async (tx) => {
     // Read first, because the studio to lock is the SOURCE's — a copy lands
     // beside the thing it was copied from and counts against that studio.
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new NotFoundError(t("server.error.not_found"));
     await assertStudioHasProjectRoom(source.studioId, tx);
-    return projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
+    const isFirst = await claimFirstMilestone("first-project", userId, tx);
+    const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
+    return { project: copy, isFirst };
   });
+  reportProjectCreated(project, { via: "duplicate", is_first: isFirst });
+  if (isFirst) await reportFirstProjectConversion(userId);
+  // The page reports the first-project ad conversion from this (inner#1442 §4.9).
+  return { ...project, isFirst };
 }
 
 /**

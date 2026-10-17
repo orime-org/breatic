@@ -29,6 +29,7 @@
 import { createHash } from "node:crypto";
 import { asSchema } from "ai";
 import type { ModelMessage } from "ai";
+import { instructionsText } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { z } from "zod";
 import type { MessageData } from "@breatic/shared";
@@ -126,7 +127,7 @@ function seedHash(prefix: RequestPrefix): string {
     definition.description ?? null,
     asSchema(definition.inputSchema).jsonSchema,
   ]);
-  return sha256(JSON.stringify([prefix.modelId, prefix.instructions, tools]));
+  return sha256(JSON.stringify([prefix.modelId, instructionsText(prefix.instructions), tools]));
 }
 
 /**

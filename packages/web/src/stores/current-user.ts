@@ -5,9 +5,10 @@ import * as Sentry from '@sentry/react';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
-import type { MembershipTier, PersonalStudioRef } from '@breatic/shared';
+import { getLocale, type MembershipTier, type PersonalStudioRef } from '@breatic/shared';
 
 import { authApi, deriveDisplayName, type AuthUser } from '@web/data/api/auth';
+import { identifyUser, resetUser } from '@web/data/analytics';
 import { rememberSession } from '@web/lib/session-seen';
 
 /**
@@ -162,6 +163,9 @@ export const useCurrentUserStore = create<CurrentUserState>()(
         rememberSession(user !== null);
         // Errors raised from here on carry the account id and nothing else.
         Sentry.setUser(user === null ? null : { id: user.id });
+        // Product analytics names the account the same way (inner#1442 §4.5).
+        if (user === null) resetUser();
+        else identifyUser({ id: user.id, membershipTier: user.membershipTier, language: getLocale() });
       }),
     setRole: (role) =>
       set((s) => {
@@ -182,6 +186,7 @@ export const useCurrentUserStore = create<CurrentUserState>()(
         s.loading = false;
         rememberSession(false);
         Sentry.setUser(null);
+        resetUser();
         // bootstrapped intentionally preserved — see store docstring.
       }),
   })),

@@ -48,6 +48,7 @@
  * Returns a `SpaceRpcResponse` whose `id` echoes the request id so
  * the client can demultiplex concurrent in-flight RPCs.
  */
+import { reportSpaceAction, reportSpaceCreated } from "@collab/services/space-analytics.js";
 import { randomUUID } from "node:crypto";
 
 import type { Hocuspocus } from "@hocuspocus/server";
@@ -192,6 +193,7 @@ async function recordSpaceActivity(
   try {
     await projectActivitiesRepo.insert({ projectId, ...activity });
     broadcastActivitySignal(ctx.hocuspocus, projectId);
+    await reportSpaceAction(projectId, activity.actorUserId, activity.type);
   } catch (e) {
     logger.error(
       {
@@ -770,6 +772,7 @@ async function runCreate(
       spaceId,
       payload: { spaceName: name },
     });
+    await reportSpaceCreated({ projectId, spaceId, spaceType: type, userId: caller.userId, via: "manual" });
     return ok(req.id, { spaceId, type, name });
   } finally {
     handBack(conn, logCtx);
@@ -1260,7 +1263,10 @@ async function runRestore(
           payload: { spaceName },
         },
       );
-      if (won) broadcastActivitySignal(ctx.hocuspocus, projectId);
+      if (won) {
+        broadcastActivitySignal(ctx.hocuspocus, projectId);
+        await reportSpaceAction(projectId, caller.userId, "space:restored");
+      }
     } catch (e) {
       // Space is fully restored; only the consumption marker + audit row
       // failed. The deletion row stays unconsumed, so its restore button
