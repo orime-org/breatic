@@ -534,10 +534,10 @@ lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 
 | 文件类型 | 命名 | 例 |
 |---|---|---|
-| React 组件 `.tsx` | `PascalCase`(= 导出名) | `Button.tsx` `ProjectMembersPanel.tsx` |
-| React hook `.ts/.tsx` | `useFooBar`(= 导出名) | `useProjectSpaces.ts` `useCanvasActions.ts` |
+| React 组件 `.tsx` | `PascalCase`(= 导出名) | `AppRouter.tsx` `AuthBootstrap.tsx` |
+| React hook `.ts/.tsx` | `use-foo-bar`(导出名 `useFooBar`) | `use-project-members.ts` `use-socket.ts` |
 | 其他 `.ts`(util / data / config / store) | `kebab-case` | `mini-tools.ts` `base-path.ts` |
-| 测试 | 跟被测对象同名 + `.test`,**放被测对象同级的 `__tests__/` 目录**(不与源码平铺) | `space/__tests__/useProjectSpaces.test.ts` |
+| 测试 | 跟被测对象同名 + `.test`,**放被测对象同级的 `__tests__/` 目录**(不与源码平铺) | `data/__tests__/use-project-members.test.tsx` |
 | 目录 | `kebab-case` | `data/yjs/` `features/active-region/` `spaces/canvas/mini-tool/` |
 
 **测试文件位置(MANDATORY)**:所有 `*.test.{ts,tsx}` / `*.spec.{ts,tsx}` 一律放**被测对象同级的 `__tests__/` 子目录**,禁止与源码平铺 colocated。判定题:**这是测试文件吗?是 → 放同级 `__tests__/`,没有第二个位置**。`breatic/test-file-location` CI 强制(六个后端包 + web + `eslint-rules` + `repo-lint` 的源码树里,出现任何 `__tests__/` 外的测试文件即 fail;规则的保障是它自己的单元测试 —— 旧守卫那个 `--self-test` 第二入口随 shell 脚本一起删了,被测物不再兼任裁判)。命名(`.test` 后缀)与位置(`__tests__/`)是两个正交维度,都强制。
