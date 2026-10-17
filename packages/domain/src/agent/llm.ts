@@ -33,6 +33,7 @@ import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { LanguageModel, SystemModelMessage, streamText } from "ai";
 import { env } from "@breatic/core";
 import type { CoreConfig, PromptCacheTtl } from "@breatic/core";
+import { instructionsText } from "@domain/agent/instructions.js";
 import type { Instructions } from "@domain/agent/instructions.js";
 
 /**
@@ -334,21 +335,23 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
 }
 
 /**
- * The system prompt as the messages a model call sends, each part another
- * conversation also sends ending in a cache breakpoint of its own.
+ * The system prompt as the messages a model call sends.
  *
- * Request-level caching writes one entry, for the prefix ending at the last
- * block, so a new conversation, whose first message is new, finds nothing to
- * read even though everything before that message is the same as in other
+ * Where this route marks cache breakpoints for this model, each part another
+ * conversation also sends goes as its own message ending in a mark: request-
+ * level caching writes one entry, for the prefix ending at the last block, so
+ * a new conversation, whose first message is new, would find nothing to read
+ * even though everything before that message is the same as in other
  * conversations (Anthropic prompt caching, "The system does not write entries
  * for any earlier position"). The mark after the base prompt writes an entry
  * every conversation reads, the one after the project's memory an entry every
- * conversation of that project reads.
+ * conversation of that project reads. Where nothing is marked, the prompt
+ * goes whole, as one message.
  * @param modelString - Model identifier, or undefined for the fallback.
  * @param parts - The base prompt, the project's memory and this
  *   conversation's memory, the last two when there are any.
  * @param cache - How long to cache, or false when the call does not cache.
- * @returns The system messages, in that order.
+ * @returns The system messages, in order.
  * @throws {never} Never.
  */
 export function systemFor(
@@ -358,19 +361,11 @@ export function systemFor(
 ): SystemModelMessage[] {
   const route = directRouteFor(modelString) ?? FALLBACK_ROUTE;
   const mark = cache === false || modelString === undefined ? {} : route.cache(modelString, cache);
-  /**
-   * One part, carrying the cache mark when this call caches.
-   * @param content - The part's text.
-   * @returns The system message.
-   */
-  const marked = (content: string): SystemModelMessage => ({
-    role: "system",
-    content,
-    ...(Object.keys(mark).length === 0 ? {} : { providerOptions: { [route.name]: mark } }),
-  });
+  if (Object.keys(mark).length === 0) return [{ role: "system", content: instructionsText(parts) }];
+  const providerOptions = { [route.name]: mark };
   return [
-    marked(parts.base),
-    ...(parts.project === undefined ? [] : [marked(parts.project)]),
+    { role: "system", content: parts.base, providerOptions },
+    ...(parts.project === undefined ? [] : [{ role: "system" as const, content: parts.project, providerOptions }]),
     ...(parts.conversation === undefined ? [] : [{ role: "system" as const, content: parts.conversation }]),
   ];
 }

@@ -606,13 +606,11 @@ export const domainMock = () => ({
   // which reads as "this turn sent no provider options" -- the one thing
   // the real function never does.
   callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
-  // The real return's shape, unmarked like `callOptionsFor` above: one
-  // system message per part there is, in order.
-  systemFor: vi.fn((_model: string, parts: { base: string; project?: string; conversation?: string }) =>
-    [parts.base, parts.project, parts.conversation]
-      .filter((part): part is string => part !== undefined)
-      .map((content) => ({ role: "system", content })),
-  ),
+  // What the real one sends where nothing is marked, as with
+  // `callOptionsFor` above: the prompt whole, as one message.
+  systemFor: vi.fn((_model: string, parts: { base: string; project?: string; conversation?: string }) => [
+    { role: "system", content: REAL_INSTRUCTIONS_TEXT(parts) },
+  ]),
   instructionsText: REAL_INSTRUCTIONS_TEXT,
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],

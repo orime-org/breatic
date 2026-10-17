@@ -521,18 +521,36 @@ describe("the parts of the system prompt other conversations share", () => {
     ]);
   });
 
-  it("marks nothing for a model that caches a prefix on its own", async () => {
+  const WHOLE = `${PARTS.base}\n\n${PARTS.project}\n\n${PARTS.conversation}`;
+
+  /**
+   * Runs one call whose system prompt is the whole text as one string, the
+   * way calls sent it before the parts were split.
+   * @param model - The model id to route.
+   * @param cache - The cache lifetime asked for, or false for none.
+   * @returns The intercepted request.
+   */
+  async function sendWhole(model: string, cache: LlmModule.CallWants["cache"]): Promise<Seen> {
+    const { getModel, callOptionsFor } = await freshLlm();
+    const { generateText } = await import("ai");
+    seen = undefined;
+    await generateText({ model: getModel(model), system: WHOLE, prompt: "hi", ...callOptionsFor(model, { thinking: true, cache }) });
+    if (!seen) throw new Error("no request was made");
+    return seen;
+  }
+
+  it("sends the prompt whole, as one message, for a model that caches a prefix on its own", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
-    expect(JSON.stringify(systemMessages((await sendSystem("deepseek/deepseek-v4-pro", PARTS, "1h")).body))).not.toContain(
-      "cache_control",
-    );
+    const sent = systemMessages((await sendSystem("deepseek/deepseek-v4-pro", PARTS, "1h")).body);
+    expect(sent).toHaveLength(1);
+    expect(sent).toEqual(systemMessages((await sendWhole("deepseek/deepseek-v4-pro", "1h")).body));
   });
 
-  it("marks nothing when the caller does not ask for caching", async () => {
+  it("sends the prompt whole, as one block, when the caller does not ask for caching", async () => {
     keys.current = { ANTHROPIC_API_KEY: "k" };
-    expect(JSON.stringify((await sendSystem("anthropic/claude-opus-5.5", PARTS, false)).body.system)).not.toContain(
-      "cache_control",
-    );
+    const sent = (await sendSystem("anthropic/claude-opus-5.5", PARTS, false)).body.system;
+    expect(sent).toHaveLength(1);
+    expect(sent).toEqual((await sendWhole("anthropic/claude-opus-5.5", false)).body.system);
   });
 });
 
