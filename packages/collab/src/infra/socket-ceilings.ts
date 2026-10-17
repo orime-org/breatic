@@ -20,19 +20,22 @@
  * the frames a real client sends to see it. Deriving both
  * together here is what stops them drifting apart again.
  *
- * The queued-frame count only has to bound how many objects a socket can
- * pile up; the queued-byte ceiling, left at the library's value, is what
- * bounds memory. A client back from being offline replays one frame per edit
- * it made, so no document count can size the frame count: it is set so that a
- * real client's frames always meet the byte ceiling first.
+ * Every queued frame keeps its bytes plus about 145 bytes of its own (the
+ * buffer and its slot in the queue), so the byte ceiling alone does not bound
+ * what a socket holds: frames of the shortest name would hold several times
+ * their payload. The frame count is therefore set so that the shortest frames
+ * reach it at the byte ceiling's worth of memory. With both in force one
+ * unauthenticated socket holds about 9 MB at most, peaking at frames of about
+ * 196 bytes, where the two ceilings meet. A client back from being offline
+ * replays one frame per edit and can meet either ceiling first.
  *
  *   pending documents    default 100    set to a full project's documents
- *   queued frame count   default 1000   byte ceiling / shortest project frame
+ *   queued frame count   default 1000   byte ceiling / (shortest frame + its overhead)
  *   queued frame bytes   default 5 MB   left alone
  *   idle timeout         default 60 s   client resends awareness every 15 s, left alone
  */
 import * as encoding from "lib0/encoding";
-import { defaultConfiguration } from "@hocuspocus/server";
+import { defaultConfiguration, type Configuration } from "@hocuspocus/server";
 import { MAX_SPACES_PER_PROJECT, projectMetaDocName } from "@breatic/shared";
 
 /** Documents one socket carries at most: a full project's Spaces plus its meta doc. */
@@ -51,18 +54,18 @@ function shortestProjectFrameBytes(): number {
   return encoding.length(encoder);
 }
 
-/** The per-socket limits the Hocuspocus server is configured with. */
-export interface SocketCeilings {
-  /** Documents that may await authentication on one socket at once. */
-  maxPendingDocuments: number;
-  /** Frames those pending documents may hold in the queue between them. */
-  maxUnauthenticatedQueueMessages: number;
-}
+/**
+ * Bytes a queued frame keeps on top of its payload. Measured with
+ * `@hocuspocus/server` 4.6.0 on Node 24 (inner#1140); measure again when either
+ * changes.
+ */
+const QUEUED_FRAME_OVERHEAD_BYTES = 145;
 
 /** The limits to pass to the Hocuspocus server. */
-export const SOCKET_CEILINGS: SocketCeilings = {
+export const SOCKET_CEILINGS = {
   maxPendingDocuments: DOCUMENTS_PER_SOCKET,
   maxUnauthenticatedQueueMessages: Math.ceil(
-    defaultConfiguration.maxUnauthenticatedQueueSize / shortestProjectFrameBytes(),
+    defaultConfiguration.maxUnauthenticatedQueueSize /
+      (shortestProjectFrameBytes() + QUEUED_FRAME_OVERHEAD_BYTES),
   ),
-};
+} satisfies Partial<Configuration>;

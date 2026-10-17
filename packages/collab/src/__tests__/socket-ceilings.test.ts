@@ -26,7 +26,7 @@
  *   idle timeout           default 60 s   client heartbeats every 15 s
  *
  * The pending-document count is derived from a full project; the frame count
- * from the byte ceiling, so a real client's frames meet the byte ceiling first;
+ * from the byte ceiling and what each queued frame keeps on top of its bytes;
  * the last two are left at their defaults, and the cases below pin the
  * measurements that justify leaving them.
  *
@@ -40,7 +40,6 @@ import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { outdatedTimeout } from "y-protocols/awareness";
 import { Server, defaultConfiguration } from "@hocuspocus/server";
-import { projectMetaDocName } from "@breatic/shared";
 import {
   SOCKET_CEILINGS,
   DOCUMENTS_PER_SOCKET,
@@ -85,14 +84,12 @@ function frame(docName: string, type: number, sub?: number): Uint8Array {
  * Start a server whose authentication never settles, so every document a
  * client opens stays pending and the peak is observable.
  * @param ceilings - The per-socket limits to run with; omitted means the
- *   library's own defaults, which is what production inherited before these
- *   values were derived from `config/collab.yaml`.
+ *   library's own defaults.
  * @returns The port it is listening on.
  */
-async function serverHoldingAuth(ceilings?: {
-  maxPendingDocuments: number;
-  maxUnauthenticatedQueueMessages: number;
-}): Promise<number> {
+async function serverHoldingAuth(
+  ceilings?: Partial<typeof SOCKET_CEILINGS>,
+): Promise<number> {
   const server = new Server({
     port: 0,
     // Bound to the address the case connects to: a port the OS hands out for
@@ -199,15 +196,13 @@ describe("deriving the ceilings from a project's Space cap", () => {
     expect(SOCKET_CEILINGS.maxPendingDocuments).toBe(DOCUMENTS_PER_SOCKET);
   });
 
-  it("lets even the shortest frame a client sends reach the byte ceiling before the frame count", () => {
-    // Bytes are what bound memory; the frame count only bounds how many
-    // objects pile up. A client back from being offline replays one frame per
-    // edit, so the count must never be the ceiling a real client meets first.
-    const shortest = frame(projectMetaDocName("00000000-0000-0000-0000-000000000000"), WIRE_SYNC).byteLength;
-
-    expect(SOCKET_CEILINGS.maxUnauthenticatedQueueMessages * shortest).toBeGreaterThanOrEqual(
-      defaultConfiguration.maxUnauthenticatedQueueSize,
-    );
+  it("runs with 201 pending documents and 26750 queued frames", () => {
+    // Pinned as values: the derivation can move either one without any
+    // relation between them breaking, and the startup log prints these two.
+    expect(SOCKET_CEILINGS).toEqual({
+      maxPendingDocuments: 201,
+      maxUnauthenticatedQueueMessages: 26750,
+    });
   });
 
   it("keeps the client's heartbeat well inside the server's silence timeout", () => {

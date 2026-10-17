@@ -44,8 +44,10 @@ const {
   collabRedisStub,
   loadProjectRoleStub,
   failedAuthWrapperSpy,
+  loggerInfoSpy,
 } = vi.hoisted(() => ({
   failedAuthWrapperSpy: vi.fn(),
+  loggerInfoSpy: vi.fn(),
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
   registryStub: {
@@ -85,7 +87,7 @@ vi.mock("@hocuspocus/server", async (importOriginal) => ({
 
 vi.mock("@breatic/core", () => ({
   createLogger: () => ({
-    info: vi.fn(),
+    info: loggerInfoSpy,
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
@@ -226,6 +228,24 @@ describe("createCollabServer — Redis channel prefix", () => {
       // commit point, and `broadcastStateless` is never batched, so batching
       // would also let the activity signal overtake the change it announces.
       flushDelay: false,
+    });
+  });
+
+  it("prints the socket ceilings it runs with in the startup log", async () => {
+    loggerInfoSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const banner = loggerInfoSpy.mock.calls.find(
+      ([, message]) => message === "Hocuspocus server configured",
+    );
+    expect(banner?.[0]).toMatchObject({
+      maxPendingDocuments: 201,
+      maxUnauthenticatedQueueMessages: 26750,
     });
   });
 
