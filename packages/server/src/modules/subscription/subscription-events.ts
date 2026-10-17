@@ -25,11 +25,15 @@
  * commits first.
  */
 
+import { reportSubscriptionRenewed, reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
 import type Stripe from "stripe";
 import {
   db,
   findOfferByPriceId,
   getStripeCallTimeoutMs,
+  listSubscriptions,
+  subscriptionClock,
+  subscriptionSituation,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { MembershipTier } from "@breatic/shared";
@@ -216,6 +220,7 @@ function priceIdOfPendingUpdate(
 export async function handleSubscriptionEvent(
   event: Stripe.Event,
 ): Promise<SubscriptionEventOutcome> {
+  if (event.type === "invoice.paid") return handleInvoicePaid(event);
   if (!claimsEvent(event)) return { status: "notMine" };
 
   if (!SUBSCRIPTION_EVENT_TYPES.has(event.type)) {
@@ -286,6 +291,7 @@ export async function handleSubscriptionEvent(
     userId,
   };
   let endedFrom: MembershipTier | null = null;
+  let started = false;
 
   await db.transaction(async (tx) => {
     if (!(await claimWebhookEvent(event.id, event.type, tx))) return;
@@ -299,12 +305,39 @@ export async function handleSubscriptionEvent(
     // nothing it writes.
     await notifyIfUpgradeLapsed(event, userId, tx);
     endedFrom = applied.endedFrom;
+    started = applied.started;
     outcome = { status: "applied", userId, tier: applied.tier };
   });
 
   // After the commit, never inside it: an email about a change that then rolls
   // back cannot be recalled, and a send failure must not fail the webhook.
   if (endedFrom) await sendMembershipEndedMail(userId, endedFrom);
+  if (started) reportSubscriptionStarted(write, subscription.metadata);
 
   return outcome;
+}
+
+/**
+ * Report a paid renewal (inner#1442 design §4.8). Writes nothing: the
+ * subscription's state still arrives through `customer.subscription.*`.
+ * Stripe's event id is the dedupe key, so a redelivery counts once.
+ * @param event - An `invoice.paid` event.
+ * @returns What handling it came to, for the route to log.
+ * @throws {Error} if the database fails, so that Stripe redelivers.
+ */
+async function handleInvoicePaid(event: Stripe.Event): Promise<SubscriptionEventOutcome> {
+  const invoice = event.data.object as Stripe.Invoice;
+  if (invoice.billing_reason !== "subscription_cycle") {
+    return { status: "acknowledged", reason: `invoice ${invoice.id} is not a renewal` };
+  }
+  const customer = invoice.customer;
+  const customerId = typeof customer === "string" ? customer : (customer?.id ?? null);
+  const userId = customerId ? await userRepo.findUserIdByStripeCustomerId(customerId) : null;
+  if (!userId) {
+    return { status: "noop", reason: `no account claims Stripe customer ${customerId ?? "(none named)"}` };
+  }
+  const { record } = subscriptionSituation(await listSubscriptions(userId), subscriptionClock());
+  if (!record) return { status: "noop", reason: `account ${userId} holds no subscription` };
+  await reportSubscriptionRenewed({ eventId: event.id, userId, subscription: record });
+  return { status: "acknowledged", reason: "renewal reported" };
 }

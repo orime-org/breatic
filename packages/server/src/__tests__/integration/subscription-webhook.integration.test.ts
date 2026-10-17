@@ -602,7 +602,7 @@ describe("handleSubscriptionEvent — 哪些事件归这条腿 (#106 §8)", () =
 
   it("不认领跟订阅无关的事件", async () => {
     const outcome = await handleSubscriptionEvent(
-      event("invoice.paid", stripeSub(), `evt_other_${Date.now()}`),
+      event("customer.created", stripeSub(), `evt_other_${Date.now()}`),
     );
     expect(outcome.status).toBe("notMine");
     expect(stripe.subscriptions.retrieve).not.toHaveBeenCalled();

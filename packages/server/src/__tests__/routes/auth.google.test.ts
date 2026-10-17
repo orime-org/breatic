@@ -123,7 +123,21 @@ describe("POST /auth/google", () => {
     });
     expect(response.status).toBe(200);
     expect(verifyIdTokenMock).toHaveBeenCalledWith({ idToken: 'signed-token', audience: 'test-client.apps.googleusercontent.com' });
-    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', email, authority);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', email, authority, null);
+  });
+
+  it('hands the browser\'s campaign source to the sign-in, reduced as the sign-up stores it', async () => {
+    verifyIdTokenMock.mockResolvedValue({ getPayload: () => ({ iss: 'accounts.google.com', sub: 'subject', email: 'owner@gmail.com', email_verified: true }) });
+    const at = new Date().toISOString();
+    const response = await withPeer(createApp()).request('/api/v1/auth/google', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential: 'signed-token', attribution: { first: { utm_source: 'google', landing_page: '/pricing?x=1', at }, last: { utm_source: 'google', at } } }),
+    });
+    expect(response.status).toBe(200);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true, {
+      first: { utm_source: 'google', landing_page: '/pricing', at },
+      last: { utm_source: 'google', at },
+    });
   });
 
   it('normalizes the token email before judging Gmail authority', async () => {
@@ -133,7 +147,7 @@ describe("POST /auth/google", () => {
       body: JSON.stringify({ credential: 'signed-token' }),
     });
     expect(response.status).toBe(200);
-    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true);
+    expect(mocks.authService.loginOrCreateGoogle).toHaveBeenLastCalledWith('subject', 'owner@gmail.com', true, null);
   });
 
   /** Sign in successfully and return the parsed user object. */

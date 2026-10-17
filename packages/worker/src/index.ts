@@ -32,7 +32,16 @@ import {
   getAgentConfig,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
+  flushServerAnalytics,
+  adsConversionState,
+  initServerAnalytics,
+  ADS_CONVERSION_QUEUE,
+  scheduleAdsUploadSweep,
+  unscheduleAdsUploadSweep,
+  adsConversionConfig,
+  type AdsConversionJob,
 } from "@breatic/core";
+import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
@@ -51,6 +60,14 @@ const monitoring = initSentry();
 
 initLogger("worker");
 if (monitoring === "invalid_dsn") logger.error({}, "sentry_dsn_invalid");
+const analytics = initServerAnalytics({
+  apiKey: env.AMPLITUDE_API_KEY,
+  onError: (message) => {
+    logger.warn({ message }, "analytics_events_rejected");
+  },
+});
+if (analytics === "invalid") logger.error({}, "amplitude_api_key_invalid");
+if (adsConversionState() === "invalid") logger.error({}, "google_ads_config_invalid");
 // i18n: register the catalogs before anything can throw. `t()` echoes the key
 // back when no catalog is loaded, so without this a failed node reads a
 // message key where a sentence belongs.
@@ -159,6 +176,7 @@ export function startWorker(): void {
     USAGE_LOOKUP_QUEUE,
     MEDIA_READ_QUEUE,
     MAIL_QUEUE,
+    ADS_CONVERSION_QUEUE,
   ]);
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
@@ -260,6 +278,31 @@ export function startWorker(): void {
     );
   });
 
+  // Ad conversions a request or webhook queued (inner#1442 §4.9). The sink is
+  // built on the first job, so a deployment without Google Ads configured
+  // never constructs a client.
+  let adsSink: AdsConversionSink | undefined;
+  const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
+    runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
+  );
+  // Queues again any upload whose job was lost between the claim and the add.
+  (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
+    logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
+  );
+
+  adsConversion.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        conversion: job?.data.conversion,
+        transactionId: job?.data.transactionId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "ads_conversion_failed",
+    );
+  });
+
   worker.on("completed", (job) => {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
   });
@@ -319,6 +362,7 @@ export function startWorker(): void {
         USAGE_LOOKUP_QUEUE,
         MEDIA_READ_QUEUE,
         MAIL_QUEUE,
+        ADS_CONVERSION_QUEUE,
       ],
     },
     "BullMQ workers started",
@@ -406,6 +450,8 @@ export function startWorker(): void {
         () => usageLookup.close(),
         () => mediaRead.close(),
         () => mail.close(),
+        () => adsConversion.close(),
+        () => flushServerAnalytics(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
     });

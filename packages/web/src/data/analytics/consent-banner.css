@@ -1,0 +1,198 @@
+/* Copyright (c) 2026 Orime, Inc. */
+/* SPDX-License-Identifier: LicenseRef-BSAL-1.0 */
+
+/*
+ * The consent banner in the product's colours (inner#1442 design §4.4.3).
+ * The library reads these variables; the tokens switch with the theme, so
+ * the banner follows light and dark without rules of its own.
+ */
+#cc-main {
+  --cc-font-family: var(--font-sans);
+  --cc-bg: var(--color-popover);
+  --cc-primary-color: var(--color-popover-foreground);
+  --cc-secondary-color: var(--color-muted-foreground);
+  --cc-link-color: var(--color-foreground);
+  --cc-btn-border-radius: var(--radius-chrome);
+  --cc-modal-border-radius: var(--radius-overlay);
+  --cc-btn-primary-bg: var(--color-primary);
+  --cc-btn-primary-color: var(--color-primary-foreground);
+  --cc-btn-primary-border-color: var(--color-primary);
+  --cc-btn-primary-hover-bg: var(--color-primary-hover);
+  --cc-btn-primary-hover-color: var(--color-primary-foreground);
+  --cc-btn-primary-hover-border-color: var(--color-primary-hover);
+  --cc-btn-secondary-bg: var(--color-secondary);
+  --cc-btn-secondary-color: var(--color-secondary-foreground);
+  --cc-btn-secondary-border-color: var(--color-border);
+  --cc-btn-secondary-hover-bg: var(--color-accent-strong);
+  --cc-btn-secondary-hover-color: var(--color-secondary-foreground);
+  --cc-btn-secondary-hover-border-color: var(--color-border);
+  --cc-separator-border-color: var(--color-border);
+  --cc-toggle-on-bg: var(--color-primary);
+  --cc-toggle-off-bg: var(--color-muted-foreground);
+  --cc-toggle-on-knob-bg: var(--color-primary-foreground);
+  --cc-toggle-off-knob-bg: var(--color-background);
+  --cc-toggle-readonly-bg: var(--color-primary);
+  --cc-toggle-readonly-knob-bg: var(--color-primary-foreground);
+  --cc-toggle-readonly-knob-icon-color: var(--color-muted-foreground);
+  --cc-cookie-category-block-bg: var(--color-card);
+  --cc-cookie-category-block-border: var(--color-border);
+  /* The titles are headings, so a category block keeps its colour under the pointer. */
+  --cc-cookie-category-block-hover-bg: var(--color-card);
+  --cc-cookie-category-block-hover-border: var(--color-border);
+  --cc-cookie-category-expanded-block-bg: var(--color-card);
+  --cc-cookie-category-expanded-block-hover-bg: var(--color-card);
+  --cc-footer-bg: var(--color-card);
+  --cc-footer-color: var(--color-muted-foreground);
+  --cc-footer-border-color: var(--color-border);
+  --cc-overlay-bg: var(--color-overlay);
+}
+
+/* The banner's edge stays visible on a page of the same colour. */
+#cc-main .cm--bar {
+  border-top: 1px solid var(--color-border);
+}
+
+/* Body text on the product's type scale, the size of a dialog's description. */
+#cc-main .cm__desc,
+#cc-main .pm__section-desc-wrapper,
+#cc-main .pm__section-desc {
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+
+/* The privacy policy link reads as a link without the pointer on it. */
+#cc-main .cm__desc a {
+  background-size: 100% 1px;
+  color: var(--cc-link-color);
+}
+
+/* The settings window in the shape of the product's dialogs. */
+#cc-main .pm {
+  --cc-bg: var(--color-card);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow);
+}
+#cc-main .pm__header,
+#cc-main .pm__body,
+#cc-main .pm__footer {
+  padding: 0.75rem 1rem;
+}
+#cc-main .pm__close-btn {
+  width: var(--btn-chrome);
+  height: var(--btn-chrome);
+  border: none;
+  border-radius: var(--radius-chrome);
+  background: transparent;
+}
+#cc-main .pm__close-btn:hover {
+  background: var(--color-accent);
+}
+
+/* A switch's keyboard focus in the product's focus colour, which holds in both themes. */
+#cc-main .section__toggle:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Buttons the size of the product's own controls. */
+#cc-main .cm__btn,
+#cc-main .pm__btn {
+  min-height: var(--control-height);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Switches at least 24px tall, the WCAG 2.5.8 minimum. */
+#cc-main .section__toggle,
+#cc-main .section__toggle-wrapper,
+#cc-main .toggle__icon,
+#cc-main .toggle__label {
+  height: 24px;
+}
+#cc-main .toggle__icon-circle {
+  width: 24px;
+  height: 24px;
+}
+#cc-main .section__toggle:checked ~ .toggle__icon .toggle__icon-circle {
+  transform: translateX(26px);
+}
+
+/* Settings window: as tall as its content, title above the rows. */
+#cc-main .pm--box {
+  height: auto;
+}
+#cc-main .pm__title {
+  font-size: var(--text-lg);
+}
+#cc-main .pm__section-title {
+  font-size: var(--text-base);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Each category's description is shown without opening it. */
+#cc-main .pm__section--toggle .pm__section-desc-wrapper {
+  display: flex;
+}
+/* Title and description read as one block: no rule between them, one left edge. */
+#cc-main .pm__section--toggle .pm__section-title {
+  border-bottom: none;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-bottom: 0.25rem;
+}
+#cc-main .pm__section--toggle .pm__section-desc {
+  padding: 0 1rem 1rem;
+}
+#cc-main .pm__section-desc-wrapper > .pm__section-desc {
+  border-bottom: none;
+}
+#cc-main .pm__section--expandable .pm__section-arrow {
+  display: none;
+}
+#cc-main .pm__section--expandable .pm__section-title {
+  cursor: default;
+  padding-left: 1rem;
+}
+
+@media screen and (max-width: 640px) {
+  /* Accept and reject side by side, settings as a link, so the page shows above the banner. */
+  #cc-main .cm__btns {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+  }
+  #cc-main .cm__btn-group:first-child {
+    flex-direction: row !important;
+    gap: 0.375rem;
+  }
+  #cc-main .cm__btn-group:first-child .cm__btn + .cm__btn {
+    margin: 0 !important;
+  }
+  #cc-main .cm__btn[data-role='show'] {
+    min-height: 24px;
+    border: none;
+    background: none;
+    color: var(--color-foreground);
+    text-decoration: underline;
+  }
+  /* Settings window rises from the bottom. */
+  #cc-main .pm--box {
+    top: auto;
+    max-height: 85%;
+    border-radius: var(--radius-content-md) var(--radius-content-md) 0 0;
+  }
+}
+
+/* The GPC line under the banner text and under the ads switch (inner#1442 §4.4.3), on a line of its own. */
+#cc-main .breatic-consent-notice {
+  display: block;
+  margin: 0.5rem 0 0;
+  font-size: inherit;
+  color: var(--cc-primary-color);
+  font-weight: 500;
+}
+
+/* Inside the ads card the line sits under the description, padded the same way. */
+#cc-main .pm__section-desc-wrapper > .breatic-consent-notice {
+  margin: -0.5rem 0 0;
+  padding: 0 1rem 1rem;
+}

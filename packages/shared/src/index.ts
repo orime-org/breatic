@@ -799,3 +799,47 @@ export {
   type ReferencePool,
 } from "@shared/reference-pool.js";
 export { REQUEST_NOTIFICATION_TYPES, isRequestNotification } from "@shared/request-notifications.js";
+export {
+  CONSENT_COOKIE_NAME,
+  CONSENT_MAX_AGE_DAYS,
+  ConsentSnapshotSchema,
+  CONSENT_REVISION,
+  NO_CONSENT,
+  revisionInForce,
+  requiresOptIn,
+  type ConsentSnapshot,
+} from "@shared/analytics/consent.js";
+export {
+  ANALYTICS_EVENT_NAMES,
+  sanitizeEventProperties,
+  type AnalyticsEventName,
+  type AnalyticsProperties,
+} from "@shared/analytics/events.js";
+export {
+  CONSENT_DATA_FIELDS,
+  CONSENT_SOURCES,
+  parseConsentChoices,
+  parseConsentCookie,
+  snapshotOf,
+  type BrowserChoice,
+  type BrowserChoices,
+  type ConsentSource,
+} from "@shared/analytics/consent-choices.js";
+export {
+  BrowserAdsSnapshotSchema,
+  ReportedConsentSchema,
+  adsAllowed,
+  browserAdsConsent,
+  type BrowserAdsSnapshot,
+  type ConsentRecord,
+  type ReportedConsent,
+  type SeenChoice,
+} from "@shared/analytics/ads-consent.js";
+export {
+  adClickFrom,
+  CLICK_WINDOW_MS,
+  parseAttribution,
+  type AdClick,
+  type Attribution,
+  type AttributionTouch,
+} from "@shared/analytics/attribution.js";

@@ -17,6 +17,7 @@
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
     "@breatic/shared": "workspace:*",
+    "@google-ads/datamanager": "catalog:",
     "@sentry/node": "catalog:",
     "ai": "catalog:",
     "bullmq": "catalog:",

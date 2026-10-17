@@ -14,7 +14,9 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { service, membership, rateLimitFor, envRef } = vi.hoisted(() => ({
+const { service, membership, rateLimitFor, envRef, adsAllowedFor, conversionOf } = vi.hoisted(() => ({
+  adsAllowedFor: vi.fn(async () => true),
+  conversionOf: vi.fn(),
   service: {
     startCheckout: vi.fn(),
     changePlan: vi.fn(),
@@ -29,6 +31,8 @@ const { service, membership, rateLimitFor, envRef } = vi.hoisted(() => ({
 
 vi.mock("@server/modules/subscription/subscription.service.js", () => service);
 vi.mock("@server/modules/account/membership.service.js", () => membership);
+// Plan prices come from the deployment's config, which these tests do not load.
+vi.mock("@server/modules/subscription/subscription-analytics.js", () => ({ subscriptionConversion: conversionOf }));
 
 vi.mock("@server/middleware/rate-limit.js", () => ({
   rateLimitFor: (...args: unknown[]) => {
@@ -57,6 +61,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return {
     ...actual,
     env: envRef,
+    adsAllowedFor,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
 });
@@ -208,14 +213,43 @@ describe("POST /confirm — the return from a membership checkout (#307 A5–A7)
   });
 
   it("confirms the named session for the signed-in account and answers with the panel", async () => {
-    service.confirmCheckout.mockResolvedValue(undefined);
+    // Not active yet, so no ad conversion rides along (inner#1442 §4.9).
+    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "incomplete", tier: "pro", period: "month" });
+    conversionOf.mockReturnValue(null);
     membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
 
     const res = await post("/confirm", { session_id: "cs_1" });
 
     expect(res.status).toBe(200);
     expect(service.confirmCheckout).toHaveBeenCalledWith("u-1", "cs_1");
-    expect(await res.json()).toEqual({ data: { tier: "pro" } });
+    expect(await res.json()).toEqual({ data: { tier: "pro", conversion: null } });
+  });
+
+  it("hands back the ad conversion of an active subscription only while ads are allowed", async () => {
+    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" });
+    membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
+    conversionOf.mockReturnValue({ transactionId: "sub:sub_1", amountCents: 1700, currency: "usd" });
+
+    adsAllowedFor.mockResolvedValueOnce(true);
+    const allowed = (await (await post("/confirm", { session_id: "cs_1" })).json()) as { data: { conversion: unknown } };
+    expect(allowed.data.conversion).toMatchObject({ transactionId: "sub:sub_1" });
+    expect(adsAllowedFor).toHaveBeenCalledWith("u-1", { consent: false });
+
+    adsAllowedFor.mockResolvedValueOnce(false);
+    const refused = (await (await post("/confirm", { session_id: "cs_1" })).json()) as { data: { conversion: unknown } };
+    expect(refused.data.conversion).toBeNull();
+  });
+
+  it("still confirms a paid subscription when the ads consent lookup fails, with no conversion", async () => {
+    service.confirmCheckout.mockResolvedValue({ stripeSubscriptionId: "sub_1", status: "active", tier: "pro", period: "month" });
+    membership.readAccountMembership.mockResolvedValue({ tier: "pro" });
+    conversionOf.mockReturnValue({ transactionId: "sub:sub_1", amountCents: 1700, currency: "usd" });
+    adsAllowedFor.mockRejectedValueOnce(new Error("database down"));
+
+    const res = await post("/confirm", { session_id: "cs_1" });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { tier: "pro", conversion: null } });
   });
 
   it("passes a refusal from the service through as it was", async () => {

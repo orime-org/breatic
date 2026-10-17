@@ -11,6 +11,8 @@
 
 import * as recentRepo from "@server/modules/recent/recent.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
+import * as projectRepo from "@server/modules/project/project.repo.js";
+import { serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import type { RecentItem } from "@breatic/shared";
 
 /**
@@ -39,6 +41,24 @@ export async function recordOpen(
 ): Promise<void> {
   await projectService.assertAccess(projectId, userId, "viewer");
   await recentRepo.upsertOpen(userId, projectId);
+  await reportSession(projectId, userId);
+}
+
+/**
+ * Send `active_project_session`, counted once per user, project and UTC day.
+ * @param projectId - The opened project
+ * @param userId - Who opened it
+ */
+async function reportSession(projectId: string, userId: string): Promise<void> {
+  if (!serverAnalyticsWanted()) return;
+  const project = await projectRepo.getProjectById(projectId);
+  if (!project) return;
+  const day = new Date().toISOString().slice(0, 10);
+  trackServerEvent("active_project_session", {
+    userId,
+    insertId: `session:${userId}:${projectId}:${day}`,
+    properties: { studio_id: project.studioId, project_id: projectId },
+  });
 }
 
 /**

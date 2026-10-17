@@ -207,6 +207,7 @@ export type { TierChangeReason } from "@core/auth/membership.repo.js";
 // out says the tier on the account is stale.
 export {
   listSubscriptions,
+  markFirstActive,
   upsertSubscription,
 } from "@core/auth/subscription.repo.js";
 export type {
@@ -229,6 +230,23 @@ export type {
 
 // ── i18n (node-side adapter; engine lives in @breatic/shared) ──
 export { loadLocales, runWithLocale } from "@core/i18n/locale-loader.js";
+export {
+  currentAdsBrowser,
+  currentConsent,
+  runWithConsent,
+} from "@core/analytics/consent-context.js";
+export {
+  flushServerAnalytics,
+  initServerAnalytics,
+  reportAnalyticsFailure,
+  resetServerAnalyticsForTest,
+  serverAnalyticsOn,
+  serverAnalyticsWanted,
+  trackServerEvent,
+  type AnalyticsClient,
+  type OutgoingEvent,
+  type ServerAnalyticsStart,
+} from "@core/analytics/server-analytics.js";
 
 // ── Utilities ────────────────────────────────────────────────────
 export { logger, initLogger, createLogger } from "@core/infra/logger.js";
@@ -241,3 +259,39 @@ export {
   UnauthorizedError,
   TooManyRequestsError,
 } from "@core/app-errors.js";
+export {
+  ADS_CONVERSION_QUEUE,
+  adsConversionConfig,
+  adsConversionState,
+  enqueueAdsConversion,
+  requeueStaleAdsUploads,
+  unscheduleAdsUploadSweep,
+  scheduleAdsUploadSweep,
+  settleAdsRefused,
+  settleAdsUpload,
+  setAdsConversionConfigForTest,
+  type AdsConversionConfig,
+} from "@core/ads/ads-conversion.js";
+export { getUploadStatus } from "@core/ads/ads-conversion.repo.js";
+export {
+  ADS_CONVERSIONS,
+  ADS_SWEEP_JOB,
+  ADS_UPLOAD_STATUSES,
+  AdsConversionJobSchema,
+  type AdsConversionJob,
+  type AdsConversionName,
+  type AdsUploadStatus,
+} from "@core/ads/ads-types.js";
+export {
+  collaborationActionOf,
+  reportCollaboratorFirstAction,
+  type CollaborationAction,
+} from "@core/analytics/collaboration.js";
+export { claimFirstMilestone, type FirstMilestone } from "@core/analytics/first-milestone.js";
+export {
+  accountOnlyConsent,
+  adsAllowedFor,
+  eraseAccountAnalytics,
+  getAccountAttribution,
+  recordReportedConsent,
+} from "@core/analytics/account.repo.js";

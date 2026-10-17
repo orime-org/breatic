@@ -3,7 +3,8 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LogOut, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, LogOut, Settings, Sparkles, Star } from 'lucide-react';
+import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -312,6 +313,15 @@ export function StudioAccountMenu(): React.JSX.Element {
               {creditsFigure(overview, t)}
             </DropdownMenuTrailing>
           </DropdownMenuItem>
+          {COOKIE_SETTINGS_AVAILABLE ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={openCookieSettings}>
+                <Cookie className='h-4 w-4' />
+                {t('consent.link')}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             data-testid='account-menu-sign-out'

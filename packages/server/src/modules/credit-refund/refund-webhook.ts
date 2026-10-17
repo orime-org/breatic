@@ -9,7 +9,7 @@
 
 import { db, logger } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
-import { sendOperationMailsLater } from "@server/modules/credit-refund/refund-mail.js";
+import { followUpOperationLater } from "@server/modules/credit-refund/refund-follow-up.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
 import { StripeReadError, listRefunds } from "@server/modules/credit-refund/stripe-refunds.js";
 import type { StripeRefundObject } from "@server/modules/credit-refund/types.js";
@@ -65,6 +65,6 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
     await claimWebhookEvent(event.id, event.type, tx);
     return applyRefundSnapshot(tx, paymentId, listed, "webhook");
   });
-  if (judged !== null) sendOperationMailsLater(judged);
+  if (judged !== null) followUpOperationLater(judged);
   return "handled";
 }

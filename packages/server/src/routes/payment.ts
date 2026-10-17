@@ -83,8 +83,9 @@ payment.post(
  * Settles the purchase there and then rather than waiting for the webhook,
  * because a buyer standing in front of a full-screen wait should see their
  * credits, not a spinner. The webhook still arrives and finds the work done.
- * @returns `200` with what settling it did; `404` when the session names no
- *   purchase of theirs.
+ * @returns `200` with what settling it did, whether the order is paid
+ *   whichever pass granted it, and its amount and currency (the page reports
+ *   the ad conversion on `paid`, inner#1442 §4.9); `404` when the session names no purchase of theirs.
  */
 payment.post(
   "/confirm",
@@ -101,7 +102,8 @@ payment.post(
       from: "confirm",
       userId: user.id,
     });
-    return c.json({ data: { status: outcome.status } });
+    const order = await paymentService.paidOrder(sessionId);
+    return c.json({ data: { status: outcome.status, ...order } });
   },
 );
 

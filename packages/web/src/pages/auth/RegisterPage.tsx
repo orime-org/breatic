@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
+import { attributionBody, failureCode, reportConversion, trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
@@ -59,7 +60,7 @@ export default function RegisterPage(): React.JSX.Element {
   const register = React.useCallback(
     async (trimmedEmail: string): Promise<SignupCodeSent | null> => {
       try {
-        const answer = await authApi.register({ email: trimmedEmail, password });
+        const answer = await authApi.register({ email: trimmedEmail, password, ...attributionBody() });
         if (answer.status === 'code_sent') {
           setCodeSent(answer);
           return answer;
@@ -68,6 +69,7 @@ export default function RegisterPage(): React.JSX.Element {
         // store mirrors that null so the onboarding gate is consistent
         // even before the recovery dialog is dismissed.
         setUser(toCurrentUser(answer.user));
+        reportConversion('signup', `signup:${answer.user.id}`);
         navigate('/recovery-code', {
           state: { code: answer.recoveryCode, next: '/choose-slug' },
           replace: true,
@@ -75,6 +77,7 @@ export default function RegisterPage(): React.JSX.Element {
         return null;
       } catch (err) {
         setCodeSent(null);
+        trackEvent('signup_failed', { method: 'email', success: false, error_code: failureCode(err) });
         setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
         return null;
       }
@@ -90,6 +93,7 @@ export default function RegisterPage(): React.JSX.Element {
   const handleVerified = React.useCallback(
     (user: AuthUser): void => {
       setUser(toCurrentUser(user));
+      reportConversion('signup', `signup:${user.id}`);
       navigate('/choose-slug', { replace: true });
     },
     [setUser, navigate],
@@ -118,6 +122,7 @@ export default function RegisterPage(): React.JSX.Element {
     if (Object.keys(nextErrors).length > 0) return;
 
     setSubmitting(true);
+    trackEvent('signup_started', { method: 'email' });
     try {
       await register(trimmedEmail);
     } finally {

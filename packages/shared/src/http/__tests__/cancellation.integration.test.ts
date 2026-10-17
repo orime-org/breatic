@@ -26,7 +26,7 @@
  * behind, and one for a caller that passed no signal at all.
  */
 
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { getEventListeners } from "node:events";
@@ -104,7 +104,22 @@ async function droppingServer(onHit?: (hit: number) => void): Promise<Stub> {
   return { url: `http://127.0.0.1:${port}/`, hits: (): number => hit };
 }
 
-describe("a call the caller gave up on", () => {
+const nativeAny = AbortSignal.any;
+
+// Every promise below holds on both paths a delivery takes: composing the caller's signal with
+// `AbortSignal.any`, and forwarding it by hand where that is missing (Safari before 17.4, which the web
+// build targets; Node always has it, so the second path runs only here).
+describe.each([
+  ["with AbortSignal.any", nativeAny],
+  ["without AbortSignal.any", undefined],
+] as const)("a call the caller gave up on, %s", (_path, any) => {
+  beforeEach(() => {
+    Object.defineProperty(AbortSignal, "any", { configurable: true, writable: true, value: any });
+  });
+  afterEach(() => {
+    Object.defineProperty(AbortSignal, "any", { configurable: true, writable: true, value: nativeAny });
+  });
+
   it("ends the delivery that is in flight", async () => {
     // Without this the signal reaches nothing at all: the deadline owns the
     // only abort controller a delivery has.
@@ -212,9 +227,9 @@ describe("a call the caller gave up on", () => {
     // per turn, many calls. A subscription left behind on every call is a leak
     // that grows with the turn.
     //
-    // This measures only that piece. `AbortSignal.any` registers nothing
-    // observable on its sources -- measured, the count is zero before and
-    // after regardless -- so composition is not what this is watching.
+    // With `AbortSignal.any` this measures only that piece: it registers
+    // nothing observable on its sources. Without it, the listener that forwards
+    // the stop is the other subscription, and it must be gone too.
     const stub = await droppingServer();
     const gaveUp = new AbortController();
     const attached = (): number => getEventListeners(gaveUp.signal, "abort").length;
