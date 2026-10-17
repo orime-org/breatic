@@ -1209,7 +1209,7 @@
     "terms": {
       "notice": "繼續即表示你同意{terms}，並已閱讀{privacy}。",
       "termsLink": "使用條款",
-      "privacyLink": "隱私權政策"
+      "privacyLink": "隱私政策"
     }
   },
   "roleTag": {
@@ -2348,7 +2348,7 @@
     "link": "Cookie 設定",
     "banner": {
       "text": "我們使用 cookie 讓網站正常運作。經你同意，也會用它統計產品的使用情況（產品分析），以及衡量廣告成效（廣告）。你可以隨時在「Cookie 設定」中修改。",
-      "privacy": "隱私權政策",
+      "privacy": "隱私政策",
       "acceptAll": "全部接受",
       "rejectAll": "全部拒絕",
       "settings": "設定",
