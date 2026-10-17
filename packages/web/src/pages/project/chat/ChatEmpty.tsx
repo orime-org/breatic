@@ -3,6 +3,8 @@
 
 import type * as React from 'react';
 
+import { getLocale } from '@breatic/shared';
+
 import { Button } from '@web/components/ui/button';
 import { useCurrentUserStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -71,7 +73,12 @@ export function ChatEmpty({
       className='flex h-full flex-col items-center justify-center px-4 py-8 text-center text-sm leading-relaxed text-muted-foreground'
     >
       <strong className='mb-2 block text-foreground'>{greeting}</strong>
-      <p className='text-balance leading-relaxed'>{t('chat.empty.capabilities')}</p>
+      {/* The page declares no language, so the line names its own: browsers
+          break Japanese and Korean between phrases only when they know which
+          language the text is in. */}
+      <p lang={getLocale()} className='text-balance leading-relaxed [word-break:auto-phrase]'>
+        {t('chat.empty.capabilities')}
+      </p>
       <div className='mt-4 flex flex-wrap items-center justify-center gap-2'>
         {QUICK_ACTIONS.map((qa) => {
           const label = t(`chat.empty.quick.${qa.labelKey}`);

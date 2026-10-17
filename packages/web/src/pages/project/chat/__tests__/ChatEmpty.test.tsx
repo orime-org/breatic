@@ -75,6 +75,13 @@ describe('ChatEmpty', () => {
     expect(line.className).toContain('text-balance');
   });
 
+  it('marks the capability line with the reader language so it breaks between phrases', () => {
+    render(<ChatEmpty />);
+    const line = screen.getByText(/I can find material/);
+    expect(line).toHaveAttribute('lang', 'en');
+    expect(line.className).toContain('[word-break:auto-phrase]');
+  });
+
   it('clicking a quick action fires onQuickAction with the label', async () => {
     const user = userEvent.setup();
     const onQuickAction = vi.fn();
