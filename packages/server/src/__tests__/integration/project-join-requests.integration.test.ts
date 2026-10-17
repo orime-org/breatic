@@ -30,12 +30,14 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import type * as CoreModule from "@breatic/core";
+
 // `addUnlessActive` writes nothing only when another route added the
 // requester between the decision's membership check and its insert. That
 // window cannot be opened from outside, so this switch stands in for it.
 const race = vi.hoisted(() => ({ addedElsewhere: false }));
 vi.mock("@breatic/core", async (importOriginal) => {
-  const core = await importOriginal<typeof import("@breatic/core")>();
+  const core = await importOriginal<typeof CoreModule>();
   return {
     ...core,
     projectMembersRepo: {
@@ -484,8 +486,11 @@ describe("answering through the decision page (A6 A7 A8)", () => {
     const row = await latestRequest(project.id, requester.id);
     await sql`UPDATE project_join_requests SET expires_at = now() - interval '1 second' WHERE id = ${row.id}`;
 
+    // Straight to the service: the landing page refuses a past-deadline
+    // request before it gets here, so this is the deadline passing between
+    // the page's check and the decision's lock.
     await expect(
-      decisionService.respond(row.share_token, owner.id, "confirm"),
+      joinService.approve({ requestId: row.id, ownerUserId: owner.id, role: "viewer" }),
     ).rejects.toBeInstanceOf(ConflictError);
     expect(await latestRequest(project.id, requester.id)).toMatchObject({
       status: "failed",

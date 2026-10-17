@@ -2098,6 +2098,8 @@
     "declinedBody": "ここで行うことはもうありません。",
     "expiredTitle": "このリクエストは終了しました",
     "expiredBody": "もう回答できません。",
+    "invalidatedTitle": "このリクエストは無効になりました",
+    "invalidatedBody": "対象の状況が変わったため、もう回答できません。",
     "revokedTitle": "このリクエストは取り消されました",
     "revokedBody": "送信した人が取り下げました。",
     "goneTitle": "対象はすでに存在しません",

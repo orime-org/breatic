@@ -2098,6 +2098,8 @@
     "declinedBody": "여기서 더 할 일은 없습니다.",
     "expiredTitle": "이 요청은 종료되었습니다",
     "expiredBody": "더 이상 답변할 수 없습니다.",
+    "invalidatedTitle": "이 요청은 더 이상 유효하지 않습니다",
+    "invalidatedBody": "요청 대상의 상황이 바뀌어 더 이상 답변할 수 없습니다.",
     "revokedTitle": "이 요청은 철회되었습니다",
     "revokedBody": "보낸 사람이 다시 거두어 갔습니다.",
     "goneTitle": "대상이 더 이상 없습니다",

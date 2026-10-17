@@ -1963,8 +1963,14 @@ export const studioInvitations = pgTable(
     invitedBy: uuid("invited_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'. */
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * deadline) or 'invalidated' (what it was about stopped holding). Null on
+     * every other status (CHECK in 0098).
+     */
+    failedReason: varchar("failed_reason", { length: 16 }),
     /**
      * The bell notification that surfaces this invite, so settling it can mark
      * that row read in the same transaction — whether the recipient answered
@@ -2014,9 +2020,9 @@ export const studioInvitations = pgTable(
 // "active members only" — project auth (`loadProjectRole`) / member-list /
 // member-count queries need zero status filter, and a pending invitee can never
 // be mistaken for a real member. `status` flows pending → accepted | declined |
-// revoked | expired (append-only lifecycle; rows are soft-deleted only). A
+// revoked | failed (append-only lifecycle; rows are soft-deleted only). A
 // pending invite that times out keeps `status = 'pending'` until it is reaped to
-// `expired`: the `one_pending` partial index ignores `expires_at`, so re-invite
+// `failed` with reason `expired`: the `one_pending` partial index ignores `expires_at`, so re-invite
 // (`expireStalePending`) flips the stale row before taking the slot (#1769). All
 // FKs are `onDelete: restrict` except `notification_id` (`set null` — the bell
 // row may be GC'd). The granted `role` is `editor` | `viewer` only (never
@@ -2039,8 +2045,14 @@ export const projectInvitations = pgTable(
     invitedBy: uuid("invited_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'revoked'. */
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * deadline) or 'invalidated' (what it was about stopped holding). Null on
+     * every other status (CHECK in 0098).
+     */
+    failedReason: varchar("failed_reason", { length: 16 }),
     /**
      * The bell notification that surfaces this invite, so settling it can mark
      * that row read in the same transaction — whether the recipient answered
@@ -2094,7 +2106,7 @@ export const projectInvitations = pgTable(
 //   - `status` is append-only through the lifecycle; rows are soft-deleted only.
 //   - A timed-out row KEEPS `status = 'pending'` and holds its uniqueness slot
 //     until something flips it. A partial index predicate must be immutable, so
-//     it cannot reference `now()` — the create path reaps stale pendings to
+//     it cannot reference `now()` — the create path fails stale pendings as
 //     `expired` before inserting, exactly as `expireStalePending` does (#1769).
 //   - All FKs are `onDelete: restrict` except `notification_id` (`set null` —
 //     the bell row may be GC'd).
@@ -2120,11 +2132,17 @@ export const roleUpgradeRequests = pgTable(
     /** Optional note the requester wrote for the decider. */
     message: text("message"),
     /**
-     * Lifecycle: 'pending' | 'approved' | 'rejected' | 'expired' | 'cancelled'.
+     * Lifecycle: 'pending' | 'approved' | 'rejected' | 'failed' | 'cancelled'.
      * 'approved' / 'rejected' rather than the transfers' 'accepted' /
      * 'declined': an upgrade is decided FOR you, a transfer is one you accept.
      */
     status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * deadline) or 'invalidated' (what it was about stopped holding). Null on
+     * every other status (CHECK in 0098).
+     */
+    failedReason: varchar("failed_reason", { length: 16 }),
     /** Who decided. Null while pending, and stays null on expiry / cancel. */
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
       onDelete: "restrict",
@@ -2185,8 +2203,14 @@ export const projectJoinRequests = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     /** Optional note the requester wrote for the owner. */
     message: text("message"),
-    /** Lifecycle: 'pending' | 'approved' | 'rejected' | 'expired' | 'cancelled'. */
+    /** Lifecycle: 'pending' | 'approved' | 'rejected' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * deadline) or 'invalidated' (what it was about stopped holding). Null on
+     * every other status (CHECK in 0098).
+     */
+    failedReason: varchar("failed_reason", { length: 16 }),
     /** The role the owner granted: 'viewer' | 'editor'; non-null iff approved. */
     grantedRole: varchar("granted_role", { length: 16 }),
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
@@ -2233,8 +2257,14 @@ export const projectTransfers = pgTable(
     toUserId: uuid("to_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'. */
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * deadline) or 'invalidated' (what it was about stopped holding). Null on
+     * every other status (CHECK in 0098).
+     */
+    failedReason: varchar("failed_reason", { length: 16 }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** Bell row for the recipient; marked read in the deciding transaction. */
     notificationId: uuid("notification_id").references(() => notifications.id, {
@@ -2279,8 +2309,14 @@ export const studioTransfers = pgTable(
     toUserId: uuid("to_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'expired' | 'cancelled'. */
+    /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
+    /**
+     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * deadline) or 'invalidated' (what it was about stopped holding). Null on
+     * every other status (CHECK in 0098).
+     */
+    failedReason: varchar("failed_reason", { length: 16 }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** Bell row for the recipient; marked read in the deciding transaction. */
     notificationId: uuid("notification_id").references(() => notifications.id, {

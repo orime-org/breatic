@@ -25,13 +25,15 @@ import { db, projectJoinRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { DecisionGrantRole } from "@breatic/shared";
 import { mintShareToken } from "@server/utils/share-token.js";
+import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
+import type { FailedReason } from "@server/utils/deferred-decision.js";
 
 /** Where a request sits in its lifecycle. */
 export type ProjectJoinStatus =
   | "pending"
   | "approved"
   | "rejected"
-  | "expired"
+  | "failed"
   | "cancelled";
 
 /** A locked request, with what the decision path needs to judge it. */
@@ -56,7 +58,7 @@ export interface PendingJoinRequest {
 }
 
 /**
- * Flip timed-out pendings on one key to `expired`, freeing the unique slot.
+ * Fail timed-out pendings on one key as `expired`, freeing the unique slot.
  * @param projectId - The project asked about.
  * @param requesterUserId - The person asking.
  * @param tx - The enclosing transaction, shared with the insert that follows.
@@ -69,7 +71,7 @@ export async function expireStalePending(
 ): Promise<string[]> {
   const rows = await tx
     .update(projectJoinRequests)
-    .set({ status: "expired" })
+    .set({ status: "failed", failedReason: "expired" })
     .where(
       and(
         eq(projectJoinRequests.projectId, projectId),
@@ -177,15 +179,15 @@ export async function lockRequest(
 }
 
 /**
- * Move a still-pending request to a terminal status.
+ * Move a still-pending request to the owner's decision.
  *
  * The `status = 'pending'` predicate is the serialisation point: of two
  * concurrent settlements exactly one UPDATE matches. `granted_role` is set
  * exactly when the status is `approved` (the table's CHECK enforces it).
  * @param id - Request id.
  * @param settlement - How it ends.
- * @param settlement.status - The terminal status.
- * @param settlement.decidedByUserId - The owner who ruled, or null.
+ * @param settlement.status - The owner's decision.
+ * @param settlement.decidedByUserId - The owner who ruled.
  * @param settlement.grantedRole - The role granted; approvals only.
  * @param tx - The enclosing transaction.
  * @returns True when this call is the one that settled it.
@@ -194,20 +196,16 @@ export async function settleIfPending(
   id: string,
   settlement:
     | { status: "approved"; decidedByUserId: string; grantedRole: DecisionGrantRole }
-    | { status: "rejected"; decidedByUserId: string }
-    | { status: "expired" },
+    | { status: "rejected"; decidedByUserId: string },
   tx: DbTx,
 ): Promise<boolean> {
   const rows = await tx
     .update(projectJoinRequests)
     .set({
       status: settlement.status,
-      decidedByUserId: settlement.status === "expired" ? null : settlement.decidedByUserId,
-      decidedAt: settlement.status === "expired" ? null : new Date(),
+      decidedByUserId: settlement.decidedByUserId,
+      decidedAt: new Date(),
       grantedRole: settlement.status === "approved" ? settlement.grantedRole : null,
-      ...(settlement.status === "expired"
-        ? { expiresAt: sql`LEAST(${projectJoinRequests.expiresAt}, now())` }
-        : {}),
     })
     .where(
       and(
@@ -221,14 +219,45 @@ export async function settleIfPending(
 }
 
 /**
- * Expire the pending request one person has on a project, if any — they just
- * became a member by another route, so there is nothing left to ask for.
+ * End a still-pending request nobody can answer any more, and record why.
+ *
+ * Nobody decided it, so no `decided_at` is written and `decided_by_user_id` stays null; the deadline
+ * stays the one it was filed with.
+ * @param id - Request id.
+ * @param reason - Why it ended: its deadline passed, or what it was about
+ *   stopped holding.
+ * @param tx - The enclosing transaction.
+ * @returns True when this call is the one that ended it.
+ */
+export async function failIfPending(
+  id: string,
+  reason: FailedReason,
+  tx: DbTx,
+): Promise<boolean> {
+  const rows = await tx
+    .update(projectJoinRequests)
+    .set({ status: "failed", failedReason: reason })
+    .where(
+      and(
+        eq(projectJoinRequests.id, id),
+        eq(projectJoinRequests.status, "pending"),
+        isNull(projectJoinRequests.deletedAt),
+      ),
+    )
+    .returning({ id: projectJoinRequests.id });
+  return rows.length > 0;
+}
+
+/**
+ * Fail the pending request one person has on a project, if any — they just
+ * became a member by another route, so there is nothing left to ask for. A
+ * request whose deadline had already passed records that as its reason.
  * @param projectId - The project.
  * @param requesterUserId - The person who became a member.
  * @param tx - The transaction that wrote their member row.
  * @returns The bell entry to retire, or null when there was no pending request.
  */
-export async function expirePendingFor(
+export async function failPendingFor(
   projectId: string,
   requesterUserId: string,
   tx: DbTx,
@@ -236,8 +265,8 @@ export async function expirePendingFor(
   const rows = await tx
     .update(projectJoinRequests)
     .set({
-      status: "expired",
-      expiresAt: sql`LEAST(${projectJoinRequests.expiresAt}, now())`,
+      status: "failed",
+      failedReason: failedReasonAtNow(projectJoinRequests.expiresAt),
     })
     .where(
       and(

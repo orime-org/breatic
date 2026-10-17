@@ -26,7 +26,8 @@ export type DecisionKind =
  *
  * The six tables spell their terminal statuses three different ways
  * (accepted/approved, declined/rejected, revoked/cancelled), so the server
- * collapses them here: the page renders a state, not a status column.
+ * collapses them here: the page renders a state, not a status column. A
+ * `failed` request becomes `expired` or `invalidated` by its `failed_reason`.
  *
  * There is no `invalid` member, and that is the point. A token nobody issued
  * resolves to nothing at all, which the endpoint answers with a 404 — it never
@@ -40,6 +41,7 @@ export type DecisionState =
   | "accepted"
   | "declined"
   | "expired"
+  | "invalidated"
   | "revoked"
   | "already_member"
   | "gone";

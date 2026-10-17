@@ -27,7 +27,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from '@web/lib/toast';
 import { expiresInLabel } from '@web/lib/expires-in';
 import { formatLocalDay } from '@web/lib/format-day';
-import type { DecisionAction, DecisionGrantRole, DecisionView } from '@breatic/shared';
+import type { DecisionAction, DecisionGrantRole, DecisionState, DecisionView } from '@breatic/shared';
 import { decisionsApi } from '@web/data/api/decisions';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -238,7 +238,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
   };
 
   if (view.state !== 'answerable') {
-    const copy: Record<string, { title: string; body: string }> = {
+    const copy: Record<Exclude<DecisionState, 'answerable'>, { title: string; body: string }> = {
       accepted: {
         title: t('decision.acceptedTitle'),
         body: t('decision.acceptedBody'),
@@ -251,6 +251,10 @@ export default function DecisionLandingPage(): React.JSX.Element {
         title: t('decision.expiredTitle'),
         body: t('decision.expiredBody'),
       },
+      invalidated: {
+        title: t('decision.invalidatedTitle'),
+        body: t('decision.invalidatedBody'),
+      },
       revoked: {
         title: t('decision.revokedTitle'),
         body: t('decision.revokedBody'),
@@ -261,10 +265,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
         body: t('decision.alreadyMemberBody'),
       },
     };
-    const card = copy[view.state] ?? {
-      title: t('decision.invalidTitle'),
-      body: t('decision.invalidBody'),
-    };
+    const card = copy[view.state];
     return (
       <AuthCardShell
         title={card.title}

@@ -58,7 +58,7 @@ import {
   isRefused,
   refusalError,
 } from "@server/utils/deferred-decision.js";
-import type { Refused } from "@server/utils/deferred-decision.js";
+import type { FailedReason, Refused } from "@server/utils/deferred-decision.js";
 
 /**
  * The current admin offers the studio to an existing member.
@@ -240,11 +240,11 @@ export async function confirmTransfer(
     //     initiator to maintainer. If they had been demoted to guest, that is
     //     a silent privilege GRANT off a week-old offer.
     if (currentAdminUserId === null || currentAdminUserId !== fromUserId) {
-      await settle(offer, "expired", tx);
+      await fail(offer, "invalidated", tx);
       return { refusal: "conflict" };
     }
     if (!recipientRole || recipientRole === "guest") {
-      await settle(offer, "expired", tx);
+      await fail(offer, "invalidated", tx);
       return { refusal: "conflict" };
     }
 
@@ -415,7 +415,7 @@ async function openForDecision(
     // answer it, so it is settled here rather than left holding the studio's
     // only transfer slot — the same treatment every other dead-request branch
     // gets, and the same `conflict` they all report.
-    await settle(
+    await fail(
       {
         id: row.id,
         studioId: row.studioId,
@@ -423,7 +423,7 @@ async function openForDecision(
         fromUserId: row.fromUserId,
         notificationId: row.notificationId,
       },
-      "expired",
+      "invalidated",
       tx,
     );
     return { refusal: "conflict" };
@@ -440,24 +440,41 @@ async function openForDecision(
   if (row.expired) {
     // Nobody answered in time. Somebody has to write that down, or the row
     // stays `pending` forever and holds the studio's only transfer slot.
-    await settle(offer, "expired", tx);
+    await fail(offer, "expired", tx);
     return { refusal: "conflict" };
   }
   return offer;
 }
 
 /**
- * Move an offer to a terminal status and take its bell entry down with it.
+ * Settle an offer on the recipient's answer and take its bell entry down with it.
  * @param offer - The locked offer.
- * @param status - Terminal status to settle on.
+ * @param status - The recipient's answer.
  * @param tx - The deciding transaction.
  */
 async function settle(
   offer: OpenOffer,
-  status: "accepted" | "declined" | "expired",
+  status: "accepted" | "declined",
   tx: DbTx,
 ): Promise<void> {
   await transfersRepo.settleIfPending(offer.id, status, tx);
+  if (offer.notificationId !== null) {
+    await notificationRepo.retire(offer.notificationId, tx);
+  }
+}
+
+/**
+ * End an offer nobody can answer any more and take its bell entry down with it.
+ * @param offer - The locked offer.
+ * @param reason - Its deadline passed, or what it was about stopped holding.
+ * @param tx - The deciding transaction.
+ */
+async function fail(
+  offer: OpenOffer,
+  reason: FailedReason,
+  tx: DbTx,
+): Promise<void> {
+  await transfersRepo.failIfPending(offer.id, reason, tx);
   if (offer.notificationId !== null) {
     await notificationRepo.retire(offer.notificationId, tx);
   }

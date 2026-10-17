@@ -15,7 +15,9 @@
  * their link was never real. Callers get `deleted` and decide what to say.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
 import {
   db,
   studioInvitations,
@@ -27,6 +29,7 @@ import {
   projectMembersRepo,
 } from "@breatic/core";
 import type { DecisionKind } from "@breatic/shared";
+import type { FailedReason } from "@server/utils/deferred-decision.js";
 
 /** Bare identity of the request a token resolved to. */
 export interface ResolvedRequest {
@@ -34,6 +37,8 @@ export interface ResolvedRequest {
   id: string;
   /** The row's own status word, in that table's vocabulary. */
   status: string;
+  /** Why a `failed` request ended; null on every other status. */
+  failedReason: FailedReason | null;
   /** Whether the row was soft-deleted, normally along with its container. */
   deleted: boolean;
   /** When the request was filed — with `expiresAt`, it derives the window. */
@@ -59,6 +64,17 @@ const SOURCES = [
 ] as const satisfies ReadonlyArray<{ kind: DecisionKind; table: unknown }>;
 
 /**
+ * The reason for a pending request that a sweep fails without looking at its
+ * deadline: `expired` when the deadline had already passed, since that came
+ * first, and `invalidated` otherwise.
+ * @param expiresAt - The request table's `expires_at` column.
+ * @returns SQL that evaluates to the row's `failed_reason`.
+ */
+export function failedReasonAtNow(expiresAt: AnyPgColumn): SQL<FailedReason> {
+  return sql<FailedReason>`CASE WHEN ${expiresAt} <= now() THEN 'expired' ELSE 'invalidated' END`;
+}
+
+/**
  * Resolves a share token to the request it names.
  *
  * Searches every request table. Tokens are 32 random bytes with a unique index
@@ -77,6 +93,7 @@ export async function resolveByToken(
       .select({
         id: source.table.id,
         status: source.table.status,
+        failedReason: source.table.failedReason,
         deletedAt: source.table.deletedAt,
         createdAt: source.table.createdAt,
         expiresAt: source.table.expiresAt,
@@ -92,6 +109,7 @@ export async function resolveByToken(
       kind: source.kind,
       id: row.id,
       status: row.status,
+      failedReason: row.failedReason as FailedReason | null,
       deleted: row.deletedAt !== null,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,

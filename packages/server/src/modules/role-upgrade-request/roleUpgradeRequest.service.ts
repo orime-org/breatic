@@ -26,8 +26,9 @@
  *   5. the requester must still be a viewer, else retire it and 409
  *   6. write, settle, retire the bell entry, announce the outcome
  *
- * Steps 3 and 5 push the request to `expired` — it has genuinely stopped
- * being answerable — and take its bell entry down with it. Step 4 deliberately
+ * Steps 3 and 5 end the request as `failed` — `expired` and `invalidated`
+ * respectively, since it has genuinely stopped being answerable — and take its
+ * bell entry down with it. Step 4 deliberately
  * does not: a decider lacking authority says nothing about the request, which
  * remains perfectly valid for whoever owns the project now.
  *
@@ -56,7 +57,7 @@ import {
   isRefused,
   refusalError,
 } from "@server/utils/deferred-decision.js";
-import type { Refused } from "@server/utils/deferred-decision.js";
+import type { FailedReason, Refused } from "@server/utils/deferred-decision.js";
 import { projectMembersRepo } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -251,7 +252,7 @@ export async function approve(input: DecisionInput): Promise<void> {
       // promoted by another route, or removed from the project. The request
       // has stopped being answerable, so it is settled rather than left to
       // occupy its slot for another week.
-      await settle(req, "expired", null, tx);
+      await fail(req, "invalidated", tx);
       return { refusal: "conflict" };
     }
     if (!(await settle(req, "approved", input.ownerUserId, tx))) {
@@ -317,7 +318,7 @@ export async function reject(input: DecisionInput): Promise<void> {
       tx,
     );
     if (role !== "viewer") {
-      await settle(req, "expired", null, tx);
+      await fail(req, "invalidated", tx);
       return { refusal: "conflict" };
     }
     if (!(await settle(req, "rejected", input.ownerUserId, tx))) {
@@ -401,7 +402,7 @@ export async function readdressOnOwnerChange(
   for (const req of pending) {
     if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
     if (req.requesterUserId === newOwnerUserId) {
-      await requestsRepo.settleIfPending(req.id, "expired", null, tx);
+      await requestsRepo.failIfPending(req.id, "invalidated", tx);
     } else {
       others.push(req);
     }
@@ -498,9 +499,9 @@ async function openForDecision(
   if (row.status !== "pending") return { refusal: "conflict" };
   if (row.expired) {
     // Nobody answered in time. Somebody has to write that down, or the row
-    // stays `pending` forever and holds this viewer's slot — "expired" is by
-    // definition the case where no other path runs.
-    await settle(req, "expired", null, tx);
+    // stays `pending` forever and holds this viewer's slot — a timed-out
+    // request is by definition the case where no other path runs.
+    await fail(req, "expired", tx);
     return { refusal: "conflict" };
   }
   const decider = await projectMembersRepo.getRole(
@@ -517,44 +518,54 @@ async function openForDecision(
 }
 
 /**
- * Move a request to a terminal status and take its bell entry down with it.
+ * Settle a request on its owner's decision and take its bell entry down with it.
  *
- * A settlement CREDITED TO A PERSON re-establishes that person's authority
- * first, and refuses if it is gone. That check lives here rather than in each
+ * The decision re-establishes the deciding owner's authority first, and
+ * refuses if it is gone. That check lives here rather than in each
  * caller for one reason: the window it closes is between the gate and the
  * write, so every write needs it, and a rule each caller has to remember is a
  * rule one of them will forget — `reject` did, for a whole round, while
  * `approve` had it. A transfer committing in that window would otherwise let a
  * caller who no longer owns the project destroy a request the new owner never
  * sees.
- *
- * `expired` carries no decider and needs no authority: it records that nobody
- * came, which is true no matter who noticed.
  * @param req - The locked request.
- * @param status - Terminal status to settle on.
- * @param decidedByUserId - The owner who ruled, or null when nobody did.
+ * @param status - The owner's decision.
+ * @param decidedByUserId - The owner who ruled.
  * @param tx - The deciding transaction.
  * @returns True when it settled; false when the decider's authority was gone.
  */
 async function settle(
   req: OpenRequest,
-  status: "approved" | "rejected" | "expired",
-  decidedByUserId: string | null,
+  status: "approved" | "rejected",
+  decidedByUserId: string,
   tx: DbTx,
 ): Promise<boolean> {
-  if (decidedByUserId !== null) {
-    const stillOwner = await projectMembersRepo.getRole(
-      req.projectId,
-      decidedByUserId,
-      tx,
-    );
-    if (stillOwner !== "owner") return false;
-  }
+  const stillOwner = await projectMembersRepo.getRole(
+    req.projectId,
+    decidedByUserId,
+    tx,
+  );
+  if (stillOwner !== "owner") return false;
   await requestsRepo.settleIfPending(req.id, status, decidedByUserId, tx);
   if (req.notificationId !== null) {
     await notificationRepo.retire(req.notificationId, tx);
   }
   return true;
+}
+
+/**
+ * End a request nobody can answer any more and take its bell entry down with
+ * it. It carries no decider and needs no authority: what ended it is true no
+ * matter who noticed.
+ * @param req - The locked request.
+ * @param reason - Its deadline passed, or what it was about stopped holding.
+ * @param tx - The deciding transaction.
+ */
+async function fail(req: OpenRequest, reason: FailedReason, tx: DbTx): Promise<void> {
+  await requestsRepo.failIfPending(req.id, reason, tx);
+  if (req.notificationId !== null) {
+    await notificationRepo.retire(req.notificationId, tx);
+  }
 }
 
 /**
