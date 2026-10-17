@@ -411,7 +411,7 @@ function powers(falloff: number, count: number): number {
  * @param falloff - The kernel's factor per block.
  * @returns The weight.
  */
-function chromaWeight(from: number, to: number, step: number, falloff: number): number {
+export function chromaWeight(from: number, to: number, step: number, falloff: number): number {
   const a = blockRun(from, step);
   if (from === to) {
     if (a.whole === 0 && a.first === a.last) return a.head * a.head;

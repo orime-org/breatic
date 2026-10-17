@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 
 import { ADJUST_RANGES, defaultAdjustValue, type AdjustValue } from '@breatic/shared';
 
-import { adjustPixels } from '@web/spaces/canvas/mini-tool/adjust-filters';
+import { adjustPixels, chromaWeight } from '@web/spaces/canvas/mini-tool/adjust-filters';
 import { previewFrame } from '@web/spaces/canvas/mini-tool/adjust-export';
 
 /** A picture's pixels. */
@@ -315,6 +315,46 @@ describe('adjustPixels', () => {
     };
 
     const BW: [number[], number[]] = [[0, 0, 0], [255, 255, 255]];
+
+    /**
+     * The weight chromaWeight stands for, summed source pixel by source pixel.
+     * @param from - The drawn pixel being blurred.
+     * @param to - The drawn pixel it takes from.
+     * @param step - Drawn pixels per source pixel.
+     * @param falloff - The kernel's factor per block.
+     * @returns The weight.
+     */
+    const summed = (from: number, to: number, step: number, falloff: number): number => {
+      const covered = (at: number): [number, number][] => {
+        const out: [number, number][] = [];
+        for (let a = Math.floor(at / step); a < (at + 1) / step; a++) {
+          const c = Math.min((at + 1) / step, a + 1) - Math.max(at / step, a);
+          if (c > 1e-12) out.push([a, c]);
+        }
+        return out;
+      };
+      let sum = 0;
+      for (const [a, ca] of covered(from)) {
+        for (const [b, cb] of covered(to)) sum += ca * cb * falloff ** Math.abs(Math.floor(a / 2) - Math.floor(b / 2));
+      }
+      return sum;
+    };
+
+    it.each([1, 0.96, 0.72, 0.6, 0.5, 0.288, 0.25, 0.144, 0.125, 0.0625, 0.01])(
+      'weighs one drawn pixel in another as the source pixels they cover do, at %s drawn pixels per source pixel',
+      (step) => {
+        for (const falloff of [0.0005, 0.3, 0.63, 0.97]) {
+          for (const from of [0, 3, 17]) {
+            for (const apart of [0, 1, 2, 10]) {
+              for (const to of [from + apart, from - apart]) {
+                const want = summed(from, to, step, falloff);
+                expect(chromaWeight(from, to, step, falloff), `${from}->${to} falloff ${falloff}`).toBeCloseTo(want, 6 - Math.ceil(Math.log10(Math.max(1, want))));
+              }
+            }
+          }
+        }
+      },
+    );
 
     // The preview the layer draws, at the size previewFrame picks, shows the
     // export shrunk to that size: a colour edge carries no fringe the result
