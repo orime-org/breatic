@@ -37,6 +37,7 @@ import { formatCredits } from '@web/lib/format-credits';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
 import { PreviewImg } from '@web/components/preview-img';
 
@@ -283,7 +284,7 @@ function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
  * @param root0.provider - Live meta-doc provider carrying the activity:new signal.
  * @param root0.currentUserRole - Caller's role, driving owner-only affordances.
  * @param root0.onRestore - Owner restore handler invoked with the deleted space's id.
- * @param root0.spaceLimitReached - The project holds the Space cap; Restore is off and says why.
+ * @param root0.spaceLimitReached - The project holds the Space cap; Restore is unavailable and says why when hovered or pressed.
  * @returns The history trigger button and its activity feed sheet.
  */
 export function ProjectActivityButton({
@@ -546,18 +547,30 @@ export function ProjectActivityButton({
                             variant={null}
                             size={null}
                             type='button'
-                            onClick={() => m.spaceId && onClickRestore(m.spaceId)}
+                            onClick={() => {
+                              if (spaceLimitReached) {
+                                toast.warning(
+                                  t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT }),
+                                );
+                                return;
+                              }
+                              if (m.spaceId) onClickRestore(m.spaceId);
+                            }}
                             loading={restoring.isPending(m.spaceId ?? '')}
-                            disabled={spaceLimitReached}
+                            aria-disabled={spaceLimitReached || undefined}
                             icon={<RotateCcw className='h-3 w-3' aria-hidden />}
                             data-testid={`project-activity-restore-${m.id}`}
-                            className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent disabled:opacity-50'
+                            className={`mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent ${
+                              spaceLimitReached ? 'opacity-50' : ''
+                            }`}
                           >
                             {t('activity.action.restore')}
                           </Button>
                         </TooltipTrigger>
                         {spaceLimitReached ? (
-                          <TooltipContent>
+                          // Restore sits at the panel's right edge; aligned to
+                          // its end the tooltip stays inside the panel.
+                          <TooltipContent align='end'>
                             {t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT })}
                           </TooltipContent>
                         ) : null}

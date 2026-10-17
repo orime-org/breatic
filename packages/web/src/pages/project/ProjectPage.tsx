@@ -414,11 +414,13 @@ function ProjectWorkspace({
         // The server's message is a developer string in English; the reader
         // gets a line in their own language for the codes they can act on.
         const notice = spaceRpcFailureNotice(req.type, res.error.code);
-        toast[notice.level](t(errorToastKey), {
-          description: notice.descriptionKey
-            ? t(notice.descriptionKey, { max: MAX_SPACES_PER_PROJECT })
-            : undefined,
-        });
+        if (notice.level === 'warning') {
+          toast.warning(t(notice.messageKey, { max: MAX_SPACES_PER_PROJECT }));
+        } else {
+          toast.error(t(errorToastKey), {
+            description: notice.descriptionKey ? t(notice.descriptionKey) : undefined,
+          });
+        }
         throw new Error(res.error.message);
       }
       return res;

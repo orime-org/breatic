@@ -3,8 +3,9 @@
 
 /**
  * The tab bar at the Space cap (inner#1140): the new-Space button and the
- * activity panel's Restore are off at 200 Spaces and say why on hover, and the
- * reason never appears when nobody is hovering.
+ * activity panel's Restore are unavailable at 200 Spaces but stay reachable by
+ * keyboard; pressing one says why in a warning toast, hovering one says why in
+ * a tooltip, and the reason never appears when nobody is hovering.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -24,10 +25,17 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores';
 
-const { listMock } = vi.hoisted(() => ({ listMock: vi.fn() }));
+const { listMock, toastWarningMock } = vi.hoisted(() => ({
+  listMock: vi.fn(),
+  toastWarningMock: vi.fn(),
+}));
 vi.mock('@web/data/api/activities', () => ({
   activitiesApi: { list: listMock },
 }));
+vi.mock('@web/lib/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/lib/toast')>();
+  return { ...actual, toast: { ...actual.toast, warning: toastWarningMock } };
+});
 
 const LIMIT_TEXT = 'Reached the limit of 200 Spaces';
 
@@ -81,6 +89,7 @@ describe('SpaceTabBar at the Space cap', () => {
     Element.prototype.scrollTo = vi.fn();
     listMock.mockReset();
     listMock.mockResolvedValue({ items: [], nextCursor: null });
+    toastWarningMock.mockReset();
   });
 
   afterEach(() => {
@@ -91,14 +100,53 @@ describe('SpaceTabBar at the Space cap', () => {
     }
   });
 
-  it('says the limit is reached when the disabled new-Space button is hovered', async () => {
+  it('says the limit is reached when the unavailable new-Space button is hovered', async () => {
     renderBar(spaces(MAX_SPACES_PER_PROJECT));
     const button = screen.getByTestId('new-space-button');
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
 
     fireEvent.pointerMove(button, { pointerType: 'mouse' });
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(LIMIT_TEXT);
+  });
+
+  it('keeps the new-Space button reachable by keyboard at the cap', () => {
+    renderBar(spaces(MAX_SPACES_PER_PROJECT));
+    const button = screen.getByTestId('new-space-button');
+
+    act(() => button.focus());
+
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveFocus();
+  });
+
+  it('says why with a warning toast and opens no dialog when the new-Space button is clicked at the cap', async () => {
+    renderBar(spaces(MAX_SPACES_PER_PROJECT));
+
+    await userEvent.setup().click(screen.getByTestId('new-space-button'));
+
+    expect(toastWarningMock).toHaveBeenCalledWith(LIMIT_TEXT);
+    expect(screen.queryByTestId('new-space-dialog')).toBeNull();
+  });
+
+  it('says why with a warning toast and opens no dialog when Enter is pressed on the new-Space button at the cap', async () => {
+    renderBar(spaces(MAX_SPACES_PER_PROJECT));
+    const user = userEvent.setup();
+    act(() => screen.getByTestId('new-space-button').focus());
+
+    await user.keyboard('{Enter}');
+
+    expect(toastWarningMock).toHaveBeenCalledWith(LIMIT_TEXT);
+    expect(screen.queryByTestId('new-space-dialog')).toBeNull();
+  });
+
+  it('opens the dialog and shows no toast below the cap', async () => {
+    renderBar(spaces(MAX_SPACES_PER_PROJECT - 1));
+
+    await userEvent.setup().click(screen.getByTestId('new-space-button'));
+
+    expect(await screen.findByTestId('new-space-dialog')).toBeInTheDocument();
+    expect(toastWarningMock).not.toHaveBeenCalled();
   });
 
   it('does not show the reason by itself when a collaborator fills the project after a hover', async () => {
@@ -132,7 +180,7 @@ describe('SpaceTabBar at the Space cap', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 
-  it('turns Restore off in the activity panel it mounts once the project holds the cap', async () => {
+  it('marks Restore unavailable in the activity panel it mounts once the project holds the cap', async () => {
     const deleted: ProjectActivityEntry = {
       id: 'del-1',
       projectId: 'p1',
@@ -151,6 +199,9 @@ describe('SpaceTabBar at the Space cap', () => {
 
     await userEvent.setup().click(screen.getByTestId('project-activity-trigger'));
 
-    expect(await screen.findByTestId('project-activity-restore-del-1')).toBeDisabled();
+    expect(await screen.findByTestId('project-activity-restore-del-1')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
   });
 });

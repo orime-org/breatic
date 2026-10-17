@@ -40,10 +40,17 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useUIStore } from '@web/stores/ui';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
-const { listMock } = vi.hoisted(() => ({ listMock: vi.fn() }));
+const { listMock, toastWarningMock } = vi.hoisted(() => ({
+  listMock: vi.fn(),
+  toastWarningMock: vi.fn(),
+}));
 vi.mock('@web/data/api/activities', () => ({
   activitiesApi: { list: listMock },
 }));
+vi.mock('@web/lib/toast', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@web/lib/toast')>();
+  return { ...actual, toast: { ...actual.toast, warning: toastWarningMock } };
+});
 
 const PID = '11111111-1111-4111-8111-111111111111';
 
@@ -67,6 +74,7 @@ function render(ui: React.ReactElement, options?: RenderOptions): ReturnType<typ
 }
 
 beforeEach(() => {
+  toastWarningMock.mockReset();
   useUIStore.setState({ activeOverlayId: null });
   listMock.mockReset();
   listMock.mockResolvedValue({ items: [], nextCursor: null });
@@ -153,7 +161,7 @@ describe('ProjectActivityButton (activity feed)', () => {
     expect(onRestore).toHaveBeenCalledWith('sp-9');
   });
 
-  it('turns the Restore button off once the project holds the Space cap', async () => {
+  it('keeps the Restore button reachable at the Space cap and says why when pressed', async () => {
     const onRestore = vi.fn();
     listMock.mockResolvedValue({
       items: [
@@ -177,13 +185,15 @@ describe('ProjectActivityButton (activity feed)', () => {
     );
     await user.click(screen.getByTestId('project-activity-trigger'));
     const btn = await screen.findByTestId('project-activity-restore-del-cap');
-    expect(btn).toBeDisabled();
-    await user.click(btn);
-    expect(onRestore).not.toHaveBeenCalled();
+    expect(btn).not.toBeDisabled();
+    expect(btn).toHaveAttribute('aria-disabled', 'true');
     fireEvent.pointerMove(btn, { pointerType: 'mouse' });
     expect(await screen.findByRole('tooltip', {}, { timeout: 2000 })).toHaveTextContent(
       'Reached the limit of 200 Spaces',
     );
+    await user.click(btn);
+    expect(onRestore).not.toHaveBeenCalled();
+    expect(toastWarningMock).toHaveBeenCalledWith('Reached the limit of 200 Spaces');
   });
 
   it('does not show the cap reason by itself when the project fills after Restore was hovered', async () => {

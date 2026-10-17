@@ -33,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { toast } from '@web/lib/toast';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores';
@@ -630,9 +631,11 @@ export function SpaceTabBar({
             disabled). Editors + owners can create spaces; the all-spaces
             drawer + project-activity buttons stay visible for everyone.
             Backend `requireRole` on `space:create` is the real boundary. */}
-        {/* At the cap the button is off and its tooltip says why. The
-            dialog stays mounted, so one already open is not yanked away when
-            a collaborator's create fills the project; submitting it then gets
+        {/* At the cap the button is unavailable but stays in the Tab order
+            (aria-disabled): hovering it shows the reason, pressing it shows
+            the same reason as a toast and opens nothing. The dialog stays
+            mounted, so one already open is not yanked away when a
+            collaborator's create fills the project; submitting it then gets
             the server's refusal as a toast. */}
         {/* disableHoverableContent: below the cap there is no content, and
             only the content closes a hoverable tooltip when the pointer
@@ -651,8 +654,16 @@ export function SpaceTabBar({
                     size='chrome'
                     aria-label={t('chrome.tooltip.newSpace')}
                     data-testid='new-space-button'
-                    disabled={spaceLimitReached}
+                    aria-disabled={spaceLimitReached || undefined}
+                    onClick={(e) => {
+                      if (!spaceLimitReached) return;
+                      // Runs before the dialog trigger's handler, which skips
+                      // a prevented click.
+                      e.preventDefault();
+                      toast.warning(spaceLimitText);
+                    }}
                     onFocusCapture={suppressTooltipFocusOpen}
+                    className={spaceLimitReached ? 'opacity-50' : undefined}
                     style={{
                       height: 'var(--btn-chrome)',
                       width: 'var(--btn-chrome)',

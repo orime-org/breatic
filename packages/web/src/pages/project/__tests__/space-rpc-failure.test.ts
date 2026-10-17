@@ -9,7 +9,7 @@ describe('spaceRpcFailureNotice', () => {
     for (const type of ['space:create', 'space:restore'] as const) {
       expect(spaceRpcFailureNotice(type, 'SPACE_LIMIT')).toEqual({
         level: 'warning',
-        descriptionKey: 'project.space.error.limit',
+        messageKey: 'project.space.error.limit',
       });
     }
   });
@@ -18,7 +18,7 @@ describe('spaceRpcFailureNotice', () => {
     for (const type of ['space:create', 'space:delete', 'space:restore'] as const) {
       expect(spaceRpcFailureNotice(type, 'BUSY')).toEqual({
         level: 'warning',
-        descriptionKey: 'project.space.error.busy',
+        messageKey: 'project.space.error.busy',
       });
     }
   });

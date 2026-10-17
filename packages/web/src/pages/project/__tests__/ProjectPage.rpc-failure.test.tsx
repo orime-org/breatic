@@ -302,7 +302,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('a create refused for the Space cap warns with the cap, in the reader language', async () => {
+  it('a create refused for the Space cap warns with the cap in one line, in the reader language', async () => {
     sendSpaceRpcMock.mockResolvedValue({
       id: 'r1',
       ok: false,
@@ -316,14 +316,10 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
       expect(toast.warning).toHaveBeenCalledTimes(1);
     });
     expect(toast.error).not.toHaveBeenCalled();
-    const [title, opts] = vi.mocked(toast.warning).mock.calls[0] ?? [];
-    expect(title).toBe('Failed to create space');
-    expect((opts as { description?: string } | undefined)?.description).toBe(
-      'Reached the limit of 200 Spaces',
-    );
+    expect(vi.mocked(toast.warning).mock.calls[0]).toEqual(['Reached the limit of 200 Spaces']);
   });
 
-  it('a create refused because the Space lock is busy asks to try again', async () => {
+  it('a create refused because the Space lock is busy asks to try again in one line', async () => {
     sendSpaceRpcMock.mockResolvedValue({
       id: 'r1',
       ok: false,
@@ -337,10 +333,9 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
       expect(toast.warning).toHaveBeenCalledTimes(1);
     });
     expect(toast.error).not.toHaveBeenCalled();
-    const [, opts] = vi.mocked(toast.warning).mock.calls[0] ?? [];
-    expect((opts as { description?: string } | undefined)?.description).toBe(
+    expect(vi.mocked(toast.warning).mock.calls[0]).toEqual([
       'Another member is changing Spaces. Try again in a moment',
-    );
+    ]);
   });
 
   it('never shows the server message to the reader', async () => {
@@ -360,7 +355,7 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     expect((opts as { description?: string } | undefined)?.description).toBeUndefined();
   });
 
-  it('turns the new-Space button off once the project holds the cap', async () => {
+  it('marks the new-Space button unavailable once the project holds the cap', async () => {
     meta.spaces = Array.from({ length: 200 }, (_, i) => ({
       id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
       name: `Space ${i}`,
@@ -369,6 +364,6 @@ describe('ProjectPage — a failed Space RPC always says so', () => {
     setup();
 
     const button = await screen.findByTestId('new-space-button');
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
   });
 });
