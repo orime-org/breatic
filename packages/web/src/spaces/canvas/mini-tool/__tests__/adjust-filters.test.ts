@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { ADJUST_RANGES, defaultAdjustValue, type AdjustValue } from '@breatic/shared';
 
 import { adjustPixels } from '@web/spaces/canvas/mini-tool/adjust-filters';
+import { previewFrame } from '@web/spaces/canvas/mini-tool/adjust-export';
 
 /** A picture's pixels. */
 interface Pixels {
@@ -273,25 +274,82 @@ describe('adjustPixels', () => {
     const BLUE: [number[], number[]] = [[0, 0, 255], [255, 255, 0]];
     const BRICK: [number[], number[]] = [[0xb2, 0x66, 0x4c], [0x33, 0x66, 0xcc]];
 
-    // The preview, drawn smaller than the source, shows the export shrunk to
-    // its size: a colour edge carries no fringe the result does not have.
+    /**
+     * A picture drawn onto a canvas that spans `frame` source pixels: each
+     * drawn pixel averages the source pixels it covers, and the source's last
+     * column and row stand in for the pixels past its edge.
+     * @param source - The picture.
+     * @param size - The canvas's size.
+     * @param frame - The source pixels the canvas spans.
+     * @returns The drawn picture.
+     */
+    const drawnAt = (source: Pixels, size: { width: number; height: number }, frame: { width: number; height: number }): Pixels => {
+      const fx = frame.width / size.width;
+      const fy = frame.height / size.height;
+      const span = (p: number, scale: number): [number, number][] => {
+        const out: [number, number][] = [];
+        for (let i = Math.floor(p * scale); i < (p + 1) * scale; i++) {
+          const c = Math.min((p + 1) * scale, i + 1) - Math.max(p * scale, i);
+          if (c > 1e-9) out.push([i, c]);
+        }
+        return out;
+      };
+      const data = new Uint8ClampedArray(size.width * size.height * 4);
+      for (let y = 0; y < size.height; y++) {
+        for (let x = 0; x < size.width; x++) {
+          for (let k = 0; k < 4; k++) {
+            let sum = 0;
+            let area = 0;
+            for (const [j, cy] of span(y, fy)) {
+              for (const [i, cx] of span(x, fx)) {
+                const at = (Math.min(j, source.height - 1) * source.width + Math.min(i, source.width - 1)) * 4 + k;
+                sum += cx * cy * (source.data[at] ?? 0);
+                area += cx * cy;
+              }
+            }
+            data[(y * size.width + x) * 4 + k] = sum / area;
+          }
+        }
+      }
+      return { data, width: size.width, height: size.height };
+    };
+
+    const BW: [number[], number[]] = [[0, 0, 0], [255, 255, 255]];
+
+    // The preview the layer draws, at the size previewFrame picks, shows the
+    // export shrunk to that size: a colour edge carries no fringe the result
+    // does not have, wherever it falls, the picture's borders included.
     it.each([
-      [128, 64, 63, BLUE],
-      [128, 64, 64, BLUE],
-      [256, 64, 77, BLUE],
-      [1024, 576, 307, BRICK],
-      [1000, 600, 301, BRICK],
-    ] as const)('draws a %s-wide picture at %s as the export shrunk to it (edge at %s)', (width, drawn, edge, colours) => {
-      const height = 16;
-      const drawnHeight = Math.round((height * drawn) / width);
-      for (const noiseReduction of [10, 30, 100]) {
-        const value = { ...defaultAdjustValue, noiseReduction };
-        const source = halves(width, height, edge, colours);
-        const preview = shrunk(source, drawn, drawnHeight);
-        adjustPixels(preview, value, 7, { width, height });
-        const exported = { ...source, data: new Uint8ClampedArray(source.data) };
-        adjustPixels(exported, value, 7, exported);
-        expect(maxDiff(preview.data, shrunk(exported, drawn, drawnHeight).data), `noise reduction ${noiseReduction}`).toBeLessThanOrEqual(10);
+      [800, 576],
+      [1024, 576],
+      [600, 576],
+      [1001, 300],
+      [2048, 300],
+      [4000, 576],
+      [4000, 100],
+    ] as const)('draws a %s-wide picture shown %s wide as the export shrunk to its preview', (width, shown) => {
+      const height = 8;
+      const natural = { width, height };
+      const { size, frame } = previewFrame(
+        natural,
+        { width: shown, height: Math.max(1, Math.round((height * shown) / width)) },
+        { width: Infinity, height: Infinity },
+      );
+      const edges = [1, 2, 3, 4, 7, 8, 9, 16, width - 16, width - 9, width - 4, width - 3, width - 2, width - 1];
+      for (let n = 0; n < 12; n++) edges.push(Math.floor(width * 0.3) + 7 * n);
+      for (const colours of [BLUE, BRICK, BW]) {
+        for (const edge of edges) {
+          for (const noiseReduction of [1, 10]) {
+            const value = { ...defaultAdjustValue, noiseReduction };
+            const source = halves(width, height, edge, colours);
+            const preview = drawnAt(source, size, frame);
+            adjustPixels(preview, value, 7, natural, frame);
+            const exported = { ...source, data: new Uint8ClampedArray(source.data) };
+            adjustPixels(exported, value, 7, exported);
+            const gap = maxDiff(preview.data, drawnAt(exported, size, frame).data);
+            expect(gap, `${colours.join('/')} edge ${edge} noise reduction ${noiseReduction}`).toBeLessThanOrEqual(8);
+          }
+        }
       }
     });
 
