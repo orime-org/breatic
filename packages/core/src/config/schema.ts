@@ -154,7 +154,7 @@ export const coreConfigSchema = z.object({
   REDIS_QUEUE_URL: z.string().url().default("redis://localhost:6379/1"),
   REDIS_STREAM_URL: z.string().url().default("redis://localhost:6379/2"),
   // DB 3: collab cross-instance coordination — Hocuspocus pub/sub +
-  // the space-delete serialization lock. Split from REDIS_STREAM_URL
+  // the Space count lock (serializes Space create / restore / delete). Split from REDIS_STREAM_URL
   // (which stays cross-service Streams) so collab-cluster coordination
   // can later move to its own Redis instance by changing only this URL.
   REDIS_COLLAB_URL: z.string().url().default("redis://localhost:6379/3"),

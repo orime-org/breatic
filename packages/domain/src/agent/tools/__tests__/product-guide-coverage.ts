@@ -525,7 +525,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "project.space.error.notSynced": { excluded: REASONS.SAYS_TRY_AGAIN },
   "project.space.error.unreachable": { excluded: REASONS.SAYS_TRY_AGAIN },
   "project.space.error.busy": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "project.space.error.limit": { excluded: REASONS.SAYS_WHAT_HAPPENED, look: /hovering it says the limit is reached/ },
+  "project.space.error.limit": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.space.error.alreadyRestored": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.space.error.gone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.space.timeout.create": { excluded: REASONS.SAYS_WHAT_HAPPENED },

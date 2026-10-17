@@ -5,12 +5,12 @@
  * Soft-deletes the Space content rows no Space owns any more (inner#1140).
  *
  * A project holds at most 200 live Spaces, and collab checks that against the
- * number of live content rows in the yjs database. Before the cap, three paths
- * could leave a live row with no Space in the project's meta doc: a store that
- * revived a deleted Space's row, a project duplicate that copied the source's
- * deleted rows, and a create whose meta write failed. Those rows make a
- * project read fuller than it is. The code paths are fixed; this clears what
- * they left behind.
+ * number of live content rows in the yjs database. Several paths can leave a
+ * live row with no Space in the project's meta doc: a store that revived a
+ * deleted Space's row and a project duplicate that copied the source's deleted
+ * rows (both fixed), a lazy-seed that raced a project duplicate (inner#1557),
+ * and a create whose meta write and its undo both failed. Those rows make a
+ * project read fuller than it is; this clears them.
  *
  * For each project with a live meta doc it lists the live Space content rows
  * the meta does not list — by full name, so a row of another kind under a

@@ -304,8 +304,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     flushDelay: false,
 
     // Authentication — verifies session token AND per-project ownership.
-    // A rejection is counted against the connection's address by the gate,
-    // once per WebSocket (see infra/connection-gate.ts).
+    // A rejection is counted against the connection's address by the gate:
+    // once for a WebSocket's documents failing together, and again for every
+    // failure past a full project's documents (see infra/connection-gate.ts).
     onAuthenticate: connectionGate
       ? recordingFailedAuth(authenticate, connectionGate)
       : authenticate,

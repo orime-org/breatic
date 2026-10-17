@@ -16,18 +16,18 @@
  * project's Space cap plus its meta doc — and tested together; a ceiling
  * raised alone is not a fix.
  *
- * `@hocuspocus/server` 4.6.0 closes a socket at four limits. Measured against a
- * 1000-document socket carrying the frames a real client sends:
+ * `@hocuspocus/server` 4.6.0 closes a socket at four limits:
  *
  *   pending documents      default 100    fires first without config
  *   queued frame count     default 1000   fires at ~500 documents
- *   queued frame bytes     default 5 MB   ~390 KB used, 13x of headroom
+ *   queued frame bytes     default 5 MB   left alone
  *   idle timeout           default 60 s   client heartbeats every 15 s
  *
  * The pending-document count is derived from a full project; the frame count
- * from the byte ceiling and what each queued frame keeps on top of its bytes;
- * the last two are left at their defaults, and the cases below pin the
- * measurements that justify leaving them.
+ * from the byte ceiling and what each queued frame keeps on top of its bytes
+ * (infra/socket-ceilings.ts); the byte ceiling and the idle timeout are left
+ * at their defaults, and the last case below pins the heartbeat that
+ * justifies leaving the timeout.
  *
  * Holding a socket at a chosen pending count needs an `onAuthenticate` that
  * never settles — not a stand-in for slow auth, but the only way to observe

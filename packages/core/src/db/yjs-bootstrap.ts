@@ -110,7 +110,7 @@ export function writeSpaceEntry(
  * the entry's own type. This is the one definition of "a listed Space's
  * content row" — the collab handshake checks a content doc against it, the
  * project duplicate copies exactly these rows, and the Space-row repair
- * keeps exactly these live. An entry whose type is not a Space type names
+ * soft-deletes live rows outside them that nobody touched for an hour. An entry whose type is not a Space type names
  * nothing.
  * @param projectId - Project the meta doc belongs to.
  * @param spaces - The meta doc's `spaces` Y.Map (keyed by spaceId).

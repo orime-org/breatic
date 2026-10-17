@@ -10,8 +10,9 @@
  *   onConnect        runs per document. Counts nothing; refuses a document on a
  *                    socket whose address is banned, before any session or role
  *                    lookup runs.
- *   recordFailedAuth counts a failed authentication against the address once per
- *                    WebSocket, however many documents on it fail.
+ *   recordFailedAuth counts a WebSocket's first failed authentication once against
+ *                    the address, however many of its documents fail together;
+ *                    past a full project's documents every further failure counts.
  *
  * The refusal shape was measured against the library, not assumed. Rejecting
  * with a truthy error leaves the socket open AND produces an unhandled
@@ -385,7 +386,7 @@ describe("connection gate — onConnect", () => {
 });
 
 describe("connection gate — failed authentication", () => {
-  it("counts a failed authentication once per WebSocket, however many documents fail", async () => {
+  it("counts a failed authentication once per WebSocket for up to a full project's documents", async () => {
     const throttle = fakeThrottle();
     const gate = createConnectionGate(throttle);
     const request = { headers: new Headers({ "x-real-ip": "203.0.113.9" }) };

@@ -4,11 +4,12 @@
 /**
  * Unit tests for the collab Space count distributed lock.
  *
- * The lock serializes `space:delete` per project ACROSS collab instances
- * (production runs multiple instances synced via Redis pub/sub). Without
- * it, two collaborators on different instances can each pass the
- * "keep >=1 space" guard against their own not-yet-synced in-memory doc
- * and race the project's space count to zero. The lock lives on
+ * The lock serializes every Space RPC that changes the Space count
+ * (`space:create`, `space:restore`, `space:delete`) per project ACROSS
+ * collab instances (production runs multiple instances synced via Redis
+ * pub/sub). Without it, two collaborators on different instances can each
+ * pass the "keep >=1 Space" or the MAX_SPACES_PER_PROJECT guard against
+ * their own not-yet-synced in-memory doc. The lock lives on
  * `REDIS_COLLAB_URL` (DB3, collab cross-instance coordination).
  *
  * The lock is FENCED: each acquire writes a unique token and releases via

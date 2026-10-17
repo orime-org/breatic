@@ -5,8 +5,9 @@
  * The per-socket limits the collab server runs with, derived from a project's
  * Space cap.
  *
- * `@hocuspocus/server` closes a WHOLE socket — close code 4205, every Space on
- * it goes blank — at four limits, all calibrated for one document per socket. Ours carries a project: the
+ * `@hocuspocus/server` closes a WHOLE socket — every Space on it goes blank —
+ * at four limits (close code 4205 for the three queue limits, 4408 for the idle
+ * timeout), all calibrated for one document per socket. Ours carries a project: the
  * meta doc plus one per open Space tab, and a member can open every Space the
  * project has. A project holds at most `MAX_SPACES_PER_PROJECT` live Spaces,
  * so one socket carries at most that many plus the meta doc.
@@ -27,8 +28,8 @@
  * name would hold several times their payload. The frame count is therefore
  * set so that the shortest frames reach it at the byte ceiling's worth of
  * memory. With both in force one unauthenticated socket's queue peaks at
- * frames of about 320 bytes, where the two ceilings meet: about 15 MB
- * resident per socket, measured. A client back from being offline replays
+ * frames of about 320 bytes, where the two ceilings meet: about 15–18 MB
+ * resident per socket, measured (RSS varies with the machine's state). A client back from being offline replays
  * one frame per edit and can meet either ceiling first.
  *
  *   pending documents    default 100    set to a full project's documents

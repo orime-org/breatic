@@ -1312,7 +1312,8 @@ export async function handleSpaceRpc(
     // Last resort for programmer errors only — every anticipated failure is
     // handled inside its handler with a controlled message. What a raw
     // error carries (database wording, connection strings) is for the log,
-    // never for the client: the reply's message goes straight into a toast.
+    // never for the client: the client shows a localized line chosen by the
+    // reply's code, and the reply's message ends up in its thrown error.
     logger.error(
       { err: e, projectId, callerId: caller.userId, type: request.type },
       "space_rpc_internal_error",

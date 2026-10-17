@@ -25,7 +25,8 @@
  * lock. (Unlike `creditLot.service.chargeOnceForGeneration`, which uses a
  * fixed value —
  * that is an idempotency key, not a mutex, so a wrong DEL there is
- * harmless; here it would let a third delete interleave.)
+ * harmless; here it would let a third Space create, restore or delete
+ * interleave.)
  *
  * RESIDUAL (inherent to any TTL lock): if the critical section itself
  * runs longer than the TTL, the lock expires WHILE still in use and a

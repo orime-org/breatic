@@ -122,13 +122,14 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * every collab instance — unlike the eventually-consistent in-memory
  * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
  * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
- * is excluded — it is not a Space. The `project-{id}/` prefix is
- * unambiguous (project ids are fixed-length UUIDs anchored by the `/`).
+ * is excluded — it is not a Space. Rows are matched with
+ * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline)-[^/]+$`),
+ * which leaves out the meta doc and any other name under the project.
  *
- * LIKE-injection safety relies on an IMPLICIT upstream guarantee: a
+ * Pattern safety relies on an IMPLICIT upstream guarantee: a
  * caller only reaches here after `onAuthenticate` resolved the project
  * role, which queries the `uuid`-typed `project_members.project_id`
- * column — a `projectId` carrying LIKE wildcards (`%` / `_`) fails PG's
+ * column — a `projectId` carrying regex metacharacters fails PG's
  * uuid parse and the connection is refused before any RPC dispatches. If
  * a non-authenticated call site is ever added, assert UUID shape here.
  *
@@ -189,8 +190,9 @@ export async function restoreByName(name: string): Promise<boolean> {
  * interval, so a source row's `deleted_at` can disagree with it: a Space
  * deleted moments ago is soft-deleted but still listed, one created moments
  * ago is live but not yet listed. Following the copied meta keeps the
- * duplicate's live content rows equal to its Spaces; rows in the source's
- * trash are not copied.
+ * duplicate's live content rows equal to its Spaces; rows of Spaces the
+ * copied meta does not list (the source's trash, once its deletion is
+ * stored) are not copied.
  *
  * Driven by the lifecycle stream consumer on a `project:duplicated`
  * command. Conflict handling is asymmetric so the result is correct even

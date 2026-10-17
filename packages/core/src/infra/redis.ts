@@ -204,8 +204,8 @@ let _collabRedis: Redis | null = null;
  * Get the collab cross-instance coordination Redis client.
  *
  * Backs collab-cluster coordination: the Hocuspocus extension-redis
- * pub/sub pair (cross-instance Yjs sync) and the space-delete
- * serialization lock. Split from {@link getStreamRedis} (cross-service
+ * pub/sub pair (cross-instance Yjs sync) and the Space count lock that
+ * serializes Space create / restore / delete. Split from {@link getStreamRedis} (cross-service
  * Streams) so collab-cluster coordination can move to its own Redis
  * instance later by changing only `REDIS_COLLAB_URL` — no code change
  * (same seam pattern as the other `REDIS_*_URL` connections).
