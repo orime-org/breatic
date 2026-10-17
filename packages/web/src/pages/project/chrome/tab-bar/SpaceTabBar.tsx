@@ -32,6 +32,7 @@ import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores';
@@ -636,7 +637,9 @@ export function SpaceTabBar({
         {/* disableHoverableContent: below the cap there is no content, and
             only the content closes a hoverable tooltip when the pointer
             leaves; without it the open state outlives the hover and the
-            reason pops up by itself the moment the project fills. */}
+            reason pops up by itself the moment the project fills.
+            suppressTooltipFocusOpen: closing the dialog hands focus back to
+            the button, which would open the tooltip the same way. */}
         {currentUserRole === 'viewer' ? null : (
           <Tooltip disableHoverableContent>
             <NewSpaceDialog
@@ -649,6 +652,7 @@ export function SpaceTabBar({
                     aria-label={t('chrome.tooltip.newSpace')}
                     data-testid='new-space-button'
                     disabled={spaceLimitReached}
+                    onFocusCapture={suppressTooltipFocusOpen}
                     style={{
                       height: 'var(--btn-chrome)',
                       width: 'var(--btn-chrome)',

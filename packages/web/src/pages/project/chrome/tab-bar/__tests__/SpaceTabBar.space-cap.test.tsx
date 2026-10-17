@@ -13,7 +13,6 @@ import {
   screen,
   act,
   fireEvent,
-  type RenderOptions,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
@@ -69,7 +68,7 @@ function renderBar(allSpaces: ProjectSpace[]): (next: ProjectSpace[]) => void {
       onRestoreSpace={vi.fn()}
     />
   );
-  const view = rtlRender(bar(allSpaces), { wrapper: Wrapper } as RenderOptions);
+  const view = rtlRender(bar(allSpaces), { wrapper: Wrapper });
   return (next) => view.rerender(bar(next));
 }
 
@@ -110,6 +109,20 @@ describe('SpaceTabBar at the Space cap', () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
     fireEvent.pointerLeave(button, { pointerType: 'mouse' });
+
+    setSpaces(spaces(MAX_SPACES_PER_PROJECT));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('does not show the reason by itself when focus comes back to the button and the project fills', async () => {
+    // Closing the new-Space dialog hands focus back to the button, and a
+    // tooltip opens on focus without waiting for a hover.
+    const setSpaces = renderBar(spaces(MAX_SPACES_PER_PROJECT - 1));
+    act(() => screen.getByTestId('new-space-button').focus());
 
     setSpaces(spaces(MAX_SPACES_PER_PROJECT));
     await act(async () => {
