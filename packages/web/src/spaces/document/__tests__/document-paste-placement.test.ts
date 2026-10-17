@@ -13,7 +13,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 
 import { serializeClipboard, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
 
-import { OURS, caretIn, open as openBody, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
+import { OURS, TABLE, caretIn, open as openBody, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
 afterEach(unmountAll);
 
@@ -450,5 +450,97 @@ describe('the line opened for the caret, in a quote', () => {
     pasteFormats(editor, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
     await settled();
     expect(lines(editor)).toEqual(['paragraph[q]:a', `image(${PIC})[q]`, 'paragraph[q]:', `image(${OURS}q.png)[q]`]);
+  });
+});
+
+describe('the caret after content, with nested blocks about', () => {
+  const withKid = (words: string): unknown => ({ type: 'paragraph', content: words, children: [{ type: 'paragraph', content: 'kid' }] });
+
+  it('stays after the content\'s last words when the replaced line hands them its children', async () => {
+    const editor = open([withKid('abcd'), { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'abcd', 0), positionOf(editor, 'abcd', 4));
+    pasteWeb(editor, [P, V]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: [`image(${PIC})`, 'paragraph:v', '  paragraph:kid', 'paragraph:tail'],
+      caret: 'v@1',
+    });
+  });
+
+  it('opens no line at the body\'s end when the content ends in words', async () => {
+    const editor = open([withKid('abcd')]);
+    select(editor, positionOf(editor, 'abcd', 0), positionOf(editor, 'abcd', 4));
+    pasteWeb(editor, [P, V]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: [`image(${PIC})`, 'paragraph:v', '  paragraph:kid'],
+      caret: 'v@1',
+    });
+  });
+
+  it('goes to the first child handed to a picture the content ends in', async () => {
+    const editor = open([withKid('abc'), { type: 'paragraph', content: 'tail' }]);
+    select(editor, positionOf(editor, 'abc', 0), positionOf(editor, 'abc', 3));
+    pasteWeb(editor, [W, P]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['paragraph:w', `image(${PIC})`, '  paragraph:kid', 'paragraph:tail'],
+      caret: 'kid@0',
+    });
+  });
+
+  it('stays after the content\'s own nested last words, at a line\'s end', async () => {
+    const editor = open([{ type: 'paragraph', content: 'abcd' }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    pasteOwn(editor, [{ type: 'image', props: { url: PIC } }, { type: 'paragraph', content: 'v', children: [{ type: 'paragraph', content: 'c' }] }]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['paragraph:abcd', `image(${PIC})`, 'paragraph:v', '  paragraph:c', 'paragraph:tail'],
+      caret: 'c@1',
+    });
+  });
+
+  it('stays after the content\'s own nested last words, in a line\'s middle', async () => {
+    const editor = open([{ type: 'paragraph', content: 'abcd' }]);
+    select(editor, positionOf(editor, 'abcd', 2));
+    pasteOwn(editor, [{ type: 'paragraph', content: 'w' }, { type: 'image', props: { url: PIC }, children: [{ type: 'paragraph', content: 'c' }] }]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['paragraph:abw', `image(${PIC})`, '  paragraph:c', 'paragraph:cd'],
+      caret: 'c@1',
+    });
+  });
+
+  it('stays after the content\'s last words when a selected picture hands them its children', async () => {
+    const editor = open([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'image', props: { url: `${OURS}q.png` }, children: [{ type: 'paragraph', content: 'kid' }] },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    const view = editor.prosemirrorView;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.type.name === 'image') at = pos;
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+    view.focus();
+    pasteWeb(editor, [P, V]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['paragraph:lead', `image(${PIC})`, 'paragraph:v', '  paragraph:kid', 'paragraph:tail'],
+      caret: 'v@1',
+    });
+  });
+
+  it('stays after canvas words put beside a table', async () => {
+    const editor = open([TABLE, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    pasteFormats(editor, { 'text/plain': canvasClipboard([P, W]) });
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: ['table', 'image(pending)', 'paragraph:w', 'paragraph:tail'],
+      caret: 'w@1',
+    });
   });
 });

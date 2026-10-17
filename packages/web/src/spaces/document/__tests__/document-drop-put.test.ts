@@ -12,7 +12,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
+import { OURS, TABLE, TWO_CELLS, caretIn, firstCell, open, paste, pasteFormats, positionOf, select, settled, unmountAll, type Editor } from './paste-harness';
 
 afterEach(unmountAll);
 
@@ -151,6 +151,66 @@ describe('a drop with nothing that can land', () => {
     dropFormats(editor, positionOf(editor, 'abcd', 2), { 'text/html': '<img src="http://e.example/a.png">', 'text/plain': '' });
     await settled();
     expect(lines(editor)).toEqual(['paragraph:abcd']);
+    expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+  });
+
+  /**
+   * Where the first block of a type starts.
+   * @param editor - The editor.
+   * @param name - The node type.
+   * @returns Its position.
+   */
+  const start = (editor: Editor, name: string): number => {
+    let at = -1;
+    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.type.name === name) at = pos;
+      return at < 0;
+    });
+    return at;
+  };
+  const HTTP = 'http://e.example/a.png';
+
+  it.each([
+    ['in a block, on a picture', (): Record<string, string> => ({ 'text/html': `<p><img src="${HTTP}"></p>`, 'text/plain': '' }), (editor: Editor): number => start(editor, 'image')],
+    ['in a figure, on a picture', (): Record<string, string> => ({ 'text/html': `<figure><img src="${HTTP}"></figure>`, 'text/plain': '' }), (editor: Editor): number => start(editor, 'image')],
+    [
+      'copied from a body, between two blocks',
+      (editor: Editor): Record<string, string> => {
+        const html = editor.blocksToFullHTML([{ type: 'image', props: { url: HTTP } }] as never);
+        return { 'blocknote/html': html, 'text/html': html, 'text/plain': '' };
+      },
+      (editor: Editor): number => positionOf(editor, 'abcd', 4) + 2,
+    ],
+  ])('%s: changes nothing in the body or the caret, and is told', async (_name, formats, at) => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'abcd' }, { type: 'image', props: { url: PIC } }, { type: 'paragraph', content: 'tail' }]);
+    caretIn(editor, 0);
+    dropFormats(editor, at(editor), formats(editor));
+    await settled();
+    expect({ lines: lines(editor), selected: selected(editor) }).toEqual({
+      lines: ['paragraph:abcd', `image(${PIC})`, 'paragraph:tail'],
+      selected: 'caret:abcd@4',
+    });
+    expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
+  });
+});
+
+describe('a paste with nothing that can land', () => {
+  it.each([
+    ['a picture alone', (): Record<string, string> => ({ 'text/html': '<img src="http://e.example/a.png">', 'text/plain': '' })],
+    ['a picture in a block', (): Record<string, string> => ({ 'text/html': '<p><img src="http://e.example/a.png"></p>', 'text/plain': '' })],
+    [
+      'a picture copied from a body',
+      (editor: Editor): Record<string, string> => {
+        const html = editor.blocksToFullHTML([{ type: 'image', props: { url: 'http://e.example/a.png' } }] as never);
+        return { 'blocknote/html': html, 'text/html': html, 'text/plain': '' };
+      },
+    ],
+  ])('%s: keeps the selected words, and is told', async (_name, formats) => {
+    const { editor, sink } = open([{ type: 'paragraph', content: 'abcd' }]);
+    select(editor, positionOf(editor, 'abcd', 1), positionOf(editor, 'abcd', 3));
+    pasteFormats(editor, formats(editor));
+    await settled();
+    expect({ lines: lines(editor), selected: selected(editor) }).toEqual({ lines: ['paragraph:abcd'], selected: 'text:bc' });
     expect(sink.onLeftOut.mock.calls).toEqual([[1]]);
   });
 });

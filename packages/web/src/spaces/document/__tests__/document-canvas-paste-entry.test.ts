@@ -9,6 +9,7 @@
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { serializeClipboard, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
@@ -119,6 +120,25 @@ describe('text only, in a table cell', () => {
     const table = (editor.document as { type: string; content: { rows: { cells: { content: { type: string; text?: string }[] }[] }[] } }[])[0]!;
     expect(table.content.rows[0]!.cells[0]!.content.map((c) => c.text ?? '\n').join('')).toBe('cell one\ntwo');
     expect(shape(editor)).toEqual(['table:', 'paragraph:after']);
+  });
+
+  it('with several cells selected, fills every one, the cells staying selected', () => {
+    const { editor } = open(
+      [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: [['c1'], ['c2']] }] } }, { type: 'paragraph', content: 'after' }],
+      1,
+    );
+    const view = editor.prosemirrorView;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+    view.focus();
+    paste(editor, clipboard({ id: 't', type: 'text', position: { x: 0, y: 0 }, data: { body: body('_one_', 'two') } }));
+    const table = (editor.document as { content: { rows: { cells: { content: { text?: string }[] }[] }[] } }[])[0]!;
+    expect(table.content.rows[0]!.cells.map((cell) => cell.content.map((c) => c.text ?? '\n').join(''))).toEqual(['_one_\ntwo', '_one_\ntwo']);
+    expect(view.state.selection).toBeInstanceOf(CellSelection);
   });
 });
 
