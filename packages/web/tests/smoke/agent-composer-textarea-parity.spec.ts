@@ -187,13 +187,18 @@ for (const row of TEXTAREA) {
   });
 }
 
-test('the keyboard stays on the box while a sent message waits for its answer', async ({ page }) => {
-  await start(page, 'hello');
-  await page.keyboard.press('Enter');
-  await expect(page.locator(BOX)).toHaveAttribute('contenteditable', 'false');
+for (const how of ['Enter', 'the send button'] as const) {
+  test(`the box lets go of the keyboard once a message is sent with ${how}`, async ({ page }) => {
+    await start(page, 'hello');
+    if (how === 'Enter') await page.keyboard.press('Enter');
+    else await page.getByTestId('chat-composer-send').click();
+    await expect(page.locator(BOX)).toHaveAttribute('contenteditable', 'false');
 
-  expect(await page.evaluate((sel) => document.activeElement === document.querySelector(sel), BOX)).toBe(true);
-});
+    expect(
+      await page.evaluate(() => document.querySelector('[data-testid="chat-composer"]')?.contains(document.activeElement)),
+    ).toBe(false);
+  });
+}
 
 test('handing the keyboard back after removing an attachment keeps the caret where it was', async ({ page }) => {
   await start(page, 'hello');
