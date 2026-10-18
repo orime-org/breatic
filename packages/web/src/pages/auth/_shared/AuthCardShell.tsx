@@ -160,3 +160,27 @@ export function AuthLink({
     </Link>
   );
 }
+
+/**
+ * A card's standalone way onward ("Back to sign in", "Back to your Studio",
+ * "Go there"), drawn as an outline button so it reads as an action. A link
+ * inside a sentence ("Don't have an account? Sign up") stays an
+ * {@link AuthLink}.
+ * @param root0 - component props
+ * @param root0.to - the route path the button navigates to
+ * @param root0.children - the visible button text
+ * @returns a full-width outline button that navigates with the router.
+ */
+export function AuthCardButton({
+  to,
+  children,
+}: {
+  to: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Button asChild variant='outline' className='w-full text-foreground'>
+      <Link to={to}>{children}</Link>
+    </Button>
+  );
+}

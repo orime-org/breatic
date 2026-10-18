@@ -12,7 +12,7 @@ import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
 import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
-import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
+import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/pages/auth/_shared/FieldError';
 
 /**
@@ -102,7 +102,7 @@ function TokenResetForm({
     <AuthCardShell
       title={t('auth.reset.titleToken')}
       subtitle={t('auth.reset.subtitleToken')}
-      footer={<AuthLink to='/login'>{t('auth.reset.backToSignIn')}</AuthLink>}
+      footer={<AuthCardButton to='/login'>{t('auth.reset.backToSignIn')}</AuthCardButton>}
     >
       <form onSubmit={handleSubmit} noValidate className='flex flex-col gap-3'>
         <div className='flex flex-col gap-1'>
@@ -203,7 +203,7 @@ function RecoveryResetForm(): React.JSX.Element {
       <AuthCardShell
         title={t('auth.reset.titleRecovery')}
         subtitle={t('auth.reset.subtitleRecovery')}
-        footer={<AuthLink to='/login'>{t('auth.reset.backToSignIn')}</AuthLink>}
+        footer={<AuthCardButton to='/login'>{t('auth.reset.backToSignIn')}</AuthCardButton>}
       >
         <form onSubmit={handleSubmit} noValidate className='flex flex-col gap-3'>
           <div className='flex flex-col gap-1'>

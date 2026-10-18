@@ -40,7 +40,7 @@ import {
   SelectValue,
 } from '@web/components/ui/select';
 import { useTranslation } from '@web/i18n/use-translation';
-import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
+import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
 
 /**
  * What the page is doing, as opposed to what the request is in.
@@ -166,7 +166,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
     return (
       <AuthCardShell
         title={t('decision.unreachableTitle')}
-        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+        footer={<AuthCardButton to='/studio'>{t('decision.backHome')}</AuthCardButton>}
       >
         <div className='flex flex-col items-start gap-4'>
           <p className='text-sm text-muted-foreground'>
@@ -182,7 +182,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
     return (
       <AuthCardShell
         title={t('decision.invalidTitle')}
-        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+        footer={<AuthCardButton to='/studio'>{t('decision.backHome')}</AuthCardButton>}
       >
         <p className='text-sm text-muted-foreground'>{t('decision.invalidBody')}</p>
       </AuthCardShell>
@@ -205,7 +205,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
     return (
       <AuthCardShell
         title={t('decision.goneTitle')}
-        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+        footer={<AuthCardButton to='/studio'>{t('decision.backHome')}</AuthCardButton>}
       >
         <p className='text-sm text-muted-foreground'>{t('decision.goneBody')}</p>
       </AuthCardShell>
@@ -219,7 +219,7 @@ export default function DecisionLandingPage(): React.JSX.Element {
     return (
       <AuthCardShell
         title={t('decision.notYoursTitle')}
-        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+        footer={<AuthCardButton to='/studio'>{t('decision.backHome')}</AuthCardButton>}
       >
         <p className='text-sm text-muted-foreground'>
           {t('decision.notYoursBody')}
@@ -269,22 +269,23 @@ export default function DecisionLandingPage(): React.JSX.Element {
     return (
       <AuthCardShell
         title={card.title}
-        footer={<AuthLink to='/studio'>{t('decision.backHome')}</AuthLink>}
+        footer={<AuthCardButton to='/studio'>{t('decision.backHome')}</AuthCardButton>}
       >
         <div className='flex flex-col gap-4'>
-          <p className='text-sm text-muted-foreground'>{card.body}</p>
-          {/* Deliberately no date: an exact instant reads as a promise the
-              reaper does not keep. How long the window WAS is the part that
-              answers "why can't I answer this". */}
-          {view.state === 'expired' && (
-            <p className='text-xs text-muted-foreground'>
-              {t('decision.windowNote', { days: view.windowDays })}
-            </p>
-          )}
+          {/* The window line sits tight under the body as its footnote. */}
+          <div className='flex flex-col gap-1'>
+            <p className='text-sm text-muted-foreground'>{card.body}</p>
+            {/* Deliberately no date: an exact instant reads as a promise the
+                reaper does not keep. How long the window WAS is the part that
+                answers "why can't I answer this". */}
+            {view.state === 'expired' && (
+              <p className='text-xs text-muted-foreground'>
+                {t('decision.windowNote', { days: view.windowDays })}
+              </p>
+            )}
+          </div>
           {view.destination !== null && (
-            <div>
-              <AuthLink to={view.destination}>{t('decision.goThere')}</AuthLink>
-            </div>
+            <AuthCardButton to={view.destination}>{t('decision.goThere')}</AuthCardButton>
           )}
         </div>
       </AuthCardShell>

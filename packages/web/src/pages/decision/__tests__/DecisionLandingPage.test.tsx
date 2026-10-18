@@ -188,13 +188,13 @@ describe('the dead ends each say their own thing', () => {
     ).toBeInTheDocument();
   });
 
-  it('the invalidated card says what changed and states no window', async () => {
+  it('the invalidated card says the request is no longer valid and states no window', async () => {
     vi.mocked(decisionsApi.view).mockResolvedValueOnce(
       makeView({ state: 'invalidated', windowDays: 7 }),
     );
     setup();
     expect(
-      await screen.findByText(/what it was about has changed/i),
+      await screen.findByRole('heading', { name: /no longer valid/i }),
     ).toBeInTheDocument();
     // The window did not run out, so how long it was answers nothing here.
     expect(screen.queryByText(/could be answered within/i)).toBeNull();

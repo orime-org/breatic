@@ -2099,7 +2099,7 @@
     "expiredTitle": "This request has ended",
     "expiredBody": "It can no longer be answered.",
     "invalidatedTitle": "This request is no longer valid",
-    "invalidatedBody": "What it was about has changed, so it can no longer be answered.",
+    "invalidatedBody": "It can no longer be answered.",
     "revokedTitle": "This was withdrawn",
     "revokedBody": "The person who sent it took it back.",
     "goneTitle": "This is no longer here",
