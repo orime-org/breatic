@@ -21,7 +21,7 @@ import { tool } from "ai";
 import { carrying } from "@breatic/shared";
 import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
-import { FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
+import { FINISHED_ASKING_FOR_A_TOOL, finishing, saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
@@ -279,6 +279,33 @@ describe("一次问用户的调用,参数没过 schema 的时候", () => {
     });
 
     expect(thisCase.modelCalls).toBeGreaterThan(1);
+  });
+});
+
+describe("a questionnaire asked in a step that ran out of room", () => {
+  it("keeps no ending note after the question, so the answer appended later follows its call", async () => {
+    thisCase.parts = [
+      {
+        type: "tool-call",
+        toolCallId: "tc-ask",
+        toolName: "ask_user",
+        input: JSON.stringify({ questions: [{ header: "Style", question: "Which style?", options: [{ label: "Calm" }, { label: "Busy" }] }] }),
+      },
+      finishing("length", 1),
+    ];
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("帮我做张海报");
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+
+    const stored = addMessage.mock.calls.find((call) => call[1].role === "assistant") as unknown[] | undefined;
+    const kept = stored?.[2] as { messages: Array<{ role: string; content: unknown }> } | undefined;
+    const last = kept?.messages.at(-1);
+    expect(last?.role).toBe("assistant");
+    expect(JSON.stringify(last?.content)).toContain("tc-ask");
   });
 });
 

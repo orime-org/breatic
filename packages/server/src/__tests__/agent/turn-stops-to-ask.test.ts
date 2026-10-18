@@ -243,6 +243,17 @@ describe("a turn that asked the user something", () => {
     expect(sent).not.toContain("data-blocked");
   });
 
+  it("names no card when the step that asked ended on a provider error, since the call is stored as never run", async () => {
+    const failedAfterAsking: ModelStreamPart[] = [
+      { type: "tool-call", toolCallId: "call-ask_user", toolName: "ask_user", input: JSON.stringify(VALID_INPUT.ask_user) },
+      { type: "error", error: new Error("upstream went away") },
+    ];
+    const { sent, exit } = await runTurn([failedAfterAsking]);
+
+    expect(exit).toBe("failed");
+    expect(sent).not.toContain("data-ask-awaiting");
+  });
+
   it("says nothing of the sort on a turn that answered and stopped", async () => {
     const { sent } = await runTurn([carriesOn]);
 

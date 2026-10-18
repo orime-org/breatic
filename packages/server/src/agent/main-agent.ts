@@ -396,7 +396,9 @@ export class MainAgent {
           logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
         }
       }
-      const note = endingNote(ended.stored);
+      // A segment paused at a questionnaire has not ended: its answer is
+      // appended to this copy and must follow the call it answers.
+      const note = ended.exit === "blocked" ? undefined : endingNote(ended.stored);
       // A resumed segment's own message is kept in its row, since no reader's
       // row holds it; its hash is of everything before that message, which is
       // what the next request will have sent ahead of this row.
@@ -731,10 +733,15 @@ export class MainAgent {
           // came to nothing -- the rule lives on this side only. Written last,
           // so it is the last part of the segment that asked: the browser
           // splits the reply there once the reader answers and the turn
-          // resumes in the same message.
-          const asks = toolCalls
-            .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
-            .map((call) => call.toolCallId);
+          // resumes in the same message. A step that ended on an error is a
+          // failed turn, stored with its calls as never run, so it names no
+          // card.
+          const asks =
+            finishReason === "error"
+              ? []
+              : toolCalls
+                .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
+                .map((call) => call.toolCallId);
           if (asks[0] !== undefined) {
             awaitingCall = asks[0];
             turnedAwayCalls = asks.slice(1);
