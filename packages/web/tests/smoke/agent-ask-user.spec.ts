@@ -94,7 +94,8 @@ test('the card numbers its questions and sends every answer with one press, the 
     ASKS,
     stream([
       { type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }, { index: 1, selected: [], other: 'Calm' }] } },
-      { type: 'start' },
+      // The server names the resumed reply afresh, as it does every reply.
+      { type: 'start', messageId: 'm-reply-resumed' },
       { type: 'start-step' },
       { type: 'text-start', id: 't1' },
       { type: 'text-delta', id: 't1', delta: 'Here is the plan.' },
@@ -112,6 +113,9 @@ test('the card numbers its questions and sends every answer with one press, the 
   await page.getByTestId('questionnaire-submit').click();
 
   await expect(page.getByTestId('questionnaire-summary-row')).toHaveCount(2, { timeout: 20_000 });
+  await expect(page.getByText('Here is the plan.')).toBeVisible();
+  // The answered card is drawn once.
+  await expect(page.getByTestId('questionnaire-card')).toHaveCount(1);
   expect(sent[1]).toMatchObject({
     message: '',
     answer: { toolCallId: 'ask-1', answers: [{ index: 0, selected: ['9:16'] }, { index: 1, selected: [], other: 'Calm' }] },
@@ -172,6 +176,7 @@ test('a real turn asks with a card that waits through a reload, and answering re
     timeout: 30_000,
   });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 120_000 });
+  await expect(page.getByTestId('questionnaire-card')).toHaveCount(1);
   // The resumed reply is drawn as a message of its own below the card.
   await expect
     .poll(() => page.locator('[data-testid="message-bubble"][data-role="assistant"]').count())

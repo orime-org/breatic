@@ -121,10 +121,12 @@ describe('answering a card', () => {
   });
 
   it('carries on the paused reply: the card is answered and what the turn says next follows it there', async () => {
+    // The server names every reply it streams, a resumed one too, with an id
+    // of its own; the paused reply on screen goes by another.
     answer = () =>
       streaming([
         { type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: ANSWERS } },
-        { type: 'start' },
+        { type: 'start', messageId: 'named-by-the-server' },
         { type: 'start-step' },
         { type: 'text-start', id: 't' },
         { type: 'text-delta', id: 't', delta: 'Here is the plan.' },
