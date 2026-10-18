@@ -96,6 +96,23 @@ describe("the answer the browser sends", () => {
   });
 });
 
+describe("the questions the model sends", () => {
+  it("refuse two options with the same label in one question, naming it", () => {
+    const parsed = askUserInputSchema.safeParse({
+      questions: [{ header: "Style", question: "Which style?", options: [{ label: "Ink wash" }, { label: "Ink wash" }] }],
+    });
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((issue) => issue.message).join(" ")).toContain('"Ink wash"');
+  });
+
+  it("take the same label on two different questions", () => {
+    const label = { header: "Q", question: "Which?", options: [{ label: "Yes" }, { label: "No" }] };
+
+    expect(askUserInputSchema.safeParse({ questions: [label, label] }).success).toBe(true);
+  });
+});
+
 describe("reading a stored call", () => {
   it("is a questionnaire when it has the card's shape", () => {
     expect(readQuestionnaire({ questions: [{ header: "Mood", question: "Any mood?" }] })?.questions).toHaveLength(1);

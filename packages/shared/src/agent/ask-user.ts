@@ -76,6 +76,16 @@ export const askUserQuestionSchema = z
         message: `A question that takes several answers needs at least two options; this one has ${String(value.options.length)}.`,
       });
     }
+    // The answer names the options picked by label, so a label is the option.
+    const labels = value.options.map((option) => option.label);
+    const repeated = labels.find((label, i) => labels.indexOf(label) !== i);
+    if (repeated !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["options"],
+        message: `Each option of a question needs its own label; "${repeated}" is on more than one.`,
+      });
+    }
     const withMedia = value.options.filter((option) => option.media !== undefined).length;
     if (withMedia !== 0 && withMedia !== value.options.length) {
       ctx.addIssue({

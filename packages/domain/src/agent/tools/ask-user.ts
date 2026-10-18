@@ -64,8 +64,8 @@ export function makeAskUserTool(context: AskUserContext): Tool<AskUserInput, nev
     description:
       "Ask the user what you need to know before you go on, as a card of one to four questions in a single " +
       "call. The turn waits at the card: what comes back as this call's result is either the user's answers " +
-      "(the options they picked and anything they wrote on a question's Other line; a question they skipped " +
-      "is absent) or word that they wrote a message instead, in which case read that message, which may " +
+      "(the options they picked and anything they wrote on a question's Other line, each answer naming its " +
+      "question by `index`, counting from 0 in the order you gave them; a question they skipped is absent) or word that they wrote a message instead, in which case read that message, which may " +
       "answer the card or be about something else. Use it when you genuinely need an answer to continue, " +
       "not to fill a pause, and call it once: a second call in the same step is turned away. Put every " +
       "question here rather than writing it yourself, and every answer you are offering in its options -- " +

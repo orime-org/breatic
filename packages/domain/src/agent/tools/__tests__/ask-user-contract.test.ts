@@ -200,4 +200,8 @@ describe("how the tool runs", () => {
     expect(askUser.description).toMatch(/numbered from 1/);
     expect(askUser.description).toMatch(/by (its|their) number/);
   });
+
+  it("tells the model each answer names its question by an index counting from 0", () => {
+    expect(askUser.description).toMatch(/`index`[^.]*counting from 0/);
+  });
 });
