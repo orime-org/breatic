@@ -481,7 +481,7 @@ export function CameraAngleControl({
   return beside ? (
     <div data-testid='generate-camera-angle-control' data-layout='beside'>
       {heading}
-      <div className='grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-3'>
+      <div className='grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-5'>
         <div className='flex flex-col'>{pictured}</div>
         <div className='flex flex-col justify-between gap-3'>{sliders}</div>
       </div>

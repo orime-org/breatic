@@ -449,7 +449,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         ) : null}
         {isModelTool(spec) ? (
           columns ? (
-            <div className='grid grid-cols-2 gap-3'>
+            <div className='grid grid-cols-2 gap-5'>
               <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
                 {referenceShown !== undefined ? (
                   <ReferencePreview url={referenceShown.url} note={t('canvas.miniTool.relight.referenceNote')} />
