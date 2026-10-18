@@ -181,7 +181,7 @@ export function ChatPanel({
     },
     [currentId],
   );
-  const attachFiles = useAttachFiles(projectId, currentId);
+  const attachFiles = useAttachFiles(projectId);
 
   /**
    * Send what is in the box.
@@ -361,7 +361,6 @@ export function ChatPanel({
         onAbort={abort}
         attachments={attachments}
         attachAccept={attachFiles.accept}
-        attachNotice={attachFiles.notice}
         onAttachFiles={attachFiles.attach}
         onPasteCanvas={pasteCanvas}
         onRemoveAttachment={removeAttachment}

@@ -16,6 +16,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type * as ChatApiModule from '@web/data/api/chat';
 
@@ -38,7 +41,7 @@ import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
-import { useChatAttachments } from '@web/stores/chat-attachments';
+import { trayNoticeText } from '@web/stores/chat-attachments';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
 import type { WatchedWire } from '@web/test-utils/chat-wire';
 
@@ -553,7 +556,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
     });
 
     expect(wire.sent()).toHaveLength(0);
-    expect(useChatAttachments.getState().noticeByConversation['c-1']).toEqual({ key: 'sendUnavailable' });
+    expect(toastSpy.warning).toHaveBeenCalledWith(trayNoticeText({ key: 'sendUnavailable' }));
     expect(panel.result.current.draft).toBe('summarise this');
   });
 });

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, Loader2, Plus, Square, TriangleAlert } from 'lucide-react';
+import { ArrowUp, Loader2, Plus, Square } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -54,8 +54,6 @@ interface ChatComposerProps {
   attachments?: ReadonlyArray<TrayItem>;
   /** What the file picker offers, as an `accept` value. */
   attachAccept?: string;
-  /** Something to say about the last attempt to attach, beside the attach button. */
-  attachNotice?: string;
   onChange: (next: string) => void;
   onSubmit: () => void;
   onAbort?: () => void;
@@ -94,7 +92,6 @@ interface ChatComposerProps {
  * @param root0.navigating - The panel is on its way to another conversation.
  * @param root0.attachments - What is attached to the next message.
  * @param root0.attachAccept - What the file picker offers.
- * @param root0.attachNotice - What to say about the last attempt to attach.
  * @param root0.onChange - Called with the next draft text on each edit.
  * @param root0.onSubmit - Called to send the draft message.
  * @param root0.onAbort - Called to abort the in-flight streaming response.
@@ -111,7 +108,6 @@ function ChatComposerInner({
   navigating = false,
   attachments = NO_ATTACHMENTS,
   attachAccept,
-  attachNotice,
   onChange,
   onSubmit,
   onAbort,
@@ -295,19 +291,6 @@ function ChatComposerInner({
             <Plus className='h-4 w-4' />
           </Button>
           {space ? <SpaceContextChip {...space} /> : null}
-          {attachNotice ? (
-            // Beside the button that attaches: something the reader tried did
-            // not go in. The icon carries the warning colour; the words stay in
-            // the body colour, as warning orange at 12px does not reach 4.5:1
-            // on this surface in the light theme.
-            <p
-              data-testid='chat-composer-attach-notice'
-              className='flex min-w-0 items-center gap-1.5 text-xs text-foreground'
-            >
-              <TriangleAlert className='size-3.5 shrink-0 text-status-warning-foreground' aria-hidden='true' />
-              <span className='truncate'>{attachNotice}</span>
-            </p>
-          ) : null}
         </div>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has

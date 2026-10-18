@@ -311,7 +311,7 @@ export function useChatSession(
       if (attached === null) return;
       // Said beside the plus sign; the words stay in the box.
       if (limits === null) {
-        chatAttachments.say(opened, { key: 'sendUnavailable' });
+        chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
       await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits, attached));
@@ -328,7 +328,7 @@ export function useChatSession(
       const spaces = readSpaces();
       const limits = await chatApi.streamConfig().catch(() => null);
       if (limits === null) {
-        chatAttachments.say(opened, { key: 'sendUnavailable' });
+        chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
       await answerInSession(opened, toolCallId, answers, clipSpaceContext(spaces, limits, []));

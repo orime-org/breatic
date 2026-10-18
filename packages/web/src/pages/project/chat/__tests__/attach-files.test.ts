@@ -10,9 +10,15 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+beforeEach(() => {
+  toastSpy.warning.mockClear();
+});
+
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
-import { chatAttachments, useChatAttachments } from '@web/stores/chat-attachments';
+import { chatAttachments, trayNoticeText } from '@web/stores/chat-attachments';
 
 const CONV = 'c1';
 
@@ -34,7 +40,7 @@ let ids = 0;
  * @returns The notice, or null.
  */
 function notice(): unknown {
-  return useChatAttachments.getState().noticeByConversation[CONV] ?? null;
+  return toastSpy.warning.mock.calls.at(-1)?.[0] ?? null;
 }
 
 /**
@@ -174,7 +180,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'too_long' });
-    expect(notice()).toEqual({ key: 'tooLong' });
+    expect(notice()).toBe(trayNoticeText({ key: 'tooLong' }));
   });
 
   it('turns away a text file too big to fit without reading it, and says so', async () => {
@@ -184,7 +190,7 @@ describe('attaching picked files', () => {
 
     expect(extract).not.toHaveBeenCalled();
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toEqual({ key: 'tooLong' });
+    expect(notice()).toBe(trayNoticeText({ key: 'tooLong' }));
   });
 
   it('reads a text file whose size could still fit', async () => {
@@ -209,14 +215,14 @@ describe('attaching picked files', () => {
     await pick([file('model.glb', 'model/gltf-binary')]);
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toEqual({ key: 'unsupported', filename: 'model.glb' });
+    expect(notice()).toBe(trayNoticeText({ key: 'unsupported', filename: 'model.glb' }));
   });
 
   it('turns away a file larger than may be uploaded, and names it', async () => {
     await pick([file('film.mp4', 'video/mp4', 2_000_000)]);
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toEqual({ key: 'tooLarge', filename: 'film.mp4' });
+    expect(notice()).toBe(trayNoticeText({ key: 'tooLarge', filename: 'film.mp4' }));
   });
 
   it('attaches none of a batch that would pass the item limit, and says so', async () => {
@@ -226,7 +232,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toEqual({ key: 'full', limit: 2 });
+    expect(notice()).toBe(trayNoticeText({ key: 'full', limit: 2 }));
   });
 
   it('uploads media into the project it is attached in', async () => {

@@ -29,7 +29,6 @@ export interface Tray {
 export async function openTray(projectId: string): Promise<Tray | undefined> {
   const conversationId = await conversationRuntime.conversationForSending(projectId);
   if (conversationId === undefined) return undefined;
-  chatAttachments.say(conversationId, null);
   try {
     const config = await chatApi.streamConfig();
     return {
@@ -37,7 +36,7 @@ export async function openTray(projectId: string): Promise<Tray | undefined> {
       limits: { maxItems: config.attachmentMaxItems, maxChars: config.attachmentMaxChars },
     };
   } catch {
-    chatAttachments.say(conversationId, { key: 'unavailable' });
+    chatAttachments.say({ key: 'unavailable' });
     return undefined;
   }
 }

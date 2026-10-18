@@ -8,16 +8,22 @@
  * whole list has to fit the limits the server enforces, before the send
  * button does anything.
  */
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { attachmentSection } from '@breatic/shared';
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+beforeEach(() => {
+  toastSpy.warning.mockClear();
+});
+
+import { attachmentSection, setLocale } from '@breatic/shared';
 import type { ChatAttachedChip } from '@breatic/shared';
 
 import {
   chatAttachments,
-  useChatAttachments,
   type AttachmentLimits,
   type TrayItem,
+  trayNoticeText,
 } from '@web/stores/chat-attachments';
 
 /**
@@ -25,8 +31,8 @@ import {
  * @param conversationId - The conversation.
  * @returns The notice, or null.
  */
-function noticeIn(conversationId: string): unknown {
-  return useChatAttachments.getState().noticeByConversation[conversationId] ?? null;
+function noticeIn(_conversationId: string): unknown {
+  return toastSpy.warning.mock.calls.at(-1)?.[0] ?? null;
 }
 
 const LIMITS: AttachmentLimits = { maxItems: 3, maxChars: 10_000 };
@@ -76,12 +82,12 @@ describe('adding a batch', () => {
 
   it('says so when a batch would pass the item limit', () => {
     chatAttachments.add('c1', [node('a'), node('b'), node('c'), node('d')], LIMITS);
-    expect(noticeIn('c1')).toEqual({ key: 'full', limit: LIMITS.maxItems });
+    expect(noticeIn('c1')).toBe(trayNoticeText({ key: 'full', limit: LIMITS.maxItems }));
   });
 
   it('says so when a batch would pass the length limit', () => {
     chatAttachments.add('c1', [node('big', 'y'.repeat(LIMITS.maxChars))], LIMITS);
-    expect(noticeIn('c1')).toEqual({ key: 'tooLong' });
+    expect(noticeIn('c1')).toBe(trayNoticeText({ key: 'tooLong' }));
   });
 
   it('refuses the whole batch when it would pass the item limit', () => {
@@ -131,7 +137,7 @@ describe('an upload coming back', () => {
       status: 'failed',
       failure: 'too_long',
     });
-    expect(noticeIn('c1')).toEqual({ key: 'tooLong' });
+    expect(noticeIn('c1')).toBe(trayNoticeText({ key: 'tooLong' }));
   });
 
   it('is dropped when the item was removed while it was on its way', () => {
@@ -213,31 +219,15 @@ describe('after a turn opens', () => {
   });
 });
 
-describe('what was said about the last attempt', () => {
-  it('goes when an item is taken out', () => {
-    chatAttachments.add('c1', [node('a')], LIMITS);
-    chatAttachments.say('c1', { key: 'full', limit: 3 });
-
-    chatAttachments.remove('c1', 'a');
-
-    expect(noticeIn('c1')).toBeNull();
-  });
-
-  it('goes when a turn opens', () => {
-    chatAttachments.add('c1', [node('a')], LIMITS);
-    const sent = chatAttachments.sendable('c1')!;
-    chatAttachments.say('c1', { key: 'full', limit: 3 });
-
-    chatAttachments.removeSent('c1', sent);
-
-    expect(noticeIn('c1')).toBeNull();
-  });
-
-  it('goes when a turn opens in a conversation nothing was ever attached in', () => {
-    chatAttachments.say('c1', { key: 'unsupported', filename: 'x.zip' });
-
-    chatAttachments.removeSent('c1', []);
-
-    expect(noticeIn('c1')).toBeNull();
+describe('what an attempt that did not go in is told with', () => {
+  it('is said in the interface language at the moment it is told', () => {
+    const english = trayNoticeText({ key: 'full', limit: 10 });
+    setLocale('zh-CN');
+    try {
+      expect(trayNoticeText({ key: 'full', limit: 10 })).not.toBe(english);
+      expect(trayNoticeText({ key: 'full', limit: 10 })).toContain('10');
+    } finally {
+      setLocale('en');
+    }
   });
 });
