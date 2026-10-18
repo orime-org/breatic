@@ -365,7 +365,7 @@
         "tooSlow": "檔案下載太慢，沒能下完",
         "storageFull": "Studio 的儲存空間已滿",
         "noPermission": "你在這個 Project 裡沒有編輯權限",
-        "tooFrequent": "儲存得太頻繁，等一分鐘再試",
+        "tooFrequent": "剛才取的連結太多，等一分鐘再試",
         "declined": "服務拒絕處理這項內容",
         "ourFault": "伺服器出了問題，可以再試一次"
       },

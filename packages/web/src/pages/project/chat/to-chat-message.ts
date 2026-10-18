@@ -233,7 +233,8 @@ function sameLine(a: ChatFailureLine, b: ChatFailureLine): boolean {
  * @returns True when a fence is open.
  */
 function fenceOpen(markdown: string): boolean {
-  return (markdown.match(/^ {0,3}(?:`{3,}|~{3,})/gm) ?? []).length % 2 === 1;
+  // A backtick fence's info string carries no backtick (CommonMark), so ```x``` on one line is inline code.
+  return (markdown.match(/^ {0,3}(?:`{3,}(?![^`\n]*`)|~{3,})/gm) ?? []).length % 2 === 1;
 }
 
 /**

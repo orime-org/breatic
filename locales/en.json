@@ -365,7 +365,7 @@
         "tooSlow": "the file downloaded too slowly to finish",
         "storageFull": "the Studio's storage is full",
         "noPermission": "you don't have edit access in this Project",
-        "tooFrequent": "saved too often, wait a minute and try again",
+        "tooFrequent": "too many links were fetched just now, wait a minute and try again",
         "declined": "the service declined to handle this content",
         "ourFault": "the server ran into a problem, try again"
       },

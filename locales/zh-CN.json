@@ -365,7 +365,7 @@
         "tooSlow": "文件下载太慢，没能下完",
         "storageFull": "Studio 的存储空间已满",
         "noPermission": "你在这个 Project 里没有编辑权限",
-        "tooFrequent": "保存得太频繁，等一分钟再试",
+        "tooFrequent": "刚才取的链接太多，等一分钟再试",
         "declined": "服务拒绝处理这项内容",
         "ourFault": "服务器出了问题，可以再试一次"
       },

@@ -106,6 +106,14 @@ describe('a failed step in a reply', () => {
   });
 });
 
+describe('where a code fence is', () => {
+  it('takes inline code written with three backticks on one line for prose, not a fence', () => {
+    const view = toChatMessage(reply([text('```npm i```\n\nok'), failedSearch('s1', 'poster'), text('after')]));
+
+    expect(view.body).toBe(`\`\`\`npm i\`\`\`\n\nok\n\n${failurePlaceholder(0)}\n\nafter`);
+  });
+});
+
 describe('a step that draws no line', () => {
   it('is one that never ran', () => {
     expect(toChatMessage(reply([failedSearch('s1', 'q', NEVER_RAN)])).failureLines).toBeUndefined();

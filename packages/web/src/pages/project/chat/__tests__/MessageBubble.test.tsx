@@ -469,4 +469,21 @@ describe('MessageBubble — a step that did not finish (inner#1620)', () => {
     expect(screen.getByTestId('message-bubble-tool-failed')).toBeInTheDocument();
     expect(screen.getByTestId('markdown-body').textContent).not.toContain('failure:0');
   });
+
+  it('lets a long query in the line wrap', () => {
+    const long = `https://example.com/${'a'.repeat(120)}`;
+    render(
+      <MessageBubble
+        message={{
+          id: 'a1',
+          role: 'assistant',
+          content: '',
+          body: failurePlaceholder(0),
+          failureLines: [{ ...searchFailed, step: { key: 'chat.tool.step.webSearch', params: { query: long } } }],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed').querySelector('span:last-child')).toHaveClass('min-w-0', 'break-words');
+  });
 });

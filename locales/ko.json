@@ -365,7 +365,7 @@
         "tooSlow": "파일 다운로드가 너무 느려 완료되지 않았습니다",
         "storageFull": "Studio 저장 공간이 가득 찼습니다",
         "noPermission": "이 Project의 편집 권한이 없습니다",
-        "tooFrequent": "너무 자주 저장했습니다. 1분 후 다시 시도하세요",
+        "tooFrequent": "방금 가져온 링크가 너무 많습니다. 1분 후 다시 시도하세요",
         "declined": "서비스가 이 내용의 처리를 거부했습니다",
         "ourFault": "서버에 문제가 발생했습니다. 다시 시도하세요"
       },
