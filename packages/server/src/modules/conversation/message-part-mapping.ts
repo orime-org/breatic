@@ -19,7 +19,8 @@
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
 import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
-import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
+import type { MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
+import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 
 /** What one message's parts look like on the wire. */
 type UiParts = UIMessage["parts"];
@@ -196,11 +197,15 @@ function toUiPart(part: MessagePart): UiPart {
     // different question from what to say about it. The model's copy of
     // the reason names hosts, statuses and, for a refused fetch, addresses
     // inside the network, and it stops here.
+    // A row stored before a call that never ran had an ending of its own
+    // carries the same reason as one, and reads back as one (inner#1620).
+    const failure: ToolFailure | undefined =
+      part.failure?.forModel === NOTHING_OF_IT_RAN ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN } : part.failure;
     return {
       ...base,
       state: "output-error",
-      errorText: part.failure === undefined ? undefined : wireLineOf(part.failure),
-      failureKind: part.failure?.kind,
+      errorText: failure === undefined ? undefined : wireLineOf(failure),
+      failureKind: failure?.kind,
     } as UiPart;
   }
   return { ...base, state: "input-available" } as UiPart;

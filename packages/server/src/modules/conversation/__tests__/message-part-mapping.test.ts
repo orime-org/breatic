@@ -19,10 +19,11 @@
  * what it does not define. They are not transient: a reader who reloads has
  * to still see that a turn was cut off.
  */
-import { TURNED_AWAY } from "@breatic/shared";
+import { LEGACY_FAILURE_LINES, NEVER_RAN, TURNED_AWAY } from "@breatic/shared";
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
 import { ATTACHMENT_DATA_PART, NOTHING_SAID_WHY } from "@breatic/shared";
+import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 import type { MessagePart } from "@breatic/shared";
 import {
   toStoredParts,
@@ -335,7 +336,7 @@ describe("a message that goes out and comes back", () => {
     expect(back[3]).toMatchObject({
       toolCallId: "call-2",
       status: "error",
-      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.generic" },
+      failure: { kind: "tool_failed", readerKey: "chat.tool.failure.ourFault" },
     });
     expect(back[4]).toEqual(original[4]);
   });
@@ -475,6 +476,36 @@ describe("a call that was turned away, read back", () => {
       errorText: TURNED_AWAY,
       failureKind: "turned_away",
     });
+  });
+});
+
+describe("a call that never ran (inner#1620)", () => {
+  it("reads back with the mark that draws nothing", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "tc-1",
+        toolName: "web_search",
+        input: { query: "q" },
+        status: "error",
+        failure: { kind: "never_ran", forModel: NOTHING_OF_IT_RAN },
+      },
+    ]);
+    expect(part).toMatchObject({ state: "output-error", errorText: NEVER_RAN, failureKind: "never_ran" });
+  });
+
+  it("reads a row stored before the mark existed the same way", () => {
+    const [part] = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "tc-2",
+        toolName: "web_search",
+        input: { query: "q" },
+        status: "error",
+        failure: { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, readerKey: LEGACY_FAILURE_LINES.generic },
+      },
+    ]);
+    expect(part).toMatchObject({ state: "output-error", errorText: NEVER_RAN, failureKind: "never_ran" });
   });
 });
 
