@@ -167,10 +167,11 @@ test.describe('real runs @needs-internet @needs-model', () => {
     expect(await runToResult('RELIGHT')).toMatch(/^https?:\/\//);
   });
 
-  test('relight runs to a new picture downstream with the light of a reference', async () => {
+  test('relight runs to a new picture downstream with the light of a reference and a colour set by hand', async () => {
     await openTool(page, source, 'image.relight');
     await pickOther('mini-tool-slot-image.relight-light_reference');
     await expect(page.getByTestId('mini-tool-reference-preview')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('generate-param-light_color-swatch-red').click();
     expect(await runToResult('RELIGHT')).toMatch(/^https?:\/\//);
   });
 
