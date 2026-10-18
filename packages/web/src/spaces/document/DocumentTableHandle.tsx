@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A table's row and column handles (inner#1126 A6), handed to the library's
- * `TableHandlesController` in place of its own, which read a
- * `ComponentsContext` this build does not provide.
+ * A table's row and column handles (inner#1126 A6), placed by
+ * `DocumentTableHandlesController`.
  *
- * The controller places them and reports which row and column the pointer is
- * over; everything else is ours. A handle's menu acts on the cell the menu
+ * `document-table-handles.ts` reports which row and column the pointer is
+ * over; everything else is here. A handle's menu acts on the cell the menu
  * was opened on, held in `document-table-target.ts` and mapped through every
  * change while the menu is open, so an edit someone else makes above the
  * table cannot point a command at another row. The library's own table
@@ -18,7 +17,6 @@
  * bubble bar serves a selection, the way the block handle steps aside for it.
  */
 
-import { TableHandlesExtension } from '@blocknote/core/extensions';
 import {
   useBlockNoteEditor,
   useExtension,
@@ -81,6 +79,7 @@ import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/do
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
+import { documentTableHandlesExtension } from '@web/spaces/document/document-table-handles';
 
 /** What the library's handle state carries, as far as these read it. */
 interface HandlesState {
@@ -140,9 +139,9 @@ function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCel
 
 /**
  * Where a handle is drawn against the table's scroll frame. The controller
- * places the row handle at the table's own left edge
- * (`TableHandlesController.tsx:108-124`) and the column handle centred over
- * the hovered cell (`:125-141`); on a table scrolled sideways either can lie
+ * places the row handle at the table's own left edge and the column handle
+ * centred over the hovered cell (`DocumentTableHandlesController.tsx`
+ * `referencesOf`); on a table scrolled sideways either can lie
  * outside the frame. The row handle moves across by the width scrolled out of
  * it, so it sits on the frame's left line;
  * the column handle moves onto the part of its cell in view, aside from the
@@ -288,8 +287,8 @@ export function DocumentTableHandle({
 }: TableHandleProps): React.JSX.Element | null {
   const t = useTranslation();
   const editor = useBlockNoteEditor() as unknown as HandleEditor;
-  const handles = useExtension(TableHandlesExtension);
-  const state = useExtensionState(TableHandlesExtension) as HandlesState | undefined;
+  const handles = useExtension(documentTableHandlesExtension);
+  const state = useExtensionState(documentTableHandlesExtension) as HandlesState | undefined;
   const holdsSelection = useHoldsSelection(editor);
   const [open, setOpen] = React.useState(false);
   // The handles are frozen for this handle's drag so the handle, the drag's
