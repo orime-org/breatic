@@ -23,9 +23,12 @@
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
 import { Slice, type Fragment } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { flushSync } from 'react-dom';
+import { ySyncPluginKey } from 'y-prosemirror';
+
+import { deriveId } from '@breatic/shared';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
@@ -166,6 +169,67 @@ const keepPastedTablesWhole = new Plugin({
       return start === slice.openStart && end === slice.openEnd ? slice : new Slice(slice.content, start, end);
     },
   },
+});
+
+/**
+ * Whether a transaction was appended to a peer's change.
+ * @param tr - The transaction.
+ * @returns True when its root is a change y-prosemirror applied from Yjs.
+ */
+function appendedToPeer(tr: Transaction): boolean {
+  const root = tr.getMeta('appendedTransaction') as Transaction | undefined;
+  const sync = root?.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined;
+  return sync?.isChangeOrigin === true;
+}
+
+/**
+ * Gives the cells the table plugin adds after a peer's change ids every
+ * client derives alike.
+ *
+ * Two people changing one table's shape at once (a row here, a column there)
+ * leave it short of cells once the changes meet, and each client's
+ * `fixTables` adds the missing ones. y-prosemirror applies a peer's change
+ * inside its mutex and does not write what is appended to it back to Yjs
+ * (`sync-plugin.js` `_typeChanged`), so each client keeps its own added cells.
+ * Ids from the random generator would differ between the two; an id derived
+ * from the table, the cell's place and its row's other cells is the same on
+ * both. Runs ahead of BlockNote's UniqueID (priority 10000), which would
+ * otherwise mint random ones first.
+ */
+const DocTablePeerFixIds = Extension.create({
+  name: 'docTablePeerFixIds',
+  priority: 10001,
+  addProseMirrorPlugins: () => [
+    new Plugin({
+      key: new PluginKey('doc-table-peer-fix-ids'),
+      appendTransaction: (transactions, _old, state) => {
+        if (!transactions.some((tr) => tr.docChanged && appendedToPeer(tr))) return null;
+        const tr = state.tr;
+        state.doc.descendants((table, tablePos) => {
+          if (table.type.name !== DOC_TABLE) return true;
+          table.forEach((row, rowOffset, rowIndex) => {
+            const known: string[] = [];
+            row.forEach((cell) => known.push(String(cell.attrs['id'])));
+            row.forEach((cell, cellOffset, cellIndex) => {
+              const cellPos = tablePos + 1 + rowOffset + 1 + cellOffset;
+              const cellId =
+                (cell.attrs['id'] as string | null) ??
+                deriveId(`doc-table-cell:${String(table.attrs['id'])}:${String(rowIndex)}:${String(cellIndex)}:${known.join(',')}`);
+              if (cell.attrs['id'] === null) tr.setNodeMarkup(cellPos, undefined, { ...cell.attrs, id: cellId });
+              cell.descendants((inner, rel) => {
+                if (inner.type.isInGroup('bnBlock') && inner.attrs['id'] === null) {
+                  tr.setNodeMarkup(cellPos + 1 + rel, undefined, { ...inner.attrs, id: deriveId(`${cellId}:${String(rel)}`) });
+                }
+                return true;
+              });
+            });
+          });
+          return false;
+        });
+        return tr.docChanged ? tr.setMeta('addToHistory', false) : null;
+      },
+    }),
+  ],
 });
 
 /**
@@ -343,7 +407,7 @@ export function docTableSpecs(): DocTableSpecs {
         };
       },
     } as never,
-    [createExtension({ key: 'doc-table-editing', tiptapExtensions: [DocTableEditing] })],
+    [createExtension({ key: 'doc-table-editing', tiptapExtensions: [DocTableEditing, DocTablePeerFixIds] })],
   );
   const row = createBlockSpec(
     {

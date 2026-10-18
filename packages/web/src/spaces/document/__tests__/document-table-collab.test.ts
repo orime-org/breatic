@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { Selection } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -123,8 +123,9 @@ function cellOf(editor: Editor, text: string): number {
 function typeInto(editor: Editor, cell: string, text: string): void {
   const view = editor.prosemirrorView!;
   const pos = cellOf(editor, cell);
-  const end = pos + 1 + view.state.doc.nodeAt(pos)!.content.size - 1;
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)).insertText(text));
+  // The end of the last text in the cell.
+  const end = Selection.findFrom(view.state.doc.resolve(pos + view.state.doc.nodeAt(pos)!.nodeSize - 1), -1, true)!;
+  view.dispatch(view.state.tr.setSelection(end).insertText(text));
 }
 
 /**

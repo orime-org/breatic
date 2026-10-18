@@ -77,7 +77,7 @@ function cellOf(editor: Editor, text: string): number {
  */
 function caretIn(editor: Editor, text: string, span = 0): void {
   const view = editor.prosemirrorView!;
-  const at = cellOf(editor, text) + 2;
+  const at = cellOf(editor, text) + 3;
   act(() => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at + span)));
   });
@@ -99,6 +99,23 @@ function attrs(editor: Editor, name: string): unknown[][] {
       return false;
     }
     return true;
+  });
+  return out;
+}
+
+/**
+ * The alignment of the first block of every cell.
+ * @param editor - The editor.
+ * @returns One array per row.
+ */
+function blockAligns(editor: Editor): unknown[][] {
+  const out: unknown[][] = [];
+  editor.prosemirrorState.doc.descendants((node: PMNode) => {
+    if (node.type.name !== 'docTableRow') return true;
+    const row: unknown[] = [];
+    node.forEach((cell) => row.push(cell.firstChild?.firstChild?.attrs['textAlignment']));
+    out.push(row);
+    return false;
   });
   return out;
 }
@@ -188,7 +205,8 @@ describe('the cell button (A11)', () => {
 
     fireEvent.click(screen.getByTestId('doc-table-cell-align-center'));
 
-    expect(attrs(editor, 'textAlignment')).toEqual([
+    expect(attrs(editor, 'textAlignment').flat().every((value) => value === undefined)).toBe(true);
+    expect(blockAligns(editor)).toEqual([
       ['left', 'left'],
       ['left', 'center'],
     ]);

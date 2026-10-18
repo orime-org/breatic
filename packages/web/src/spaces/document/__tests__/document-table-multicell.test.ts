@@ -145,7 +145,7 @@ describe('styles over several selected cells (A9)', () => {
   it('reads as on only when every selected cell carries it', () => {
     const editor = open();
     const view = editor.prosemirrorView;
-    const a1 = cellOf(editor, 'a1') + 2;
+    const a1 = cellOf(editor, 'a1') + 3;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, a1, a1 + 2)));
     writeStyle(editor, true, ['bold']);
 
@@ -215,7 +215,7 @@ describe('the bubble bar over cells (A9)', () => {
   it('aligns the block a text selection in a cell sits in', () => {
     const editor = open();
     const view = editor.prosemirrorView;
-    const b2 = cellOf(editor, 'b2') + 2;
+    const b2 = cellOf(editor, 'b2') + 3;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, b2, b2 + 1)));
 
     runAlignment(editor, 'right');
@@ -255,7 +255,7 @@ describe('merging the selected cells (A10)', () => {
   it('offers to merge only over two cells or more', () => {
     const editor = open();
     const view = editor.prosemirrorView;
-    const b2 = cellOf(editor, 'b2') + 2;
+    const b2 = cellOf(editor, 'b2') + 3;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, b2)));
     expect(canMergeCells(editor.prosemirrorState)).toBe(false);
 

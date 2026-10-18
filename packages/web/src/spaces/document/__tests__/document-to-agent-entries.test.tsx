@@ -39,6 +39,7 @@ import {
   waitForBar,
 } from '@web/spaces/document/__tests__/bubble-bar-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 const attachToChat = vi.hoisted(() =>
   vi.fn(async (_projectId: string, _items: readonly TrayItem[]): Promise<void> => undefined),
@@ -232,7 +233,7 @@ describe('the table entry\'s menu row', () => {
     const editor = openWith([table(['', 'cell text'])]);
     const close = openMenuOver(editor, 0, TABLE_MENU_ROWS);
     const id = (editor.document as unknown as PressedBlock[])[0]!.id;
-    const markdown = editor.blocksToMarkdownLossy([editor.getBlock(id)!]).trimEnd();
+    const markdown = blocksMarkdown(editor, [editor.getBlock(id)!]);
 
     fireEvent.click(screen.getByTestId('doc-block-row-addToAgent'));
 

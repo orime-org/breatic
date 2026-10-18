@@ -155,7 +155,7 @@ describe('moving a row or a column to a gap (A7)', () => {
   it('carries the marks on the words and leaves the reader where they were', () => {
     const editor = open();
     const view = editor.prosemirrorView!;
-    const b1 = cellOf(editor, 'b1') + 2;
+    const b1 = cellOf(editor, 'b1') + 3;
     view.dispatch(view.state.tr.addMark(b1, b1 + 2, view.state.schema.marks['bold']!.create()));
 
     moveToGap(editor, cellOf(editor, 'a1'), 'row', 3);
