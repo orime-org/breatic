@@ -66,10 +66,10 @@ test('a pasted picture lands in the tray, as a picked one does @needs-storage', 
   await expect(page.getByTestId('chat-composer-box')).toHaveText('');
 });
 
-test('a pasted file the attach button refuses is refused with the same notice', async ({ page }) => {
+test('a pasted file the attach button refuses is refused with the same toast', async ({ page }) => {
   await pasteInto(page, { file: { name: 'archive.zip', type: 'application/zip', base64: 'UEsDBA==' } });
 
-  await expect(page.getByTestId('chat-composer-attach-notice')).toBeVisible();
+  await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'archive.zip' })).toBeVisible();
   await expect(page.getByTestId('chat-composer-chips')).toHaveCount(0);
 });
 

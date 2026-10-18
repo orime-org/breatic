@@ -2,112 +2,178 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A question the agent asked, measured in a browser.
+ * A questionnaire the agent puts to the reader, in a browser (inner#1542).
  *
- * The server draws the question and its options as markdown and writes them
- * into the reply's own text, so what a reader ends up with is decided by a
- * markdown parser and a stylesheet. The stylesheet is what jsdom does not
- * settle and what this case is here for: whether the list carries visible
- * numbers, which Preflight strips and a rule in `index.css` writes back.
- * Removing that rule turns this red.
- *
- * The escaping assertions below are a net, not a pin. Which characters reach
- * a reader is the model's choice, and the shape it writes -- one `~` to a
- * list item -- is one the escape makes no difference to, so dropping
- * `gfmToMarkdown()` leaves this green. What holds that side is
- * `ask-user-text.test.ts`, where the same drop turns two cases red.
- *
- * The turn is real, so the model decides whether to ask. The prompt below asks
- * for something it cannot answer without knowing more, which is the case the
- * tool exists for; a run where it answers instead is reported as such rather
- * than passed. Each run starts a conversation of its own, because a model
- * shown a question of its own already waiting for an answer writes the next
- * one out in prose instead of asking again -- measured three runs in a fresh
- * conversation, three asks; the same sentence in a conversation already
- * holding an unanswered question, prose.
+ * Two cases answer the turn requests here with streams written the way the
+ * server writes them, so they reach the card without a model: the card
+ * numbers its questions, sends every answer with one press through the
+ * conversation's own stream, and draws what the turn says next below its
+ * summary; a message written instead closes it as replied to. One case runs a
+ * real turn: the model asks, the card is still waiting after a reload, and
+ * answering it resumes the turn. That the answer is taken once, kept beside
+ * the call and replayed is checked against a real store in the server's
+ * `questionnaire-pause-resume.integration.test.ts`.
  */
-import { expect, type Page } from 'playwright/test';
+import { expect, type Page, type Route } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
-
 import { openSmokeProject } from '../helpers/project';
 
 let page: Page;
 
 test.beforeEach(async ({ browser }) => {
-  page = await browser.newPage({
-    viewport: { width: 1400, height: 900 },
-  });
+  page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await openSmokeProject(page);
+  await startNewConversation(page);
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
 });
 
 test.afterEach(async () => {
   await page.close();
 });
 
+/** The questionnaire the served turn puts. */
+const QUESTIONS = {
+  questions: [
+    { header: 'Ratio', question: 'Which ratio?', multiSelect: false, options: [{ label: '16:9' }, { label: '9:16' }] },
+    { header: 'Mood', question: 'Any mood in mind?', multiSelect: false, options: [] },
+  ],
+};
+
 /**
- * Run a turn that leaves a question waiting, in a conversation of its own.
- *
- * Both cases need one, and each opens its own page. Opening a Project hands
- * back the conversation this account used last, which is where the other case
- * left its own unanswered question -- and a model shown one of those writes
- * the next answer out in prose instead of asking again.
- * @param target - The page to run the turn in.
- * @throws {Error} When no question is waiting at the end of it, which is what
- *   a run where the model answered instead looks like.
+ * A stream the way the server writes one.
+ * @param chunks - What follows the opening.
+ * @returns The response body.
  */
-async function aQuestionWaitingForAnswer(target: Page): Promise<void> {
-  const composer = target.getByTestId('chat-composer-box');
-  await expect(composer).toBeVisible({ timeout: 20_000 });
-
-  await startNewConversation(target);
-  await expect(target.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
-
-  await composer.fill(
-    '我要做一条短视频，时长在 20~25 秒到 30~35 秒之间还没定，预算 $$100 或 $$300，' +
-      '素材在 https://a.example/photo_1.jpg。你先问我一个问题把还没定的那件事定下来，' +
-      '把每个选项都放进这次提问里。',
-  );
-  await composer.press('Enter');
-
-  await expect(target.getByTestId('message-bubble-blocked')).toHaveCount(1, {
-    timeout: 60_000,
-  });
+function stream(chunks: object[]): string {
+  const opening = [
+    { type: 'data-heartbeat', transient: true, data: {} },
+    { type: 'data-conversation-titled', data: { title: 'questionnaire' } },
+  ];
+  return [...opening, ...chunks].map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
 }
 
-test('the question and its options arrive as a numbered list @needs-model', async () => {
-  await aQuestionWaitingForAnswer(page);
+/** A turn that stops at the card. */
+const ASKS = stream([
+  { type: 'start', messageId: 'm-reply' },
+  { type: 'start-step' },
+  { type: 'text-start', id: 't0' },
+  { type: 'text-delta', id: 't0', delta: 'Two things first.' },
+  { type: 'text-end', id: 't0' },
+  { type: 'tool-input-available', toolCallId: 'ask-1', toolName: 'ask_user', input: QUESTIONS },
+  { type: 'finish-step' },
+  { type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } },
+  { type: 'finish' },
+]);
 
-  const body = page.locator('[data-testid="markdown-body"]').last();
-  const list = body.locator('ol').last();
-  await expect(list).toBeVisible();
+/**
+ * Serve the turn requests in order, and keep what each one sent.
+ * @param answers - The body for each request, in order.
+ * @returns What each request carried.
+ */
+async function serve(answers: string[]): Promise<Array<Record<string, unknown>>> {
+  const sent: Array<Record<string, unknown>> = [];
+  await page.route('**/chat/message', async (route: Route) => {
+    sent.push(route.request().postDataJSON() as Record<string, unknown>);
+    const body = answers[sent.length - 1] ?? stream([{ type: 'finish' }]);
+    await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body });
+  });
+  return sent;
+}
 
-  // Numbers on screen: Preflight ships `list-style: none`, so this is the
-  // rule in `index.css` winning, not a default.
-  const listStyle = await list.evaluate((el) => getComputedStyle(el).listStyleType);
-  expect(listStyle).toBe('decimal');
+/** Say something and wait for the card. */
+async function askAndWaitForTheCard(): Promise<void> {
+  const composer = page.getByTestId('chat-composer-box');
+  await composer.fill('make me a poster');
+  await composer.press('Enter');
+  await expect(page.getByTestId('questionnaire-submit')).toBeVisible({ timeout: 20_000 });
+}
 
-  const items = await list.locator('li').allInnerTexts();
-  expect(items.length).toBeGreaterThanOrEqual(2);
-  expect(items.length).toBeLessThanOrEqual(5);
-  for (const item of items) expect(item.trim().length).toBeGreaterThan(0);
+test('the card numbers its questions and sends every answer with one press, the turn going on below it', async () => {
+  const sent = await serve([
+    ASKS,
+    stream([
+      { type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }, { index: 1, selected: [], other: 'Calm' }] } },
+      { type: 'start' },
+      { type: 'start-step' },
+      { type: 'text-start', id: 't1' },
+      { type: 'text-delta', id: 't1', delta: 'Here is the plan.' },
+      { type: 'text-end', id: 't1' },
+      { type: 'finish-step' },
+      { type: 'finish' },
+    ]),
+  ]);
+  await askAndWaitForTheCard();
 
-  // Whatever this run's characters turned out to be, none of them reach the
-  // reader as a backslash and none are read back as syntax.
-  const text = (await body.innerText()).trim();
-  expect(text).not.toMatch(/\\[~$_#>|[\]]/);
-  expect(await body.locator('del').count()).toBe(0);
-  expect(await body.locator('.katex').count()).toBe(0);
+  await expect(page.getByTestId('questionnaire-question-label')).toHaveText(['1. Ratio', '2. Mood']);
+  const [ratio, mood] = await page.getByTestId('questionnaire-question').all();
+  await ratio!.getByRole('radio').nth(1).click();
+  await mood!.getByRole('textbox').fill('Calm');
+  await page.getByTestId('questionnaire-submit').click();
+
+  await expect(page.getByTestId('questionnaire-summary-row')).toHaveCount(2, { timeout: 20_000 });
+  expect(sent[1]).toMatchObject({
+    message: '',
+    answer: { toolCallId: 'ask-1', answers: [{ index: 0, selected: ['9:16'] }, { index: 1, selected: [], other: 'Calm' }] },
+  });
+  // The resumed reply is drawn after the card, not above it.
+  const card = await page.getByTestId('questionnaire-card').boundingBox();
+  const plan = await page.getByText('Here is the plan.').boundingBox();
+  expect(plan!.y).toBeGreaterThan(card!.y + card!.height - 1);
+  // Nothing of the reader's was added to the list.
+  await expect(page.locator('[data-testid="message-bubble"][data-role="user"]')).toHaveCount(1);
 });
 
-test('the reader gets the same question back after a reload @needs-model', async () => {
-  await aQuestionWaitingForAnswer(page);
+test('a message written instead closes the card as replied to', async () => {
+  await serve([
+    ASKS,
+    stream([
+      { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } },
+      { type: 'start', messageId: 'm-reply-2' },
+      { type: 'start-step' },
+      { type: 'text-start', id: 't2' },
+      { type: 'text-delta', id: 't2', delta: 'Sure.' },
+      { type: 'text-end', id: 't2' },
+      { type: 'finish-step' },
+      { type: 'finish' },
+    ]),
+  ]);
+  await askAndWaitForTheCard();
 
-  const before = (await page.locator('[data-testid="markdown-body"]').last().innerText()).trim();
+  const composer = page.getByTestId('chat-composer-box');
+  await composer.fill('1. 9:16 2. calm');
+  await composer.press('Enter');
+
+  await expect(page.getByTestId('questionnaire-replied-toggle')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('questionnaire-submit')).toHaveCount(0);
+});
+
+test('a real turn asks with a card that waits through a reload, and answering resumes it @needs-model', async () => {
+  const composer = page.getByTestId('chat-composer-box');
+  await composer.fill(
+    'I want a 30-second product video but have not decided the aspect ratio or the mood. ' +
+      'Before you plan anything, ask me both in one questionnaire card, with options for each.',
+  );
+  await composer.press('Enter');
+  await expect(page.getByTestId('questionnaire-submit')).toBeVisible({ timeout: 90_000 });
+  const questions = await page.getByTestId('questionnaire-question-label').allInnerTexts();
+  expect(questions.length).toBeGreaterThanOrEqual(1);
 
   await page.reload();
-  await expect(page.getByTestId('message-bubble-blocked')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('questionnaire-submit')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('questionnaire-question-label')).toHaveText(questions);
 
-  const after = (await page.locator('[data-testid="markdown-body"]').last().innerText()).trim();
-  expect(after).toBe(before);
+  // Words on the first question's Other line answer it whatever options the
+  // model chose to offer.
+  await page.getByTestId('questionnaire-question').first().getByRole('textbox').fill('Vertical, 9:16');
+  await page.getByTestId('questionnaire-submit').click();
+
+  await expect(page.getByTestId('questionnaire-summary-row').first()).toContainText('Vertical, 9:16', {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 120_000 });
+  // The resumed reply is drawn as a message of its own below the card.
+  await expect
+    .poll(() => page.locator('[data-testid="message-bubble"][data-role="assistant"]').count())
+    .toBeGreaterThanOrEqual(2);
 });
