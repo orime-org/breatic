@@ -235,7 +235,7 @@ describe('selectionItem over table cells', () => {
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[3]!)));
 
-    const text = (selectionItem(editor).chip as { data_snapshot: { text: string } }).data_snapshot.text;
+    const text = String(selectionItem(editor).chip?.data_snapshot['text']);
 
     expect(text).toContain('<h2');
     expect(text).toContain('Scene');
