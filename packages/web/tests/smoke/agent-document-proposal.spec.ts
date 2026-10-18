@@ -229,13 +229,13 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
 
   await page.unroute('**/chat/message');
   await answerWith((blocks, spaceId) => {
-    const table = blocks.find((b) => b.type === 'table')!;
+    const table = blocks.find((b) => b.type === 'docTable')!;
     return {
       ...onSecondBlock({})(blocks, spaceId),
       kind: 'comment',
       blockId: table.id,
       original: table.text,
-      blockType: 'table',
+      blockType: 'docTable',
       quote: 'LASTCELL',
       body: 'Is this the last shot?',
     };
@@ -262,8 +262,8 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await rail.getByTestId('doc-comment-rail-close').click();
   await page.unroute('**/chat/message');
   await answerWith((blocks, spaceId) => {
-    const table = blocks.find((b) => b.type === 'table')!;
-    return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'table', quote: 'MIDCELL', body: 'Why this shot?' };
+    const table = blocks.find((b) => b.type === 'docTable')!;
+    return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'docTable', quote: 'MIDCELL', body: 'Why this shot?' };
   });
   const middle = await askForTheCard();
   await page.evaluate(() => {

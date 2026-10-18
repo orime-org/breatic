@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Tables in a document, end to end (inner#1126).
+ * Tables in a document, end to end (inner#1126), with cells that hold
+ * blocks (inner#1619).
  *
  * The half jsdom cannot reach: the handles appear for a pointer over a cell,
  * which needs real layout; dragging a row, a column or a column's edge, and
@@ -40,7 +41,9 @@ test.afterEach(async () => {
   expect(errors).toEqual([]);
 });
 
-const TOP = `${EDITOR} > .bn-block-group > .bn-block-outer > .bn-block > .bn-block-content`;
+// A top-level row: a block's content, or a table's frame, which stands in the
+// body's block group itself.
+const TOP = `${EDITOR} > .bn-block-group > .bn-block-outer > .bn-block > .bn-block-content, ${EDITOR} > .bn-block-group > [data-node-type='docTable']`;
 
 /**
  * Open a freshly made Document Space holding one line, the caret at its end.
@@ -144,6 +147,78 @@ async function hoverCell(p: Page, text: string): Promise<void> {
 }
 
 /**
+ * Put the pointer in the gutter left of a table, level with its first row, so
+ * the table's own handle appears.
+ * @param p - The page.
+ * @throws {Error} When the table has no box.
+ */
+async function hoverTable(p: Page): Promise<void> {
+  await p.mouse.move(5, 5);
+  const row = await p.locator(`${EDITOR} tr`).first().boundingBox();
+  if (row === null) throw new Error('no table row');
+  // Clear of the row handle, which stands on the table's left line.
+  await p.mouse.move(row.x - 20, row.y + row.height / 2, { steps: 3 });
+  await expect(p.getByTestId('doc-block-table-handle')).toBeVisible();
+}
+
+/**
+ * Put the pointer on some words in a cell, so their block's handle appears.
+ * @param p - The page.
+ * @param text - The words.
+ * @returns The handle.
+ * @throws {Error} When the words have no box.
+ */
+async function hoverWordsInCell(p: Page, text: string): Promise<ReturnType<Page['locator']>> {
+  await p.mouse.move(5, 5);
+  const words = p.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: new RegExp(`^${text}$`) }).first();
+  const box = await words.boundingBox();
+  if (box === null) throw new Error(`no words ${text}`);
+  await p.mouse.move(box.x + 4, box.y + box.height / 2, { steps: 3 });
+  const handle = p.getByTestId('doc-block-handle');
+  await expect(handle).toBeVisible();
+  return handle;
+}
+
+/**
+ * Drag from a handle to a point, the way a hand does: a short move to start
+ * the drag, then the way there.
+ * @param p - The page.
+ * @param handle - The handle.
+ * @param to - Where it is dropped.
+ * @param to.x - Across.
+ * @param to.y - Down.
+ * @throws {Error} When the handle has no box.
+ */
+async function dragHandle(p: Page, handle: ReturnType<Page['locator']>, to: { x: number; y: number }): Promise<void> {
+  const box = await handle.boundingBox();
+  if (box === null) throw new Error('the handle has no box');
+  await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(box.x + 8, box.y + 12, { steps: 4 });
+  await p.mouse.move(to.x, to.y, { steps: 10 });
+  await p.mouse.up();
+}
+
+/**
+ * The blocks in each cell, as their content types, row by row.
+ * @param p - The page.
+ * @returns One list of types per cell.
+ */
+async function cellBlocks(p: Page): Promise<string[][][]> {
+  return p.evaluate((selector) =>
+    Array.from(document.querySelectorAll(`${selector} tr`)).map((tr) =>
+      Array.from(tr.children).map((c) =>
+        Array.from(c.querySelectorAll('.bn-block-content')).map((b) => {
+          const type = b.getAttribute('data-content-type') ?? '';
+          const words = b.textContent ?? '';
+          return words === '' ? type : `${type}:${words}`;
+        }),
+      ),
+    ),
+  EDITOR);
+}
+
+/**
  * Drag across cells, from the middle of one to the middle of another.
  * @param p - The page.
  * @param from - The first cell, by its words or its index among the cells.
@@ -207,7 +282,7 @@ test('A2: the plus on an empty line turns that line into a table, and one undo t
   await expect(page.locator(`${EDITOR} table`)).toHaveCount(0);
 });
 
-test('A3: words in a cell take styles there only, and Enter breaks the line inside it', async () => {
+test('A3 and T3: words in a cell take styles there only, and Enter splits the block inside the cell', async () => {
   await openFreshDocument(page);
   await insertTable(page, 2, 2);
   await page.keyboard.type('one');
@@ -216,9 +291,8 @@ test('A3: words in a cell take styles there only, and Enter breaks the line insi
   for (let i = 0; i < 'two'.length; i += 1) await pressAndSettle(page, 'Shift+ArrowLeft');
   await page.keyboard.press('ControlOrMeta+b');
 
-  const first = cell(page, 'onetwo');
-  await expect(first.locator('br')).toHaveCount(1);
-  await expect(first.locator('strong')).toHaveText('two');
+  expect((await cellBlocks(page))[0]![0]).toEqual(['paragraph:one', 'paragraph:two']);
+  await expect(cell(page, 'onetwo').locator('strong')).toHaveText('two');
   await expect(page.locator(`${EDITOR} strong`)).toHaveCount(1);
   await expect(page.locator(`${EDITOR} table`)).toHaveCount(1);
 });
@@ -277,9 +351,8 @@ test('A4: ArrowUp from the first row of a table the body starts with opens a lin
 test('A5: the table icon opens the table menu, and dragging it moves the whole table', async () => {
   await openFreshDocument(page);
   await smallTable(page);
-  await hoverRow(page, 1);
+  await hoverTable(page);
   const entry = page.getByTestId('doc-block-table-handle');
-  await expect(entry).toBeVisible();
   const icon = await entry.boundingBox();
   const firstRow = await page.locator(`${EDITOR} tr`).first().boundingBox();
   expect(Math.abs(icon!.y + icon!.height / 2 - (firstRow!.y + firstRow!.height / 2))).toBeLessThan(2);
@@ -303,7 +376,7 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
   // A line under the table to drop it below.
   await clickAndSettle(page, page.locator(TOP).nth(2));
   await page.keyboard.type('tail');
-  await hoverRow(page, 1);
+  await hoverTable(page);
   const handle = await page.getByTestId('doc-block-table-handle').boundingBox();
   const tail = await page.locator(TOP).nth(2).boundingBox();
   await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
@@ -314,6 +387,7 @@ test('A5: the table icon opens the table menu, and dragging it moves the whole t
 
   await expect(page.locator(TOP).nth(1)).toHaveText('tail');
   await expect(page.locator(TOP).nth(2).locator('table')).toHaveCount(1);
+  expect(await grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']]]);
 });
 
 test('A6: the row and column handles insert, delete and set the header', async () => {
@@ -425,7 +499,7 @@ test('A11: the cell button is on the caret cell only, and aligns that cell', asy
   await page.getByTestId('doc-table-cell-align-center').click();
 
   const aligned = await page.locator(`${EDITOR} td`).evaluateAll((tds) =>
-    tds.map((td) => getComputedStyle(td.firstElementChild ?? td).textAlign),
+    tds.map((td) => getComputedStyle(td.querySelector('.bn-inline-content') ?? td).textAlign),
   );
   expect(aligned.filter((a) => a === 'center')).toHaveLength(1);
 
@@ -468,13 +542,14 @@ test('A6: the row and column handles sit centred on the table\'s lines, the tabl
   await hoverCell(page, 'a1');
   const row = await page.getByTestId('doc-table-row-handle').boundingBox();
   const column = await page.getByTestId('doc-table-col-handle').boundingBox();
-  const icon = await page.getByTestId('doc-block-table-handle').boundingBox();
   const table = await page.locator(`${EDITOR} table`).first().boundingBox();
 
   expect(Math.abs(row!.x + row!.width / 2 - table!.x)).toBeLessThan(1.5);
   expect(Math.abs(column!.y + column!.height / 2 - table!.y)).toBeLessThan(1.5);
   // WCAG 2.2 SC 2.5.8: the 24px circle around the 12px row handle stays clear
   // of the table icon beside it on the first row.
+  await hoverTable(page);
+  const icon = await page.getByTestId('doc-block-table-handle').boundingBox();
   expect(icon!.x + icon!.width).toBeLessThanOrEqual(row!.x + row!.width / 2 - 12 + 0.5);
 });
 
@@ -609,7 +684,7 @@ test('A21: a wide table shows an edge on each side that still has more to scroll
    * @returns Left and right, each whether it shows.
    */
   const edges = async (): Promise<{ left: boolean; right: boolean }> =>
-    page.locator(`${EDITOR} [data-content-type='table']`).first().evaluate((block) => {
+    page.locator(`${EDITOR} [data-node-type='docTable']`).first().evaluate((block) => {
       const shown = (side: string): boolean => {
         const edge = block.querySelector(`[data-overflow-edge="${side}"]`);
         return edge !== null && getComputedStyle(edge).opacity === '1' && edge.getBoundingClientRect().width > 0;
@@ -649,15 +724,19 @@ test('A13: the table reads the product tokens in the dark theme', async () => {
   }
 });
 
-test('A14: block shortcuts and block input rules inside a cell leave the table as it is', async () => {
+test('A14 and T1: block shortcuts and block input rules work inside a cell, and the table stays', async () => {
   await openFreshDocument(page);
   await insertTable(page, 2, 2);
   await page.keyboard.press('ControlOrMeta+Alt+1');
+  await page.keyboard.type('Title');
+  await page.keyboard.press('Enter');
   await page.keyboard.type('---');
+  await page.keyboard.type('item');
   await page.keyboard.press('ControlOrMeta+Shift+8');
 
-  expect(await grids(page)).toEqual([[['---', ''], ['', '']]]);
-  await expect(page.locator(`${EDITOR} hr, ${EDITOR} h1, ${EDITOR} ul`)).toHaveCount(0);
+  expect((await cellBlocks(page))[0]![0]).toEqual(['heading:Title', 'divider', 'bulletListItem:item']);
+  await expect(page.locator(`${EDITOR} table`)).toHaveCount(1);
+  expect((await grids(page))[0]![1]).toEqual(['', '']);
 });
 
 test('A15: Backspace over every cell of an empty table removes it, and undo brings it back', async () => {
@@ -712,4 +791,82 @@ test('A17: two pages on one Space end up with the same table', async ({ browser 
   } finally {
     await other.close();
   }
+});
+
+test('T3 and T4: in a cell, Enter continues a list, Tab nests a list item before moving on, and Backspace at a cell\'s start stays in it', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 2);
+  await page.keyboard.press('ControlOrMeta+Shift+8');
+  await page.keyboard.type('one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('two');
+  await page.keyboard.press('Tab');
+  await expect(cell(page, 'onetwo').locator('[data-content-type="bulletListItem"] + .bn-block-group [data-content-type="bulletListItem"]')).toHaveText('two');
+  // Nested as far as it goes: the next Tab moves on.
+  await pressAndSettle(page, 'Tab');
+  await page.keyboard.type('b');
+  await pressAndSettle(page, 'Tab');
+  // Nothing before the start of a cell to join: the caret stays where it is.
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('x');
+
+  expect(await cellBlocks(page)).toEqual([
+    [['bulletListItem:one', 'bulletListItem:two'], ['paragraph:b']],
+    [['paragraph:x'], ['paragraph']],
+  ]);
+});
+
+test('T5: deleting the only block of a one-cell table from its handle leaves the table and its cell', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 1, 1);
+  await page.keyboard.type('only');
+  const handle = await hoverWordsInCell(page, 'only');
+  await handle.click();
+  await page.getByTestId('doc-block-row-delete').click();
+
+  await expect(page.locator(`${EDITOR} table`)).toHaveCount(1);
+  expect(await cellBlocks(page)).toEqual([[['paragraph']]]);
+});
+
+test('T6: the only block of a cell dragged out lands below the table and leaves an empty line in the cell', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  await clickAndSettle(page, page.locator(TOP).nth(2));
+  await page.keyboard.type('tail');
+  const tail = await page.locator(TOP).nth(2).boundingBox();
+
+  await dragHandle(page, await hoverWordsInCell(page, 'b1'), { x: tail!.x + 40, y: tail!.y + tail!.height - 2 });
+
+  await expect(page.locator(TOP).nth(3)).toHaveText('b1');
+  expect(await cellBlocks(page)).toEqual([
+    [['paragraph:a1'], ['paragraph']],
+    [['paragraph:a2'], ['paragraph:b2']],
+  ]);
+});
+
+test('T6: a block dragged from one cell to another lands under the block it is dropped on', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  const b2 = await page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^b2$/ }).boundingBox();
+
+  await dragHandle(page, await hoverWordsInCell(page, 'a2'), { x: b2!.x + b2!.width - 4, y: b2!.y + b2!.height - 2 });
+
+  expect(await cellBlocks(page)).toEqual([
+    [['paragraph:a1'], ['paragraph:b1']],
+    [['paragraph'], ['paragraph:b2', 'paragraph:a2']],
+  ]);
+});
+
+test('T6: a block dragged from the body into a cell lands in it', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  await hoverRow(page, 0);
+  const a1 = await page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^a1$/ }).boundingBox();
+
+  await dragHandle(page, page.getByTestId('doc-block-handle'), { x: a1!.x + a1!.width - 4, y: a1!.y + a1!.height - 2 });
+
+  expect(await cellBlocks(page)).toEqual([
+    [['paragraph:a1', 'paragraph:lead'], ['paragraph:b1']],
+    [['paragraph:a2'], ['paragraph:b2']],
+  ]);
 });
