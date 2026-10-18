@@ -19,6 +19,7 @@
 import { createExtension, type BlockNoteEditor } from '@blocknote/core';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 
+import { domElementOf } from '@web/spaces/document/document-editor-view';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** A point in viewport coordinates. */
@@ -52,7 +53,8 @@ export function tableInsteadOf(body: HTMLElement, blockId: string, pointer: Poin
 export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
   key: 'documentTableSideMenu',
   mount({ signal }: { signal: AbortSignal }): void {
-    const sideMenu = (editor as unknown as BlockNoteEditor<never, never, never>).getExtension(SideMenuExtension);
+    const ours = editor as unknown as BlockNoteEditor<never, never, never>;
+    const sideMenu = ours.getExtension(SideMenuExtension);
     if (sideMenu === undefined) return;
     let pointer: Point | undefined;
     // On the window in the capture phase, ahead of the side menu's own
@@ -66,8 +68,10 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
     );
     const unsubscribe = sideMenu.store.subscribe(() => {
       const state = sideMenu.store.state;
-      const body = editor.prosemirrorView?.dom;
-      if (state?.show !== true || pointer === undefined || body === undefined) return;
+      if (state?.show !== true || pointer === undefined) return;
+      // The menu hides as the editor unmounts, when its view is gone.
+      const body = domElementOf(ours);
+      if (body === null) return;
       const tableId = tableInsteadOf(body, state.block.id, pointer);
       const table = tableId === undefined ? undefined : editor.getBlock(tableId);
       if (table === undefined) return;
