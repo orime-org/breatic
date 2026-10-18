@@ -78,6 +78,16 @@ const collabConfigSchema = z.object({
   unload_store_retry_ms: z.number().int().positive().default(1200),
   unload_store_retry_interval_ms: z.number().int().positive().default(200),
   unload_rescue_reserve_ms: z.number().int().nonnegative().default(1000),
+  // The published document-editor vocabulary (inner#1619 design 5.6).
+  // `force_publish` writes this build's version over a later release: a
+  // rollback turns it on and turns it off once every instance is back.
+  document_schema: z
+    .object({ force_publish: z.boolean().default(false) })
+    .default({ force_publish: false }),
+  // How long one instance holds the lock under which it converts a
+  // document's stored tables (inner#1619 design 5.8). It is never released,
+  // only expires, and has to outlast the store interval by far.
+  doc_table_migrate_lock_ms: z.number().int().positive().default(300_000),
 });
 
 /** Validated collab configuration type. */

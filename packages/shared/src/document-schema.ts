@@ -67,7 +67,8 @@ export interface DocumentSchema {
    * When this vocabulary went out, as UTC. The panel says "the new version went
    * out {when}", and only a person knows when that was — it cannot be derived
    * from anything, which is why it is written by hand while the version beside
-   * it is computed.
+   * it is computed. It also decides whether a collab instance writes its
+   * version over the published one: never over one released later.
    *
    * UTC, in the `Z` form: one instant travels to every client and each renders
    * it in its own time zone.
@@ -77,6 +78,13 @@ export interface DocumentSchema {
   nodes: Record<string, string[]>;
   /** Mark type name to its attribute names. */
   marks: Record<string, string[]>;
+  /**
+   * Node type name to its content rule, as ProseMirror reads it. A rule that
+   * changes leaves no name or attribute behind, and a tab on the old rule
+   * deletes what it cannot hold (inner#1619), so the rules are in the version
+   * too.
+   */
+  content: Record<string, string>;
 }
 
 /**
@@ -87,13 +95,14 @@ export interface DocumentSchema {
  * builds the real ProseMirror schema from that editor and fails when it
  * disagrees with these two lists, down to attribute names.
  *
- * Set {@link DocumentSchema.publishedAt} whenever either list changes. Nothing
- * checks it — nothing can, since no code knows when a release happened — but
- * getting it wrong only misdates a sentence on a panel, while the version
- * beside it, which decides who stops editing, is computed from the lists.
+ * Move {@link DocumentSchema.publishedAt} forward whenever any list changes,
+ * and pin the pair in `document-schema.test.ts`. It decides whether a collab
+ * instance writes its version over the published one: an instance never
+ * writes over a version published under a later time, so a release whose
+ * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-07T00:00:00Z",
+  publishedAt: "2026-10-18T09:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -204,6 +213,35 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     ],
   },
 
+  content: {
+    audio: "",
+    blockContainer: "blockContent blockGroup?",
+    blockGroup: "blockGroupChild+",
+    bulletListItem: "inline*",
+    checkListItem: "inline*",
+    codeBlock: "text*",
+    divider: "",
+    doc: "blockGroup",
+    docTable: "docTableRow+",
+    docTableCell: "blockContainer+",
+    docTableHeader: "blockContainer+",
+    docTableRow: "(docTableCell | docTableHeader)*",
+    hardBreak: "",
+    heading: "inline*",
+    image: "",
+    numberedListItem: "inline*",
+    paragraph: "inline*",
+    table: "tableRow+",
+    tableCell: "tableContent+",
+    tableHeader: "tableContent+",
+    tableParagraph: "inline*",
+    tableRow: "(tableCell | tableHeader)*",
+    text: "",
+    unsupportedBlock: "",
+    unsupportedInline: "",
+    video: "",
+  },
+
   marks: {
     backgroundColor: ["stringValue"],
     bold: [],
@@ -228,9 +266,9 @@ const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
  *
  * JSON does the escaping, so a type named `a:b` cannot be confused with a pair
  * named `a` and `b`, and the two halves are separate arrays, so a node and a
- * mark sharing a name stay distinct. Both type names and attribute names are
- * sorted here rather than assumed to arrive sorted, so the answer depends on
- * nothing but the vocabulary itself.
+ * mark sharing a name stay distinct; the content rules are a third. Type names
+ * and attribute names are sorted here rather than assumed to arrive sorted, so
+ * the answer depends on nothing but the vocabulary itself.
  *
  * `publishedAt` is deliberately not in here. The version decides who gets shut
  * out of editing, and correcting a date is not a reason to shut anyone out.
@@ -238,7 +276,10 @@ const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
  * @returns A string that is equal for exactly the vocabularies that agree.
  */
 function canonicalForm(schema: DocumentSchema): string {
-  return JSON.stringify([orderedPairs(schema.nodes), orderedPairs(schema.marks)]);
+  const rules = Object.keys(schema.content)
+    .sort()
+    .map((name) => [name, schema.content[name] ?? ""]);
+  return JSON.stringify([orderedPairs(schema.nodes), orderedPairs(schema.marks), rules]);
 }
 
 /**

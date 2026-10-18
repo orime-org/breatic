@@ -185,3 +185,16 @@ store_alert_window_ms: 600000
 # hold every unloading document in memory for that long each.
 store_alert_timeout_ms: 3000
 
+# The published document-editor vocabulary (inner#1619). A collab instance
+# writes its build's version into each project's meta, never over a version
+# released later than its own. A rollback turns force_publish on so the build
+# it goes back to can write its earlier version, and turns it off again once
+# every instance runs that build.
+document_schema:
+  force_publish: false
+
+# How long one instance holds the per-document lock under which it converts
+# stored tables into tables whose cells hold blocks (inner#1619). The lock is
+# never released, only expires; it has to outlast store_interval_ms by far.
+doc_table_migrate_lock_ms: 300000
+
