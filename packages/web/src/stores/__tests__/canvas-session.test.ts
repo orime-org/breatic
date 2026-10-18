@@ -133,6 +133,8 @@ describe('mini-tool draft (inner#888 §7.2)', () => {
       slots: {},
       sourceSize: null,
       drawing: null,
+      expand: null,
+      mark: null,
       exporting: false,
     });
   });
@@ -147,6 +149,31 @@ describe('mini-tool draft (inner#888 §7.2)', () => {
 
     expect(store.getState().panelSession).toBe(session);
     expect(store.getState().miniTool?.params).toEqual({ creativity: 4 });
+  });
+
+  it('clears the picked grid cells when the rows or the columns change', () => {
+    const store = createCanvasSessionStore();
+    store.getState().openMiniTool('node-a', 'image.grid', { sourceContent: OPEN.sourceContent, params: { rows: 3, cols: 3, skip: [] } });
+
+    store.getState().setMiniToolParam('skip', [1, 4]);
+    expect(store.getState().miniTool?.params).toEqual({ rows: 3, cols: 3, skip: [1, 4] });
+    store.getState().setMiniToolParam('rows', 4);
+    expect(store.getState().miniTool?.params).toEqual({ rows: 4, cols: 3, skip: [] });
+
+    store.getState().setMiniToolParam('skip', [0]);
+    store.getState().setMiniToolParam('cols', 2);
+    expect(store.getState().miniTool?.params).toEqual({ rows: 4, cols: 2, skip: [] });
+  });
+
+  it('keeps the picked grid cells when the grid split is chosen again on its node', () => {
+    const store = createCanvasSessionStore();
+    const open = { sourceContent: OPEN.sourceContent, params: { rows: 3, cols: 3, skip: [] } };
+    store.getState().openMiniTool('node-a', 'image.grid', open);
+    store.getState().setMiniToolParam('skip', [2]);
+
+    store.getState().openMiniTool('node-a', 'image.grid', open);
+
+    expect(store.getState().miniTool?.params.skip).toEqual([2]);
   });
 
   it('starts a new opening with a fresh draft when the tool changes', () => {

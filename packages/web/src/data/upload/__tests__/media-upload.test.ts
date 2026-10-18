@@ -111,6 +111,37 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
+  // inner#1303 §6.7: the ticket is the server's answer, which ends the
+  // uploader's wait on the node before the bytes move.
+  it('says the server answered once the ticket arrives, before the bytes move', async () => {
+    const order: string[] = [];
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(() => order.push('answered')),
+      sendToIngest: vi.fn(async () => {
+        order.push('sent');
+        return { storageKey: TICKET.storageKey };
+      }),
+    });
+    await runMediaUpload(file, context, deps);
+    expect(order).toEqual(['answered', 'sent']);
+  });
+
+  it('says the server answered when the studio already holds the content', async () => {
+    const deps = makeUploadDeps({
+      onAnswered: vi.fn(),
+      requestTicket: vi.fn().mockResolvedValue({ alreadyExists: true, assetId: 'a', fileUrl: 'https://cdn/a.png', kind: 'image' }),
+    });
+    await runMediaUpload(file, context, deps);
+    expect(deps.onAnswered).toHaveBeenCalledOnce();
+  });
+
+  it('does not say the server answered when the ticket request fails', async () => {
+    const deps = makeUploadDeps({ onAnswered: vi.fn(), requestTicket: vi.fn().mockRejectedValue(apiError(400)) });
+    await runMediaUpload(file, context, deps);
+    expect(deps.onAnswered).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledOnce();
+  });
+
   it('reports progress as the share of the file that has landed (inner#1127 A4)', async () => {
     const big = new File([new Uint8Array(400)], 'clip.mp4', { type: 'video/mp4' });
     const onProgress = vi.fn();

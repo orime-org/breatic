@@ -19,6 +19,13 @@ describe("ANALYTICS_EVENT_NAMES", () => {
 });
 
 describe("sanitizeEventProperties", () => {
+  it("keeps the invitation id on both invitation events", () => {
+    for (const name of ["member_invited", "invitation_accepted"] as const) {
+      expect(sanitizeEventProperties(name, { studio_id: "s1", scope: "studio", role: "guest", invitation_id: "i1" }))
+        .toMatchObject({ invitation_id: "i1" });
+    }
+  });
+
   it("keeps the shared properties and the event's own", () => {
     expect(
       sanitizeEventProperties("project_created", {

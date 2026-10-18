@@ -162,8 +162,10 @@ describe('how tall a node is taken to be', () => {
     };
     const tall: ProposalNode = { ...photo, type: 'video', materialMedia: { ...photo.materialMedia!, width: 720, height: 1280 } };
 
-    expect(estimateHeight(photo)).toBe(280 * 0.75 + 8);
-    expect(estimateHeight(tall)).toBeCloseTo((280 * 1280) / 720 + 8);
+    // A 400×300 picture's node measures 218.5 in the browser: 1px border and
+    // 4px inset on each side around a 278-wide picture.
+    expect(estimateHeight(photo)).toBe(278 * 0.75 + 10);
+    expect(estimateHeight(tall)).toBeCloseTo((278 * 1280) / 720 + 10);
   });
 
   it('keeps the standard footprint for material it has no numbers for', () => {

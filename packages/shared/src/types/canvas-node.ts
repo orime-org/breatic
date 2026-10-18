@@ -339,7 +339,8 @@ export interface CanvasNodeFields {
     height?: number;
     /**
      * Intrinsic media pixel width, as the ledger measured it at ingest (#209).
-     * Image / video only.
+     * Image / video only. On a node with no content yet it is the size a
+     * tool's result is planned to have, which the landing result replaces.
      *
      * Absent for a row stored before the media container ran, or one it could
      * not answer for — the node then measures what it loaded.

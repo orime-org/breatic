@@ -6,28 +6,39 @@ import { describe, it, expect } from "vitest";
 import {
   MINI_TOOLS,
   defaultParamsOf,
+  isModelTool,
   miniToolById,
   miniToolEstimateInput,
   miniToolRequestSchema,
   catalogEntryOf,
   miniToolsFor,
   modelOf,
+  mostOutputsOf,
+  outputsOf,
   servedMiniToolsFor,
   toolFilledParams,
   toolParamKeys,
 } from "@shared/mini-tools/index.js";
+import { defaultAdjustValue } from "@shared/adjust-value.js";
+import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
+import { UPLOAD_STATUS_MAX_KEYS } from "@shared/upload/upload-status.js";
+
 
 const BATCH_ONE = {
   // The confirmed demo's order: the free and usage-billed edits first, the model tools after.
   image: [
     "image.crop",
     "image.rotate",
+    "image.adjust",
+    "image.mark",
+    "image.grid",
     "image.remove-bg",
     "image.upscale",
     "image.digital-human",
     "image.inpaint",
     "image.erase",
     "image.sketch",
+    "image.expand",
   ],
   video: [
     "video.cut",
@@ -58,13 +69,85 @@ describe("MINI_TOOLS registry", () => {
 
   it("gives every tool at least one output and one modality per output list", () => {
     for (const tool of MINI_TOOLS) {
-      expect(tool.outputs.length).toBeGreaterThan(0);
+      expect(outputsOf(tool, defaultParamsOf(tool)).length).toBeGreaterThan(0);
     }
+  });
+
+  it("asks how every upload of one grouped export ended in a single status request", () => {
+    for (const tool of MINI_TOOLS.filter((t) => t.groupOutputs === true)) {
+      expect(mostOutputsOf(tool), tool.id).toBeLessThanOrEqual(UPLOAD_STATUS_MAX_KEYS);
+    }
+  });
+
+  it("keeps every container tool within the outputs one ingest job takes", () => {
+    for (const tool of MINI_TOOLS.filter((t) => t.run.kind === "container")) {
+      expect(mostOutputsOf(tool), tool.id).toBeLessThanOrEqual(MINI_TOOL_JOB_MAX_OUTPUTS);
+    }
+  });
+
+  it("counts a variable tool only off whole-number params from one and off list params", () => {
+    for (const tool of MINI_TOOLS) {
+      const count = tool.outputCount;
+      if (!count) continue;
+      const keys = count.kind === "product" ? count.params : [count.param];
+      for (const key of keys) {
+        const param = tool.params.find((p) => p.key === key);
+        if (count.kind === "product") {
+          expect(param && "kind" in param && param.kind === "number" && Number.isInteger(param.step) && param.min >= 1, `${tool.id}.${key}`).toBe(true);
+        } else {
+          expect(param && "kind" in param && param.kind === "list", `${tool.id}.${key}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("skips cells only through a cells param", () => {
+    for (const tool of MINI_TOOLS) {
+      const count = tool.outputCount;
+      if (count?.kind !== "product" || count.except === undefined) continue;
+      const param = tool.params.find((p) => p.key === count.except);
+      expect(param && "kind" in param && param.kind, tool.id).toBe("cells");
+    }
+  });
+
+  it("lets the grid split skip tiles", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid?.outputCount).toEqual({ kind: "product", params: ["rows", "cols"], except: "skip" });
+  });
+
+  it("adjusts a picture with the same sliders as a video, in the browser", () => {
+    const image = miniToolById("image.adjust");
+    const video = miniToolById("video.adjust");
+    expect(image?.run.kind).toBe("browser");
+    expect(image?.params).toEqual(video?.params);
+    expect(image && outputsOf(image, {}).map((output) => [output.modality, output.namePrefix])).toEqual([
+      ["image", "ADJUST"],
+    ]);
+  });
+
+  it("marks a picture up in the browser, for people to read", () => {
+    const mark = miniToolById("image.mark");
+    expect(mark?.run.kind).toBe("browser");
+    expect(mark?.markup).toBe(true);
+    expect(mark?.params).toEqual([]);
+    expect(mark && outputsOf(mark, {}).map((output) => output.namePrefix)).toEqual(["MARK"]);
+  });
+
+  it("cuts a grid into rows times columns of tiles inside a group", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid?.run.kind).toBe("browser");
+    expect(grid?.groupOutputs).toBe(true);
+    expect(grid?.outputLayout).toBe("grid");
+    expect(grid && outputsOf(grid, {}).length).toBe(9);
+    expect(grid && outputsOf(grid, { rows: 2, cols: 8 }).map((output) => output.namePrefix)).toEqual(
+      Array.from({ length: 16 }, () => "GRID"),
+    );
+    expect(grid && mostOutputsOf(grid)).toBe(64);
   });
 
   it("splits vocals and instrumental into two outputs", () => {
     const separate = miniToolById("audio.separate");
-    expect(separate?.outputs.map((output) => output.namePrefix)).toEqual([
+    expect(separate && outputsOf(separate, {}).map((output) => output.namePrefix)).toEqual([
       "VOCALS",
       "INSTRUMENTAL",
     ]);
@@ -73,7 +156,7 @@ describe("MINI_TOOLS registry", () => {
   it("makes the digital human an image tool whose output is a video", () => {
     const digitalHuman = miniToolById("image.digital-human");
     expect(digitalHuman?.source).toBe("image");
-    expect(digitalHuman?.outputs.map((output) => output.modality)).toEqual(["video"]);
+    expect(digitalHuman && outputsOf(digitalHuman, {}).map((output) => output.modality)).toEqual(["video"]);
     expect(digitalHuman?.slots.map((slot) => [slot.key, slot.accepts])).toEqual([
       ["audio", "audio"],
     ]);
@@ -126,10 +209,21 @@ describe("servedMiniToolsFor", () => {
     credit_multiplier: 1,
   } as never;
 
+  it("lists every source's edits before its model tools, so the menu draws one separator", () => {
+    for (const source of new Set(MINI_TOOLS.map((tool) => tool.source))) {
+      const model = MINI_TOOLS.filter((tool) => tool.source === source).map(isModelTool);
+      const firstModel = model.indexOf(true);
+      expect(firstModel === -1 ? [] : model.slice(firstModel), source).not.toContain(false);
+    }
+  });
+
   it("keeps browser tools and the model tools the catalog serves, in order", () => {
     expect(servedMiniToolsFor("image", catalog).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
+      "image.adjust",
+      "image.mark",
+      "image.grid",
       "image.upscale",
     ]);
   });
@@ -138,6 +232,9 @@ describe("servedMiniToolsFor", () => {
     expect(servedMiniToolsFor("image", undefined).map((tool) => tool.id)).toEqual([
       "image.crop",
       "image.rotate",
+      "image.adjust",
+      "image.mark",
+      "image.grid",
     ]);
   });
 
@@ -167,6 +264,11 @@ describe("defaultParamsOf", () => {
     expect(rotate && defaultParamsOf(rotate)).toEqual({
       orient: { turns: 0, flipX: false, flipY: false },
     });
+  });
+
+  it("starts the grid split with every tile picked", () => {
+    const grid = miniToolById("image.grid");
+    expect(grid && defaultParamsOf(grid)).toEqual({ rows: 3, cols: 3, skip: [] });
   });
 
   it("starts HDR on PQ", () => {
@@ -205,6 +307,20 @@ describe("miniToolRequestSchema", () => {
   it("refuses a browser tool, which never reaches the server", () => {
     const parsed = miniToolRequestSchema.safeParse({ ...base, tool: "image.crop", params: {} });
     expect(parsed.success).toBe(false);
+  });
+
+  // Each channel's range is the one the sliders offer (ADJUST_RANGES).
+  it("holds each adjust channel to its own range", () => {
+    const adjust = (value: Record<string, number>) =>
+      miniToolRequestSchema.safeParse({
+        ...base,
+        tool: "video.adjust",
+        source: { url: "https://cdn.example.com/a.mp4" },
+        params: { value: { ...defaultAdjustValue, ...value } },
+      }).success;
+    expect(adjust({ grain: 100, exposure: -100 })).toBe(true);
+    expect(adjust({ grain: -50 })).toBe(false);
+    expect(adjust({ vignette: -1 })).toBe(false);
   });
 
   it("refuses a node count that differs from the tool's outputs", () => {

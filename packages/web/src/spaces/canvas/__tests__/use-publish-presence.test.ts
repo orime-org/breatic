@@ -976,3 +976,18 @@ describe('usePublishPresence, the gesture geometry', () => {
     expect(published(awareness).gesture).toEqual({ n1: { x: 10, y: 20, root: 'n1' } });
   });
 });
+
+describe('usePublishPresence, the activity', () => {
+  // A Space switched away from tears the canvas down while its tab and its
+  // operations run on; `activity` is the tab's and stays (§6.8).
+  it('leaves the activity alone when it unmounts', () => {
+    const awareness = makeAwareness();
+    awareness.setLocalState({ ...awareness.getLocalState(), activity: [{ nodeId: 'n1', action: 'upload', at: 1 }] });
+    const { container } = makeCanvas();
+    const rendered = renderHook(() =>
+      usePublishPresence({ awareness, sources: NOTHING, synced: true, containerRef: { current: container }, toFlowPosition: SHIFTED }),
+    );
+    rendered.unmount();
+    expect((awareness.getLocalState() as { activity?: unknown }).activity).toEqual([{ nodeId: 'n1', action: 'upload', at: 1 }]);
+  });
+});

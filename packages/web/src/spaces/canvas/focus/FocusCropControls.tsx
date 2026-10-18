@@ -22,6 +22,7 @@ import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
 import { cropSourceSelector, intrinsicSize, isCropSource, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
+import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
 
 /**
  * One step of the crop timeline: the duration of a frame at the worst frame
@@ -222,9 +223,7 @@ export function FocusCropControls({ onConfirm, onBackToPick }: FocusCropControls
     const onKeyDown = (e: KeyboardEvent): void => {
       // A consumer that preventDefaulted owns the press; an IME
       // composition-cancel Escape never reaches the crop (round-11).
-      if (e.key !== 'Escape' || e.defaultPrevented || e.repeat || e.isComposing || e.keyCode === 229) {
-        return;
-      }
+      if (!isFreeEscape(e)) return;
       if (!regionOwnsKeyboard(document.activeElement, 'space')) return;
       const current = store.getState().focusCrop;
       if (current === null) return;

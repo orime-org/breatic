@@ -11,13 +11,9 @@
 import { describe, it, expect } from 'vitest';
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
-import {
-  mediaFootprintHeight,
-  occupiedRects,
-  textFootprintHeight,
-} from '@web/spaces/canvas/lib/place-flow';
+import { occupiedRects, textFootprintHeight } from '@web/spaces/canvas/lib/place-flow';
 
 /**
  * One node as the document reports it.
@@ -58,13 +54,13 @@ describe('occupiedRects', () => {
       x: 0,
       y: 0,
       width: WITH_COUNTS,
-      height: mediaFootprintHeight(1080, 1920),
+      height: mediaNodeHeight(1080, 1920),
     });
   });
 
   it('sizes a video that has never been measured by its pixels', () => {
     const rects = occupiedRects([at({ id: 'v', type: 'video', mediaWidth: 1080, mediaHeight: 1920 })], noMeasure);
-    expect(rects[0]?.height).toBe(mediaFootprintHeight(1080, 1920));
+    expect(rects[0]?.height).toBe(mediaNodeHeight(1080, 1920));
   });
 
   it('sizes text by what was measured when it draws taller than its words', () => {
@@ -99,7 +95,7 @@ describe('occupiedRects', () => {
 
   it('reaches below a short node as deep as its task counts can', () => {
     const banner = at({ id: 'b', type: 'image', mediaWidth: 3000, mediaHeight: 1000 });
-    expect(mediaFootprintHeight(3000, 1000)).toBeLessThan(COUNTS_COLUMN_FLOW_DEPTH);
+    expect(mediaNodeHeight(3000, 1000)).toBeLessThan(COUNTS_COLUMN_FLOW_DEPTH);
     expect(occupiedRects([banner], noMeasure)[0]?.height).toBe(COUNTS_COLUMN_FLOW_DEPTH);
   });
 

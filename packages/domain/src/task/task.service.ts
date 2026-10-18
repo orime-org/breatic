@@ -26,6 +26,7 @@ import type { GenerationSource, TaskEntity } from "@breatic/shared";
  * @param params - Task parameters
  * @param model - Optional model name
  * @param source - Which lane opened this task; defaults to `"task"`
+ * @param id - The row's id, when the caller held credits under it first
  * @returns The newly created task entity
  */
 export async function create(
@@ -37,6 +38,7 @@ export async function create(
   params: Record<string, unknown>,
   model?: string,
   source?: GenerationSource,
+  id?: string,
 ): Promise<TaskEntity> {
   return taskRepo.createTask({
     userId,
@@ -47,6 +49,7 @@ export async function create(
     params,
     model,
     source,
+    id,
   });
 }
 

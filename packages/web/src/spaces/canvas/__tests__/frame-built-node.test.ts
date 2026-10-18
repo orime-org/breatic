@@ -12,7 +12,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox } from '@web/spaces/canvas/frame-built-node';
+import { frameBuiltNode, framedBox, freshNodesBox, viewportForBuilt, viewportToInspect } from '@web/spaces/canvas/frame-built-node';
+import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
 /** A node near the right edge of what the reader can see. */
@@ -104,5 +105,122 @@ describe('what a paste or duplicate frames', () => {
 
   it('is nothing when there are no copies', () => {
     expect(framedBox([], VIEWPORT)).toBeNull();
+  });
+});
+
+describe('viewportForBuilt', () => {
+  const pane = { width: 1000, height: 800 };
+  /**
+   * What the reader sees at this viewport, in canvas coordinates.
+   * @param v - The viewport.
+   * @param v.x - Its x translation.
+   * @param v.y - Its y translation.
+   * @param v.zoom - Its zoom.
+   * @returns The visible rect.
+   */
+  const seen = (v: { x: number; y: number; zoom: number }): Rect => ({
+    x: -v.x / v.zoom,
+    y: -v.y / v.zoom,
+    width: pane.width / v.zoom,
+    height: pane.height / v.zoom,
+  });
+
+  it('leaves the canvas alone while what was built is in view', () => {
+    expect(viewportForBuilt({ x: 100, y: 100, width: 200, height: 200 }, null, pane, { x: 0, y: 0, zoom: 1 })).toBeNull();
+  });
+
+  it('slides at the reader’s zoom to show the built node with its source when both fit', () => {
+    const source = { x: 900, y: 100, width: 200, height: 200 };
+    const built = { x: 1200, y: 100, width: 200, height: 200 };
+    const v = viewportForBuilt(built, source, pane, { x: 0, y: 0, zoom: 1 })!;
+    expect(v.zoom).toBe(1);
+    const view = seen(v);
+    for (const r of [source, built]) {
+      expect(r.x).toBeGreaterThanOrEqual(view.x);
+      expect(r.x + r.width).toBeLessThanOrEqual(view.x + view.width);
+    }
+  });
+
+  it('zooms out just enough to show the whole of a built group too large for the view', () => {
+    const group = { x: 1200, y: 100, width: 2500, height: 1800 };
+    const v = viewportForBuilt(group, { x: 900, y: 100, width: 200, height: 200 }, pane, { x: 0, y: 0, zoom: 1 })!;
+    expect(v.zoom).toBeLessThan(1);
+    expect(v.zoom).toBeGreaterThan(0.3);
+    const view = seen(v);
+    expect(group.x).toBeGreaterThanOrEqual(view.x);
+    expect(group.y).toBeGreaterThanOrEqual(view.y);
+    expect(group.x + group.width).toBeLessThanOrEqual(view.x + view.width);
+    expect(group.y + group.height).toBeLessThanOrEqual(view.y + view.height);
+  });
+
+  it('never zooms in past the reader’s zoom', () => {
+    const v = viewportForBuilt({ x: 5000, y: 0, width: 100, height: 100 }, null, pane, { x: 0, y: 0, zoom: 0.5 })!;
+    expect(v.zoom).toBe(0.5);
+  });
+});
+
+describe('viewportToInspect', () => {
+  const pane = { width: 1440, height: 820 };
+  const node = { x: 100, y: 50, width: 288, height: 218.5 };
+  // The panel hangs under the node at its screen size whatever the zoom.
+  const panel = { width: 344, height: 430, gap: 10 };
+
+  /**
+   * Where the node and its panel sit on screen at a viewport.
+   * @param v - The viewport.
+   * @returns Their top, bottom, left and right in screen pixels.
+   */
+  function onScreen(v: { x: number; y: number; zoom: number }): { top: number; bottom: number; left: number; right: number } {
+    const top = node.y * v.zoom + v.y;
+    const nodeBottom = top + node.height * v.zoom;
+    const centre = (node.x + node.width / 2) * v.zoom + v.x;
+    const half = Math.max(node.width * v.zoom, panel.width) / 2;
+    return { top, bottom: nodeBottom + panel.gap + panel.height, left: centre - half, right: centre + half };
+  }
+
+  it('zooms in until the node and its panel fill the height, less a tenth either side', () => {
+    const v = viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 0.5 }, 8)!;
+    const at = onScreen(v);
+    expect(at.top).toBeCloseTo(pane.height * 0.1, 3);
+    expect(at.bottom).toBeCloseTo(pane.height * 0.9, 3);
+  });
+
+  it('comes to the same view from any zoom it starts at', () => {
+    const from = (zoom: number): number => viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom }, 8)!.zoom;
+    expect(from(0.25)).toBeCloseTo(from(0.75), 6);
+  });
+
+  // A wide, short picture in a narrow view fills the width, not the height.
+  it('stops where a wide node fills the width, less a tenth either side', () => {
+    const narrow = { width: 600, height: 820 };
+    const wide = { x: 0, y: 0, width: 288, height: 20 };
+    const v = viewportToInspect(wide, panel, narrow, { x: 0, y: 0, zoom: 0.5 }, 8)!;
+    expect(wide.x * v.zoom + v.x).toBeCloseTo(narrow.width * 0.1, 6);
+    expect((wide.x + wide.width) * v.zoom + v.x).toBeCloseTo(narrow.width * 0.9, 6);
+  });
+
+  it('stops at the zoom that shows the picture at its own pixels', () => {
+    expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 0.5 }, 0.8)!.zoom).toBe(0.8);
+  });
+
+  it('stays put when the reader is already as close as that, and never zooms out', () => {
+    expect(viewportToInspect(node, panel, pane, { x: 0, y: 0, zoom: 2 }, 8)).toBeNull();
+  });
+});
+
+describe('freshNodesBox', () => {
+  // A press that builds two results stacked down the column (a vocal split)
+  // frames both, not the first one alone.
+  it('covers every node a press built, each at its own footprint', () => {
+    const built = [
+      { x: 400, y: 100, width: 288, height: 192 },
+      { x: 400, y: 316, width: 288, height: 400 },
+    ] as const;
+    expect(freshNodesBox(built)).toEqual({ x: 400, y: 100, width: 288, height: 616 });
+  });
+
+  // A result planned taller than a fresh node is framed whole (inner#1303 §6.7).
+  it('is the one node for a press that built one, as tall as it was planned', () => {
+    expect(freshNodesBox([{ x: 10, y: 20, width: 288, height: 700 }])).toEqual({ x: 10, y: 20, width: 288, height: 700 });
   });
 });

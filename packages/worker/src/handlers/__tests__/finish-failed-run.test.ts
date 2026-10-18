@@ -28,6 +28,8 @@ const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockInsertActivity = vi.hoisted(() => vi.fn());
 const mockPublishActivity = vi.hoisted(() => vi.fn());
 const mockFailOpenSteps = vi.hoisted(() => vi.fn());
+const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+const mockLogError = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
   getStreamRedis: vi.fn(() => ({})),
@@ -44,9 +46,10 @@ vi.mock("@breatic/core", () => ({
   storageKey: vi.fn(),
   env: {},
   NotFoundError: class extends Error {},
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: mockLogError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
+  creditHoldService: { releaseHold: mockReleaseHold },
   buildAgentConfig: vi.fn(),
   getModel: vi.fn(),
   generateTextRetry: vi.fn(),
@@ -113,6 +116,24 @@ describe("a failed run that is the last word", () => {
     expect(mockFailOpenSteps).toHaveBeenCalledWith("task-1", "it broke");
   });
 
+  // The run is over, so what was held for it is free again (inner#1611).
+  it("releases the credits held for the run", async () => {
+    await finishFailedRun(END);
+
+    expect(mockReleaseHold).toHaveBeenCalledWith("task-1");
+  });
+
+  it("still records the outcome when the release fails, and logs it", async () => {
+    mockReleaseHold.mockRejectedValueOnce(new Error("db down"));
+    await finishFailedRun(END);
+
+    expect(mockSettleTaskForNode).toHaveBeenCalled();
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "task-1" }),
+      "credit_hold_release_failed",
+    );
+  });
+
   it("gives every target node a history entry", async () => {
     await finishFailedRun({ ...END, nodeIds: ["node-1", "node-2"] });
 
@@ -172,6 +193,13 @@ describe("a failed attempt with a retry still to come", () => {
     await finishFailedRun({ ...END, settles: false });
 
     expect(mockFailOpenSteps).not.toHaveBeenCalled();
+  });
+
+  // The retry will still be charged, so its credits stay held.
+  it("keeps the run's credits held", async () => {
+    await finishFailedRun({ ...END, settles: false });
+
+    expect(mockReleaseHold).not.toHaveBeenCalled();
   });
 });
 

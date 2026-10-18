@@ -114,6 +114,7 @@ export type {
   SpaceType,
   Space,
   ActivityNewControlEvent,
+  CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
@@ -147,6 +148,7 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
   activityNewChannel,
+  creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   SpaceTypeSchema,
@@ -176,6 +178,7 @@ export type {
 export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
+  CREDITS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -183,7 +186,6 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
-  ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
@@ -207,6 +209,7 @@ export type {
   ProjectActivityEntry,
   ProjectActivityPage,
   ActivityNewSignal,
+  CreditsChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -250,6 +253,7 @@ export type {
   CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,
@@ -399,12 +403,14 @@ export {
 export type { DocumentSchema } from "@shared/document-schema.js";
 
 export {
+  ADJUST_RANGES,
+  adjustTerms,
   defaultAdjustValue,
   isAdjustValueNeutral,
   parseAdjustValue,
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
-export type { AdjustValue } from "@shared/adjust-value.js";
+export type { AdjustRange, AdjustTerms, AdjustValue } from "@shared/adjust-value.js";
 
 
 // The confirmation email names the instant the window closes, in the buyer's
@@ -724,6 +730,7 @@ export {
   readMiniToolJob,
   readMiniToolJobReport,
   submitMiniToolJob,
+  MINI_TOOL_JOB_MAX_OUTPUTS,
   type ContainerUsage,
   type MiniToolJobOutput,
   type MiniToolJobReport,

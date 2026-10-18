@@ -7,11 +7,17 @@
  */
 
 import {
+  isAdjustValueNeutral,
+  parseAdjustValue,
   type ModelEntry,
 } from '@breatic/shared';
+import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
   defaultSizeTier,
+  gridShapeOf,
   isModelTool,
+  pickedCellsOf,
   sizeTierOptions,
   tieredParamKeys,
   type MiniToolSlotValue,
@@ -58,6 +64,12 @@ export type MiniToolRefusal =
   | 'slotMissing'
   | 'slotTooLong'
   | 'drawingEmpty'
+  | 'adjustNeutral'
+  | 'singleTile'
+  | 'noTilePicked'
+  | 'sourceTooLargeToExpand'
+  | 'frameNotExpanded'
+  | 'markEmpty'
   | 'promptMissing'
   | 'exporting'
   | null;
@@ -66,6 +78,11 @@ export type MiniToolRefusal =
 export const BLOCKING_REFUSALS: ReadonlySet<MiniToolRefusal> = new Set<MiniToolRefusal>([
   'slotMissing',
   'drawingEmpty',
+  'adjustNeutral',
+  'singleTile',
+  'noTilePicked',
+  'frameNotExpanded',
+  'markEmpty',
   'promptMissing',
   'exporting',
 ]);
@@ -160,7 +177,7 @@ function slotOptional(entry: ModelEntry | undefined, param: string): boolean {
  * @returns True when an empty prompt holds Execute back.
  */
 export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined): boolean {
-  return spec.prompt !== undefined && entry?.takes_prompt === true;
+  return spec.prompt !== undefined && spec.prompt.defaultText === undefined && entry?.takes_prompt === true;
 }
 
 /**
@@ -188,6 +205,17 @@ export function slotLengthCap(
 }
 
 /**
+ * Whether a tool lays its result out in the source's pixels: the expand's
+ * frame and the grid's tiles. Its size arrives with the source's metadata, or
+ * from the shown picture when the node records none.
+ * @param spec - The tool.
+ * @returns True when the result needs the source's pixel size.
+ */
+export function laysOutInSourcePixels(spec: MiniToolSpec): boolean {
+  return spec.expand !== undefined || spec.outputLayout === 'grid';
+}
+
+/**
  * Why Execute is held back right now.
  * @param input - What the panel knows.
  * @param input.spec - The tool.
@@ -200,6 +228,9 @@ export function slotLengthCap(
  * @param input.exporting - Whether a press of this tool is still under way: making its file or
  *   images in the browser, or waiting for the server's answer.
  * @param input.inked - Whether a drawing tool's drawing leaves any ink.
+ * @param input.params - The draft params.
+ * @param input.expandFrame - An expand tool's frame.
+ * @param input.mark - A markup tool's draft.
  * @returns The first reason in the order the reader would fix them, or null.
  */
 export function miniToolRefusal(input: {
@@ -212,8 +243,11 @@ export function miniToolRefusal(input: {
   tiers?: readonly SizeTierChoice[];
   exporting: boolean;
   inked?: boolean;
+  params?: Readonly<Record<string, unknown>>;
+  expandFrame?: ExpandFrame;
+  mark?: MarkDraft | null;
 }): MiniToolRefusal {
-  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting } = input;
+  const { spec, entry, prompt, slots, sourceShown, source = {}, exporting, params = {} } = input;
   if (exporting) return 'exporting';
   if (!sourceShown) return 'sourceMissing';
   // A range is measured on the source's length, which arrives with its metadata.
@@ -232,8 +266,36 @@ export function miniToolRefusal(input: {
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
+  if (laysOutInSourcePixels(spec) && (source.width === undefined || source.height === undefined)) return 'sourceMissing';
+  if (spec.expand !== undefined && source.width !== undefined && source.height !== undefined) {
+    const cap = expandCapOf(entry);
+    if (sourceTooLargeToExpand({ width: source.width, height: source.height }, cap)) return 'sourceTooLargeToExpand';
+    if (input.expandFrame === undefined || !isExpanded(input.expandFrame, { width: source.width, height: source.height })) {
+      return 'frameNotExpanded';
+    }
+  }
+  if (spec.markup === true && (input.mark == null || markEmpty(input.mark))) return 'markEmpty';
+  // Every slider at zero changes nothing.
+  const adjust = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
+  if (adjust !== undefined && isAdjustValueNeutral(parseAdjustValue(params[adjust.key]))) return 'adjustNeutral';
+  // A grid of one cell leaves nothing cut; a grid with no cell picked makes nothing.
+  const shape = gridShapeOf(spec, params);
+  if (shape !== null && shape.rows * shape.cols <= 1) return 'singleTile';
+  if (pickedCellsOf(spec, params)?.length === 0) return 'noTilePicked';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
   return null;
+}
+
+/**
+ * The expand frame's long-side cap in source pixels, from the pinned model's
+ * catalog entry.
+ * @param entry - The entry, undefined before the catalog is read.
+ * @param entry.max_output_side - The model's longest output side, when it has one.
+ * @returns The cap, unbounded for a model that sets none.
+ * @throws {never} Never.
+ */
+export function expandCapOf(entry: { max_output_side?: number } | undefined): number {
+  return entry?.max_output_side ?? Infinity;
 }
 
 /**
@@ -245,7 +307,7 @@ export function miniToolRefusal(input: {
  * @returns True when the press exports first.
  */
 export function exportsBeforeRun(spec: MiniToolSpec): boolean {
-  return spec.run.kind === 'browser' || spec.drawing !== undefined;
+  return spec.run.kind === 'browser' || spec.drawing !== undefined || spec.expand !== undefined;
 }
 
 /**

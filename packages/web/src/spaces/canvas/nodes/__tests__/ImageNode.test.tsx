@@ -34,6 +34,15 @@ describe('ImageNode', () => {
     expect(screen.getByTestId('node-placeholder')).toBeInTheDocument();
   });
 
+  // inner#1303 §6.7: a tool's result node is built with the size its picture
+  // will have; until the picture arrives it holds that shape, and it shows no
+  // pixel size for a picture that is not there.
+  it('holds the planned shape and shows no pixel size while it waits for its picture', () => {
+    render(<ImageNode data={{ handling: false, width: 1600, height: 400 }} />);
+    expect(screen.getByTestId('node-content-empty').style.aspectRatio).toBe('1600 / 400');
+    expect(screen.queryByTestId('node-resolution-badge')).toBeNull();
+  });
+
   it('renders the image when url is present', () => {
     render(
       <ImageNode

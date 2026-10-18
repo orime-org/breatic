@@ -17,6 +17,8 @@ const DRAFT = {
   slots: {},
   sourceSize: null,
   drawing: null,
+  expand: null,
+  mark: null,
   exporting: false,
 };
 

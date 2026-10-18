@@ -220,15 +220,14 @@ projects.get("/:id", async (c) => {
  * Separate from `GET /:id` because the two change at different rates — this
  * moves with every generation, the project's name and role do not — so the
  * client refreshes it without refetching the project.
- * @returns `200` with `{ data: { spendable: number } }`; `404` when the
+ * @returns `200` with `{ data: { spendable, held, available } }`; `404` when the
  *   caller cannot reach this project, which never leaks its existence
  */
 projects.get("/:id/credits", async (c) => {
   const user = c.get("user");
   const projectId = c.req.param("id");
   await projectService.assertAccess(projectId, user.id);
-  const spendable = await creditViewService.getProjectCredits(projectId);
-  return c.json({ data: { spendable } });
+  return c.json({ data: await creditViewService.getProjectCredits(projectId) });
 });
 
 /**

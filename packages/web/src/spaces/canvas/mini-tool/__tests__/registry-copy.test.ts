@@ -16,13 +16,14 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
  * Every message key one tool's declaration names.
  * @param tool - The declaration.
  * @returns Its label, slot banners, prompt placeholder, and a local tool's
- *   param labels.
+ *   param labels, for every param that shows one.
  */
 function keysOf(tool: (typeof MINI_TOOLS)[number]): string[] {
   const keys = [tool.labelKey, ...tool.slots.map((slot) => slot.bannerKey)];
   if (tool.prompt !== undefined) keys.push(tool.prompt.placeholderKey);
   if (isModelTool(tool)) return keys;
-  for (const param of tool.params) keys.push(localParamLabelKey(param.key));
+  // The picked-cells row shows its count and a button, and no label.
+  for (const param of tool.params) if (param.kind !== 'cells') keys.push(localParamLabelKey(param.key));
   return keys;
 }
 

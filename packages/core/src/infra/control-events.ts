@@ -44,9 +44,11 @@ import { getStreamRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
+  creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   type ActivityNewControlEvent,
+  type CreditsChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
 } from "@breatic/shared";
@@ -84,6 +86,23 @@ export async function publishActivityNew(projectId: string): Promise<void> {
   };
   const redis = getStreamRedis();
   await redis.publish(activityNewChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce that a charge made in a project committed (inner#1611); collab
+ * relays it to connected members as the `credits:changed` stateless signal.
+ * Fire-and-forget like {@link publishActivityNew}.
+ * @param projectId - Project whose studio was charged.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishCreditsChanged(projectId: string): Promise<void> {
+  const event: CreditsChangedControlEvent = {
+    type: "project-credits:changed",
+    projectId,
+    ts: Date.now(),
+  };
+  await getStreamRedis().publish(creditsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

@@ -284,6 +284,12 @@ export interface ModelEntry {
    */
   max_input_chars?: number;
   /**
+   * The longest side, in pixels, of a picture this model is known to take and
+   * answer at its own size (inner#1303), so the expand tool stops a picture
+   * growing past it. Absent when none was measured, and absent means uncapped.
+   */
+  max_output_side?: number;
+  /**
    * The bracketed camera commands this model reads out of its prompt, each
    * with the clip that previews it. Absent on a model that reads none.
    */
@@ -596,6 +602,9 @@ const modelEntrySchema = z.object({
   // malformed one degrades to absent for the same reason a bad rate does: a
   // number this side invented would refuse text the vendor accepts.
   max_input_chars: z.number().optional().catch(undefined),
+  // The longest side the expand tool may grow to (inner#1303); a malformed one
+  // degrades to absent, as a bad text cap does.
+  max_output_side: z.number().optional().catch(undefined),
   // A malformed list degrades to absent: the panel then offers no picker,
   // where a half-parsed one would offer commands with no clip.
   camera_commands: z

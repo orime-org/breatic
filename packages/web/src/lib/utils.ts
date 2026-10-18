@@ -15,8 +15,11 @@ import { extendTailwindMerge } from 'tailwind-merge';
 const customTwMerge = extendTailwindMerge({
   extend: {
     theme: {
+      // Every `--radius-*` in tokens.css past Tailwind's own; a test reads
+      // tokens.css and fails on one left out.
       radius: [
         'chrome',
+        'chrome-sm',
         'content-xs',
         'content-sm',
         'content-md',

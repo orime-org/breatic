@@ -43,20 +43,24 @@ export interface PreparedRun {
 }
 
 /**
- * The run as the estimate reads it.
+ * The run as the estimate reads it. An empty prompt on a tool that has its own
+ * is sent as that one.
+ * @param spec - The tool.
  * @param body - The validated request.
  * @returns The snapshot.
  */
-function snapshotOf(body: MiniToolRequest): MiniToolSnapshot {
+function snapshotOf(spec: MiniToolSpec, body: MiniToolRequest): MiniToolSnapshot {
+  const typed = body.prompt ?? "";
   return {
     params: body.params,
-    prompt: body.prompt ?? "",
+    prompt: typed.trim() === "" && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed,
     source: {
       url: body.source.url,
       ...(body.source.duration !== undefined && { duration: body.source.duration }),
     },
     slots: body.slots,
     ...(body.drawing !== undefined && { drawing: body.drawing }),
+    ...(body.expand !== undefined && { expand: body.expand }),
   };
 }
 
@@ -78,7 +82,7 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
       throw new AppError(400, t("server.mini_tool.invalidParam", { name }));
     }
   }
-  const snapshot = snapshotOf(body);
+  const snapshot = snapshotOf(spec, body);
   const input = miniToolEstimateInput(spec, snapshot);
   const params: Record<string, unknown> = { ...input.params };
   if (spec.prompt) params.prompt = snapshot.prompt;

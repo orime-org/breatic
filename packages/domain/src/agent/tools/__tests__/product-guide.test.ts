@@ -162,6 +162,16 @@ describe("what the guide says", () => {
     }
   });
 
+  // drawing-history.ts routes undo and redo to an open markup draft, and the
+  // canvas steps the markup size on [ and ] (CanvasSpace.tsx).
+  it("says the undo keys, the view bar's undo and [ ] act on markup while its panel is open", () => {
+    expect(webSource("spaces/canvas/mini-tool/drawing-history.ts")).toContain("if (draft?.mark != null) {");
+    const markup = renderProductGuide().split(`"${t("canvas.miniTool.image.mark.label")}" writes notes`)[1] ?? "";
+    expect(markup.split(`"${t("canvas.miniTool.image.expand.label")}"`)[0]).toMatch(
+      /Cmd\+Z or Ctrl\+Z and the view bar's undo and redo step through the markup.*\[ and \] keys.*next one drawn when none is selected.*while a text is being typed, these keys act on the text itself/s,
+    );
+  });
+
   it("says a reference is wired, then chosen from the prompt's list", () => {
     // Three halves, each of which has been the whole sentence at some point and
     // read as complete: the edge that offers the node, the @ that opens the
@@ -736,8 +746,8 @@ describe("what the guide says about each surface", () => {
 
   it("says a task changes nothing on the node and a failed reading leaves it as it was", () => {
     const filling = section("Filling a node");
-    expect(filling).toMatch(/A running, failed or expired task changes nothing on the node/);
-    expect(filling).toMatch(/leaves the node as it was, and a message names the file it could not read/);
+    expect(filling).toMatch(/a running, failed or expired task changes nothing on the node/);
+    expect(filling).toMatch(/leaves the node as it was, and a message on the node names the file it could not read/);
   });
 
   it("says files dropped on a node still make new nodes", () => {
@@ -841,6 +851,14 @@ describe("mini-tools and the task rows", () => {
     for (const tool of MINI_TOOLS) {
       expect(tools).toContain(`"${t(tool.labelKey)}": ${tool.guide}`);
     }
+  });
+
+  // The canvas moves by itself on these two presses; the reader may ask why.
+  it("says the canvas zooms in when Adjust opens and moves to show what a press built", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toMatch(/opening it on a picture zooms the canvas in until the node and its panel fill the view/i);
+    expect(tools).toMatch(/not already in view, the canvas slides to show them, with the source too when both fit at the current zoom, and zooms out only when the new nodes alone do not fit/i);
+    expect(renderProductGuide()).toMatch(/text node connected to it \(the canvas slides to show it when it lands out of view/i);
   });
 
   it("says what each task row offers, View opening history at that result", () => {

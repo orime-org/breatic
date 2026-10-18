@@ -3,6 +3,9 @@
 
 import {
   isAlreadyStored,
+  isRefused,
+  type BatchTicketAnswer,
+  type BatchTicketRequest,
   type UploadContext,
   type UploadTicket,
   type UploadTicketRequest,
@@ -179,6 +182,11 @@ export interface MediaUploadDeps {
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
+   * The server answered: a ticket, which opened the upload's task row, or a
+   * copy the studio already holds. Told once, before any bytes move.
+   */
+  onAnswered?: () => void;
+  /**
    * The bytes are delivered and the server has them.
    *
    * What the server filed the content as. A node ignores
@@ -257,11 +265,37 @@ export async function runMediaUpload(
     return;
   }
 
+  await deliverTicket(file, answer, cfg, deps, deps);
+}
+
+/** Where one file's outcome goes. */
+type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onSuccess' | 'onFailure'>;
+
+/** What the delivery half calls out to. */
+type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
+
+/**
+ * The half after the ticket: settle a dedup hit, or send the bytes, have the
+ * finish queued and, for an upload with no node, wait for its ending.
+ * @param file - The file.
+ * @param answer - What the ticket request answered for it.
+ * @param cfg - The upload knobs.
+ * @param sinks - Where its outcome goes.
+ * @param deps - The network.
+ */
+async function deliverTicket(
+  file: File,
+  answer: UploadTicketResponse,
+  cfg: UploadClientConfig,
+  sinks: UploadSinks,
+  deps: DeliveryDeps,
+): Promise<void> {
+  sinks.onAnswered?.();
   if (isAlreadyStored(answer)) {
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with
     // no node reads what the answer names.
-    deps.onSuccess({
+    sinks.onSuccess({
       fileUrl: answer.fileUrl,
       assetId: answer.assetId,
       kind: answer.kind,
@@ -274,7 +308,7 @@ export async function runMediaUpload(
   const { taskId } = answer;
   let queued: QueuedFinish;
   try {
-    const { onProgress } = deps;
+    const { onProgress } = sinks;
     queued =
       onProgress === undefined
         ? await deps.sendToIngest(file, answer, cfg)
@@ -282,7 +316,7 @@ export async function runMediaUpload(
           onProgress(landed / file.size);
         });
   } catch (err) {
-    deps.onFailure({
+    sinks.onFailure({
       reason: failureOf(err),
       ...(taskId !== undefined && { taskId }),
     });
@@ -292,16 +326,106 @@ export async function runMediaUpload(
   const ending = (deps.waitForEnding ?? waitForUploadEnding)(queued.storageKey);
   if (taskId !== undefined) {
     void ending.then((end) => {
-      if (end.state !== 'completed') deps.onFailure({ reason: failureOfEnding(end), taskId });
+      if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), taskId });
     });
     return;
   }
   const end = await ending;
   if (end.state !== 'completed') {
-    deps.onFailure({ reason: failureOfEnding(end) });
+    sinks.onFailure({ reason: failureOfEnding(end) });
     return;
   }
-  deps.onSuccess(end.result);
+  sinks.onSuccess(end.result);
+}
+
+/** One file of a batch, the node it lands on, and where its outcome goes. */
+export interface BatchUploadEntry extends UploadSinks {
+  file: File;
+  nodeId: string;
+}
+
+/** Injected dependencies for {@link runMediaUploadBatch}. */
+export interface BatchUploadDeps
+  extends Pick<MediaUploadDeps, 'getUploadConfig' | 'hashFile' | 'sendToIngest' | 'waitForEnding' | 'sleep'> {
+  /** Ask for every file's ticket in one request. */
+  requestTicketBatch: (request: BatchTicketRequest) => Promise<BatchTicketAnswer[]>;
+}
+
+/**
+ * Upload one browser tool's export of many files (inner#1303 §7): hash them
+ * all, ask for every ticket in one request, then send each file the server
+ * did not already hold. Each file's outcome goes to its own entry, by the same
+ * rules as {@link runMediaUpload}; a file the server refused before any bytes
+ * moved fails as `storage` when its account is full and `upload` otherwise.
+ * Never throws.
+ * @param entries - The files, each on its own node.
+ * @param context - Where they land and which tool made them.
+ * @param deps - Injected config / hash / network.
+ */
+export async function runMediaUploadBatch(
+  entries: readonly BatchUploadEntry[],
+  context: Omit<BatchTicketRequest, 'items'>,
+  deps: BatchUploadDeps,
+): Promise<void> {
+  let cfg: UploadClientConfig;
+  let hashes: (string | null)[];
+  try {
+    cfg = await deps.getUploadConfig();
+    hashes = await Promise.all(entries.map((entry) => deps.hashFile(entry.file)));
+  } catch (err) {
+    for (const entry of entries) entry.onFailure({ reason: failureOf(err) });
+    return;
+  }
+  const asked = entries.flatMap((entry, index) => {
+    const hash = hashes[index];
+    if (hash === null || hash === undefined) {
+      entry.onFailure({ reason: 'hash' });
+      return [];
+    }
+    return [{ entry, hash }];
+  });
+  if (asked.length === 0) return;
+
+  let answers: BatchTicketAnswer[];
+  try {
+    answers = await retryTransient(
+      () =>
+        deps.requestTicketBatch({
+          ...context,
+          items: asked.map(({ entry, hash }) => ({
+            filename: entry.file.name,
+            contentType: entry.file.type,
+            size: entry.file.size,
+            hash,
+            nodeId: entry.nodeId,
+          })),
+        }),
+      {
+        attempts: cfg.clientMaxAttempts,
+        baseDelayMs: cfg.clientRetryBaseDelayMs,
+        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
+      },
+    );
+  } catch (err) {
+    const reason = failureOf(err);
+    for (const { entry } of asked) entry.onFailure({ reason });
+    return;
+  }
+
+  await Promise.all(
+    asked.map(({ entry }, index) => {
+      const answer = answers[index];
+      if (answer === undefined) {
+        entry.onFailure({ reason: 'upload' });
+        return Promise.resolve();
+      }
+      if (isRefused(answer)) {
+        entry.onFailure({ reason: answer.refused.reason === 'storage' ? 'storage' : 'upload' });
+        return Promise.resolve();
+      }
+      return deliverTicket(entry.file, answer, cfg, entry, deps);
+    }),
+  );
 }
 
 /** Why an upload did not complete; the caller picks the message from it. */

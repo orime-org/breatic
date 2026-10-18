@@ -6,8 +6,11 @@
  * and the browser asks how each of its uploads ended, several in one request.
  */
 
-/** How many uploads one status request may ask about. */
-export const UPLOAD_STATUS_MAX_KEYS = 50;
+/**
+ * How many uploads one status request may ask about: as many as AWS Batch's
+ * `DescribeJobs` takes, enough for every tile of one grid export in one round.
+ */
+export const UPLOAD_STATUS_MAX_KEYS = 100;
 
 /** What a finished upload registered as. */
 export interface UploadStatusResult {

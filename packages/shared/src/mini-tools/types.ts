@@ -57,7 +57,10 @@ export type MiniToolIcon =
   | "Crosshair"
   | "Sun"
   | "SplitSquareVertical"
-  | "Timer";
+  | "Timer"
+  | "Highlighter"
+  | "Expand"
+  | "Grid3x3";
 
 /**
  * One choice of an enum param. It reads as its `label` when it has one — the
@@ -114,8 +117,33 @@ export interface OrientParam {
   readonly key: string;
 }
 
+/** A list of numbers the reader enters, such as cut points; capped at `maxItems`. */
+export interface ListParam {
+  readonly kind: "list";
+  readonly key: string;
+  readonly item: { readonly min: number; readonly max: number; readonly step: number };
+  readonly maxItems: number;
+}
+
+/**
+ * Cells of a grid the reader leaves out, by row-major index from 0; empty means
+ * every cell. Named by a product count's `except`.
+ */
+export interface CellsParam {
+  readonly kind: "cells";
+  readonly key: string;
+}
+
 /** A param a browser or container tool declares in full. */
-export type MiniToolParam = NumberParam | EnumParam | RectParam | RangeParam | AdjustParam | OrientParam;
+export type MiniToolParam =
+  | NumberParam
+  | EnumParam
+  | RectParam
+  | RangeParam
+  | AdjustParam
+  | OrientParam
+  | ListParam
+  | CellsParam;
 
 /** One output size a megapixel param offers: the source's long edge scaled to `longEdge`. */
 export interface SizeTier {
@@ -177,28 +205,84 @@ interface MiniToolBase {
   readonly guide: string;
   readonly icon: MiniToolIcon;
   readonly slots: readonly MiniToolSlot[];
-  readonly outputs: readonly MiniToolOutput[];
   /** The param the source media fills: the model's yaml name, or the container op's input. */
   readonly sourceParam: string;
   /** Whether that param is a list, as a slot's `many` says of its param. */
   readonly sourceMany: boolean;
   /** Present on a tool the reader draws on the node for. */
   readonly drawing?: MiniToolDrawing;
-  /** Present on a model tool whose pinned model takes a prompt. */
-  readonly prompt?: { readonly placeholderKey: string };
+  /**
+   * Present on a tool the reader marks the picture up with — shapes, arrows,
+   * lines, pen strokes and text that stay selectable until the run — for
+   * people to read rather than for a model.
+   */
+  readonly markup?: true;
+  /**
+   * Present on a tool that grows the picture past its edges: the run sends,
+   * in place of the source, the picture padded onto the larger canvas under
+   * `imageParam` and a mask of the same size, white where the canvas is new,
+   * under `maskParam`.
+   */
+  readonly expand?: { readonly imageParam: string; readonly maskParam: string };
+  /**
+   * Present on a model tool whose pinned model takes a prompt. `defaultText`,
+   * when given, is sent in place of an empty prompt, so the reader may leave
+   * it empty.
+   */
+  readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string };
 }
 
-/** A tool run on a pinned catalog model. */
-export interface ModelToolSpec extends MiniToolBase {
+/**
+ * How many results a variable tool makes, read off its params before the run:
+ * the product of number params (a grid's rows and columns), less the cells a
+ * cells param named by `except` leaves out; or a list param's length plus
+ * `plus` (cut points into segments).
+ */
+export type MiniToolOutputCount =
+  | { readonly kind: "product"; readonly params: readonly string[]; readonly except?: string }
+  | { readonly kind: "listLength"; readonly param: string; readonly plus: number };
+
+/** A tool whose results are a fixed list. */
+interface FixedOutputs {
+  readonly outputs: readonly MiniToolOutput[];
+  readonly output?: never;
+  readonly outputCount?: never;
+  readonly outputLayout?: never;
+  readonly groupOutputs?: never;
+}
+
+/** A tool whose results are one template repeated as many times as its params say. */
+interface VariableOutputs {
+  readonly output: MiniToolOutput;
+  readonly outputCount: MiniToolOutputCount;
+  /**
+   * How the results sit on the canvas: one column when absent, or rows by
+   * columns for `"grid"`, whose count is the product of two params (rows first).
+   */
+  readonly outputLayout?: "grid";
+  /** Whether the results go into a new group of their own. */
+  readonly groupOutputs?: boolean;
+  readonly outputs?: never;
+}
+
+/**
+ * A tool run on a pinned catalog model. The registry does not declare its
+ * params (the server checks them against the model's catalog entry at run
+ * time), so nothing can count results from them and its outputs are fixed.
+ */
+export interface ModelToolSpec extends MiniToolBase, FixedOutputs {
   readonly run: { readonly kind: "model"; readonly model: string };
   readonly params: readonly MiniToolModelParam[];
 }
 
-/** A tool run in the browser or in the container. */
-export interface LocalToolSpec extends MiniToolBase {
+/** The run and params of a tool run in the browser or in the container. */
+interface LocalToolBase extends MiniToolBase {
   readonly run: { readonly kind: "browser" } | { readonly kind: "container"; readonly op: ContainerOp };
   readonly params: readonly MiniToolParam[];
 }
+
+/** A tool run in the browser or in the container. */
+export type LocalToolSpec = LocalToolBase & (FixedOutputs | VariableOutputs);
 
 /** One mini-tool declaration. */
 export type MiniToolSpec = ModelToolSpec | LocalToolSpec;

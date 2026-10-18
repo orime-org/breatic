@@ -109,6 +109,20 @@ describe("looking up an OpenRouter call whose cost was not in hand", () => {
     );
   });
 
+  it("logs a charge whose readers could not be told", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+    chargeOnceForGeneration.mockResolvedValueOnce({
+      billed: true, charged: 3, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
+    } as never);
+
+    await runUsageLookup(jobAt(0), recorderIntoRows);
+
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "p-1" }),
+      "credits_signal_failed",
+    );
+  });
+
   it("records a call of a run that is not charged, and charges nothing", async () => {
     lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
     const job = { data: { ...DATA, charge: false }, attemptsMade: 0, opts: { attempts: 3 } } as unknown as Job<UsageLookupJob>;

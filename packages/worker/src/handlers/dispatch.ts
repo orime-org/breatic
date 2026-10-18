@@ -23,7 +23,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
+import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
   assetService,
@@ -396,6 +396,10 @@ async function runTaskBody(
       { taskId, billedCredits: existing.billedCredits },
       "Task already completed + billed; returning stored result",
     );
+    // A crash between marking the task billed and charging it leaves the
+    // run's hold standing, and this job now completes, so nothing after it
+    // releases the hold. Releasing one that is already released does nothing.
+    await releaseRunHold(taskId, userId);
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored
@@ -747,46 +751,17 @@ async function runTaskBody(
     );
   }
 
-  if (wasFirst && creditsUsed > 0) {
-    try {
-      const outcome = await creditLotService.chargeForGeneration({
-        projectId: projectId ?? null,
-        actorUserId: userId,
-        amount: creditsUsed,
-        description: `Task: ${taskType}`,
-        referenceId: taskId,
-        model: usedModel,
-        provider: usedProvider,
-      });
-      if (outcome.shortfall > 0) {
-        // The studio's pool ran out mid-flight, or its credits were reassigned
-        // while the task ran. The result is already delivered, so what is left
-        // uncharged goes to reconciliation.
-        logger.error(
-          {
-            taskId,
-            userId,
-            studioId: outcome.studioId,
-            charged: outcome.charged,
-            shortfall: outcome.shortfall,
-          },
-          "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
-        );
-      }
-    } catch (err) {
-      // Deduct failed AFTER the CAS marked billed_at. The file is
-      // already persisted and the task is completed. Log loudly for
-      // manual reconciliation — do NOT roll back billed_at because
-      // that would allow a double-charge on the next retry. Also do
-      // NOT fail the task — the user is entitled to their result.
-      logger.error(
-        { taskId, userId, creditsUsed, err },
-        "DEDUCT_FAILED_AFTER_COMPLETION — manual reconciliation required",
-      );
-    }
-  } else if (!wasFirst) {
-    logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
-  }
+  if (!wasFirst) logger.info({ taskId }, "Task already completed by a prior run; skipping deduct");
+  await settleRunCharge({
+    taskId,
+    taskType,
+    userId,
+    projectId: projectId ?? null,
+    model: usedModel,
+    provider: usedProvider,
+    wasFirst,
+    creditsUsed,
+  });
 
   // ─── Stage 4: Record history + settle each node's task row ───────
   // No canvas-node lock check here (#1618): the billed result is recorded to
@@ -1132,6 +1107,93 @@ export interface FailedRunEnd {
   settles: boolean;
 }
 
+/** A finished run, as the charge for it needs it. */
+export interface RunCharge {
+  taskId: string;
+  taskType: string;
+  userId: string;
+  projectId: string | null;
+  model: string | undefined;
+  provider: string | undefined;
+  /** Whether this attempt is the one that marked the task completed. */
+  wasFirst: boolean;
+  /** What the run actually cost. */
+  creditsUsed: number;
+}
+
+/**
+ * Release a run's credit hold. A release that fails is logged and the hold
+ * expires on its own; the run's outcome is written either way.
+ * @param taskId - The run, whose task id keys its hold.
+ * @param userId - Who started it, for the log.
+ */
+export async function releaseRunHold(taskId: string, userId: string): Promise<void> {
+  await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
+    logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
+  );
+}
+
+/**
+ * Charge a completed run what it actually cost, or release what was held for
+ * it (inner#1611).
+ *
+ * The run was admitted by holding its estimate under the task id. The attempt
+ * that marked the task completed charges the actual cost and releases that
+ * hold in the same commit; one that cost nothing, or that lost the completion
+ * to another attempt, only releases it.
+ *
+ * Nothing here throws: the result is already delivered. A charge that fails is
+ * logged for reconciliation and its hold is left to expire (inner#1617).
+ * @param run - The run and what it cost.
+ */
+export async function settleRunCharge(run: RunCharge): Promise<void> {
+  const { taskId, userId } = run;
+  if (!run.wasFirst || run.creditsUsed <= 0) {
+    await releaseRunHold(taskId, userId);
+    return;
+  }
+  try {
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: run.projectId,
+      actorUserId: userId,
+      amount: run.creditsUsed,
+      description: `Task: ${run.taskType}`,
+      referenceId: taskId,
+      model: run.model,
+      provider: run.provider,
+      releaseHold: taskId,
+    });
+    if (outcome.shortfall > 0) {
+      // The studio's pool ran out mid-flight, or its credits were reassigned
+      // while the task ran. The result is already delivered, so what is left
+      // uncharged goes to reconciliation.
+      logger.error(
+        {
+          taskId,
+          userId,
+          studioId: outcome.studioId,
+          charged: outcome.charged,
+          shortfall: outcome.shortfall,
+        },
+        "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
+      );
+    }
+    if (outcome.signalFailure) {
+      logger.error({ err: outcome.signalFailure, taskId, userId, projectId: run.projectId }, "credits_signal_failed");
+    }
+  } catch (err) {
+    // Deduct failed AFTER the CAS marked billed_at. The file is already
+    // persisted and the task is completed. Log loudly for manual
+    // reconciliation — do NOT roll back billed_at because that would allow a
+    // double-charge on the next retry. Also do NOT fail the task — the user
+    // is entitled to their result.
+    logger.error(
+      { taskId, userId, creditsUsed: run.creditsUsed, err },
+      "DEDUCT_FAILED_AFTER_COMPLETION — manual reconciliation required",
+    );
+  }
+}
+
 /**
  * End a run that produced nothing, on every surface that was told it started.
  *
@@ -1160,6 +1222,9 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
   await taskService.markFailed(end.taskId, end.errorMessage);
   // A retry resumes from the steps; once the run is over, none will run again.
   if (end.settles) await upstreamStepRepo.failOpenSteps(end.taskId, end.errorMessage);
+  // The run is over, so what was held for it is free again (inner#1611). A
+  // release that fails leaves the hold to expire; the outcome is still written.
+  if (end.settles) await releaseRunHold(end.taskId, end.userId);
   await recordFailureHistory(
     end.taskId,
     end.projectId,

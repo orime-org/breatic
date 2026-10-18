@@ -13,7 +13,7 @@ import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { miniToolById, miniToolRequestSchema } from "@breatic/shared/mini-tools";
+import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -53,7 +53,7 @@ miniTools.post(
   await projectService.assertAccess(body.project_id, user.id, "editor");
   const run = await prepareRun(spec, body);
 
-  const taskType = spec.outputs[0]!.modality;
+  const taskType = outputTemplateOf(spec).modality;
   const task = await taskService.create(
     user.id,
     body.project_id,

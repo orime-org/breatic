@@ -4,6 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
+import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
 import * as React from 'react';
 import { useStore } from 'zustand';
 import { useParams } from 'react-router-dom';
@@ -329,6 +330,9 @@ function ProjectWorkspace({
   // connection re-authenticates by itself, but the banner and the role gates
   // read the project query, so that is refetched too.
   useRefreshOnReauth(provider, projectId);
+  // The top bar's credits are read again whenever they may have moved: this
+  // reader's own spend returning, or anyone's generation here ending.
+  useProjectCreditsRefresh(projectId, provider);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
