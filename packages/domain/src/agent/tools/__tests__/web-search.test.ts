@@ -113,14 +113,14 @@ async function run(
  */
 async function failureFrom(
   fn: () => Promise<unknown>,
-): Promise<Exclude<ToolFailure, { kind: "turned_away" }>> {
+): Promise<Exclude<ToolFailure, { kind: "turned_away" | "never_ran" }>> {
   try {
     await fn();
   } catch (err: unknown) {
     const failure = toolFailureOf(err);
     // This tool turns nothing away: every throw is a failure with a line for
     // the reader.
-    if (failure?.kind === "turned_away") throw new Error("turned away rather than failed");
+    if (failure?.kind === "turned_away" || failure?.kind === "never_ran") throw new Error(`${failure.kind} rather than failed`);
     if (failure !== undefined) return failure;
     throw new Error(
       `threw without failure detail: ${err instanceof Error ? err.message : String(err)}`,
@@ -477,7 +477,7 @@ describe("web_search says a failure is a failure", () => {
 
     expect(forModel).not.toMatch(/could not be reached|unreachable/i);
     expect(forModel).toMatch(/not with results/i);
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.badAnswer");
   });
 
   it("does not call an answer it cannot read a search that found nothing", async () => {

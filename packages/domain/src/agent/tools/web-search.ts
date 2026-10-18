@@ -17,6 +17,7 @@ import { braveJson } from "@domain/agent/tools/brave.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
+  failedWith,
   isStop,
   keepInside,
   nextMovesFor,
@@ -361,16 +362,13 @@ export function makeSearchTools(): {
       const apiKey = env.BRAVE_SEARCH_API_KEY;
       if (!apiKey) {
         // Defensive: `buildToolSet` leaves this tool out of the set entirely
-        // when the key is missing, so a turn should never reach here. The
-        // reader's line is the one for a failure nothing described, because a
-        // line of its own would exist for this branch alone -- five translations
-        // of a sentence no reader is on a path to meet.
+        // when the key is missing, so a turn should never reach here.
         throw toolFailed(
           reason(
             "Web search is not available on this deployment: it has no search credentials.",
             MOVES.stop,
           ),
-          FAILURE_LINES.generic,
+          FAILURE_LINES.unavailable,
         );
       }
 
@@ -426,7 +424,7 @@ export function makeSearchTools(): {
         // pages when what happened is an answer this side could not read.
         const found: unknown = (data as { grounding?: { generic?: unknown } } | null)?.grounding?.generic;
         if (!Array.isArray(found)) {
-          throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
+          throw failedWith(notOurPayloadReason(VOICE, shown));
         }
         if (found.length === 0) return { query, sources: [], sent: 0 };
 
@@ -444,7 +442,7 @@ export function makeSearchTools(): {
         // Sources arrived and not one of them could be read: the answer is the
         // endpoint's payload in name only.
         if (sources.length === 0) {
-          throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
+          throw failedWith(notOurPayloadReason(VOICE, shown));
         }
 
         return { query, sources, sent: found.length };
@@ -455,10 +453,7 @@ export function makeSearchTools(): {
         if (toolFailureOf(err) !== undefined) throw err;
         if (isStop(err, abortSignal)) throw stoppedByUser();
 
-        throw toolFailed(
-          unreachableReason(VOICE, shown, reasonOf(err)),
-          FAILURE_LINES.unreachable,
-        );
+        throw failedWith(unreachableReason(VOICE, shown, reasonOf(err)));
       }
     },
   });
