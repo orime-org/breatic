@@ -163,14 +163,14 @@ function sayWhenItOpens(
   onAnswering: () => void,
   onFirstFrame: () => void,
 ): ReadableStream<UIMessageChunk> {
-  let answering = false;
+  let opened = false;
   return stream.pipeThrough(
     new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
         if (isAnswering(chunk)) {
           onAnswering();
-          if (!answering) {
-            answering = true;
+          if (!opened) {
+            opened = true;
             onFirstFrame();
           }
         }
@@ -222,7 +222,7 @@ function transportFor(
       const last = messages[messages.length - 1];
       // An answer to a questionnaire says nothing of the reader's: the last
       // message is the paused reply, whose words and items are not theirs.
-      const isAnswer = (carried as { answer?: unknown } | undefined)?.answer !== undefined;
+      const isAnswer = answering.has(conversationId);
       const said = (last?.parts ?? [])
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map((part) => part.text)
