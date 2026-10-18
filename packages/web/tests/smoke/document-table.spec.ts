@@ -702,6 +702,9 @@ test('A6 and A11: a cell cut by the frame of a wide table shows its button and c
       return r.left >= left && r.right <= edge;
     }, [box.x, right] as const);
 
+  // The scroll's event lands a frame later and hides the table's controls
+  // (A6); the pointer arrives after it, as a reader's does.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.mouse.click(cut!.x, cut!.y);
   await expect(page.getByTestId('doc-table-cell-button')).toHaveCount(1);
   expect(await inFrame('doc-table-cell-button')).toBe(true);
