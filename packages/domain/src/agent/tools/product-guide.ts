@@ -671,7 +671,7 @@ export function renderProductGuide(): string {
       "the poses the model makes: eight sides (front, the subject's own right, back, the subject's own left and the " +
       "four between) at four heights from a low angle to a high angle, and three distances from a close-up to a wide " +
       "shot. The pose's name (in English in every interface language: Front, Eye level, Medium shot and so on) shows " +
-      "above the view and on the settings pill, three sliders under the view follow it, " +
+      "above the view and on the settings pill, three sliders beside the view follow it, " +
       `and ${quoted(t("canvas.generatePanel.cameraAngle.reset"))} puts it back to the front, at eye level, at a ` +
       "medium shot. The sliders still work when the view cannot load, which it then says in place of the view: " +
       `${quoted(t("canvas.generatePanel.cameraAngle.loadFailed"))}`,
@@ -877,10 +877,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.image.angle.label"))} shows the same ${quoted(t("canvas.generatePanel.cameraAngle.title"))} ` +
       "sphere and sliders as the generation panel, with the picture on the card in the middle. " +
       `${quoted(t("canvas.miniTool.image.relight.label"))} opens a wider panel in two columns: on the left a ` +
-      `${quoted(t("canvas.miniTool.relight.lightTitle"))} sphere, whose dot is the light, with ` +
+      `${quoted(t("canvas.miniTool.relight.lightTitle"))} sphere, whose dot is the light, glowing in the colour chosen, with ` +
       `${quoted(t("canvas.generatePanel.param.light_azimuth"))} and ${quoted(t("canvas.generatePanel.param.light_elevation"))} ` +
       `sliders; on the right a ${quoted(t("canvas.miniTool.relight.referenceTitle"))} box for a picture whose light to copy, ` +
-      `then ${quoted(t("canvas.generatePanel.param.light_color"))} as a row of colour dots named on hover, ` +
+      `then ${quoted(t("canvas.generatePanel.param.light_color"))} as a row of colour dots named on hover, the last of ` +
+      "which opens a colour picker for any colour, " +
       `${quoted(t("canvas.generatePanel.param.light_intensity"))}, ${quoted(t("canvas.generatePanel.param.light_quality"))} ` +
       `and ${quoted(t("canvas.generatePanel.param.resolution"))}. With a reference picked, it shows large on the left in ` +
       "place of the sphere and the light comes from it; colour, intensity and quality left on Auto follow it too, and " +

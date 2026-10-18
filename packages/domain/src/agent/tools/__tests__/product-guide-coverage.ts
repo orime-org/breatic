@@ -181,6 +181,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.param.chaos": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.distance": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.emotion": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.generatePanel.param.light_color_hex": { described: /the last of which opens a colour picker for any colour/ },
   "canvas.generatePanel.param.enable_image_search": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.enable_web_search": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.generatePanel.param.horizontal_angle": { excluded: REASONS.MODEL_SETTING_NAME },
