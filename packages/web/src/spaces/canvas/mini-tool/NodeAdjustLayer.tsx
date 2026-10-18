@@ -102,12 +102,11 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
       // draw leave the layer hidden over the node's own picture, and Run says
       // what went wrong.
       void drawAdjustedPreview(next.el, next.size, next.value, target)
-        .then(
-          (drew) => drew,
-          () => null,
-        )
+        .catch(() => null)
         .then((drew) => {
-          // Closed or hidden while drawing: the backend the draw held is let go.
+          // Closed or hidden while drawing: the preview backend held now, which
+          // this draw may have made after the cleanup ran, is let go; the next
+          // draw makes one again.
           if (canvas.current !== target) {
             releasePreviewBackend();
             return;
@@ -123,8 +122,9 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
   }, [param, el, width, height, value]);
 
   // Runs when this node's picture adjust closes, its Space tab is hidden
-  // (React.Activity runs effect cleanups) or the node goes. The preview's own
-  // backend is let go here, by the one layer that drew through it.
+  // (React.Activity runs effect cleanups) or the node goes. The preview's
+  // backend, one for the whole page, is let go here by the layer whose
+  // picture adjust is open.
   React.useEffect(() => {
     if (param === undefined) return undefined;
     return () => {

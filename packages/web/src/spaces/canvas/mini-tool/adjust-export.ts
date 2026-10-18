@@ -293,7 +293,7 @@ let heldPreview: { backend: InstanceType<typeof import('fabric')['WebGLFilterBac
  * square zoomed in to 1:1 is drawn at its own pixels. The shaped backend is
  * kept while draws keep its size and its context; it is let go when a draw
  * fits the shared buffer or needs another size, and by the layer when its
- * picture adjust closes. A shaped backend granted a buffer smaller than its
+ * picture adjust closes, its Space tab is hidden or the node goes. A shaped backend granted a buffer smaller than its
  * canvas does not draw (`drawAdjusted` throws), so the layer stays hidden at
  * that size.
  * @param fabric - Fabric's backend calls.
