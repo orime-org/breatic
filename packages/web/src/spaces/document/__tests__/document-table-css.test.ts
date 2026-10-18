@@ -23,6 +23,14 @@ describe('a table in the body', () => {
     expect(ruleBody('.doc-body [data-node-type=\'docTable\'] th')).toContain('font-weight: bold');
   });
 
+  it('shows a picture or video in a cell no wider than the cell, and keeps it out of its column\'s width (inner#1619 T7)', () => {
+    for (const tail of ['td', 'th']) {
+      const body = ruleBody(`.doc-body [data-node-type='docTable'] ${tail} [data-media-box]`);
+      expect(body).toContain('contain: inline-size');
+      expect(body).toContain('width: min(var(--doc-media-width, 100%), 100%) !important');
+    }
+  });
+
   it('gives a cell that holds blocks room for a block\'s strip on its left (inner#1619 design 5.3)', () => {
     // The row handle's clearance (CELL_STRIP_INSET, 12px), the 24px strip, a 4px gap.
     for (const tail of ['td', 'th']) {

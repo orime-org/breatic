@@ -2076,6 +2076,17 @@ body {
     background-color: var(--color-muted);
   }
 
+  /* A picture or video in a cell is shown at its stored width or the cell's,
+     whichever is less (inner#1619 T7), and takes no part in sizing its column:
+     a column with no stored width is as wide as its words, and the media's
+     stored width would otherwise widen it. */
+  .doc-body [data-node-type='docTable'] td [data-media-box],
+  .doc-body [data-node-type='docTable'] th [data-media-box] {
+    contain: inline-size;
+    /* With no stored width, the cell's. */
+    width: min(var(--doc-media-width, 100%), 100%) !important;
+  }
+
   /* A cell that holds blocks keeps the strip of the block under the pointer
      in its left padding (inner#1619 design 5.3): the row handle's clearance
      (`CELL_STRIP_INSET` in `document-strip-alignment.ts`), the 24px strip, and

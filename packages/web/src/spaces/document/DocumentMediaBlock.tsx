@@ -448,7 +448,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         )}
         style={{
           ...(type === 'video' && { minWidth: `${MIN_WIDTH.video}px` }),
-          ...(sized && boxWidth !== undefined && { width: `${boxWidth}px` }),
+          ...(sized && boxWidth !== undefined && { width: `${boxWidth}px`, '--doc-media-width': `${boxWidth}px` }),
         }}
       >
         {/* Above the media, the gap between it and its bar is padding on this
