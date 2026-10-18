@@ -213,7 +213,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 `web_search` —— 打 Brave 的 LLM context 端点,回来的是每个来源页面正文的**摘录**(同一页可能给好几段、彼此不相连),既不是整页正文,也不是结果列表里那一行摘要。模型用 `count` 说想要几个来源,搜索回多少是多少。
 
-**引用的编号在搜索里定,不由模型定,也不由面板定**(MANDATORY)。每个来源带着自己的号回到模型手里,模型在正文里写 `[3]` 指的就是那个来源;面板把 `[N]` 画成一个圆圈,`N` 没有来源在后面就留着它原本的样子 —— 模型自己编的号不会被画成一个指向不存在的东西的标记。**一轮的号从 1 起**,这一轮之前聊过多久都不影响,所以每条回复底下那份来源自成一份。一轮里搜几次共用一个计数器,它在读任何结果之前就把这一批的号占掉,并行的两次搜索因此各拿一段不重叠的号。判定题:**这个号是谁给的?搜索给的 —— 别处都只是把它带下去。**
+**引用的编号在搜索里定,不由模型定,也不由面板定**(MANDATORY)。每个来源带着自己的号回到模型手里,模型在正文里写 `[3]` 指的就是那个来源;面板把 `[N]` 画成一个圆圈,`N` 没有来源在后面就留着它原本的样子 —— 模型自己编的号不会被画成一个指向不存在的东西的标记。**一轮的号从 1 起**,这一轮之前聊过多久都不影响,所以每条回复底下那份来源自成一份。读者答完问卷后续跑的那一段重新建一套搜索工具,号也从 1 起,面板上它也是单独一条回复;`web_search` 的说明告诉模型卡片之前的号在这之后指的是别的来源,要用文字交代。一轮里搜几次共用一个计数器,它在读任何结果之前就把这一批的号占掉,并行的两次搜索因此各拿一段不重叠的号。判定题:**这个号是谁给的?搜索给的 —— 别处都只是把它带下去。**
 
 **交互工具(1)**:`ask_user` —— LLM 调用它放出一张 1–4 题的问卷卡片,**没有 `execute`**:SDK 停在这一步,调用以 `awaiting` 存下,读者的答案稍后作为这次调用的结果交回。判据是**这个工具自己干不干活**:干活的工具(`web_search` / `search_images`)照常给每个调用方,它们找到的东西也到得了模型;只产出一份等别人画的载荷的,没有画的地方就不该给。
 
@@ -221,7 +221,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **找到的图片可以复制到画布**:除了显示「+N」的那一格,每个方块右上角有一颗悬停才出现的复制按钮(藏在「+N」后面的图片点开大图层后用标题栏那颗),点开的大图层标题栏有一颗带字的「复制」,两颗读同一份状态(`copy-asset.ts` 的 `useCopyAsset`,建在 `copy-answer.tsx` 的 `useKeyedCopy` 上,按缩略图地址分辨是哪一张)。复制写进剪贴板的是画布自己的格式:一个图片节点,内容是缩略图地址,标 `external: true`;到画布按 Cmd+V,画布建出空图片节点、由服务端把这个地址拉进存储(见下面「画布剪贴板」条)。用缩略图是因为它是搜索服务自己的 https 副本、格式是存储收的 JPEG / PNG,原图是发布站选的格式。
 
-**`ask_user` 的卡片由前端画,答案回到同一轮**(inner#1542):输入形状和答案契约在 `@breatic/shared` 的 `agent/ask-user.ts`,选项上的图片、音视频只收我们的存储地址和本会话搜图返回过的地址,建工具时传进一个运行时去查的函数。一段以通过校验、还没有结果的提问调用结束时,内层 `onFinish` 发持久 data 部件 `data-ask-awaiting`,外层把它存成 `awaiting`;同一步多出来的提问记 `turned_away`,并在这一段的 `for_model` 末尾补上拒绝结果。读者点卡片提交走会话自己的 `Chat` 传输(`sendMessage()` 不带消息,请求体带 `answer`),服务端在会话行锁下先查后改:`awaiting` → `success`,结果追加到提问那一行 `for_model` 的末尾,然后续跑同一轮 —— 自己的组装路径(历史含被暂停的这一轮,不折叠,不改那一轮的用户行),计费键 `turn:<会话>:<轮次>:answer:<调用 id>`,流开头先给一块 `tool-output-available`;抢输回 409 并带 `call`,答案不合题目回 422。读者打字代替提交时,存用户行的同一个事务把等待中的调用改成「发了下一条消息」,流里发 `data-ask-replied`。**调用和它的结果始终在同一行**,所以回放时每个调用后面都有结果;网页在已作答的提问处把续跑的那条消息切成两条显示(`splitAtAnswer`),刷新后读到的两行存储和它一样。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次。
+**`ask_user` 的卡片由前端画,答案回到同一轮**(inner#1542):输入形状和答案契约在 `@breatic/shared` 的 `agent/ask-user.ts`,选项上的图片、音视频只收我们的存储地址和本会话搜图返回过的地址,建工具时传进一个运行时去查的函数。一段以通过校验、还没有结果的提问调用结束时,内层 `onFinish` 发持久 data 部件 `data-ask-awaiting`,外层把它存成 `awaiting`;这一步以模型调用出错结束时不发这个标记,调用照失败那一轮存成没运行过;暂停的这一段不带「这一轮结束了」的说明(截断等),因为答案还要接在调用后面;同一步多出来的提问记 `turned_away`,并在这一段的 `for_model` 末尾补上拒绝结果。读者点卡片提交走会话自己的 `Chat` 传输(`sendMessage()` 不带消息,请求体带 `answer`),服务端在会话行锁下先查后改:`awaiting` → `success`,结果追加到提问那一行 `for_model` 的末尾,然后续跑同一轮 —— 自己的组装路径(历史含被暂停的这一轮,不折叠,不改那一轮的用户行),计费键 `turn:<会话>:<轮次>:answer:<调用 id>`,流开头先给一块 `tool-output-available`;抢输回 409 并带 `call`,答案不合题目回 422。读者打字代替提交时,存用户行的同一个事务把等待中的调用改成「发了下一条消息」,流里发 `data-ask-replied`。**调用和它的结果始终在同一行**,所以回放时每个调用后面都有结果;网页在已作答的提问处把续跑的那条消息切成两条显示(`splitAtAnswer`),刷新后读到的两行存储和它一样;续跑还没说话时,卡片下方先切出一段空的,等待点画在那里。同一轮切成几条显示时,前面几条不给复制,最后一条的复制拿整轮的文字(`joinContinued`)。**它是唯一会让这一轮停下等回答的工具**,名字在 `packages/domain/src/agent/tools/tool-names.ts` 写一次。
 
 工具返回什么,SDK 的 tool part 就原样带什么到前端。
 
@@ -265,7 +265,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 ### Agent 聊天的 SSE 事件契约
 
-**线上格式就是 AI SDK 的 UI message stream 协议**:server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用 SDK 的 chunk 类型。**我们自己定名字、自己定含义的 data part 有四个**:心跳(`data-heartbeat`,transient)· 归纳中(`data-memory-consolidating`,transient)· 撞到输出上限(`data-truncated`,非 transient)· 会话自动命名(`data-conversation-titled`,非 transient)。**另有两个名字不走这条流,但两端都在写**(`data-interrupted` / `data-failed`):浏览器在流断掉或读者按停止时给这一轮的回复打上去(`stores/chat-sessions.ts` 的 `markTheReply`),服务端在 `onFinish` 里按 `exit` 落库(`main-agent.ts`),再由会话历史响应原样发回(`message-part-mapping.ts` 的 `toUiMessages`)。**流上不发它们** —— 一轮正在跑的时候,这两件事只有浏览器这一端知道。
+**线上格式就是 AI SDK 的 UI message stream 协议**:server 用 `createUIMessageStream` 出流、浏览器用 `useChat` 收流,两端共用 SDK 的 chunk 类型。**我们自己定名字、自己定含义的 data part 有七个**:心跳(`data-heartbeat`,transient)· 归纳中(`data-memory-consolidating`,transient)· 撞到输出上限(`data-truncated`,非 transient)· 会话自动命名(`data-conversation-titled`,非 transient)· 思考用时(`data-thinking-time`,非 transient)· 停在问卷(`data-ask-awaiting`,非 transient)· 问卷被打字回复关掉(`data-ask-replied`,非 transient)。inner#1542 之前存下的行另带 `data-blocked`,只读回、不再写。**消息 id 由浏览器定**:`start` 帧里服务端给的 `messageId` 浏览器不用,传输层把它去掉(`stores/chat-sessions.ts` 的 `keepOurNames`)——`Chat` 只在 id 对得上时替换最后一条、对不上就新推一条,而 `start` 之前到的帧已经把回复存在浏览器自己的 id 下,答卡续跑时最后一条又是暂停的那条回复。**另有两个名字不走这条流,但两端都在写**(`data-interrupted` / `data-failed`):浏览器在流断掉或读者按停止时给这一轮的回复打上去(`stores/chat-sessions.ts` 的 `markTheReply`),服务端在 `onFinish` 里按 `exit` 落库(`main-agent.ts`),再由会话历史响应原样发回(`message-part-mapping.ts` 的 `toUiMessages`)。**流上不发它们** —— 一轮正在跑的时候,这两件事只有浏览器这一端知道。
 
 **要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这四个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`callOptionsFor`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
 
