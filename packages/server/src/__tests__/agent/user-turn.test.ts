@@ -99,14 +99,14 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     });
 
     expect(turn).toContain(
-      '## Spaces in this project\n\n- "Storyboard" (document) — the reader has this one open\n- "Cast" (canvas)',
+      '## Spaces in this project\n\n- "Storyboard" (document) id=s1 — the reader has this one open\n- "Cast" (canvas) id=s2',
     );
   });
 
   it("marks none as open when the reader turned the open Space off", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 2 });
 
-    expect(turn).toContain('- "Storyboard" (document)\n- "Cast" (canvas)');
+    expect(turn).toContain('- "Storyboard" (document) id=s1\n- "Cast" (canvas) id=s2');
     expect(turn).not.toContain("the reader has this one open");
     expect(turn).not.toContain("## The Space the reader has open");
   });
