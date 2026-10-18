@@ -353,10 +353,24 @@
     "tool": {
       "unfinished": "已停止",
       "failure": {
-        "upstream": "执行错误",
-        "unreachable": "执行错误",
-        "generic": "执行错误"
+        "busy": "服务出错了，稍后可以再试",
+        "noConnection": "连不上服务，稍后可以再试",
+        "refused": "服务没有接受这次请求",
+        "unavailable": "这项功能暂时不可用",
+        "badAnswer": "服务返回的内容用不了",
+        "linkUnreachable": "这个地址打不开，可以换一个链接",
+        "fileTooLarge": "文件太大",
+        "unsupportedType": "不支持这种文件格式",
+        "emptyFile": "文件是空的",
+        "tooSlow": "文件下载太慢，没能下完",
+        "storageFull": "Studio 的存储空间已满",
+        "noPermission": "你在这个 Project 里没有编辑权限",
+        "tooFrequent": "保存得太频繁，等一分钟再试",
+        "declined": "服务拒绝处理这项内容",
+        "ourFault": "服务器出了问题，可以再试一次"
       },
+      "failedLine": "{step}没有完成：{reason}",
+      "failedStep": "{step}没有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
@@ -368,7 +382,20 @@
       "readingGuide": "正在查产品怎么用",
       "understanding": "正在查看媒体",
       "judging": "正在权衡",
-      "running": "正在调用 {tool}"
+      "running": "正在调用 {tool}",
+      "step": {
+        "webSearch": "搜索「{query}」",
+        "searchImages": "找「{query}」的图片",
+        "understandMedia": "查看媒体",
+        "saveImage": "保存图片",
+        "judge": "权衡",
+        "proposeCanvas": "拟提议",
+        "proposeDocument": "拟修改提议",
+        "listModels": "查可用的模型",
+        "canvasCapabilities": "查 Canvas 能做什么",
+        "productGuide": "查产品怎么用",
+        "other": "调用 {tool}"
+      }
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {

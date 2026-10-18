@@ -353,10 +353,24 @@
     "tool": {
       "unfinished": "Stopped",
       "failure": {
-        "upstream": "Execution error",
-        "unreachable": "Execution error",
-        "generic": "Execution error"
+        "busy": "the service ran into an error, try again later",
+        "noConnection": "couldn't reach the service, try again later",
+        "refused": "the service didn't accept this request",
+        "unavailable": "this feature is unavailable right now",
+        "badAnswer": "the service returned something unusable",
+        "linkUnreachable": "this address can't be opened, try another link",
+        "fileTooLarge": "the file is too large",
+        "unsupportedType": "this file format isn't supported",
+        "emptyFile": "the file is empty",
+        "tooSlow": "the file downloaded too slowly to finish",
+        "storageFull": "the Studio's storage is full",
+        "noPermission": "you don't have edit access in this Project",
+        "tooFrequent": "saved too often, wait a minute and try again",
+        "declined": "the service declined to handle this content",
+        "ourFault": "the server ran into a problem, try again"
       },
+      "failedLine": "{step} didn't finish: {reason}",
+      "failedStep": "{step} didn't finish",
       "failureTimes": "{line} ×{count}",
       "searching": "Searching for “{query}”",
       "searchingImages": "Looking for pictures of “{query}”",
@@ -368,7 +382,20 @@
       "readingGuide": "Reading how the product works",
       "understanding": "Looking at the media",
       "judging": "Weighing it up",
-      "running": "Calling {tool}"
+      "running": "Calling {tool}",
+      "step": {
+        "webSearch": "Search for “{query}”",
+        "searchImages": "Picture search for “{query}”",
+        "understandMedia": "Looking at the media",
+        "saveImage": "Saving the picture",
+        "judge": "Weighing it up",
+        "proposeCanvas": "Drafting a proposal",
+        "proposeDocument": "Drafting an edit",
+        "listModels": "Checking available models",
+        "canvasCapabilities": "Checking what the Canvas can do",
+        "productGuide": "Checking how the product works",
+        "other": "Calling {tool}"
+      }
     },
     "loadEarlier": "Load earlier messages",
     "conversation": {

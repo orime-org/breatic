@@ -353,10 +353,24 @@
     "tool": {
       "unfinished": "停止しました",
       "failure": {
-        "upstream": "実行エラー",
-        "unreachable": "実行エラー",
-        "generic": "実行エラー"
+        "busy": "サービスでエラーが発生しました。しばらくしてから再試行してください",
+        "noConnection": "サービスに接続できませんでした。しばらくしてから再試行してください",
+        "refused": "サービスがこのリクエストを受け付けませんでした",
+        "unavailable": "この機能は現在利用できません",
+        "badAnswer": "サービスから使える結果が返ってきませんでした",
+        "linkUnreachable": "このアドレスを開けません。別のリンクをお試しください",
+        "fileTooLarge": "ファイルが大きすぎます",
+        "unsupportedType": "このファイル形式には対応していません",
+        "emptyFile": "ファイルが空です",
+        "tooSlow": "ファイルのダウンロードが遅く、完了しませんでした",
+        "storageFull": "Studio のストレージがいっぱいです",
+        "noPermission": "この Project の編集権限がありません",
+        "tooFrequent": "保存の回数が多すぎます。1 分ほど待ってから再試行してください",
+        "declined": "サービスがこの内容の処理を拒否しました",
+        "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
       },
+      "failedLine": "{step}が完了しませんでした：{reason}",
+      "failedStep": "{step}が完了しませんでした",
       "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
@@ -368,7 +382,20 @@
       "readingGuide": "製品の使い方を確認中",
       "understanding": "メディアを確認中",
       "judging": "検討中",
-      "running": "{tool} を実行中"
+      "running": "{tool} を実行中",
+      "step": {
+        "webSearch": "「{query}」の検索",
+        "searchImages": "「{query}」の画像検索",
+        "understandMedia": "メディアの確認",
+        "saveImage": "画像の保存",
+        "judge": "判断",
+        "proposeCanvas": "提案の作成",
+        "proposeDocument": "修正案の作成",
+        "listModels": "利用できるモデルの確認",
+        "canvasCapabilities": "Canvas でできることの確認",
+        "productGuide": "使い方の確認",
+        "other": "{tool} の実行"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {

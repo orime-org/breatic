@@ -526,6 +526,8 @@ export {
   carrying,
   FAILURE_LINES,
   isReaderLine,
+  LEGACY_FAILURE_LINES,
+  NEVER_RAN,
   NOTHING_SAID_WHY,
   toolFailureOf,
   TURNED_AWAY,
@@ -533,6 +535,7 @@ export {
 } from "@shared/agent/tool-failure.js";
 export type {
   FailureLine,
+  LegacyFailureLine,
   StoppedLine,
   ToolFailure,
   ToolFailureKind,

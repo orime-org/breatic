@@ -353,10 +353,24 @@
     "tool": {
       "unfinished": "已停止",
       "failure": {
-        "upstream": "執行錯誤",
-        "unreachable": "執行錯誤",
-        "generic": "執行錯誤"
+        "busy": "服務出錯了，稍後可以再試",
+        "noConnection": "連不上服務，稍後可以再試",
+        "refused": "服務沒有接受這次請求",
+        "unavailable": "這項功能暫時無法使用",
+        "badAnswer": "服務回傳的內容無法使用",
+        "linkUnreachable": "這個網址打不開，可以換一個連結",
+        "fileTooLarge": "檔案太大",
+        "unsupportedType": "不支援這種檔案格式",
+        "emptyFile": "檔案是空的",
+        "tooSlow": "檔案下載太慢，沒能下完",
+        "storageFull": "Studio 的儲存空間已滿",
+        "noPermission": "你在這個 Project 裡沒有編輯權限",
+        "tooFrequent": "儲存得太頻繁，等一分鐘再試",
+        "declined": "服務拒絕處理這項內容",
+        "ourFault": "伺服器出了問題，可以再試一次"
       },
+      "failedLine": "{step}沒有完成：{reason}",
+      "failedStep": "{step}沒有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
@@ -368,7 +382,20 @@
       "readingGuide": "正在查產品怎麼用",
       "understanding": "正在檢視媒體",
       "judging": "正在權衡",
-      "running": "正在呼叫 {tool}"
+      "running": "正在呼叫 {tool}",
+      "step": {
+        "webSearch": "搜尋「{query}」",
+        "searchImages": "找「{query}」的圖片",
+        "understandMedia": "檢視媒體",
+        "saveImage": "儲存圖片",
+        "judge": "權衡",
+        "proposeCanvas": "擬提議",
+        "proposeDocument": "擬修改提議",
+        "listModels": "查可用的模型",
+        "canvasCapabilities": "查 Canvas 能做什麼",
+        "productGuide": "查產品怎麼用",
+        "other": "呼叫 {tool}"
+      }
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {

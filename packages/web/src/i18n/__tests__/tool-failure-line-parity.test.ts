@@ -42,21 +42,11 @@ describe('工具失败的那一行，五个语种都有', () => {
   });
 });
 
-describe('每种语言里，失败那几条都是同一句', () => {
-  // 卡片只回答「这一步成了没有」。为什么没成是模型在正文里说的事，那里能
-  // 指名是哪个地址、什么状态。这几个键留着是为了将来真要分粒度时不用改结
-  // 构，今天它们说同一句话。
-  const failureLines = Object.values(FAILURE_LINES).filter(
-    (line) => line !== FAILURE_LINES.stopped,
-  );
-
-  it.each(LOCALE_CATALOGS)('%s 失败文案彼此一致，且跟停止那条分得开', (_tag, catalog) => {
-    const shown = failureLines.map((key) => readPath(catalog, key));
-
-    // 至少两条，「它们说的是同一句」才是个断言。
-    expect(shown.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(shown).size).toBe(1);
-    expect(shown[0]).not.toBe(readPath(catalog, FAILURE_LINES.stopped));
+describe('each cause reads differently in every language (inner#1620)', () => {
+  // A reader is told which cause it was, so two causes that read the same
+  // would be one cause on screen.
+  it.each(LOCALE_CATALOGS)('%s', (_tag, catalog) => {
+    const shown = LINE_KEYS.map((key) => readPath(catalog, key));
+    expect(new Set(shown).size).toBe(shown.length);
   });
 });
-

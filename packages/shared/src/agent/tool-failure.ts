@@ -7,11 +7,11 @@
  * A tool that failed and a tool the user stopped are different endings, and
  * each has two readers who need different things. The model needs the specific
  * reason -- which address, which status, what it might do instead -- because
- * that is what it acts on. The person watching needs to know the step did not
- * work, and nothing more: the specific reason names endpoints, statuses and
- * vendor hosts, none of which belong on a screen. (An address inside the
- * network is not among them -- the one failure that resolves to one drops it
- * before writing the reason, so it reaches neither audience.)
+ * that is what it acts on. The person watching needs to know which step did
+ * not work and why, in words that name no endpoint, status or vendor host,
+ * none of which belong on a screen: one cause from a fixed table. (An address
+ * inside the network is not among them -- the one failure that resolves to
+ * one drops it before writing the reason, so it reaches neither audience.)
  *
  * So three fields rather than one message. What ended it is its own field
  * because it is a different question from what to say about it -- the same
@@ -20,34 +20,46 @@
  */
 
 /**
- * The lines a reader may be shown when a tool comes back empty.
+ * The lines a reader may be shown when a tool comes back empty (inner#1620).
  *
- * Coarse on purpose. A reader needs to know the step did not work; the detail
- * that would tell them more is the detail that names hosts and addresses.
+ * Each is one cause, said as itself, and the reader can tell from it whether
+ * there is something for them to do. None names a vendor, a host or a status:
+ * those are the model's to read. Which one a failure gets is decided in the
+ * same place as the sentence the model reads, so the two never disagree.
  */
 export const FAILURE_LINES = {
-  /** The far side answered, and what it answered was an error. */
-  upstream: "chat.tool.failure.upstream",
-  /** Nothing answered. */
-  unreachable: "chat.tool.failure.unreachable",
-  /**
-   * Something went wrong, and none of the lines above is what happened.
-   *
-   * Two callers. The turn uses it for calls that failed before any of our
-   * code ran -- input the model shaped wrongly, a tool name that no longer
-   * exists -- which arrive as errors from the SDK with no detail of ours
-   * attached; a record with nothing in it is what that replaced. A tool uses
-   * it when its failure was neither the far side answering, nor an address
-   * that would not answer, nor an address we refuse: a request turned down
-   * before any delivery is all three of those things not happening.
-   */
-  generic: "chat.tool.failure.generic",
+  /** The far side failed: 429, 5xx, 408, or its answer stopped arriving. */
+  busy: "chat.tool.failure.busy",
+  /** Nothing answered: the request never reached a service. */
+  noConnection: "chat.tool.failure.noConnection",
+  /** The service answered and would not take this request. */
+  refused: "chat.tool.failure.refused",
+  /** Our side of the service is not set up to serve this: keys, account, address. */
+  unavailable: "chat.tool.failure.unavailable",
+  /** The service answered with something that is not a result. */
+  badAnswer: "chat.tool.failure.badAnswer",
+  /** The address the call was given could not be reached. */
+  linkUnreachable: "chat.tool.failure.linkUnreachable",
+  /** The file is over the size the step takes. */
+  fileTooLarge: "chat.tool.failure.fileTooLarge",
+  /** The file is of a kind the step does not take. */
+  unsupportedType: "chat.tool.failure.unsupportedType",
+  /** The file has nothing in it. */
+  emptyFile: "chat.tool.failure.emptyFile",
+  /** The file arrived too slowly to finish. */
+  tooSlow: "chat.tool.failure.tooSlow",
+  /** The studio has no storage left. */
+  storageFull: "chat.tool.failure.storageFull",
+  /** The reader cannot add material to this project. */
+  noPermission: "chat.tool.failure.noPermission",
+  /** Too many of these in a short time. */
+  tooFrequent: "chat.tool.failure.tooFrequent",
+  /** The service would not handle this content. */
+  declined: "chat.tool.failure.declined",
+  /** Something failed on our own server, or a tool failed without saying why. */
+  ourFault: "chat.tool.failure.ourFault",
   /**
    * The turn was stopped, and this use of a tool did not finish because of it.
-   *
-   * Covers a tool that was running when the stop landed and one the turn never
-   * got to run at all: both are the same thing to whoever pressed stop, and
-   * what separates them is in the reason the model reads.
    *
    * Here rather than beside the failures because every reader key belongs in
    * one table -- the panel reads them all the same way, and a key living on
@@ -55,6 +67,21 @@ export const FAILURE_LINES = {
    */
   stopped: "chat.tool.unfinished",
 } as const;
+
+/**
+ * The three keys rows stored before inner#1620 carry.
+ *
+ * Read, never written: each covered several causes, so a row carrying one
+ * names the step and no reason.
+ */
+export const LEGACY_FAILURE_LINES = {
+  upstream: "chat.tool.failure.upstream",
+  unreachable: "chat.tool.failure.unreachable",
+  generic: "chat.tool.failure.generic",
+} as const;
+
+/** A key rows stored before inner#1620 carry. */
+export type LegacyFailureLine = (typeof LEGACY_FAILURE_LINES)[keyof typeof LEGACY_FAILURE_LINES];
 
 /** The line for the one ending that is not a failure. */
 export type StoppedLine = typeof FAILURE_LINES.stopped;
@@ -65,8 +92,8 @@ export type FailureLine = Exclude<
   StoppedLine
 >;
 
-/** The same table, for asking whether a key read off an error is one of ours. */
-const KNOWN_LINES = new Set<string>(Object.values(FAILURE_LINES));
+/** Every key a stored row may carry, for asking whether one read back is ours. */
+const KNOWN_LINES = new Set<string>([...Object.values(FAILURE_LINES), ...Object.values(LEGACY_FAILURE_LINES)]);
 
 /**
  * Whether a value is one of the lines above.
@@ -84,7 +111,7 @@ const KNOWN_LINES = new Set<string>(Object.values(FAILURE_LINES));
  * @param value - Whatever arrived where a key was expected.
  * @returns True when it is a key from the table.
  */
-export function isReaderLine(value: unknown): value is FailureLine | StoppedLine {
+export function isReaderLine(value: unknown): value is FailureLine | LegacyFailureLine | StoppedLine {
   return typeof value === "string" && KNOWN_LINES.has(value);
 }
 
@@ -101,7 +128,13 @@ export type ToolFailureKind =
    * Nothing failed; the model reads why and carries on, and the reader is
    * shown nothing.
    */
-  | "turned_away";
+  | "turned_away"
+  /**
+   * The call never ran: the turn failed or was cut off while its arguments
+   * were still arriving. The turn's own ending line says what happened, so
+   * the reader is shown nothing for the call.
+   */
+  | "never_ran";
 
 /**
  * What every ending says, apart from which line the reader is shown.
@@ -135,9 +168,10 @@ interface FailureDetail {
  * conversation.
  */
 export type ToolFailure =
-  | (FailureDetail & { kind: "tool_failed"; readerKey: FailureLine })
+  | (FailureDetail & { kind: "tool_failed"; readerKey: FailureLine | LegacyFailureLine })
   | (FailureDetail & { kind: "user_aborted"; readerKey: StoppedLine })
-  | (FailureDetail & { kind: "turned_away" });
+  | (FailureDetail & { kind: "turned_away" })
+  | (FailureDetail & { kind: "never_ran" });
 
 /**
  * What a turned-away call puts on the wire where a reader line would go.
@@ -147,13 +181,20 @@ export type ToolFailure =
  */
 export const TURNED_AWAY = "turned_away";
 
+/** What a call that never ran puts on the wire: draw nothing, as above. */
+export const NEVER_RAN = "never_ran";
+
 /**
  * The value an ending puts in the wire's single error field.
  * @param failure - How the call ended.
- * @returns The reader line to draw, or the marker that says draw nothing.
+ * @returns The reader line to draw, or a marker that says draw nothing.
  */
-export function wireLineOf(failure: ToolFailure): FailureLine | StoppedLine | typeof TURNED_AWAY {
-  return failure.kind === "turned_away" ? TURNED_AWAY : failure.readerKey;
+export function wireLineOf(
+  failure: ToolFailure,
+): FailureLine | LegacyFailureLine | StoppedLine | typeof TURNED_AWAY | typeof NEVER_RAN {
+  if (failure.kind === "turned_away") return TURNED_AWAY;
+  if (failure.kind === "never_ran") return NEVER_RAN;
+  return failure.readerKey;
 }
 
 /**
@@ -173,7 +214,7 @@ export const NOTHING_SAID_WHY: ToolFailure = {
   forModel:
     "This tool call failed, and nothing recorded why. If this step is needed, try it once " +
     "more; if it fails again, tell the user it could not be done.",
-  readerKey: FAILURE_LINES.generic,
+  readerKey: FAILURE_LINES.ourFault,
 };
 
 /**
@@ -200,7 +241,7 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
   if (typeof forModel !== "string") return undefined;
   // The one ending with no line for the reader. Carrying one anyway is a pair
   // that does not belong together, the same as the two checks below.
-  if (kind === "turned_away") return readerKey === undefined ? { kind, forModel } : undefined;
+  if (kind === "turned_away" || kind === "never_ran") return readerKey === undefined ? { kind, forModel } : undefined;
   // Checked against the table rather than merely for being a string. What the
   // table settles is that this key is one of the ones written above, which is
   // the set the locale files are kept in step with; a key from anywhere else
@@ -214,7 +255,7 @@ export function toolFailureOf(err: unknown): ToolFailure | undefined {
     return { kind, forModel, readerKey };
   }
   if (kind !== "tool_failed" || readerKey === FAILURE_LINES.stopped) return undefined;
-  return { kind, forModel, readerKey: readerKey as FailureLine };
+  return { kind, forModel, readerKey: readerKey as FailureLine | LegacyFailureLine };
 }
 
 /**
