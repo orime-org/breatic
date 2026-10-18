@@ -101,23 +101,38 @@ export function NodeAdjustLayer({ nodeId, wrapper }: NodeAdjustLayerProps): Reac
       // A lost context is made again for the draw; graphics that still cannot
       // draw leave the layer hidden over the node's own picture, and Run says
       // what went wrong.
-      void drawAdjustedPreview(next.el, next.size, next.value, target).then(
-        (drew) => {
+      void drawAdjustedPreview(next.el, next.size, next.value, target)
+        .then(
+          (drew) => drew,
+          () => null,
+        )
+        .then((drew) => {
+          // Closed or hidden while drawing: the backend the draw held is let go.
+          if (canvas.current !== target) {
+            releasePreviewBackend();
+            return;
+          }
+          if (drew === null) {
+            setDrawn(false);
+            return;
+          }
           setSpans((was) => (was?.width === drew.frame.width && was.height === drew.frame.height ? was : drew.frame));
           setDrawn(true);
-        },
-        () => setDrawn(false),
-      );
+        });
     });
   }, [param, el, width, height, value]);
 
-  React.useEffect(
-    () => () => {
+  // Runs when this node's picture adjust closes, its Space tab is hidden
+  // (React.Activity runs effect cleanups) or the node goes. The preview's own
+  // backend is let go here, by the one layer that drew through it.
+  React.useEffect(() => {
+    if (param === undefined) return undefined;
+    return () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
+      frame.current = null;
       releasePreviewBackend();
-    },
-    [],
-  );
+    };
+  }, [param]);
 
   if (param === undefined || geometry === null) return null;
   const across = spans === null || natural === null ? 1 : spans.width / natural.width;
