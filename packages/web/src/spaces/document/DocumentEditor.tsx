@@ -265,7 +265,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   useFocusReturn(
     focusReturn,
     () => handle.surface.contains(document.activeElement),
-    () => handle.editor.prosemirrorView?.focus(),
+    () => viewOf(handle.editor)?.focus(),
   );
 
   const viewOfEditor = React.useCallback(

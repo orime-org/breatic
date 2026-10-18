@@ -74,6 +74,7 @@ import {
 } from '@web/spaces/document/use-comment-cards';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { domElementOf } from '@web/spaces/document/document-editor-view';
 
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
@@ -470,7 +471,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     const words =
       last?.key === reveal || reading === null || reading === DRAFT_THREAD_ID
         ? null
-        : editor.prosemirrorView?.dom.querySelector<HTMLElement>(
+        : domElementOf(editor)?.querySelector<HTMLElement>(
             `.bn-thread-mark[data-bn-thread-id="${CSS.escape(reading)}"]`,
         );
     if (words !== null && words !== undefined) revealInTable(words);

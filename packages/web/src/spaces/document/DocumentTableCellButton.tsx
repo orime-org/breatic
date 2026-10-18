@@ -45,6 +45,7 @@ import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-tab
 import { setCellButtonCell } from '@web/spaces/document/document-bars';
 import { bodyFocusStore, bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
+import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 
 /**
  * Puts the button on the top-right corner of the part of its cell the reader
@@ -112,7 +113,7 @@ export function DocumentTableCellButton({
   );
   const focus = React.useSyncExternalStore(subscribeFocus, () => bodyFocusStore.get(editor));
   const caretCounts =
-    focus.holds && focus.focused !== null && focus.focused === editor.prosemirrorView?.dom;
+    focus.holds && focus.focused !== null && focus.focused === domElementOf(editor);
   const cellPos = open ? heldCell : caretCounts ? caretCell : null;
   // Where the button stands, for the column handle that makes room for it.
   React.useEffect(() => {
@@ -132,8 +133,8 @@ export function DocumentTableCellButton({
   // element read once would go on measuring one no longer in the page.
   const cellElement = useEditorSnapshot(
     editor as never,
-    (current: { prosemirrorView: { nodeDOM: (pos: number) => Node | null } | undefined }) => {
-      const element = cellPos === null ? null : current.prosemirrorView?.nodeDOM(cellPos);
+    (current: HandleEditor) => {
+      const element = cellPos === null ? null : viewOf(current)?.nodeDOM(cellPos);
       return element instanceof Element ? element : null;
     },
   );

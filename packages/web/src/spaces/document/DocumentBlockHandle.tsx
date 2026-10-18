@@ -76,6 +76,7 @@ import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
+import { domElementOf } from '@web/spaces/document/document-editor-view';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -202,7 +203,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
   // onto the middle of the row's first line (A2).
   const { ref: strip, offset } = useStripOnFirstLine(
     block?.id,
-    editor.prosemirrorView?.dom,
+    domElementOf(editor as never) ?? undefined,
   );
 
   // While the menu is open the strip has to stay on the row the menu is

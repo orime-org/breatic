@@ -26,6 +26,7 @@ import { DocumentBlockHandle } from '@web/spaces/document/DocumentBlockHandle';
 import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
+import { domElementOf } from '@web/spaces/document/document-editor-view';
 
 /**
  * A library control the table does without: the cell handle (ours, the cell
@@ -60,7 +61,7 @@ export function DocumentBlockControls({
     [editor],
   ) as never;
   const placement = React.useMemo(
-    () => stripPlacement(() => editor.prosemirrorView?.dom),
+    () => stripPlacement(() => domElementOf(editor) ?? undefined),
     [editor],
   );
 
