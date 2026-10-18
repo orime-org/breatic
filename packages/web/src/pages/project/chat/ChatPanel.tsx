@@ -12,13 +12,10 @@ import { chatAttachments, useTray } from '@web/stores/chat-attachments';
 import { useConsolidating } from '@web/stores/consolidating';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import type { ChatMishap } from '@web/stores/chat-mishaps';
-import { useTranslation } from '@web/i18n/use-translation';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { SpaceContextChipProps } from '@web/pages/project/chat/SpaceContextChip';
 import { usePasteCanvas } from '@web/pages/project/chat/use-paste-canvas';
-import { ChatNotice } from '@web/pages/project/chat/ChatNotice';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useAttachFiles } from '@web/pages/project/chat/use-attach-files';
@@ -124,7 +121,6 @@ export function ChatPanel({
     turnPhase,
     navigating,
     hasMore,
-    mishap,
     loadEarlier,
     send,
     answer,
@@ -135,7 +131,6 @@ export function ChatPanel({
     nextPageFailed,
     loadingMore,
     listLoading,
-    rowMishap,
     reloadList,
     currentId,
     draft,
@@ -143,8 +138,7 @@ export function ChatPanel({
     switchTo,
     rename,
     remove,
-  } = useChatSession(projectId, historyOpen, readSpaces);
-  const t = useTranslation();
+  } = useChatSession(projectId, readSpaces);
 
   // Two independent gates over one wait, because they answer different
   // questions. Whether there is a conversation to draw at all is `ready`;
@@ -219,72 +213,6 @@ export function ChatPanel({
     [switchTo, onHistoryOpenChange],
   );
 
-  // Read out here rather than inside the memo below. `t` keeps the same
-  // identity for the life of the page -- switching language re-renders
-  // without replacing it -- so a memo that depends on `t` and calls it inside
-  // would go on showing the sentence in the language it first ran in.
-  const networkErrorText = t('chat.error.network');
-  const turnFailedText = t('chat.error.turnFailed');
-  const goneText = t('chat.conversation.gone');
-
-  /**
-   * Put a mishap into words, wherever it is going to be drawn.
-   *
-   * One function for both places, because which of the four sentences a
-   * mishap gets is a property of the mishap, not of where it is shown.
-   */
-  const sayMishap = React.useCallback(
-    (m: ChatMishap): string => {
-      // Not an error -- the conversation was there and is not any more.
-      if (m.kind === 'gone') return goneText;
-      // The server wrote this one for the reader, in their own language.
-      if (m.kind === 'server') return m.message;
-      // It answered, but with nothing a reader could act on -- so this end
-      // says the one thing that is true: the reply is not coming, send again.
-      if (m.kind === 'turn') return turnFailedText;
-      return networkErrorText;
-    },
-    [goneText, networkErrorText, turnFailedText],
-  );
-
-  /**
-   * The one line, and it is only ever saying one thing.
-   *
-   * Four things it can be, and which one turns on what came back with the
-   * answer. A sentence of ours did, and it is passed through rather than
-   * replaced -- the server wrote it in the reader's own language, and it is
-   * the only sentence anyone wrote about this. A 404 is the exception among
-   * those: the server's words are about a resource, while this end knows
-   * which one and that nothing went wrong, so it says that instead. An answer
-   * with none of ours in it says only that the turn is over, so this end
-   * supplies the one thing that is true about that. No answer at all leaves
-   * nothing to quote and nothing to add: two words, and no advice about what
-   * to do next, because that is the reader's own business.
-   */
-  const notice = React.useMemo(
-    () => (mishap === null ? null : sayMishap(mishap)),
-    [mishap, sayMishap],
-  );
-
-  /**
-   * What the list says about the row an action was taken on, in words.
-   *
-   * Read the same way as the panel's own line -- the
-   * difference is only where it is drawn.
-   */
-  const rowNotice = React.useMemo(() => {
-    if (rowMishap === null) return null;
-    // The id travels as it is: a row's id puts the words against that row,
-    // and null means they are about the list itself. So does `at`, which is
-    // what tells two failures apart when they say the same thing -- without
-    // it the second one changes nothing on screen and nothing is announced.
-    return {
-      conversationId: rowMishap.conversationId,
-      text: sayMishap(rowMishap),
-      at: rowMishap.at,
-    };
-  }, [rowMishap, sayMishap]);
-
   /**
    * Fetch the list afresh every time it is opened.
    *
@@ -350,7 +278,6 @@ export function ChatPanel({
       {/* Keyed by which telling this is, so the same sentence twice is torn
           down and put up again -- otherwise React leaves the line alone and
           the second failure is invisible and unspoken. */}
-      <ChatNotice key={mishap?.at ?? 'none'} message={notice} />
       <ChatComposer
         conversationId={currentId ?? null}
         draft={draft}
@@ -379,7 +306,6 @@ export function ChatPanel({
         loadingMore={loadingMore}
         nextPageFailed={nextPageFailed}
         listLoading={listLoading}
-        rowMishap={rowNotice}
       />
     </div>
   );

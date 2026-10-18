@@ -11,6 +11,7 @@
  * two places to watch instead of one.
  */
 
+import { t } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
 
 /**
@@ -157,4 +158,22 @@ function serverSentence(err: unknown): string | undefined {
 export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
   const said = serverSentence(err);
   return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
+}
+
+/**
+ * The sentence a mishap is told with, in the reader's language at the moment
+ * it is told (inner#1530: a toast, said once).
+ *
+ * The server's own sentence passes through -- it was written for the reader,
+ * in their language. A conversation that is gone is not an error, so it says
+ * that. A turn that answered with nothing of ours says the reply is not
+ * coming; no answer at all says only that the network failed.
+ * @param mishap - What happened.
+ * @returns The sentence.
+ */
+export function mishapLine(mishap: ChatMishap): string {
+  if (mishap.kind === 'gone') return t('chat.conversation.gone');
+  if (mishap.kind === 'server') return mishap.message;
+  if (mishap.kind === 'turn') return t('chat.error.turnFailed');
+  return t('chat.error.network');
 }
