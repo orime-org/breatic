@@ -2277,7 +2277,7 @@
       "month": "Monthly",
       "year": "Yearly"
     },
-    "saveTwoMonths": "Twelve months for the price of ten",
+    "saveTwoMonths": "Two months free",
     "yearSaving": "Save about {percent}% with yearly billing",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
