@@ -159,12 +159,10 @@ export type ProjectActivityPage = z.infer<typeof ProjectActivityPageSchema>;
  */
 export const ACTIVITY_NEW_SIGNAL = "activity:new" as const;
 
-export const ActivityNewSignalSchema = z.object({
-  t: z.literal(ACTIVITY_NEW_SIGNAL),
-  projectId: z.string(),
-});
-
-export type ActivityNewSignal = z.infer<typeof ActivityNewSignalSchema>;
+export interface ActivityNewSignal {
+  t: typeof ACTIVITY_NEW_SIGNAL;
+  projectId: string;
+}
 
 /**
  * Stateless WS signal broadcast on the project meta doc when a charge on the

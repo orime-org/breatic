@@ -342,7 +342,7 @@ export interface ProjectCreditsView {
   spendable: number;
   /** What running work holds until it is charged. */
   held: number;
-  /** `spendable - held`: what the next run can take. */
+  /** What the next run can take: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. */
   available: number;
 }
 
@@ -357,7 +357,7 @@ export interface StudioCreditsView {
   debt?: number;
   /** What running work holds until it is charged (inner#1611). First page only. */
   held?: number;
-  /** `spendable - held`: what the next run can take. First page only. */
+  /** What the next run can take: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. First page only. */
   available?: number;
   /** The lots it holds right now, newest first. First page only. */
   lots?: StudioLotView[];

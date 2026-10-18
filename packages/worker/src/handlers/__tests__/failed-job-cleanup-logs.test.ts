@@ -46,6 +46,7 @@ const mockRecordGeneration = vi.hoisted(() => vi.fn());
 vi.mock("@worker/handlers/dispatch.js", () => ({
   mediaKindForActivity: vi.fn(() => "image"),
   recordGenerationForNodes: mockRecordGeneration,
+  releaseRunHold: vi.fn(async () => undefined),
 }));
 
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";

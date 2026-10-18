@@ -227,7 +227,6 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
-  ActivityNewSignalSchema,
 } from "@shared/types/project-activity.js";
 export type {
   ProjectActivityType,

@@ -970,7 +970,7 @@ export interface StudioCreditsSnapshot {
   debt: number;
   /** What running work holds (inner#1611). */
   held: number;
-  /** `spendable - held`, what the next run is admitted against. */
+  /** What the next run is admitted against: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. */
   available: number;
   lots: creditLotRepo.StudioLot[];
   ledger: creditLotRepo.StudioLedgerRow[];

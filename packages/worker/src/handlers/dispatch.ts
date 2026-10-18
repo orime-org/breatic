@@ -1127,7 +1127,7 @@ export interface RunCharge {
  * @param taskId - The run, whose task id keys its hold.
  * @param userId - Who started it, for the log.
  */
-async function releaseRunHold(taskId: string, userId: string): Promise<void> {
+export async function releaseRunHold(taskId: string, userId: string): Promise<void> {
   await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
     logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
   );
