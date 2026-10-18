@@ -271,6 +271,8 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   } = props;
   const t = useTranslation();
   const blocked = BLOCKING_REFUSALS.has(refusal);
+  // The adjust's sliders, whose Reset sits in the footer.
+  const adjustParam = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   return (
     <CanvasPanel
       title={
@@ -381,13 +383,30 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         )}
       </div>
       <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
-        <span
-          data-testid='mini-tool-credit'
-          className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-        >
-          <Star className='h-3.5 w-3.5' aria-hidden='true' />
-          {creditText}
-        </span>
+        <div className='flex items-center gap-3'>
+          <span
+            data-testid='mini-tool-credit'
+            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+          >
+            <Star className='h-3.5 w-3.5' aria-hidden='true' />
+            {creditText}
+          </span>
+          {/* The adjust's Reset clears every slider; it sits in the footer
+              beside the credit, at the other end of the row from Run. */}
+          {adjustParam === undefined ? null : (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              data-testid='mini-tool-adjust-reset'
+              onClick={() => onParams({ [adjustParam.key]: defaultAdjustValue })}
+              className='gap-1 text-xs'
+            >
+              <RotateCcw className='h-3 w-3' aria-hidden='true' />
+              {t('canvas.miniTool.panel.reset')}
+            </Button>
+          )}
+        </div>
         <Button
           type='button'
           variant={null}
@@ -583,19 +602,6 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
       const value = parseAdjustValue(params[param.key]);
       return (
         <div className='flex flex-col gap-1.5'>
-          <div className='flex justify-end'>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              data-testid='mini-tool-adjust-reset'
-              onClick={() => onParams({ [param.key]: defaultAdjustValue })}
-              className='gap-1 text-xs'
-            >
-              <RotateCcw className='h-3 w-3' aria-hidden='true' />
-              {t('canvas.miniTool.panel.reset')}
-            </Button>
-          </div>
           {/* The height cuts a row in half, which says the list goes on below.
               The scroller runs into the panel's right gutter, so the rows end
               where Reset and the other tools' controls do and the bar shows

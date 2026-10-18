@@ -304,6 +304,12 @@ describe('MiniToolPanel', () => {
       expect(groups.map((group) => group.querySelector('h3')?.textContent)).toEqual(['Light', 'Color', 'Detail', 'Effects']);
     });
 
+    // Reset sits in the footer beside the credit, so it takes no row of its own.
+    it('keeps Reset in the footer beside the credit', () => {
+      mount({ spec: tool(id), params: {}, source });
+      expect(screen.getByTestId('mini-tool-credit').parentElement).toContainElement(screen.getByTestId('mini-tool-adjust-reset'));
+    });
+
     it('puts every slider back to zero from Reset', () => {
       const props = mount({ spec: tool(id), params: { value: { ...defaultAdjustValue, exposure: 40 } }, source });
       fireEvent.click(screen.getByTestId('mini-tool-adjust-reset'));
@@ -330,6 +336,11 @@ describe('MiniToolPanel', () => {
       source: { width: 1280, height: 720, duration: 8, url: 'https://cdn/v.mp4' },
     });
     expect(screen.getByTestId('mini-tool-range-band').querySelector('[data-testid="mini-tool-filmstrip"]')).not.toBeNull();
+  });
+
+  it('shows no Reset for a tool without sliders to clear', () => {
+    mount({ spec: tool('image.crop'), params: {}, source: { width: 1600, height: 1000 } });
+    expect(screen.queryByTestId('mini-tool-adjust-reset')).toBeNull();
   });
 
   it('draws a prompt box for a tool that takes one', () => {
