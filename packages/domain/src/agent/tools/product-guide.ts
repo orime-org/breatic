@@ -305,10 +305,12 @@ export function renderProductGuide(): string {
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
       `afterwards how long it took, such as ${quoted(t("chat.thinkingFor", { m: 0, s: 12 }))}, or ` +
       `${quoted(t("chat.thinking"))} when that is not known. While the reply runs, a line may name what it is ` +
-      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends. A step that failed ` +
-      `while the reply carried on leaves a red line under the reply, such as ` +
-      `${quoted(t("chat.tool.failure.generic"))}; steps that failed the same way share one line, followed by ` +
-      `a multiplication sign and how many times. ` +
+      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends. A step that did ` +
+      `not finish leaves a red line where it happened in the reply, naming the step and why, such as a search ` +
+      `whose line ends ${quoted(t("chat.tool.failure.busy"))}; ` +
+      "the reasons say whether waiting, another link, a smaller file, more storage or edit access would help. " +
+      "The same line twice in a row shows once, followed by a multiplication sign and how many times. A step " +
+      "that failed and then worked when tried again leaves no line, and a stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
       "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +

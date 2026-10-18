@@ -4,12 +4,11 @@
 import * as React from 'react';
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
 
-import { FAILURE_LINES } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import type { ChatMessage } from '@web/pages/project/chat/types';
+import type { ChatFailureLine, ChatMessage } from '@web/pages/project/chat/types';
 
 /** How an ending reads: a fault, a ceiling, or neither. */
 type Tone = 'neutral' | 'error' | 'warning';
@@ -150,53 +149,23 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
   return null;
 }
 
-interface FailedStepsProps {
-  /** The message whose tool steps these are. */
-  message: ChatMessage;
-}
-
 /**
- * A line for each different thing the turn's failed tool steps said.
- *
- * Drawn once the turn has settled. Steps that failed with the same words share
- * one line, with how many when there was more than one, in the order each line
- * first appeared: two identical lines one above the other tell the reader
- * nothing the second time. A step the reader stopped gets none: the turn's own
- * "Stopped" line already says so. Nor does a step turned away to steer the
- * model -- a second question, a second media call while one runs, a call the
- * SDK refused -- since nothing failed.
+ * One tool step that did not finish, where it happened in the reply
+ * (inner#1620): which step, and why, in one red line.
  * @param root0 - The component props.
- * @param root0.message - The message whose tool steps these are.
- * @returns The lines, or nothing when no step failed.
+ * @param root0.line - The step and its cause.
+ * @returns The line.
  */
-export function FailedSteps({ message }: FailedStepsProps): React.JSX.Element | null {
+export function ToolFailureLine({ line }: { line: ChatFailureLine }): React.JSX.Element {
   const t = useTranslation();
-
-  const lines = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const call of message.toolCalls ?? []) {
-      // A step the reader stopped is said by the turn's own line; one turned
-      // away to steer the model is not a failure at all.
-      if (call.status !== 'error') continue;
-      if (call.failureKind === 'user_aborted' || call.failureKind === 'turned_away') continue;
-      const line = t(call.failureKey ?? FAILURE_LINES.generic);
-      counts.set(line, (counts.get(line) ?? 0) + 1);
-    }
-    return [...counts];
-  }, [message.toolCalls, t]);
-
-  if (message.streaming === true || lines.length === 0) return null;
-
+  const step = t(line.step.key, line.step.params);
+  const said =
+    line.reason === null ? t('chat.tool.failedStep', { step }) : t('chat.tool.failedLine', { step, reason: t(line.reason) });
   return (
-    <>
-      {lines.map(([line, count]) => (
-        <EndingLine
-          key={line}
-          testId='message-bubble-tool-failed'
-          text={count === 1 ? line : t('chat.tool.failureTimes', { line, count })}
-          tone='error'
-        />
-      ))}
-    </>
+    <EndingLine
+      testId='message-bubble-tool-failed'
+      text={line.count === 1 ? said : t('chat.tool.failureTimes', { line: said, count: line.count })}
+      tone='error'
+    />
   );
 }

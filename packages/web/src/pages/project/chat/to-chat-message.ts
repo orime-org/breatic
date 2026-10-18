@@ -17,9 +17,21 @@
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import type { z } from 'zod';
-import { canvasProposalSchema, chipOfPart, documentProposalSchema, isReaderLine, readQuestionnaire, stripDsml, TURNED_AWAY } from '@breatic/shared';
+import {
+  canvasProposalSchema,
+  chipOfPart,
+  documentProposalSchema,
+  FAILURE_LINES,
+  isReaderLine,
+  LEGACY_FAILURE_LINES,
+  NEVER_RAN,
+  readQuestionnaire,
+  stripDsml,
+  TURNED_AWAY,
+} from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
-import type { ChatAsset, ChatMessage, ChatQuestionnaire, ChatSource, ToolCall } from '@web/pages/project/chat/types';
+import type { ChatAsset, ChatFailureLine, ChatMessage, ChatQuestionnaire, ChatSource, ToolCall } from '@web/pages/project/chat/types';
+import { failurePlaceholder, PLACEHOLDER_MARK } from '@web/pages/project/chat/tool-failure-plugin';
 
 /** The part type carrying a turn that was stopped. */
 const INTERRUPTED = 'data-interrupted';
@@ -149,6 +161,82 @@ function runningLineOf(part: unknown): { runningLine?: string } {
 }
 
 /**
+ * The step each tool's failure line names (inner#1620). Spelled out so the
+ * guide's coverage check can read every key; a tool not listed is named by
+ * its own name.
+ */
+const STEP_KEYS: Readonly<Record<string, string>> = {
+  web_search: 'chat.tool.step.webSearch',
+  search_images: 'chat.tool.step.searchImages',
+  understand_media: 'chat.tool.step.understandMedia',
+  save_image: 'chat.tool.step.saveImage',
+  judge_likelihood: 'chat.tool.step.judge',
+  propose_canvas_action: 'chat.tool.step.proposeCanvas',
+  propose_document_edit: 'chat.tool.step.proposeDocument',
+  list_generation_models: 'chat.tool.step.listModels',
+  get_canvas_capabilities: 'chat.tool.step.canvasCapabilities',
+  get_product_guide: 'chat.tool.step.productGuide',
+};
+
+/** The tools whose step names what was searched for. */
+const QUERIED = new Set([SEARCH_TOOL, RESULTS_TOOL]);
+
+/** The causes rows stored before inner#1620 carry, which name no cause. */
+const LEGACY = new Set<string>(Object.values(LEGACY_FAILURE_LINES));
+
+/**
+ * The line a tool part that ended in an error is drawn with, or null when it
+ * draws none: a call stopped, turned away, or that never ran -- the turn's
+ * own ending line says what happened to those.
+ * @param part - The tool part.
+ * @param part.state - Where it stands.
+ * @param part.input - What the model sent.
+ * @param name - The tool's name.
+ * @returns The line, or null.
+ */
+function failureLineOf(part: { state: string; input?: unknown }, name: string): ChatFailureLine | null {
+  if (part.state !== 'output-error') return null;
+  const errorText = (part as { errorText?: unknown }).errorText;
+  const kind = (part as { failureKind?: unknown }).failureKind;
+  if (errorText === TURNED_AWAY || errorText === NEVER_RAN || errorText === FAILURE_LINES.stopped) return null;
+  if (kind === 'turned_away' || kind === 'never_ran' || kind === 'user_aborted') return null;
+  const query = (part.input as { query?: unknown } | undefined)?.query;
+  const stepKey = STEP_KEYS[name];
+  const step: ChatFailureLine['step'] =
+    stepKey === undefined
+      ? { key: 'chat.tool.step.other', params: { tool: name } }
+      : QUERIED.has(name)
+        ? { key: stepKey, params: { query: typeof query === 'string' ? query : '' } }
+        : { key: stepKey };
+  // The key vouches for itself: it is either one of ours or it is not, and
+  // the table is what answers that. The same field carries the SDK's own
+  // fixed English sentence when it has nothing else to put there, which is
+  // never put on the screen.
+  const reason = isReaderLine(errorText) ? (LEGACY.has(errorText) ? null : errorText) : FAILURE_LINES.ourFault;
+  return { step, reason, count: 1 };
+}
+
+/**
+ * Whether two failure lines read the same: the same step, what it was given,
+ * and the same cause.
+ * @param a - One line.
+ * @param b - The other.
+ * @returns True when they read the same.
+ */
+function sameLine(a: ChatFailureLine, b: ChatFailureLine): boolean {
+  return a.step.key === b.step.key && a.reason === b.reason && JSON.stringify(a.step.params) === JSON.stringify(b.step.params);
+}
+
+/**
+ * Whether a markdown document ends inside a fenced code block.
+ * @param markdown - The document so far.
+ * @returns True when a fence is open.
+ */
+function fenceOpen(markdown: string): boolean {
+  return (markdown.match(/^ {0,3}(?:`{3,}|~{3,})/gm) ?? []).length % 2 === 1;
+}
+
+/**
  * How far a tool got, in the panel's words.
  * @param state - The tool part's state, as the SDK reports it.
  * @param stillRunning - Whether the turn that made this call is still going.
@@ -257,6 +345,34 @@ export function toChatMessage(
   options: { streaming?: boolean; failedJustNow?: boolean } = {},
 ): ChatMessage {
   let content = '';
+  // The prose with each failure line's place held (inner#1620). Failures
+  // since the last prose wait in `open`, so one the same tool recovered from
+  // before the reply went on is dropped; ones placed inside an open code
+  // fence wait in `deferred` until it closes.
+  let body = '';
+  const failureLines: ChatFailureLine[] = [];
+  let open: Array<{ tool: string; line: ChatFailureLine }> = [];
+  const deferred: number[] = [];
+  /** Put the lines waiting on an open code fence once it has closed. */
+  const placeDeferred = (): void => {
+    if (fenceOpen(body)) return;
+    for (const index of deferred.splice(0)) body += `${body === '' ? '' : '\n\n'}${failurePlaceholder(index)}`;
+  };
+  /** Place the failures since the last prose, the same line twice in a row once. */
+  const placeOpen = (): void => {
+    for (const { line } of open) {
+      const last = failureLines.at(-1);
+      const joined = deferred.length > 0 || body.endsWith(PLACEHOLDER_MARK);
+      if (joined && last !== undefined && sameLine(last, line)) {
+        last.count += 1;
+        continue;
+      }
+      failureLines.push(line);
+      deferred.push(failureLines.length - 1);
+    }
+    open = [];
+    placeDeferred();
+  };
   let thinking = '';
   const toolCalls: ToolCall[] = [];
   let interrupted = false;
@@ -320,14 +436,6 @@ export function toChatMessage(
         // part has: a replayed call has no metadata at all, and the line it
         // would name is not drawn on one anyway.
         ...runningLineOf(part),
-        // The key vouches for itself: it is either one of ours or it is not,
-        // and the table is what answers that. The same field carries the SDK's
-        // own fixed English sentence when it has nothing else to put there,
-        // and taking that as our own put it on the screen untranslated, in a
-        // product that ships five languages.
-        ...(status === 'error' && 'errorText' in part && isReaderLine(part.errorText)
-          ? { failureKey: part.errorText }
-          : {}),
         // What the message itself says the ending was. A replayed one always
         // carries it; a live one never does -- the wire has a single field for
         // a failure and it is carrying the line. The live answer is the one
@@ -337,6 +445,10 @@ export function toChatMessage(
           ? { failureKind: (part as { failureKind: ToolCall['failureKind'] }).failureKind }
           : {}),
       });
+      const name = getToolName(part);
+      if (status === 'success') open = open.filter((failure) => failure.tool !== name);
+      const failureLine = failureLineOf(part, name);
+      if (failureLine !== null) open.push({ tool: name, line: failureLine });
       if (status === 'success' && getToolName(part) === RESULTS_TOOL) {
         assets.push(...assetsOf(part.output));
       }
@@ -364,7 +476,14 @@ export function toChatMessage(
       attachments.push(chip);
       continue;
     }
-    if (part.type === 'text') content += stripDsml(part.text);
+    if (part.type === 'text') {
+      const words = stripDsml(part.text);
+      content += words;
+      placeOpen();
+      const prose = words.replaceAll(PLACEHOLDER_MARK, '');
+      body += body.endsWith(PLACEHOLDER_MARK) ? `\n\n${prose}` : prose;
+      placeDeferred();
+    }
     else if (part.type === 'reasoning') {
       thinking += part.text;
       // The thinking says whether it is still going; the turn does not. How
@@ -380,6 +499,11 @@ export function toChatMessage(
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === 'number' && Number.isFinite(ms) && ms >= 0) thinkingMs = ms;
     }
+  }
+
+  placeOpen();
+  if (deferred.length > 0) {
+    for (const index of deferred.splice(0)) body += `${body === '' ? '' : '\n\n'}${failurePlaceholder(index)}`;
   }
 
   // A page found by two searches was handed two numbers, and the prose can
@@ -408,6 +532,7 @@ export function toChatMessage(
     // messages it makes up itself, which none of these are.
     role: message.role === 'assistant' ? 'assistant' : 'user',
     content,
+    ...(failureLines.length > 0 ? { body, failureLines } : {}),
     ...(sentAt === undefined ? {} : { sentAt }),
     ...(thinking !== '' ? { thinking } : {}),
     ...(thinkingMs === undefined ? {} : { thinkingMs }),

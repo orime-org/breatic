@@ -35,7 +35,9 @@ import { citationPlugin } from '@web/pages/project/chat/citation-plugin';
 import { CodeBlock } from '@web/pages/project/chat/CodeBlock';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
 import { CitationMark } from '@web/pages/project/chat/CitationMark';
-import type { ChatSource } from '@web/pages/project/chat/types';
+import type { ChatFailureLine, ChatSource } from '@web/pages/project/chat/types';
+import { toolFailurePlugin } from '@web/pages/project/chat/tool-failure-plugin';
+import { ToolFailureLine } from '@web/pages/project/chat/TurnEnding';
 
 interface MarkdownMessageProps {
   /** The assistant's prose, as markdown. */
@@ -54,6 +56,11 @@ interface MarkdownMessageProps {
    * pointing nowhere.
    */
   citations?: Record<number, ChatSource>;
+  /**
+   * The tool steps that did not finish, in the order the placeholders in
+   * `content` name them (inner#1620).
+   */
+  failureLines?: ChatFailureLine[];
 }
 
 /**
@@ -299,6 +306,8 @@ const COMPONENTS = {
  * @param root0.streaming - Whether this turn is still receiving tokens.
  * @param root0.size - Which step of the type scale the prose is drawn at.
  * @param root0.softBreaks - Whether a single newline is a line the reader sees.
+ * @param root0.citations - What a `[N]` the model wrote points at.
+ * @param root0.failureLines - The tool steps that did not finish.
  * @returns The rendered prose.
  */
 export const MarkdownMessage = memo(function MarkdownMessage({
@@ -307,6 +316,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   size = 'sm',
   softBreaks = false,
   citations,
+  failureLines,
 }: MarkdownMessageProps): ReactElement {
   const t = useTranslation();
   // Unique per rendered message, so the footnote ids below are too.
@@ -341,6 +351,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
       displayMathPlugin,
       [footnoteScopePlugin, scope],
       [citationPlugin, numbers],
+      toolFailurePlugin,
       ...REHYPE_TAIL,
     ],
     [scope, numbers],
@@ -352,6 +363,8 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   // across a marker collapses. Same reason `COMPONENTS` above is module level.
   const latest = useRef(citations);
   latest.current = citations;
+  const failures = useRef(failureLines);
+  failures.current = failureLines;
   const components = useMemo<Components>(
     () => ({
       ...COMPONENTS,
@@ -361,6 +374,11 @@ export const MarkdownMessage = memo(function MarkdownMessage({
         const cited = latest.current?.[Number(index)];
         if (cited === undefined) return null;
         return <CitationMark source={cited} index={Number(index)} />;
+      },
+      // The element `toolFailurePlugin` puts where a step did not finish.
+      'tool-failure': ({ index }: { index?: string }): ReactElement | null => {
+        const line = failures.current?.[Number(index)];
+        return line === undefined ? null : <ToolFailureLine line={line} />;
       },
     }),
     [],

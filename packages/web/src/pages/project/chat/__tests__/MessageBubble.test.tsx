@@ -8,6 +8,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
 import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnaire-answer';
 import type { ChatMessage } from '@web/pages/project/chat/types';
+import { failurePlaceholder } from '@web/pages/project/chat/tool-failure-plugin';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
 function setup(message: ChatMessage) {
@@ -381,5 +382,73 @@ describe('MessageBubble — a questionnaire (inner#1542)', () => {
     render(<MessageBubble message={{ id: 'a1', role: 'assistant', content: '', questionnaires: [questionnaire] }} />);
 
     expect(screen.queryByTestId('message-bubble-empty')).toBeNull();
+  });
+});
+
+describe('MessageBubble — a step that did not finish (inner#1620)', () => {
+  const searchFailed = {
+    step: { key: 'chat.tool.step.webSearch', params: { query: 'poster' } },
+    reason: 'chat.tool.failure.busy',
+    count: 1,
+  };
+
+  it('draws its line between the prose before and after it, and none under the reply', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'a1',
+          role: 'assistant',
+          content: 'Let me look.Carrying on.',
+          body: `Let me look.\n\n${failurePlaceholder(0)}\n\nCarrying on.`,
+          failureLines: [searchFailed],
+        }}
+      />,
+    );
+
+    const content = screen.getByTestId('message-bubble-content');
+    const line = screen.getByTestId('message-bubble-tool-failed');
+    expect(content).toContainElement(line);
+    expect(line).toHaveTextContent('poster');
+    const blocks = [...screen.getByTestId('markdown-body').children].map((el) => el.textContent ?? '');
+    expect(blocks[0]).toBe('Let me look.');
+    expect(blocks[1]).toContain('poster');
+    expect(blocks[2]).toBe('Carrying on.');
+    expect(screen.getAllByTestId('message-bubble-tool-failed')).toHaveLength(1);
+  });
+
+  it('draws its line when the reply has no prose at all', () => {
+    render(
+      <MessageBubble
+        message={{ id: 'a1', role: 'assistant', content: '', body: failurePlaceholder(0), failureLines: [searchFailed] }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed')).toBeInTheDocument();
+  });
+
+  it('says how many times when the same line came twice in a row', () => {
+    render(
+      <MessageBubble
+        message={{ id: 'a1', role: 'assistant', content: '', body: failurePlaceholder(0), failureLines: [{ ...searchFailed, count: 2 }] }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed')).toHaveTextContent('×2');
+  });
+
+  it('keeps a footnote whose definition comes after the line pointing at it', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'a1',
+          role: 'assistant',
+          content: '',
+          body: `A claim[^1].\n\n${failurePlaceholder(0)}\n\n[^1]: The note.`,
+          failureLines: [searchFailed],
+        }}
+      />,
+    );
+
+    expect(document.querySelector('section[data-footnotes]')).toHaveTextContent('The note.');
   });
 });

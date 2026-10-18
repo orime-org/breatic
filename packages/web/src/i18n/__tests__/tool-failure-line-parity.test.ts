@@ -7,7 +7,7 @@ import { FAILURE_LINES } from '@breatic/shared';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 // 工具调用失败时卡片上那一行。这一族键有个共同点：**代码里没有一处把它们
-// 写成字面量** —— 卡片渲染的是 `t(toolCall.failureKey ?? …)`，键本身来自
+// 写成字面量** —— 失败行渲染的是 `t(line.reason)`，键本身来自
 // `FAILURE_LINES` 这张表。所以 `i18n-no-missing-keys` 扫不到它们（那条守卫
 // 只认「字面量本身就是 t() 的整个参数」），而且它也只读 en.json 一份。
 //

@@ -18,7 +18,7 @@ import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { UserWords } from '@web/pages/project/chat/UserWords';
 import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
-import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
+import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -139,7 +139,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               onOpen={onThinkingOpen}
             />
           ) : null}
-          {message.content || message.streaming ? (
+          {message.content || message.failureLines || message.streaming ? (
             <div data-testid='message-bubble-content'>
               {/* What the reader typed means the characters they typed: markdown
                 is what the model writes in, not what the composer accepts. */}
@@ -150,11 +150,14 @@ export const MessageBubble = React.memo(function MessageBubble({
                 300px column drew 787px wide, 487 of them outside the bubble.
                 `.chat-markdown` answers the same thing on the reply's side. */}
               {isUser ? <UserWords content={message.content} attachments={message.attachments} /> : null}
-              {!isUser && message.content ? (
+              {/* A step that did not finish is drawn where it happened, inside
+                the one parse of the prose (inner#1620). */}
+              {!isUser && (message.body ?? message.content) ? (
                 <MarkdownMessage
-                  content={message.content}
+                  content={message.body ?? message.content}
                   streaming={message.streaming === true}
                   {...(message.citations ? { citations: message.citations } : {})}
+                  {...(message.failureLines ? { failureLines: message.failureLines } : {})}
                 />
               ) : null}
               {/* One mark for the whole turn, after everything said so far. It
@@ -219,9 +222,6 @@ export const MessageBubble = React.memo(function MessageBubble({
               {t('chat.proposal.expired')}
             </div>
           )}
-          {/* Each step that failed while the turn carried on, after what the
-            turn produced and before how it ended. */}
-          {isUser ? null : <FailedSteps message={message} />}
           {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what

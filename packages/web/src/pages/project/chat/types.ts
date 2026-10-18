@@ -37,15 +37,6 @@ export interface ToolCall {
    */
   failureKind?: ToolFailureKind;
   /**
-   * The line to show, as a translation key.
-   *
-   * Never the reason itself. That names hosts, statuses and, for a refused
-   * fetch, addresses inside the network; it goes to the model, which is what
-   * acts on it. For a step that failed, the reader is shown the line this key
-   * names, under the reply; a step the reader stopped draws no line of its own.
-   */
-  failureKey?: string;
-  /**
    * The translation key for the sentence shown while this call runs.
    *
    * Declared by the tool, in the SDK's `metadata`, and carried here on the
@@ -124,6 +115,16 @@ export interface ChatQuestionnaire {
   answers?: AskUserAnswer['answers'];
 }
 
+/** One tool step that did not finish, as its line says it (inner#1620). */
+export interface ChatFailureLine {
+  /** Which step, as a translation key and what it fills in. */
+  step: { key: string; params?: Record<string, string> };
+  /** The cause, as a translation key; null for a row stored before causes were recorded. */
+  reason: string | null;
+  /** How many times in a row the same line came. */
+  count: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -138,6 +139,14 @@ export interface ChatMessage {
    * to a markdown renderer with raw HTML enabled counts.
    */
   content: string;
+  /**
+   * The prose with a placeholder where each failure line sits, for the
+   * renderer alone (inner#1620). Absent when no step failed; `content` stays
+   * what the reader copies.
+   */
+  body?: string;
+  /** The tool steps that did not finish, in the order `body` places them. */
+  failureLines?: ChatFailureLine[];
   /** What the reader attached to this message, in order. Absent when nothing. */
   attachments?: ChatAttachedChip[];
   /**
