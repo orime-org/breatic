@@ -7,7 +7,7 @@ import * as React from 'react';
 
 import { promptPlainText, type CanvasProposal } from '@breatic/shared';
 
-import { Button } from '@web/components/ui/button';
+import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
@@ -217,20 +217,11 @@ export const ProposalCard = React.memo(function ProposalCard({
           {t('chat.proposal.failed')}
         </div>
       ) : null}
-      {/* 270px is the card's inner width at the narrowest Agent column, so the
-          button fills the card there and stops growing as the column widens
-          (inner#1372). */}
-      <Button
-        type='button'
-        variant='outline'
-        size='sm'
-        data-testid='proposal-use'
-        disabled={building}
-        onClick={onUse}
-        className='w-full max-w-[270px] self-center'
-      >
-        {building ? t('chat.proposal.building') : t('chat.proposal.use')}
-      </Button>
+      <ProposalActions>
+        <ProposalAction data-testid='proposal-use' disabled={building} onClick={onUse}>
+          {building ? t('chat.proposal.building') : t('chat.proposal.use')}
+        </ProposalAction>
+      </ProposalActions>
     </div>
   );
 });

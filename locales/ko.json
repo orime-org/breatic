@@ -284,7 +284,7 @@
   "chat": {
     "composer": {
       "chipsAria": "선택된 칩",
-      "placeholder": "질문하거나 캔버스의 항목을 넘겨주세요…",
+      "placeholder": "질문하거나 Canvas의 항목을 넘겨주세요…",
       "inputAria": "채팅 입력",
       "send": "전송",
       "sending": "보내는 중",
@@ -308,11 +308,13 @@
     "empty": {
       "greetingWithName": "안녕하세요, {name}님!",
       "greetingDefault": "안녕하세요!",
-      "hintDirect": "아래에 입력해 보세요 ↓",
+      "capabilities": "소재 찾기, 글과 대본 쓰기, Canvas에 생성 흐름 만들기, Document 수정을 도와드려요",
       "quick": {
         "findReference": "사이버펑크 스타일 참고 이미지를 찾아줘",
-        "writePrompt": "일러스트 생성 프롬프트를 써줘",
-        "refinePrompt": "이 프롬프트를 더 구체적으로 다듬어줘"
+        "writeScript": "3분짜리 단편 영화 대본을 써줘",
+        "buildWorkflow": "Canvas에 캐릭터 삼면도를 생성하는 흐름을 만들어줘",
+        "annotateDocument": "Document 수정안을 제안해줘",
+        "writePrompt": "일러스트 생성 프롬프트를 써줘"
       }
     },
     "history": {
@@ -355,7 +357,7 @@
       "failureTimes": "{line} ×{count}",
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
-      "checkingCanvas": "캔버스로 만들 수 있는 것 확인 중",
+      "checkingCanvas": "Canvas로 만들 수 있는 것 확인 중",
       "proposingNodes": "제안을 정리하는 중",
       "proposingDocumentEdit": "수정안을 정리하는 중",
       "savingImage": "이미지 저장 중",
@@ -409,7 +411,7 @@
       "building": "만드는 중…",
       "failed": "만들지 못했습니다.",
       "expired": "이 제안은 만료되었습니다. Agent에게 새로 제안해 달라고 하세요.",
-      "needCanvas": "먼저 캔버스를 여세요.",
+      "needCanvas": "먼저 Canvas를 여세요.",
       "promptReady": "프롬프트가 준비되었습니다. 노드를 우클릭하고 「생성」을 선택하면 열리는 생성 패널에서 확인할 수 있습니다.",
       "settingsReady": "설정이 준비되었습니다. 노드를 우클릭하고 「생성」을 선택하면 열리는 생성 패널에서 확인할 수 있습니다."
     },
@@ -441,7 +443,7 @@
     "thinkingNow": "생각 중",
     "thinkingFor": "{m, plural, =0 {} other {# 분 }}{s, number}초 동안 생각했습니다",
     "attachment": {
-      "kind": "{kind, select, canvas {캔버스} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
+      "kind": "{kind, select, canvas {Canvas} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
       "nodes": "노드 {count}개",
       "more": "외 {count}개"
     }
@@ -469,8 +471,8 @@
       "nodeAudio": "오디오"
     },
     "emptyState": {
-      "title": "캔버스가 비어 있습니다",
-      "hint": "에셋을 캔버스로 드래그하거나, 왼쪽 메뉴에서 노드 유형을 선택해 만드세요."
+      "title": "Canvas가 비어 있습니다",
+      "hint": "에셋을 Canvas로 드래그하거나, 왼쪽 메뉴에서 노드 유형을 선택해 만드세요."
     },
     "nodePlaceholder": {
       "text": "더블클릭하여 작성",
@@ -527,8 +529,8 @@
       "focus": "포커스",
       "reference": "참조",
       "focusTip": "노드의 일부 영역을 참조로 지정",
-      "referenceTip": "캔버스에서 이미지를 참조로 선택",
-      "referenceTipAudio": "캔버스에서 텍스트를 참조로 선택",
+      "referenceTip": "Canvas에서 이미지를 참조로 선택",
+      "referenceTipAudio": "Canvas에서 텍스트를 참조로 선택",
       "emptyImageReference": "아직 생성 또는 업로드되지 않음",
       "emptyTextReference": "내용 없음",
       "refuseInsertModeOff": "이 모드는 참조 소재를 사용하지 않습니다",
@@ -557,12 +559,12 @@
       "voiceVolume": "볼륨",
       "sfxDuration": "길이",
       "sfxDurationSeconds": "{n}초",
-      "selectFromCanvas": "캔버스에서 참조 선택",
-      "selectFirstFrameFromCanvas": "캔버스에서 첫 프레임으로 쓸 이미지 선택",
-      "selectEndFrameFromCanvas": "캔버스에서 마지막 프레임으로 쓸 이미지 선택",
-      "selectCharacterImageFromCanvas": "캔버스에서 캐릭터로 쓸 이미지 선택",
-      "selectDrivingVideoFromCanvas": "캔버스에서 동작을 가져올 영상 선택",
-      "selectDrivingAudioFromCanvas": "캔버스에서 입 모양이 따라갈 음성 선택",
+      "selectFromCanvas": "Canvas에서 참조 선택",
+      "selectFirstFrameFromCanvas": "Canvas에서 첫 프레임으로 쓸 이미지 선택",
+      "selectEndFrameFromCanvas": "Canvas에서 마지막 프레임으로 쓸 이미지 선택",
+      "selectCharacterImageFromCanvas": "Canvas에서 캐릭터로 쓸 이미지 선택",
+      "selectDrivingVideoFromCanvas": "Canvas에서 동작을 가져올 영상 선택",
+      "selectDrivingAudioFromCanvas": "Canvas에서 입 모양이 따라갈 음성 선택",
       "exitSelect": "종료",
       "locateSource": "소스 노드로 이동",
       "camera": "카메라",
@@ -633,17 +635,17 @@
       "sourceVideoTip": "영상을 고르세요",
       "removeSourceVideo": "영상 제거",
       "errorNoSourceVideo": "영상을 고르세요",
-      "selectSourceVideoFromCanvas": "캔버스에서 영상 선택",
+      "selectSourceVideoFromCanvas": "Canvas에서 영상 선택",
       "leftAudio": "왼쪽 음성",
       "leftAudioTip": "왼쪽 화자의 음성을 고르세요",
       "removeLeftAudio": "왼쪽 음성 제거",
       "errorNoLeftAudio": "왼쪽 음성을 고르세요",
-      "selectLeftAudioFromCanvas": "캔버스에서 왼쪽 화자의 음성 선택",
+      "selectLeftAudioFromCanvas": "Canvas에서 왼쪽 화자의 음성 선택",
       "rightAudio": "오른쪽 음성",
       "rightAudioTip": "오른쪽 화자의 음성을 고르세요",
       "removeRightAudio": "오른쪽 음성 제거",
       "errorNoRightAudio": "오른쪽 음성을 고르세요",
-      "selectRightAudioFromCanvas": "캔버스에서 오른쪽 화자의 음성 선택",
+      "selectRightAudioFromCanvas": "Canvas에서 오른쪽 화자의 음성 선택",
       "drivingAudio": "음성",
       "drivingVideoTip": "동작을 가져올 영상을 고르세요",
       "drivingAudioTip": "입 모양이 따라갈 음성을 고르세요",
@@ -757,7 +759,7 @@
       "refuseStoryboardDurationMismatch": "샷 합계 {shots, number}초, 영상 {total, number}초",
       "style": "스타일",
       "styleTip": "이미지를 최대 3장 스타일 참조로 선택",
-      "selectStyleFromCanvas": "캔버스에서 스타일 참조 선택",
+      "selectStyleFromCanvas": "Canvas에서 스타일 참조 선택",
       "removeStyle": "스타일 참조 제거",
       "errorNoStyleImage": "먼저 스타일 이미지를 선택하세요",
       "cameraCommands": "카메라 무빙",
@@ -814,7 +816,7 @@
       "failed": "붙여넣기에 실패했습니다."
     },
     "minimap": {
-      "label": "캔버스 미니맵"
+      "label": "Canvas 미니맵"
     },
     "connection": {
       "rejected": "{source}은(는) {target}에 연결할 수 없습니다",
@@ -1257,7 +1259,7 @@
     "terms": {
       "notice": "계속하면 {terms}에 동의하고 {privacy}을 확인한 것으로 간주됩니다.",
       "termsLink": "이용약관",
-      "privacyLink": "개인정보처리방침"
+      "privacyLink": "개인정보 처리방침"
     }
   },
   "roleTag": {
@@ -1300,7 +1302,11 @@
         "create": "Space 생성에 실패했습니다",
         "restore": "Space 복원에 실패했습니다",
         "unreachable": "서버가 응답하지 않습니다 — 연결을 확인한 후 다시 시도하세요",
-        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요"
+        "notSynced": "Project를 아직 동기화 중입니다 — 잠시 후 다시 시도하세요",
+        "limit": "Space는 최대 {max}개까지입니다",
+        "busy": "다른 멤버가 작업 중입니다 — 잠시 후 다시 시도하세요",
+        "alreadyRestored": "이 Space는 이미 복원되었습니다",
+        "gone": "이 Space는 삭제되었습니다"
       },
       "loading": {
         "create": "Space를 생성하는 중…"
@@ -1405,13 +1411,12 @@
         "deleteConfirmDescription": "이 Space와 콘텐츠는 소프트 삭제됩니다. Owner는 Project 메시지 채널에서 복원할 수 있습니다.",
         "lockFail": "잠금에 실패했습니다",
         "unlockFail": "잠금 해제에 실패했습니다",
-        "operationFail": "작업에 실패했습니다",
         "deleteFail": "삭제에 실패했습니다"
       }
     },
     "kind": {
       "canvas": "Canvas",
-      "canvasSub": "무한 캔버스 + 노드",
+      "canvasSub": "무한 Canvas + 노드",
       "document": "Document",
       "documentSub": "리치 텍스트 + 협업",
       "timeline": "Timeline",
@@ -1441,10 +1446,10 @@
     "document": {
       "loading": "편집기를 불러오는 중…",
       "unavailable": {
-        "text": "이 문서를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
+        "text": "이 Document를 열 수 없습니다. 삭제되었거나 더 이상 접근 권한이 없을 수 있습니다.",
         "action": "다시 시도"
       },
-      "refusedNotice": "이 문서에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
+      "refusedNotice": "이 Document에 대한 연결이 거부되었습니다. 보고 있는 내용이 최신이 아닐 수 있으며 변경 사항도 저장되지 않습니다.",
       "placeholder": "작성을 시작하세요…",
       "clearConfirm": {
         "title": "모든 내용을 삭제할까요?",
@@ -1504,7 +1509,7 @@
         "filterOpen": "미해결",
         "filterAll": "전체",
         "closeRail": "댓글 창 닫기",
-        "empty": "이 문서에는 아직 댓글이 없습니다. 본문을 선택하거나 줄 왼쪽에서 댓글을 추가할 수 있습니다.",
+        "empty": "이 Document에는 아직 댓글이 없습니다. 본문을 선택하거나 줄 왼쪽에서 댓글을 추가할 수 있습니다.",
         "nothingUnresolved": "해결되지 않은 댓글이 없습니다.",
         "writeFailed": "이 변경 사항을 저장하지 못했습니다.",
         "unknownAuthor": "알 수 없음",
@@ -1519,7 +1524,7 @@
         "deleteReply": "이 답글 삭제"
       },
       "schemaOutdated": {
-        "headline": "문서 편집기가 업데이트되었습니다",
+        "headline": "Document 편집기가 업데이트되었습니다",
         "body": "이 페이지는 이전 버전으로 실행 중이며, 여기서 편집하면 다른 사람이 작성한 내용이 손상됩니다.",
         "published": "새 버전은 {when}에 배포되었습니다.",
         "risksLead": "새로고침하기 전에 확인하세요:",
@@ -1527,7 +1532,7 @@
         "action": "페이지 새로고침"
       },
       "docMenu": {
-        "label": "문서 전체 명령",
+        "label": "Document 전체 명령",
         "saveSnapshot": "스냅샷 저장",
         "restoreSnapshot": "스냅샷 복원",
         "notOpenYet": "미제공",
@@ -1596,7 +1601,7 @@
     "item": {
       "nodes": "노드 라이브러리",
       "upload": "에셋 업로드 (혼합 파일)",
-      "comment": "캔버스에 주석 달기",
+      "comment": "Canvas에 주석 달기",
       "collection": "Collection (출시 예정)",
       "help": "도움말 (출시 예정)",
       "feedback": "피드백 / 지원 (출시 예정)"
@@ -1805,7 +1810,7 @@
         "new": "새 Project",
         "createError": "Project를 만들지 못했습니다",
         "emptyTitle": "아직 Projects가 없습니다",
-        "emptyHint": "Project는 무한 캔버스에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
+        "emptyHint": "Project는 무한 Canvas에서 창작하는 공간입니다. 첫 Project를 만들어 시작하세요."
       },
       "collections": {
         "new": "새 Collection",
@@ -2035,8 +2040,8 @@
       "notifications": "알림",
       "newSpace": "새 Space",
       "revealActiveTab": "현재 Space 표시",
-      "agentHide": "에이전트 패널 숨기기",
-      "agentShow": "에이전트 패널 표시",
+      "agentHide": "Agent 패널 숨기기",
+      "agentShow": "Agent 패널 표시",
       "openHistory": "대화 기록",
       "newConversation": "새 대화"
     },
@@ -2048,7 +2053,7 @@
       "scrollTabsRight": "탭 오른쪽으로 스크롤",
       "spacesToolbar": "Spaces",
       "openSpaces": "열려 있는 Space",
-      "agentColumnWidth": "에이전트 패널 너비 조정",
+      "agentColumnWidth": "Agent 패널 너비 조정",
       "language": "언어: {name}",
       "theme": "테마: {theme}"
     },
@@ -2141,6 +2146,8 @@
     "declinedBody": "여기서 더 할 일은 없습니다.",
     "expiredTitle": "이 요청은 종료되었습니다",
     "expiredBody": "더 이상 답변할 수 없습니다.",
+    "invalidatedTitle": "이 요청은 더 이상 유효하지 않습니다",
+    "invalidatedBody": "더 이상 답변할 수 없습니다.",
     "revokedTitle": "이 요청은 철회되었습니다",
     "revokedBody": "보낸 사람이 다시 거두어 갔습니다.",
     "goneTitle": "대상이 더 이상 없습니다",
@@ -2180,7 +2187,7 @@
       "projectsPerStudio": "Studio당 Project 한도",
       "studioMembers": "Studio당 멤버 한도",
       "projectMembers": "Project당 멤버 한도",
-      "concurrentEditors": "문서당 동시 편집 수"
+      "concurrentEditors": "Document당 동시 편집 수"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}개",
@@ -2234,7 +2241,7 @@
     "card": {
       "storage": "저장 공간 {value}",
       "teamStudios": "{count, plural, =0 {팀 Studio 없음} other {팀 Studio #개}}",
-      "connections": "{count, plural, other {문서당 연결 #개}}",
+      "connections": "{count, plural, other {Document당 연결 #개}}",
       "enterpriseScale": "용량은 협의로 결정",
       "enterpriseGovernance": "SSO, 감사, 지식재산 보증"
     },
@@ -2391,5 +2398,36 @@
   "pageLoadError": {
     "message": "페이지를 불러오지 못했습니다. 다시 시도해 주세요.",
     "retry": "다시 시도"
+  },
+  "consent": {
+    "link": "쿠키 설정",
+    "banner": {
+      "text": "사이트가 정상적으로 작동하도록 쿠키를 사용합니다. 동의하시면 제품 이용 현황 파악(제품 분석)과 광고 효과 측정(광고)에도 사용합니다. 언제든지 「쿠키 설정」에서 변경할 수 있습니다.",
+      "privacy": "개인정보 처리방침",
+      "acceptAll": "모두 허용",
+      "rejectAll": "모두 거부",
+      "settings": "설정",
+      "gpc": "브라우저가 Global Privacy Control을 보내고 있어 광고는 기본적으로 꺼져 있습니다."
+    },
+    "settings": {
+      "title": "쿠키 설정",
+      "save": "저장",
+      "close": "닫기",
+      "status": {
+        "gpc": "브라우저가 Global Privacy Control을 보내고 있어 광고는 기본적으로 꺼져 있습니다."
+      },
+      "necessary": {
+        "title": "필수",
+        "description": "로그인, 테마와 언어 설정, 그리고 이 선택 자체입니다. 항상 켜져 있습니다."
+      },
+      "analytics": {
+        "title": "제품 분석",
+        "description": "기능 사용 현황을 집계합니다. Project 안의 내용은 포함하지 않습니다."
+      },
+      "ads": {
+        "title": "광고",
+        "description": "어떤 광고가 가입, 구매 등 주요 행동으로 이어졌는지 측정합니다."
+      }
+    }
   }
 }

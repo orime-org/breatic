@@ -12,7 +12,7 @@ import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodePlaceholder } from '@web/spaces/canvas/nodes/_shared/NodePlaceholder';
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
-import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/useNodeResolution';
+import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { orientPreviewTransform, useOrientPreview } from '@web/spaces/canvas/mini-tool/orient-preview';
 

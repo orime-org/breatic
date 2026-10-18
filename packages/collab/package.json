@@ -16,7 +16,6 @@
   "dependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/shared": "workspace:*",
-    "@hocuspocus/extension-database": "^4.6.0",
     "@hocuspocus/extension-redis": "catalog:",
     "@hocuspocus/server": "catalog:",
     "@sentry/node": "catalog:",

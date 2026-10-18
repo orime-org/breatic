@@ -31,6 +31,7 @@
  */
 
 import * as Y from "yjs";
+import { SpaceTypeSchema, spaceContentDocName } from "@breatic/shared";
 
 /** The kinds of Space the meta doc tracks. Mirrors `@breatic/shared` SpaceType. */
 export type SpaceKind = "canvas" | "document" | "timeline";
@@ -102,6 +103,51 @@ export function writeSpaceEntry(
     entry.set("claimToken", init.claimToken);
   }
   spaces.set(init.spaceId, entry);
+}
+
+/**
+ * The content doc names a meta doc's Space list names: one per entry, under
+ * the entry's own type. This is the one definition of "a listed Space's
+ * content row" — the collab handshake checks a content doc against it, the
+ * project duplicate copies exactly these rows, and the Space-row repair
+ * soft-deletes live rows outside them that nobody touched for an hour. An entry whose type is not a Space type names
+ * nothing.
+ * @param projectId - Project the meta doc belongs to.
+ * @param spaces - The meta doc's `spaces` Y.Map (keyed by spaceId).
+ * @returns The content doc names the list names.
+ */
+export function listedContentDocNames(
+  projectId: string,
+  spaces: Y.Map<unknown>,
+): Set<string> {
+  const names = new Set<string>();
+  spaces.forEach((entry, spaceId) => {
+    if (!(entry instanceof Y.Map)) return;
+    const type = SpaceTypeSchema.safeParse(entry.get("type"));
+    if (type.success) names.add(spaceContentDocName(projectId, spaceId, type.data));
+  });
+  return names;
+}
+
+/**
+ * {@link listedContentDocNames} for a stored meta doc state. The bytes are
+ * decoded with this package's own Yjs, so a caller that loads Yjs some other
+ * way (a script) still gets entries this module recognizes.
+ * @param projectId - Project the meta doc belongs to.
+ * @param state - The stored meta doc state.
+ * @returns The content doc names the stored list names.
+ */
+export function listedContentDocNamesInState(
+  projectId: string,
+  state: Uint8Array,
+): Set<string> {
+  const doc = new Y.Doc();
+  try {
+    Y.applyUpdate(doc, state);
+    return listedContentDocNames(projectId, doc.getMap("spaces"));
+  } finally {
+    doc.destroy();
+  }
 }
 
 /**

@@ -98,7 +98,7 @@ export type {
 } from "@domain/asset/upload-grant.repo.js";
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
-export { getModel, resolveProvider, callOptionsFor } from "@domain/agent/llm.js";
+export { getModel, resolveProvider, callOptionsFor, systemFor } from "@domain/agent/llm.js";
 export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
@@ -115,9 +115,11 @@ export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
+export { instructionsText } from "@domain/agent/instructions.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";
 export type { AgentConfigRequest, ResolvedAgentConfig } from "@domain/agent/agent-config.js";
+export type { Instructions } from "@domain/agent/instructions.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";

@@ -35,6 +35,7 @@ import {
   inject,
 } from "vitest";
 import { eq, like, or } from "drizzle-orm";
+import * as Y from "yjs";
 
 import {
   initCore,
@@ -42,6 +43,7 @@ import {
   createTestDb,
   db as coreDb,
   encodeInitialMetaState,
+  writeSpaceEntry,
 } from "@breatic/core";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 
@@ -69,7 +71,9 @@ async function cleanup(): Promise<void> {
 }
 
 /** Read the raw yjs row (including `deletedAt`) for a doc name, or null. */
-async function rawRow(name: string): Promise<{ deletedAt: Date | null } | null> {
+async function rawRow(
+  name: string,
+): Promise<{ deletedAt: Date | null; updatedAt: Date | null } | null> {
   const rows = await yjsTestDb
     .select()
     .from(yjsDocuments)
@@ -99,12 +103,15 @@ describe("yjs repo against the separate yjs DB", () => {
     expect(await yjsRepo.fetchDocData(CANVAS)).toBeNull();
   });
 
-  it("upsert resurrects a soft-deleted row (clears deleted_at)", async () => {
+  it("a store after a soft-delete keeps the row deleted and writes the content into it", async () => {
     await yjsRepo.upsertDocData(CANVAS, new Uint8Array([1]));
     await yjsRepo.softDeleteByName(CANVAS);
     await yjsRepo.upsertDocData(CANVAS, new Uint8Array([9, 9]));
+    expect(await yjsRepo.fetchDocData(CANVAS)).toBeNull();
+    expect((await rawRow(CANVAS))?.deletedAt).not.toBeNull();
+    // A restore later brings back the latest content, not the content at deletion.
+    await yjsRepo.restoreByName(CANVAS);
     expect(Array.from((await yjsRepo.fetchDocData(CANVAS))!)).toEqual([9, 9]);
-    expect((await rawRow(CANVAS))?.deletedAt).toBeNull();
   });
 
   it("softDeleteByName is idempotent (second call returns false)", async () => {
@@ -118,6 +125,27 @@ describe("yjs repo against the separate yjs DB", () => {
     await yjsRepo.softDeleteByName(CANVAS);
     await yjsRepo.restoreByName(CANVAS);
     expect(Array.from((await yjsRepo.fetchDocData(CANVAS))!)).toEqual([7]);
+  });
+
+  it("restoreByName moves updated_at to the restore", async () => {
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([7]));
+    await yjsTestDb
+      .update(yjsDocuments)
+      .set({ updatedAt: new Date("2020-01-01T00:00:00Z") })
+      .where(eq(yjsDocuments.name, CANVAS));
+    await yjsRepo.softDeleteByName(CANVAS);
+    const before = Date.now();
+    await yjsRepo.restoreByName(CANVAS);
+    expect((await rawRow(CANVAS))!.updatedAt!.getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it("counts only live Space content docs, not other rows under the project", async () => {
+    await yjsRepo.upsertDocData(META, new Uint8Array([1]));
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2]));
+    await yjsRepo.upsertDocData(`project-${TEST_PID}/canvas`, new Uint8Array([3]));
+    await yjsRepo.upsertDocData(`project-${TEST_PID}/node/n1`, new Uint8Array([4]));
+
+    expect(await yjsRepo.countLiveSpaceDocs(TEST_PID)).toBe(1);
   });
 
   it("seedInitialState inserts once and is idempotent under a race (DO NOTHING)", async () => {
@@ -138,21 +166,120 @@ describe("yjs repo against the separate yjs DB", () => {
 describe("duplicate integrity", () => {
   const DUP_META = `project-${TEST_DUP_PID}/meta`;
   const DUP_CANVAS = `project-${TEST_DUP_PID}/canvas-${SID}`;
+  const TRASHED = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const UNSTORED = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
 
-  it("copies every doc to the new id with the prefix rewritten, originals intact", async () => {
-    await yjsRepo.upsertDocData(META, new Uint8Array([1, 1]));
+  /**
+   * A source meta listing exactly the given canvas Spaces.
+   * @param spaceIds - The Spaces the meta lists.
+   * @returns The encoded meta state.
+   */
+  function metaListing(spaceIds: readonly string[]): Uint8Array {
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    spaceIds.forEach((spaceId, order) =>
+      writeSpaceEntry(spaces, {
+        spaceId,
+        type: "canvas",
+        name: `Space ${order}`,
+        order,
+        createdAt: 1,
+        createdBy: "system",
+      }),
+    );
+    const bytes = Y.encodeStateAsUpdate(doc);
+    doc.destroy();
+    return bytes;
+  }
+
+  /**
+   * Live content rows under the duplicate project, meta excluded.
+   * @returns Their names, sorted.
+   */
+  async function liveDuplicateContent(): Promise<string[]> {
+    const rows = await yjsTestDb
+      .select()
+      .from(yjsDocuments)
+      .where(like(yjsDocuments.name, `project-${TEST_DUP_PID}/%`));
+    return rows
+      .filter((r) => r.name !== DUP_META && r.deletedAt === null)
+      .map((r) => r.name)
+      .sort();
+  }
+
+  it("copies the meta and the content of the Spaces it lists, originals intact", async () => {
+    const meta = metaListing([SID]);
+    await yjsRepo.upsertDocData(META, meta);
     await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));
 
     await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
 
-    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual([1, 1]);
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual(Array.from(meta));
     expect(Array.from((await yjsRepo.fetchDocData(DUP_CANVAS))!)).toEqual([2, 2]);
     // Source untouched.
-    expect(Array.from((await yjsRepo.fetchDocData(META))!)).toEqual([1, 1]);
+    expect(Array.from((await yjsRepo.fetchDocData(META))!)).toEqual(Array.from(meta));
+  });
+
+  it("leaves out the content of Spaces the source meta does not list", async () => {
+    await yjsRepo.upsertDocData(META, metaListing([SID]));
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));
+    // In the source's trash.
+    await yjsRepo.upsertDocData(`project-${TEST_PID}/canvas-${TRASHED}`, new Uint8Array([3]));
+    await yjsRepo.softDeleteByName(`project-${TEST_PID}/canvas-${TRASHED}`);
+    // Created moments ago: its row exists, the stored meta does not list it yet.
+    await yjsRepo.upsertDocData(`project-${TEST_PID}/canvas-${UNSTORED}`, new Uint8Array([4]));
+
+    await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
+
+    expect(await liveDuplicateContent()).toEqual([DUP_CANVAS]);
+  });
+
+  it("copies a listed Space live even when its source row was already soft-deleted", async () => {
+    // Deleted moments ago: its row is soft-deleted, the stored meta still lists it.
+    await yjsRepo.upsertDocData(META, metaListing([SID]));
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));
+    await yjsRepo.softDeleteByName(CANVAS);
+
+    await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
+
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_CANVAS))!)).toEqual([2, 2]);
+  });
+
+  it("copies the meta it chose the content from, even when a store lands in between", async () => {
+    // A store of the source meta committing while the copy runs: the trigger
+    // rewrites the source meta the moment the first content row is copied,
+    // which is the window between reading the meta and writing the copy.
+    const meta = metaListing([SID]);
+    const later = metaListing([SID, UNSTORED]);
+    await yjsRepo.upsertDocData(META, meta);
+    await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));
+    await pgClient.unsafe(`
+      CREATE FUNCTION test_store_meta_mid_copy() RETURNS trigger AS $$
+      BEGIN
+        UPDATE yjs_documents SET data = decode('${Buffer.from(later).toString("hex")}', 'hex')
+        WHERE name = '${META}';
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql;
+      CREATE TRIGGER test_store_meta_mid_copy AFTER INSERT ON yjs_documents
+      FOR EACH ROW WHEN (NEW.name = '${DUP_CANVAS}')
+      EXECUTE FUNCTION test_store_meta_mid_copy();
+    `);
+    try {
+      await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
+    } finally {
+      await pgClient.unsafe(`
+        DROP TRIGGER test_store_meta_mid_copy ON yjs_documents;
+        DROP FUNCTION test_store_meta_mid_copy();
+      `);
+    }
+
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual(Array.from(meta));
+    expect(await liveDuplicateContent()).toEqual([DUP_CANVAS]);
   });
 
   it("meta DO UPDATE wins over a racing lazy-seed; redelivery is idempotent", async () => {
-    await yjsRepo.upsertDocData(META, new Uint8Array([1, 1]));
+    const meta = metaListing([SID]);
+    await yjsRepo.upsertDocData(META, meta);
     await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));
     // Simulate a lazy-seed having already written a DEFAULT meta at the
     // new project id before the duplicate command is consumed.
@@ -161,12 +288,12 @@ describe("duplicate integrity", () => {
     await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
 
     // The source meta must WIN (DO UPDATE), not the lazy-seeded default.
-    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual([1, 1]);
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual(Array.from(meta));
 
-    // Redelivery copies nothing new (canvas DO NOTHING) and re-writes the
+    // Redelivery copies nothing new (content DO NOTHING) and re-writes the
     // same source meta — net unchanged.
     await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
-    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual([1, 1]);
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual(Array.from(meta));
     expect(Array.from((await yjsRepo.fetchDocData(DUP_CANVAS))!)).toEqual([2, 2]);
   });
 });

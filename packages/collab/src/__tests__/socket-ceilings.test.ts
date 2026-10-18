@@ -12,21 +12,22 @@
  * library's per-socket ceilings are calibrated for one document per socket,
  * which is the opposite. Raise one of them and the next one down still fires,
  * with the same close code 4205 and the same symptom — a socket that dies and
- * reconnects into the identical wall. So they are set from ONE declared
- * number and tested together; a ceiling raised alone is not a fix.
+ * reconnects into the identical wall. So they are set from ONE number — a
+ * project's Space cap plus its meta doc — and tested together; a ceiling
+ * raised alone is not a fix.
  *
- * The library terminates a socket in four places (hocuspocus-server.esm.js:
- * 819, 886 twice, 958). Measured against a 1000-document socket carrying the
- * frames a real client sends:
+ * `@hocuspocus/server` 4.6.0 closes a socket at four limits:
  *
  *   pending documents      default 100    fires first without config
  *   queued frame count     default 1000   fires at ~500 documents
- *   queued frame bytes     default 5 MB   ~390 KB used, 13x of headroom
+ *   queued frame bytes     default 5 MB   left alone
  *   idle timeout           default 60 s   client heartbeats every 15 s
  *
- * The first two are derived from the declared number; the last two are left
- * at their defaults, and the cases below pin the measurements that justify
- * leaving them.
+ * The pending-document count is derived from a full project; the frame count
+ * from the byte ceiling and what each queued frame keeps on top of its bytes
+ * (infra/socket-ceilings.ts); the byte ceiling and the idle timeout are left
+ * at their defaults, and the last case below pins the heartbeat that
+ * justifies leaving the timeout.
  *
  * Holding a socket at a chosen pending count needs an `onAuthenticate` that
  * never settles — not a stand-in for slow auth, but the only way to observe
@@ -36,18 +37,11 @@
 import { describe, it, expect, afterEach } from "vitest";
 import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
-import * as Y from "yjs";
-import * as syncProtocol from "y-protocols/sync";
+import { outdatedTimeout } from "y-protocols/awareness";
+import { Hocuspocus, Server, defaultConfiguration } from "@hocuspocus/server";
 import {
-  Awareness,
-  encodeAwarenessUpdate,
-  outdatedTimeout,
-} from "y-protocols/awareness";
-import { Server, defaultConfiguration } from "@hocuspocus/server";
-import { getCollabConfig } from "@collab/config.js";
-import {
-  socketCeilings,
-  QUEUED_FRAMES_PER_DOCUMENT,
+  SOCKET_CEILINGS,
+  DOCUMENTS_PER_SOCKET,
 } from "@collab/infra/socket-ceilings.js";
 
 /** Outer message type of an auth frame, as it appears on the wire. */
@@ -64,52 +58,6 @@ const AUTH_SUB_TOKEN = 0;
 
 /** Close code the library uses when a socket exceeds a per-socket limit. */
 const RESET_CONNECTION_CODE = 4205;
-
-/**
- * Bytes one pending document holds in the queue, by ENCODING the frames a
- * real client sends rather than quoting a number: sync-step-one for a
- * document that has content, plus an awareness update carrying a user and a
- * cursor. Reading it this way is what lets a frame growing move the
- * assertion that rests on it.
- * @returns Bytes both queued frames occupy together.
- */
-function measuredQueuedBytesPerDocument(): number {
-  const docName =
-    "project-11111111-1111-4111-8111-111111111111/canvas-22222222-2222-4222-9222-222222222222";
-  const doc = new Y.Doc();
-  doc.getMap("nodesMap").set("n1", "x".repeat(5000));
-
-  const sync = encoding.createEncoder();
-  encoding.writeVarString(sync, docName);
-  encoding.writeVarUint(sync, WIRE_SYNC);
-  syncProtocol.writeSyncStep1(sync, doc);
-
-  const awareness = new Awareness(doc);
-  awareness.setLocalStateField("user", {
-    id: "db131cb6-c3bc-44c2-97a2-575297e883aa",
-    name: "doc-smoke-a",
-    color: "#7c3aed",
-    avatarUrl: "https://example.com/a/very/long/avatar/path/abcdef.png",
-  });
-  awareness.setLocalStateField("cursor", { anchor: 1234, head: 1240 });
-  const presence = encoding.createEncoder();
-  encoding.writeVarString(presence, docName);
-  encoding.writeVarUint(presence, WIRE_AWARENESS);
-  encoding.writeVarUint8Array(
-    presence,
-    encodeAwarenessUpdate(awareness, [awareness.clientID]),
-  );
-
-  const bytes =
-    encoding.toUint8Array(sync).byteLength +
-    encoding.toUint8Array(presence).byteLength;
-  awareness.destroy();
-  doc.destroy();
-  return bytes;
-}
-
-/** The library's queued-byte ceiling, which this project leaves alone. */
-const LIBRARY_QUEUE_BYTE_CEILING = 5 * 1024 * 1024;
 
 let running: Server | undefined;
 let client: WebSocket | undefined;
@@ -135,14 +83,12 @@ function frame(docName: string, type: number, sub?: number): Uint8Array {
  * Start a server whose authentication never settles, so every document a
  * client opens stays pending and the peak is observable.
  * @param ceilings - The per-socket limits to run with; omitted means the
- *   library's own defaults, which is what production inherited before these
- *   values were derived from `config/collab.yaml`.
+ *   library's own defaults.
  * @returns The port it is listening on.
  */
-async function serverHoldingAuth(ceilings?: {
-  maxPendingDocuments: number;
-  maxUnauthenticatedQueueMessages: number;
-}): Promise<number> {
+async function serverHoldingAuth(
+  ceilings?: Partial<typeof SOCKET_CEILINGS>,
+): Promise<number> {
   const server = new Server({
     port: 0,
     // Bound to the address the case connects to: a port the OS hands out for
@@ -166,15 +112,16 @@ async function serverHoldingAuth(ceilings?: {
  * @param documents - How many documents to request.
  * @param full - True sends the auth, sync and awareness frames a real client
  *   sends per document; false sends only the auth frame.
- * @param extraFrames - Further queued frames per document, standing in for a
- *   client with buffered work to replay. This is what the headroom absorbs.
+ * @param backlogFrames - Further queued frames spread across the documents,
+ *   standing in for a client with buffered work to replay. This is what the
+ *   headroom absorbs.
  * @returns The close code if the server closed the socket, else null.
  */
 async function openDocuments(
   port: number,
   documents: number,
   full: boolean,
-  extraFrames = 0,
+  backlogFrames = 0,
 ): Promise<number | null> {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/`);
   client = socket;
@@ -195,18 +142,16 @@ async function openDocuments(
       socket.send(frame(name, WIRE_SYNC, 0));
       socket.send(frame(name, WIRE_AWARENESS));
     }
-    for (let extra = 0; extra < extraFrames; extra += 1) {
-      socket.send(frame(name, WIRE_SYNC, 0));
-    }
+  }
+  for (let i = 0; i < backlogFrames; i += 1) {
+    if (socket.readyState !== WebSocket.OPEN) break;
+    const doc = i % documents;
+    const name = doc === 0 ? "project-many/meta" : `project-many/canvas-${doc}`;
+    socket.send(frame(name, WIRE_SYNC, 0));
   }
   // Long enough for the frames to be read and the close, if any, to arrive.
   await new Promise((resolve) => setTimeout(resolve, 700));
   return closeCode;
-}
-
-/** The ceilings production runs with, derived from the declared number. */
-function productionCeilings(): ReturnType<typeof socketCeilings> {
-  return socketCeilings(getCollabConfig().max_documents_per_socket);
 }
 
 describe("the ceilings that close a whole socket", () => {
@@ -214,11 +159,9 @@ describe("the ceilings that close a whole socket", () => {
     // The case the whole subject exists for. Sending only auth frames passes
     // even against the library's queued-frame default, which is exactly how
     // that ceiling stayed hidden while the one above it was raised.
-    const port = await serverHoldingAuth(productionCeilings());
+    const port = await serverHoldingAuth(SOCKET_CEILINGS);
 
-    expect(
-      await openDocuments(port, getCollabConfig().max_documents_per_socket, true),
-    ).toBeNull();
+    expect(await openDocuments(port, DOCUMENTS_PER_SOCKET, true)).toBeNull();
   });
 
   it("is capped by the library below a full project even when only auth frames go out", async () => {
@@ -227,15 +170,10 @@ describe("the ceilings that close a whole socket", () => {
     expect(await openDocuments(port, 150, false)).toBe(RESET_CONNECTION_CODE);
   });
 
-  it("has room left when a client queues more frames than the measurement", async () => {
-    // What the headroom factor is FOR, and the only case that can see it. A
-    // client replaying buffered work sends more than the two frames the
-    // derivation counts on; without headroom the ceiling sits exactly on the
-    // measured figure and the first extra frame closes the socket.
-    const port = await serverHoldingAuth(productionCeilings());
-    const documents = getCollabConfig().max_documents_per_socket;
+  it("keeps a full project's socket open through a long offline backlog", async () => {
+    const port = await serverHoldingAuth(SOCKET_CEILINGS);
 
-    expect(await openDocuments(port, documents, true, 1)).toBeNull();
+    expect(await openDocuments(port, DOCUMENTS_PER_SOCKET, true, 3000)).toBeNull();
   });
 
   it("is capped by the library at half that once the sync and awareness frames ride along", async () => {
@@ -244,45 +182,31 @@ describe("the ceilings that close a whole socket", () => {
     // still dies, because each document queues two frames against a separate
     // count of 1000.
     const port = await serverHoldingAuth({
-      maxPendingDocuments: getCollabConfig().max_documents_per_socket,
-      maxUnauthenticatedQueueMessages: 1000,
+      maxPendingDocuments: 1000,
+      maxUnauthenticatedQueueMessages: defaultConfiguration.maxUnauthenticatedQueueMessages,
     });
 
     expect(await openDocuments(port, 520, true)).toBe(RESET_CONNECTION_CODE);
   });
 });
 
-describe("deriving the ceilings from one declared number", () => {
-  it("moves both ceilings together", () => {
-    const small = socketCeilings(10);
-    const large = socketCeilings(1000);
-
-    expect(large.maxPendingDocuments).toBeGreaterThan(small.maxPendingDocuments);
-    expect(large.maxUnauthenticatedQueueMessages).toBeGreaterThan(
-      small.maxUnauthenticatedQueueMessages,
-    );
+describe("deriving the ceilings from a project's Space cap", () => {
+  it("sets the pending-document ceiling to a full project's documents", () => {
+    expect(SOCKET_CEILINGS.maxPendingDocuments).toBe(DOCUMENTS_PER_SOCKET);
   });
 
-  it("sets the pending-document ceiling to the declared number itself", () => {
-    expect(socketCeilings(1000).maxPendingDocuments).toBe(1000);
-  });
-
-  it("keeps the frame count from outgrowing the byte ceiling it does not control", () => {
-    // The ordering that lets the byte ceiling stay at the library's value:
-    // bytes are what actually bound memory, so the frame count must never be
-    // the looser of the two. The byte figure is ENCODED here rather than
-    // written down, so a frame that grows really does move this assertion.
-    const documents = getCollabConfig().max_documents_per_socket;
-    const ceilings = socketCeilings(documents);
-    const bytesPerFrame = measuredQueuedBytesPerDocument() / QUEUED_FRAMES_PER_DOCUMENT;
-    const worstCaseBytes = ceilings.maxUnauthenticatedQueueMessages * bytesPerFrame;
-
-    expect(worstCaseBytes).toBeLessThan(LIBRARY_QUEUE_BYTE_CEILING);
+  it("runs with 201 pending documents and 16333 queued frames", () => {
+    // Pinned as values: the derivation can move either one without any
+    // relation between them breaking, and the startup log prints these two.
+    expect(SOCKET_CEILINGS).toEqual({
+      maxPendingDocuments: 201,
+      maxUnauthenticatedQueueMessages: 16333,
+    });
   });
 
   it("keeps the client's heartbeat well inside the server's silence timeout", () => {
-    // The fourth termination site (hocuspocus-server.esm.js:819) closes a
-    // socket that has sent nothing for `timeout`. Since hocuspocus 4 the
+    // The silence timeout closes a socket that has sent nothing for
+    // `timeout`. Since hocuspocus 4 the
     // server no longer pings, so the only thing holding a socket open while
     // nobody types is the awareness heartbeat: y-protocols re-announces local
     // state every `outdatedTimeout / 2`. Both numbers belong to libraries, so
@@ -291,5 +215,40 @@ describe("deriving the ceilings from one declared number", () => {
     const heartbeatPeriodMs = outdatedTimeout / 2;
 
     expect(heartbeatPeriodMs * 2).toBeLessThan(defaultConfiguration.timeout);
+  });
+});
+
+describe("a frame queued before authentication", () => {
+  it("keeps only its own bytes, not the read buffer it arrived in", () => {
+    // ws hands each frame over as a view into the socket read chunk (up to
+    // 64 KB). Queued as that view, one 51-byte frame keeps the whole chunk
+    // alive, and a client padding every read with ping frames turns the
+    // queued-frame ceiling into a gigabyte. The patch in
+    // `patches/@hocuspocus__server@4.6.0.patch` copies the frame on the way
+    // into the queue.
+    const hocuspocus = new Hocuspocus({
+      quiet: true,
+      onAuthenticate: () => new Promise<never>(() => {}),
+    });
+    const socket = { readyState: 1, close: () => {}, send: () => {} };
+    const connection = hocuspocus.handleConnection(
+      socket,
+      { headers: {}, url: "/" } as never,
+    ) as unknown as {
+      handleMessage: (data: Uint8Array) => void;
+      incomingMessageQueue: Record<string, Uint8Array[]>;
+      handleClose: (event?: unknown) => void;
+    };
+    const payload = frame("project-q/meta", WIRE_SYNC, 0);
+    const readChunk = new Uint8Array(64 * 1024);
+    readChunk.set(payload, 1000);
+    const view = readChunk.subarray(1000, 1000 + payload.byteLength);
+
+    connection.handleMessage(view);
+    const queued = connection.incomingMessageQueue["project-q/meta"]?.[0];
+    connection.handleClose();
+
+    expect(queued).toEqual(payload);
+    expect(queued?.buffer.byteLength).toBe(payload.byteLength);
   });
 });

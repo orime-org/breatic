@@ -308,11 +308,13 @@
     "empty": {
       "greetingWithName": "Hi, {name}!",
       "greetingDefault": "Hi!",
-      "hintDirect": "Type your prompt below ↓",
+      "capabilities": "I can find material, write articles and scripts, build generation flows on the canvas, and edit Documents",
       "quick": {
         "findReference": "Find cyberpunk-style reference images",
-        "writePrompt": "Write a prompt for an illustration",
-        "refinePrompt": "Make my prompt more specific"
+        "writeScript": "Write a script for a three-minute short film",
+        "buildWorkflow": "Build a character turnaround on the canvas",
+        "annotateDocument": "Suggest edits to my Document",
+        "writePrompt": "Write a prompt for an illustration"
       }
     },
     "history": {
@@ -1300,7 +1302,11 @@
         "create": "Failed to create space",
         "restore": "Failed to restore space",
         "unreachable": "No answer from the server — check your connection and try again",
-        "notSynced": "Project is still syncing — try again in a moment"
+        "notSynced": "Project is still syncing — try again in a moment",
+        "limit": "Reached the limit of {max} Spaces",
+        "busy": "Another member is changing Spaces. Try again in a moment",
+        "alreadyRestored": "This Space is already restored",
+        "gone": "This Space has been deleted"
       },
       "loading": {
         "create": "Creating Space…"
@@ -1405,7 +1411,6 @@
         "deleteConfirmDescription": "This space and its content will be soft-deleted. Owners can restore it from the project messages channel.",
         "lockFail": "Failed to lock",
         "unlockFail": "Failed to unlock",
-        "operationFail": "Operation failed",
         "deleteFail": "Failed to delete"
       }
     },
@@ -2141,6 +2146,8 @@
     "declinedBody": "There is nothing left to do here.",
     "expiredTitle": "This request has ended",
     "expiredBody": "It can no longer be answered.",
+    "invalidatedTitle": "This request is no longer valid",
+    "invalidatedBody": "It can no longer be answered.",
     "revokedTitle": "This was withdrawn",
     "revokedBody": "The person who sent it took it back.",
     "goneTitle": "This is no longer here",
@@ -2391,5 +2398,36 @@
   "pageLoadError": {
     "message": "This page could not be loaded. Please try again.",
     "retry": "Try again"
+  },
+  "consent": {
+    "link": "Cookie settings",
+    "banner": {
+      "text": "We use cookies to keep the site working. With your consent we also use them to see how the product is used (product analytics) and to measure our ads (advertising). You can change this anytime in Cookie settings.",
+      "privacy": "Privacy Policy",
+      "acceptAll": "Accept all",
+      "rejectAll": "Reject all",
+      "settings": "Settings",
+      "gpc": "Your browser sends Global Privacy Control, so advertising is off by default."
+    },
+    "settings": {
+      "title": "Cookie settings",
+      "save": "Save",
+      "close": "Close",
+      "status": {
+        "gpc": "Your browser sends Global Privacy Control, so advertising is off by default."
+      },
+      "necessary": {
+        "title": "Necessary",
+        "description": "Sign-in, theme and language, and this choice itself. Always on."
+      },
+      "analytics": {
+        "title": "Product analytics",
+        "description": "Counts how features are used. Never includes the content of your Projects."
+      },
+      "ads": {
+        "title": "Advertising",
+        "description": "Measures which ads lead to sign-ups, purchases and other key steps."
+      }
+    }
   }
 }

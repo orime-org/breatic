@@ -20,17 +20,27 @@
  * not fire on the bare upgrade, only once the client names a document. Hence
  * the handshake and the first frame.
  *
- * A local socket's peer is always loopback, so only the exempt branch is
- * reachable here. The refusal branch is covered by the unit tests, which can
- * hand the gate any peer address they like.
+ * A socket to 127.0.0.1 has a loopback peer, so it only reaches the exempt
+ * branch. The counting branch is reached by connecting to this machine's own
+ * non-loopback address, whose peer is that address.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { connect as connectTcp } from "node:net";
+import { networkInterfaces } from "node:os";
 import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { Server } from "@hocuspocus/server";
-import { createConnectionGate } from "@collab/infra/connection-gate.js";
+import type * as CoreModule from "@breatic/core";
+import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { isLoopbackIp } from "@breatic/core";
+
+// The gate logs its refusals; this file runs without initCore, so the logger
+// is a stand-in and everything else is the real module.
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof CoreModule>()),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}));
 
 /** Outer message type of an auth frame, as it appears on the wire. */
 const WIRE_AUTH = 2;
@@ -71,7 +81,7 @@ async function serverRecording(
     address: "127.0.0.1",
     quiet: true,
     extensions: [
-      createConnectionGate(async () => undefined),
+      createConnectionGate({ count: async () => true, isBanned: async () => false }),
       {
         // Runs after the gate on the same hook, so it observes exactly what
         // the rest of the connection path will see.
@@ -146,5 +156,128 @@ describe("connection gate on a live server", () => {
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toBeNull();
+  });
+});
+
+/**
+ * An address of this machine that is not loopback, so a connection to it has
+ * a non-loopback peer and reaches the gate's counting branch.
+ * @returns The address.
+ * @throws {Error} When the machine has no such address.
+ */
+function lanAddress(): string {
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries ?? []) {
+      if (entry.family === "IPv4" && !entry.internal) return entry.address;
+    }
+  }
+  throw new Error("this machine has no non-loopback IPv4 address to connect through");
+}
+
+/**
+ * Start a server listening on every interface with the given throttle.
+ * @param throttle - The throttle the gate counts with.
+ * @returns The port.
+ */
+async function serverCounting(
+  throttle: {
+    count: (identity: string) => Promise<boolean>;
+    isBanned: (identity: string) => Promise<boolean>;
+  },
+  rejectAuth = false,
+): Promise<number> {
+  const gate = createConnectionGate(throttle);
+  const server = new Server({
+    port: 0,
+    address: "0.0.0.0",
+    quiet: true,
+    extensions: [gate],
+    ...(rejectAuth
+      ? {
+          onAuthenticate: recordingFailedAuth(async () => {
+            throw new Error("session_not_found");
+          }, gate),
+        }
+      : {}),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  running = server;
+  await server.listen();
+  return server.address.port;
+}
+
+describe("connection gate counting on a live server", () => {
+  it("counts a WebSocket and its failed authentication once, however many documents fail", async () => {
+    // Pins what the failure tally relies on: hocuspocus hands every document
+    // on one socket the same request object.
+    const host = lanAddress();
+    const count = vi.fn(async () => true);
+    const port = await serverCounting({ count, isBanned: async () => false }, true);
+
+    const socket = new WebSocket(`ws://${host}:${port}/`, { headers: { "x-real-ip": "203.0.113.9" } });
+    await new Promise<void>((resolve, reject) => {
+      socket.on("open", () => resolve());
+      socket.on("error", reject);
+    });
+    for (const doc of ["project-live/meta", "project-live/canvas-a", "project-live/canvas-b"]) {
+      socket.send(authFrame(doc));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    socket.close();
+
+    expect(count).toHaveBeenCalledTimes(2);
+  });
+
+  it("answers 429 and releases the socket for an address over the limit", async () => {
+    const host = lanAddress();
+    const port = await serverCounting({ count: async () => false, isBanned: async () => false });
+
+    const status = await new Promise<number>((resolve, reject) => {
+      const socket = new WebSocket(`ws://${host}:${port}/`, { headers: { "x-real-ip": "203.0.113.9" } });
+      socket.on("unexpected-response", (_req, res) => resolve(res.statusCode ?? 0));
+      socket.on("open", () => reject(new Error("the upgrade went through")));
+      socket.on("error", () => undefined);
+    });
+
+    expect(status).toBe(429);
+  });
+
+  it("survives a client that resets the connection while the count is pending", async () => {
+    const host = lanAddress();
+    let release!: () => void;
+    const counting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const port = await serverCounting({
+      count: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        release();
+        return true;
+      },
+      isBanned: async () => false,
+    });
+
+    const raw = connectTcp({ host, port });
+    await new Promise<void>((resolve) => raw.once("connect", () => resolve()));
+    raw.write(
+      [
+        "GET / HTTP/1.1",
+        `Host: ${host}:${port}`,
+        "Upgrade: websocket",
+        "Connection: Upgrade",
+        "Sec-WebSocket-Version: 13",
+        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+        "x-real-ip: 203.0.113.9",
+        "",
+        "",
+      ].join("\r\n"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    raw.resetAndDestroy();
+    await counting;
+    // Give the reset error a turn to surface; an unhandled one fails the run.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(raw.destroyed).toBe(true);
   });
 });

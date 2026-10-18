@@ -16,12 +16,11 @@
  * One parser, one fallback, both callers.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * This module imports NOTHING from `@breatic/shared`, and that is load-bearing:
- * playwright compiles config files to CJS and `require()`s them, while
- * `@breatic/shared` is ESM-only (its `exports` map has no `require` condition).
- * Importing it from here makes `playwright test` die at config load with
- * ERR_PACKAGE_PATH_NOT_EXPORTED. The backend ports live in `proxy-targets.mts`,
- * which only vite (ESM) loads.
+ * This module imports nothing from `@breatic/shared`. Playwright needs only
+ * the dev-server port, and `@breatic/shared` resolves to its built `dist`, so
+ * keeping it out of here means loading the playwright config never depends on
+ * shared having been built. The backend ports live in `proxy-targets.mts`,
+ * which only vite loads.
  */
 import path from 'path';
 import { loadEnv } from 'vite';

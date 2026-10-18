@@ -6,12 +6,9 @@
  *
  * Separate from `dev-ports.mts` because of who imports what. The default ports
  * come from `@breatic/shared`, so the core env schema and this config read ONE
- * declaration instead of two copies that drift (#1831) — but `@breatic/shared`
- * is ESM-only, and playwright loads its config through CJS `require()`. Keeping
- * the shared import out of `dev-ports.mts` is what lets playwright (which only
- * needs the dev-server port) load without tripping ERR_PACKAGE_PATH_NOT_EXPORTED.
- *
- * Only vite imports this file, and vite loads configs as ESM.
+ * declaration instead of two copies that drift (#1831). Only vite needs the
+ * backend targets, so only vite imports this file; playwright, which needs
+ * only the dev-server port, loads `dev-ports.mts` without touching shared.
  */
 import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from '@breatic/shared';
 import { loadRootEnv, parsePort } from './dev-ports.mjs';

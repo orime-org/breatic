@@ -11,6 +11,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import {
   ActivityNewSignalSchema,
+  MAX_SPACES_PER_PROJECT,
   t as translate,
   type ProjectActivityEntry,
   type ProjectActivityType,
@@ -29,14 +30,16 @@ import {
   SheetTrigger,
 } from '@web/components/ui/sheet';
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
-import { formatCredits } from '@web/lib/format-credits';
+import { asFiniteCredits } from '@web/lib/as-finite-credits';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
-import { PreviewImg } from '@web/components/preview-img';
+import { PreviewImg } from '@web/components/PreviewImg';
 
 /**
  * Project activity feed surfaced by the Activity icon on the
@@ -61,6 +64,8 @@ export interface ProjectActivityButtonProps {
   currentUserRole?: ProjectRole;
   /** Owner restore handler. Promise lets us show transient progress. */
   onRestore?: (spaceId: string) => Promise<void> | void;
+  /** The project already holds the Space cap, so a restore would be refused. */
+  spaceLimitReached?: boolean;
 }
 
 /**
@@ -259,14 +264,14 @@ export function entryMedia(entry: ProjectActivityEntry): ActivityMedia | null {
  * the credits went is the studio's credits page. Uploads, failures, space and
  * member events and frontend mini-tools carry none.
  *
- * Gates through the shared {@link formatCredits} so it matches the
+ * Gates through the shared {@link asFiniteCredits} so it matches the
  * node-history row (spec §6.4 / INV-8).
  * @param entry - The feed entry.
  * @returns The credit cost, or undefined.
  */
 function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
   if (entry.type !== 'generation:succeeded') return undefined;
-  return formatCredits(entry.payload['credits']);
+  return asFiniteCredits(entry.payload['credits']);
 }
 
 /**
@@ -279,6 +284,7 @@ function entryActivityCredits(entry: ProjectActivityEntry): number | undefined {
  * @param root0.provider - Live meta-doc provider carrying the activity:new signal.
  * @param root0.currentUserRole - Caller's role, driving owner-only affordances.
  * @param root0.onRestore - Owner restore handler invoked with the deleted space's id.
+ * @param root0.spaceLimitReached - The project holds the Space cap; Restore is unavailable and says why when hovered or pressed.
  * @returns The history trigger button and its activity feed sheet.
  */
 export function ProjectActivityButton({
@@ -286,6 +292,7 @@ export function ProjectActivityButton({
   provider,
   currentUserRole,
   onRestore,
+  spaceLimitReached = false,
 }: ProjectActivityButtonProps): JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = useExclusiveOverlay('project-activity');
@@ -532,18 +539,42 @@ export function ProjectActivityButton({
                       </div>
                     </div>
                     {canRestore ? (
-                      <Button
-                        variant={null}
-                        size={null}
-                        type='button'
-                        onClick={() => m.spaceId && onClickRestore(m.spaceId)}
-                        loading={restoring.isPending(m.spaceId ?? '')}
-                        icon={<RotateCcw className='h-3 w-3' aria-hidden />}
-                        data-testid={`project-activity-restore-${m.id}`}
-                        className='mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent disabled:opacity-50'
-                      >
-                        {t('activity.action.restore')}
-                      </Button>
+                      // No content below the cap, so leaving the trigger has to
+                      // close it (see SpaceTabBar's new-Space tooltip).
+                      <Tooltip disableHoverableContent>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={null}
+                            size={null}
+                            type='button'
+                            onClick={() => {
+                              if (spaceLimitReached) {
+                                toast.warning(
+                                  t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT }),
+                                );
+                                return;
+                              }
+                              if (m.spaceId) onClickRestore(m.spaceId);
+                            }}
+                            loading={restoring.isPending(m.spaceId ?? '')}
+                            aria-disabled={spaceLimitReached || undefined}
+                            icon={<RotateCcw className='h-3 w-3' aria-hidden />}
+                            data-testid={`project-activity-restore-${m.id}`}
+                            className={`mt-0.5 inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-2xs text-foreground hover-enabled:bg-accent ${
+                              spaceLimitReached ? 'opacity-50' : ''
+                            }`}
+                          >
+                            {t('activity.action.restore')}
+                          </Button>
+                        </TooltipTrigger>
+                        {spaceLimitReached ? (
+                          // Restore sits at the panel's right edge; aligned to
+                          // its end the tooltip stays inside the panel.
+                          <TooltipContent align='end'>
+                            {t('project.space.error.limit', { max: MAX_SPACES_PER_PROJECT })}
+                          </TooltipContent>
+                        ) : null}
+                      </Tooltip>
                     ) : showRestoredBadge ? (
                       <Button
                         variant={null}

@@ -8,6 +8,7 @@
  * Streaming responses use Server-Sent Events via Hono's streaming helper.
  */
 
+import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
@@ -271,6 +272,10 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
+
+  // A message in the project's Agent chat is a collaboration action (inner#1442
+  // §4.8). Reported alongside the turn; it never rejects.
+  void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
 
   return streamTurn(
     c,

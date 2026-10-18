@@ -22,7 +22,7 @@ import {
   fetchCreditLots,
   requestCreditLotRefund,
 } from '@web/data/api/credits';
-import { SectionSkeleton } from '@web/components/section-skeleton';
+import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   ScrollCard,
   ListEnd,
@@ -36,9 +36,7 @@ import {
   SectionError,
   formatMoney,
 } from '@web/features/credits/section-chrome';
-import {
-  invalidateAccountReads,
-} from '@web/features/credits/account-reads';
+import { creditLotsKey, invalidateAccountReads } from '@web/features/credits/account-reads';
 import { useCreditsPaging } from '@web/features/credits/use-credits-paging';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -128,7 +126,7 @@ export function RefundsSection({
     [],
   );
   const paging = useCreditsPaging<CreditLotView>({
-    queryKey: ['credits', 'lots', userId, 'all'],
+    queryKey: creditLotsKey(userId, 'all'),
     read,
     enabled: billing && userId !== null,
   });

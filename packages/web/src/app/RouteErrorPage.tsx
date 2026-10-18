@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useRouteError } from 'react-router-dom';
-import { ApplicationErrorPage } from '@web/components/application-error-page';
+import { ApplicationErrorPage } from '@web/components/ApplicationErrorPage';
 
 /** A report owned by one mounted AppRouter; not a cross-page event store. */
 export interface RouteErrorReport {

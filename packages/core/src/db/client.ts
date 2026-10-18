@@ -285,8 +285,11 @@ export const yjsDb: PostgresJsDatabase<Record<string, never>> = new Proxy(
 /**
  * Transaction handle type for the yjs DB, inferred from
  * `yjsDb.transaction`'s callback parameter. The yjs-DB repo uses
- * this for yjs-DB-local transactions; it is a DISTINCT type from
- * {@link DbTx} (a business-DB tx) — the two DBs cannot share a tx.
+ * this for yjs-DB-local transactions. It is structurally the same type as
+ * {@link DbTx}, so the compiler accepts one where the other is expected;
+ * the two DBs still cannot share a tx. What keeps a business-DB tx out of
+ * yjs queries is that outside core only collab queries `yjsDb`, and collab
+ * cannot import `@breatic/domain` (`collab-no-domain-import`).
  */
 export type YjsDbTx = Parameters<Parameters<typeof yjsDb.transaction>[0]>[0];
 

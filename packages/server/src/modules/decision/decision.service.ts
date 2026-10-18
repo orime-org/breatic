@@ -47,6 +47,7 @@ import type { RequestDetail } from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { MS_PER_DAY } from "@server/config/limits.js";
+import type { RequestFailedReason } from "@breatic/shared";
 
 
 /** Terminal status words meaning the recipient said yes. */
@@ -76,19 +77,20 @@ const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
 
 
 /**
- * Decides which of the four dead ends, or none of them, this request is in.
+ * Decides which dead end, if any, this request is in.
  *
  * Order is load-bearing. Deleted wins over everything, because a request that
  * went away with its project is gone whatever its status column still says.
- * Then the terminal statuses, then the two expiry checks; already-a-member
+ * Then the terminal statuses, a failed one by its reason, then the clock; already-a-member
  * comes LAST, so it can only ever downgrade a request that would otherwise be
- * answerable — an accepted or expired invite reports its own state, not the
+ * answerable — an accepted or failed invite reports its own state, not the
  * membership. And it applies ONLY to invites: the other four flows require
  * the recipient to be a member already, so asking "are you in?" there would
  * leave them permanently unanswerable.
  * @param input - What is known about the request.
  * @param input.kind - Which flow it belongs to.
  * @param input.status - Its own table's status word.
+ * @param input.failedReason - Why it ended, when its status is `failed`.
  * @param input.deleted - Whether the row was soft-deleted with its container.
  * @param input.expiresAt - When the answering window closes.
  * @param input.recipientAlreadyIn - Whether the recipient already belongs to
@@ -98,6 +100,7 @@ const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
 function decideState(input: {
   kind: DecisionKind;
   status: string;
+  failedReason: RequestFailedReason | null;
   deleted: boolean;
   expiresAt: Date;
   recipientAlreadyIn: boolean;
@@ -106,7 +109,9 @@ function decideState(input: {
   if (ACCEPTED.has(input.status)) return "accepted";
   if (DECLINED.has(input.status)) return "declined";
   if (WITHDRAWN.has(input.status)) return "revoked";
-  if (input.status === "expired") return "expired";
+  if (input.status === "failed") {
+    return input.failedReason === "invalidated" ? "invalidated" : "expired";
+  }
   // A timed-out row keeps `status = 'pending'` until a reaper rewrites it, so
   // the clock has to be checked as well as the column.
   if (input.expiresAt.getTime() <= Date.now()) return "expired";
@@ -148,6 +153,7 @@ export async function viewByToken(
   const state = decideState({
     kind: found.kind,
     status: found.status,
+    failedReason: found.failedReason,
     deleted: found.deleted,
     expiresAt: found.expiresAt,
     recipientAlreadyIn,
@@ -370,6 +376,7 @@ export async function respond(
   const state = decideState({
     kind: found.kind,
     status: found.status,
+    failedReason: found.failedReason,
     deleted: found.deleted,
     expiresAt: found.expiresAt,
     recipientAlreadyIn,

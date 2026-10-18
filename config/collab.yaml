@@ -55,45 +55,23 @@ max_document_bytes: 10485760     # 10 MB
 # process-wide constant (#88). A connection beyond it is degraded to read-only,
 # not refused.
 #
-# How many documents one socket must be able to carry.
-#
-# One browser tab holds ONE socket for a project and puts every document it
-# needs on it: the meta doc plus one per open Space tab. A first visit opens
-# one Space, but nothing stops a member opening every Space in the project
-# from the drawer, so the figure this has to survive is still "however many
-# Spaces the project has", and nothing caps that.
-#
-# This one number feeds SEVERAL library limits, each of which closes the WHOLE
-# socket when crossed — every Space on it goes blank and the client reconnects
-# into the same wall. They are derived together in
-# infra/socket-ceilings.ts rather than listed here, because raising one alone
-# is not a fix: that is exactly what happened when only the pending-document
-# limit was raised, and the socket then died on the frame-count limit at half
-# the number written here. Measured for a 1000-document socket carrying the
-# frames a real client sends:
-#
-#   pending documents    library default 100    fires first        -> derived
-#   queued frame count   library default 1000   fires at ~500 docs -> derived
-#   queued frame bytes   library default 5 MB   ~390 KB used       -> left alone
-#   idle timeout         library default 60 s   client beats well inside -> left alone
-#
-# The byte ceiling is deliberately left at the library's value: it is the one
-# that actually bounds memory, so it stays as a real guard behind the two
-# generous derived ones. Per-IP abuse is bounded by the throttle below.
-#
-# Residual: a project past this many Spaces hits the wall again. The answer
-# then is a cap on Spaces per project, not a bigger number here.
-max_documents_per_socket: 1000
+# How many documents one socket may carry is not here either: it follows the
+# Space cap in @breatic/shared (MAX_SPACES_PER_PROJECT, plus the meta doc), and
+# the library ceilings that close a whole socket are derived from it in
+# infra/socket-ceilings.ts.
 
 # ── Throttle ──────────────────────────────────────
 # Coarse per-address DoS backstop, counted per IPv4 address or IPv6 /64.
 # Loopback peers are exempt — see infra/connection-gate.ts, which decides from the raw peer address during the
 # WebSocket upgrade.
-# One user opens many doc-connections (meta + every Space, x2 under dev StrictMode),
-# so keep the threshold generous to avoid false-banning legitimate users; fine-grained
-# abuse control belongs at the authenticated-user layer, not per-IP.
+# An attempt is one new WebSocket, or one WebSocket whose authentication failed
+# (its documents failing together count once; past a full project's documents,
+# every further failure on it counts). One WebSocket carries a
+# whole project, so opening every Space is one attempt; the threshold stays
+# generous because many members can share one address (an office NAT), and
+# fine-grained abuse control belongs at the authenticated-user layer, not per-IP.
 throttle_enabled: true
-throttle_max_attempts: 200       # max connections per address within the 60s window before a ban
+throttle_max_attempts: 200       # max attempts per address within the 60s window before a ban
 throttle_ban_time: 1             # ban duration in MINUTES (shared-throttle.ts sets the ban key with EX minutes*60 — NOT ms)
 
 # ── Persistence ───────────────────────────────────

@@ -499,6 +499,19 @@ export default [
     plugins: { breatic: breaticPlugin },
     rules: {
       'breatic/no-raw-button': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/components/ui/button.tsx',
+      'src/pages/_dev/**',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      '**/*.spec.{ts,tsx}',
+    ],
+    plugins: { breatic: breaticPlugin },
+    rules: {
       'breatic/no-hand-written-button-spinner': 'error',
     },
   },
@@ -658,6 +671,6 @@ export default [
   {
     // Build output and Playwright artefacts are not ours to lint. Without
     // this the package-wide scope above would try to parse minified bundles.
-    ignores: ['dist/**', 'test-results/**', 'coverage/**', 'playwright-report/**'],
+    ignores: ['dist/**', 'test-results/**', 'coverage/**', 'playwright-report/**', 'playwright/.consent/**'],
   },
 ];

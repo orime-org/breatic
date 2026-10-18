@@ -80,6 +80,7 @@ vi.mock("../roleUpgradeRequests.repo.js", () => ({
   getProjectIdOf: vi.fn(),
   lockRequest: vi.fn(),
   settleIfPending: vi.fn(async () => true),
+  failIfPending: vi.fn(async () => true),
   cancelIfPending: vi.fn(),
   findLiveForRequester: vi.fn(),
 }));
@@ -464,14 +465,15 @@ describe("approve", () => {
       }),
     ).rejects.toBeInstanceOf(ConflictError);
     expect(requestsRepo.settleIfPending).not.toHaveBeenCalled();
+    expect(requestsRepo.failIfPending).not.toHaveBeenCalled();
     expect(notificationRepo.retire).not.toHaveBeenCalled();
     expect(projectMembersRepo.updateRoleUnderOwner).not.toHaveBeenCalled();
   });
 
   it("settles a timed-out request instead of leaving it pending forever", async () => {
     // Nobody answered in time, so no other path will ever write this down —
-    // "expired" is by definition the case where nothing else runs. Leaving it
-    // pending would hold the requester's slot for good.
+    // a timed-out request is by definition the case where nothing else runs.
+    // Leaving it pending would hold the requester's slot for good.
     vi.mocked(requestsRepo.lockRequest).mockResolvedValueOnce(
       lockedRow({ expired: true }),
     );
@@ -482,12 +484,12 @@ describe("approve", () => {
         ownerUserId: OWNER,
       }),
     ).rejects.toBeInstanceOf(ConflictError);
-    expect(requestsRepo.settleIfPending).toHaveBeenCalledWith(
+    expect(requestsRepo.failIfPending).toHaveBeenCalledWith(
       RID,
       "expired",
-      null,
       expect.anything(),
     );
+    expect(requestsRepo.settleIfPending).not.toHaveBeenCalled();
     expect(notificationRepo.retire).toHaveBeenCalledWith(
       NID,
       expect.anything(),
@@ -511,6 +513,7 @@ describe("approve", () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(requestsRepo.settleIfPending).not.toHaveBeenCalled();
+    expect(requestsRepo.failIfPending).not.toHaveBeenCalled();
     expect(notificationRepo.retire).not.toHaveBeenCalled();
     expect(projectMembersRepo.updateRoleUnderOwner).not.toHaveBeenCalled();
   });
@@ -566,6 +569,7 @@ describe("approve", () => {
       }),
     ).rejects.toBeInstanceOf(ForbiddenError);
     expect(requestsRepo.settleIfPending).not.toHaveBeenCalled();
+    expect(requestsRepo.failIfPending).not.toHaveBeenCalled();
     expect(notificationRepo.retire).not.toHaveBeenCalled();
   });
 });

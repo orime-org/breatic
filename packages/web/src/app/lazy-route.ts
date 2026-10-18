@@ -12,7 +12,7 @@ import {
 
 import { captureException } from '@sentry/react';
 
-import { PageUnavailableScreen } from '@web/components/page-unavailable-screen';
+import { PageUnavailableScreen } from '@web/components/PageUnavailableScreen';
 
 /** A route's page, able to start its own download before it renders. */
 type Preloadable = { preload?: () => void };

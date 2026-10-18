@@ -284,7 +284,7 @@
   "chat": {
     "composer": {
       "chipsAria": "已选 chips",
-      "placeholder": "问点什么，或者把画布上的东西交给我…",
+      "placeholder": "问点什么，或者把 Canvas 上的东西交给我…",
       "inputAria": "Chat 输入",
       "send": "发送",
       "sending": "发送中",
@@ -308,11 +308,13 @@
     "empty": {
       "greetingWithName": "嗨, {name}!",
       "greetingDefault": "嗨!",
-      "hintDirect": "在下方输入对话 ↓",
+      "capabilities": "我可以帮你找素材、写文章和剧本、在 Canvas 上搭生成流程、修改 Document",
       "quick": {
         "findReference": "帮我找赛博朋克风格的参考图",
-        "writePrompt": "帮我写一个生成插画的提示词",
-        "refinePrompt": "帮我把这段提示词改得更具体"
+        "writeScript": "帮我写一个三分钟短片的剧本",
+        "buildWorkflow": "帮我在 Canvas 上搭一个生成角色三视图的流程",
+        "annotateDocument": "帮我给 Document 提修改意见",
+        "writePrompt": "帮我写一个生成插画的提示词"
       }
     },
     "history": {
@@ -355,7 +357,7 @@
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
-      "checkingCanvas": "正在查画布能做什么",
+      "checkingCanvas": "正在查 Canvas 能做什么",
       "proposingNodes": "正在拟一份提议",
       "proposingDocumentEdit": "正在拟一份修改提议",
       "savingImage": "正在保存图片",
@@ -409,7 +411,7 @@
       "building": "正在建…",
       "failed": "没建成，可以再试一次。",
       "expired": "这张提议已过期，请让 Agent 重新提议。",
-      "needCanvas": "先打开一个画布。",
+      "needCanvas": "先打开一个 Canvas。",
       "promptReady": "提示词已写好，右键节点选「生成」，在打开的生成面板里查看",
       "settingsReady": "设置已配好，右键节点选「生成」，在打开的生成面板里查看"
     },
@@ -441,7 +443,7 @@
     "thinkingNow": "思考中",
     "thinkingFor": "思考了 {m, plural, =0 {} other {# 分 }}{s, number} 秒",
     "attachment": {
-      "kind": "{kind, select, canvas {画布} image {图片} video {视频} audio {音频} text {文本} other {内容}}",
+      "kind": "{kind, select, canvas {Canvas} image {图片} video {视频} audio {音频} text {文本} other {内容}}",
       "nodes": "{count} 个节点",
       "more": "还有 {count} 个"
     }
@@ -469,8 +471,8 @@
       "nodeAudio": "音频"
     },
     "emptyState": {
-      "title": "画布是空的",
-      "hint": "拖入素材到画布,或从左侧菜单选择节点类型创建"
+      "title": "Canvas 是空的",
+      "hint": "拖入素材到 Canvas,或从左侧菜单选择节点类型创建"
     },
     "nodePlaceholder": {
       "text": "双击书写",
@@ -527,8 +529,8 @@
       "focus": "聚焦",
       "reference": "参考",
       "focusTip": "取节点上的一块区域作为参考",
-      "referenceTip": "从画布选图作为参考",
-      "referenceTipAudio": "从画布选文字作为参考",
+      "referenceTip": "从 Canvas 选图作为参考",
+      "referenceTipAudio": "从 Canvas 选文字作为参考",
       "emptyImageReference": "尚未生成或上传",
       "emptyTextReference": "暂无内容",
       "refuseInsertModeOff": "这一档不使用参考素材",
@@ -557,12 +559,12 @@
       "voiceVolume": "音量",
       "sfxDuration": "时长",
       "sfxDurationSeconds": "{n} 秒",
-      "selectFromCanvas": "从画布选择参考",
-      "selectFirstFrameFromCanvas": "在画布上选一张图片作为首帧",
-      "selectEndFrameFromCanvas": "在画布上选一张图片作为尾帧",
-      "selectCharacterImageFromCanvas": "在画布上选一张图片作为角色",
-      "selectDrivingVideoFromCanvas": "在画布上选一段视频来驱动动作",
-      "selectDrivingAudioFromCanvas": "在画布上选一段音频，口型跟着它动",
+      "selectFromCanvas": "从 Canvas 选择参考",
+      "selectFirstFrameFromCanvas": "在 Canvas 上选一张图片作为首帧",
+      "selectEndFrameFromCanvas": "在 Canvas 上选一张图片作为尾帧",
+      "selectCharacterImageFromCanvas": "在 Canvas 上选一张图片作为角色",
+      "selectDrivingVideoFromCanvas": "在 Canvas 上选一段视频来驱动动作",
+      "selectDrivingAudioFromCanvas": "在 Canvas 上选一段音频，口型跟着它动",
       "exitSelect": "退出",
       "locateSource": "定位到源节点",
       "camera": "摄像机",
@@ -633,17 +635,17 @@
       "sourceVideoTip": "挑一段视频",
       "removeSourceVideo": "移除视频",
       "errorNoSourceVideo": "先挑一段视频",
-      "selectSourceVideoFromCanvas": "在画布上选一段视频",
+      "selectSourceVideoFromCanvas": "在 Canvas 上选一段视频",
       "leftAudio": "左侧音频",
       "leftAudioTip": "挑左边那个人的音频",
       "removeLeftAudio": "移除左侧音频",
       "errorNoLeftAudio": "先挑左侧音频",
-      "selectLeftAudioFromCanvas": "在画布上选左边那个人的音频",
+      "selectLeftAudioFromCanvas": "在 Canvas 上选左边那个人的音频",
       "rightAudio": "右侧音频",
       "rightAudioTip": "挑右边那个人的音频",
       "removeRightAudio": "移除右侧音频",
       "errorNoRightAudio": "先挑右侧音频",
-      "selectRightAudioFromCanvas": "在画布上选右边那个人的音频",
+      "selectRightAudioFromCanvas": "在 Canvas 上选右边那个人的音频",
       "drivingAudio": "驱动音频",
       "drivingVideoTip": "挑一段视频，它的动作会被套到角色上",
       "drivingAudioTip": "挑一段音频，口型会跟着它动",
@@ -756,8 +758,8 @@
       "refuseStoryboardShotTooLong": "镜头 {shot, number} 超过 {limit, number} 字上限",
       "refuseStoryboardDurationMismatch": "镜头时长合计 {shots, number} 秒，视频时长 {total, number} 秒",
       "style": "风格",
-      "styleTip": "从画布选最多 3 张图作为风格参考",
-      "selectStyleFromCanvas": "从画布选择风格参考",
+      "styleTip": "从 Canvas 选最多 3 张图作为风格参考",
+      "selectStyleFromCanvas": "从 Canvas 选择风格参考",
       "removeStyle": "移除风格参考",
       "errorNoStyleImage": "先挑一张风格图",
       "cameraCommands": "运镜",
@@ -814,7 +816,7 @@
       "failed": "粘贴失败。"
     },
     "minimap": {
-      "label": "画布缩略图"
+      "label": "Canvas 缩略图"
     },
     "connection": {
       "rejected": "{source}无法接入{target}",
@@ -1300,7 +1302,11 @@
         "create": "Space 创建失败",
         "restore": "Space 恢复失败",
         "unreachable": "服务器没有响应,请检查网络后重试",
-        "notSynced": "Project 正在同步,请稍后再试"
+        "notSynced": "Project 正在同步,请稍后再试",
+        "limit": "已达 {max} 个 Space 上限",
+        "busy": "其他成员正在操作，请稍后再试",
+        "alreadyRestored": "这个 Space 已经恢复了",
+        "gone": "这个 Space 已被删除"
       },
       "loading": {
         "create": "正在创建 Space…"
@@ -1405,13 +1411,12 @@
         "deleteConfirmDescription": "此 Space 及其内容将被软删除。Owner 可从 Project 消息频道恢复。",
         "lockFail": "加锁失败",
         "unlockFail": "解锁失败",
-        "operationFail": "操作失败",
         "deleteFail": "删除失败"
       }
     },
     "kind": {
       "canvas": "Canvas",
-      "canvasSub": "无限画布 + 节点",
+      "canvasSub": "无限 Canvas + 节点",
       "document": "Document",
       "documentSub": "富文本 + 协作",
       "timeline": "Timeline",
@@ -1441,10 +1446,10 @@
     "document": {
       "loading": "正在加载编辑器…",
       "unavailable": {
-        "text": "这个文档打不开。它可能已被删除，或者你已经没有访问权限了。",
+        "text": "这个 Document 打不开。它可能已被删除，或者你已经没有访问权限了。",
         "action": "重试"
       },
-      "refusedNotice": "与这个文档的连接被拒绝了。你看到的内容可能不是最新的，改动也不会被保存。",
+      "refusedNotice": "与这个 Document 的连接被拒绝了。你看到的内容可能不是最新的，改动也不会被保存。",
       "placeholder": "开始写作…",
       "clearConfirm": {
         "title": "删除全部内容？",
@@ -1504,7 +1509,7 @@
         "filterOpen": "未解决",
         "filterAll": "全部",
         "closeRail": "关闭批注栏",
-        "empty": "这篇文档还没有批注。选中正文里的文字，或者点行左边的抓手。",
+        "empty": "这个 Document 还没有批注。选中正文里的文字，或者点行左边的抓手。",
         "nothingUnresolved": "没有未解决的批注。",
         "writeFailed": "这次改动没能保存。",
         "unknownAuthor": "未知",
@@ -1519,7 +1524,7 @@
         "deleteReply": "删除这条回复"
       },
       "schemaOutdated": {
-        "headline": "文档编辑器已更新",
+        "headline": "Document 编辑器已更新",
         "body": "这个页面用的还是旧版本，继续编辑会破坏别人写的内容。",
         "published": "新版本发布于{when}。",
         "risksLead": "刷新前请留意：",
@@ -1527,7 +1532,7 @@
         "action": "刷新页面"
       },
       "docMenu": {
-        "label": "整篇文档的命令",
+        "label": "整个 Document 的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
         "notOpenYet": "未开放",
@@ -1596,7 +1601,7 @@
     "item": {
       "nodes": "节点库",
       "upload": "上传素材(多文件混合)",
-      "comment": "在画布加批注",
+      "comment": "在 Canvas 加批注",
       "collection": "Collection(敬请期待)",
       "help": "帮助(敬请期待)",
       "feedback": "反馈 / 客服(敬请期待)"
@@ -1805,7 +1810,7 @@
         "new": "新建 Project",
         "createError": "创建 Project 失败",
         "emptyTitle": "还没有 Projects",
-        "emptyHint": "Project 是你在无限画布上创作的地方。创建第一个 Project,开始你的创作。"
+        "emptyHint": "Project 是你在无限 Canvas 上创作的地方。创建第一个 Project,开始你的创作。"
       },
       "collections": {
         "new": "新建 Collection",
@@ -2141,6 +2146,8 @@
     "declinedBody": "这里没有别的事要做了。",
     "expiredTitle": "这个请求已经结束",
     "expiredBody": "它不能再被答复了。",
+    "invalidatedTitle": "这个请求已不再适用",
+    "invalidatedBody": "它不能再被答复了。",
     "revokedTitle": "这个请求已被撤回",
     "revokedBody": "发起人把它收回去了。",
     "goneTitle": "相关内容已不存在",
@@ -2180,7 +2187,7 @@
       "projectsPerStudio": "每个 Studio 可建 Project",
       "studioMembers": "每个 Studio 成员上限",
       "projectMembers": "每个 Project 成员上限",
-      "concurrentEditors": "每份文档同时可编辑"
+      "concurrentEditors": "每个 Document 同时可编辑"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 个",
@@ -2234,7 +2241,7 @@
     "card": {
       "storage": "{value} 存储",
       "teamStudios": "{count, plural, =0 {不含团队 Studio} other {# 个团队 Studio}}",
-      "connections": "{count, plural, other {每份文档 # 条连接}}",
+      "connections": "{count, plural, other {每个 Document # 条连接}}",
       "enterpriseScale": "容量按协议约定",
       "enterpriseGovernance": "SSO、审计、知识产权保障"
     },
@@ -2391,5 +2398,36 @@
   "pageLoadError": {
     "message": "页面加载失败，请重试。",
     "retry": "重试"
+  },
+  "consent": {
+    "link": "Cookie 设置",
+    "banner": {
+      "text": "我们用 cookie 让网站正常运行。经你同意，还会用它统计产品怎么被使用（产品分析），以及衡量广告效果（广告）。你可以随时在「Cookie 设置」里修改。",
+      "privacy": "隐私政策",
+      "acceptAll": "接受全部",
+      "rejectAll": "拒绝全部",
+      "settings": "设置",
+      "gpc": "你的浏览器发送了 Global Privacy Control，广告默认关闭。"
+    },
+    "settings": {
+      "title": "Cookie 设置",
+      "save": "保存",
+      "close": "关闭",
+      "status": {
+        "gpc": "你的浏览器发送了 Global Privacy Control，广告默认关闭。"
+      },
+      "necessary": {
+        "title": "必要",
+        "description": "登录、主题和语言偏好，以及这项选择本身。一直开启。"
+      },
+      "analytics": {
+        "title": "产品分析",
+        "description": "统计功能的使用情况，不含你 Project 里的内容。"
+      },
+      "ads": {
+        "title": "广告",
+        "description": "衡量广告带来的注册、购买等关键步骤。"
+      }
+    }
   }
 }

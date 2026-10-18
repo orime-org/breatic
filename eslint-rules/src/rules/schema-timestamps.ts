@@ -39,6 +39,18 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
   ],
   [
+    "adsConversionUploads",
+    "record of what was reported to an ad platform (0094, inner#1442): the platform keeps the conversion whatever happens to the row, and a refund looks the row up to restate it, so a missing row would make a refund upload a brand-new zero-value conversion instead",
+  ],
+  [
+    "analyticsConsentEvents",
+    "consent receipts (0094, inner#1442 §4.4.6): a receipt is the record that a person made that choice, so it is never edited; it is removed whole when it lapses or the account is erased, and a soft-deleted receipt would still be a choice on file",
+  ],
+  [
+    "analyticsMilestones",
+    "claims for milestones reported once (0094, inner#1442): a row is the record that the milestone already happened, so removing it would report the same milestone a second time",
+  ],
+  [
     "storageReclaimQueue",
     "internal work queue for the offline reclaim job: the physical object still needs reclaiming after its project is gone, so the row must not follow a project delete",
   ],

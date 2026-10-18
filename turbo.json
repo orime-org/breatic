@@ -28,7 +28,17 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      "env": ["GOOGLE_CLIENT_ID", "VITE_API_BASE_URL", "VITE_COLLAB_URL", "VITE_APP_VERSION", "VITE_RELEASE_VERSION"]
+      "env": [
+        "GOOGLE_CLIENT_ID",
+        "VITE_API_BASE_URL",
+        "VITE_COLLAB_URL",
+        "VITE_APP_VERSION",
+        "VITE_RELEASE_VERSION",
+        "VITE_AMPLITUDE_API_KEY",
+        "VITE_GOOGLE_ADS_TAG_ID",
+        "VITE_GOOGLE_ADS_CONVERSION_LABELS",
+        "VITE_CONSENT_COOKIE_DOMAIN"
+      ]
     },
     "dev": {
       "dependsOn": ["^build"],

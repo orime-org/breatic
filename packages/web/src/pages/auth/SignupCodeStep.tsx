@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
+import { attributionBody } from '@web/data/analytics';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@web/components/ui/input-otp';
@@ -139,7 +140,7 @@ export function SignupCodeStep({
       setError(null);
       setInfo(null);
       try {
-        const { user } = await authApi.verifySignupCode({ code: value });
+        const { user } = await authApi.verifySignupCode({ code: value, ...attributionBody() });
         onVerified(user);
       } catch (err) {
         if (err instanceof ApiException && err.status === HTTP_EXPIRED) {

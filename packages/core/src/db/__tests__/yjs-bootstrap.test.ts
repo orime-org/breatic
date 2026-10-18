@@ -18,6 +18,8 @@ import * as Y from "yjs";
 import {
   defaultSpaceName,
   encodeInitialMetaState,
+  listedContentDocNames,
+  listedContentDocNamesInState,
   writeSpaceEntry,
 } from "../yjs-bootstrap.js";
 
@@ -243,5 +245,46 @@ describe("defaultSpaceName", () => {
     expect(defaultSpaceName("canvas")).toBe("Canvas");
     expect(defaultSpaceName("document")).toBe("Document");
     expect(defaultSpaceName("timeline")).toBe("Timeline");
+  });
+});
+
+describe("listedContentDocNames", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const CANVAS = "22222222-2222-4222-9222-222222222222";
+  const DOC = "33333333-3333-4333-9333-333333333333";
+
+  it("names one content doc per listed Space, under the entry's own type", () => {
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    writeSpaceEntry(spaces, { spaceId: CANVAS, type: "canvas", name: "A", order: 0, createdAt: 1, createdBy: "u" });
+    writeSpaceEntry(spaces, { spaceId: DOC, type: "document", name: "B", order: 1, createdAt: 1, createdBy: "u" });
+
+    expect(listedContentDocNames(PID, spaces)).toEqual(
+      new Set([`project-${PID}/canvas-${CANVAS}`, `project-${PID}/document-${DOC}`]),
+    );
+  });
+
+  it("leaves out an entry whose type is not a Space type", () => {
+    const doc = new Y.Doc();
+    const spaces = doc.getMap("spaces");
+    const entry = new Y.Map<unknown>();
+    spaces.set(CANVAS, entry);
+    entry.set("type", "board");
+    spaces.set(DOC, "not-a-map");
+
+    expect(listedContentDocNames(PID, spaces)).toEqual(new Set());
+  });
+});
+
+describe("listedContentDocNamesInState", () => {
+  it("reads the listed content doc names straight from stored meta bytes", () => {
+    const PID = "11111111-1111-4111-8111-111111111111";
+    const SID = "22222222-2222-4222-9222-222222222222";
+    const doc = new Y.Doc();
+    writeSpaceEntry(doc.getMap("spaces"), { spaceId: SID, type: "timeline", name: "T", order: 0, createdAt: 1, createdBy: "u" });
+
+    expect(listedContentDocNamesInState(PID, Y.encodeStateAsUpdate(doc))).toEqual(
+      new Set([`project-${PID}/timeline-${SID}`]),
+    );
   });
 });

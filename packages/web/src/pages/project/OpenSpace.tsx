@@ -13,7 +13,7 @@ import {
 import { useSocket } from '@web/data/yjs/use-socket';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
-import { DocumentInterceptGuard } from '@web/spaces/document/document-intercept-guard';
+import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
 
 interface OpenSpaceProps {
   projectId: string;

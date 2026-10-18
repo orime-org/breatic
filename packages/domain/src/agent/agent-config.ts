@@ -15,6 +15,7 @@
 import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
+import type { Instructions } from "@domain/agent/instructions.js";
 import {
   BASELINE_TOOLS,
   CANVAS_TOOLS,
@@ -29,7 +30,7 @@ export interface AgentConfigRequest {
    * Passed in rather than built here because what belongs in it is an
    * application decision.
    */
-  basePrompt?: string;
+  basePrompt: string;
   /** The conversation and project layers, when the caller has any. */
   memoryContext?: MemoryContext;
 }
@@ -43,8 +44,8 @@ export interface ResolvedAgentConfig {
    * one place.
    */
   modelId: string;
-  /** The full system prompt. */
-  instructions: string;
+  /** The system prompt in its parts; `systemFor` decides whether they go as separate blocks. */
+  instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
 }
@@ -62,18 +63,15 @@ export function buildAgentConfig(
 
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
 
-  const sections: string[] = [];
-  if (basePrompt) sections.push(basePrompt);
-  if (memoryContext?.projectMemory) {
-    sections.push(`## Project Context\n${memoryContext.projectMemory}`);
-  }
-  if (memoryContext?.conversationMemory) {
-    sections.push(`## Conversation Memory\n${memoryContext.conversationMemory}`);
-  }
-
   return {
     modelId: getAgentConfig().default_model,
-    instructions: sections.join("\n\n"),
+    instructions: {
+      base: basePrompt,
+      ...(memoryContext?.projectMemory ? { project: `## Project Context\n${memoryContext.projectMemory}` } : {}),
+      ...(memoryContext?.conversationMemory
+        ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }
+        : {}),
+    },
     tools: buildToolSet(toolNames),
   };
 }

@@ -154,7 +154,7 @@ export const coreConfigSchema = z.object({
   REDIS_QUEUE_URL: z.string().url().default("redis://localhost:6379/1"),
   REDIS_STREAM_URL: z.string().url().default("redis://localhost:6379/2"),
   // DB 3: collab cross-instance coordination — Hocuspocus pub/sub +
-  // the space-delete serialization lock. Split from REDIS_STREAM_URL
+  // the Space count lock (serializes Space create / restore / delete). Split from REDIS_STREAM_URL
   // (which stays cross-service Streams) so collab-cluster coordination
   // can later move to its own Redis instance by changing only this URL.
   REDIS_COLLAB_URL: z.string().url().default("redis://localhost:6379/3"),
@@ -245,6 +245,16 @@ export const coreConfigSchema = z.object({
   // Blank keeps Sentry off, which is what a self-hosted instance gets. A
   // value that is not a DSN also leaves it off; each service logs that once.
   SENTRY_DSN: z.string().trim().default(""),
+
+  // ── Product analytics and ad conversions ─────────
+  // All blank on a self-hosted instance, which then loads no vendor client
+  // and sends nothing. A deployment fills in its own accounts.
+  AMPLITUDE_API_KEY: z.string().trim().default(""),
+  GOOGLE_ADS_CUSTOMER_ID: z.string().trim().default(""),
+  // JSON object: conversion name → Google Ads conversion action id.
+  GOOGLE_ADS_CONVERSION_ACTIONS: z.string().trim().default(""),
+  // Service account JSON key for the Data Manager API. Secret.
+  GOOGLE_DATA_MANAGER_CREDENTIALS: z.string().trim().default(""),
 
   // ── Agent Tools ───────────────────────────────────
   BRAVE_SEARCH_API_KEY: z.string().default(""),

@@ -11,7 +11,8 @@
  * must happen once and then asks every instance to close its own
  * connections to the project:
  *
- *   - `project:duplicated` → copy `project-{src}/*` → `project-{new}/*` in the
+ *   - `project:duplicated` → copy the source's meta doc and the content rows
+ *                            of the Spaces it lists to `project-{new}/` in the
  *                            yjs DB, then close the new project's connections
  *                            so a client that raced in and lazy-seeded a
  *                            default meta reloads the copied content.

@@ -40,13 +40,13 @@ describe('web i18n integration', () => {
     it('resolves keys against the current locale', () => {
       expect(t('canvas.emptyState.title')).toBe('The canvas is empty');
       setLocale('zh-CN');
-      expect(t('canvas.emptyState.title')).toBe('画布是空的');
+      expect(t('canvas.emptyState.title')).toBe('Canvas 是空的');
       setLocale('ja');
-      expect(t('canvas.emptyState.title')).toBe('キャンバスは空です');
+      expect(t('canvas.emptyState.title')).toBe('Canvas は空です');
       setLocale('zh-TW');
-      expect(t('canvas.emptyState.title')).toBe('畫布是空的');
+      expect(t('canvas.emptyState.title')).toBe('Canvas 是空的');
       setLocale('ko');
-      expect(t('canvas.emptyState.title')).toBe('캔버스가 비어 있습니다');
+      expect(t('canvas.emptyState.title')).toBe('Canvas가 비어 있습니다');
     });
   });
 
@@ -121,7 +121,7 @@ describe('web i18n integration', () => {
       });
 
       // Hook should have re-rendered and now resolves against zh-CN.
-      expect(result.current('canvas.emptyState.title')).toBe('画布是空的');
+      expect(result.current('canvas.emptyState.title')).toBe('Canvas 是空的');
       expect(getLocale()).toBe('zh-CN');
     });
   });

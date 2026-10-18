@@ -174,7 +174,7 @@ describe("the template prompts the agent is shown inside a request", () => {
     const [grid] = GENERATION_TEMPLATES;
     if (!grid) throw new Error("no template");
     setLocale("en");
-    const said = runWithLocale("ja", () => buildAgentConfig({}).tools["propose_canvas_action"]?.description ?? "");
+    const said = runWithLocale("ja", () => buildAgentConfig({ basePrompt: "base" }).tools["propose_canvas_action"]?.description ?? "");
     const japanese = runWithLocale("ja", () => shown(grid));
     expect(japanese).not.toBe(shown(grid));
     expect(said).toContain(japanese);

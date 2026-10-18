@@ -16,7 +16,7 @@ import { usePreviewSrc, usePreviewWidth } from '@web/lib/preview-src';
 import { cn } from '@web/lib/utils';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
-import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/useMediaPlayer';
+import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 
 interface MediaPlayerProps {

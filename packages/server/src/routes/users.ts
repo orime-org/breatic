@@ -22,7 +22,7 @@ import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { USER_LOOKUP_MAX_IDS } from "@breatic/shared";
+import { ReportedConsentSchema, USER_LOOKUP_MAX_IDS } from "@breatic/shared";
 import { SUPPORTED } from "@server/middleware/i18n.js";
 
 import { authService, studioService } from "@server/modules";
@@ -91,6 +91,20 @@ users.patch("/me/locale", validate("json", localeSchema), async (c) => {
   const { locale } = c.req.valid("json");
   await authService.setLocale(c.get("user").id, locale);
   return c.json({ data: { locale } });
+});
+
+/**
+ * `PUT /api/v1/users/me/consent` — the signed-in browser's consent in force.
+ *
+ * The app and the website send it after sign-in and after each write of the
+ * consent cookie. The latest report from any browser replaces the previous
+ * one; events no browser causes, such as renewals, follow it (inner#1442
+ * design §4.4.6).
+ * @returns `204`
+ */
+users.put("/me/consent", validate("json", ReportedConsentSchema), async (c) => {
+  await authService.reportConsent(c.get("user").id, c.req.valid("json"));
+  return c.body(null, 204);
 });
 
 export { users as usersRoute };

@@ -66,7 +66,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({
       modelId: "test",
-      instructions: "system",
+      instructions: { base: "system" },
       // One per turn, as the registry builds it: the tool holds whether this
       // turn has asked yet.
       tools: { ask_user: makeAskUserTool() },

@@ -8,9 +8,9 @@
  * `{ documentName, state }` payloads onto the shared core
  * `yjsDocumentsRepo` (the single home for `yjs_documents` SQL). These
  * tests pin that mapping (documentName → name, state → data); the SQL
- * correctness itself — soft-delete filtering on fetch, resurrection on
- * upsert — is covered by the core repo's integration test against a
- * real Postgres.
+ * correctness itself — soft-delete filtering on fetch, and a store keeping a
+ * deleted row deleted — is covered by yjs-cutover.integration.test.ts against
+ * a real Postgres.
  *
  * `@breatic/core` is partially mocked: the real encoders stay (they need
  * no DB), only the `loadInitialSpaceType` read lazy-seed uses is stubbed.

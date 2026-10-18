@@ -21,7 +21,8 @@
  *      Hocuspocus reads when it builds the Connection), so every incoming
  *      Yjs sync-update is rejected at the protocol level — no UI trust.
  *   4. For a Space content doc, the spaceId is still listed in the
- *      project's `meta.spaces` (delegated to `readProjectSpaceIds`); a
+ *      project's `meta.spaces` under that same type (delegated to
+ *      `readListedContentDocNames`); a
  *      Space that has left the list refuses new connections. The meta doc
  *      itself skips this check — it is the list.
  *
@@ -37,13 +38,13 @@
  * role), which drifted from the server's path; both now call the one
  * shared kernel. The Yjs space-existence check reads the meta doc this
  * process holds, and loads one when it holds none — there is no second
- * source and this file issues no SQL for it. See `readProjectSpaceIds` in
+ * source and this file issues no SQL for it. See `readListedContentDocNames` in
  * `@collab/services/project-space-list.js`.
  */
 
 import type { Redis } from "@breatic/core";
 import {
-  readProjectSpaceIds,
+  readListedContentDocNames,
   type DocumentRegistry,
 } from "@collab/services/project-space-list.js";
 import {
@@ -79,7 +80,7 @@ const logger = createLogger("auth");
  * @param name - Name of the cookie to extract.
  * @returns The decoded value of the named cookie, or null when the header is absent or the cookie is not present.
  */
-function readCookie(header: string | undefined, name: string): string | null {
+export function readCookie(header: string | undefined, name: string): string | null {
   if (!header) return null;
   // Cookie header is `name1=val1; name2=val2`. Trim each pair so
   // leading spaces after `; ` do not break matching.
@@ -310,18 +311,21 @@ export function createAuthHook({
       }
 
       // For Space content docs (canvas-{id} / document-{id} / timeline-{id})
-      // refuse the connection if the spaceId is no longer in `meta.spaces`.
-      // This is the runtime half of "delete a Space = remove its id from
-      // meta.spaces; PG row stays for recovery but new connections cannot
-      // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5).
+      // refuse the connection unless `meta.spaces` lists this Space under
+      // this kind. This is the runtime half of "delete a Space = remove its id
+      // from meta.spaces; PG row stays for recovery but new connections cannot
+      // load it" (ADR 2026-05-23-yjs-collab-only-write-authz §B1.5). Matching
+      // the kind too keeps a doc of another kind under a listed id from ever
+      // being stored, so the live Space count the cap reads stays equal to the
+      // Spaces in meta.
       if (parsed.kind !== "meta") {
-        const ids = await readProjectSpaceIds(
+        const listed = await readListedContentDocNames(
           parsed.projectId,
           instance,
           request,
           socketId,
         );
-        if (!ids.has(parsed.spaceId)) {
+        if (!listed.has(documentName)) {
           logger.warn(
             {
               userId,

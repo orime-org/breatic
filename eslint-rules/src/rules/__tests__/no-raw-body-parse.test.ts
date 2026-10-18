@@ -14,11 +14,14 @@ ruleTester.run("no-raw-body-parse", noRawBodyParse, {
     // would destroy the thing being verified.
     { code: "const raw = await c.req.text();" },
     { code: "const buf = await c.req.arrayBuffer();" },
-    // Reading the underlying stream directly. Note this
-    // is `.raw.body`, a property — `c.req.raw.json()` is a body-parsing call
-    // the rule also lets through, which is a gap in the matcher rather than a
-    // decision. The rule's docstring lists it; widening is filed separately.
+    // Reading the underlying stream directly: `.raw.body` is a property, not a
+    // parsing call.
     { code: "const body = c.req.raw.body;" },
+    // Raw bytes through an alias are as legitimate as through `c.req`.
+    { code: "const { req } = c; const raw = await req.text();" },
+    // A parameter merely named `req` is not traced: only aliases declared
+    // from a request are.
+    { code: "export default { fetch: async (req) => handle(await req.json()) };" },
     // Reading validated output, not the request.
     { code: "const body = c.req.valid('json');" },
     // Unrelated `json` calls — a response, or somebody else's object.
@@ -50,6 +53,24 @@ ruleTester.run("no-raw-body-parse", noRawBodyParse, {
     },
     {
       code: "const form = await c.req.formData();",
+      errors: [{ messageId: "rawBodyParse", line: 1 }],
+    },
+    // The underlying Request parses the same body.
+    {
+      code: "const body = await c.req.raw.json();",
+      errors: [{ messageId: "rawBodyParse", line: 1 }],
+    },
+    // An alias of `c.req` is the same request.
+    {
+      code: "const { req } = c; const body = await req.json();",
+      errors: [{ messageId: "rawBodyParse", line: 1 }],
+    },
+    {
+      code: "const r = c.req; const body = await r.parseBody();",
+      errors: [{ messageId: "rawBodyParse", line: 1 }],
+    },
+    {
+      code: "const r = c.req; const body = await r.raw.formData();",
       errors: [{ messageId: "rawBodyParse", line: 1 }],
     },
   ],

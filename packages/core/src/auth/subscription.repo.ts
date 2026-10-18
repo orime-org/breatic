@@ -16,7 +16,7 @@
  * converges on one row per Stripe subscription.
  */
 
-import { and, desc, eq, isNull, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
@@ -199,6 +199,30 @@ export async function upsertSubscription(
     );
   }
   return current;
+}
+
+/**
+ * Stamp a subscription's first activation, once: the write that does it is
+ * the one a subscription start is reported for (inner#1442 design §4.8).
+ * Called after the snapshot is stored, so the status checked is the one the
+ * row holds, not one an out-of-order snapshot carried.
+ * @param stripeSubscriptionId - Stripe's id for it.
+ * @param tx - The transaction the snapshot was stored in.
+ * @returns True when this call stamped it.
+ */
+export async function markFirstActive(stripeSubscriptionId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx
+    .update(subscriptions)
+    .set({ firstActiveAt: new Date() })
+    .where(
+      and(
+        eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId),
+        isNull(subscriptions.firstActiveAt),
+        inArray(subscriptions.status, ["active", "trialing"]),
+      ),
+    )
+    .returning({ id: subscriptions.id });
+  return rows.length > 0;
 }
 
 /**

@@ -32,13 +32,54 @@ describe('ChatEmpty', () => {
     );
   });
 
-  it('offers the three things the agent is actually for', () => {
+  it('says in one line what the agent can do', () => {
     render(<ChatEmpty />);
-    // Gathering material, and writing the prompts that use it. Generating
-    // the image is not one of them: that happens on the canvas.
-    expect(screen.getByTestId('chat-empty-qa-find-reference')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-empty-qa-write-prompt')).toBeInTheDocument();
-    expect(screen.getByTestId('chat-empty-qa-refine-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-empty')).toHaveTextContent(
+      'I can find material, write articles and scripts, build generation flows on the canvas, and edit Documents',
+    );
+  });
+
+  it('offers the five suggestions in order', () => {
+    render(<ChatEmpty />);
+    const offered = screen
+      .getAllByTestId(/^chat-empty-qa-/)
+      .map((button) => [button.dataset.testid, button.textContent]);
+    expect(offered).toEqual([
+      ['chat-empty-qa-find-reference', 'Find cyberpunk-style reference images'],
+      ['chat-empty-qa-write-script', 'Write a script for a three-minute short film'],
+      ['chat-empty-qa-build-workflow', 'Build a character turnaround on the canvas'],
+      ['chat-empty-qa-annotate-document', 'Suggest edits to my Document'],
+      ['chat-empty-qa-write-prompt', 'Write a prompt for an illustration'],
+    ]);
+  });
+
+  it('lets a long suggestion wrap within the panel', () => {
+    render(<ChatEmpty />);
+    for (const button of screen.getAllByTestId(/^chat-empty-qa-/)) {
+      expect(button.className).toContain('whitespace-normal');
+      expect(button.className).not.toMatch(/(^|\s)h-\[/);
+    }
+  });
+
+  it('does not light up a suggestion on hover while it cannot be pressed', () => {
+    render(<ChatEmpty frozen />);
+    for (const button of screen.getAllByTestId(/^chat-empty-qa-/)) {
+      expect(button.className).toContain('hover-enabled:bg-accent');
+      expect(button.className).not.toMatch(/(^|\s)hover:/);
+    }
+  });
+
+  it('balances the lines of what the agent can do', () => {
+    render(<ChatEmpty />);
+    const line = screen.getByText(/I can find material/);
+    expect(line.className).toContain('text-balance');
+  });
+
+  it('marks the capability line with the reader language so it breaks between phrases', () => {
+    render(<ChatEmpty />);
+    const line = screen.getByText(/I can find material/);
+    expect(line).toHaveAttribute('lang', 'en');
+    expect(line.className).toContain('[word-break:auto-phrase]');
   });
 
   it('clicking a quick action fires onQuickAction with the label', async () => {
@@ -58,9 +99,10 @@ describe('the quick actions while the panel is on its way elsewhere', () => {
   });
 
   it('do nothing, because the composer they write into is frozen', async () => {
-    // 它们是除输入框之外唯一往输入框里写字的路径。切换途中输入框是静止的,
-    // 而这三个按钮照旧能按 —— 按下去那段文案会落进正在离开的那条会话,新会话
-    // 一到手就从眼前消失。
+    // Besides typing, these are the only way words get into the composer. The
+    // composer is held still during a switch, so a click here would put its
+    // sentence into the conversation being left, which vanishes when the new
+    // one lands.
     const picked = vi.fn();
     render(<ChatEmpty onQuickAction={picked} frozen />);
 

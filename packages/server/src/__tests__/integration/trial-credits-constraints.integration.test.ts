@@ -49,6 +49,7 @@ import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "trial-credits-constraints-test-driver";
 
@@ -220,12 +221,7 @@ describe("bought credits are still the buyer's to move", () => {
     const { userId, lotId: grantedLot } = await seedGranted();
     const team = await seedTeamStudio(userId);
 
-    const sourceId = (
-      await sql<{ id: string }[]>`
-        INSERT INTO credit_sources (id, kind)
-        VALUES (gen_random_uuid(), 'payment') RETURNING id
-      `
-    )[0]!.id;
+    const sourceId = await openPaymentSource(sql);
     await sql`
       INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
       VALUES (${sourceId}, ${userId}, 1000, 'completed', 880)
@@ -310,12 +306,7 @@ describe("granted credits on the screens that list what an account holds", () =>
 
   it("still carries the price on a lot somebody paid for", async () => {
     const { userId } = await seedGranted();
-    const sourceId = (
-      await sql<{ id: string }[]>`
-        INSERT INTO credit_sources (id, kind)
-        VALUES (gen_random_uuid(), 'payment') RETURNING id
-      `
-    )[0]!.id;
+    const sourceId = await openPaymentSource(sql);
     await sql`
       INSERT INTO payments
         (id, user_id, amount_cents, total_cents, status, credits_granted)

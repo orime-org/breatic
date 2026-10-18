@@ -21,7 +21,7 @@
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants } from "@breatic/core";
-import type { StudioAssetEntity } from "@breatic/shared";
+import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
 
 /**
  * A row of the upload-grant ledger.
@@ -67,6 +67,8 @@ export interface UploadGrant {
   assetSource: StudioAssetEntity["source"] | null;
   /** The generation whose output these bytes are, when they are one. */
   generationTaskId: string | null;
+  /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
+  analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
 }
 
@@ -98,6 +100,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     // this column, and it writes what `register` accepts.
     assetSource: row.assetSource as StudioAssetEntity["source"] | null,
     generationTaskId: row.generationTaskId,
+    analyticsConsent: row.analyticsConsent,
     createdAt: row.createdAt,
   };
 }
@@ -124,6 +127,8 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   not an ordinary upload.
  * @param input.context.generationTaskId - The generation that produced these
  *   bytes, when one did.
+ * @param input.analyticsConsent - The uploading browser's analytics consent;
+ *   absent reads as no consent.
  * @returns The persisted grant.
  * @throws {Error} When the storage key was already issued (UNIQUE violation).
  */
@@ -144,6 +149,7 @@ export async function issueGrant(input: {
     assetSource?: StudioAssetEntity["source"] | null;
     generationTaskId?: string | null;
   };
+  analyticsConsent?: ConsentSnapshot;
 }): Promise<UploadGrant> {
   const rows = await db
     .insert(uploadGrants)
@@ -162,6 +168,7 @@ export async function issueGrant(input: {
       filename: input.context.filename ?? null,
       assetSource: input.context.assetSource ?? null,
       generationTaskId: input.context.generationTaskId ?? null,
+      analyticsConsent: input.analyticsConsent ?? null,
     })
     .returning();
   return toEntity(rows[0]!);

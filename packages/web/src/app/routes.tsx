@@ -7,7 +7,7 @@ import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-do
 import ProtectedRoute from '@web/app/ProtectedRoute';
 import { lazyRoute, preloadMatched } from '@web/app/lazy-route';
 import { routeImports } from '@web/app/route-imports';
-import { behindLoadingScreen } from '@web/app/loading-boundary';
+import { behindLoadingScreen } from '@web/app/LoadingBoundary';
 import { hasSeenSession } from '@web/lib/session-seen';
 
 // One chunk per entry: the reader downloads the page they asked for and

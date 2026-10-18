@@ -47,7 +47,8 @@ projects.use(requireAuth);
  * and inserts the owner row in `project_members` inside the same transaction
  * as the projects insert. `spaceType` is stored on the project; collab seeds
  * the first space of that type on first open (B.2).
- * @returns `201` with `{ data: ProjectEntity }`
+ * @returns `201` with `{ data: ProjectEntity & { isFirst } }`; `isFirst` says
+ *   this is the first project the caller ever created
  */
 projects.post(
   "/",

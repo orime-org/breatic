@@ -4,6 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
 import { X } from 'lucide-react';
+import { trackEvent } from '@web/data/analytics';
 import { isComparableMembershipTier } from '@breatic/shared';
 
 import {
@@ -60,6 +61,9 @@ export function MembershipPanel({
     queryFn: () => accountApi.membership(),
     enabled: open && userId !== null,
   });
+  React.useEffect(() => {
+    if (open) trackEvent('pricing_viewed', { surface: 'membership' });
+  }, [open]);
   // A priced tier's loaded panel runs to about 1000px (measured: PRO yearly,
   // English, 1005px uncapped), so the dialog takes that height from the first
   // frame and keeps it: nothing moves when the answer lands. The unpriced

@@ -26,6 +26,13 @@ const mockGetByIdInternal = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/core", () => ({
+  // Product analytics (inner#1442) runs the job under its consent and reports
+  // milestones; neither is what these cases are about.
+  runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
+  reportCollaboratorFirstAction: vi.fn(async () => undefined),
+  serverAnalyticsWanted: vi.fn(() => false),
+  trackServerEvent: vi.fn(),
+  projectsRepo: { findOwnerStudioId: vi.fn(async () => undefined) },
   getStreamRedis: vi.fn(() => ({})),
   getWorkerConfig: vi.fn(() => ({})),
   getAgentConfig: vi.fn(() => ({})),
@@ -61,6 +68,7 @@ vi.mock("@breatic/domain", () => ({
   extractPromptText: vi.fn(),
 }));
 vi.mock("@breatic/shared", () => ({
+  NO_CONSENT: { analytics: false, ads: false },
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
   extractPromptText: vi.fn(),
 }));

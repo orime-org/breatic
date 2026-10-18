@@ -7,8 +7,8 @@ import { render, renderHook, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
 import { AppRouter } from '@web/app/AppRouter';
-import { behindLoadingScreen } from '@web/app/loading-boundary';
-import { LoadingScreenHost } from '@web/components/loading-screen';
+import { behindLoadingScreen } from '@web/app/LoadingBoundary';
+import { LoadingScreenHost } from '@web/components/LoadingScreen';
 
 vi.mock('react-router-dom', async (original) => {
   const actual = await original<typeof import('react-router-dom')>();

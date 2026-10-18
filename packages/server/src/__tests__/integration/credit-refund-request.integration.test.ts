@@ -42,6 +42,7 @@ import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
+import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-refund-request-test-driver";
 
@@ -109,15 +110,10 @@ async function seedLot(
   credits: number,
   designateTo: string | null = null,
 ): Promise<string> {
-  // A payment shares its source row's primary key, so the receipt is opened
-  // first and the payment is written under its id (0079, #259).
-  const [source] = await sql<{ id: string }[]>`
-    INSERT INTO credit_sources (id, kind)
-    VALUES (gen_random_uuid(), 'payment') RETURNING id
-  `;
+  const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
     INSERT INTO payments (id, user_id, amount_cents, total_cents, status, credits_granted)
-    VALUES (${source!.id}, ${fx.userId}, 1000, 1080, 'completed', ${credits}) RETURNING id
+    VALUES (${sourceId}, ${fx.userId}, 1000, 1080, 'completed', ${credits}) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

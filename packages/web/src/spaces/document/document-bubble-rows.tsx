@@ -15,7 +15,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { cn } from '@web/lib/utils';
-import { useCloseBubbleMenu } from '@web/spaces/document/document-bubble-menu';
+import { useCloseBubbleMenu } from '@web/spaces/document/DocumentBubbleMenu';
 
 /**
  * What a row adds to the shared menu row.

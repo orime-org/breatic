@@ -20,7 +20,14 @@ import { tool, type Tool } from "ai";
 import { z } from "zod";
 
 import { getAgentConfig } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, type NodeType } from "@breatic/shared";
+import {
+  CHAT_MESSAGE_MAX_CHARS,
+  MAX_SPACES_PER_PROJECT,
+  canConnect,
+  canGenerate,
+  t,
+  type NodeType,
+} from "@breatic/shared";
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 
@@ -198,7 +205,9 @@ export function renderProductGuide(): string {
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
       `${quoted(t("spaces.create.cancel"))}. While it is made the page shows ` +
-      `${quoted(t("project.space.loading.create"))}; the new space then opens as a tab.`,
+      `${quoted(t("project.space.loading.create"))}; the new space then opens as a tab. A project holds at most ` +
+      `${MAX_SPACES_PER_PROJECT} spaces; at that many the plus sign is greyed, and hovering or pressing it says the ` +
+      "limit is reached. Deleting a space makes room again.",
     "The second, three lines with the number of spaces beside them, opens " +
       `${quoted(t("spaces.drawer.title"))}: every space in the project, newest first, each with its type icon, ` +
       `name and when it was made; the space whose tab is showing now is marked ` +
@@ -223,7 +232,8 @@ export function renderProductGuide(): string {
       "thumbnail that shows a larger preview when hovered. The project's owner sees " +
       `${quoted(t("activity.action.restore"))} on a deleted space's entry, which brings the space back into ` +
       `${quoted(t("spaces.drawer.title"))}, not as a tab: open it from there. Afterwards that entry shows ` +
-      `${quoted(t("activity.action.restored"))}`,
+      `${quoted(t("activity.action.restored"))}. When the project already holds ${MAX_SPACES_PER_PROJECT} spaces, ` +
+      `${quoted(t("activity.action.restore"))} is greyed, and hovering or pressing it says so.`,
     `With every tab closed, the space area shows ${quoted(t("project.space.noActive"))}`,
     "",
     "## The chat panel",
@@ -235,7 +245,7 @@ export function renderProductGuide(): string {
       "renames; and a plus sign, which starts a new conversation. In the list, click a conversation to switch to " +
       "it; hovering one shows three dots with " +
       `${quoted(t("chat.conversation.rename"))} and ${quoted(t("chat.conversation.delete"))}, which asks first.`,
-    `A new conversation shows a greeting, ${quoted(t("chat.empty.hintDirect"))} and three suggestions; ` +
+    `A new conversation shows a greeting, ${quoted(t("chat.empty.capabilities"))} and five suggestions; ` +
       "clicking one puts its words in the message box without sending them. The empty box reads " +
       `${quoted(t("chat.composer.placeholder"))}. Enter sends the message and Shift+Enter starts a new line. The ` +
       `dark square button with an upward arrow at the right of the box (hovering it shows ` +

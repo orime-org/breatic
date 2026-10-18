@@ -31,7 +31,7 @@ import {
 } from '@web/spaces/canvas/history/history-format';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
-import { PreviewImg } from '@web/components/preview-img';
+import { PreviewImg } from '@web/components/PreviewImg';
 
 /** The host node's modality — picks the thumbnail treatment. */
 export type HistoryModality = 'image' | 'video' | 'audio' | 'text';

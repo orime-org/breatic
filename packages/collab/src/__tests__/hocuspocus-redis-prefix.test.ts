@@ -30,6 +30,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import type * as ConnectionRegistryModuleShape from "@collab/services/connection-registry.js";
+import type * as HocuspocusServerModule from "@hocuspocus/server";
+import type * as ConnectionGateModuleShape from "@collab/infra/connection-gate.js";
 
 /** The real module, so the mock can keep everything it does not replace. */
 type ConnectionRegistryModule = typeof ConnectionRegistryModuleShape;
@@ -41,7 +43,13 @@ const {
   registryFactorySpy,
   collabRedisStub,
   loadProjectRoleStub,
+  connectionGateSpy,
+  failedAuthWrapperSpy,
+  loggerInfoSpy,
 } = vi.hoisted(() => ({
+  connectionGateSpy: vi.fn(),
+  failedAuthWrapperSpy: vi.fn(),
+  loggerInfoSpy: vi.fn(),
   redisExtensionSpy: vi.fn(),
   serverSpy: vi.fn(),
   registryStub: {
@@ -69,7 +77,8 @@ vi.mock("@hocuspocus/extension-redis", () => ({
   },
 }));
 
-vi.mock("@hocuspocus/server", () => ({
+vi.mock("@hocuspocus/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof HocuspocusServerModule>()),
   Server: class {
     hocuspocus = { documents: new Map() };
     constructor(config: unknown) {
@@ -80,7 +89,7 @@ vi.mock("@hocuspocus/server", () => ({
 
 vi.mock("@breatic/core", () => ({
   createLogger: () => ({
-    info: vi.fn(),
+    info: loggerInfoSpy,
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
@@ -102,7 +111,35 @@ vi.mock("@breatic/core", () => ({
   // the export at module scope, so it has to exist.
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
   projectAuthService: { loadProjectRole: loadProjectRoleStub },
+  runWithConsent: <T>(_consent: unknown, fn: () => T): T => fn(),
 }));
+
+vi.mock("@collab/services/space-rpc.js", () => ({
+  handleSpaceRpc: vi.fn(async (_deps: unknown, _projectId: string, _caller: unknown, req: { id: string }) => ({
+    id: req.id,
+    ok: true,
+    result: {},
+  })),
+}));
+
+vi.mock("@collab/infra/connection-gate.js", async () => {
+  const real = await vi.importActual<typeof ConnectionGateModuleShape>(
+    "@collab/infra/connection-gate.js",
+  );
+  return {
+    ...real,
+    createConnectionGate: ((...args: Parameters<typeof real.createConnectionGate>) => {
+      const gate = real.createConnectionGate(...args);
+      connectionGateSpy(gate);
+      return gate;
+    }) as typeof real.createConnectionGate,
+    recordingFailedAuth: ((...args: Parameters<typeof real.recordingFailedAuth>) => {
+      const wrapped = real.recordingFailedAuth(...args);
+      failedAuthWrapperSpy(wrapped);
+      return wrapped;
+    }) as typeof real.recordingFailedAuth,
+  };
+});
 
 vi.mock("@collab/services/persistence.js", () => ({
   createPersistenceExtension: vi.fn(() => ({ name: "persistence-stub" })),
@@ -124,9 +161,9 @@ vi.mock("@collab/services/connection-registry.js", async () => {
 import * as Y from "yjs";
 
 import { createCollabServer } from "../hocuspocus.js";
-import { getCollabConfig, getConnectionTimings } from "../config.js";
+import { getConnectionTimings } from "../config.js";
 import { readPresence } from "../hooks/presence.js";
-import { socketCeilings } from "../infra/socket-ceilings.js";
+import { SOCKET_CEILINGS } from "../infra/socket-ceilings.js";
 
 /**
  * Read the `prefix` the Redis extension was constructed with.
@@ -199,8 +236,8 @@ describe("createCollabServer — Redis channel prefix", () => {
 
     const config = serverSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(config).toMatchObject({
-      // Both ceilings that close a whole socket, derived from one number.
-      ...socketCeilings(getCollabConfig().max_documents_per_socket),
+      // Both ceilings that close a whole socket.
+      ...SOCKET_CEILINGS,
       // Broadcast on apply rather than coalescing per event-loop turn. The
       // library's own default is `0`, which batches; the Space RPC commit
       // boundary is built on the broadcast being the synchronous, observable
@@ -208,6 +245,52 @@ describe("createCollabServer — Redis channel prefix", () => {
       // would also let the activity signal overtake the change it announces.
       flushDelay: false,
     });
+  });
+
+  it("prints the socket ceilings it runs with in the startup log", async () => {
+    loggerInfoSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const banner = loggerInfoSpy.mock.calls.find(
+      ([, message]) => message === "Hocuspocus server configured",
+    );
+    expect(banner?.[0]).toMatchObject(SOCKET_CEILINGS);
+  });
+
+  it("counts a rejected authentication with the connection gate", async () => {
+    failedAuthWrapperSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const config = serverSpy.mock.calls[0]?.[0] as { onAuthenticate: unknown };
+    expect(failedAuthWrapperSpy).toHaveBeenCalledTimes(1);
+    expect(config.onAuthenticate).toBe(failedAuthWrapperSpy.mock.calls[0]?.[0]);
+  });
+
+  it("registers the connection gate it built as an extension", async () => {
+    // The per-WebSocket count and the ban check run only as this extension's
+    // onUpgrade and onConnect, so a gate that is built but not registered
+    // leaves production unthrottled while every gate test stays green.
+    connectionGateSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+
+    const config = serverSpy.mock.calls.at(-1)?.[0] as { extensions: unknown[] };
+    expect(connectionGateSpy).toHaveBeenCalledTimes(1);
+    expect(config.extensions).toContain(connectionGateSpy.mock.calls[0]?.[0]);
   });
 
   it("never uses the Redis URL as the prefix", async () => {
@@ -514,5 +597,69 @@ describe("createCollabServer — a connection re-reads its role once registered"
     });
     expect(loadProjectRoleStub).toHaveBeenCalledWith("u-1", "11111111-1111-4111-8111-111111111111");
     expect(close).toHaveBeenCalledWith({ code: 4403, reason: "Permission changed, please reconnect" });
+  });
+});
+
+describe("createCollabServer — a Space RPC answer goes to its sender", () => {
+  const META = "project-11111111-1111-4111-8111-111111111111/meta";
+  const REQUEST = JSON.stringify({
+    id: "r1",
+    type: "space:delete",
+    payload: { spaceId: "22222222-2222-4222-9222-222222222222" },
+  });
+
+  beforeEach(() => {
+    serverSpy.mockClear();
+  });
+
+  /**
+   * The `onStateless` hook handed to Hocuspocus.
+   * @returns The hook.
+   */
+  async function onStateless(): Promise<(payload: unknown) => Promise<void>> {
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as {
+      onStateless: (payload: unknown) => Promise<void>;
+    };
+    return config.onStateless;
+  }
+
+  it("sends the reply on the requesting connection only", async () => {
+    const hook = await onStateless();
+    const broadcastStateless = vi.fn();
+    const sendStateless = vi.fn();
+
+    await hook({
+      documentName: META,
+      document: { broadcastStateless },
+      payload: REQUEST,
+      connection: { context: { user: { id: "u-1", role: "owner" } }, sendStateless },
+    });
+
+    expect(sendStateless).toHaveBeenCalledWith(JSON.stringify({ id: "r1", ok: true, result: {} }));
+    expect(broadcastStateless).not.toHaveBeenCalled();
+  });
+
+  it("refuses an anonymous request on its own connection only", async () => {
+    const hook = await onStateless();
+    const broadcastStateless = vi.fn();
+    const sendStateless = vi.fn();
+
+    await hook({
+      documentName: META,
+      document: { broadcastStateless },
+      payload: REQUEST,
+      connection: { context: {}, sendStateless },
+    });
+
+    expect(sendStateless).toHaveBeenCalledWith(
+      JSON.stringify({ id: "r1", ok: false, error: { code: "FORBIDDEN", message: "Anonymous caller" } }),
+    );
+    expect(broadcastStateless).not.toHaveBeenCalled();
   });
 });

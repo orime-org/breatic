@@ -9,12 +9,12 @@ import { useStore } from 'zustand';
 import { useParams } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
-import { newId, type SpaceRpcResponse } from '@breatic/shared';
+import { MAX_SPACES_PER_PROJECT, newId, type SpaceRpcResponse } from '@breatic/shared';
 import { projectsApi } from '@web/data/api';
 import { ApiException } from '@web/data/api/types';
 import type { ProjectDetail } from '@web/data/api/projects';
-import { NotFoundScreen } from '@web/components/not-found-screen';
-import { ResourceLoadError } from '@web/components/resource-load-error';
+import { NotFoundScreen } from '@web/components/NotFoundScreen';
+import { ResourceLoadError } from '@web/components/ResourceLoadError';
 import {
   useProjectMembers,
   useRosterRefreshOnJoin,
@@ -25,6 +25,7 @@ import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
+import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
@@ -47,7 +48,7 @@ import type { SpaceType } from '@breatic/shared';
 
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { LoadingOverlay } from '@web/pages/project/chrome/LoadingOverlay';
-import { LoadingScreen } from '@web/components/loading-screen';
+import { LoadingScreen } from '@web/components/LoadingScreen';
 import { ArchivedBanner } from '@web/pages/project/chrome/ArchivedBanner';
 import { ConnectionBanner } from '@web/pages/project/chrome/ConnectionBanner';
 import {
@@ -410,7 +411,16 @@ function ProjectWorkspace({
         throw err;
       }
       if (!res.ok) {
-        toast.error(t(errorToastKey), { description: res.error.message });
+        // The server's message is a developer string in English; the reader
+        // gets a line in their own language for the codes they can act on.
+        const notice = spaceRpcFailureNotice(req.type, res.error.code);
+        if (notice.level === 'warning') {
+          toast.warning(t(notice.messageKey, { max: MAX_SPACES_PER_PROJECT }));
+        } else {
+          toast.error(t(errorToastKey), {
+            description: notice.descriptionKey ? t(notice.descriptionKey) : undefined,
+          });
+        }
         throw new Error(res.error.message);
       }
       return res;
@@ -678,7 +688,7 @@ function ProjectWorkspace({
     // Pin the token BEFORE the RPC await - Yjs sync from collab can race
     // ahead of the RPC ack (collab broadcasts the meta-doc mutation as
     // soon as space-rpc transact runs, which often beats the
-    // broadcastStateless response by a few ms). If we only set the ref
+    // RPC response by a few ms). If we only set the ref
     // after `await callRpc`, the spaces-watching effect re-runs on the
     // Yjs update with the ref still null, misses the match, and the
     // safety timeout (SPACE_OP_TIMEOUT_MS) fires even though everything
@@ -693,12 +703,9 @@ function ProjectWorkspace({
         'project.space.error.create',
       );
     } catch (err) {
+      // callRpc has already told the reader, on every way it fails.
       setSpaceOpInProgress(null);
       pendingCreateTokenRef.current = null;
-      // toast already raised inside callRpc when the RPC reports !ok
-      if (!(err instanceof Error) || !err.message.length) {
-        toast.error(t('project.space.error.create'));
-      }
       throw err;
     }
   };

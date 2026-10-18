@@ -14,6 +14,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { DocumentProposal } from '@breatic/shared';
 
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
+import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { useDocumentProposals } from '@web/stores/document-proposals';
 
 const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
@@ -89,6 +90,21 @@ describe('a comment card', () => {
 
     await userEvent.click(buttons[0]!);
     expect(useDocumentProposals.getState().pending[BASE.proposalId]).toMatchObject({ action: 'comment' });
+  });
+});
+
+describe('the land buttons', () => {
+  it('are the land button a Canvas proposal card uses, in the same row', () => {
+    draw(BASE);
+    const comment = screen.getByRole('button', { name: 'Add comment' });
+    render(
+      <ProposalActions>
+        <ProposalAction>shared</ProposalAction>
+      </ProposalActions>,
+    );
+    const shared = screen.getByText('shared').closest('button')!;
+    expect(comment.className).toBe(shared.className);
+    expect(comment.parentElement!.className).toBe(shared.parentElement!.className);
   });
 });
 
