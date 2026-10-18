@@ -198,7 +198,9 @@ function makeFlowNode(
       taskCounts !== null &&
       taskCounts.running + taskCounts.done + taskCounts.failed + taskCounts.expired > 0;
     const taskPanelOpenHere = useCanvasSession(taskPanelStatusFor(props.id));
-    // The expand frame grows past the node over where the counts stand.
+    // The expand frame grows past the node over where the counts stand, and
+    // draws its own edge and eight grips on the node's border, so the counts,
+    // the selected border and the connection dots give way while it is open.
     const expanding = useCanvasSession((s) => miniToolOpenOn(props.id)(s)?.expand != null);
     const openTaskPanel = useCanvasSession((s) => s.openTaskPanel);
     const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
@@ -222,7 +224,7 @@ function makeFlowNode(
                 >
                   <Inner
                     data={data}
-                    selected={props.selected}
+                    selected={Boolean(props.selected) && !expanding}
                     locked={data.locked}
                     onRename={onRename}
                     onActivate={onActivate}
@@ -268,10 +270,12 @@ function makeFlowNode(
                       <MagneticHandle
                         type='target'
                         isConnectable={props.isConnectable}
+                        hidden={expanding}
                       />
                       <MagneticHandle
                         type='source'
                         isConnectable={props.isConnectable}
+                        hidden={expanding}
                       />
                     </>
                   ) : null}

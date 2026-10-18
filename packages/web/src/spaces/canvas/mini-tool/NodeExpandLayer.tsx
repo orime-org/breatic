@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
+import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
+import { expandFillStyle } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 
 interface NodeExpandLayerProps {
   /** The node this layer belongs to. */
@@ -29,6 +32,8 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const expand = draft?.expand ?? null;
   const geometry = useMediaGeometry(wrapper, expand !== null);
+  // Read only while the tool is open, so a zoom does not re-render every node.
+  const zoom = useStore((s) => (expand === null ? 1 : s.transform[2]));
 
   // Where the node shows the picture, for the frame drawn outside the node.
   // The store skips a view equal to the one it holds. A source reset clears
@@ -44,8 +49,8 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
     // The node's own picture stays put while its copy moves in the frame.
     <div
       data-testid='mini-tool-expand-cover'
-      className='pointer-events-none absolute bg-muted'
-      style={{ left: at.x, top: at.y, width: box.width, height: box.height }}
+      className='pointer-events-none absolute'
+      style={{ left: at.x, top: at.y, width: box.width, height: box.height, ...expandFillStyle(handleScale(zoom), { x: 0, y: 0 }) }}
     />
   );
 }

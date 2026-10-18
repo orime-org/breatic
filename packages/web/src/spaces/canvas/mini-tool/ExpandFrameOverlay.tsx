@@ -37,6 +37,30 @@ interface ExpandFrameOverlayProps {
   onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
 }
 
+/** One checker cell's side in screen pixels. */
+const CHECKER_PX = 6;
+
+/**
+ * The fill of the area the model paints: a low-contrast checkerboard, the
+ * convention Photoshop's Generative Expand shows for it, in either theme. The
+ * cells are counted from the picture's own corner, so the frame and the cover
+ * over the node's picture lay the same grid.
+ * @param scale - Canvas pixels per screen pixel at the zoom.
+ * @param from - Where the picture's corner is from the element's top-left, in canvas pixels.
+ * @param from.x - Across.
+ * @param from.y - Down.
+ * @returns The element's background.
+ * @throws {never} Never.
+ */
+export function expandFillStyle(scale: number, from: { x: number; y: number }): React.CSSProperties {
+  const cell = CHECKER_PX * scale;
+  return {
+    backgroundImage: 'repeating-conic-gradient(var(--color-muted) 0 25%, var(--color-background) 0 50%)',
+    backgroundSize: `${cell * 2}px ${cell * 2}px`,
+    backgroundPosition: `${from.x}px ${from.y}px`,
+  };
+}
+
 /**
  * The expand tool's frame (inner#1303 §6.3), drawn in the canvas's viewport
  * rather than in the node: the frame reaches well past the node, and the
@@ -177,7 +201,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     <div
       data-testid='mini-tool-expand-frame'
       // `pointer-events-auto` because the viewport hands pointer events back per node only.
-      className={`${TOOL_LAYER_CLASS} pointer-events-auto absolute touch-none border-solid border-background bg-muted outline outline-foreground`}
+      className={`${TOOL_LAYER_CLASS} pointer-events-auto absolute touch-none border-solid border-background outline outline-foreground`}
       onClick={stopNodeClick}
       style={{
         left: origin.x + (frame.x + shift.x) * box.width,
@@ -186,6 +210,8 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
         height: frame.height * box.height,
         borderWidth: scale,
         outlineWidth: scale,
+        // The background starts inside the border.
+        ...expandFillStyle(scale, { x: -(frame.x + shift.x) * box.width - scale, y: -(frame.y + shift.y) * box.height - scale }),
       }}
       onPointerMove={onMove}
       onPointerUp={onUp}
