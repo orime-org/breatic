@@ -22,6 +22,19 @@ import { AppError, env, getNodeTaskConfig } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
+/**
+ * A run refused because running work holds what it needs, so a lane that
+ * stores the refusal on its node can name that cause.
+ */
+export class CreditsHeldError extends AppError {
+  /**
+   * @param message - The refusal, already translated.
+   */
+  constructor(message: string) {
+    super(402, message);
+  }
+}
+
 /** The figures a refusal is explained with. */
 interface RefusalFigures {
   studioId: string;
@@ -46,9 +59,12 @@ interface RefusalFigures {
  * it — and assigning credits into a studio that owes pays the debt down
  * first, which may still leave nothing to generate with.
  *
- * Holds are named only when the credits are there and waiting would let the
- * run through. When they would not cover it even unheld, the sentence is the
- * one that leads somewhere: the shortfall, assigning, or topping up.
+ * Holds are named only when the balance would cover the run without them.
+ * A hold turns into a charge when its run succeeds, so waiting frees credits
+ * only when running work fails or costs less than it held; unassigned credits
+ * in the caller's account are the answer that certainly works, and come
+ * first. When the balance would not cover the run even unheld, the sentence
+ * is the one that leads somewhere: the shortfall, assigning, or topping up.
  *
  * Thrown rather than returned, so the answer is built where every other error
  * answer is built: a string each caller sent itself skipped `errorHandler` and
@@ -58,7 +74,8 @@ interface RefusalFigures {
  * @param required - Credits the run needs.
  * @param figures - The studio's position at the moment it was refused.
  * @returns Never.
- * @throws {AppError} 402, always.
+ * @throws {CreditsHeldError} 402, when running work holds what the run needs.
+ * @throws {AppError} 402, for every other cause.
  */
 async function refuse(userId: string, required: number, figures: RefusalFigures): Promise<never> {
   const { studioId, spendable, held } = figures;
@@ -70,7 +87,11 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
   }
 
   if (held > 0 && spendable >= required) {
-    throw new AppError(402, t("server.credit.held_by_running", { held, available }));
+    const unassigned = await creditLotService.getUnassignedCredits(userId);
+    if (unassigned > 0) throw new AppError(402, t("server.credit.unassigned", { available: unassigned }));
+    // A run charged above its estimate can leave the others' holds larger
+    // than the balance; what can be used now is then nothing, not less.
+    throw new CreditsHeldError(t("server.credit.held_by_running", { held, available: Math.max(0, available) }));
   }
 
   if (available > 0) {
@@ -105,7 +126,8 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * @param userId - The authenticated caller.
  * @param referenceId - The run's task id, which the worker releases by.
  * @param required - The run's estimate.
- * @throws {AppError} 402 when the studio cannot cover it.
+ * @throws {CreditsHeldError} 402 when running work holds what it needs.
+ * @throws {AppError} 402 when the studio cannot cover it for another cause.
  */
 export async function reserveForRun(
   projectId: string,
@@ -142,7 +164,7 @@ export async function precheckCredits(
   if (!env.PAYMENT_ENABLED) return;
 
   const studioId = await assetService.resolveOwnerStudioId(projectId);
-  const { spendable } = await creditHoldService.getCreditPosition(studioId);
+  const spendable = await creditLotService.getSpendableCredits(studioId);
   if (spendable >= required) return;
   await refuse(userId, required, { studioId, spendable, held: 0 });
 }

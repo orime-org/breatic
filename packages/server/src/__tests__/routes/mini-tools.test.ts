@@ -190,6 +190,18 @@ describe("POST /mini-tools", () => {
     expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "no_credits");
   });
 
+  it("settles the opened rows as credits_held when running work holds what the run needs", async () => {
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90 });
+    const res = await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
+  });
+
   it("refuses a param the tool does not expose, before any row opens", async () => {
     const res = await post({
       tool: "image.upscale",

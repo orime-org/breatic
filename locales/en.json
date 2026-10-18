@@ -912,6 +912,7 @@
         "empty": "Nothing came back.",
         "internal": "Something on our side went wrong.",
         "no_credits": "No credits available.",
+        "credits_held": "Credits are held by running tasks.",
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",

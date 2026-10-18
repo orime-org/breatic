@@ -74,6 +74,12 @@ export const TASK_FAILURE_REASONS = [
    */
   "no_credits",
   /**
+   * The studio's balance covers the run, but running work holds what it
+   * needs. Separate from `no_credits` because there are credits: they are
+   * spoken for until that work is charged or ends.
+   */
+  "credits_held",
+  /**
    * A model's safety gate refused this question. Asking it differently may
    * get an answer; nothing on our side broke.
    */

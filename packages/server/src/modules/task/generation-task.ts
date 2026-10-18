@@ -18,7 +18,7 @@
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
-import { reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { CreditsHeldError, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
 import type { NodeTaskAction, TaskFailureReason } from "@breatic/shared";
@@ -182,7 +182,12 @@ export async function startRowedRun(opts: {
     }
     return "pending";
   } catch (err) {
-    const reason: TaskFailureReason = err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
+    const reason: TaskFailureReason =
+      err instanceof CreditsHeldError
+        ? "credits_held"
+        : err instanceof AppError && err.statusCode === 402
+          ? "no_credits"
+          : "internal";
     for (const settle of [
       // Before queueing, so whatever was held for this run is released;
       // a refused admission held nothing, and releasing it does nothing.

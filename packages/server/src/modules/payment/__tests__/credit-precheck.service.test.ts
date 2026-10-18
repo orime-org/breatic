@@ -30,7 +30,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 }));
 
 const reserveCredits = vi.fn();
-const getCreditPosition = vi.fn();
+const getSpendableCredits = vi.fn();
 const getStudioDebt = vi.fn();
 const getUnassignedCredits = vi.fn();
 const getGrantedCredits = vi.fn();
@@ -38,17 +38,17 @@ const resolveOwnerStudioId = vi.fn();
 vi.mock("@breatic/domain", () => ({
   creditHoldService: {
     reserveCredits: (...a: unknown[]) => reserveCredits(...a),
-    getCreditPosition: (...a: unknown[]) => getCreditPosition(...a),
   },
   creditLotService: {
     getStudioDebt: (...a: unknown[]) => getStudioDebt(...a),
     getUnassignedCredits: (...a: unknown[]) => getUnassignedCredits(...a),
     getGrantedCredits: (...a: unknown[]) => getGrantedCredits(...a),
+    getSpendableCredits: (...a: unknown[]) => getSpendableCredits(...a),
   },
   assetService: { resolveOwnerStudioId: (...a: unknown[]) => resolveOwnerStudioId(...a) },
 }));
 
-const { precheckCredits, reserveForRun } = await import("@server/modules/payment/credit-precheck.service.js");
+const { CreditsHeldError, precheckCredits, reserveForRun } = await import("@server/modules/payment/credit-precheck.service.js");
 
 const PROJECT = "p1";
 const USER = "u1";
@@ -83,7 +83,7 @@ beforeEach(() => {
   env.PAYMENT_ENABLED = true;
   resolveOwnerStudioId.mockResolvedValue(STUDIO);
   reserveCredits.mockResolvedValue({ ok: true });
-  getCreditPosition.mockResolvedValue({ spendable: 100, held: 0, available: 100 });
+  getSpendableCredits.mockResolvedValue(100);
   getStudioDebt.mockResolvedValue(0);
   getUnassignedCredits.mockResolvedValue(0);
   getGrantedCredits.mockResolvedValue(0);
@@ -110,13 +110,32 @@ describe("reserveForRun", () => {
     });
   });
 
-  it("says the credits are held by running work when waiting would let the run through", async () => {
+  it("says the credits are held by running work when the balance covers the run but its holds do not", async () => {
+    refuseWith(100, 80);
+    const err = await reserveForRun(PROJECT, USER, "t", 60).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CreditsHeldError);
+    expect(err).toMatchObject({
+      statusCode: 402,
+      message: 'server.credit.held_by_running {"held":80,"available":20}',
+    });
+  });
+
+  it("points at the account's unassigned credits before the held ones, since holds turn into charges", async () => {
     refuseWith(100, 80);
     getUnassignedCredits.mockResolvedValue(500);
     expect(await refusal(() => reserveForRun(PROJECT, USER, "t", 60))).toEqual({
       status: 402,
-      message: 'server.credit.held_by_running {"held":80,"available":20}',
+      message: 'server.credit.unassigned {"available":500}',
     });
+  });
+
+  it("says nothing is available rather than a negative figure when holds outgrow the balance", async () => {
+    // A run charged above its estimate leaves the others' holds larger than
+    // what is left; the sentence answers how much can be used now.
+    refuseWith(90, 95);
+    expect((await refusal(() => reserveForRun(PROJECT, USER, "t", 10))).message).toBe(
+      'server.credit.held_by_running {"held":95,"available":0}',
+    );
   });
 
   it("falls back to the shortfall sentence when the credits would not be enough even unheld", async () => {
@@ -148,13 +167,13 @@ describe("reserveForRun", () => {
 describe("precheckCredits", () => {
   // A chat turn cannot know up front what it will cost, so it holds nothing
   // and is admitted on the balance alone, holds or not (user 2026-10-18).
-  it("lets a chat turn through on the balance, whatever running work holds", async () => {
-    getCreditPosition.mockResolvedValue({ spendable: 100, held: 100, available: 0 });
+  it("lets a chat turn through on the balance, without reading holds", async () => {
+    getSpendableCredits.mockResolvedValue(100);
     await expect(precheckCredits(PROJECT, USER, 0.000001)).resolves.toBeUndefined();
   });
 
   it("refuses on the balance with the sentence that names the cause, never the held one", async () => {
-    getCreditPosition.mockResolvedValue({ spendable: 0, held: 40, available: -40 });
+    getSpendableCredits.mockResolvedValue(0);
     expect(await refusal(() => precheckCredits(PROJECT, USER, 0.000001))).toEqual({
       status: 402,
       message: "server.credit.none",
@@ -165,7 +184,7 @@ describe("precheckCredits", () => {
     env.PAYMENT_ENABLED = false;
     await precheckCredits(PROJECT, USER, 1);
     await reserveForRun(PROJECT, USER, "t", 1);
-    expect(getCreditPosition).not.toHaveBeenCalled();
+    expect(getSpendableCredits).not.toHaveBeenCalled();
     expect(reserveCredits).not.toHaveBeenCalled();
   });
 });

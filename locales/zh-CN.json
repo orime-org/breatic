@@ -912,6 +912,7 @@
         "empty": "没有拿到任何内容。",
         "internal": "我们这边出错了。",
         "no_credits": "没有可用积分。",
+        "credits_held": "积分正被进行中的任务占用。",
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。",
