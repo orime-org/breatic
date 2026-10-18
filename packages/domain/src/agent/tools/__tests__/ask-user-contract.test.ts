@@ -201,6 +201,14 @@ describe("how the tool runs", () => {
     expect(askUser.description).toMatch(/by (its|their) number/);
   });
 
+  it("tells the model the card adds the numbers, so a header and a question carry none", () => {
+    expect(askUser.description).toMatch(/write no number/i);
+    const shape = (askUser.inputSchema as unknown as { shape: { questions: { element: { shape: Record<string, { description?: string }> } } } })
+      .shape.questions.element.shape;
+    expect(shape.header?.description).toMatch(/no number/i);
+    expect(shape.question?.description).toMatch(/no number/i);
+  });
+
   it("tells the model each answer names its question by an index counting from 0", () => {
     expect(askUser.description).toMatch(/`index`[^.]*counting from 0/);
   });

@@ -71,7 +71,8 @@ export function makeAskUserTool(context: AskUserContext): Tool<AskUserInput, nev
       "question here rather than writing it yourself, and every answer you are offering in its options -- " +
       "the card draws them as choices to click, and adds an Other line to each question for the user's own " +
       "words, so do not offer an \"other\" option yourself. The card shows the questions numbered from 1 in " +
-      "the order you give them, and a user who types instead may point at a question by its number. Keep " +
+      "the order you give them, and a user who types instead may point at a question by its number; the card " +
+      "adds the numbers, so write no number or \"question 1\" in a header or a question. Keep " +
       "each option to one line saying what it is, with no argument for or against it. Give an option media " +
       "only when it has to be seen or heard to be understood (a style, a voice, a shot), on every option of " +
       "that question or on none.",
