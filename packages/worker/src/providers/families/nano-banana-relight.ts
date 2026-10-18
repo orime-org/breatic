@@ -20,25 +20,29 @@ import {
 
 import type { ModelFamily } from "@worker/providers/shared.js";
 
-/**
- * What the reference lends, named by its place in the images, as Google's
- * examples do: the direction always, and each setting the reader left on Auto;
- * a setting chosen by hand overrides it (inner#1304 B3).
- * @param params - The validated run params.
- * @returns The sentence.
- */
-function referenceOf(params: Readonly<Record<string, unknown>>): string {
-  const taken = ["direction"];
-  if (LIGHT_INTENSITIES[String(params.light_intensity)] === undefined) taken.push("contrast");
-  if (LIGHT_COLORS[String(params.light_color)] === undefined) taken.push("colour");
-  if (LIGHT_QUALITIES[String(params.light_quality)] === undefined) taken.push("shadow quality");
-  const set = taken.length < 4 ? " Where `lighting` gives a value, use it instead of the second image's." : "";
-  const list = taken.length === 1 ? taken[0] : `${taken.slice(0, -1).join(", ")} and ${taken[taken.length - 1]}`;
-  return `Take the lighting of the second image: its ${list}. Take nothing else from it.${set}`;
-}
-
 /** What the result keeps of the source. */
 const PRESERVE = ["subject", "face", "pose", "clothing", "background", "composition"];
+
+/** What the reference lends for each setting left on Auto, by its key in the lighting block. */
+const LENT = [
+  ["intensity", "contrast"],
+  ["color", "colour"],
+  ["quality", "shadow quality"],
+] as const;
+
+/**
+ * What the reference lends, named by its place in the images, as Google's
+ * examples do: the direction always, and each setting the lighting block
+ * leaves out because the reader left it on Auto; a setting chosen by hand
+ * overrides it (inner#1304 B3).
+ * @param lighting - The lighting block, written without a direction.
+ * @returns The sentence.
+ */
+function referenceOf(lighting: Readonly<Record<string, string>>): string {
+  const taken = ["direction", ...LENT.filter(([key]) => lighting[key] === undefined).map(([, word]) => word)];
+  const set = Object.keys(lighting).length > 0 ? " Where `lighting` gives a value, use it instead of the second image's." : "";
+  return `Take the lighting of the second image: its ${new Intl.ListFormat("en").format(taken)}. Take nothing else from it.${set}`;
+}
 
 /**
  * The lighting block: each setting not left on Auto, the direction only when
@@ -94,7 +98,7 @@ const nanoBananaRelight: ModelFamily = {
     const json = {
       task: "relight",
       ...(Object.keys(lighting).length > 0 && { lighting }),
-      ...(reference !== undefined && { reference: referenceOf(params) }),
+      ...(reference !== undefined && { reference: referenceOf(lighting) }),
       ...(note !== "" && { note }),
       preserve: PRESERVE,
     };

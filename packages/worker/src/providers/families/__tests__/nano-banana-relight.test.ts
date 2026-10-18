@@ -93,29 +93,28 @@ describe("nano-banana-relight family", () => {
   });
 
   // inner#1304 B3: what the reader set by hand overrides the reference; only what stays on Auto comes from it.
-  it('takes from the reference only what the reader left on Auto, and says the set values win', async () => {
-    const auto = { ...MANUAL, light_color: 'auto', light_quality: 'auto', light_reference: REFERENCE };
-    const all = JSON.parse((await relight.prepare('', auto, RUN)).prompt) as { reference: string };
+  it("takes from the reference only what the reader left on Auto, and says the set values win", async () => {
+    const auto = { ...MANUAL, light_color: "auto", light_quality: "auto", light_reference: REFERENCE };
+    const all = JSON.parse((await relight.prepare("", auto, RUN)).prompt) as { reference: string };
     expect(all.reference).toMatch(/direction/);
     expect(all.reference).toMatch(/colour/);
     expect(all.reference).toMatch(/shadow/);
     expect(all.reference).not.toMatch(/instead/);
 
-    const red = { ...auto, light_color: 'red' };
-    const json = JSON.parse((await relight.prepare('', red, RUN)).prompt) as { lighting: Record<string, string>; reference: string };
+    const red = { ...auto, light_color: "red" };
+    const json = JSON.parse((await relight.prepare("", red, RUN)).prompt) as { lighting: Record<string, string>; reference: string };
     expect(json.lighting.color).toBe(LIGHT_COLORS.red!.phrase);
     expect(json.reference).toMatch(/direction/);
     expect(json.reference).not.toMatch(/colour/);
     expect(json.reference).toMatch(/instead/);
   });
 
-  it('reads a light angle off the grid at its nearest step', async () => {
+  it("reads a light angle off the grid at its nearest step", async () => {
     const at = async (azimuth: number, elevation: number): Promise<string> =>
-      (JSON.parse((await relight.prepare('', { ...MANUAL, light_azimuth: azimuth, light_elevation: elevation }, RUN)).prompt) as {
+      (JSON.parse((await relight.prepare("", { ...MANUAL, light_azimuth: azimuth, light_elevation: elevation }, RUN)).prompt) as {
         lighting: { direction: string };
       }).lighting.direction;
     expect(await at(44, 29)).toBe(lightDirectionPhrase(45, 30));
-    expect(await at(270, 89)).toBe('from directly above');
+    expect(await at(270, 89)).toBe("from directly above");
   });
 });
-
