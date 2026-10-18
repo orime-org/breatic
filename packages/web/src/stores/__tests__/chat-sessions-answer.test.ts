@@ -182,23 +182,7 @@ describe('a turn already running in the conversation', () => {
 });
 
 describe('writing a message instead of answering', () => {
-  it('shows the card it closed as replied to, in the earlier reply', async () => {
-    answer = () =>
-      streaming([
-        { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } },
-        { type: 'start' },
-        { type: 'text-start', id: 't' },
-        { type: 'text-delta', id: 't', delta: 'Sure.' },
-        { type: 'text-end', id: 't' },
-        { type: 'finish' },
-      ]);
-    const chat = pausedChat();
-    await sendInSession('c-1', 'never mind, something else');
-
-    expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { repliedInChat: true } });
-  });
-
-  it('adds one reply for the turn when the frames arrive in the order the server writes them', async () => {
+  it('shows the card it closed as replied to and adds one reply for the turn when the frames arrive in the order the server writes them', async () => {
     // A named conversation's turn opens with its title, then the cards the
     // message closed, then the model's reply under the server's own id.
     answer = () =>
