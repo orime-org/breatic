@@ -749,7 +749,12 @@
         "motion_prompt": "Motion",
         "append_duration": "Added length",
         "ambience": "Ambience",
-        "double_output": "Two takes"
+        "double_output": "Two takes",
+        "light_azimuth": "Light direction",
+        "light_elevation": "Light height",
+        "light_color": "Light colour",
+        "light_intensity": "Intensity",
+        "light_quality": "Light quality"
       },
       "paramField": {
         "speaker": "Name",
@@ -974,6 +979,28 @@
         },
         "mark": {
           "label": "Markup"
+        },
+        "angle": {
+          "label": "Multi-angle",
+          "prompt": "Anything to add, if you like — e.g. keep the background sharp"
+        },
+        "relight": {
+          "label": "Relight",
+          "prompt": "Anything to add about the light, if you like — e.g. candle light, neon sign behind",
+          "slot": {
+            "light_reference": "Pick the picture whose light to copy"
+          }
+        },
+        "restyle": {
+          "label": "Restyle",
+          "prompt": "Anything to add, if you like — e.g. keep the colours softer",
+          "slot": {
+            "style": "Pick up to three pictures whose style to use"
+          }
+        },
+        "quickEdit": {
+          "label": "Quick edit",
+          "prompt": "Say what to change — e.g. make it a rainy night, swap the shirt for a black jacket"
         }
       },
       "video": {
@@ -1148,6 +1175,14 @@
         "picked": "{picked} / {total} selected",
         "pickAll": "Select all",
         "pickNone": "Select none"
+      },
+      "relight": {
+        "lightTitle": "Light source",
+        "referenceTitle": "Light reference",
+        "optional": "Optional",
+        "followsReference": "Light follows this picture",
+        "referenceNote": "Light comes from this picture. Colour, intensity and quality on the right override it.",
+        "fromReference": "from reference"
       }
     },
     "template": {
