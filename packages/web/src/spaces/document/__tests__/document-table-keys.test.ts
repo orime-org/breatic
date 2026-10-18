@@ -10,11 +10,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -39,14 +41,9 @@ function open(quoted = false): Editor {
   editor.mount(host);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
-    {
-      type: 'table',
-      props: { quoted },
-      content: {
-        type: 'tableContent',
-        rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }],
-      },
-    },
+    tableBlock({
+      rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }],
+    }, { quoted }),
   ] as never);
   return editor;
 }
@@ -57,7 +54,7 @@ function open(quoted = false): Editor {
  * @param text - The cell's text.
  */
 function caretAfter(editor: Editor, text: string): void {
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   let at = -1;
   view.state.doc.descendants((node, pos) => {
     if (at < 0 && node.isText && node.text === text) {
@@ -79,7 +76,7 @@ function caretAfter(editor: Editor, text: string): void {
  * @returns Whether a handler claimed it.
  */
 function press(editor: Editor, key: string, shift = false): boolean {
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   const event = new KeyboardEvent('keydown', { key, shiftKey: shift, bubbles: true });
   return view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false;
 }
@@ -93,7 +90,7 @@ function caretCell(editor: Editor): string | null {
   const { $head } = editor.prosemirrorState.selection;
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const node = $head.node(depth);
-    if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
+    if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') {
       return node.textContent;
     }
   }
@@ -108,7 +105,7 @@ function caretCell(editor: Editor): string | null {
 function table(editor: Editor): PMNode {
   let found: PMNode | null = null;
   editor.prosemirrorState.doc.descendants((node) => {
-    if (found === null && node.type.name === 'table') {
+    if (found === null && node.type.name === 'docTable') {
       found = node;
     }
     return found === null;
@@ -188,7 +185,7 @@ describe('keys in a table cell', () => {
      * @param editor - The editor.
      */
     function onEdgeLine(editor: Editor): void {
-      editor.prosemirrorView!.endOfTextblock = (): boolean => true;
+      editor.prosemirrorView.endOfTextblock = (): boolean => true;
     }
 
     /**
@@ -207,7 +204,7 @@ describe('keys in a table cell', () => {
 
       expect(press(editor, key)).toBe(true);
 
-      expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
+      expect(blockTypes(editor)).toEqual(['docTable', 'paragraph']);
       expect(editor.prosemirrorState.selection.$head.parent.type.name).toBe('paragraph');
     });
 
@@ -218,7 +215,7 @@ describe('keys in a table cell', () => {
 
       press(editor, 'ArrowDown');
 
-      expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
+      expect(blockTypes(editor)).toEqual(['docTable', 'paragraph']);
     });
 
     it.each([
@@ -231,56 +228,76 @@ describe('keys in a table cell', () => {
 
       press(editor, key);
 
-      expect(blockTypes(editor)).toEqual(['table']);
+      expect(blockTypes(editor)).toEqual(['docTable']);
     });
 
     it('opens nothing when a block already follows the table', () => {
       const editor = open();
-      editor.insertBlocks([{ type: 'paragraph', content: 'after' }] as never, editor.document[0]!, 'after');
+      editor.insertBlocks([{ type: 'paragraph', content: 'after' }] as never, editor.document[0], 'after');
       onEdgeLine(editor);
       caretAfter(editor, 'b2');
 
       press(editor, 'ArrowDown');
 
-      expect(blockTypes(editor)).toEqual(['table', 'paragraph']);
+      expect(blockTypes(editor)).toEqual(['docTable', 'paragraph']);
     });
 
-    it.each(['ArrowDown', 'ArrowRight'])('%s on a cell line with another line under it opens nothing', (key) => {
-      // A pasted cell can hold more than one line; the way out is from its last.
+    it.each(['ArrowDown', 'ArrowRight'])('%s on a block of the last cell with another block under it opens nothing', (key) => {
+      // A cell holds blocks; the way out is from its last one.
       const editor = open();
-      caretAfter(editor, 'b2');
-      const view = editor.prosemirrorView!;
-      view.dispatch(view.state.tr.split(view.state.selection.from).insertText('more'));
+      editor.replaceBlocks(editor.document, [
+        tableBlock({
+          rows: [
+            { cells: ['a1', 'b1'] },
+            { cells: ['a2', { blocks: [{ type: 'paragraph', content: 'b2' }, { type: 'paragraph', content: 'more' }] }] },
+          ],
+        }),
+      ] as never);
       caretAfter(editor, 'b2');
       onEdgeLine(editor);
 
       press(editor, key);
 
-      expect(blockTypes(editor)).toEqual(['table']);
+      expect(blockTypes(editor)).toEqual(['docTable']);
+    });
+
+    it.each(['ArrowDown', 'ArrowRight'])('%s on a block nested under the last block of the last cell opens the line', (key) => {
+      const editor = open();
+      editor.replaceBlocks(editor.document, [
+        tableBlock({
+          rows: [
+            {
+              cells: [
+                'a1',
+                {
+                  blocks: [
+                    { type: 'bulletListItem', content: 'b1', children: [{ type: 'bulletListItem', content: 'kid' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      ] as never);
+      caretAfter(editor, 'kid');
+      onEdgeLine(editor);
+
+      press(editor, key);
+
+      expect(blockTypes(editor)).toEqual(['docTable', 'paragraph']);
     });
 
     it.each(['ArrowDown', 'ArrowRight'])('%s opens nothing when a divider follows the table', (key) => {
       const editor = open();
-      editor.insertBlocks([{ type: 'divider' }] as never, editor.document[0]!, 'after');
+      editor.insertBlocks([{ type: 'divider' }] as never, editor.document[0], 'after');
       onEdgeLine(editor);
       caretAfter(editor, 'b2');
 
       press(editor, key);
 
-      expect(blockTypes(editor)).toEqual(['table', 'divider']);
+      expect(blockTypes(editor)).toEqual(['docTable', 'divider']);
     });
 
-    it('opens nothing when the table has a block nested under it', () => {
-      const editor = open();
-      editor.updateBlock(editor.document[0]!, { children: [{ type: 'paragraph', content: 'kid' }] } as never);
-      onEdgeLine(editor);
-      caretAfter(editor, 'b2');
-
-      press(editor, 'ArrowDown');
-
-      expect(blockTypes(editor)).toEqual(['table']);
-      expect((editor.document[0] as unknown as { children: unknown[] }).children).toHaveLength(1);
-    });
   });
 
   describe('leaving a table the body starts with', () => {
@@ -290,7 +307,7 @@ describe('keys in a table cell', () => {
      * @param editor - The editor.
      */
     function onEdgeLine(editor: Editor): void {
-      editor.prosemirrorView!.endOfTextblock = (): boolean => true;
+      editor.prosemirrorView.endOfTextblock = (): boolean => true;
     }
 
     /**
@@ -309,7 +326,7 @@ describe('keys in a table cell', () => {
      */
     function caretBefore(editor: Editor, text: string): void {
       caretAfter(editor, text);
-      const view = editor.prosemirrorView!;
+      const view = editor.prosemirrorView;
       const at = view.state.selection.from - text.length;
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
     }
@@ -321,7 +338,7 @@ describe('keys in a table cell', () => {
 
       expect(press(editor, 'ArrowUp')).toBe(true);
 
-      expect(blockTypes(editor)).toEqual(['paragraph', 'table']);
+      expect(blockTypes(editor)).toEqual(['paragraph', 'docTable']);
       expect(editor.prosemirrorState.selection.$head.parent.type.name).toBe('paragraph');
     });
 
@@ -332,7 +349,7 @@ describe('keys in a table cell', () => {
 
       expect(press(editor, 'ArrowLeft')).toBe(true);
 
-      expect(blockTypes(editor)).toEqual(['paragraph', 'table']);
+      expect(blockTypes(editor)).toEqual(['paragraph', 'docTable']);
     });
 
     it.each([
@@ -345,18 +362,18 @@ describe('keys in a table cell', () => {
 
       press(editor, key);
 
-      expect(blockTypes(editor)).toEqual(['table']);
+      expect(blockTypes(editor)).toEqual(['docTable']);
     });
 
     it('opens nothing when a block comes before the table', () => {
       const editor = open();
-      editor.insertBlocks([{ type: 'divider' }] as never, editor.document[0]!, 'before');
+      editor.insertBlocks([{ type: 'divider' }] as never, editor.document[0], 'before');
       onEdgeLine(editor);
       caretAfter(editor, 'a1');
 
       press(editor, 'ArrowUp');
 
-      expect(blockTypes(editor)).toEqual(['divider', 'table']);
+      expect(blockTypes(editor)).toEqual(['divider', 'docTable']);
     });
   });
 
@@ -369,34 +386,167 @@ describe('keys in a table cell', () => {
     expect(table(editor).childCount).toBe(3);
     expect(table(editor).child(2).childCount).toBe(2);
     const { $head } = editor.prosemirrorState.selection;
-    expect($head.node($head.depth - 2)).toBe(table(editor).child(2));
-    expect($head.index($head.depth - 2)).toBe(0);
+    expect($head.node($head.depth - 3)).toBe(table(editor).child(2));
+    expect($head.index($head.depth - 3)).toBe(0);
   });
 
-  it.each([false, true])('Enter breaks the line inside the cell (shift: %s)', (shift) => {
+  /**
+   * The texts of the blocks in a cell, nested ones included, in order.
+   * @param editor - The editor.
+   * @param row - The row index.
+   * @param column - The cell index in that row.
+   * @returns The texts.
+   */
+  function cellLines(editor: Editor, row: number, column: number): string[] {
+    const lines: string[] = [];
+    table(editor).child(row).child(column).descendants((node) => {
+      if (node.isTextblock) lines.push(`${node.type.name}:${node.textContent}`);
+      return !node.isTextblock;
+    });
+    return lines;
+  }
+
+  /**
+   * Opens a table whose first cell holds the given blocks.
+   * @param blocks - The first cell's blocks.
+   * @returns The editor.
+   */
+  function openFirstCell(blocks: unknown[]): Editor {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: [{ blocks }, 'b1'] }, { cells: ['a2', 'b2'] }] }),
+    ] as never);
+    return editor;
+  }
+
+  it('Enter splits the block inside the cell, the way it does in the body', () => {
     const editor = open();
     caretAfter(editor, 'a1');
 
-    expect(press(editor, 'Enter', shift)).toBe(true);
+    press(editor, 'Enter');
 
     expect(table(editor).childCount).toBe(2);
-    const cell = table(editor).child(0).child(0);
-    expect(cell.childCount).toBe(1);
-    const line = cell.firstChild!;
-    expect(line.lastChild?.type.name).toBe('hardBreak');
+    expect(cellLines(editor, 0, 0)).toEqual(['paragraph:a1', 'paragraph:']);
     expect(caretCell(editor)).toBe('a1');
+    expect(editor.prosemirrorState.selection.$head.parent.content.size).toBe(0);
   });
 
-  it('Enter in a quoted table breaks the line and keeps the table whole', () => {
+  it('Shift-Enter breaks the line inside the cell, the way it does in the body', () => {
+    const editor = open();
+    caretAfter(editor, 'a1');
+
+    press(editor, 'Enter', true);
+
+    expect(cellLines(editor, 0, 0)).toHaveLength(1);
+    expect(table(editor).child(0).child(0).firstChild?.firstChild?.lastChild?.type.name).toBe('hardBreak');
+  });
+
+  it('Enter in a list item in a cell starts the next item there', () => {
+    const editor = openFirstCell([{ type: 'bulletListItem', content: 'one' }]);
+    caretAfter(editor, 'one');
+
+    press(editor, 'Enter');
+
+    expect(cellLines(editor, 0, 0)).toEqual(['bulletListItem:one', 'bulletListItem:']);
+  });
+
+  it('Enter on an empty last paragraph of a cell stays in the cell', () => {
+    const editor = openFirstCell([{ type: 'paragraph', content: 'one' }, { type: 'paragraph' }]);
+    const view = editor.prosemirrorView;
+    let last = -1;
+    table(editor).child(0).child(0).descendants((node, pos) => {
+      if (node.isTextblock) last = pos;
+      return !node.isTextblock;
+    });
+    let cellStart = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (cellStart < 0 && node.type.name === 'docTableCell') cellStart = pos;
+      return cellStart < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, cellStart + 1 + last + 1)));
+
+    press(editor, 'Enter');
+
+    expect(cellLines(editor, 0, 0)).toEqual(['paragraph:one', 'paragraph:', 'paragraph:']);
+    expect((editor.document as unknown as { type: string }[]).map((b) => b.type)).toEqual(['docTable']);
+  });
+
+  it.each([false, true])('Enter over several selected cells changes nothing (shift: %s)', (shift) => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0], cells[3])));
+    const before = view.state.doc;
+
+    expect(press(editor, 'Enter', shift)).toBe(true);
+
+    expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
+  });
+
+  it('Enter in a quoted table splits the block and keeps the table whole', () => {
     const editor = open(true);
     caretAfter(editor, 'b2');
 
     press(editor, 'Enter');
 
-    expect((editor.document as unknown as { type: string }[]).map((b) => b.type)).toEqual([
-      'table',
+    expect((editor.document as unknown as { type: string }[]).map((b) => b.type)).toEqual(['docTable']);
+    expect(cellLines(editor, 1, 1)).toEqual(['paragraph:b2', 'paragraph:']);
+  });
+
+  it('Tab in a list item that can go in nests it, and stays in the cell', () => {
+    const editor = openFirstCell([
+      { type: 'bulletListItem', content: 'one' },
+      { type: 'bulletListItem', content: 'two' },
     ]);
-    expect(table(editor).child(1).child(1).firstChild?.lastChild?.type.name).toBe('hardBreak');
+    caretAfter(editor, 'two');
+
+    expect(press(editor, 'Tab')).toBe(true);
+
+    const first = table(editor).child(0).child(0);
+    expect(first.childCount).toBe(1);
+    expect(first.firstChild?.lastChild?.type.name).toBe('blockGroup');
+    expect(caretCell(editor)).toBe('onetwo');
+  });
+
+  it('Tab in a list item that cannot go in moves to the next cell', () => {
+    const editor = openFirstCell([{ type: 'bulletListItem', content: 'one' }]);
+    caretAfter(editor, 'one');
+
+    press(editor, 'Tab');
+
+    expect(caretCell(editor)).toBe('b1');
+  });
+
+  it('Shift-Tab in a nested list item takes it out, and stays in the cell', () => {
+    const editor = openFirstCell([
+      {
+        type: 'bulletListItem',
+        content: 'one',
+        children: [{ type: 'bulletListItem', content: 'two' }],
+      },
+    ]);
+    caretAfter(editor, 'two');
+
+    press(editor, 'Tab', true);
+
+    expect(table(editor).child(0).child(0).childCount).toBe(2);
+    expect(caretCell(editor)).toBe('onetwo');
+  });
+
+  it('Shift-Tab in a list item at the top of a cell moves to the previous cell', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: ['a1', { blocks: [{ type: 'bulletListItem', content: 'one' }] }] }] }),
+    ] as never);
+    caretAfter(editor, 'one');
+
+    press(editor, 'Tab', true);
+
+    expect(caretCell(editor)).toBe('a1');
   });
 
   it('Enter that ends a composition adds no line break', () => {
@@ -404,7 +554,7 @@ describe('keys in a table cell', () => {
     caretAfter(editor, 'a1');
     const before = editor.prosemirrorState.doc;
 
-    editor.prosemirrorView!.dom.dispatchEvent(
+    editor.prosemirrorView.dom.dispatchEvent(
       new CompositionEvent('compositionend', { data: '你好', bubbles: true }),
     );
     press(editor, 'Enter');
@@ -412,3 +562,114 @@ describe('keys in a table cell', () => {
     expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
   });
 });
+
+describe('the edges of a cell (inner#1619 design 5.3)', () => {
+  /**
+   * Opens a paragraph, a 2 × 2 table, and a paragraph.
+   * @param first - The first cell's blocks, when not one paragraph `a1`.
+   * @returns The editor.
+   */
+  function openAround(first?: unknown[]): Editor {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'above' },
+      tableBlock({ rows: [{ cells: [first === undefined ? 'a1' : { blocks: first }, 'b1'] }, { cells: ['a2', 'b2'] }] }),
+      { type: 'paragraph', content: 'below' },
+    ] as never);
+    return editor;
+  }
+
+  /**
+   * Puts the caret at a text's start.
+   * @param editor - The editor.
+   * @param text - The text.
+   */
+  function caretAt(editor: Editor, text: string): void {
+    caretAfter(editor, text);
+    const view = editor.prosemirrorView;
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.selection.from - text.length)),
+    );
+  }
+
+  it.each(['a1', 'b2'])('Backspace at the start of the paragraph that opens cell %s does nothing', (text) => {
+    const editor = openAround();
+    caretAt(editor, text);
+    const before = editor.prosemirrorState;
+
+    press(editor, 'Backspace');
+
+    expect(editor.prosemirrorState.doc.eq(before.doc)).toBe(true);
+    expect(editor.prosemirrorState.selection.eq(before.selection)).toBe(true);
+  });
+
+  it('Backspace at the start of a heading that opens a cell turns it into a paragraph, in the cell', () => {
+    const editor = openAround([{ type: 'heading', props: { level: 2 }, content: 'title' }]);
+    caretAt(editor, 'title');
+
+    press(editor, 'Backspace');
+
+    expect(cellBlockTypes(editor, 0)).toEqual(['paragraph']);
+    expect(caretCell(editor)).toBe('title');
+  });
+
+  it('Backspace between two paragraphs of a cell joins them, the way it does in the body', () => {
+    const editor = openAround([
+      { type: 'paragraph', content: 'one' },
+      { type: 'paragraph', content: 'two' },
+    ]);
+    caretAt(editor, 'two');
+
+    press(editor, 'Backspace');
+
+    expect(cellBlockTypes(editor, 0)).toEqual(['paragraph']);
+    expect(caretCell(editor)).toBe('onetwo');
+  });
+
+  it.each(['a1', 'b2'])('Delete at the end of the last block of cell %s does nothing', (text) => {
+    const editor = openAround();
+    caretAfter(editor, text);
+    const before = editor.prosemirrorState;
+
+    press(editor, 'Delete');
+
+    expect(editor.prosemirrorState.doc.eq(before.doc)).toBe(true);
+  });
+
+  it('Backspace at the start of the block under the table moves the caret to the end of the last cell', () => {
+    const editor = openAround();
+    caretAt(editor, 'below');
+    const before = editor.prosemirrorState.doc;
+
+    press(editor, 'Backspace');
+
+    expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
+    const { selection } = editor.prosemirrorState;
+    expect(selection.empty).toBe(true);
+    expect(caretCell(editor)).toBe('b2');
+    expect(selection.$head.parentOffset).toBe(2);
+  });
+
+  it('Delete at the end of the block above the table does nothing', () => {
+    const editor = openAround();
+    caretAfter(editor, 'above');
+    const before = editor.prosemirrorState.doc;
+
+    press(editor, 'Delete');
+
+    expect(editor.prosemirrorState.doc.eq(before)).toBe(true);
+  });
+});
+
+/**
+ * The types of the blocks in a cell of the first row.
+ * @param editor - The editor.
+ * @param column - The cell's index.
+ * @returns Their content node types.
+ */
+function cellBlockTypes(editor: Editor, column: number): string[] {
+  const types: string[] = [];
+  table(editor).child(0).child(column).forEach((container) => types.push(container.firstChild!.type.name));
+  return types;
+}
+

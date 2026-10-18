@@ -24,6 +24,7 @@ import type { Selection } from '@tiptap/pm/state';
 
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The table block's content node. */
 const TABLE = 'table';
@@ -237,12 +238,14 @@ export function blocksUnderFor(
 /**
  * The walk both readings share.
  *
- * A table is one block: the walk never goes into it, so the lines in its cells
- * are never blocks of their own. Block types cannot be written into a cell,
- * and a cell's line handed to `updateBlockTr` throws.
+ * A stored table (`table`) is one block: its cells hold a line each, never a
+ * block of its own. A table whose cells hold blocks is one block where the
+ * range takes it in whole, and its cells' blocks are blocks where the range
+ * goes into it. A selection over cells walks each cell on its own
+ * (`selection.ranges`), so cells between the selected ones are not reached.
  * @param doc - The document.
  * @param selection - The selection over it.
- * @param withWordless - Whether dividers and tables count.
+ * @param withWordless - Whether dividers and whole tables count.
  * @returns The blocks, in document order.
  */
 function blocksOf(
@@ -251,14 +254,20 @@ function blocksOf(
   withWordless: boolean,
 ): BlockUnder[] {
   const found: BlockUnder[] = [];
-  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
-    const wordless = node.type.name === DIVIDER || node.type.name === TABLE;
-    if (node.isTextblock || (withWordless && wordless)) {
-      found.push({ node, pos });
-      return false;
-    }
-    return node.type.name !== TABLE;
-  });
+  for (const { $from, $to } of selection.ranges) {
+    const from = $from.pos;
+    const to = $to.pos;
+    doc.nodesBetween(from, to, (node, pos) => {
+      const whole =
+        node.type.name === TABLE ||
+        (node.type.name === DOC_TABLE && from <= pos && pos + node.nodeSize <= to);
+      if (node.isTextblock || (withWordless && (whole || node.type.name === DIVIDER))) {
+        found.push({ node, pos });
+        return false;
+      }
+      return !whole;
+    });
+  }
   return found;
 }
 

@@ -30,6 +30,8 @@ import {
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
+  alignCellsAt,
+  cellsAlignFace,
   setCellsAttr,
   sharedCellAttr,
   type CellScope,
@@ -133,7 +135,7 @@ export function CellAttributeMenus({
         if (pos === null) return { align: undefined, fill: undefined };
         const fill = sharedCellAttr(state.doc, pos, scope, 'backgroundColor');
         return {
-          align: sharedCellAttr(state.doc, pos, scope, 'textAlignment'),
+          align: cellsAlignFace(state.doc, pos, scope),
           fill: fill === DEFAULT_FILL ? NO_COLOUR : (fill as string | undefined),
         };
       },
@@ -177,7 +179,7 @@ export function CellAttributeMenus({
                 data-ticked={ticks ? 'true' : undefined}
                 onSelect={() => {
                   onTargetCell(editor, (pos) => {
-                    setCellsAttr(editor, pos, scope, 'textAlignment', item.id);
+                    alignCellsAt(editor, pos, scope, item.id);
                   });
                 }}
               >

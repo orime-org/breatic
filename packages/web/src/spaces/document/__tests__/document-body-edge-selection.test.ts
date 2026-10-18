@@ -27,6 +27,7 @@ import {
   dragSelection,
   extendToBodyEdge,
 } from '@web/spaces/document/document-body-edge-selection';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 /**
  * Presses a key through the editor's key handlers.
@@ -1053,7 +1054,7 @@ describe('an empty line a selection holds', () => {
       { type: 'bulletListItem', content: '' },
       { type: 'numberedListItem', content: '' },
       { type: 'checkListItem', content: '' },
-      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['', 'x'] }] } },
+      tableBlock({ rows: [{ cells: ['', 'x'] }] }),
     ]);
     view.focus();
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));

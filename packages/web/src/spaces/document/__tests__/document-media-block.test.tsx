@@ -17,6 +17,7 @@ import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
 import { BODY_PART } from '@web/spaces/document/document-body-focus';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const download = vi.hoisted(() => ({ trigger: vi.fn() }));
 vi.mock('@web/lib/download', () => ({ downloadAsset: download.trigger }));
@@ -1623,7 +1624,7 @@ describe('a picture with a table right under it', () => {
       editor.replaceBlocks(editor.document, [
         { type: 'paragraph', content: 'Above' },
         { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
-        { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } },
+        tableBlock({ rows: [{ cells: ['x', 'y'] }] }),
       ] as never);
     });
     selectMedia(editor);
@@ -1715,7 +1716,7 @@ describe('a click beside a picture when another kind of selection is in the body
       editor.replaceBlocks(editor.document, [
         ...(withAbove ? [{ type: 'paragraph', content: 'Above' }] : []),
         { type: 'image', props: { url: URL_OF, name: 'a.png', previewWidth: 200 } },
-        { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } },
+        tableBlock({ rows: [{ cells: ['x', 'y'] }] }),
       ] as never);
     });
     return editor;

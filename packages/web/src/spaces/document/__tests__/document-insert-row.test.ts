@@ -159,7 +159,7 @@ describe('a table inserted below (inner#1126 A1)', () => {
     insertBelow(editor, editor.document[0] as never, PICK);
 
     const blocks = editor.document as unknown as Read[];
-    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'table', 'paragraph', 'paragraph']);
+    expect(blocks.map((b) => b.type)).toEqual(['paragraph', 'docTable', 'paragraph', 'paragraph']);
     const rows = (blocks[1]!.content as { rows: { cells: unknown[] }[] }).rows;
     expect(rows.map((r) => r.cells.length)).toEqual([4, 4, 4]);
     expect(blocks[2]!.content).toEqual([]);

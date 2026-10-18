@@ -18,6 +18,7 @@ import { CellSelection, tableEditingKey } from '@tiptap/pm/tables';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -44,7 +45,7 @@ function open(): Editor {
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'above' },
-    { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] } },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     { type: 'paragraph', content: 'below' },
   ] as never);
   return editor;

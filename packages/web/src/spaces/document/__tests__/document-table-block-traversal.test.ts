@@ -22,6 +22,7 @@ import {
   CONTENT_ROWS,
   tickedOver,
 } from '@web/spaces/document/document-block-ticks';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -35,13 +36,9 @@ afterEach(() => {
 });
 
 /** A 2 × 2 table block. */
-const TABLE = {
-  type: 'table',
-  content: {
-    type: 'tableContent',
-    rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }],
-  },
-};
+const TABLE = tableBlock({
+  rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }],
+});
 
 /**
  * Opens a mounted editor holding the given blocks.
@@ -102,7 +99,7 @@ function select(editor: Editor, from: string, to: string): void {
 function cells(editor: Editor): string[][] {
   let table: PMNode | null = null;
   editor.prosemirrorState.doc.descendants((node) => {
-    if (table === null && node.type.name === 'table') {
+    if (table === null && node.type.name === 'docTable') {
       table = node;
     }
     return table === null;
@@ -164,7 +161,7 @@ describe('a table under a selection', () => {
     const { doc, selection } = editor.prosemirrorState;
 
     const covered = blocksUnderFor(doc, selection, 'quote');
-    expect(covered.map(({ node }) => node.type.name)).toEqual(['table']);
+    expect(covered.map(({ node }) => node.type.name)).toEqual(['docTable']);
   });
 
   it('leaves the table alone for every content row pressed in a cell', () => {
@@ -173,7 +170,7 @@ describe('a table under a selection', () => {
       select(editor, 'b1', 'b1');
 
       expect(() => runBlockType(editor, row)).not.toThrow();
-      expect(types(editor)).toEqual(['table']);
+      expect(types(editor)).toEqual(['docTable']);
       expect(cells(editor)).toEqual([
         ['a1', 'b1'],
         ['a2', 'b2'],
@@ -213,7 +210,7 @@ describe('a table under a selection', () => {
 
     runBlockType(editor, 'heading-1');
 
-    expect(types(editor)).toEqual(['heading', 'table', 'heading']);
+    expect(types(editor)).toEqual(['heading', 'docTable', 'heading']);
     expect(cells(editor)).toEqual([
       ['a1', 'b1'],
       ['a2', 'b2'],
@@ -243,7 +240,7 @@ describe('a table under a selection', () => {
 
     type(editor, '---');
 
-    expect(types(editor)).toEqual(['table']);
+    expect(types(editor)).toEqual(['docTable']);
     expect(cells(editor)[1]).toEqual(['a2', '---']);
   });
 });

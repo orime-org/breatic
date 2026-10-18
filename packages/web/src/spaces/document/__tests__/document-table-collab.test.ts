@@ -27,6 +27,7 @@ import {
   mergeSelectedCells,
 } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -72,17 +73,13 @@ function pair(): Pair {
   const theirs = mount(b);
   ours.replaceBlocks(ours.document, [
     { type: 'paragraph', content: 'lead' },
-    {
-      type: 'table',
-      content: {
-        type: 'tableContent',
-        rows: [
-          { cells: ['a1', 'b1', 'c1'] },
-          { cells: ['a2', 'b2', 'c2'] },
-          { cells: ['a3', 'b3', 'c3'] },
-        ],
-      },
-    },
+    tableBlock({
+      rows: [
+        { cells: ['a1', 'b1', 'c1'] },
+        { cells: ['a2', 'b2', 'c2'] },
+        { cells: ['a3', 'b3', 'c3'] },
+      ],
+    }),
   ] as never);
   /** Exchanges until neither side has anything the other lacks. */
   const sync = (): void => {
@@ -138,7 +135,7 @@ function typeInto(editor: Editor, cell: string, text: string): void {
 function grids(editor: Editor): string[][][] {
   const found: string[][][] = [];
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name !== 'table') return true;
+    if (node.type.name !== 'docTable') return true;
     const rows: string[][] = [];
     node.forEach((row) => {
       const cells: string[] = [];
@@ -160,7 +157,7 @@ function grids(editor: Editor): string[][][] {
 function rectangular(editor: Editor): boolean {
   let ok = true;
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name !== 'table') return true;
+    if (node.type.name !== 'docTable') return true;
     if (TableMap.get(node).problems !== null) ok = false;
     return false;
   });

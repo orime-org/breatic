@@ -15,6 +15,7 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -43,10 +44,7 @@ function open(cells: readonly [string, string, string, string]): { editor: Edito
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'above' },
-    {
-      type: 'table',
-      content: { type: 'tableContent', rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }] },
-    },
+    tableBlock({ rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }] }),
   ] as never);
   manager.stopCapturing();
   return { editor, manager };
@@ -60,7 +58,7 @@ function open(cells: readonly [string, string, string, string]): { editor: Edito
 function selectCells(editor: Editor, all: boolean): void {
   const cells: number[] = [];
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (node.type.name === 'tableCell') cells.push(pos);
+    if (node.type.name === 'docTableCell') cells.push(pos);
     return true;
   });
   const view = editor.prosemirrorView!;
@@ -98,7 +96,7 @@ function types(editor: Editor): string[] {
 function texts(editor: Editor): string[] {
   const out: string[] = [];
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name === 'tableCell') out.push(node.textContent);
+    if (node.type.name === 'docTableCell') out.push(node.textContent);
     return true;
   });
   return out;
@@ -122,7 +120,7 @@ describe('deleting over selected cells (A15)', () => {
     expect(types(editor)).toEqual(['paragraph']);
 
     manager.undo();
-    expect(types(editor)).toEqual(['paragraph', 'table']);
+    expect(types(editor)).toEqual(['paragraph', 'docTable']);
   });
 
   it('keeps a table whose cells are not all selected', () => {
@@ -131,6 +129,6 @@ describe('deleting over selected cells (A15)', () => {
 
     press(editor, 'Delete');
 
-    expect(types(editor)).toEqual(['paragraph', 'table']);
+    expect(types(editor)).toEqual(['paragraph', 'docTable']);
   });
 });

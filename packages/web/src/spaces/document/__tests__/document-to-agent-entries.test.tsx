@@ -38,6 +38,7 @@ import {
   selectTextRange,
   waitForBar,
 } from '@web/spaces/document/__tests__/bubble-bar-harness';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const attachToChat = vi.hoisted(() =>
   vi.fn(async (_projectId: string, _items: readonly TrayItem[]): Promise<void> => undefined),
@@ -137,7 +138,7 @@ function openWith(blocks: unknown[]): Editor {
  * @returns The block.
  */
 function table(cells: [string, string]): unknown {
-  return { type: 'table', content: { type: 'tableContent', rows: [{ cells }] } };
+  return tableBlock({ rows: [{ cells }] });
 }
 
 /** Two rows: words, then an empty one. */

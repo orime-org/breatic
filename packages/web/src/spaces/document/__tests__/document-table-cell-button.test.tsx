@@ -17,6 +17,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
+import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -35,7 +36,7 @@ afterEach(() => {
  * @param rows - The table's rows, each cell text or a merged cell.
  * @returns The editor and the viewport the button draws into.
  */
-function open(rows: unknown[] = [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }]): { editor: Editor; viewport: HTMLElement } {
+function open(rows: TableInput['rows'] = [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }]): { editor: Editor; viewport: HTMLElement } {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const viewport = document.createElement('div');
   const root = document.createElement('div');
@@ -48,7 +49,7 @@ function open(rows: unknown[] = [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] 
   editor.prosemirrorView!.dom.focus();
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'reader' },
-    { type: 'table', content: { type: 'tableContent', rows } },
+    tableBlock({ rows }),
   ] as never);
   return { editor, viewport };
 }
@@ -62,7 +63,7 @@ function open(rows: unknown[] = [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] 
 function cellOf(editor: Editor, text: string): number {
   let at = -1;
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'tableCell' && node.textContent === text) at = pos;
+    if (at < 0 && node.type.name === 'docTableCell' && node.textContent === text) at = pos;
     return at < 0;
   });
   return at;
@@ -91,7 +92,7 @@ function caretIn(editor: Editor, text: string, span = 0): void {
 function attrs(editor: Editor, name: string): unknown[][] {
   const out: unknown[][] = [];
   editor.prosemirrorState.doc.descendants((node: PMNode) => {
-    if (node.type.name === 'tableRow') {
+    if (node.type.name === 'docTableRow') {
       const row: unknown[] = [];
       node.forEach((cell) => row.push(cell.attrs[name]));
       out.push(row);
@@ -195,7 +196,7 @@ describe('the cell button (A11)', () => {
 
   it('splits a merged cell back, its text in the top-left cell (A10)', () => {
     const { editor, viewport } = open([
-      { cells: [{ type: 'tableCell', content: 'ab', props: { colspan: 2 } }] },
+      { cells: [{ type: 'docTableCell', content: 'ab', props: { colspan: 2 } }] },
       { cells: ['a2', 'b2'] },
     ]);
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
@@ -211,7 +212,7 @@ describe('the cell button (A11)', () => {
     ]);
     const first: string[] = [];
     editor.prosemirrorState.doc.descendants((node) => {
-      if (node.type.name === 'tableRow') {
+      if (node.type.name === 'docTableRow') {
         node.forEach((cell) => first.push(cell.textContent));
         return false;
       }

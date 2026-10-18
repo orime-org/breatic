@@ -18,6 +18,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';
 import { declarationsOf } from '@web/spaces/document/__tests__/index-css-rules';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -767,10 +768,7 @@ describe('the space below a trailing block that has no text', () => {
 });
 
 describe('a table at an end of the body (inner#1126 A3)', () => {
-  const TABLE = {
-    type: 'table',
-    content: { type: 'tableContent', rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] },
-  };
+  const TABLE = tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] });
 
   it('takes a Shift+click inside a last table to the click', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, TABLE], 100).prosemirrorView!;

@@ -14,6 +14,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -47,10 +48,7 @@ afterEach(() => {
 });
 
 /** A 2 × 2 table block. */
-const TABLE = {
-  type: 'table',
-  content: { type: 'tableContent', rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] },
-};
+const TABLE = tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] });
 
 /**
  * Opens an editor holding the given blocks and points the strip at one row.
@@ -136,7 +134,7 @@ describe('the strip on a table (A5)', () => {
 
     const top = editor.document as unknown as { type: string; children: { type: string }[] }[];
     expect(top.map((b) => b.type)).toEqual(['paragraph']);
-    expect(top[0].children.map((b) => b.type)).toEqual(['table']);
+    expect(top[0].children.map((b) => b.type)).toEqual(['docTable']);
   });
 
   it('keeps the grip menu as it was on every other row', () => {

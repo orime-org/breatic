@@ -18,11 +18,10 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
-import type { Selection } from '@tiptap/pm/state';
+import type { Selection, Transaction } from '@tiptap/pm/state';
 
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 import { writeToBlocks } from '@web/spaces/document/document-block-run';
-import { cellsUnder, writeCellsAttr } from '@web/spaces/document/document-table-run';
 import {
   blocksUnder,
   rowOf,
@@ -86,19 +85,28 @@ export type AlignFace =
   | typeof NO_ALIGNABLE_BLOCK;
 
 /**
- * The blocks under the selection that alignment reaches.
+ * The blocks of a list that alignment reaches.
  *
  * One alignable block is enough for the slot to be live: aligning a selection
  * that runs from a heading into a code block still moves the heading.
- * @param doc - The document.
- * @param selection - The selection over it.
- * @returns Those blocks, in document order.
+ * @param blocks - Blocks, as an enumerator handed them over.
+ * @returns Those alignment reaches, in the same order.
  */
-function alignableUnder(doc: PMNode, selection: Selection): BlockUnder[] {
-  return blocksUnder(doc, selection).filter(({ node }) => {
+function alignable(blocks: readonly BlockUnder[]): BlockUnder[] {
+  return blocks.filter(({ node }) => {
     const row = rowOf(node);
     return row !== undefined && ALIGNABLE.has(row);
   });
+}
+
+/**
+ * Aligns the blocks of a list that alignment reaches.
+ * @param tr - The transaction to write into.
+ * @param blocks - The blocks.
+ * @param alignment - The alignment.
+ */
+export function writeAlignment(tr: Transaction, blocks: readonly BlockUnder[], alignment: Alignment): void {
+  writeToBlocks(tr, alignable(blocks), () => ({ props: { textAlignment: alignment } }));
 }
 
 /**
@@ -126,16 +134,7 @@ export function runAlignment(
 ): void {
   editor.transact((tr) => {
     const carried = tr.storedMarks;
-    // In a table the cells carry the alignment (inner#1126 A9): a cell's line
-    // is not a block of its own.
-    const cells = cellsUnder(tr.doc, over ?? tr.selection);
-    if (cells.length > 0) {
-      writeCellsAttr(tr, cells, 'textAlignment', alignment);
-    } else {
-      writeToBlocks(tr, alignableUnder(tr.doc, over ?? tr.selection), () => ({
-        props: { textAlignment: alignment },
-      }));
-    }
+    writeAlignment(tr, blocksUnder(tr.doc, over ?? tr.selection), alignment);
     // A press aimed at a range the reader is not standing in leaves the marks
     // they are carrying where they were. Any step clears them —
     // `prosemirror-state`'s `Transaction.addStep` sets `storedMarks` to null —
@@ -186,19 +185,23 @@ export function alignFace(editor: ToolEditor): AlignFace {
  *   {@link NO_ALIGNABLE_BLOCK}.
  */
 export function alignFaceOver(doc: PMNode, over: Selection): AlignFace {
-  const cells = cellsUnder(doc, over);
-  if (cells.length > 0) {
-    const values = new Set(cells.map((pos) => doc.nodeAt(pos)?.attrs['textAlignment']));
-    const only: unknown = [...values][0];
-    return values.size === 1 && isDrawn(only) ? only : MIXED_ALIGNMENT;
-  }
-  const covered = alignableUnder(doc, over);
+  return alignFaceOf(blocksUnder(doc, over));
+}
+
+/**
+ * The same reading over a list of blocks.
+ * @param blocks - The blocks.
+ * @returns The row they are on, {@link MIXED_ALIGNMENT}, or
+ *   {@link NO_ALIGNABLE_BLOCK}.
+ */
+export function alignFaceOf(blocks: readonly BlockUnder[]): AlignFace {
+  const covered = alignable(blocks);
   if (covered.length === 0) {
     return NO_ALIGNABLE_BLOCK;
   }
   // The prop's own default is `left`, so a block that was never aligned reads
   // as left rather than as nothing.
-  const first: unknown = covered[0]!.node.attrs['textAlignment'];
+  const first: unknown = covered[0].node.attrs['textAlignment'];
   const agree = covered.every(
     ({ node }) => node.attrs['textAlignment'] === first,
   );

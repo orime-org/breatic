@@ -22,6 +22,7 @@ import {
   waitForBar,
   type HarnessEditor,
 } from './bubble-bar-harness';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   closeShared();
@@ -37,13 +38,9 @@ function openTable(cells: readonly [string, string, string, string]): HarnessEdi
   mountDocumentEditor(editor);
   act(() => {
     editor.replaceBlocks(editor.document, [
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: [cells[0], cells[1]] }, { cells: [cells[2], cells[3]] }],
+      }),
     ] as never);
   });
   focusBody(editor);
@@ -58,7 +55,7 @@ function openTable(cells: readonly [string, string, string, string]): HarnessEdi
 function cells(editor: HarnessEditor): number[] {
   const out: number[] = [];
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (node.type.name === 'tableCell') out.push(pos);
+    if (node.type.name === 'docTableCell') out.push(pos);
     return true;
   });
   return out;

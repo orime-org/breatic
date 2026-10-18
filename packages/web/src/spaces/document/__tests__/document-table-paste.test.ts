@@ -19,6 +19,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -79,7 +80,7 @@ function paste(editor: Editor, data: Record<string, string>): void {
 function tables(editor: Editor): string[][][] {
   const found: string[][][] = [];
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name !== 'table') return true;
+    if (node.type.name !== 'docTable') return true;
     const rows: string[][] = [];
     node.forEach((row) => {
       const cells: string[] = [];
@@ -100,7 +101,7 @@ function tables(editor: Editor): string[][][] {
 function cellContentTypes(editor: Editor): string[] {
   const names = new Set<string>();
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name !== 'tableCell' && node.type.name !== 'tableHeader') return true;
+    if (node.type.name !== 'docTableCell' && node.type.name !== 'docTableHeader') return true;
     node.descendants((inner) => {
       names.add(inner.type.name);
       return true;
@@ -194,7 +195,7 @@ describe('pasting a web table whose grid is not even (A16)', () => {
     expect(tables(editor)).toEqual([[['tall', 'b'], ['c']]]);
     let rowspan = 0;
     editor.prosemirrorState.doc.descendants((node) => {
-      if (node.type.name === 'tableCell' && node.textContent === 'tall') rowspan = Number(node.attrs['rowspan']);
+      if (node.type.name === 'docTableCell' && node.textContent === 'tall') rowspan = Number(node.attrs['rowspan']);
       return true;
     });
     expect(rowspan).toBe(2);
@@ -216,20 +217,17 @@ describe('pasting cells over cells (A16)', () => {
   it('fills the cells from the one the caret is in, without nesting a table', () => {
     const editor = open();
     editor.replaceBlocks(editor.document, [
-      {
-        type: 'table',
-        content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] },
-      },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     ] as never);
     const view = editor.prosemirrorView!;
     let a1 = -1;
     view.state.doc.descendants((node, pos) => {
-      if (a1 < 0 && node.type.name === 'tableCell' && node.textContent === 'a1') a1 = pos;
+      if (a1 < 0 && node.type.name === 'docTableCell' && node.textContent === 'a1') a1 = pos;
       return a1 < 0;
     });
     let b2 = -1;
     view.state.doc.descendants((node, pos) => {
-      if (b2 < 0 && node.type.name === 'tableCell' && node.textContent === 'b2') b2 = pos;
+      if (b2 < 0 && node.type.name === 'docTableCell' && node.textContent === 'b2') b2 = pos;
       return b2 < 0;
     });
     view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, a1, b2)));

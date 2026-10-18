@@ -24,6 +24,7 @@ import {
   startTableDrag,
 } from '@web/spaces/document/document-table-drag';
 import { insertRow, setCellsAttr } from '@web/spaces/document/document-table-run';
+import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -52,7 +53,7 @@ afterEach(() => {
  * @returns The editor.
  */
 function open(
-  rows: unknown[] = [
+  rows: TableInput['rows'] = [
     { cells: ['a1', 'b1', 'c1'] },
     { cells: ['a2', 'b2', 'c2'] },
     { cells: ['a3', 'b3', 'c3'] },
@@ -65,7 +66,7 @@ function open(
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'reader' },
-    { type: 'table', content: { type: 'tableContent', rows } },
+    tableBlock({ rows }),
   ] as never);
   const view = editor.prosemirrorView!;
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
@@ -81,7 +82,7 @@ function open(
 function cellOf(editor: Editor, text: string): number {
   let at = -1;
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'tableCell' && node.textContent === text) at = pos;
+    if (at < 0 && node.type.name === 'docTableCell' && node.textContent === text) at = pos;
     return at < 0;
   });
   return at;
@@ -95,7 +96,7 @@ function cellOf(editor: Editor, text: string): number {
 function grid(editor: Editor): string[][] {
   const rows: string[][] = [];
   editor.prosemirrorState.doc.descendants((node) => {
-    if (node.type.name === 'tableRow') {
+    if (node.type.name === 'docTableRow') {
       const cells: string[] = [];
       node.forEach((cell) => cells.push(cell.textContent));
       rows.push(cells);
@@ -196,7 +197,7 @@ describe('the row a drag started on', () => {
 
   it('cannot be a row a merged cell spans', () => {
     const editor = open([
-      { cells: [{ type: 'tableCell', content: 'tall', props: { rowspan: 2 } }, 'b1'] },
+      { cells: [{ type: 'docTableCell', content: 'tall', props: { rowspan: 2 } }, 'b1'] },
       { cells: ['b2'] },
     ]);
     expect(canDragFrom(editor.prosemirrorState.doc, cellOf(editor, 'b1'), 'row')).toBe(false);
@@ -207,7 +208,7 @@ describe('the row a drag started on', () => {
     // A1:A2 merged. `moveRow` takes both rows (`getSelectionRangeInRow`), so a
     // row drag from the second row would move more than its preview shows.
     const editor = open([
-      { cells: [{ type: 'tableCell', content: 'tall', props: { rowspan: 2 } }, 'b1', 'c1'] },
+      { cells: [{ type: 'docTableCell', content: 'tall', props: { rowspan: 2 } }, 'b1', 'c1'] },
       { cells: ['b2', 'c2'] },
       { cells: ['a3', 'b3', 'c3'] },
     ]);
@@ -222,7 +223,7 @@ describe('the row a drag started on', () => {
   it('cannot be either column of a cell merged across two columns', () => {
     // A1:B1 merged: the merged cell reaches across B's left edge from A.
     const editor = open([
-      { cells: [{ type: 'tableCell', content: 'wide', props: { colspan: 2 } }, 'c1'] },
+      { cells: [{ type: 'docTableCell', content: 'wide', props: { colspan: 2 } }, 'c1'] },
       { cells: ['a2', 'b2', 'c2'] },
       { cells: ['a3', 'b3', 'c3'] },
     ]);

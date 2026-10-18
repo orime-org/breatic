@@ -35,10 +35,11 @@ import {
   TextSelection,
 } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
-import { cellAround } from '@tiptap/pm/tables';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
+import { inLegacyCell } from '@web/spaces/document/document-table-keys';
 import {
   QUOTED,
   splitCarryingQuote,
@@ -295,9 +296,13 @@ export const documentEnterExtension = createExtension(() => {
         if (ended.justEnded()) {
           return true;
         }
-        // Inside a table Enter breaks the line in the cell
-        // (`document-table-keys`, which runs after this).
-        if (cellAround(editor.prosemirrorState.selection.$head) !== null) {
+        // Over selected cells, and in a stored table's cell, Enter is
+        // `document-table-keys`'s, which runs after this. In a cell of a
+        // table whose cells hold blocks it is the body's own, below.
+        if (
+          editor.prosemirrorState.selection instanceof CellSelection ||
+          inLegacyCell(editor.prosemirrorState.selection.$head)
+        ) {
           return false;
         }
         // A range reaching past an end of the body goes as any range does;

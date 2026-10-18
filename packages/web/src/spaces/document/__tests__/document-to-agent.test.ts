@@ -17,6 +17,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { blockItem, selectionItem } from '@web/spaces/document/document-to-agent';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -196,14 +197,11 @@ describe('selectionItem over table cells', () => {
    */
   function openGrid(): { editor: Editor; cells: number[] } {
     const editor = open([
-      {
-        type: 'table',
-        content: { type: 'tableContent', rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] },
-      },
+      tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] }),
     ]);
     const cells: number[] = [];
     editor.prosemirrorView!.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') cells.push(pos);
+      if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') cells.push(pos);
       return true;
     });
     return { editor, cells };
@@ -277,13 +275,9 @@ describe('blockItem', () => {
 
   it('takes the name of a table from its cells', () => {
     const editor = open([
-      {
-        type: 'table',
-        content: {
-          type: 'tableContent',
-          rows: [{ cells: ['', 'cell text'] }],
-        },
-      },
+      tableBlock({
+        rows: [{ cells: ['', 'cell text'] }],
+      }),
     ]);
 
     expect(blockItem(editor, idAt(editor, 0)).name).toBe('cell text');

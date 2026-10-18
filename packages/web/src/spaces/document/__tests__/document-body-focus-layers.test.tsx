@@ -22,6 +22,7 @@ import {
 } from './bubble-bar-harness';
 import { documentBarsOf } from '@web/spaces/document/document-bars';
 import { BODY_LAYER, bodyHolds } from '@web/spaces/document/document-body-focus';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(() => {
   closeShared();
@@ -111,7 +112,7 @@ describe('the cell button and the body’s focus', () => {
     const editor = openSharedBody('<p>lead</p>');
     act(() => {
       editor.insertBlocks(
-        [{ type: 'table', content: { type: 'tableContent', rows: [{ cells: ['x', 'y'] }] } }] as never,
+        [tableBlock({ rows: [{ cells: ['x', 'y'] }] })] as never,
         (editor.document as { id: string }[])[0]!.id,
         'after',
       );

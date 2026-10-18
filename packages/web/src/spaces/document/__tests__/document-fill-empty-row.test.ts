@@ -258,7 +258,7 @@ describe('a table picked on the plus (inner#1126 A2)', () => {
 
     const made = editor.document[1] as unknown as SeenTable;
     expect(made.id).toBe(row.id);
-    expect(made.type).toBe('table');
+    expect(made.type).toBe('docTable');
     expect(cellTexts(made)).toEqual([
       ['', '', ''],
       ['', '', ''],
@@ -273,7 +273,7 @@ describe('a table picked on the plus (inner#1126 A2)', () => {
     fillEmptyRow(editor, rowAt(editor, 0), PICK);
 
     const made = editor.document[0] as unknown as SeenTable;
-    expect([made.type, made.props.quoted]).toEqual(['table', true]);
+    expect([made.type, made.props.quoted]).toEqual(['docTable', true]);
   });
 
   it('is taken back by one undo', () => {

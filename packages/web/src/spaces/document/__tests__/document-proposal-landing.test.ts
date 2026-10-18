@@ -218,7 +218,7 @@ describe('an insert', () => {
 
     await landProposal(handle, proposal, 'write', true);
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene 3.', 'Shot\nSize\n1\nWide', 'After.']);
-    expect((handle.editor.document[1] as { type?: string } | undefined)?.type).toBe('table');
+    expect((handle.editor.document[1] as { type?: string } | undefined)?.type).toBe('docTable');
 
     handle.undoManager.undo();
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene 3.', 'After.']);

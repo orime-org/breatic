@@ -15,6 +15,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';
 import { DragWindow, autoScrollOf, countsDragEvents } from '@web/spaces/document/document-drag-autoscroll';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -271,7 +272,7 @@ describe('the drag session', () => {
 
   it('scrolls the frame of the dragged column sideways and holds the body still until the drag ends', () => {
     const { editor, scroller } = open([
-      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] } },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     ]);
     const view = editor.prosemirrorView!;
     // The frame the body draws around a table (`document-table-blocknote.tsx`)
@@ -283,7 +284,7 @@ describe('the drag session', () => {
     frame.append(table);
     let cellPos = -1;
     view.state.doc.descendants((node, pos) => {
-      if (cellPos < 0 && node.type.name === 'tableCell') cellPos = pos;
+      if (cellPos < 0 && node.type.name === 'docTableCell') cellPos = pos;
       return cellPos < 0;
     });
     scroller.style.overflowY = 'scroll';
