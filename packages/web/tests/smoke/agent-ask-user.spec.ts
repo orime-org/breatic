@@ -181,10 +181,12 @@ test('a real turn asks with a card that waits through a reload, and answering re
   // While the model has said nothing yet, the wait is drawn below the
   // answered card, where what it says will arrive.
   const dot = await page.getByTestId('chat-waiting-dot').boundingBox();
-  const answered = await page.getByTestId('questionnaire-card').boundingBox();
+  const answered = await page.getByTestId('questionnaire-card').first().boundingBox();
   expect(dot!.y).toBeGreaterThan(answered!.y + answered!.height - 1);
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 120_000 });
-  await expect(page.getByTestId('questionnaire-card')).toHaveCount(1);
+  // The answered card is drawn once. The model may ask again in a card of its
+  // own, so it is the answer that is counted, not the cards.
+  await expect(page.getByTestId('questionnaire-summary-row').filter({ hasText: 'Vertical, 9:16' })).toHaveCount(1);
   // The resumed reply is drawn as a message of its own below the card.
   await expect
     .poll(() => page.locator('[data-testid="message-bubble"][data-role="assistant"]').count())
