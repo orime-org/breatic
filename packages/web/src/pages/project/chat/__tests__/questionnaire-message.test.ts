@@ -108,6 +108,27 @@ describe('a reply resumed after the reader answered on the card', () => {
     expect(resumed?.parts).toEqual([{ type: 'step-start' }, { type: 'text', text: 'Here is the plan.' }]);
   });
 
+  it('is split after every card answered in it, each part named after the call it follows', () => {
+    const live = reply([
+      { type: 'text', text: 'First.' },
+      ask('ask-1', 'output-available', { output: { answers: ANSWERS } }),
+      awaiting('ask-1'),
+      { type: 'text', text: 'Second.' },
+      ask('ask-2', 'output-available', { output: { answers: ANSWERS } }),
+      awaiting('ask-2'),
+      { type: 'text', text: 'Third.' },
+    ]);
+
+    const views = splitAtAnswer(live);
+
+    expect(views.map((v) => v.id)).toEqual(['m1', 'm1~ask-1', 'm1~ask-2']);
+    expect(views.map((v) => v.parts.map((p) => p.type))).toEqual([
+      ['text', 'tool-ask_user', 'data-ask-awaiting'],
+      ['text', 'tool-ask_user', 'data-ask-awaiting'],
+      ['text'],
+    ]);
+  });
+
   it('stays whole while the card is still waiting', () => {
     const waiting = reply([ask('ask-1', 'input-available'), awaiting('ask-1')]);
 

@@ -212,7 +212,7 @@ function questionnaireOf(
 }
 
 /**
- * A reply as the panel lays it out: whole, or split where the segment that
+ * A reply as the panel lays it out: whole, or split where each segment that
  * asked a questionnaire ended, once the reader answered on the card and the
  * turn went on in the same message (inner#1542).
  *
@@ -220,22 +220,26 @@ function questionnaireOf(
  * two messages; splitting the live one the same way keeps the card above what
  * the turn said after it, with or without a reload in between.
  * @param message - The message as the conversation holds it.
- * @returns It, or its two halves; the second named after the call it follows.
+ * @returns It, or its parts, split after each card answered in it; each part
+ *   after the first named after the call it follows.
  */
 export function splitAtAnswer(message: UIMessage): UIMessage[] {
+  const views: UIMessage[] = [];
+  let from = 0;
+  let id = message.id;
   for (const [at, part] of message.parts.entries()) {
-    if (part.type !== ASK_AWAITING) continue;
-    const id = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
+    if (part.type !== ASK_AWAITING || at === message.parts.length - 1) continue;
+    const callId = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
     const answered = message.parts.some(
-      (p) => isToolUIPart(p) && p.toolCallId === id && p.state === 'output-available',
+      (p) => isToolUIPart(p) && p.toolCallId === callId && p.state === 'output-available',
     );
-    if (!answered || typeof id !== 'string' || at === message.parts.length - 1) return [message];
-    return [
-      { ...message, parts: message.parts.slice(0, at + 1) },
-      { ...message, id: `${message.id}~${id}`, parts: message.parts.slice(at + 1) },
-    ];
+    if (!answered || typeof callId !== 'string') continue;
+    views.push({ ...message, id, parts: message.parts.slice(from, at + 1) });
+    from = at + 1;
+    id = `${message.id}~${callId}`;
   }
-  return [message];
+  if (from === 0) return [message];
+  return [...views, { ...message, id, parts: message.parts.slice(from) }];
 }
 
 /**
