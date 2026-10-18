@@ -200,15 +200,24 @@ describe('NodeAdjustLayer', () => {
     expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
   });
 
-  it('lets go of a backend a draw still in flight makes after the panel closes', async () => {
+  it.each(['draws', 'fails'] as const)('lets go of a backend a draw still in flight makes after the panel closes, when it %s', async (outcome) => {
     let finish: (drew: Awaited<ReturnType<typeof drawing.drawAdjustedPreview>>) => void = () => undefined;
-    drawing.drawAdjustedPreview.mockReturnValueOnce(new Promise((done) => (finish = done)));
+    let fail: (error: Error) => void = () => undefined;
+    drawing.drawAdjustedPreview.mockReturnValueOnce(
+      new Promise((done, refuse) => {
+        finish = done;
+        fail = refuse;
+      }),
+    );
     mount('image.adjust', { value: defaultAdjustValue });
     await pictureLoaded();
     flushFrames();
     act(() => store().closePanelOn('n1', 'miniTool'));
     drawing.releasePreviewBackend.mockClear();
-    await act(async () => finish({ size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } }));
+    await act(async () => {
+      if (outcome === 'draws') finish({ size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } });
+      else fail(new Error('drawing buffer smaller than its canvas'));
+    });
     expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
   });
 
