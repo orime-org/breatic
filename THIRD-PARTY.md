@@ -123,7 +123,7 @@ front-end bundle covered by the next section.
 
 | | |
 |---|---|
-| Version | `0.54.0` |
+| Version | `0.56.0` |
 | Packages | `@blocknote/core`, `@blocknote/react` |
 | Reached through | Declared by `packages/web`; the editor a Document Space runs in |
 | Licence | **MPL-2.0** |
@@ -133,8 +133,8 @@ MPL-2.0's copyleft is per file: the condition attaches to the files the licence
 covers and to modifications of those files, and a larger work that merely
 includes them is licensed on its own terms. `@blocknote/react` reaches the
 bundle as published. `@blocknote/core` reaches it with two of its files
-modified, `dist/extensions-CSB9ZvuL.cjs` and `dist/extensions-DGuhtOgB.js`;
-the modification is `patches/@blocknote__core@0.54.0.patch` in this
+modified, `dist/extensions-D_WkAfSt.cjs` and `dist/extensions-BbM81hHa.js`;
+the modification is `patches/@blocknote__core@0.56.0.patch` in this
 repository, offered under MPL-2.0 like the files it changes. What is left is
 to say what is in there, under which licence, and where the source is — which
 this entry does, and this file travels with

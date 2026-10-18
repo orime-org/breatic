@@ -24,9 +24,7 @@
 
 import {
   createExtension,
-  getBlockInfo,
-  getBlockInfoAtNearest,
-  getNearestBlockPos,
+  getBlockInfoNearPos,
 } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import {
@@ -75,11 +73,11 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // selection instead reads its ANCHOR — the end the drag started at — so
     // the same highlight named a different block depending on which way it
     // was drawn, and the quote test below answered for the wrong one.
-    const info = getBlockInfoAtNearest(tr, tr.selection.from);
-    if (!info.isBlockContainer) {
+    const info = getBlockInfoNearPos(tr, tr.selection.from);
+    if (!info.hasContent) {
       return false;
     }
-    const { blockContent, bnBlock, childContainer } = info;
+    const { content: blockContent, block: bnBlock, children: childContainer } = info;
     const type = blockContent.node.type.name;
 
     if (OWN_ENTER_TYPES.some((ownType) => ownType === type)) {
@@ -217,15 +215,15 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  */
 function handleWholeBlockEnter(editor: ListEditor): boolean {
   editor.transact((tr) => {
-    const info = getBlockInfo(getNearestBlockPos(tr.doc, tr.selection.from));
-    if (!info.isBlockContainer) {
+    const info = getBlockInfoNearPos(tr, tr.selection.from);
+    if (!info.hasContent) {
       return;
     }
     // The quote rides across, the way it does on every other path into a new
     // block (A7b). It is a prop on each block here, so a block built from the
     // schema's defaults opens outside the quote and cuts the run in two.
-    openBlockAt(tr, info.bnBlock.afterPos, {
-      [QUOTED]: info.blockContent.node.attrs[QUOTED],
+    openBlockAt(tr, info.block.afterPos, {
+      [QUOTED]: info.content.node.attrs[QUOTED],
     });
   });
   return true;

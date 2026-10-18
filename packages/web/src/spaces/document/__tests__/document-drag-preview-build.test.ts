@@ -42,8 +42,12 @@ afterEach(() => {
  */
 function open(blocks: unknown[]): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  // The surface sits inside a container, as the Space page puts it
+  // (`adoptDocumentEditor`); the preview goes on the page body, outside it.
+  const container = document.createElement('div');
   const host = document.createElement('div');
-  document.body.appendChild(host);
+  container.appendChild(host);
+  document.body.appendChild(container);
   editor.mount(host);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, blocks as never);

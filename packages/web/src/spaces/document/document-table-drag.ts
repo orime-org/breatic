@@ -24,7 +24,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import type { BlockNoteEditor, ComputeDropPositionContext } from '@blocknote/core';
+import type { BlockNoteEditor } from '@blocknote/core';
+import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
