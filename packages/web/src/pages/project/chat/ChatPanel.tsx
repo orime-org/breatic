@@ -146,7 +146,10 @@ export function ChatPanel({
   // Collapsing them into one would put the empty-conversation greeting on
   // screen during the wait, which is a whole screenful of the wrong thing.
   const ready = status === 'ready';
-  const answering = React.useMemo(() => ({ answer, busy: turnPhase !== 'idle' }), [answer, turnPhase]);
+  // Keyed on the boolean: every phase change would otherwise hand the one
+  // waiting card a new value for the same answer.
+  const busy = turnPhase !== 'idle';
+  const answering = React.useMemo(() => ({ answer, busy }), [answer, busy]);
   // A long conversation folds its oldest part into memory before this turn is
   // answered, which is a second model call in front of the reply. Read here
   // rather than passed down the turn: the panel can be unmounted when the

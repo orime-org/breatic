@@ -638,6 +638,37 @@ async function expectAnotherBeat(
 }
 
 /**
+ * Run one turn in a conversation: number it, watch for its beats, and send.
+ *
+ * What a typed message and an answer to a questionnaire share; each says what
+ * it sends.
+ * @param conversationId - The conversation.
+ * @param chat - Its session.
+ * @param send - Sends the turn's request.
+ * @returns When the turn is over, however it ended.
+ */
+async function runTurn(
+  conversationId: string,
+  chat: Chat<StoredUiMessage>,
+  send: (chat: Chat<StoredUiMessage>) => Promise<void>,
+): Promise<void> {
+  const pressedAt = Date.now();
+  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
+  turnsRun.set(conversationId, turn);
+  runningTurn.set(conversationId, turn);
+  void expectAnotherBeat(conversationId, turn, pressedAt);
+  try {
+    await send(chat);
+  } catch {
+    // Already said. `Chat` hands whatever went wrong to its own `onFinish`
+    // before it rethrows, and that is where the turn was settled -- so what
+    // reaches here is a second copy of news that has been delivered. Letting
+    // it out would make every caller catch a failure they cannot add to, and
+    // the press that started this is a click handler with nothing above it.
+  }
+}
+
+/**
  * Say one thing in a conversation, and watch the stream it comes back on.
  *
  * The one way a turn is started. Everything a running turn needs looking
@@ -658,28 +689,9 @@ export async function sendInSession(
 ): Promise<void> {
   const chat = sessions.get(conversationId);
   if (!chat) return;
-  const pressedAt = Date.now();
-  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
-  turnsRun.set(conversationId, turn);
-  runningTurn.set(conversationId, turn);
-  void expectAnotherBeat(conversationId, turn, pressedAt);
-  try {
-    await chat.sendMessage(
-      {
-        parts: [
-          ...attached.map(attachmentPart),
-          { type: 'text', text: said },
-        ],
-      },
-      { body: spaces },
-    );
-  } catch {
-    // Already said. `Chat` hands whatever went wrong to its own `onFinish`
-    // before it rethrows, and that is where the turn was settled -- so what
-    // reaches here is a second copy of news that has been delivered. Letting
-    // it out would make every caller catch a failure they cannot add to, and
-    // the press that started this is a click handler with nothing above it.
-  }
+  await runTurn(conversationId, chat, (session) =>
+    session.sendMessage({ parts: [...attached.map(attachmentPart), { type: 'text', text: said }] }, { body: spaces }),
+  );
 }
 
 /**
@@ -705,17 +717,10 @@ export async function answerInSession(
   // One request at a time on a conversation: the turn in flight settles the
   // card one way or the other, and the card's button waits on it meanwhile.
   if (!chat || runningTurn.has(conversationId)) return;
-  const pressedAt = Date.now();
-  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
-  turnsRun.set(conversationId, turn);
-  runningTurn.set(conversationId, turn);
   answering.set(conversationId, toolCallId);
-  void expectAnotherBeat(conversationId, turn, pressedAt);
-  try {
-    await chat.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } });
-  } catch {
-    // Already settled in `onFinish`, as for a typed message.
-  }
+  await runTurn(conversationId, chat, (session) =>
+    session.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } }),
+  );
 }
 
 /**

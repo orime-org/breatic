@@ -18,6 +18,7 @@ const warning = vi.fn();
 vi.mock('@web/lib/toast', () => ({ toast: { warning: (...args: unknown[]) => warning(...args), error: vi.fn() } }));
 
 const { QuestionnaireCard } = await import('@web/pages/project/chat/QuestionnaireCard');
+const { QuestionnaireAnswerContext } = await import('@web/pages/project/chat/questionnaire-answer');
 const { expectNoA11yViolations } = await import('@web/test-utils/a11y');
 
 const QUESTIONS: AskUserQuestion[] = [
@@ -46,7 +47,11 @@ afterEach(() => {
  * @returns The card's element.
  */
 function waitingCard(onAnswer = vi.fn(async () => undefined)): HTMLElement {
-  render(<QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'awaiting' }} onAnswer={onAnswer} />);
+  render(
+    <QuestionnaireAnswerContext.Provider value={{ answer: onAnswer, busy: false }}>
+      <QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'awaiting' }} />
+    </QuestionnaireAnswerContext.Provider>,
+  );
   return screen.getByTestId('questionnaire-card');
 }
 
@@ -135,7 +140,7 @@ describe('a card waiting for the reader', () => {
   it('marks tiles on a question that takes several with check boxes', async () => {
     const user = userEvent.setup();
     const several: AskUserQuestion = { ...QUESTIONS[2]!, multiSelect: true };
-    render(<QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: [several], state: 'awaiting' }} onAnswer={vi.fn()} />);
+    render(<QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: [several], state: 'awaiting' }} />);
     const tiles = screen.getAllByTestId('questionnaire-tile');
     await user.click(tiles[0]!);
     await user.click(tiles[2]!);
@@ -174,11 +179,9 @@ describe('a card waiting for the reader', () => {
     const user = userEvent.setup();
     const onAnswer = vi.fn(async () => undefined);
     render(
-      <QuestionnaireCard
-        questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'awaiting' }}
-        onAnswer={onAnswer}
-        busy
-      />,
+      <QuestionnaireAnswerContext.Provider value={{ answer: onAnswer, busy: true }}>
+        <QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'awaiting' }} />
+      </QuestionnaireAnswerContext.Provider>,
     );
     await user.click(within(question(1)).getAllByRole('radio')[1]!);
     const submit = screen.getByTestId('questionnaire-submit');

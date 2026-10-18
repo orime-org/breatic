@@ -14,6 +14,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
+import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnaire-answer';
 import type { ChatQuestionnaire } from '@web/pages/project/chat/types';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 
@@ -31,13 +32,6 @@ const NOTHING: Given = { selected: [], other: '' };
 interface QuestionnaireCardProps {
   /** The card and where it stands. */
   questionnaire: ChatQuestionnaire;
-  /**
-   * Send the answers; resolves when the turn they resume is over. Absent where
-   * the card is only read, which leaves a waiting card with nothing to press.
-   */
-  onAnswer?: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
-  /** A turn is running in the conversation; the press waits for it to end. */
-  busy?: boolean;
 }
 
 /**
@@ -98,14 +92,10 @@ function QuestionHeading({ n, question }: { n: number; question: AskUserQuestion
  * message instead, it is one line that opens onto the questions, read-only.
  * @param root0 - The component props.
  * @param root0.questionnaire - The card and where it stands.
- * @param root0.onAnswer - Sends the answers.
- * @param root0.busy - A turn is running in the conversation.
  * @returns The card.
  */
 export const QuestionnaireCard = React.memo(function QuestionnaireCard({
   questionnaire,
-  onAnswer,
-  busy = false,
 }: QuestionnaireCardProps): React.JSX.Element {
   return (
     <div
@@ -113,7 +103,7 @@ export const QuestionnaireCard = React.memo(function QuestionnaireCard({
       className='mt-2 flex flex-col gap-3 rounded-overlay border border-border bg-popover px-3 py-2.5'
     >
       {questionnaire.state === 'awaiting' ? (
-        <WaitingCard questionnaire={questionnaire} onAnswer={onAnswer} busy={busy} />
+        <WaitingCard questionnaire={questionnaire} />
       ) : questionnaire.state === 'answered' ? (
         <AnsweredSummary questions={questionnaire.questions} answers={questionnaire.answers ?? []} />
       ) : (
@@ -125,14 +115,19 @@ export const QuestionnaireCard = React.memo(function QuestionnaireCard({
 
 /**
  * The card while it waits: every question to answer, and the press.
+ *
+ * Where the answers go and whether a turn is running come from the panel's
+ * context, read here, the one place that uses them: a message drawn outside
+ * a panel has nowhere to send and only reads.
  * @param root0 - The component props.
  * @param root0.questionnaire - The card.
- * @param root0.onAnswer - Sends the answers.
- * @param root0.busy - A turn is running in the conversation.
  * @returns The questions and the press.
  */
-function WaitingCard({ questionnaire, onAnswer, busy }: QuestionnaireCardProps): React.JSX.Element {
+function WaitingCard({ questionnaire }: QuestionnaireCardProps): React.JSX.Element {
   const t = useTranslation();
+  const answering = React.useContext(QuestionnaireAnswerContext);
+  const onAnswer = answering?.answer;
+  const busy = answering?.busy === true;
   const { toolCallId, questions } = questionnaire;
   const [given, setGiven] = React.useState<Given[]>(() => questions.map(() => NOTHING));
   const [sending, setSending] = React.useState(false);
@@ -173,7 +168,7 @@ function WaitingCard({ questionnaire, onAnswer, busy }: QuestionnaireCardProps):
         <ProposalActions>
           <ProposalAction
             data-testid='questionnaire-submit'
-            loading={sending || busy === true}
+            loading={sending || busy}
             aria-disabled={answers.length === 0 ? true : undefined}
             className={cn(answers.length === 0 && 'opacity-50')}
             onClick={() => void submit()}
@@ -241,81 +236,48 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
     onChange({ selected: !question.multiSelect && other.trim() !== '' ? [] : given.selected, other });
   };
 
+  const Item = withMedia ? MediaTile : OptionRow;
+  const layout = withMedia ? 'grid grid-cols-3 gap-1.5' : 'flex flex-col gap-1';
+  const items = question.options.map((option, i) => {
+    const id = `${idBase}-${String(i)}`;
+    return (
+      <Item key={option.label} id={id} option={option}>
+        {question.multiSelect ? (
+          <Checkbox
+            id={id}
+            checked={given.selected.includes(option.label)}
+            disabled={disabled}
+            onCheckedChange={() => toggle(option.label)}
+          />
+        ) : (
+          // A click on the pick lets go of it: Radix keeps a checked radio
+          // checked and says nothing, so the second click is caught here.
+          <RadioGroupItem
+            id={id}
+            value={option.label}
+            onClick={given.selected[0] === option.label ? () => toggle(option.label) : undefined}
+          />
+        )}
+      </Item>
+    );
+  });
+
   return (
     <div data-testid='questionnaire-question' className='flex flex-col gap-1.5'>
       <QuestionHeading n={n} question={question} />
-      {withMedia && question.multiSelect ? (
-        <div className='grid grid-cols-3 gap-1.5'>
-          {question.options.map((option, i) => {
-            const id = `${idBase}-${String(i)}`;
-            return (
-              <MediaTile key={option.label} id={id} option={option}>
-                <Checkbox
-                  id={id}
-                  checked={given.selected.includes(option.label)}
-                  disabled={disabled}
-                  onCheckedChange={() => toggle(option.label)}
-                />
-              </MediaTile>
-            );
-          })}
-        </div>
-      ) : withMedia ? (
+      {question.options.length === 0 ? null : question.multiSelect ? (
+        <div className={layout}>{items}</div>
+      ) : (
         <RadioGroup
           value={given.selected[0] ?? ''}
           disabled={disabled}
           onValueChange={(label) => toggle(label)}
-          className='grid grid-cols-3 gap-1.5'
+          className={withMedia ? layout : 'gap-1'}
           aria-label={question.question}
         >
-          {question.options.map((option, i) => {
-            const id = `${idBase}-${String(i)}`;
-            const picked = given.selected[0] === option.label;
-            return (
-              <MediaTile key={option.label} id={id} option={option}>
-                <RadioGroupItem id={id} value={option.label} onClick={picked ? () => toggle(option.label) : undefined} />
-              </MediaTile>
-            );
-          })}
+          {items}
         </RadioGroup>
-      ) : question.multiSelect ? (
-        <div className='flex flex-col gap-1'>
-          {question.options.map((option, i) => {
-            const id = `${idBase}-${String(i)}`;
-            return (
-              <OptionRow key={option.label} id={id} label={option.label} description={option.description}>
-                <Checkbox
-                  id={id}
-                  checked={given.selected.includes(option.label)}
-                  disabled={disabled}
-                  onCheckedChange={() => toggle(option.label)}
-                />
-              </OptionRow>
-            );
-          })}
-        </div>
-      ) : question.options.length > 0 ? (
-        <RadioGroup
-          value={given.selected[0] ?? ''}
-          disabled={disabled}
-          onValueChange={(label) => toggle(label)}
-          className='gap-1'
-          aria-label={question.question}
-        >
-          {question.options.map((option, i) => {
-            const id = `${idBase}-${String(i)}`;
-            const picked = given.selected[0] === option.label;
-            return (
-              <OptionRow key={option.label} id={id} label={option.label} description={option.description}>
-                {/* A click on the pick lets go of it: Radix keeps a checked
-                    radio checked and says nothing, so the second click is
-                    caught here. */}
-                <RadioGroupItem id={id} value={option.label} onClick={picked ? () => toggle(option.label) : undefined} />
-              </OptionRow>
-            );
-          })}
-        </RadioGroup>
-      ) : null}
+      )}
       <Input
         value={given.other}
         disabled={disabled}
@@ -335,22 +297,20 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
  * whole row clickable through the label.
  * @param root0 - The component props.
  * @param root0.id - The control's id.
- * @param root0.label - The option's label.
- * @param root0.description - Its line of description, if any.
+ * @param root0.option - The option.
  * @param root0.children - The control.
  * @returns The row.
  */
 function OptionRow({
   id,
-  label,
-  description,
+  option,
   children,
 }: {
   id: string;
-  label: string;
-  description?: string | undefined;
+  option: AskUserQuestion['options'][number];
   children: React.ReactNode;
 }): React.JSX.Element {
+  const { label, description } = option;
   return (
     <div className='flex items-start gap-2 rounded-chrome border border-border px-2 py-1.5'>
       <span className='mt-0.5 flex'>{children}</span>

@@ -213,13 +213,8 @@ export interface ChatMessage {
    */
   failedJustNow?: true;
   /**
-   * The model asked something and stopped to wait for the answer.
-   *
-   * Read off the mark the server writes, never off the tool names: which
-   * tools block is a list in `@breatic/domain`, which this package may not
-   * import. Without it this ending is an empty reply, which is also what a
-   * turn that produced nothing looks like -- and that one is drawn as the
-   * neutral "No reply this turn" line.
+   * The mark a reply stored before inner#1542 carries when it stopped to ask;
+   * a turn waiting now is drawn by its questionnaire card.
    *
    * Only ever `true`; its absence is the ordinary case.
    */
