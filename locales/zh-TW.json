@@ -483,7 +483,7 @@
       "peer": {
         "upload": "{name} 正在上傳",
         "readText": "{name} 正在讀取檔案",
-        "tool": "{name} 正在{tool}"
+        "tool": "{name} 正在使用{tool}"
       }
     },
     "textNode": {
