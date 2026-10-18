@@ -432,6 +432,16 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         {tiles}
       </div>
     );
+  // A model tool's slots, main prompt, sizes and controls: the whole panel, or
+  // its right column; without columns every control is on the right.
+  const modelBody = (
+    <>
+      {slotTiles}
+      {promptFirst ? promptBox : null}
+      {sizeTierGroups}
+      {controlsOf(rightControls)}
+    </>
+  );
   // The adjust's sliders, whose Reset sits in the footer.
   const adjustParam = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   return (
@@ -468,19 +478,11 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
                 )}
               </div>
               <div data-testid='mini-tool-column-right' className='flex flex-col gap-2.5'>
-                {slotTiles}
-                {promptFirst ? promptBox : null}
-                {sizeTierGroups}
-                {controlsOf(rightControls)}
+                {modelBody}
               </div>
             </div>
           ) : (
-            <>
-              {slotTiles}
-              {promptFirst ? promptBox : null}
-              {sizeTierGroups}
-              {controlsOf(visibleControls)}
-            </>
+            modelBody
           )
         ) : (
           <>
