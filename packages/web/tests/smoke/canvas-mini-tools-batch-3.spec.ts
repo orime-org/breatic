@@ -174,13 +174,14 @@ async function previewCentre(layer: Locator): Promise<number[]> {
 /**
  * Wait for every result to hold a stored picture and give their addresses.
  * @param count - How many results.
+ * @param waitMs - How long the pictures may take to be stored.
  * @returns Their picture addresses.
  */
-async function storedResults(count: number): Promise<string[]> {
+async function storedResults(count: number, waitMs = 120_000): Promise<string[]> {
   await expect(results()).toHaveCount(count, { timeout: 20_000 });
   const pictures = results().getByTestId('image-node-img');
   await expect
-    .poll(async () => (await pictures.evaluateAll((els) => els.map((el) => el.getAttribute('src') ?? ''))).filter((src) => /^https?:\/\//.test(src)).length, { timeout: 120_000 })
+    .poll(async () => (await pictures.evaluateAll((els) => els.map((el) => el.getAttribute('src') ?? ''))).filter((src) => /^https?:\/\//.test(src)).length, { timeout: waitMs })
     .toBe(count);
   return pictures.evaluateAll((els) => els.map((el) => el.getAttribute('src') ?? ''));
 }
@@ -501,7 +502,7 @@ test('an 8×8 grid uploads all sixty-four tiles @needs-internet', async () => {
 });
 
 test('the expand grows past the picture and runs the model to a larger picture @needs-internet @needs-model', async () => {
-  test.setTimeout(300_000);
+  test.setTimeout(20 * 60_000);
   await openTool(page, imageNode, 'image.expand');
   // The frame is drawn in the canvas's viewport, outside the node (§6.3).
   const frame = visibleSpace(page).getByTestId('mini-tool-expand-frame');
@@ -521,7 +522,9 @@ test('the expand grows past the picture and runs the model to a larger picture @
   await expect(run).toBeEnabled();
 
   await run.click();
-  await storedResults(1);
+  // The model answers in seconds; the Worker pulling its picture off the
+  // provider's CDN has taken six minutes from a local machine.
+  await storedResults(1, 15 * 60_000);
   await expect(results()).toContainText('EXPAND-');
   const [size] = await resultSizes();
   expect(size!.width).toBeGreaterThan(400);
