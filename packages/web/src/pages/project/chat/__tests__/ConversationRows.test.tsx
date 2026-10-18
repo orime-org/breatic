@@ -388,56 +388,6 @@ describe('while the next page is on its way', () => {
 });
 
 describe('when the next page cannot be fetched', () => {
-  it('says so in the place the loading was, and offers nothing to press', () => {
-    // 出错就在它该出现的位置说一句,不是给一个按钮。读者接着往下滑就再拉一次。
-    renderSheetFor({ hasMore: true, nextPageFailed: true });
-
-    expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /重新|reload|retry/i })).toBeNull();
-  });
-
-  it('takes the line away on its own', async () => {
-    vi.useFakeTimers();
-    try {
-      renderSheetFor({ hasMore: true, nextPageFailed: true });
-      expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
-
-      await act(async () => {
-        vi.advanceTimersByTime(4000);
-      });
-
-      expect(screen.queryByTestId('conversation-list-more-failed')).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-});
-
-describe('what asks for the page again after one failed', () => {
-  let fire: (() => void) | undefined;
-
-  beforeEach(() => {
-    fire = undefined;
-    vi.stubGlobal(
-      'IntersectionObserver',
-      class {
-        constructor(cb: (entries: Array<{ isIntersecting: boolean }>) => void) {
-          fire = () => cb([{ isIntersecting: true }]);
-        }
-        observe(): void {
-          // 真的观察者一开始观察就投递一次当前状态。末尾此刻还在视野里,
-          // 所以「重建观察者」本身就等于「再问一次」。
-          fire?.();
-        }
-        disconnect(): void {}
-      },
-    );
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
   it('waits for the reader to reach the end again', () => {
     // 失败之后页面一个像素都没动。要是失败本身就能让观察者重建,重建又立刻
     // 上报「到底了」,请求就会一轮接一轮地打出去,而读者的手指一动没动。
@@ -464,12 +414,11 @@ describe('what asks for the page again after one failed', () => {
     expect(onReachEnd).toHaveBeenCalledTimes(asked + 1);
   });
 
-  it('says so in the list, where the reader is looking', () => {
+  it('draws no line of its own at the foot of the list, since it is told in a toast', () => {
     renderSheetFor({ hasMore: true, onReachEnd: vi.fn(), nextPageFailed: true });
 
-    expect(screen.getByTestId('conversation-list-more-failed')).toBeInTheDocument();
+    expect(screen.queryByTestId('conversation-list-more-failed')).toBeNull();
   });
-
 });
 
 describe('when the sheet is taken away mid-confirmation', () => {

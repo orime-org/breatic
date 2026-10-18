@@ -37,7 +37,6 @@ import { useHeldName } from '@web/lib/use-held-name';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { useScrolledToEnd } from '@web/lib/use-scrolled-to-end';
-import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
 import { formatLocalDay } from '@web/lib/format-day';
 
 /**
@@ -475,22 +474,6 @@ function ConversationHistorySheetInner({
   React.useEffect(() => {
     if (!open) setDeleting(null);
   }, [open]);
-  // The line about a page that did not arrive takes itself away. What it says
-  // is an event, not a state: the reader was told, and the list in front of
-  // them is unchanged and still usable. The mark in the store stays -- that is
-  // what keeps the end-of-list watcher off duty until the reader scrolls
-  // again, which is a different question from how long the words are up.
-  const [showFailure, setShowFailure] = React.useState(false);
-  React.useEffect(() => {
-    if (!nextPageFailed) {
-      setShowFailure(false);
-      return undefined;
-    }
-    setShowFailure(true);
-    const forgetting = setTimeout(() => setShowFailure(false), NOTICE_LINGERS_MS);
-    return () => clearTimeout(forgetting);
-  }, [nextPageFailed]);
-
   const { scrollerRef, sentinelRef } = useScrolledToEnd({
     enabled: hasMore,
     onReachEnd,
@@ -586,9 +569,8 @@ function ConversationHistorySheetInner({
             <div ref={sentinelRef} data-testid='conversation-list-end' />
             {/* The foot of the list says what is happening there, and there is
                 nothing here to press: reaching the end is what asks for a
-                page. While one is out this says so; when one does not arrive
-                it says that instead, for as long as `NOTICE_LINGERS_MS`
-                gives it. Then it goes, and the next scroll to the end asks
+                page. While one is out this says so; one that does not arrive
+                is told in a toast, and the next scroll to the end asks
                 again. */}
             {loadingMore ? (
               <p
@@ -596,13 +578,6 @@ function ConversationHistorySheetInner({
                 data-testid='conversation-list-loading-more'
               >
                 {t('chat.history.loadingMore')}
-              </p>
-            ) : showFailure ? (
-              <p
-                className='m-3 text-2xs text-status-error'
-                data-testid='conversation-list-more-failed'
-              >
-                {t('chat.history.moreFailed')}
               </p>
             ) : null}
           </ScrollArea>

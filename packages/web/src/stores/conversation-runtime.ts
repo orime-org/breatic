@@ -17,6 +17,8 @@
  */
 
 import { create } from 'zustand';
+import { t } from '@breatic/shared';
+import { toast } from '@web/lib/toast';
 
 import { chatApi } from '@web/data/api/chat';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
@@ -1316,10 +1318,9 @@ async function loadMoreConversations(projectId: string): Promise<void> {
     });
   } catch {
     if (visit.signal.aborted) return;
-    // Said at the foot of the list and nowhere else. The panel's own line is
-    // under the sheet while the list is open, and the list is the only place
-    // this can be reached from -- a second copy there would surface later,
-    // when the sheet closes, about something the reader has moved on from.
+    // Said in a toast as it happens (inner#1530). The mark stays: it keeps the
+    // end-of-list watcher off duty until the reader scrolls again.
+    toast.error(t('chat.history.moreFailed'));
     useStore.setState((st) => ({
       listMoreFailed: { ...st.listMoreFailed, [projectId]: true },
     }));
