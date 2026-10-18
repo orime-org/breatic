@@ -347,6 +347,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.elapsed": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.endedAt": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.failure.aborted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.credits_held": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.declined": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.expired": { excluded: REASONS.SAYS_WHAT_HAPPENED },
