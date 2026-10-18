@@ -172,7 +172,7 @@ export function previewSourceOf(el: CropSourceEl, preview: PreviewFrame): CropSo
  * @param target - The canvas, resized to the size drawn.
  * @param backend - The filter backend to draw through; Fabric's shared one by default.
  * @returns Where it drew: the canvas's size and the source pixels it spans.
- * @throws {Error} When the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
+ * @throws {Error} When Fabric or the filters fail to load, or the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
  */
 export async function drawAdjusted(
   el: CropSourceEl,
@@ -235,7 +235,7 @@ interface Size {
 
 /**
  * The drawing buffer the browser gave a WebGL backend, which may be smaller
- * than its canvas (Chrome gave 8192² for 16384² here, and 6000² for 12000²);
+ * than its canvas (headless Chromium's SwiftShader clamps each side to 8192);
  * a buffer smaller than the canvas draws nothing (`bufferShort`). A lost
  * context, or none, gives 0; a 2D backend has no such bound.
  * @param backend - The backend.
@@ -251,8 +251,9 @@ export function drawableSize(backend: FilterBackend): Size {
 
 /**
  * A backend drawing on a canvas of a given shape, for an export or a preview
- * past the shared square: the browser grants a buffer as long as a panorama
- * that it refuses as a square. Fabric builds a first context as a square of
+ * past the shared square: a canvas of the picture's shape takes the picture's
+ * area, where a square of its long side may take many times more. Fabric
+ * builds a first context as a square of
  * `tileSize`, which is made 1×1 and given back before the shaped one is made.
  * @param fabric - Fabric.
  * @param fabric.WebGLFilterBackend - Its WebGL filter backend.
@@ -287,10 +288,14 @@ let heldPreview: { backend: InstanceType<typeof import('fabric')['WebGLFilterBac
 
 /**
  * The backend a preview draws through: the shared one while the preview's
- * canvas fits it, otherwise a backend shaped to the canvas, up to what the
- * graphics take, so a picture past the shared square zoomed in to 1:1 is
- * drawn at its own pixels. The shaped backend is kept while draws keep its
- * size.
+ * canvas fits the shared backend's drawing buffer, otherwise a backend shaped
+ * to the canvas, up to what the graphics take, so a picture past the shared
+ * square zoomed in to 1:1 is drawn at its own pixels. The shaped backend is
+ * kept while draws keep its size and its context; it is let go when a draw
+ * fits the shared buffer or needs another size, and by the layer when its
+ * picture adjust closes. A shaped backend granted a buffer smaller than its
+ * canvas does not draw (`drawAdjusted` throws), so the layer stays hidden at
+ * that size.
  * @param fabric - Fabric's backend calls.
  * @param natural - The picture's own size.
  * @param asked - The size it is shown at.
@@ -338,7 +343,7 @@ export function releasePreviewBackend(): void {
  * @param value - The sliders.
  * @param target - The canvas, resized to the size drawn.
  * @returns Where it drew: the canvas's size and the source pixels it spans.
- * @throws {Error} When the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
+ * @throws {Error} When Fabric or the filters fail to load, or the backend has no live WebGL context, loses it during the draw, or was given a drawing buffer smaller than its canvas.
  */
 export async function drawAdjustedPreview(el: CropSourceEl, asked: Size, value: AdjustValue, target: HTMLCanvasElement): Promise<PreviewFrame> {
   const [fabric] = await loadRuntime();

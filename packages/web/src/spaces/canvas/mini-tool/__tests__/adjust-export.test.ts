@@ -207,7 +207,7 @@ function liveGl(side: number, lost = false, height = side, canvas = { width: sid
 }
 
 // The browser may give a WebGL canvas a smaller drawing buffer than asked
-// (Chrome on this Mac: 8192 for 16384), and the last pass is cut to it.
+// (headless Chromium's SwiftShader: 8192 a side).
 describe('drawableSize', () => {
   it('is the drawing buffer the browser gave, each side on its own', () => {
     expect(drawableSize({ tileSize: 16384, gl: liveGl(8192) } as never)).toEqual({ width: 8192, height: 8192 });
@@ -227,8 +227,8 @@ describe('drawableSize', () => {
   });
 });
 
-// A square buffer as long as a panorama is more than the browser grants
-// (Chrome: 6000² for 12000²), while one of the panorama's own shape is not.
+// A canvas of the picture's shape takes the picture's area, where a square of
+// its long side may take many times more.
 describe('shapedBackend', () => {
   it('draws on a canvas shaped like the picture, its first context given back', () => {
     const loseContext = vi.fn();
