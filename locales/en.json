@@ -366,6 +366,7 @@
         "tooSlow": "the file downloaded too slowly to finish",
         "storageFull": "the Studio's storage is full",
         "noPermission": "you don't have edit access in this Project",
+        "notMember": "you're no longer a member of this Project",
         "tooFrequent": "too many links were fetched just now, wait a minute and try again",
         "declined": "the service declined to handle this content",
         "ourFault": "the server ran into a problem, try again"
@@ -383,6 +384,10 @@
       "readingGuide": "Reading how the product works",
       "understanding": "Looking at the media",
       "judging": "Weighing it up",
+      "searchingConversations": "Searching your conversations",
+      "readingConversation": "Reading the conversation",
+      "readingNodeHistory": "Checking the node's history",
+      "readingActivity": "Checking Project activity",
       "running": "Calling {tool}",
       "step": {
         "webSearch": "Search for “{query}”",
@@ -395,6 +400,10 @@
         "listModels": "Checking available models",
         "canvasCapabilities": "Checking what the Canvas can do",
         "productGuide": "Checking how the product works",
+        "searchConversations": "Searching your conversations",
+        "readConversation": "Reading the conversation",
+        "readNodeHistory": "Checking the node's history",
+        "readActivity": "Checking Project activity",
         "other": "Calling {tool}"
       }
     },

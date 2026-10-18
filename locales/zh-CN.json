@@ -366,6 +366,7 @@
         "tooSlow": "文件下载太慢，没能下完",
         "storageFull": "Studio 的存储空间已满",
         "noPermission": "你在这个 Project 里没有编辑权限",
+        "notMember": "你已经不是这个 Project 的成员",
         "tooFrequent": "刚才取的链接太多，等一分钟再试",
         "declined": "服务拒绝处理这项内容",
         "ourFault": "服务器出了问题，可以再试一次"
@@ -383,6 +384,10 @@
       "readingGuide": "正在查产品怎么用",
       "understanding": "正在查看媒体",
       "judging": "正在权衡",
+      "searchingConversations": "正在查找你的对话",
+      "readingConversation": "正在读对话记录",
+      "readingNodeHistory": "正在查节点的历史",
+      "readingActivity": "正在查 Project 活动",
       "running": "正在调用 {tool}",
       "step": {
         "webSearch": "搜索「{query}」",
@@ -395,6 +400,10 @@
         "listModels": "查可用的模型",
         "canvasCapabilities": "查 Canvas 能做什么",
         "productGuide": "查产品怎么用",
+        "searchConversations": "查找你的对话",
+        "readConversation": "读对话记录",
+        "readNodeHistory": "查节点的历史",
+        "readActivity": "查 Project 活动",
         "other": "调用 {tool}"
       }
     },

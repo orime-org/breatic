@@ -114,7 +114,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
   it("says how many Spaces were left off the list", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 5 });
 
-    expect(turn).toContain('- "Cast" (canvas)\n(3 more not listed)');
+    expect(turn).toContain('- "Cast" (canvas) id=s2\n(3 more not listed)');
   });
 
   it("puts the reader's words under their own heading after the Spaces", () => {

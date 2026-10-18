@@ -31,7 +31,7 @@ export interface UserTurn extends ChatSpaceContext {
  */
 function spaceListSection(spaces: readonly ChatSpace[], total: number, openId: string | undefined): string {
   const lines = spaces.map(
-    (s) => `- ${JSON.stringify(s.name)} (${s.kind})${s.id === openId ? " — the reader has this one open" : ""}`,
+    (s) => `- ${JSON.stringify(s.name)} (${s.kind}) id=${s.id}${s.id === openId ? " — the reader has this one open" : ""}`,
   );
   const unlisted = total - spaces.length;
   if (unlisted > 0) lines.push(`(${String(unlisted)} more not listed)`);

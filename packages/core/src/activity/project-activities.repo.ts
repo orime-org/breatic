@@ -18,7 +18,7 @@
  * page fetches and walks the index O(n).
  */
 
-import { and, eq, isNull, lt, or, desc, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, desc, sql, type SQL } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectActivities, studios } from "@core/db/schema.js";
@@ -157,6 +157,20 @@ function toEntity(
   };
 }
 
+/**
+ * The rows a project's feed shows: its own, live, and in one Space when asked.
+ * @param projectId - The project.
+ * @param spaceId - The Space to keep to, if any.
+ * @returns The conditions, for a `where`.
+ */
+function feedConditions(projectId: string, spaceId: string | undefined): SQL[] {
+  return [
+    eq(projectActivities.projectId, projectId),
+    isNull(projectActivities.deletedAt),
+    ...(spaceId === undefined ? [] : [eq(projectActivities.spaceId, spaceId)]),
+  ];
+}
+
 export const projectActivitiesRepo = {
   /**
    * Append one activity row. Threads an optional transaction so
@@ -270,6 +284,8 @@ export const projectActivitiesRepo = {
    * @param projectId - Project whose feed to read.
    * @param cursor - Decoded cursor from the previous page, or null for the first page.
    * @param limit - Page size (caller-clamped).
+   * @param opts - Optional narrowing.
+   * @param opts.spaceId - Keep to this Space's rows.
    * @returns Entries newest-first, each beside the `created_at` text its
    *   cursor is built from. The two are separate values because the entry is
    *   what the route serves and the text is not part of that shape.
@@ -279,6 +295,7 @@ export const projectActivitiesRepo = {
     projectId: string,
     cursor: ActivityCursor | null,
     limit: number,
+    opts: { spaceId?: string } = {},
   ): Promise<{ entry: ProjectActivityEntry; cursorAt: string }[]> {
     const cursorAt = cursor ? sql`${cursor.createdAt}::timestamptz` : null;
     const keysetFilter =
@@ -312,8 +329,7 @@ export const projectActivitiesRepo = {
       )
       .where(
         and(
-          eq(projectActivities.projectId, projectId),
-          isNull(projectActivities.deletedAt),
+          ...feedConditions(projectId, opts.spaceId),
           ...(keysetFilter ? [keysetFilter] : []),
         ),
       )
@@ -323,6 +339,22 @@ export const projectActivitiesRepo = {
       entry: toEntity(r.row, r.actorName),
       cursorAt: r.cursorAt,
     }));
+  },
+
+  /**
+   * How many rows a project's feed holds, under the same conditions as
+   * `listByProject`.
+   * @param projectId - Project whose feed to count.
+   * @param opts - Optional narrowing.
+   * @param opts.spaceId - Count only this Space's rows.
+   * @returns The count.
+   */
+  async countByProject(projectId: string, opts: { spaceId?: string } = {}): Promise<number> {
+    const rows = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(projectActivities)
+      .where(and(...feedConditions(projectId, opts.spaceId)));
+    return rows[0]?.count ?? 0;
   },
 
   /**

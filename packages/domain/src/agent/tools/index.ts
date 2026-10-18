@@ -9,15 +9,20 @@ import { env } from "@breatic/core";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
+import { recordTools } from "@domain/agent/tools/record-tools.js";
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
+  LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  READ_CONVERSATION,
+  READ_NODE_HISTORY,
   SAVE_IMAGE,
+  SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
@@ -82,6 +87,12 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [SAVE_IMAGE]: () => makeSaveImageTool(),
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
+  // Read the user's records through what the turn hands them in its context,
+  // and hold nothing between calls, so one object each serves every turn.
+  [SEARCH_CONVERSATIONS]: () => recordTools[SEARCH_CONVERSATIONS],
+  [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
+  [READ_NODE_HISTORY]: () => recordTools[READ_NODE_HISTORY],
+  [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
 } as const;
 
 /**
@@ -96,6 +107,12 @@ export const BASELINE_TOOLS: readonly string[] = [
   "understand_media",
   ASK_USER,
   JUDGE_LIKELIHOOD,
+  // The user's own records: about the project, not the Space in front of
+  // them, so offered whatever is open.
+  SEARCH_CONVERSATIONS,
+  READ_CONVERSATION,
+  READ_NODE_HISTORY,
+  LIST_PROJECT_ACTIVITY,
 ];
 
 /**
@@ -120,9 +137,13 @@ export {
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
+  LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  READ_CONVERSATION,
+  READ_NODE_HISTORY,
   SAVE_IMAGE,
+  SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
 
 /**

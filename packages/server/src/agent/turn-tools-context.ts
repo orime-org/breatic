@@ -8,18 +8,27 @@
  * entry, so one entry carries everything that tool needs: every tool keeps
  * the turn's usage recorder, and the ones that need something of the turn
  * carry it in the shape they use: the save and the canvas proposal the
- * project (inner#1315), the document proposal the open document (inner#1509).
+ * project (inner#1315), the document proposal the open document (inner#1509),
+ * and the record tools the user's records (inner#1469).
  */
 
 import type { ChatSpaceContext } from "@breatic/shared";
 import {
+  LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
+  READ_CONVERSATION,
+  READ_NODE_HISTORY,
   SAVE_IMAGE,
+  SEARCH_CONVERSATIONS,
   usageContextFor,
   type OpenDocument,
+  type ProjectRecords,
   type SaveToStorage,
 } from "@breatic/domain";
+
+/** The tools that read the user's records, each handed the turn's records. */
+const RECORD_TOOLS = [SEARCH_CONVERSATIONS, READ_CONVERSATION, READ_NODE_HISTORY, LIST_PROJECT_ACTIVITY] as const;
 
 type UsageRecorder = Parameters<typeof usageContextFor>[1];
 
@@ -32,13 +41,14 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
  * @param turn.studioId - The studio whose material a proposal may name.
  * @param turn.openDocument - The document the reader has open, which a
  *   document proposal goes to, or null when none can be read.
+ * @param turn.records - The user's records this turn may read (inner#1469).
  * @returns The context, by tool name.
  * @throws {never} Never.
  */
 export function turnToolsContext(
   tools: Readonly<Record<string, unknown>>,
   usage: UsageRecorder,
-  turn: { saveToStorage: SaveToStorage; studioId: string; openDocument: OpenDocument | null },
+  turn: { saveToStorage: SaveToStorage; studioId: string; openDocument: OpenDocument | null; records: ProjectRecords },
 ): Record<string, Record<string, unknown>> {
   const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage) };
   if (context[SAVE_IMAGE]) context[SAVE_IMAGE] = { ...context[SAVE_IMAGE], saveToStorage: turn.saveToStorage };
@@ -47,6 +57,9 @@ export function turnToolsContext(
   }
   if (context[PROPOSE_DOCUMENT_EDIT]) {
     context[PROPOSE_DOCUMENT_EDIT] = { ...context[PROPOSE_DOCUMENT_EDIT], openDocument: turn.openDocument };
+  }
+  for (const name of RECORD_TOOLS) {
+    if (context[name]) context[name] = { ...context[name], records: turn.records };
   }
   return context;
 }

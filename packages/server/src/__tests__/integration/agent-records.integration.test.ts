@@ -446,7 +446,7 @@ async function seedVersion(
 ): Promise<void> {
   await sql`
     INSERT INTO node_history (project_id, node_id, user_id, entry_type, status, content, metadata, created_at)
-    VALUES (${projectId}, ${nodeId}, ${userId}, 'generation', 'success', 'https://cdn.example/x.png',
+    VALUES (${projectId}, ${nodeId}, ${userId}, 'generation', 'success', ${`https://cdn.example/${crypto.randomUUID()}.png`},
             ${sql.json((opts.metadata ?? {}) as never)}, ${opts.at})
   `;
 }

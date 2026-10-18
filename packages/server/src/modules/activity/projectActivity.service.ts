@@ -57,12 +57,15 @@ export async function recordProjectActivity(
  * @param projectId - Project whose feed to read.
  * @param rawCursor - Opaque cursor from the previous page, if any.
  * @param rawLimit - Requested page size; clamped to [1, 100], default 50.
+ * @param opts - Optional narrowing.
+ * @param opts.spaceId - Keep to this Space's entries.
  * @returns The page items + the next opaque cursor (null at the end).
  */
 export async function listProjectActivities(
   projectId: string,
   rawCursor: string | undefined,
   rawLimit: number | undefined,
+  opts: { spaceId?: string } = {},
 ): Promise<ProjectActivityPage> {
   const pageLimits = getActivityFeedPageLimits();
   const limit = Math.min(
@@ -72,11 +75,7 @@ export async function listProjectActivities(
   // Malformed cursors decode to null = first page (they arrive from
   // the network; a garbage cursor must not 500 the feed).
   const cursor = rawCursor ? decodeActivityCursor(rawCursor) : null;
-  const rows = await projectActivitiesRepo.listByProject(
-    projectId,
-    cursor,
-    limit,
-  );
+  const rows = await projectActivitiesRepo.listByProject(projectId, cursor, limit, opts);
   const last = rows[rows.length - 1];
   // A short page means the feed is exhausted; a full page may have more.
   const nextCursor =
@@ -84,4 +83,15 @@ export async function listProjectActivities(
       ? encodeActivityCursor(last.cursorAt, last.entry.id)
       : null;
   return { items: rows.map((row) => row.entry), nextCursor };
+}
+
+/**
+ * How many entries a project's activity feed holds.
+ * @param projectId - Project whose feed to count.
+ * @param opts - Optional narrowing.
+ * @param opts.spaceId - Count only this Space's entries.
+ * @returns The count.
+ */
+export async function countProjectActivities(projectId: string, opts: { spaceId?: string } = {}): Promise<number> {
+  return projectActivitiesRepo.countByProject(projectId, opts);
 }

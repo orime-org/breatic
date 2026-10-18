@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, gt, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, gte, max, sql, type SQL } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -497,6 +497,206 @@ export async function getMessagesForLlm(
     const { thinking: _th, ...rest } = toMessageData(row);
     return { ...rest, forModel: row.forModel };
   });
+}
+
+/** Where a page of search hits continues from, with the time as the text Postgres renders. */
+export interface MessageTextCursor {
+  /** `created_at` as text, at the precision the column stores. */
+  createdAt: string;
+  id: string;
+}
+
+/** One message whose readable strings hold every search term (inner#1469). */
+export interface MessageSearchRow {
+  id: string;
+  conversationId: string;
+  conversationTitle: string | null;
+  turnIndex: number;
+  role: "user" | "assistant";
+  /** ISO instant, UTC. */
+  createdAt: string;
+  /** `created_at` as text, at the precision the column stores, for a cursor. */
+  cursorAt: string;
+  /** The message's readable strings joined with spaces. */
+  body: string;
+}
+
+/**
+ * A search term as an `ILIKE` pattern that matches it anywhere, literally.
+ * @param term - The term.
+ * @returns The pattern, with `\`, `%` and `_` escaped.
+ */
+function containsPattern(term: string): string {
+  return `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+}
+
+/**
+ * The searchable messages: each live message of the user's live
+ * conversations in the project, as one row holding its readable strings --
+ * the text parts and every string inside a tool's input and result -- and
+ * matching every term. The turn now running is left out.
+ * @param scope - Whose messages, and which to leave out.
+ * @param scope.userId - The user.
+ * @param scope.projectId - The project.
+ * @param scope.currentConversationId - The conversation the turn runs in.
+ * @param scope.turnIndex - The turn now running.
+ * @param scope.conversationId - One conversation to keep to.
+ * @param terms - The terms, each of which must appear.
+ * @returns The CTE body and its match condition.
+ */
+function searchable(
+  scope: { userId: string; projectId: string; currentConversationId: string; turnIndex: number; conversationId?: string },
+  terms: readonly string[],
+): { readable: SQL; matches: SQL } {
+  const readable = sql`
+    SELECT m.id, m.conversation_id, m.turn_index, m.role, m.created_at, c.title,
+           array_to_string(array(
+             SELECT jsonb_path_query(m.parts, 'strict $[*] ? (@.type == "text").text', '{}', true) #>> '{}'
+             UNION ALL
+             SELECT jsonb_path_query(m.parts, 'strict $[*] ? (@.type == "tool").input.** ? (@.type() == "string")', '{}', true) #>> '{}'
+             UNION ALL
+             SELECT jsonb_path_query(m.parts, 'strict $[*] ? (@.type == "tool").output.** ? (@.type() == "string")', '{}', true) #>> '{}'
+           ), ' ') AS body
+    FROM conversation_messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
+      AND c.deleted_at IS NULL AND m.deleted_at IS NULL
+      AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
+      ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}
+  `;
+  const patterns = sql.join(terms.map((term) => sql`${containsPattern(term)}`), sql`, `);
+  return { readable, matches: sql`body ILIKE ALL (ARRAY[${patterns}]::text[])` };
+}
+
+/**
+ * One page of the user's messages that hold every term, newest first, with
+ * how many there are in all (inner#1469).
+ * @param scope - Whose messages, and which to leave out.
+ * @param scope.userId - The user.
+ * @param scope.projectId - The project.
+ * @param scope.currentConversationId - The conversation the turn runs in.
+ * @param scope.turnIndex - The turn now running, left out with every later one.
+ * @param scope.conversationId - One conversation to keep to.
+ * @param terms - The terms, each matched as a substring, ignoring case; at least one.
+ * @param page - The page.
+ * @param page.limit - How many hits it holds.
+ * @param page.after - Where the previous page stopped.
+ * @returns The hits, whether there are more, and the total.
+ */
+export async function searchMessages(
+  scope: { userId: string; projectId: string; currentConversationId: string; turnIndex: number; conversationId?: string },
+  terms: readonly string[],
+  page: { limit: number; after?: MessageTextCursor },
+): Promise<{ rows: MessageSearchRow[]; hasMore: boolean; total: number }> {
+  const { readable, matches } = searchable(scope, terms);
+  const keyset =
+    page.after === undefined
+      ? sql``
+      : sql`AND (created_at, id) < (${page.after.createdAt}::timestamptz, ${page.after.id}::uuid)`;
+  const [rows, counted] = await Promise.all([
+    db.execute<{
+      id: string;
+      conversation_id: string;
+      title: string | null;
+      turn_index: number;
+      role: "user" | "assistant";
+      created_iso: string;
+      cursor_at: string;
+      body: string;
+    }>(sql`
+      WITH readable AS (${readable})
+      SELECT id, conversation_id, title, turn_index, role, body,
+             to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_iso,
+             created_at::text AS cursor_at
+      FROM readable
+      WHERE ${matches} ${keyset}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${page.limit + 1}
+    `),
+    db.execute<{ total: number }>(sql`
+      WITH readable AS (${readable})
+      SELECT count(*)::int AS total FROM readable WHERE ${matches}
+    `),
+  ]);
+  const list = [...rows];
+  return {
+    rows: list.slice(0, page.limit).map((r) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      conversationTitle: r.title,
+      turnIndex: r.turn_index,
+      role: r.role,
+      createdAt: r.created_iso,
+      cursorAt: r.cursor_at,
+      body: r.body,
+    })),
+    hasMore: list.length > page.limit,
+    total: counted[0]?.total ?? 0,
+  };
+}
+
+/** A stored message as the record tools read it back. */
+export interface TurnMessage {
+  role: "user" | "assistant";
+  turnIndex: number;
+  /** ISO instant the message was written. */
+  createdAt: string;
+  parts: MessagePart[];
+}
+
+/**
+ * The live messages of a live conversation over a range of turns, in turn and
+ * position order, and the highest turn there is to read (inner#1469).
+ * @param id - The conversation.
+ * @param range - Which turns.
+ * @param range.fromTurn - The first turn wanted.
+ * @param range.toTurn - The last turn wanted.
+ * @param range.beforeTurn - Leave out this turn and every later one.
+ * @returns The messages, and the highest turn index readable at all; 0 when there is none.
+ */
+export async function getTurns(
+  id: string,
+  range: { fromTurn?: number; toTurn?: number; beforeTurn?: number },
+): Promise<{ messages: TurnMessage[]; totalTurns: number }> {
+  const live = [
+    eq(conversationMessages.conversationId, id),
+    isNull(conversationMessages.deletedAt),
+    isNull(conversations.deletedAt),
+    ...(range.beforeTurn === undefined ? [] : [lt(conversationMessages.turnIndex, range.beforeTurn)]),
+  ];
+  const [rows, highest] = await Promise.all([
+    db
+      .select({
+        role: conversationMessages.role,
+        turnIndex: conversationMessages.turnIndex,
+        parts: conversationMessages.parts,
+        createdAt: conversationMessages.createdAt,
+      })
+      .from(conversationMessages)
+      .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+      .where(
+        and(
+          ...live,
+          ...(range.fromTurn === undefined ? [] : [gte(conversationMessages.turnIndex, range.fromTurn)]),
+          ...(range.toTurn === undefined ? [] : [lte(conversationMessages.turnIndex, range.toTurn)]),
+        ),
+      )
+      .orderBy(asc(conversationMessages.turnIndex), asc(conversationMessages.seq)),
+    db
+      .select({ turns: max(conversationMessages.turnIndex) })
+      .from(conversationMessages)
+      .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+      .where(and(...live)),
+  ]);
+  return {
+    messages: rows.map((r) => ({
+      role: r.role as TurnMessage["role"],
+      turnIndex: r.turnIndex,
+      createdAt: r.createdAt.toISOString(),
+      parts: r.parts ?? [],
+    })),
+    totalTurns: highest[0]?.turns ?? 0,
+  };
 }
 
 /**

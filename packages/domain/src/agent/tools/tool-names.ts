@@ -72,3 +72,19 @@ export const SAVE_IMAGE = "save_image";
  * from the requirements table is one a deployment with no key offers anyway.
  */
 export const JUDGE_LIKELIHOOD = "judge_likelihood";
+
+// The four tools that read the user's records (inner#1469). Named here
+// because the turn's tool context hands each of them the turn's records under
+// its name, and their descriptions point at one another.
+
+/** List or search the user's conversations in this project. */
+export const SEARCH_CONVERSATIONS = "search_conversations";
+
+/** Read whole turns of one of the user's conversations. */
+export const READ_CONVERSATION = "read_conversation";
+
+/** Read a canvas node's tasks and versions. */
+export const READ_NODE_HISTORY = "read_node_history";
+
+/** Read the project's activity feed. */
+export const LIST_PROJECT_ACTIVITY = "list_project_activity";
