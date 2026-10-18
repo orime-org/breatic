@@ -1783,7 +1783,6 @@
         "lotsHeld": "进行中冻结",
         "lotsHeldNote": "任务结束后按实际花费扣除，多出的部分会退回",
         "heldHint": "积分都被进行中的任务占用，任务结束后会释放。",
-        "heldPrompt": "积分都被进行中的任务占用，任务结束后会释放。",
         "depletedHint": "这个 Studio 的积分已经用完。",
         "debtHint": "新指定进来的积分会先抵掉欠账。",
         "depletedPrompt": "到账号积分里指定新的积分。",

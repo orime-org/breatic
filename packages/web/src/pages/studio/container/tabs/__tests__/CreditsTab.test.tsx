@@ -351,8 +351,10 @@ describe('CreditsTab', () => {
 
     await screen.findByTestId('studio-spendable');
     const sentence = 'All credits are held by running tasks and are released when they finish.';
-    expect(document.body).toHaveTextContent(sentence);
-    expect(screen.getByTestId('studio-credits-unassigned-notice')).toHaveTextContent(sentence);
+    // Said once, under the figure: there is nothing to do but wait, so there
+    // is no notice with a next step.
+    expect(document.body.textContent?.split(sentence)).toHaveLength(2);
+    expect(screen.queryByTestId('studio-credits-unassigned-notice')).toBeNull();
     expect(document.body).not.toHaveTextContent('This Studio has spent all of its credits.');
   });
 

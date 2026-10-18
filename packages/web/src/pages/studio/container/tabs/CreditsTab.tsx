@@ -290,7 +290,8 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
         </div>
       </div>
 
-      {state === 'spendable' ? null : (
+      {/* Spendable and held have no next step to offer; held only waits. */}
+      {state === 'spendable' || state === 'held' ? null : (
         <p
           data-testid='studio-credits-unassigned-notice'
           className='rounded-content-sm border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-sm'
