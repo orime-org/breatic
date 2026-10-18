@@ -13,6 +13,9 @@ import type { ModelMessage } from "ai";
 import { ASK_USER } from "@breatic/domain";
 import type { AskUserResult } from "@breatic/shared";
 
+/** What the model reads for a questionnaire the user left without an answer. */
+export const UNANSWERED_ASK = "The user did not answer this questionnaire.";
+
 /** What a second question in one step is told, by the model reading it back. */
 export const SECOND_QUESTION_TURNED_AWAY =
   "This card was not shown to the user: one card a step, and another one was put to them first. " +

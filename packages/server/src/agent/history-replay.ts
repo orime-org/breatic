@@ -29,11 +29,12 @@
 import { createHash } from "node:crypto";
 import { asSchema } from "ai";
 import type { ModelMessage } from "ai";
-import { instructionsText } from "@breatic/domain";
+import { ASK_USER, instructionsText } from "@breatic/domain";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { z } from "zod";
 import type { MessageData } from "@breatic/shared";
 
+import { UNANSWERED_ASK } from "@server/agent/ask-result.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
 /** A stored message, with what was sent of it, if anything was kept. */
@@ -197,9 +198,67 @@ export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): R
         replayed = { row, messages: stripThinking(kept.data.messages), reply: kept.data, asSent: false };
       }
     }
+    replayed = { ...replayed, messages: withEveryCallAnswered(replayed.messages) };
     for (const message of replayed.messages) hash = extendHash(hash, message);
     out.push(replayed);
   }
+  return out;
+}
+
+/** What the model reads for a call of any other tool that has no result. */
+const NO_RESULT = "This call has no result: the turn ended before it did.";
+
+/**
+ * A row's messages with a result for every tool call in them.
+ *
+ * A call can be left without one in ordinary use: a questionnaire the user
+ * never answered, a turn stopped after the model asked for a tool and before
+ * it ran. Providers refuse a request holding a call with no result after it,
+ * so each such call gets one here, as the request is put together, right
+ * after the run of tool messages that follows its call -- the way LangGraph's
+ * dangling-call repair and the AI SDK's synthetic denial results do it.
+ * Nothing stored changes, and the same row gives the same bytes every time.
+ * @param messages - One row's messages, as they are replayed.
+ * @returns The same messages, every call answered.
+ */
+function withEveryCallAnswered(messages: readonly ModelMessage[]): ModelMessage[] {
+  const out: ModelMessage[] = [];
+  let open: Array<{ toolCallId: string; toolName: string }> = [];
+  const close = (): void => {
+    if (open.length === 0) return;
+    out.push({
+      role: "tool",
+      content: open.map(({ toolCallId, toolName }) => ({
+        type: "tool-result" as const,
+        toolCallId,
+        toolName,
+        output: { type: "error-text" as const, value: toolName === ASK_USER ? UNANSWERED_ASK : NO_RESULT },
+      })),
+    });
+    open = [];
+  };
+  for (const message of messages) {
+    if (message.role === "tool") {
+      const answered = new Set(
+        Array.isArray(message.content)
+          ? message.content.flatMap((part) => (part.type === "tool-result" ? [part.toolCallId] : []))
+          : [],
+      );
+      open = open.filter((call) => !answered.has(call.toolCallId));
+      out.push(message);
+      continue;
+    }
+    close();
+    out.push(message);
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      for (const part of message.content) {
+        if (part.type === "tool-call" && part.providerExecuted !== true) {
+          open.push({ toolCallId: part.toolCallId, toolName: part.toolName });
+        }
+      }
+    }
+  }
+  close();
   return out;
 }
 

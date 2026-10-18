@@ -427,6 +427,56 @@ describe("writing a message instead", () => {
   });
 });
 
+describe("a questionnaire left without an answer", () => {
+  /**
+   * Store a reply row that put a card and has no result for it.
+   * @param chat - Where.
+   * @param turnIndex - Its turn.
+   * @param toolCallId - The card's call.
+   * @param status - How the stored part ended.
+   */
+  async function storeUnanswered(chat: Chat, turnIndex: number, toolCallId: string, status: "awaiting" | "error"): Promise<void> {
+    const part =
+      status === "awaiting"
+        ? { type: "tool", toolCallId, toolName: "ask_user", input: QUESTIONS, status }
+        : { type: "tool", toolCallId, toolName: "ask_user", input: QUESTIONS, status, failure: { kind: "user_aborted", forModel: "Stopped." } };
+    const call = { role: "assistant", content: [{ type: "tool-call", toolCallId, toolName: "ask_user", input: QUESTIONS }] };
+    await sql`
+      INSERT INTO conversation_messages (conversation_id, user_id, turn_index, seq, role, parts, for_model)
+      VALUES
+        (${chat.conversationId}, ${chat.userId}, ${turnIndex}, 0, 'user', ${sql.json([{ type: "text", text: "another ask" }])}, null),
+        (${chat.conversationId}, ${chat.userId}, ${turnIndex}, 1, 'assistant', ${sql.json([part])},
+         ${sql.json({ messages: [call], prefixHash: "x", turnTokens: 1, endTokens: 1 })})
+    `;
+  }
+
+  it("is told to the model as not answered when the turn that asked was stopped, and the conversation goes on", async () => {
+    const chat = await newChat();
+    await storeUnanswered(chat, 1, "ask-stopped", "error");
+    model.calls = [];
+    const { status, chunks } = await post(chat, { message: "carry on" });
+
+    expect(status).toBe(200);
+    expect(chunks.some((c) => c.type === "error")).toBe(false);
+    expect(model.calls).toHaveLength(1);
+    const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "ask-stopped");
+    expect(JSON.stringify(result)).toMatch(/did not answer/);
+  });
+
+  it("does not stop an answer to a later card from resuming its turn", async () => {
+    const chat = await askedIn("ask-older");
+    await storeUnanswered(chat, 2, "ask-newer", "awaiting");
+    model.calls = [];
+    const { status, chunks } = await post(chat, { message: "", answer: { toolCallId: "ask-newer", answers: ANSWERS } });
+
+    expect(status).toBe(200);
+    expect(chunks.some((c) => c.type === "error")).toBe(false);
+    expect(model.calls).toHaveLength(1);
+    const older = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "ask-older");
+    expect(JSON.stringify(older)).toMatch(/did not answer/);
+  });
+});
+
 describe("answers racing each other", () => {
   it("take effect once however many arrive together", async () => {
     const chat = await askedIn("ask-9");
