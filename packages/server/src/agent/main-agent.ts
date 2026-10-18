@@ -417,7 +417,8 @@ export class MainAgent {
         ...(opening.kind === "answer" && sent.userKept.snapshot !== undefined ? { snapshot: sent.userKept.snapshot } : {}),
         ...replyTokens(reported, {
           user: measureMessages(sent.userKept.messages),
-          reply: measureMessages(messages),
+          // A resumed segment's own message is the `user` above; counted once.
+          reply: measureMessages(messages.slice(own.length)),
           request: requestTokens(sent),
         }),
       };

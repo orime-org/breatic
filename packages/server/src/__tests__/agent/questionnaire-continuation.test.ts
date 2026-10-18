@@ -17,6 +17,7 @@ import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 import { lastFullSnapshotKey, prefixHash, replayRows, type RequestPrefix, type ReplayRow } from "@server/agent/history-replay.js";
 import { costPerTurn } from "@server/agent/request-size.js";
+import { measureMessages } from "@server/agent/payload-size.js";
 import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
@@ -190,6 +191,16 @@ describe("the resumed segment", () => {
     await resume();
     expect(setUserForModel).not.toHaveBeenCalled();
     expect(foldIfOverBudget).not.toHaveBeenCalled();
+  });
+
+  it("counts its own message once when the provider reported no usage", async () => {
+    modelSays.parts = [{ type: "error", error: new Error("provider down") }];
+    const turn = await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, () =>
+      new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}),
+    );
+    for await (const chunk of turn) void chunk;
+    const kept = storedReply().forModel as { messages: ModelMessage[]; turnTokens: number };
+    expect(kept.turnTokens).toBe(measureMessages(kept.messages));
   });
 
   it("is charged under a key of its own", async () => {
