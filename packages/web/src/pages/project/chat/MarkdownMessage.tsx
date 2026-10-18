@@ -36,7 +36,7 @@ import { CodeBlock } from '@web/pages/project/chat/CodeBlock';
 import { footnoteScopePlugin } from '@web/pages/project/chat/footnote-scope-plugin';
 import { CitationMark } from '@web/pages/project/chat/CitationMark';
 import type { ChatFailureLine, ChatSource } from '@web/pages/project/chat/types';
-import { toolFailurePlugin } from '@web/pages/project/chat/tool-failure-plugin';
+import { PLACEHOLDER_MARK, toolFailurePlugin } from '@web/pages/project/chat/tool-failure-plugin';
 import { ToolFailureLine } from '@web/pages/project/chat/TurnEnding';
 
 interface MarkdownMessageProps {
@@ -323,7 +323,11 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   const scope = useId();
   // A settled message goes through untouched. An interrupted reply carries
   // unclosed markers, and those are what the model actually sent.
-  const source = streaming ? remend(content, COMPLETION) : content;
+  // Only what follows the last failure line's placeholder is still being
+  // written: closing markers there must not land after a placeholder, which
+  // would then no longer be one (inner#1620).
+  const settled = content.lastIndexOf(PLACEHOLDER_MARK) + 1;
+  const source = streaming ? content.slice(0, settled) + remend(content.slice(settled), COMPLETION) : content;
 
   // remark-rehype writes the footnote section's heading and each back link's
   // label itself, and those are the only words on screen the footnote

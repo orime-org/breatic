@@ -451,4 +451,22 @@ describe('MessageBubble — a step that did not finish (inner#1620)', () => {
 
     expect(document.querySelector('section[data-footnotes]')).toHaveTextContent('The note.');
   });
+
+  it('keeps the line while the prose before it still has a marker open', () => {
+    render(
+      <MessageBubble
+        message={{
+          id: 'a1',
+          role: 'assistant',
+          content: 'Use the `--force flag',
+          body: `Use the \`--force flag\n\n${failurePlaceholder(0)}`,
+          failureLines: [searchFailed],
+          streaming: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('message-bubble-tool-failed')).toBeInTheDocument();
+    expect(screen.getByTestId('markdown-body').textContent).not.toContain('failure:0');
+  });
 });
