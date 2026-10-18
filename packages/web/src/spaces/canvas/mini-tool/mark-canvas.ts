@@ -346,7 +346,9 @@ export class MarkCanvasController {
 
   /**
    * Give a text being edited the style the draft says it shows; it is written
-   * back with the text when the edit ends.
+   * back with the text when the edit ends. The swatch or slider pressed for
+   * the change took the focus, so the text's input takes it back and typing
+   * goes on into the text.
    */
   private restyleEdit(): void {
     const active = this.canvas.getActiveObject() as (IText & Partial<MarkFabricObject>) | undefined;
@@ -355,6 +357,7 @@ export class MarkCanvasController {
     if (active.markColor === style.color && active.markSize === style.size) return;
     active.set({ fill: style.color, fontSize: markFontPx(style.size, this.box) });
     Object.assign(active, { markColor: style.color, markSize: style.size });
+    active.hiddenTextarea?.focus({ preventScroll: true });
     this.canvas.requestRenderAll();
   }
 
