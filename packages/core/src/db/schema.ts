@@ -1747,7 +1747,9 @@ export const creditHolds = pgTable(
   },
   (table) => [
     uniqueIndex("credit_holds_reference_id_idx").on(table.referenceId),
-    index("credit_holds_studio_held_idx").on(table.studioId, table.expiresAt),
+    index("credit_holds_studio_held_idx")
+      .on(table.studioId, table.expiresAt)
+      .where(sql`${table.status} = 'held'`),
   ],
 );
 
