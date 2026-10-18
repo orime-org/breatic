@@ -419,7 +419,7 @@ describe('what the panel says went wrong (inner#1530)', () => {
     });
 
     act(() => {
-      tell({ projectId: 'p-1', conversationId: 'c-2', deliberate: true, aboutRow: true, kind: 'network' });
+      tell({ projectId: 'p-1', conversationId: 'c-2', deliberate: true, kind: 'network' });
     });
 
     expect(toastSpy.error).toHaveBeenCalledWith(t('chat.error.network'));

@@ -273,12 +273,6 @@ export function ChatPanel({
           navigating={navigating}
         />
       </QuestionnaireAnswerContext.Provider>
-      {/* One line, on the top edge of the composer, for everything this panel
-          has to say -- and it says each thing once. Nothing here is a state
-          the chat is in, so nothing here stays. */}
-      {/* Keyed by which telling this is, so the same sentence twice is torn
-          down and put up again -- otherwise React leaves the line alone and
-          the second failure is invisible and unspoken. */}
       <ChatComposer
         conversationId={currentId ?? null}
         draft={draft}

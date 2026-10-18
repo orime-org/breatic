@@ -1135,10 +1135,6 @@ async function startNew(projectId: string): Promise<void> {
       landed = true;
     } catch (err) {
       if (visit.signal.aborted) return;
-      // Not `aboutRow`: the only way to press this is the header's button,
-      // and pressing it closes the sheet, so there is no list to draw against
-      // by the time this is said. Closing is right -- a reader starting a new
-      // conversation is done with the list of the old ones.
       tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
     }
   } finally {
@@ -1376,16 +1372,7 @@ async function reloadConversationList(projectId: string): Promise<void> {
     });
   } catch (err) {
     if (visit.signal.aborted) return;
-    // Said in the list, because this only ever runs while the list is open --
-    // opening it is what asks. A line on the composer's top edge would be
-    // under the sheet, which is the very fault this branch set out to fix.
-    tell({
-      projectId,
-      conversationId: null,
-      deliberate: true,
-      aboutRow: true,
-      ...readMishap(err),
-    });
+    tell({ projectId, conversationId: null, deliberate: true, ...readMishap(err) });
   } finally {
     // Both unconditional, for the reason given where `openAndAdopt` does the
     // same: the flag follows the count, not the visit.
@@ -1431,7 +1418,7 @@ async function rename(
     applyTitle(projectId, conversationId, renamed.title);
   } catch (err) {
     if (!visit.signal.aborted) {
-      tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
+      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
     }
     throw err;
   }
@@ -1463,7 +1450,7 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
     // server still has is worse than one that failed to lose it, because only
     // the second is something the reader can retry.
     if (!alreadyGone(err)) {
-      tell({ projectId, conversationId, deliberate: true, aboutRow: true, ...readMishap(err) });
+      tell({ projectId, conversationId, deliberate: true, ...readMishap(err) });
       return;
     }
   }

@@ -289,7 +289,7 @@ export function useChatSession(
       // what the reader sees there.
       const attached = chatAttachments.sendable(opened);
       if (attached === null) return;
-      // Said beside the plus sign; the words stay in the box.
+      // Said in a toast; the words stay in the box.
       if (limits === null) {
         chatAttachments.say({ key: 'sendUnavailable' });
         return;
