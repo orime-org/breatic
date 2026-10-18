@@ -111,7 +111,8 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
   return (
     <div>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p>
-      <div className='flex flex-wrap gap-1.5'>
+      {/* Eight fixed ratios in two even rows, each portrait and landscape pair side by side. */}
+      <div className='grid grid-cols-4 gap-1.5'>
         {EXPAND_RATIOS.map((ratio) => {
           const fits = expand.fits(ratio);
           // Value names stay English in every language, as the crop's do.
@@ -150,7 +151,13 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
 const SLOT_ICONS = { image: ImageIcon, audio: Music, video: Film } as const;
 
 /** The adjust's channels, in the order the panel lists them; each runs over its `ADJUST_RANGES` range. */
-const ADJUST_FIELDS = Object.keys(defaultAdjustValue) as (keyof AdjustValue)[];
+/** The adjust's channels in titled groups, as Lightroom and Camera Raw lay them out. */
+const ADJUST_GROUPS: readonly { id: 'light' | 'color' | 'detail' | 'effects'; fields: readonly (keyof AdjustValue)[] }[] = [
+  { id: 'light', fields: ['exposure', 'highlights', 'shadows', 'contrast'] },
+  { id: 'color', fields: ['saturation', 'vibrance', 'temperature', 'tint', 'hue'] },
+  { id: 'detail', fields: ['sharpness', 'noiseReduction', 'clarity'] },
+  { id: 'effects', fields: ['vignette', 'grain', 'fade'] },
+];
 
 /**
  * A slot's picks as a list.
@@ -580,37 +587,47 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
             <Button
               type='button'
               variant='outline'
-              size='compact'
+              size='sm'
               data-testid='mini-tool-adjust-reset'
               onClick={() => onParams({ [param.key]: defaultAdjustValue })}
-              className='gap-1 text-2xs'
+              className='gap-1 text-xs'
             >
               <RotateCcw className='h-3 w-3' aria-hidden='true' />
               {t('canvas.miniTool.panel.reset')}
             </Button>
           </div>
-          {/* The height cuts a row in half, which says the list goes on below. */}
-          <ScrollArea viewportClassName='max-h-72 pr-2'>
-            <div className='flex flex-col gap-2'>
-              {ADJUST_FIELDS.map((field) => (
-                <ParamSliderRow
-                  key={field}
-                  name={field}
-                  label={t(`canvas.miniTool.adjust.${field}`)}
-                  min={ADJUST_RANGES[field].min}
-                  max={ADJUST_RANGES[field].max}
-                  step={1}
-                  origin={0}
-                  value={value[field]}
-                  format={String}
-                  // Each step goes into the session draft as the thumb moves,
-                  // so the node's picture follows it (A2); nothing here is in
-                  // the document, so no step becomes an undo entry.
-                  onDraft={(next) => onParams({ [param.key]: { ...value, [field]: next } })}
-                  onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
-                  testIdPrefix='mini-tool-adjust'
-                  className={undefined}
-                />
+          {/* The height cuts a row in half, which says the list goes on below.
+              The scroller runs into the panel's right gutter, so the rows end
+              where Reset and the other tools' controls do and the bar shows
+              in the gutter. */}
+          <ScrollArea className='-mr-3' viewportClassName='max-h-72 pr-3'>
+            <div className='flex flex-col gap-3'>
+              {ADJUST_GROUPS.map((group) => (
+                <section key={group.id} data-testid={`mini-tool-adjust-group-${group.id}`} className='flex flex-col gap-2'>
+                  {/* A step smaller and dimmer than the slider labels, so a
+                      group's name reads as a heading over them. */}
+                  <h3 className='text-2xs font-medium text-foreground-disabled'>{t(`canvas.miniTool.adjustGroup.${group.id}`)}</h3>
+                  {group.fields.map((field) => (
+                    <ParamSliderRow
+                      key={field}
+                      name={field}
+                      label={t(`canvas.miniTool.adjust.${field}`)}
+                      min={ADJUST_RANGES[field].min}
+                      max={ADJUST_RANGES[field].max}
+                      step={1}
+                      origin={0}
+                      value={value[field]}
+                      format={String}
+                      // Each step goes into the session draft as the thumb moves,
+                      // so the node's picture follows it (A2); nothing here is in
+                      // the document, so no step becomes an undo entry.
+                      onDraft={(next) => onParams({ [param.key]: { ...value, [field]: next } })}
+                      onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
+                      testIdPrefix='mini-tool-adjust'
+                      className={undefined}
+                    />
+                  ))}
+                </section>
               ))}
             </div>
           </ScrollArea>
