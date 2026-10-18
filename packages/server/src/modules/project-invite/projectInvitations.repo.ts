@@ -104,8 +104,8 @@ export async function createPending(input: {
 }
 
 /**
- * Reap the caller's stale pending invite for a (project, invitee) pair — flip an
- * EXPIRED, still-`pending` row to the terminal `expired` status so it stops
+ * Reap the caller's stale pending invite for a (project, invitee) pair — fail an
+ * EXPIRED, still-`pending` row with reason `expired` so it stops
  * occupying the `project_invitations_one_pending` partial unique index.
  *
  * The index keys on `status = 'pending' AND deleted_at IS NULL` and CANNOT
@@ -128,7 +128,7 @@ export async function expireStalePending(
 ): Promise<void> {
   await tx
     .update(projectInvitations)
-    .set({ status: "expired" })
+    .set({ status: "failed", failedReason: "expired" })
     .where(
       and(
         eq(projectInvitations.projectId, projectId),

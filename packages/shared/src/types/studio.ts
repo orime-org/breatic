@@ -170,7 +170,7 @@ export type StudioInvitationStatus =
   | "pending"
   | "accepted"
   | "declined"
-  | "expired"
+  | "failed"
   | "revoked";
 
 /**

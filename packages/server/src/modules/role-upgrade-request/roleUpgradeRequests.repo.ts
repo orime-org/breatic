@@ -15,7 +15,8 @@
  * by a partial unique index. A partial index predicate must be immutable, so
  * it cannot mention `now()` — which means a timed-out request keeps
  * `status = 'pending'` and holds its slot until something flips it. Nothing
- * would, since "expired" is by definition the case where nobody acted. So
+ * would, since a timed-out request is by definition the case where nobody
+ * acted. So
  * {@link createPending} reaps stale pendings in the same transaction that
  * takes the slot, exactly as the invite tables learned to (#1769).
  *
@@ -32,13 +33,14 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, roleUpgradeRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { mintShareToken } from "@server/utils/share-token.js";
+import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a request sits in its lifecycle. */
 export type RoleUpgradeStatus =
   | "pending"
   | "approved"
   | "rejected"
-  | "expired"
+  | "failed"
   | "cancelled";
 
 /** A locked request, with everything the decision path needs to judge it. */
@@ -62,7 +64,7 @@ export interface LiveRoleUpgradeRequest {
 }
 
 /**
- * Flip timed-out pendings on one key to `expired`, freeing the unique slot.
+ * Fail timed-out pendings on one key as `expired`, freeing the unique slot.
  *
  * Only ever touches EXPIRED pendings: a live one must still trip the index,
  * because a second simultaneous request from the same person is a real
@@ -85,7 +87,7 @@ export async function expireStalePending(
 ): Promise<string[]> {
   const rows = await tx
     .update(roleUpgradeRequests)
-    .set({ status: "expired" })
+    .set({ status: "failed", failedReason: "expired" })
     .where(
       and(
         eq(roleUpgradeRequests.projectId, projectId),
@@ -246,45 +248,26 @@ export async function lockRequest(
 }
 
 /**
- * Move a still-pending request to a terminal status.
+ * Move a still-pending request to the status its decider chose.
  *
  * The `status = 'pending'` predicate is the serialisation point: of two
  * concurrent decisions exactly one UPDATE matches, and the other is told it
  * lost rather than quietly overwriting the winner.
- *
- * `decided_at` is set for every status but `expired`, and that split is the
- * whole meaning of the column: it marks that a person ended this request.
- * Deriving it from the status rather than from `decidedByUserId` is deliberate
- * — the two are not the same question. A cancel is ended by a person and has
- * no decider, so it sets `decided_at` and leaves `decided_by_user_id` null.
  * @param id - Request id.
- * @param status - Terminal status to settle on.
- * @param decidedByUserId - The owner who ruled on it, or null when nobody did.
+ * @param status - The owner's decision.
+ * @param decidedByUserId - The owner who ruled on it.
  * @param tx - The deciding transaction.
  * @returns True when this call is the one that settled it.
  */
 export async function settleIfPending(
   id: string,
-  status: Exclude<RoleUpgradeStatus, "pending">,
-  decidedByUserId: string | null,
+  status: "approved" | "rejected",
+  decidedByUserId: string,
   tx: DbTx,
 ): Promise<boolean> {
   const rows = await tx
     .update(roleUpgradeRequests)
-    .set({
-      status,
-      decidedByUserId,
-      decidedAt: status === "expired" ? null : new Date(),
-      // `expired` arrives two ways: nobody answered in time, or the premise
-      // walked away and the request was settled on the spot — days before its
-      // deadline. The deadline is what the row says about when answering
-      // stopped being possible, and the landing page reads the window off it,
-      // so a request that ended early ends its window with it. A deadline
-      // already in the past is the honest answer and stays untouched.
-      ...(status === "expired"
-        ? { expiresAt: sql`LEAST(${roleUpgradeRequests.expiresAt}, now())` }
-        : {}),
-    })
+    .set({ status, decidedByUserId, decidedAt: new Date() })
     .where(
       and(
         eq(roleUpgradeRequests.id, id),
@@ -292,7 +275,37 @@ export async function settleIfPending(
         isNull(roleUpgradeRequests.deletedAt),
       ),
     )
-    .returning({ id: roleUpgradeRequests.id, shareToken: roleUpgradeRequests.shareToken });
+    .returning({ id: roleUpgradeRequests.id });
+  return rows.length > 0;
+}
+
+/**
+ * End a still-pending request nobody can answer any more, and record why.
+ *
+ * Nobody decided it, so no `decided_at` is written and `decided_by_user_id` stays null; the deadline
+ * stays the one it was filed with.
+ * @param id - Request id.
+ * @param reason - Why it ended: its deadline passed, or what it was about
+ *   stopped holding.
+ * @param tx - The enclosing transaction.
+ * @returns True when this call is the one that ended it.
+ */
+export async function failIfPending(
+  id: string,
+  reason: RequestFailedReason,
+  tx: DbTx,
+): Promise<boolean> {
+  const rows = await tx
+    .update(roleUpgradeRequests)
+    .set({ status: "failed", failedReason: reason })
+    .where(
+      and(
+        eq(roleUpgradeRequests.id, id),
+        eq(roleUpgradeRequests.status, "pending"),
+        isNull(roleUpgradeRequests.deletedAt),
+      ),
+    )
+    .returning({ id: roleUpgradeRequests.id });
   return rows.length > 0;
 }
 
@@ -303,8 +316,9 @@ export async function settleIfPending(
  * hatch: without it, anyone holding the id could withdraw someone else's ask.
  *
  * `decided_by_user_id` stays null — nobody ruled on this — but `decided_at` is
- * set, because a person did end it. See {@link settleIfPending} for why those
- * are separate questions.
+ * set, because a person did end it: `decided_at` records that a person ended
+ * the request, `decided_by_user_id` who ruled on it, and a cancel has the
+ * first without the second.
  * @param id - Request id.
  * @param requesterUserId - The person withdrawing; must own the request.
  * @param tx - Optional enclosing transaction.

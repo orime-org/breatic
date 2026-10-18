@@ -357,7 +357,39 @@ describe("the view tells the four dead ends apart", () => {
     expect((await decisionService.viewByToken(token, s.memberId))!.state).toBe("expired");
 
     // Reaper has run.
-    await sql`UPDATE studio_invitations SET status = 'expired' WHERE id = ${id}`;
+    await sql`UPDATE studio_invitations SET status = 'failed', failed_reason = 'expired' WHERE id = ${id}`;
+    expect((await decisionService.viewByToken(token, s.memberId))!.state).toBe("expired");
+  });
+
+  it("a request that failed because its premise went away reads invalidated", async () => {
+    const s = await seedScene();
+    const { id } = await studioInvitationsRepo.createPending({
+      studioId: s.studioId,
+      invitedUserId: s.memberId,
+      role: "guest",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("studio_invitations", id);
+    // Its deadline is still a week out: the state comes from the reason, not
+    // the clock.
+    await sql`UPDATE studio_invitations SET status = 'failed', failed_reason = 'invalidated' WHERE id = ${id}`;
+
+    expect((await decisionService.viewByToken(token, s.memberId))!.state).toBe("invalidated");
+  });
+
+  it("a request that failed as expired reads expired even with its deadline ahead", async () => {
+    const s = await seedScene();
+    const { id } = await studioInvitationsRepo.createPending({
+      studioId: s.studioId,
+      invitedUserId: s.memberId,
+      role: "guest",
+      invitedBy: s.ownerId,
+      expiresAt: IN_A_WEEK(),
+    });
+    const token = await tokenOf("studio_invitations", id);
+    await sql`UPDATE studio_invitations SET status = 'failed', failed_reason = 'expired' WHERE id = ${id}`;
+
     expect((await decisionService.viewByToken(token, s.memberId))!.state).toBe("expired");
   });
 
