@@ -396,6 +396,12 @@ async function runTaskBody(
       { taskId, billedCredits: existing.billedCredits },
       "Task already completed + billed; returning stored result",
     );
+    // A crash between marking the task billed and charging it leaves the
+    // run's hold standing, and this job now completes, so nothing after it
+    // releases the hold. Releasing one that is already released does nothing.
+    await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
+      logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
+    );
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored

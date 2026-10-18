@@ -24,6 +24,7 @@ const mockRecordFailure = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockGetByIdInternal = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
+const mockReleaseHold = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock("@breatic/core", () => ({
   // Product analytics (inner#1442) runs the job under its consent and reports
@@ -60,7 +61,7 @@ vi.mock("@breatic/domain", () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: {},
   creditLotService: {},
-  creditHoldService: { releaseHold: vi.fn(async () => undefined) },
+  creditHoldService: { releaseHold: mockReleaseHold },
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,
@@ -140,5 +141,27 @@ describe("a job redelivered after the provider was already called", () => {
       }),
       expect.stringContaining("redelivered"),
     );
+  });
+});
+
+describe("a job redelivered after it was charged", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetByIdInternal.mockResolvedValue({ billedAt: new Date(), billedCredits: 5, result: null });
+  });
+
+  // A worker that died between marking the task billed and charging it
+  // leaves the run's hold standing; this exit is the last code that sees the
+  // run, and the job completes, so no failure handler runs after it.
+  it("releases the run's credit hold", async () => {
+    await runTask(JOB);
+
+    expect(mockReleaseHold).toHaveBeenCalledWith("task-1");
+  });
+
+  it("still returns the stored outcome when the release fails", async () => {
+    mockReleaseHold.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(runTask(JOB)).resolves.toEqual({ alreadyCompleted: true });
   });
 });
