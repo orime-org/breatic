@@ -181,7 +181,7 @@ export async function attachFiles(
   if (!tray) return;
   const maxBytes = await deps.maxUploadBytes().catch(() => Infinity);
   const { accepted, notice } = sortPicked(files, maxBytes, tray.limits, deps.newId);
-  if (notice) chatAttachments.say(tray.conversationId, notice);
+  if (notice) chatAttachments.say(notice);
   if (accepted.length === 0) return;
   const outcome = chatAttachments.add(
     tray.conversationId,

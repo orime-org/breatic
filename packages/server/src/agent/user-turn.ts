@@ -128,6 +128,22 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
 }
 
 /**
+ * The Spaces a message carries: the project's list, then the one open.
+ * @param space - The reader's Spaces.
+ * @param spaceUnchanged - The open Space is what the history last sent of it
+ *   in full, so it goes as one line.
+ * @returns The sections, in order; none when there are no Spaces.
+ * @throws {never} Never.
+ */
+function spaceSections(space: ChatSpaceContext, spaceUnchanged: boolean): string[] {
+  const { spaces = [], spaces_total: spacesTotal = spaces.length, current_space: current } = space;
+  const sections: string[] = [];
+  if (spaces.length > 0) sections.push(spaceListSection(spaces, spacesTotal, current?.id));
+  if (current) sections.push(openSpaceSection(current, spaceUnchanged));
+  return sections;
+}
+
+/**
  * One user message as the model is sent it: the Spaces, the attachments, then
  * the words under their own heading.
  * @param turn - What the message is made of.
@@ -137,10 +153,8 @@ function canvasNote(shown: string, detail: ChatCanvasDetail): string {
  * @throws {never} Never.
  */
 export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): string {
-  const { chips, message, spaces = [], spaces_total: spacesTotal = spaces.length, current_space: current } = turn;
-  const sections: string[] = [];
-  if (spaces.length > 0) sections.push(spaceListSection(spaces, spacesTotal, current?.id));
-  if (current) sections.push(openSpaceSection(current, spaceUnchanged));
+  const { chips, message } = turn;
+  const sections = spaceSections(turn, spaceUnchanged);
   if (chips.length > 0) sections.push(attachmentSection(chips));
   if (sections.length === 0) return message;
   const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${attachmentTitle(chip)}]`);
@@ -175,4 +189,20 @@ export const READER_LANGUAGE_REMINDER =
  */
 export function userMessageForModel(clockNote: string, turn: UserTurn, spaceUnchanged = false): string {
   return `${clockNote}\n\n${userTurnForModel(turn, spaceUnchanged)}\n\n${READER_LANGUAGE_REMINDER}`;
+}
+
+/**
+ * The message a segment resumed after a questionnaire opens with: the
+ * reader's clock and Spaces as they were when the answer was sent. It carries
+ * no words of the reader's -- the answer is the call's result -- so it has no
+ * heading for them and no reminder about their language.
+ * @param clockNote - The line saying what time it is for the reader.
+ * @param space - The reader's Spaces when they answered.
+ * @param spaceUnchanged - The open Space is what the history last sent of it
+ *   in full, so it goes as one line.
+ * @returns The message's text.
+ * @throws {never} Never.
+ */
+export function continuationMessageForModel(clockNote: string, space: ChatSpaceContext, spaceUnchanged = false): string {
+  return [clockNote, ...spaceSections(space, spaceUnchanged)].join("\n\n");
 }

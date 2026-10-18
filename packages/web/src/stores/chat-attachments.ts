@@ -3,7 +3,8 @@
 
 import { create } from 'zustand';
 
-import { attachmentSection } from '@breatic/shared';
+import { attachmentSection, t } from '@breatic/shared';
+import { toast } from '@web/lib/toast';
 import type { ChatAttachedChip } from '@breatic/shared';
 
 /** Where one attached item stands. */
@@ -44,7 +45,7 @@ export interface AttachmentLimits {
 /** What adding a batch came to. */
 export type AddOutcome = 'added' | 'full' | 'too_long';
 
-/** What to say beside the attach button about the last attempt to attach or send. */
+/** What the reader is told about an attempt to attach or send that did not go in. */
 export type TrayNotice =
   | { key: 'full'; limit: number }
   | { key: 'tooLong' }
@@ -56,16 +57,9 @@ export type TrayNotice =
 interface TrayState {
   /** The list above the box in each conversation, keyed by conversation. */
   byConversation: Record<string, TrayItem[]>;
-  /**
-   * What was said about the last attempt to attach or send, keyed by conversation.
-   *
-   * Here rather than with whoever attached: the canvas attaches too, and what
-   * it has to say belongs above the same box.
-   */
-  noticeByConversation: Record<string, TrayNotice>;
 }
 
-const useStore = create<TrayState>(() => ({ byConversation: {}, noticeByConversation: {} }));
+const useStore = create<TrayState>(() => ({ byConversation: {} }));
 
 /** Nothing attached; one array, so whoever reads it keeps its identity. */
 export const NO_ATTACHMENTS: readonly TrayItem[] = [];
@@ -116,7 +110,7 @@ function trayOf(conversationId: string): readonly TrayItem[] {
  * attaching a node again after editing it sends what it says now. The rest go
  * in together only if the list then still fits both limits; a batch that
  * partly went in would leave the reader to work out which part. A refused
- * batch is said so beside the attach button.
+ * batch is told in a toast.
  * @param conversationId - The conversation it is attached in.
  * @param batch - The items, in order.
  * @param limits - The limits the list is held to.
@@ -129,11 +123,11 @@ function add(conversationId: string, batch: readonly TrayItem[], limits: Attachm
   const present = new Set(current.map((item) => item.id));
   const next = [...kept, ...batch.filter((item) => !present.has(item.id))];
   if (next.length > limits.maxItems) {
-    say(conversationId, { key: 'full', limit: limits.maxItems });
+    say({ key: 'full', limit: limits.maxItems });
     return 'full';
   }
   if (!fits(next, limits)) {
-    say(conversationId, { key: 'tooLong' });
+    say({ key: 'tooLong' });
     return 'too_long';
   }
   write(conversationId, next);
@@ -164,7 +158,7 @@ function update(conversationId: string, id: string, change: (item: TrayItem) => 
  * An upload or extraction has what it was waiting for.
  *
  * Its length is known only now, so the list is measured again: past the
- * limit, the item fails as too long and that is said beside the attach button.
+ * limit, the item fails as too long and that is told in a toast.
  * @param conversationId - The conversation.
  * @param id - The item.
  * @param chip - What is sent for it.
@@ -186,7 +180,7 @@ function settle(
   if (!update(conversationId, id, (item) => ({ ...item, status: 'failed', failure: 'too_long' }))) {
     return 'gone';
   }
-  say(conversationId, { key: 'tooLong' });
+  say({ key: 'tooLong' });
   return 'too_long';
 }
 
@@ -201,7 +195,7 @@ function fail(conversationId: string, id: string, failure: TrayFailure): void {
 }
 
 /**
- * Take out the items that match, and say nothing more about the last attempt.
+ * Take out the items that match.
  *
  * The list is written only when something left it, so a turn that carried
  * nothing does not hand the box a new list to redraw.
@@ -214,7 +208,6 @@ function removeWhere(conversationId: string, leaves: (item: TrayItem) => boolean
     const next = current.filter((item) => !leaves(item));
     if (next.length !== current.length) write(conversationId, next);
   }
-  say(conversationId, null);
 }
 
 /**
@@ -231,8 +224,7 @@ function remove(conversationId: string, id: string): void {
  *
  * Matched on what was sent, not on the id: a node attached again after the
  * press holds a new snapshot under the same id, and that one is for the next
- * message. A turn opening ends the attempt the notice was about, so the
- * notice goes whether or not anything was attached.
+ * message.
  * @param conversationId - The conversation.
  * @param sent - What the turn carried.
  */
@@ -248,27 +240,43 @@ function removeSent(conversationId: string, sent: readonly ChatAttachedChip[]): 
 function forget(conversationIds: readonly string[]): void {
   useStore.setState((s) => {
     const byConversation = { ...s.byConversation };
-    const noticeByConversation = { ...s.noticeByConversation };
-    for (const id of conversationIds) {
-      delete byConversation[id];
-      delete noticeByConversation[id];
-    }
-    return { byConversation, noticeByConversation };
+    for (const id of conversationIds) delete byConversation[id];
+    return { byConversation };
   });
 }
 
 /**
- * Say something beside the attach button about the last attempt to attach or send, or clear it.
- * @param conversationId - The conversation.
- * @param notice - What to say, or null to say nothing.
+ * The sentence an attempt that did not go in is told with.
+ * @param notice - What happened.
+ * @returns The sentence, in the reader's language.
  */
-function say(conversationId: string, notice: TrayNotice | null): void {
-  useStore.setState((s) => {
-    const noticeByConversation = { ...s.noticeByConversation };
-    if (notice === null) delete noticeByConversation[conversationId];
-    else noticeByConversation[conversationId] = notice;
-    return { noticeByConversation };
-  });
+export function trayNoticeText(notice: TrayNotice): string {
+  switch (notice.key) {
+    case 'unavailable':
+      return t('chat.composer.attachUnavailable');
+    case 'sendUnavailable':
+      return t('chat.composer.sendUnavailable');
+    case 'full':
+      return t('chat.composer.attachFull', { limit: notice.limit });
+    case 'tooLong':
+      return t('chat.composer.attachTooLong');
+    case 'tooLarge':
+      return t('chat.composer.attachTooLarge', { filename: notice.filename });
+    case 'unsupported':
+      return t('chat.composer.attachUnsupported', { filename: notice.filename });
+  }
+}
+
+/**
+ * Tell the reader an attempt to attach or send did not go in.
+ *
+ * A toast, said at the moment it happens (inner#1530): every writer -- the
+ * attach button, the canvas adding to the Agent, a send held for its limits
+ * -- comes through here, so nothing is kept to be said again later.
+ * @param notice - What happened.
+ */
+function say(notice: TrayNotice): void {
+  toast.warning(trayNoticeText(notice));
 }
 
 /**
@@ -292,17 +300,6 @@ export const useChatAttachments = useStore;
 export function useTray(conversationId: string | undefined): readonly TrayItem[] {
   return useStore((s) =>
     conversationId ? (s.byConversation[conversationId] ?? NO_ATTACHMENTS) : NO_ATTACHMENTS,
-  );
-}
-
-/**
- * What is said beside the attach button in one conversation, kept current.
- * @param conversationId - The conversation on screen, if one is.
- * @returns The notice, or null when there is none.
- */
-export function useTrayNotice(conversationId: string | undefined): TrayNotice | null {
-  return useStore((s) =>
-    conversationId ? (s.noticeByConversation[conversationId] ?? null) : null,
   );
 }
 

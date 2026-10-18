@@ -82,7 +82,9 @@ describe("轮次替一次调用说的每句话,都说了它自己那个下一步
 
     expect(stopped.forModel).toBe(failed.forModel);
     expect(stopped.kind).toBe("user_aborted");
-    expect(failed.kind).toBe("tool_failed");
+    // A turn that failed or was cut off around the call has its own ending
+    // line; the call shows nothing of its own (inner#1620).
+    expect(failed.kind).toBe("never_ran");
     expect(wireLineOf(stopped)).not.toBe(wireLineOf(failed));
   });
 
@@ -134,11 +136,14 @@ describe("a call the SDK refused, in either shape it arrives in", () => {
     // reader is told about.
     expect(endingOf(new Error("boom"))).toMatchObject({
       kind: "tool_failed",
-      readerKey: FAILURE_LINES.generic,
+      readerKey: FAILURE_LINES.ourFault,
     });
+    // The same story to both: our side failed, the call itself was fine.
+    expect(endingOf(new Error("boom")).forModel).toMatch(/our side/);
+    expect(endingOf(new Error("boom")).forModel).not.toMatch(/correct the call/i);
     expect(endingOf("text part 1 not found")).toMatchObject({
       kind: "tool_failed",
-      readerKey: FAILURE_LINES.generic,
+      readerKey: FAILURE_LINES.ourFault,
     });
   });
 });

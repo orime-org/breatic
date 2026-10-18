@@ -166,7 +166,10 @@
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
       "current_space_too_long": "当前 Space 的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 个，这条有 {actual, number} 个。",
-      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
+      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。",
+      "ask_not_found": "这条会话里没有这张问题卡片。",
+      "ask_already_answered": "这张问题卡片已经回答过了。",
+      "answer_mismatch": "这些答案和卡片上的问题对不上。"
     },
     "mail": {
       "studio_invite": {
@@ -351,10 +354,24 @@
     "tool": {
       "unfinished": "已停止",
       "failure": {
-        "upstream": "执行错误",
-        "unreachable": "执行错误",
-        "generic": "执行错误"
+        "busy": "服务出错了，稍后可以再试",
+        "noConnection": "连不上服务，稍后可以再试",
+        "refused": "服务没有接受这次请求",
+        "unavailable": "这项功能暂时不可用",
+        "badAnswer": "服务返回的内容用不了",
+        "linkUnreachable": "这个地址打不开，可以换一个链接",
+        "fileTooLarge": "文件太大",
+        "unsupportedType": "不支持这种文件格式",
+        "emptyFile": "文件是空的",
+        "tooSlow": "文件下载太慢，没能下完",
+        "storageFull": "Studio 的存储空间已满",
+        "noPermission": "你在这个 Project 里没有编辑权限",
+        "tooFrequent": "刚才取的链接太多，等一分钟再试",
+        "declined": "服务拒绝处理这项内容",
+        "ourFault": "服务器出了问题，可以再试一次"
       },
+      "failedLine": "{step}没有完成：{reason}",
+      "failedStep": "{step}没有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
@@ -366,7 +383,20 @@
       "readingGuide": "正在查产品怎么用",
       "understanding": "正在查看媒体",
       "judging": "正在权衡",
-      "running": "正在调用 {tool}"
+      "running": "正在调用 {tool}",
+      "step": {
+        "webSearch": "搜索「{query}」",
+        "searchImages": "找「{query}」的图片",
+        "understandMedia": "查看媒体",
+        "saveImage": "保存图片",
+        "judge": "权衡",
+        "proposeCanvas": "拟提议",
+        "proposeDocument": "拟修改提议",
+        "listModels": "查可用的模型",
+        "canvasCapabilities": "查 Canvas 能做什么",
+        "productGuide": "查产品怎么用",
+        "other": "调用 {tool}"
+      }
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {
@@ -447,6 +477,19 @@
       "kind": "{kind, select, canvas {Canvas} image {图片} video {视频} audio {音频} text {文本} other {内容}}",
       "nodes": "{count} 个节点",
       "more": "还有 {count} 个"
+    },
+    "questionnaire": {
+      "submit": "提交",
+      "hint": "以上都不认可时，可以直接在输入框回复",
+      "other": "其他，自己写…",
+      "ownWords": "写下你的回答…",
+      "multi": "可多选",
+      "skipped": "跳过",
+      "yourAnswers": "你的回答",
+      "replied": "你已在对话中回复",
+      "show": "展开",
+      "hide": "收起",
+      "atLeastOne": "至少答一题"
     }
   },
   "canvas": {

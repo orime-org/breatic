@@ -8,8 +8,8 @@
  * request is answered here with a stream written to open the way the server's
  * does: the heartbeat, the conversation's title, then `start` with an id
  * (`routes/chat.ts`, `main-agent.ts`). What each case checks is that the line
- * is on screen once the turn has settled and is still there after the
- * four-second notice has gone. That the same lines come back when the
+ * is on screen once the turn has settled and is still there after the toast
+ * has gone. That the same lines come back when the
  * conversation is reopened is checked against a real store in the server's
  * `turn-message-shape.integration.test.ts`.
  */
@@ -28,8 +28,8 @@ const OPENING = [
   { type: 'start', messageId: 'm-reply' },
 ];
 
-/** How long the notice stays up (`notice-timing.ts`), plus room to settle. */
-const PAST_THE_NOTICE_MS = 4_500;
+/** How long a toast stays up (the Toaster's `duration` in `App.tsx`), plus room to settle. */
+const PAST_THE_TOAST_MS = 3_500;
 
 /**
  * Answer the next turn with these chunks, after the server's opening.
@@ -62,8 +62,8 @@ test('a turn that fails before its first word keeps its failure line', async ({ 
   await answerWith(page, [{ type: 'error', errorText: 'The turn could not be run.' }]);
   await sendOne(page);
 
-  await page.waitForTimeout(PAST_THE_NOTICE_MS);
-  await expect(page.getByTestId('chat-notice')).toHaveCount(0);
+  await page.waitForTimeout(PAST_THE_TOAST_MS);
+  await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
   await expect(page.getByTestId('message-bubble-error')).toHaveText(
     'This reply could not be finished. Try sending it again.',
   );
@@ -73,19 +73,19 @@ test('a turn that produced nothing says so', async ({ page }) => {
   await answerWith(page, [{ type: 'start-step' }, { type: 'finish-step' }, { type: 'finish' }]);
   await sendOne(page);
 
-  await page.waitForTimeout(PAST_THE_NOTICE_MS);
+  await page.waitForTimeout(PAST_THE_TOAST_MS);
   await expect(page.getByTestId('message-bubble-empty')).toHaveText('No reply this turn');
 });
 
-test('tool steps that failed the same way while the turn carried on share one line', async ({
+test('each tool step that did not finish says which and why, where it happened (inner#1620)', async ({
   page,
 }) => {
   await answerWith(page, [
     { type: 'start-step' },
     { type: 'tool-input-available', toolCallId: 'c1', toolName: 'web_search', input: { query: 'cats' } },
-    { type: 'tool-output-error', toolCallId: 'c1', errorText: 'chat.tool.failure.upstream' },
+    { type: 'tool-output-error', toolCallId: 'c1', errorText: 'chat.tool.failure.busy' },
     { type: 'tool-input-available', toolCallId: 'c2', toolName: 'web_search', input: { query: 'dogs' } },
-    { type: 'tool-output-error', toolCallId: 'c2', errorText: 'chat.tool.failure.unreachable' },
+    { type: 'tool-output-error', toolCallId: 'c2', errorText: 'chat.tool.failure.noConnection' },
     { type: 'finish-step' },
     { type: 'start-step' },
     { type: 'text-start', id: 't' },
@@ -96,30 +96,36 @@ test('tool steps that failed the same way while the turn carried on share one li
   ]);
   await sendOne(page);
 
-  await page.waitForTimeout(PAST_THE_NOTICE_MS);
-  await expect(page.getByTestId('message-bubble-tool-failed')).toHaveText(['Execution error ×2']);
-  await expect(page.getByTestId('message-bubble-content').last()).toHaveText(
-    'Carrying on without it.',
-  );
+  await page.waitForTimeout(PAST_THE_TOAST_MS);
+  const lines = page.getByTestId('message-bubble-tool-failed');
+  await expect(lines).toHaveText([
+    'Search for “cats” didn\'t finish: the service ran into an error, try again later',
+    'Search for “dogs” didn\'t finish: couldn\'t reach the service, try again later',
+  ]);
+  const prose = page.getByTestId('markdown-body').last().locator('p');
+  await expect(prose).toHaveText('Carrying on without it.');
+  // In place: the lines sit inside the reply, above the prose the turn went on with.
+  const lastLine = await lines.last().boundingBox();
+  const proseBox = await prose.boundingBox();
+  expect(lastLine!.y).toBeLessThan(proseBox!.y);
   await expect(page.getByTestId('message-bubble-error')).toHaveCount(0);
 });
 
-test('calls turned away to steer the model draw no line, and only one question is asked', async ({
+test('calls turned away to steer the model draw no line, and only one questionnaire is drawn', async ({
   page,
 }) => {
-  // In the order the server sends them (#996): the first question answered and
-  // written into the reply, a second question turned away, input the SDK
-  // refused -- first as an input error, then as the output error that
-  // follows it -- and a second media call turned away while one was running.
+  // In the order the server sends them (inner#1542): the first card left
+  // waiting and named as such at the end of the segment, a second card in the
+  // same step turned away (no result, no mark), input the SDK refused -- first
+  // as an input error, then as the output error that follows it -- and a
+  // second media call turned away while one was running.
+  const card = (header: string): object => ({
+    questions: [{ header, question: `${header}?`, multiSelect: false, options: [{ label: 'A' }, { label: 'B' }] }],
+  });
   await answerWith(page, [
     { type: 'start-step' },
-    { type: 'tool-input-available', toolCallId: 'q1', toolName: 'ask_user', input: { question: 'Which style?' } },
-    { type: 'tool-output-available', toolCallId: 'q1', output: { question: 'Which style?' } },
-    { type: 'text-start', id: 'ask-q1' },
-    { type: 'text-delta', id: 'ask-q1', delta: '\n\nWhich style?\n\n' },
-    { type: 'text-end', id: 'ask-q1' },
-    { type: 'tool-input-available', toolCallId: 'q2', toolName: 'ask_user', input: { question: 'How long?' } },
-    { type: 'tool-output-error', toolCallId: 'q2', errorText: 'turned_away' },
+    { type: 'tool-input-available', toolCallId: 'q1', toolName: 'ask_user', input: card('Style') },
+    { type: 'tool-input-available', toolCallId: 'q2', toolName: 'ask_user', input: card('Length') },
     {
       type: 'tool-input-error',
       toolCallId: 'bad',
@@ -131,12 +137,13 @@ test('calls turned away to steer the model draw no line, and only one question i
     { type: 'tool-input-available', toolCallId: 'm2', toolName: 'understand_media', input: { url: 'https://example.com/b.mp4' } },
     { type: 'tool-output-error', toolCallId: 'm2', errorText: 'turned_away' },
     { type: 'finish-step' },
-    { type: 'data-blocked', data: {} },
+    { type: 'data-ask-awaiting', data: { toolCallId: 'q1' } },
     { type: 'finish' },
   ]);
   await sendOne(page);
 
-  await page.waitForTimeout(PAST_THE_NOTICE_MS);
+  await page.waitForTimeout(PAST_THE_TOAST_MS);
   await expect(page.getByTestId('message-bubble-tool-failed')).toHaveCount(0);
-  await expect(page.getByTestId('message-bubble-content').last()).toHaveText('Which style?');
+  await expect(page.getByTestId('questionnaire-card')).toHaveCount(1);
+  await expect(page.getByTestId('questionnaire-question-label')).toHaveText(['1. Style']);
 });

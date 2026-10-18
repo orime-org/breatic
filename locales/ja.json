@@ -166,7 +166,10 @@
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
-      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
+      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
+      "ask_not_found": "この会話にこの質問カードはありません。",
+      "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {
       "studio_invite": {
@@ -351,10 +354,24 @@
     "tool": {
       "unfinished": "停止しました",
       "failure": {
-        "upstream": "実行エラー",
-        "unreachable": "実行エラー",
-        "generic": "実行エラー"
+        "busy": "サービスでエラーが発生しました。しばらくしてから再試行してください",
+        "noConnection": "サービスに接続できませんでした。しばらくしてから再試行してください",
+        "refused": "サービスがこのリクエストを受け付けませんでした",
+        "unavailable": "この機能は現在利用できません",
+        "badAnswer": "サービスから使える結果が返ってきませんでした",
+        "linkUnreachable": "このアドレスを開けません。別のリンクをお試しください",
+        "fileTooLarge": "ファイルが大きすぎます",
+        "unsupportedType": "このファイル形式には対応していません",
+        "emptyFile": "ファイルが空です",
+        "tooSlow": "ファイルのダウンロードが遅く、完了しませんでした",
+        "storageFull": "Studio のストレージがいっぱいです",
+        "noPermission": "この Project の編集権限がありません",
+        "tooFrequent": "直前に取得したリンクが多すぎます。1 分ほど待ってから再試行してください",
+        "declined": "サービスがこの内容の処理を拒否しました",
+        "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
       },
+      "failedLine": "{step}が完了しませんでした：{reason}",
+      "failedStep": "{step}が完了しませんでした",
       "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
@@ -366,7 +383,20 @@
       "readingGuide": "製品の使い方を確認中",
       "understanding": "メディアを確認中",
       "judging": "検討中",
-      "running": "{tool} を実行中"
+      "running": "{tool} を実行中",
+      "step": {
+        "webSearch": "「{query}」の検索",
+        "searchImages": "「{query}」の画像検索",
+        "understandMedia": "メディアの確認",
+        "saveImage": "画像の保存",
+        "judge": "判断",
+        "proposeCanvas": "提案の作成",
+        "proposeDocument": "修正案の作成",
+        "listModels": "利用できるモデルの確認",
+        "canvasCapabilities": "Canvas でできることの確認",
+        "productGuide": "使い方の確認",
+        "other": "{tool} の実行"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -447,6 +477,19 @@
       "kind": "{kind, select, canvas {Canvas} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
       "nodes": "{count} 個のノード",
       "more": "ほか {count} 件"
+    },
+    "questionnaire": {
+      "submit": "送信",
+      "hint": "どれも合わない場合は、入力欄で直接返信できます",
+      "other": "その他（自由に入力）…",
+      "ownWords": "回答を入力…",
+      "multi": "複数選択可",
+      "skipped": "スキップ",
+      "yourAnswers": "あなたの回答",
+      "replied": "チャットで返信しました",
+      "show": "開く",
+      "hide": "閉じる",
+      "atLeastOne": "少なくとも1問に答えてください"
     }
   },
   "canvas": {

@@ -69,7 +69,7 @@ function refusedBySdk(err: unknown): boolean {
  * and left out of the history on that ground (`model-messages.ts`), but one
  * whose arguments had arrived carries no such mark and goes back in full.
  */
-const NOTHING_OF_IT_RAN =
+export const NOTHING_OF_IT_RAN =
   "This tool was never run: the turn ended while its arguments were still " +
   "being sent. Nothing was attempted, so call it again if you still need it.";
 
@@ -79,7 +79,8 @@ const NOTHING_OF_IT_RAN =
  * The two halves answer different questions and are settled separately. What
  * the model is told is the same either way, because the fact is the same: this
  * never ran. What a reader is shown is not -- someone who pressed stop is told
- * their turn stopped, and a failure nobody asked for is told as a failure.
+ * their turn stopped, and a turn that failed or was cut off around the call
+ * says so in its own ending line, so the call itself shows nothing.
  * @param stopped - Whether the turn ended because it was stopped.
  * @returns The ending to record against the call.
  */
@@ -90,7 +91,7 @@ export function endingWithNothingRun(stopped: boolean): ToolFailure {
   // going wrong.
   return stopped
     ? { kind: "user_aborted", forModel: NOTHING_OF_IT_RAN, readerKey: FAILURE_LINES.stopped }
-    : { kind: "tool_failed", forModel: NOTHING_OF_IT_RAN, readerKey: FAILURE_LINES.generic };
+    : { kind: "never_ran", forModel: NOTHING_OF_IT_RAN };
 }
 
 /**
@@ -118,9 +119,12 @@ export function endingOf(err: unknown): ToolFailure {
   if (refusedBySdk(err)) {
     return { kind: "turned_away", forModel: `${said} Correct the call and try once more.` };
   }
+  // Anything else is our own code failing: the call itself was fine.
   return {
     kind: "tool_failed",
-    forModel: `${said} Correct the call and try once more.`,
-    readerKey: FAILURE_LINES.generic,
+    forModel:
+      `${said} This failed on our side, not because of the call's arguments. Trying once more may work; ` +
+      "if it fails again, tell the user it could not be done.",
+    readerKey: FAILURE_LINES.ourFault,
   };
 }

@@ -519,9 +519,19 @@ export {
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
+  answersMismatch,
+  ASK_USER_OTHER_MAX_CHARS,
+  askUserAnswerSchema,
+  askUserInputSchema,
+  readQuestionnaire,
+} from "@shared/agent/ask-user.js";
+export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from "@shared/agent/ask-user.js";
+export {
   carrying,
   FAILURE_LINES,
   isReaderLine,
+  LEGACY_FAILURE_LINES,
+  NEVER_RAN,
   NOTHING_SAID_WHY,
   toolFailureOf,
   TURNED_AWAY,
@@ -529,6 +539,7 @@ export {
 } from "@shared/agent/tool-failure.js";
 export type {
   FailureLine,
+  LegacyFailureLine,
   StoppedLine,
   ToolFailure,
   ToolFailureKind,

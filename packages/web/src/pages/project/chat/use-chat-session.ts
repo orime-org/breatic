@@ -4,18 +4,17 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { ChatAttachedChip } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip } from '@breatic/shared';
 
-import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
-import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
+import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
 
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
-import { watchChatMishaps } from '@web/stores/chat-mishaps';
-import type { ChatMishap } from '@web/stores/chat-mishaps';
+import { mishapLine, watchChatMishaps } from '@web/stores/chat-mishaps';
+import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
-import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { answerInSession, chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -72,14 +71,6 @@ export interface ChatSession {
   loadingMore: boolean;
   /** The conversation reaches back further than the messages on screen. */
   hasMore: boolean;
-  /**
-   * What went wrong just now, for as long as that is still just now.
-   *
-   * Null the rest of the time, which is nearly always. Nothing that goes
-   * wrong here is a state the chat is in — it is a thing that happened, at a
-   * moment the reader was in, and it goes away on its own.
-   */
-  mishap: ChatMishap | null;
   /** Load the messages before the ones on screen; settles once the page has landed or failed. */
   loadEarlier: () => Promise<void>;
   /**
@@ -94,6 +85,11 @@ export interface ChatSession {
    * moment it happens, and nothing on the screen moves for it.
    */
   send: (draft: string) => Promise<void>;
+  /**
+   * Answer the questionnaire the conversation on screen stopped at
+   * (inner#1542); the turn that asked resumes. Resolves when that turn is over.
+   */
+  answer: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
   /** The conversations fetched so far here, most recently used first. */
@@ -113,14 +109,6 @@ export interface ChatSession {
   nextPageFailed: boolean;
   /** The first page of the list is on its way. */
   listLoading: boolean;
-  /**
-   * What went wrong with something done to a row, for the list to say.
-   *
-   * Apart from {@link mishap} because the two are about different things and
-   * either can be worth saying: this one belongs where the reader is looking,
-   * which is inside a sheet that covers the panel's own line.
-   */
-  rowMishap: ChatMishap | null;
   /** Fetch the list again from its first page. */
   reloadList: () => void;
   /** Which one is on screen, for the list to mark. */
@@ -173,15 +161,12 @@ const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
  * conversation rather than inside it: which one is on screen, the list, the
  * draft, and the page a session is first built from.
  * @param projectId - Project whose chat this is
- * @param listOpen - Whether the conversation list is on screen, which decides
- *   where a word about one of its rows is drawn
  * @param readSpaces - Reads the reader's Spaces as they stand, called at the
  *   press (inner#1413)
  * @returns The messages, whether they have arrived, and what can be done
  */
 export function useChatSession(
   projectId: string,
-  listOpen: boolean,
   readSpaces: () => ReadSpaces,
 ): ChatSession {
 
@@ -304,14 +289,31 @@ export function useChatSession(
       // what the reader sees there.
       const attached = chatAttachments.sendable(opened);
       if (attached === null) return;
-      // Said beside the plus sign; the words stay in the box.
+      // Said in a toast; the words stay in the box.
       if (limits === null) {
-        chatAttachments.say(opened, { key: 'sendUnavailable' });
+        chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
       await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits, attached));
     },
     [projectId, noteTitle, emptyTheBox, readSpaces],
+  );
+
+  const answer = React.useCallback(
+    async (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> => {
+      // The card is in the conversation on screen, which is where it goes.
+      // The Spaces are read at the press, as for a typed message.
+      const opened = conversationId;
+      if (opened === undefined) return;
+      const spaces = readSpaces();
+      const limits = await chatApi.streamConfig().catch(() => null);
+      if (limits === null) {
+        chatAttachments.say({ key: 'sendUnavailable' });
+        return;
+      }
+      await answerInSession(opened, toolCallId, answers, clipSpaceContext(spaces, limits, []));
+    },
+    [conversationId, readSpaces],
   );
 
   const abort = React.useCallback((): void => {
@@ -353,28 +355,6 @@ export function useChatSession(
     [projectId],
   );
 
-  /**
-   * What just went wrong here, until it stops being just now.
-   *
-   * Watched rather than read out of the conversation, because a panel that is
-   * not mounted watches nothing -- and that is the rule: what happens while
-   * the reader is elsewhere is not told to them when they come back. They
-   * come back to a conversation that stopped moving, which is how a reader of
-   * a stream knows.
-   */
-  const [mishap, setMishap] = React.useState<ChatMishap | null>(null);
-  /**
-   * The one that belongs in the list rather than in the panel.
-   *
-   * The list covers the whole column while it is open, so the panel's line --
-   * on the top edge of the composer -- is a line nobody can read while it is
-   * up. What decides is therefore where the reader is looking, not which
-   * entrance they used: renaming can be started from the header too. Kept
-   * apart from {@link mishap} rather than routed by whichever came last,
-   * because the two are about different things and can both be worth saying.
-   */
-  const [rowMishap, setRowMishap] = React.useState<ChatMishap | null>(null);
-
 
   React.useEffect(
     () =>
@@ -389,14 +369,6 @@ export function useChatSession(
         // than the one on screen -- that is what the list is for. The
         // question this filter asks is "is this the reader's own doing", not
         // "which conversation was it about".
-        // A word about a row goes to the list only while the list is on
-        // screen. Which entrance the reader used does not decide this -- the
-        // header renames the conversation too, and the sheet is shut then, so
-        // a line drawn inside it would be a line nobody reads.
-        if (told.aboutRow === true && listOpen) {
-          setRowMishap(told);
-          return;
-        }
         if (
           told.deliberate !== true &&
           told.conversationId !== null &&
@@ -404,22 +376,13 @@ export function useChatSession(
         ) {
           return;
         }
-        setMishap(told);
+        // Said once, as it happens (inner#1530). What happens while no panel
+        // is mounted is not told when one comes back: the reader comes back
+        // to a conversation that stopped moving, which is how they know.
+        toast.error(mishapLine(told));
       }),
-    [projectId, conversationId, listOpen],
+    [projectId, conversationId],
   );
-
-  React.useEffect(() => {
-    if (mishap === null) return undefined;
-    const forgetting = setTimeout(() => setMishap(null), NOTICE_LINGERS_MS);
-    return () => clearTimeout(forgetting);
-  }, [mishap]);
-
-  React.useEffect(() => {
-    if (rowMishap === null) return undefined;
-    const forgetting = setTimeout(() => setRowMishap(null), NOTICE_LINGERS_MS);
-    return () => clearTimeout(forgetting);
-  }, [rowMishap]);
 
   // What the panel was handed for each message last time round.
   //
@@ -429,7 +392,13 @@ export function useChatSession(
   // changing and the rest were settled long ago. Keyed on the message object
   // itself, which the chat leaves untouched for everything it is not
   // rewriting, so identity is exactly the question "did this one change".
-  const rendered = React.useRef(new Map<StoredUiMessage, ChatMessage>());
+  // A reply resumed after a questionnaire is drawn as several (`splitAtAnswer`),
+  // so one message can stand for more than one view.
+  const rendered = React.useRef(new Map<StoredUiMessage, ChatMessage[]>());
+  // Every part of a split reply but the last ends at an answered card and
+  // changes no more, while the SDK replaces the message on every chunk; kept
+  // by id and length so the streaming tail is the only view rebuilt.
+  const settledParts = React.useRef(new Map<string, ChatMessage>());
 
   const messages = React.useMemo(() => {
     // The one the reader just sent is held back until the answer starts: the
@@ -438,8 +407,9 @@ export function useChatSession(
     // to be waiting through.
     const shown = visibleMessages(onScreen, status);
     const last = shown[shown.length - 1];
-    const kept = new Map<StoredUiMessage, ChatMessage>();
-    const out = shown.map((m) => {
+    const kept = new Map<StoredUiMessage, ChatMessage[]>();
+    const keptParts = new Map<string, ChatMessage>();
+    const out = shown.flatMap((m) => {
       // What a reader needs announced is a failure they are living through,
       // not every failure the conversation ever had — those come back with the
       // history and would be read out again on every open. What tells the two
@@ -448,19 +418,30 @@ export function useChatSession(
       const justNow = error !== undefined && m === last && m.role === 'assistant';
       const streaming = status === 'streaming' && m === last && m.role === 'assistant';
       const before = rendered.current.get(m);
+      const tail = before?.at(-1);
       // The comparisons matter on the message whose situation has just
-      // changed while nothing about the message itself did.
-      const view =
-        before &&
-        Boolean(before.failedJustNow) === justNow &&
-        Boolean(before.streaming) === streaming
+      // changed while nothing about the message itself did. What is still
+      // arriving, or has just failed, is the later half of a split reply.
+      const views =
+        before && tail && Boolean(tail.failedJustNow) === justNow && Boolean(tail.streaming) === streaming
           ? before
-          : toChatMessage(m, { failedJustNow: justNow, streaming });
-      kept.set(m, view);
-      return view;
+          : splitAtAnswer(m, { open: streaming }).map((half, i, halves) => {
+            if (i === halves.length - 1) return toChatMessage(half, { failedJustNow: justNow, streaming });
+            const key = `${half.id}#${String(half.parts.length)}`;
+            const view = settledParts.current.get(key) ?? toChatMessage(half);
+            keptParts.set(key, view);
+            return view;
+          });
+      // Views carried over whole keep their settled parts for the next render.
+      if (views === before) {
+        for (const [key, view] of settledParts.current) if (views.includes(view)) keptParts.set(key, view);
+      }
+      kept.set(m, views);
+      return views;
     });
     rendered.current = kept;
-    return out;
+    settledParts.current = keptParts;
+    return joinContinued(out);
   }, [onScreen, status, error]);
 
   return {
@@ -470,16 +451,15 @@ export function useChatSession(
     navigating,
     loadingMore,
     hasMore,
-    mishap,
     loadEarlier,
     send,
+    answer,
     abort,
     conversations,
     hasMoreConversations,
     loadMoreConversations,
     nextPageFailed,
     listLoading,
-    rowMishap,
     reloadList,
     currentId: conversationId,
     draft,

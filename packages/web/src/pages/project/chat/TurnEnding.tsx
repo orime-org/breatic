@@ -4,12 +4,11 @@
 import * as React from 'react';
 import { CircleAlert, Info, TriangleAlert } from 'lucide-react';
 
-import { FAILURE_LINES } from '@breatic/shared';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
-import type { ChatMessage } from '@web/pages/project/chat/types';
+import type { ChatFailureLine, ChatMessage } from '@web/pages/project/chat/types';
 
 /** How an ending reads: a fault, a ceiling, or neither. */
 type Tone = 'neutral' | 'error' | 'warning';
@@ -28,9 +27,9 @@ const TONES = {
  * own sitting under the reply, and what this is is a note about the reply --
  * the colour of the mark and of the words is what says how to take it.
  *
- * The mark is centred against the line rather than against the block: the two
- * are the same while there is one line, and stop being the same the moment a
- * translation takes two.
+ * The mark is centred against the first line rather than against the block:
+ * the two are the same while there is one line, and a failure line naming its
+ * step and cause often takes two.
  * @param root0 - What to draw.
  * @param root0.testId - What the test looks it up by.
  * @param root0.text - The line itself.
@@ -54,10 +53,10 @@ function EndingLine({
     <div
       data-testid={testId}
       {...(alert === true ? { role: 'alert' } : {})}
-      className={cn('mt-[0.85em] flex items-center gap-1.5 text-xs', colour)}
+      className={cn('mt-[0.85em] flex items-start gap-1.5 text-xs', colour)}
     >
-      <Icon className='size-3.5 shrink-0' aria-hidden='true' />
-      <span>{text}</span>
+      <Icon className='mt-px size-3.5 shrink-0' aria-hidden='true' />
+      <span className='min-w-0 break-words'>{text}</span>
     </div>
   );
 }
@@ -75,8 +74,10 @@ interface TurnEndingProps {
  * built around that one move.
  *
  * A reply with nothing in it is told apart from a turn waiting on an answer
- * by the mark the server writes, never by reading the tool names -- which
- * tools stop a turn is a list in a package this one may not import.
+ * by what the server put on it, never by reading the tool names -- which
+ * tools stop a turn is a list in a package this one may not import. A turn
+ * waiting at a questionnaire is drawn by its card; `blocked` is the mark rows
+ * stored before inner#1542 carry.
  * @param root0 - The component props.
  * @param root0.message - The message this ending belongs to.
  * @returns The line, or nothing for a turn that ended with an answer.
@@ -139,7 +140,8 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     message.assets !== undefined ||
     message.sources !== undefined ||
     message.proposals !== undefined ||
-    message.documentProposals !== undefined;
+    message.documentProposals !== undefined ||
+    message.questionnaires !== undefined;
   if (message.content === '' && !producedSomething && message.role === 'assistant') {
     return (
       <EndingLine testId='message-bubble-empty' text={t('chat.message.empty')} tone='neutral' />
@@ -149,53 +151,23 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
   return null;
 }
 
-interface FailedStepsProps {
-  /** The message whose tool steps these are. */
-  message: ChatMessage;
-}
-
 /**
- * A line for each different thing the turn's failed tool steps said.
- *
- * Drawn once the turn has settled. Steps that failed with the same words share
- * one line, with how many when there was more than one, in the order each line
- * first appeared: two identical lines one above the other tell the reader
- * nothing the second time. A step the reader stopped gets none: the turn's own
- * "Stopped" line already says so. Nor does a step turned away to steer the
- * model -- a second question, a second media call while one runs, a call the
- * SDK refused -- since nothing failed.
+ * One tool step that did not finish, where it happened in the reply
+ * (inner#1620): which step, and why, in one red line.
  * @param root0 - The component props.
- * @param root0.message - The message whose tool steps these are.
- * @returns The lines, or nothing when no step failed.
+ * @param root0.line - The step and its cause.
+ * @returns The line.
  */
-export function FailedSteps({ message }: FailedStepsProps): React.JSX.Element | null {
+export function ToolFailureLine({ line }: { line: ChatFailureLine }): React.JSX.Element {
   const t = useTranslation();
-
-  const lines = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const call of message.toolCalls ?? []) {
-      // A step the reader stopped is said by the turn's own line; one turned
-      // away to steer the model is not a failure at all.
-      if (call.status !== 'error') continue;
-      if (call.failureKind === 'user_aborted' || call.failureKind === 'turned_away') continue;
-      const line = t(call.failureKey ?? FAILURE_LINES.generic);
-      counts.set(line, (counts.get(line) ?? 0) + 1);
-    }
-    return [...counts];
-  }, [message.toolCalls, t]);
-
-  if (message.streaming === true || lines.length === 0) return null;
-
+  const step = t(line.step.key, line.step.params);
+  const said =
+    line.reason === null ? t('chat.tool.failedStep', { step }) : t('chat.tool.failedLine', { step, reason: t(line.reason) });
   return (
-    <>
-      {lines.map(([line, count]) => (
-        <EndingLine
-          key={line}
-          testId='message-bubble-tool-failed'
-          text={count === 1 ? line : t('chat.tool.failureTimes', { line, count })}
-          tone='error'
-        />
-      ))}
-    </>
+    <EndingLine
+      testId='message-bubble-tool-failed'
+      text={line.count === 1 ? said : t('chat.tool.failureTimes', { line: said, count: line.count })}
+      tone='error'
+    />
   );
 }

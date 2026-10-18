@@ -17,6 +17,7 @@ import {
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
 } from "@shared/types/membership.js";
 
+import { askUserAnswerSchema } from "@shared/agent/ask-user.js";
 import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
@@ -281,7 +282,8 @@ const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
 ]);
 
 export const chatMessageSchema = z.object({
-  message: z.string().min(1),
+  /** What the reader wrote; empty when the request carries `answer` instead. */
+  message: z.string(),
   project_id: z.string().uuid(),
   /**
    * Which conversation this message belongs to. The client holds it — that is
@@ -320,6 +322,19 @@ export const chatMessageSchema = z.object({
   spaces_total: z.number().int().nonnegative().optional(),
   /** The Space the reader has open, when the chip beside "+" is enabled. */
   current_space: chatCurrentSpaceSchema.optional(),
+  /**
+   * The reader's answers to a questionnaire the agent is waiting on
+   * (inner#1542). A request carrying it resumes the turn that asked, adds no
+   * message of the reader's, and has an empty `message`.
+   */
+  answer: askUserAnswerSchema.optional(),
+}).superRefine((value, ctx) => {
+  if (value.answer === undefined && value.message.length === 0) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
+  }
+  if (value.answer !== undefined && value.message.length > 0) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });
+  }
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type ChatSpace = z.infer<typeof chatSpaceSchema>;

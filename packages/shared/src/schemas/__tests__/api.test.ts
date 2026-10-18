@@ -245,3 +245,29 @@ describe("chatMessageSchema — an open document's blocks (inner#1509)", () => {
     ).toBe(true);
   });
 });
+
+describe("chatMessageSchema — an answer to a questionnaire (inner#1542)", () => {
+  const base = {
+    project_id: "11111111-1111-4111-8111-111111111111",
+    conversation_id: "22222222-2222-4222-8222-222222222222",
+  };
+  const answer = { toolCallId: "call-1", answers: [{ index: 0, selected: ["16:9"] }] };
+
+  it("carries the answer with an empty message", () => {
+    const parsed = chatMessageSchema.parse({ ...base, message: "", answer });
+    expect(parsed.answer).toEqual(answer);
+    expect(parsed.message).toBe("");
+  });
+
+  it("is either a message or an answer, never both", () => {
+    expect(chatMessageSchema.safeParse({ ...base, message: "hello", answer }).success).toBe(false);
+  });
+
+  it("still needs words when it carries no answer", () => {
+    expect(chatMessageSchema.safeParse({ ...base, message: "" }).success).toBe(false);
+  });
+
+  it("refuses an answer of the wrong shape", () => {
+    expect(chatMessageSchema.safeParse({ ...base, message: "", answer: { toolCallId: "" , answers: [] } }).success).toBe(false);
+  });
+});

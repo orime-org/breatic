@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { tool } from "ai";
+import { convertToLanguageModelPrompt, standardizePrompt } from "ai/internal";
 import type { ModelMessage } from "ai";
 import { z } from "zod";
 
@@ -274,6 +275,58 @@ describe("replaying the history as it was sent", () => {
     const rows = [userRow(1), replyAfter(1, [ASKED], ANSWERED)];
 
     expect(carriesThinking(historyForModel(rows, PREFIX))).toBe(false);
+  });
+});
+
+describe("a call left without a result", () => {
+  const ASK_CALL: ModelMessage = {
+    role: "assistant",
+    content: [
+      { type: "text", text: "Two things first." },
+      { type: "tool-call", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] } },
+    ],
+  };
+
+  it("tells the model the user did not answer a questionnaire nobody answered", () => {
+    const sent = historyForModel([userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], [ASK_CALL])], PREFIX);
+
+    expect(sent.at(-1)).toMatchObject({
+      role: "tool",
+      content: [{ type: "tool-result", toolCallId: "ask-1", toolName: "ask_user", output: { type: "error-text" } }],
+    });
+    expect(JSON.stringify(sent.at(-1))).toMatch(/did not answer/);
+  });
+
+  it("puts the result right after its call, ahead of what the turn said after it", () => {
+    const note: ModelMessage = { role: "assistant", content: "(The turn was stopped here.)" };
+    const sent = historyForModel([userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], [ASK_CALL, note])], PREFIX);
+
+    expect(sent.map((m) => m.role)).toEqual(["user", "assistant", "tool", "assistant"]);
+  });
+
+  it("leaves a call that has its result alone", () => {
+    const sent = historyForModel([userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], ANSWERED)], PREFIX);
+
+    expect(sent).toEqual([ASKED, ...ANSWERED]);
+  });
+
+  it("gives any tool's call a result, so the request is one the SDK will send", async () => {
+    const dangling: ModelMessage = {
+      role: "assistant",
+      content: [{ type: "tool-call", toolCallId: "tc-9", toolName: "web_search", input: { query: "q" } }],
+    };
+    const sent = historyForModel(
+      [userRow(1, { messages: [ASKED] }), replyAfter(1, [ASKED], [dangling]), userRow(2, { messages: [ASKED] })],
+      PREFIX,
+    );
+
+    await expect(
+      convertToLanguageModelPrompt({
+        prompt: await standardizePrompt({ messages: sent }),
+        supportedUrls: {},
+        download: undefined,
+      }),
+    ).resolves.toBeDefined();
   });
 });
 

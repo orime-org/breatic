@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, Loader2, Plus, Square, TriangleAlert } from 'lucide-react';
+import { ArrowUp, Loader2, Plus, Square } from 'lucide-react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -19,13 +19,6 @@ import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 import type { ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
-/**
- * The id the at-limit line carries, so the box can point at it.
- *
- * The limit refuses the keystroke without saying anything, and the line that
- * says why is drawn on the panel's own edge -- out of the field.
- */
-export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 
 interface ChatComposerProps {
   /** The conversation the box writes into. */
@@ -54,8 +47,6 @@ interface ChatComposerProps {
   attachments?: ReadonlyArray<TrayItem>;
   /** What the file picker offers, as an `accept` value. */
   attachAccept?: string;
-  /** Something to say about the last attempt to attach, beside the attach button. */
-  attachNotice?: string;
   onChange: (next: string) => void;
   onSubmit: () => void;
   onAbort?: () => void;
@@ -94,7 +85,6 @@ interface ChatComposerProps {
  * @param root0.navigating - The panel is on its way to another conversation.
  * @param root0.attachments - What is attached to the next message.
  * @param root0.attachAccept - What the file picker offers.
- * @param root0.attachNotice - What to say about the last attempt to attach.
  * @param root0.onChange - Called with the next draft text on each edit.
  * @param root0.onSubmit - Called to send the draft message.
  * @param root0.onAbort - Called to abort the in-flight streaming response.
@@ -111,7 +101,6 @@ function ChatComposerInner({
   navigating = false,
   attachments = NO_ATTACHMENTS,
   attachAccept,
-  attachNotice,
   onChange,
   onSubmit,
   onAbort,
@@ -139,7 +128,6 @@ function ChatComposerInner({
     attachments,
     readOnly: frozen,
     ariaLabel: t('chat.composer.inputAria'),
-    describedBy: atLimit.showing ? CHAT_LIMIT_NOTICE_ID : undefined,
     onChange,
     onEnter: () => submitRef.current(),
     onPasteFiles: (files) => onAttachFiles?.(files),
@@ -246,17 +234,6 @@ function ChatComposerInner({
           </div>
         </div>
       ) : null}
-      {atLimit.showing ? (
-        // On the box's own top edge, where this panel puts everything it has
-        // to say about the box below.
-        <p
-          id={CHAT_LIMIT_NOTICE_ID}
-          data-testid='chat-composer-limit'
-          className='px-3 pt-1.5 text-xs text-muted-foreground'
-        >
-          {t('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS })}
-        </p>
-      ) : null}
       {/* Ten lines of writing, then it scrolls -- past that the conversation
           would be the smaller half of the column. The scrolling is the
           panel's own: a box left to scroll itself draws the browser's
@@ -295,19 +272,6 @@ function ChatComposerInner({
             <Plus className='h-4 w-4' />
           </Button>
           {space ? <SpaceContextChip {...space} /> : null}
-          {attachNotice ? (
-            // Beside the button that attaches: something the reader tried did
-            // not go in. The icon carries the warning colour; the words stay in
-            // the body colour, as warning orange at 12px does not reach 4.5:1
-            // on this surface in the light theme.
-            <p
-              data-testid='chat-composer-attach-notice'
-              className='flex min-w-0 items-center gap-1.5 text-xs text-foreground'
-            >
-              <TriangleAlert className='size-3.5 shrink-0 text-status-warning-foreground' aria-hidden='true' />
-              <span className='truncate'>{attachNotice}</span>
-            </p>
-          ) : null}
         </div>
         {turnPhase === 'sending' ? (
           // The press landed and the server has not spoken yet. Something has
