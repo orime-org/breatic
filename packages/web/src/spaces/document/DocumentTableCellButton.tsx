@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The button on the top-right corner of the cell the caret is in (inner#1126
- * A10, A11), and its menu: the cell's alignment, its fill, and splitting a
- * merged cell.
+ * The button on the top-right corner of the cell the pointer is over (inner#1126
+ * A10, A11; inner#1619 T13), and its menu: the cell's alignment, its fill, and
+ * splitting a merged cell.
  *
- * It follows the caret rather than the pointer, so it is ours rather than the
- * library's cell handle, which answers to where the pointer is. It steps aside
- * for a selection, as the handles do; a selection over cells is served by the
+ * It stands on the cell the row and column handles stand on, read from the
+ * same state, so the three come and go together. It steps aside for a
+ * selection, as the handles do; a selection over cells is served by the
  * bubble bar.
  */
 
@@ -38,14 +38,16 @@ import {
   CellAttributeMenus,
   onTargetCell,
   useCloseWhenTargetGone,
+  useHoldsSelection,
 } from '@web/spaces/document/document-table-menu-parts';
-import { caretCellOf, cellButtonBox } from '@web/spaces/document/document-table-control-place';
+import { cellButtonBox } from '@web/spaces/document/document-table-control-place';
+import { documentTableHandlesExtension, TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 import { isMerged, splitCellAt } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { setCellButtonCell } from '@web/spaces/document/document-bars';
-import { bodyFocusStore, bodyLayerMark } from '@web/spaces/document/document-body-focus';
+import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
-import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
+import { viewOf } from '@web/spaces/document/document-editor-view';
 
 /**
  * Puts the button on the top-right corner of the part of its cell the reader
@@ -85,7 +87,7 @@ interface DocumentTableCellButtonProps {
  * @param props - See {@link DocumentTableCellButtonProps}.
  * @param props.editor - The editor.
  * @param props.viewport - Where the button is drawn.
- * @returns The button, or null while the caret is in no cell.
+ * @returns The button, or null while the pointer is over no cell.
  */
 export function DocumentTableCellButton({
   editor,
@@ -93,28 +95,21 @@ export function DocumentTableCellButton({
 }: DocumentTableCellButtonProps): React.JSX.Element | null {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const caretCell = useEditorSnapshot(
-    editor as never,
-    (current: { prosemirrorState: EditorState }) => caretCellOf(current.prosemirrorState),
+  const handles = editor.getExtension(documentTableHandlesExtension);
+  const subscribeHover = React.useCallback(
+    (listener: () => void) => handles?.store.subscribe(listener) ?? ((): void => undefined),
+    [handles],
   );
+  const hovered = React.useSyncExternalStore(subscribeHover, () => handles?.store.state);
+  const hoveredCell = hovered?.show === true ? (hovered.cellPos ?? null) : null;
+  const holdsSelection = useHoldsSelection(editor);
   // While the menu is open the button stays on the cell it was opened on,
-  // followed through edits; the caret does not move while the focus is in
-  // the menu, but someone else's edit can move the cell.
+  // followed through edits: someone else's edit can move the cell.
   const heldCell = useEditorSnapshot(
     editor as never,
     (current: { prosemirrorState: EditorState }) => tableTargetOf(current.prosemirrorState),
   );
-  // The caret raises the button only while the body holds the focus and the
-  // focus is in the editable element (inner#1127, design 3.5.1); while the
-  // menu is open the focus is in it, and the button stays on its cell.
-  const subscribeFocus = React.useCallback(
-    (listener: () => void) => bodyFocusStore.subscribe(editor, listener),
-    [editor],
-  );
-  const focus = React.useSyncExternalStore(subscribeFocus, () => bodyFocusStore.get(editor));
-  const caretCounts =
-    focus.holds && focus.focused !== null && focus.focused === domElementOf(editor);
-  const cellPos = open ? heldCell : caretCounts ? caretCell : null;
+  const cellPos = open ? heldCell : holdsSelection ? null : hoveredCell;
   // Where the button stands, for the column handle that makes room for it.
   React.useEffect(() => {
     setCellButtonCell(editor, cellPos);
@@ -144,8 +139,8 @@ export function DocumentTableCellButton({
   });
   // The reference is handed over on every change. @floating-ui/react 0.27.20
   // holds the first `elements.reference` it receives in state for the hook's
-  // whole life (`useFloatingRootContext`), and a Space reopened from its tab
-  // hands back its editor with the caret already in a cell.
+  // whole life (`useFloatingRootContext`), and the button can mount with the
+  // pointer already over a cell.
   React.useLayoutEffect(() => {
     refs.setReference(cellElement);
   }, [refs, cellElement]);
@@ -160,15 +155,16 @@ export function DocumentTableCellButton({
       const view = editor.prosemirrorView;
       if (view === undefined) return;
       if (next) {
-        const pos = caretCellOf(view.state);
-        if (pos === null) return;
-        setTableTarget(view, pos);
+        if (hoveredCell === null) return;
+        setTableTarget(view, hoveredCell);
+        handles?.freezeHandles();
       } else {
         setTableTarget(view, null);
+        handles?.unfreezeHandles();
       }
       setOpen(next);
     },
-    [editor],
+    [editor, handles, hoveredCell],
   );
   const close = React.useCallback((): void => {
     onOpenChange(false);
@@ -184,6 +180,7 @@ export function DocumentTableCellButton({
         style={style}
         // A layer of the body, belonging on its cell.
         {...bodyLayerMark(editor, { from: cellPos, to: cellPos + 1 })}
+        {...{ [TABLE_CONTROL]: '' }}
       >
         <DropdownMenu open={open} onOpenChange={onOpenChange}>
           <div className='relative flex'>

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1126 A10 and A11: the button on the cell the caret is in, and its menu.
+ * inner#1126 A10 and A11: the button on the cell the pointer is over, and its
+ * menu (inner#1619 T13).
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -15,6 +16,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { setBubbleBarUp } from '@web/spaces/document/document-bars';
 import { deleteRowAt } from '@web/spaces/document/document-table-run';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
@@ -84,6 +86,29 @@ function caretIn(editor: Editor, text: string, span = 0): void {
 }
 
 /**
+ * Moves the pointer over a cell's words.
+ * @param editor - The editor.
+ * @param text - The cell's text.
+ */
+function pointIn(editor: Editor, text: string): void {
+  const cell = [...editor.prosemirrorView!.dom.querySelectorAll('td, th')].find((td) => td.textContent === text)!;
+  const words = [...cell.querySelectorAll('*')].find((el) => el.childElementCount === 0 && el.textContent === text)!;
+  act(() => {
+    words.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 10 }));
+  });
+}
+
+/**
+ * Moves the pointer onto an element outside the body.
+ * @param element - The element.
+ */
+function pointOnto(element: Element): void {
+  act(() => {
+    element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 900, clientY: 900 }));
+  });
+}
+
+/**
  * One attribute of every cell, row by row.
  * @param editor - The editor.
  * @param name - The attribute.
@@ -131,23 +156,44 @@ function rows(): string[] {
 }
 
 describe('the cell button (A11)', () => {
-  it('is on the cell the caret is in, and nowhere else', () => {
+  it('is on the cell the pointer is over, and steps aside for the bubble bar (inner#1127)', () => {
     const { editor, viewport } = open();
-    const view = editor.prosemirrorView!;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3)));
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
     expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
 
-    caretIn(editor, 'b2');
+    pointIn(editor, 'b2');
     expect(screen.getByTestId('doc-table-cell-button')).toBeTruthy();
 
-    caretIn(editor, 'b2', 1);
+    act(() => {
+      setBubbleBarUp(editor, true);
+    });
     expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
   });
 
-  it('follows the caret to another cell when it was already in a cell as the button mounted', async () => {
-    // A Space reopened from its tab gets back the editor it left, caret and all,
-    // so the button's first cell is known on its very first render.
+  it('is not raised by the caret alone', () => {
+    const { editor, viewport } = open();
+    render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
+
+    caretIn(editor, 'b2');
+
+    expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
+  });
+
+  it('goes when the pointer leaves the body, and stays while it is on the button (inner#1402)', () => {
+    const { editor, viewport } = open();
+    render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
+    pointIn(editor, 'b2');
+
+    pointOnto(screen.getByTestId('doc-table-cell-button'));
+    expect(screen.getByTestId('doc-table-cell-button')).toBeTruthy();
+
+    pointOnto(document.body);
+    expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
+  });
+
+  it('follows the pointer to another cell when it was already over a cell as the button mounted', async () => {
+    // The button's first cell is known on its very first render when the
+    // pointer was already over a cell.
     const boxes: Record<string, DOMRect> = { a1: new DOMRect(0, 0, 100, 40), b2: new DOMRect(100, 40, 100, 40) };
     const measure = Element.prototype.getBoundingClientRect;
     Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
@@ -160,22 +206,22 @@ describe('the cell button (A11)', () => {
     try {
       /** Where the button is drawn now. */
       const at = (): string => (screen.getByTestId('doc-table-cell-button').closest('[style]') as HTMLElement).style.transform;
-      // Where a button mounted with the caret already in b2 is drawn.
+      // Where a button mounted with the pointer already over b2 is drawn.
       const fresh = open();
-      caretIn(fresh.editor, 'b2');
+      pointIn(fresh.editor, 'b2');
       const first = render(<DocumentTableCellButton editor={fresh.editor} viewport={fresh.viewport} />);
       await act(async () => {});
       const onB2 = at();
       first.unmount();
 
       const { editor, viewport } = open();
-      caretIn(editor, 'a1');
+      pointIn(editor, 'a1');
       render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
       await act(async () => {});
       const onA1 = at();
       expect(onA1).not.toBe(onB2);
 
-      caretIn(editor, 'b2');
+      pointIn(editor, 'b2');
       await act(async () => {});
 
       expect(at()).toBe(onB2);
@@ -189,7 +235,7 @@ describe('the cell button (A11)', () => {
   it('offers alignment, fill and split, split greyed on a cell never merged', () => {
     const { editor, viewport } = open();
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
-    caretIn(editor, 'b2');
+    pointIn(editor, 'b2');
 
     fireEvent.click(screen.getByTestId('doc-table-cell-button'));
 
@@ -199,7 +245,7 @@ describe('the cell button (A11)', () => {
   it('aligns the one cell', () => {
     const { editor, viewport } = open();
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
-    caretIn(editor, 'b2');
+    pointIn(editor, 'b2');
     fireEvent.click(screen.getByTestId('doc-table-cell-button'));
     fireEvent.click(screen.getByTestId('doc-table-cell-align'));
 
@@ -218,7 +264,7 @@ describe('the cell button (A11)', () => {
       { cells: ['a2', 'b2'] },
     ]);
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
-    caretIn(editor, 'ab');
+    pointIn(editor, 'ab');
     fireEvent.click(screen.getByTestId('doc-table-cell-button'));
     expect(rows()).toEqual(['align', 'fill', 'split']);
 
@@ -242,7 +288,7 @@ describe('the cell button (A11)', () => {
   it('closes its menu when its cell is deleted', () => {
     const { editor, viewport } = open();
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
-    caretIn(editor, 'b2');
+    pointIn(editor, 'b2');
     fireEvent.click(screen.getByTestId('doc-table-cell-button'));
     expect(screen.getByTestId('doc-table-cell-align')).toBeTruthy();
 

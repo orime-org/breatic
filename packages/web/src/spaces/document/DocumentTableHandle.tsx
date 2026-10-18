@@ -79,7 +79,7 @@ import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/do
 import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
-import { documentTableHandlesExtension } from '@web/spaces/document/document-table-handles';
+import { documentTableHandlesExtension, TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 
 /** What the controller hands a handle. */
 interface TableHandleProps {
@@ -108,15 +108,15 @@ interface FramePlace {
 const IN_PLACE: FramePlace = { shift: 0, hidden: false };
 
 /**
- * The cell button's box, when the caret's cell is in this table.
+ * The cell button's box, when its cell is in this table.
  * @param view - The editor view.
  * @param table - The table.
  * @param frame - The table's scroll frame.
- * @param caretCell - The position before the caret's cell, or null.
+ * @param buttonCell - The position before the cell the cell button stands on, or null.
  * @returns The box, or null when no button is shown here.
  */
-function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCell: number | null): Box | null {
-  const cell = caretCell === null ? null : view.nodeDOM(caretCell);
+function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, buttonCell: number | null): Box | null {
+  const cell = buttonCell === null ? null : view.nodeDOM(buttonCell);
   if (!(cell instanceof Element) || !table.contains(cell)) return null;
   const box = cell.getBoundingClientRect();
   return cellButtonBox({
@@ -141,7 +141,7 @@ function cellButtonIn(view: EditorView, table: Element, frame: DOMRect, caretCel
  * @param blockId - The table block's id.
  * @param row - Whether this is the row handle.
  * @param cell - The hovered cell's box, as the controller read it, if it has.
- * @param caretCell - The position before the caret's cell, or null.
+ * @param buttonCell - The position before the cell the cell button stands on, or null.
  * @returns The placement.
  */
 function framePlaceOf(
@@ -149,7 +149,7 @@ function framePlaceOf(
   blockId: string,
   row: boolean,
   cell: DOMRect | undefined,
-  caretCell: number | null,
+  buttonCell: number | null,
 ): FramePlace {
   const table = view?.dom.querySelector(`[data-id="${CSS.escape(blockId)}"] table`);
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
@@ -163,7 +163,7 @@ function framePlaceOf(
     right: Math.min(cell.right, box.right),
     bottom: cell.bottom,
   };
-  const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, caretCell));
+  const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, buttonCell));
   return x === null ? { shift: 0, hidden: true } : { shift: x - (cell.left + cell.width / 2), hidden: false };
 }
 
@@ -341,20 +341,20 @@ export function DocumentTableHandle({
 
   // Read against the frame whenever the controller places the handles; it
   // hides them on a scroll. The cell the cell button stands on, as the button
-  // says: it is up only while the body holds the focus (inner#1127).
-  const caretCell = useDocumentBars(editor).cellButtonCell;
+  // says.
+  const buttonCell = useDocumentBars(editor).cellButtonCell;
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     const place =
       state === undefined
         ? IN_PLACE
-        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, caretCell);
+        : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, buttonCell);
     if (place.hidden) return { visibility: 'hidden' };
     // Centred on its line: the row handle on the table's left line, the
     // column handle on its top line.
     const across = place.shift + (row ? ROW_HANDLE_NUDGE : 0);
     const up = row ? 0 : COLUMN_HANDLE_NUDGE;
     return { transform: `translate(${String(across)}px, ${String(up)}px)` };
-  }, [editor, row, state, caretCell]);
+  }, [editor, row, state, buttonCell]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;
@@ -367,6 +367,7 @@ export function DocumentTableHandle({
         style={placeStyle}
         // A layer of the body, belonging on its table (inner#1127).
         {...bodyLayerMark(editor, { block: state.block.id })}
+        {...{ [TABLE_CONTROL]: '' }}
       >
         {/* The anchor, and nothing else, as on the block handle: it answers
             no pointer events, so Radix's trigger handlers never run on the

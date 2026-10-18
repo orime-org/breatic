@@ -19,7 +19,7 @@ import { createExtension, createStore, type BlockNoteEditor } from '@blocknote/c
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The cell the handles stand on, and the boxes they are placed by. */
 export interface TableHandlesState {
@@ -31,7 +31,15 @@ export interface TableHandlesState {
   readonly referencePosCell: DOMRect | undefined;
   /** The table body's box. */
   readonly referencePosTable: DOMRect;
+  /** The position before the hovered cell. */
+  readonly cellPos: number | undefined;
 }
+
+/**
+ * The attribute on the table's controls drawn outside the body — the row and
+ * column handles, the cell button: the pointer on one keeps the handles up.
+ */
+export const TABLE_CONTROL = 'data-doc-table-control';
 
 /** The selector of a table's frame. */
 const FRAME = `[data-node-type="${DOC_TABLE}"]`;
@@ -43,6 +51,18 @@ const FRAME = `[data-node-type="${DOC_TABLE}"]`;
  */
 function indexOf(element: Element): number {
   return element.parentElement === null ? -1 : [...element.parentElement.children].indexOf(element);
+}
+
+/**
+ * The position before a cell drawn in the body.
+ * @param view - The editor view.
+ * @param cell - The cell's element.
+ * @returns The position, or undefined when it is not in the document.
+ */
+function posBefore(view: EditorView, cell: Element): number | undefined {
+  const $inside = view.state.doc.resolve(view.posAtDOM(cell, 0));
+  const depth = cellDepthOf($inside);
+  return depth < 0 ? undefined : $inside.before(depth);
 }
 
 /** The plugin view that follows the pointer over tables. */
@@ -65,7 +85,8 @@ class TableHoverView {
     private readonly view: EditorView,
     private readonly emit: (state: TableHandlesState | undefined) => void,
   ) {
-    view.dom.addEventListener('mousemove', this.onMove);
+    // On the window: a pointer leaving the body has to take the handles away.
+    window.addEventListener('mousemove', this.onMove);
     view.dom.addEventListener('mousedown', this.onDown);
     window.addEventListener('mouseup', this.onUp);
   }
@@ -98,7 +119,11 @@ class TableHoverView {
   private readonly onMove = (event: MouseEvent): void => {
     if (this.frozen || this.press === 'selecting') return;
     const target = event.target;
-    if (!(target instanceof Element) || !this.view.dom.contains(target)) return;
+    if (!(target instanceof Element)) return;
+    if (!this.view.dom.contains(target)) {
+      if (target.closest(`[${TABLE_CONTROL}]`) === null) this.hide();
+      return;
+    }
     const cell = target.closest('td, th');
     const frame = cell?.closest(FRAME);
     const body = frame?.querySelector('tbody');
@@ -128,6 +153,7 @@ class TableHoverView {
       colIndex,
       referencePosCell: cell.getBoundingClientRect(),
       referencePosTable: body.getBoundingClientRect(),
+      cellPos: posBefore(this.view, cell),
     };
     this.emit(this.state);
   };
@@ -156,13 +182,14 @@ class TableHoverView {
       colIndex: cell === undefined ? undefined : colIndex,
       referencePosCell: cell?.getBoundingClientRect(),
       referencePosTable: body.getBoundingClientRect(),
+      cellPos: cell === undefined ? undefined : posBefore(this.view, cell),
     };
     this.emit(this.state);
   }
 
   /** Stops following the pointer. */
   destroy(): void {
-    this.view.dom.removeEventListener('mousemove', this.onMove);
+    window.removeEventListener('mousemove', this.onMove);
     this.view.dom.removeEventListener('mousedown', this.onDown);
     window.removeEventListener('mouseup', this.onUp);
   }

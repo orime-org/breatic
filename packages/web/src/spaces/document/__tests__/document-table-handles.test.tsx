@@ -17,6 +17,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focus';
 import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
+import { TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -255,6 +256,22 @@ describe('the row handle (A6)', () => {
     render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
 
     expect(screen.queryByTestId('doc-table-row-handle')).not.toBeNull();
+  });
+});
+
+describe('the handles as table controls (inner#1402)', () => {
+  it('carry the mark that keeps the handles up while the pointer is on them', () => {
+    openOver(0, 0);
+    render(
+      <>
+        <DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />
+        <DocumentTableHandle orientation='column' hideOtherElements={() => undefined} />
+      </>,
+    );
+
+    for (const id of ['doc-table-row-handle', 'doc-table-col-handle']) {
+      expect(screen.getByTestId(id).closest(`[${TABLE_CONTROL}]`)).not.toBeNull();
+    }
   });
 });
 

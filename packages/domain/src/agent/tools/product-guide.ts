@@ -1224,7 +1224,8 @@ export function renderProductGuide(): string {
       "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
       "column's right side changes that column's width only; the other columns keep theirs and the table " +
       "grows. A table wider than the page scrolls sideways inside its own frame.",
-    "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
+    "- Hovering a cell also shows a small box with a down arrow at that cell's top right corner; the handles " +
+      "and this box go when the pointer leaves the table. The box opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
       `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. A cell holds blocks ` +

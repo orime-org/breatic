@@ -3,7 +3,7 @@
 
 /**
  * Where a table's own controls go (inner#1126 A6, A11): the cell button on the
- * caret cell, the column handle on the hovered column.
+ * hovered cell, the column handle on the hovered column.
  *
  * Both are smaller than 24px, so WCAG 2.2 SC 2.5.8 asks that a 24px circle
  * centred on each stay clear of the other. On a first-row cell they share a
@@ -13,8 +13,6 @@
  * disagree about where it is.
  */
 
-import { cellAround } from '@tiptap/pm/tables';
-import type { EditorState } from '@tiptap/pm/state';
 
 /** A box in viewport coordinates. */
 export interface Box {
@@ -50,16 +48,6 @@ export const COLUMN_HANDLE_NUDGE = COLUMN_HANDLE_HEIGHT / 2 - LIBRARY_COLUMN_INS
 
 /** The diameter SC 2.5.8 keeps clear around a target under 24px. */
 const CLEARANCE = 24;
-
-/**
- * The cell the caret stands in, while the selection is a caret.
- * @param state - The editor state.
- * @returns The position before the cell, or null.
- */
-export function caretCellOf(state: EditorState): number | null {
-  if (!state.selection.empty) return null;
-  return cellAround(state.selection.$head)?.pos ?? null;
-}
 
 /**
  * The cell button's box on the part of its cell in view.

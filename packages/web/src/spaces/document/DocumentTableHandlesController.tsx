@@ -6,7 +6,7 @@
  * pointer is over, for the table whose cells hold blocks (inner#1619).
  *
  * The placement is BlockNote's own `TableHandlesController`, its row and
- * column handles alone (the cell button follows the caret, rows and columns
+ * column handles alone (the cell button is drawn on its own, rows and columns
  * are added from the handles' menus): the row handle at the table's left line
  * level with the cell, the column handle at its top line over the cell, both
  * hidden on a scroll unless a menu or a drag holds them.

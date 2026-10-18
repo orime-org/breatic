@@ -15,6 +15,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   documentTableHandlesExtension,
+  TABLE_CONTROL,
   type TableHandlesState,
 } from '@web/spaces/document/document-table-handles';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
@@ -78,6 +79,21 @@ function tableId(editor: Editor): string {
   return (editor.document as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
 }
 
+/**
+ * The position before the cell holding some words.
+ * @param editor - The editor.
+ * @param words - The cell's words.
+ * @returns The position.
+ */
+function cellPos(editor: Editor, words: string): number {
+  let at = -1;
+  editor.prosemirrorView.state.doc.descendants((node, pos) => {
+    if (at < 0 && node.type.name === 'docTableCell' && node.textContent === words) at = pos;
+    return at < 0;
+  });
+  return at;
+}
+
 describe('the cell the pointer is over', () => {
   it('names the table, the row and the column', () => {
     const editor = open();
@@ -94,6 +110,39 @@ describe('the cell the pointer is over', () => {
     pointAt(editor, 'lead');
 
     expect(hovered(editor)?.show).toBe(false);
+  });
+
+  it('is gone once the pointer leaves the body (inner#1402)', () => {
+    const editor = open();
+    pointAt(editor, 'a1');
+
+    document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 900, clientY: 900 }));
+
+    expect(hovered(editor)?.show).toBe(false);
+  });
+
+  it('stays while the pointer is on a table control outside the body', () => {
+    const editor = open();
+    pointAt(editor, 'a1');
+    const control = document.createElement('div');
+    control.setAttribute(TABLE_CONTROL, '');
+    document.body.appendChild(control);
+
+    control.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 900, clientY: 900 }));
+
+    expect(hovered(editor)).toMatchObject({ show: true, rowIndex: 0, colIndex: 0 });
+  });
+
+  it('names the position before the cell, and follows it through an edit above', () => {
+    const editor = open();
+    pointAt(editor, 'b2');
+    const before = cellPos(editor, 'b2');
+    expect(hovered(editor)?.cellPos).toBe(before);
+
+    editor.insertBlocks([{ type: 'paragraph', content: 'more' }] as never, editor.document[0]!, 'before');
+
+    expect(hovered(editor)?.cellPos).toBe(cellPos(editor, 'b2'));
+    expect(cellPos(editor, 'b2')).not.toBe(before);
   });
 
   it('reads nothing while the handles are hidden, whatever changes in the document', () => {
