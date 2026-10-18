@@ -82,7 +82,7 @@ export interface GesturePublisher {
 /**
  * Read back what this client last got into the awareness state.
  * @param awareness - The awareness to read.
- * @returns The three published fields.
+ * @returns The published fields.
  */
 function readPublished(awareness: Awareness): Presence {
   const state = awareness.getLocalState() as Record<string, unknown> | null;
@@ -126,14 +126,17 @@ function samePoint(a: Point | null, b: Point | null): boolean {
 }
 
 /**
- * Publish what this client is doing into awareness — the single writer of
- * `activeNodeIds`, `pointer` and `gesture`.
+ * Publish where this client is on the canvas into awareness — the single
+ * writer of `activeNodeIds`, `pointer` and `gesture`. They describe the Space
+ * on screen and go with it; `activity` is the tab's and has its own writer
+ * (`use-publish-activity.ts`).
  *
  * Writes are rate-limited by {@link createPublishThrottle}: the frame folds
  * together a rubber-band drag, where the holding genuinely changes on every
  * pointer move and comparing values damps nothing, and the interval caps the
- * rate. All three fields go through the same limiter and land in one write,
- * because awareness resends the whole state whatever field you touch.
+ * rate. The holding, the pointer and the gesture go through the same limiter,
+ * and every field lands in one write, because awareness resends the whole
+ * state whatever field you touch.
  *
  * The de-duplication compares against the values read back out of awareness
  * rather than a local copy, so a state removed from the outside reads as a

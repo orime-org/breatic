@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 // A node's upload hears its ending from the page's status list; these tests stop at the send.
 vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: () => new Promise(() => undefined) }));
@@ -19,6 +19,7 @@ import {
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
 
@@ -198,6 +199,15 @@ const TICKET = {
 };
 
 describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-click / Upload menu)', () => {
+  /** The upload mark the caller began on n1 for this fill (inner#1303 §6.7). */
+  let op = '';
+  beforeEach(() => {
+    useUploadMarksStore.setState({ marks: {} });
+    op = useUploadMarksStore.getState().begin('s1', 'n1', 'upload');
+  });
+  /** n1's mark. */
+  const mark = () => useUploadMarksStore.getState().markOf('s1', 'n1');
+
   /** Build the injected sinks + spies for a fill run. */
   function makeDeps(over: Partial<Parameters<typeof fillNodeFromFile>[4]> = {}) {
     return {
@@ -206,149 +216,89 @@ describe('fillNodeFromFile — fill an EXISTING node from a picked file (double-
       requestTicket: vi.fn().mockResolvedValue(TICKET),
       sendToIngest: vi.fn().mockResolvedValue({ storageKey: TICKET.storageKey }),
       extractText: vi.fn().mockResolvedValue('extracted body'),
-      onTypeMismatch: vi.fn(),
       setContent: vi.fn(),
-      onExtractionFailure: vi.fn(),
-      // The only exit for a failed upload. It is required: this module keeps
-      // no copy of the sentences a user reads, so every failure hands its
-      // reason out and CanvasSpace decides how to present it.
+      spaceId: 's1',
+      markOp: op,
+      // A failure after the server answered has a task row; the caller says it.
       onUploadFailure: vi.fn(),
       sleep: () => Promise.resolve(),
       ...over,
     };
   }
 
-  it('media file: hands a failure to the one exit and writes nothing itself', async () => {
-    const deps = makeDeps({
-      sendToIngest: vi.fn().mockRejectedValue(new Error('network')),
-    });
-
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
-
-    expect(deps.onUploadFailure).toHaveBeenCalledOnce();
-    expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
-  });
-
-  // The node opens handling and stays there. What it ends up holding comes
-  // from the server through Yjs, so this path writes nothing on the way out
-  // (design §6.6).
-  it('media file: opens handling, sends the bytes, writes nothing itself', async () => {
+  it('media file: clears the mark once the server answers and sends the bytes', async () => {
     const deps = makeDeps();
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
+    await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'image', 'p1', deps);
     expect(deps.sendToIngest).toHaveBeenCalledOnce();
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
-    expect(deps.extractText).not.toHaveBeenCalled();
+    expect(mark()).toBeUndefined();
   });
 
-  // inner#888 §7.5: a browser tool's export names the tool on its ticket, so
-  // its task row reads as that tool.
   it('media file: puts the mini-tool tag on the ticket', async () => {
     const deps = makeDeps({ tag: { source: 'mini_tool', toolName: 'image-rotate' } });
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'image',
-      'p1',
-      deps,
-    );
+    await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'image', 'p1', deps);
     expect(deps.requestTicket).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'mini_tool', toolName: 'image-rotate', nodeId: 'n1' }),
     );
   });
 
-  it('media upload failure: reports the reason, and does not write the node itself', async () => {
-    const deps = makeDeps({
-      requestTicket: vi.fn().mockRejectedValue(new Error('403')),
-    });
-    const file = new File(['x'], 'bad.png', { type: 'image/png' });
-    await fillNodeFromFile('n1', file, 'image', 'p1', deps);
+  it('media file: says a failure before the answer on the node, not to the caller', async () => {
+    const deps = makeDeps({ requestTicket: vi.fn().mockRejectedValue(new Error('403')) });
+    await fillNodeFromFile('n1', new File(['x'], 'bad.png', { type: 'image/png' }), 'image', 'p1', deps);
+    expect(mark()).toMatchObject({ state: 'failed', message: { key: 'canvas.upload.failed' } });
+    expect(deps.onUploadFailure).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
-    // The fixed English sentence on the node is written by the one exit that
-    // owns it; this pins only that the reason was handed over.
-    expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
-      { reason: 'upload' },
-      file,
-    );
-    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
   });
 
-  it('non-media file: extract text locally → fill content (no upload)', async () => {
-    const deps = makeDeps();
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'doc.txt', { type: 'text/plain' }),
-      'text',
-      'p1',
-      deps,
+  it('media file: hands a failure after the answer to the caller', async () => {
+    const deps = makeDeps({ sendToIngest: vi.fn().mockRejectedValue(new Error('network')) });
+    const file = new File(['x'], 'p.png', { type: 'image/png' });
+    await fillNodeFromFile('n1', file, 'image', 'p1', deps);
+    expect(deps.onUploadFailure).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ taskId: TICKET.taskId }),
+      file,
     );
+    expect(mark()).toBeUndefined();
+  });
+
+  it('non-media file: extracts text locally, fills the content and clears the mark', async () => {
+    const deps = makeDeps();
+    await fillNodeFromFile('n1', new File(['x'], 'doc.txt', { type: 'text/plain' }), 'text', 'p1', deps);
     expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).toHaveBeenCalledExactlyOnceWith('n1', 'extracted body');
+    expect(mark()).toBeUndefined();
   });
 
   // inner#888 §7.8: a failure that never reached the server has no task row,
-  // so it is told to the person who caused it and the node is left as it was
-  // (decisions 2026-09-19: nodes are never deleted, row-less failures toast).
-  it('extraction failure: hands the file to the toast and leaves the node untouched', async () => {
-    const deps = makeDeps({
-      extractText: vi.fn().mockRejectedValue(new Error('no parser')),
-    });
-    const file = new File(['x'], 'weird.bin', { type: 'application/octet-stream' });
-    await fillNodeFromFile('n1', file, 'text', 'p1', deps);
+  // so it is said on the node it was for; the node is left as it was.
+  it('extraction failure: says it on the node and leaves the content alone', async () => {
+    const deps = makeDeps({ extractText: vi.fn().mockRejectedValue(new Error('no parser')) });
+    await fillNodeFromFile('n1', new File(['x'], 'weird.bin', { type: 'application/octet-stream' }), 'text', 'p1', deps);
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.onExtractionFailure).toHaveBeenCalledExactlyOnceWith(file);
+    expect(mark()).toMatchObject({
+      state: 'failed',
+      message: { key: 'canvas.upload.extractionFailed', params: { filename: 'weird.bin' } },
+    });
   });
 
-  it('type gate: an mp4 VIDEO picked into an AUDIO node is refused - nothing runs (user bug 2026-07-03: macOS lets audio/* pickers select .mp4)', async () => {
+  it('type gate: an mp4 VIDEO picked into an AUDIO node is refused on the node - nothing runs (user bug 2026-07-03: macOS lets audio/* pickers select .mp4)', async () => {
     const deps = makeDeps();
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'clip.mp4', { type: 'video/mp4' }),
-      'audio',
-      'p1',
-      deps,
-    );
-    expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
+    await fillNodeFromFile('n1', new File(['x'], 'clip.mp4', { type: 'video/mp4' }), 'audio', 'p1', deps);
+    expect(mark()).toMatchObject({ state: 'failed', message: { key: 'canvas.upload.typeMismatch' } });
     expect(deps.requestTicket).not.toHaveBeenCalled();
     expect(deps.setContent).not.toHaveBeenCalled();
-    expect(deps.onExtractionFailure).not.toHaveBeenCalled();
   });
 
   it('type gate: an audio-only mp4 container (audio/mp4, .m4a) into an AUDIO node is ACCEPTED', async () => {
     const deps = makeDeps();
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'song.m4a', { type: 'audio/mp4' }),
-      'audio',
-      'p1',
-      deps,
-    );
-    expect(deps.onTypeMismatch).not.toHaveBeenCalled();
+    await fillNodeFromFile('n1', new File(['x'], 'song.m4a', { type: 'audio/mp4' }), 'audio', 'p1', deps);
+    expect(deps.requestTicket).toHaveBeenCalledOnce();
   });
 
   it('type gate: an image into a TEXT node is refused (the gate is generic, not audio-specific)', async () => {
     const deps = makeDeps();
-    await fillNodeFromFile(
-      'n1',
-      new File(['x'], 'p.png', { type: 'image/png' }),
-      'text',
-      'p1',
-      deps,
-    );
-    expect(deps.onTypeMismatch).toHaveBeenCalledExactlyOnceWith('n1');
+    await fillNodeFromFile('n1', new File(['x'], 'p.png', { type: 'image/png' }), 'text', 'p1', deps);
+    expect(mark()).toMatchObject({ state: 'failed', message: { key: 'canvas.upload.typeMismatch' } });
   });
 });
 

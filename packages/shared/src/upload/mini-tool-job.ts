@@ -56,6 +56,9 @@ export type MiniToolJobReport =
   | { state: "done"; outputs: (IngestMeasurements & { storageKey: string })[]; usage: ContainerUsage }
   | { state: "failed"; reason: ContainerFailure; usage: ContainerUsage | null };
 
+/** The most outputs one container job may write; every container tool's result count stays within it. */
+export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
+
 /**
  * The request as the ingest Worker reads it before believing it. The op's
  * params were validated against the registry by our server; here they are an
@@ -77,7 +80,7 @@ export const miniToolJobRequestSchema = z.object({
       }),
     )
     .min(1)
-    .max(8),
+    .max(MINI_TOOL_JOB_MAX_OUTPUTS),
 });
 
 const usage = z.object({

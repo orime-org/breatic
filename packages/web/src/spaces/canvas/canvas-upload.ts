@@ -11,11 +11,15 @@ import {
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import {
   runMediaUpload,
+  runMediaUploadBatch,
+  type BatchUploadDeps,
   type MediaUploadDeps,
   type UploadFailure,
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
 import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
+import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
 /**
  * Canvas-upload classification, and filling a node from a file through the
@@ -155,12 +159,9 @@ export interface FillNodeDeps {
   /** Read / extract a non-media file's text locally (the text path). */
   extractText: (file: File) => Promise<string>;
   /**
-   * Called (instead of any work) when the picked file's classification does
-   * not match the target node's modality — the type gate below.
-   */
-  onTypeMismatch: (nodeId: string) => void;
-  /**
-   * Hand the whole outcome of a failed upload to the caller, reason and all.
+   * Hand the whole outcome of an upload that failed after the server answered
+   * to the caller, reason and all. A failure before the answer has no task
+   * row and is said on the node itself (inner#1303 §6.7).
    *
    * Every reason needs something only the caller can do — pick or clear the
    * Retry stash, and say the remedy in the reader's own language — and what
@@ -186,14 +187,13 @@ export interface FillNodeDeps {
    * is written by the server through Yjs (design §6.6).
    */
   setContent: (nodeId: string, content: string) => void;
+  /** The space the node lives in, which rides the ticket and keys its mark. */
+  spaceId: string;
   /**
-   * The text path's failure: nothing reached the server, so there is no task
-   * row, and the person who picked the file is told (inner#888 §7.8). The
-   * node is left as it was.
+   * The upload mark the caller began on the node when the reader asked for
+   * this fill (inner#1303 §6.7); this fill ends it.
    */
-  onExtractionFailure: (file: File) => void;
-  /** The space the node lives in, which rides the ticket. */
-  spaceId?: string;
+  markOp: string;
   /** A browser mini-tool's tag, when its export is what is being uploaded. */
   tag?: MiniToolUploadTag;
 }
@@ -226,23 +226,19 @@ export async function fillNodeFromFile(
   projectId: string,
   deps: FillNodeDeps,
 ): Promise<void> {
+  const marks = useUploadMarksStore.getState();
   const spec = fileToNodeSpec(file);
   if (spec.nodeType !== targetModality) {
-    deps.onTypeMismatch(nodeId);
+    marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.typeMismatch' });
     return;
   }
   if (spec.needsUpload) {
-    // The node stays in handling when this returns. What it ends up holding —
-    // and whether it succeeded at all — arrives from the server through Yjs
-    // (design §6.6), so nothing is written here on the way out.
+    // What the node ends up holding — and whether it succeeded at all —
+    // arrives from the server through Yjs (design §6.6), so nothing is written
+    // here on the way out.
     await runMediaUpload(
       file,
-      {
-        projectId,
-        nodeId,
-        ...(deps.spaceId !== undefined && { spaceId: deps.spaceId }),
-        ...deps.tag,
-      },
+      { projectId, nodeId, spaceId: deps.spaceId, ...deps.tag },
       {
         getUploadConfig: deps.getUploadConfig,
         hashFile: deps.hashFile,
@@ -250,8 +246,7 @@ export async function fillNodeFromFile(
         sendToIngest: deps.sendToIngest,
         // The node's content arrives from the server through Yjs.
         onSuccess: () => undefined,
-        onFailure: (outcome) =>
-          deps.onUploadFailure(outcome, file),
+        ...markedSinks(deps.spaceId, nodeId, deps.markOp, file, deps.onUploadFailure),
         ...(deps.sleep !== undefined && { sleep: deps.sleep }),
       },
     );
@@ -259,9 +254,111 @@ export async function fillNodeFromFile(
   }
   try {
     deps.setContent(nodeId, await deps.extractText(file));
+    marks.answer(deps.spaceId, nodeId, deps.markOp);
   } catch {
-    deps.onExtractionFailure(file);
+    marks.fail(deps.spaceId, nodeId, deps.markOp, { key: 'canvas.upload.extractionFailed', params: { filename: file.name } });
   }
+}
+
+/**
+ * What a node says when its upload ended before the server answered: the
+ * sentence the reason is told in, naming the file and the formats where the
+ * sentence does.
+ * @param outcome - How the upload ended.
+ * @param file - The file.
+ * @returns The message.
+ */
+export function uploadFailureMark(outcome: UploadFailure, file: File): UploadMarkMessage {
+  const plan = resolveUploadFailure(outcome);
+  return {
+    key: plan.kind === 'toastOnly' ? plan.toastKey : 'canvas.upload.failed',
+    params: { filename: file.name, ...refusedFormatParams(file) },
+  };
+}
+
+/**
+ * An upload's answer and failure sinks that keep its node's mark (inner#1303
+ * §6.7): the answer ends the mark; a failure before it is said on the node;
+ * a failure after it has a task row and goes to the caller.
+ * @param spaceId - The Space.
+ * @param nodeId - The node.
+ * @param op - The mark's operation.
+ * @param file - The file.
+ * @param afterAnswer - Where a failure after the answer goes.
+ * @returns The two sinks.
+ */
+export function markedSinks(
+  spaceId: string,
+  nodeId: string,
+  op: string,
+  file: File,
+  afterAnswer: (outcome: UploadFailure, file: File) => void,
+): Pick<MediaUploadDeps, 'onAnswered' | 'onFailure'> {
+  let answered = false;
+  return {
+    onAnswered: () => {
+      answered = true;
+      useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+    },
+    onFailure: (outcome) => {
+      if (answered || outcome.taskId !== undefined) afterAnswer(outcome, file);
+      else useUploadMarksStore.getState().fail(spaceId, nodeId, op, uploadFailureMark(outcome, file));
+    },
+  };
+}
+
+/** Injected dependencies for {@link fillNodesFromFiles}. */
+export interface FillNodesDeps extends BatchUploadDeps {
+  /** The Space the nodes live in. */
+  spaceId: string;
+  /** The browser tool whose export this is. */
+  tag: MiniToolUploadTag;
+  /** Whether a node is locked, read fresh. */
+  isLocked: (nodeId: string) => boolean;
+  /** Said once when any node was left out for being locked. */
+  onLocked: () => void;
+  /** Register a node as busy for as long as `work` runs. */
+  track: (nodeId: string, work: Promise<void>) => void;
+  /** Hand one file's upload that failed after the answer to the caller, as `fillNodeFromFile` does. */
+  onUploadFailure: (outcome: UploadFailure, file: File) => void;
+}
+
+/**
+ * Fill a browser tool's result nodes with its export in one batch upload
+ * (inner#1303 §6.5): a locked node is left out, every other node is
+ * registered as busy before anything awaits, and each file's outcome goes to
+ * the caller as a single fill's would. What a node ends up holding arrives
+ * from the server through Yjs.
+ * @param entries - Each node and the file it is filled with.
+ * @param projectId - The project, which gates the tickets.
+ * @param deps - The upload network and the canvas sinks.
+ */
+export function fillNodesFromFiles(
+  entries: readonly { nodeId: string; file: File; markOp: string }[],
+  projectId: string,
+  deps: FillNodesDeps,
+): void {
+  const open = entries.filter((entry) => !deps.isLocked(entry.nodeId));
+  if (open.length < entries.length) {
+    deps.onLocked();
+    const marks = useUploadMarksStore.getState();
+    for (const entry of entries) {
+      if (!open.includes(entry)) marks.answer(deps.spaceId, entry.nodeId, entry.markOp);
+    }
+  }
+  if (open.length === 0) return;
+  const work = runMediaUploadBatch(
+    open.map((entry) => ({
+      file: entry.file,
+      nodeId: entry.nodeId,
+      // The node's content arrives from the server through Yjs.
+      onSuccess: () => undefined,
+      ...markedSinks(deps.spaceId, entry.nodeId, entry.markOp, entry.file, deps.onUploadFailure),
+    })),
+    { projectId, spaceId: deps.spaceId, ...deps.tag },
+    deps,
+  );
+  for (const entry of open) deps.track(entry.nodeId, work);
 }
 
 /** A minimal canvas node shape for asset-delete accounting (pure). */

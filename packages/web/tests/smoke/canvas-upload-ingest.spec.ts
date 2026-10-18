@@ -397,8 +397,9 @@ test('a transfer that dies after the ticket is reported and lands in the failed 
 
 // A6: a transfer that dies BEFORE the ticket is answered. Nothing exists on the
 // server — no row, no grant, no timer — so there is no task row to carry the
-// failure and the toast is the whole of what this side can say. The node stays:
-// a node that exists is the reader's to remove, and only theirs (#2177).
+// failure; the uploader's own tab says it on the node, where the placeholder
+// stood (inner#1303 §6.7). The node stays: a node that exists is the reader's
+// to remove, and only theirs (#2177).
 test('a drop that never gets a ticket keeps its node and says so', async () => {
   let aborted = 0;
   await page.route('**/assets/upload-ticket*', (route) => {
@@ -417,7 +418,7 @@ test('a drop that never gets a ticket keeps its node and says so', async () => {
   );
 
   await expect.poll(() => aborted, { timeout: 60_000 }).toBeGreaterThan(0);
-  await expect(page.locator('[data-sonner-toast]')).toContainText(
+  await expect(visibleSpace(page).locator('.react-flow__node').last()).toContainText(
     'Upload failed.',
     { timeout: 30_000 },
   );

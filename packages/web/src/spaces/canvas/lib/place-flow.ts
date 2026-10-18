@@ -19,7 +19,7 @@ import { getViewportForBounds, type Viewport } from '@xyflow/react';
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
-import { EMPTY_NODE_SIZE, type Rect } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 
 /** A point in flow coordinates. */
@@ -52,9 +52,6 @@ const BODY_PADDING_PX = 24;
 const BODY_MIN_PX = 192;
 const BODY_MAX_PX = 576;
 
-// `NodeMediaInset`'s `p-1`: 4px on each side of a picture or a video.
-const MEDIA_INSET_PX = 8;
-
 // How wide one character is on that line. A full-width character is the type
 // size; everything else is taken as half of it, which is the usual reading of
 // East Asian width and close enough for deciding where a node's neighbour
@@ -65,18 +62,6 @@ const HALF_WIDTH_PX = 7;
 /** Codepoint ranges drawn at full width: CJK, kana, hangul and their marks. */
 const FULL_WIDTH = /[\u{1100}-\u{115F}\u{2E80}-\u{303E}\u{3041}-\u{33FF}\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{A000}-\u{A4CF}\u{AC00}-\u{D7A3}\u{F900}-\u{FAFF}\u{FE30}-\u{FE4F}\u{FF00}-\u{FF60}\u{FFE0}-\u{FFE6}]/u;
 
-/**
- * How tall a picture or video node draws at the node's width.
- *
- * The picture fills the node's width inside `NodeMediaInset`'s `p-1`.
- * @param mediaWidth - The file's pixel width.
- * @param mediaHeight - The file's pixel height.
- * @returns The node's height in flow coordinates.
- * @throws {never} Never.
- */
-export function mediaFootprintHeight(mediaWidth: number, mediaHeight: number): number {
-  return ((EMPTY_NODE_SIZE.width - MEDIA_INSET_PX) * mediaHeight) / mediaWidth + MEDIA_INSET_PX;
-}
 
 /**
  * How tall a node carrying these words draws: as tall as they wrap to, between
@@ -111,7 +96,7 @@ export function textFootprintHeight(text: string): number {
 export function estimateHeight(node: ProposalNode): number {
   const media = node.materialMedia;
   if (media?.width && media.height && (node.type === 'image' || node.type === 'video')) {
-    return mediaFootprintHeight(media.width, media.height);
+    return mediaNodeHeight(media.width, media.height);
   }
   if (node.role !== 'written') return EMPTY_NODE_SIZE.height;
   return textFootprintHeight(promptPlainText(node.prompt ?? []));
@@ -270,7 +255,7 @@ function footprintOf(
     return { width: p.width ?? 0, height: p.height ?? 0 };
   }
   if ((p.type === 'image' || p.type === 'video') && p.mediaWidth && p.mediaHeight) {
-    return { width: EMPTY_NODE_SIZE.width, height: mediaFootprintHeight(p.mediaWidth, p.mediaHeight) };
+    return { width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(p.mediaWidth, p.mediaHeight) };
   }
   const measured = measuredOf(p.id);
   if (p.type === 'text') {

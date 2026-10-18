@@ -481,7 +481,12 @@
       "audio": "ダブルクリックでアップロード",
       "3d": "ダブルクリックで 3D モデルをアップロード",
       "web": "ダブルクリックで URL を埋め込む",
-      "rightClickHint": "右クリックで生成など"
+      "rightClickHint": "右クリックで生成など",
+      "peer": {
+        "upload": "{name} がアップロード中",
+        "readText": "{name} がファイルを読み込み中",
+        "tool": "{name} が{tool}を実行中"
+      }
     },
     "textNode": {
       "editorPlaceholder": "入力を始めましょう"
@@ -909,7 +914,7 @@
         "source_cut_off": "このアドレスからの送信がファイルの途中で止まりました。",
         "unsupported_type": "{kind, select, image {対応していない形式です。画像は {formats} に対応しています。} video {対応していない形式です。動画は {formats} に対応しています。} audio {対応していない形式です。音声は {formats} に対応しています。} other {対応していない形式です。}}",
         "empty": "何も取得できませんでした。",
-        "internal": "こちら側で問題が起きました。",
+        "internal": "内部サーバーエラーが発生しました。",
         "no_credits": "利用できるクレジットがありません。",
         "declined": "モデルがこのリクエストを拒否しました。",
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
@@ -956,6 +961,19 @@
         },
         "rotate": {
           "label": "回転・反転"
+        },
+        "grid": {
+          "label": "グリッド分割"
+        },
+        "adjust": {
+          "label": "色調整"
+        },
+        "expand": {
+          "label": "拡張",
+          "prompt": "補う内容を入力。空欄なら画像に合わせて自然に広げます"
+        },
+        "mark": {
+          "label": "マークアップ"
         }
       },
       "video": {
@@ -1052,6 +1070,12 @@
         },
         "transfer": {
           "label": "伝達特性"
+        },
+        "rows": {
+          "label": "行数"
+        },
+        "cols": {
+          "label": "列数"
         }
       },
       "panel": {
@@ -1070,7 +1094,11 @@
         "sourceChanged": "素材が変わりました。",
         "sourceChangedByPeer": "コラボレーターが素材を変えました。",
         "couldNotStart": "ツールを開始できませんでした。もう一度お試しください。",
-        "drawingEmpty": "先に画像に描いてください。"
+        "drawingEmpty": "先に画像に描いてください。",
+        "reset": "リセット",
+        "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。",
+        "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。",
+        "ratioTooLarge": "拡張できる最大サイズを超えます"
       },
       "adjust": {
         "exposure": "露出",
@@ -1089,6 +1117,12 @@
         "grain": "粒子",
         "fade": "フェード"
       },
+      "adjustGroup": {
+        "light": "ライト",
+        "color": "カラー",
+        "detail": "ディテール",
+        "effects": "効果"
+      },
       "draw": {
         "brush": "ブラシ",
         "rect": "長方形",
@@ -1100,6 +1134,20 @@
         "undo": "元に戻す",
         "redo": "やり直す",
         "clear": "クリア"
+      },
+      "mark": {
+        "select": "選択",
+        "arrow": "矢印",
+        "rect": "四角形",
+        "ellipse": "楕円",
+        "line": "直線",
+        "pen": "ペン",
+        "text": "テキスト"
+      },
+      "grid": {
+        "picked": "{picked} / {total} 件を選択",
+        "pickAll": "すべて選択",
+        "pickNone": "選択をすべて解除"
       }
     },
     "template": {

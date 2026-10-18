@@ -199,8 +199,9 @@ export interface ImageNodeView extends ContentNodeViewBase {
   content?: string;
   /**
    * Intrinsic pixel dimensions, as the ledger measured them at ingest (#209).
-   * Absent for a row stored before the media container ran, or one it could
-   * not answer for — the node then measures what it loaded.
+   * On a node with no content yet they are the size a tool's result is
+   * planned to have. Absent for a row stored before the media container ran,
+   * or one it could not answer for — the node then measures what it loaded.
    */
   width?: number;
   height?: number;

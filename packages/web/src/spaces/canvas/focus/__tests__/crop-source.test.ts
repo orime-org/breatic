@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { intrinsicSize, originalSrc } from '@web/spaces/canvas/focus/crop-source';
+import { intrinsicSize, originalSrc, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
 
 const STORED = 'https://resource-dev.breatic.cc/image/2026-09-30/1_18f58aed-b802-4243-a8ea-02d377de9679.png';
 
@@ -43,5 +43,44 @@ describe('the crop source read as the original', () => {
     const img = nodeImage(STORED, null, { width: 800, height: 600 });
     expect(intrinsicSize(img)).toEqual({ width: 800, height: 600 });
     expect(originalSrc(img)).toBe(STORED);
+  });
+});
+
+// Decoding ends when the browser has the bitmap, not after a count of frames;
+// the export waits on the same `decode()` (`prepareCropSource`).
+describe('whenDecoded', () => {
+  /**
+   * A picture of a given natural width whose decode settles as asked.
+   * @param naturalWidth - Its decoded width, 0 while decoding.
+   * @param decoded - Whether its decode succeeds.
+   * @returns The picture.
+   */
+  const picture = (naturalWidth: number, decoded = true): HTMLImageElement => {
+    const img = document.createElement('img');
+    Object.defineProperty(img, 'naturalWidth', { value: naturalWidth });
+    img.decode = (): Promise<void> => (decoded ? Promise.resolve() : Promise.reject(new Error('broken')));
+    return img;
+  };
+
+  it('runs the step once a picture still decoding has decoded', async () => {
+    const then = vi.fn();
+    expect(whenDecoded(picture(0), then)).toBe(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(then).toHaveBeenCalledOnce();
+  });
+
+  it('waits on nothing for a picture already decoded, or no picture', () => {
+    const then = vi.fn();
+    expect(whenDecoded(picture(800), then)).toBe(false);
+    expect(whenDecoded(null, then)).toBe(false);
+    expect(then).not.toHaveBeenCalled();
+  });
+
+  it('gives up on a picture that cannot decode', async () => {
+    const then = vi.fn();
+    expect(whenDecoded(picture(0, false), then)).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(then).not.toHaveBeenCalled();
   });
 });

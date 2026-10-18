@@ -33,6 +33,8 @@ export interface MiniToolSnapshot {
    * the source, or a sketch tool's composite, sent in place of it.
    */
   readonly drawing?: { readonly mask: string } | { readonly image: string };
+  /** Where an expand tool's padded picture and its mask were uploaded. */
+  readonly expand?: { readonly image: string; readonly mask: string };
 }
 
 const BY_ID = new Map(MINI_TOOLS.map((tool) => [tool.id, tool]));
@@ -119,7 +121,8 @@ export function toolParamKeys(spec: MiniToolSpec): readonly string[] {
  */
 export function toolFilledParams(spec: MiniToolSpec): string[] {
   const mask = spec.drawing?.kind === "mask" ? [spec.drawing.maskParam] : [];
-  return [spec.sourceParam, ...spec.slots.map((slot) => slot.param), ...mask];
+  const expandMask = spec.expand === undefined ? [] : [spec.expand.maskParam];
+  return [spec.sourceParam, ...spec.slots.map((slot) => slot.param), ...mask, ...expandMask];
 }
 
 /** No turn and no flip: the picture as it is, the orientation param's default. */
@@ -146,6 +149,8 @@ function defaultOf(param: MiniToolParam): unknown {
       return { ...defaultAdjustValue };
     case "orient":
       return { ...UPRIGHT };
+    case "cells":
+      return [];
   }
 }
 
@@ -244,7 +249,8 @@ function knownDurations(values: readonly MiniToolSlotValue[]): number[] | undefi
 /**
  * The estimate input of one run: the draft params first, then the source and
  * every filled slot written under the model params they fill. A sketch's
- * composite stands in for the source and a mask fills the mask param.
+ * composite stands in for the source and a mask fills the mask param; an
+ * expand's padded picture stands in for the source beside its mask.
  * @param spec - The tool.
  * @param snapshot - What the run reads.
  * @returns The input `estimateCredits` takes for the pinned model.
@@ -269,6 +275,10 @@ export function miniToolEstimateInput(spec: MiniToolSpec, snapshot: MiniToolSnap
   }
   if (spec.drawing?.kind === "mask" && drawing !== undefined && "mask" in drawing) {
     params[spec.drawing.maskParam] = drawing.mask;
+  }
+  if (spec.expand !== undefined && snapshot.expand !== undefined) {
+    params[spec.expand.imageParam] = snapshot.expand.image;
+    params[spec.expand.maskParam] = snapshot.expand.mask;
   }
   return {
     params,

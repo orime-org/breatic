@@ -914,6 +914,9 @@ importers:
       '@xyflow/react':
         specifier: ^12.11.2
         version: 12.11.2(patch_hash=7jpc67tegm3zk4u27ibpbo34nu)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(immer@11.1.16)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@xyflow/system':
+        specifier: 0.0.79
+        version: 0.0.79
       ahooks:
         specifier: ^3.9.7
         version: 3.9.7(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -941,6 +944,9 @@ importers:
       diff:
         specifier: 9.0.0
         version: 9.0.0
+      fabric:
+        specifier: ^7.4.0
+        version: 7.4.0
       hash-wasm:
         specifier: ^4.12.0
         version: 4.12.0
@@ -7184,6 +7190,10 @@ packages:
     resolution: {integrity: sha512-Nmb6QXkELsuBr24CJSkilo6UHHgbekK5UiZgfE6UHD3Eb27YC6oD+bhcT+tJ6cl8dmsgdQxnWlcry8ksBIBLpw==}
     engines: {node: '>=0.10.0'}
 
+  fabric@7.4.0:
+    resolution: {integrity: sha512-NalYDc3eifTl1C33zryQwpH6+XA/2ClxQrH9vkASkZw3tbkRmorpikhYMmxhUTmi7O3e9ODz0vOT8qfaCh9IVA==}
+    engines: {node: '>=20.0.0'}
+
   fast-check@4.9.0:
     resolution: {integrity: sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==}
     engines: {node: '>=12.17.0'}
@@ -11290,6 +11300,10 @@ packages:
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
+
+ignoredOptionalDependencies:
+  - canvas
+  - jsdom
 
 snapshots:
 
@@ -17099,6 +17113,8 @@ snapshots:
       to-regex: 3.0.2
     transitivePeerDependencies:
       - supports-color
+
+  fabric@7.4.0: {}
 
   fast-check@4.9.0:
     dependencies:

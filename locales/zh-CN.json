@@ -481,7 +481,12 @@
       "audio": "双击上传",
       "3d": "双击上传 3D 模型",
       "web": "双击嵌入网址",
-      "rightClickHint": "右键可生成等更多"
+      "rightClickHint": "右键可生成等更多",
+      "peer": {
+        "upload": "{name} 正在上传",
+        "readText": "{name} 正在读取文件",
+        "tool": "{name} 正在使用{tool}"
+      }
     },
     "textNode": {
       "editorPlaceholder": "开始写作"
@@ -909,7 +914,7 @@
         "source_cut_off": "这个地址的内容没传完就断了。",
         "unsupported_type": "{kind, select, image {不是支持的格式，图片只收 {formats}。} video {不是支持的格式，视频只收 {formats}。} audio {不是支持的格式，音频只收 {formats}。} other {不是支持的格式。}}",
         "empty": "没有拿到任何内容。",
-        "internal": "我们这边出错了。",
+        "internal": "服务器内部错误。",
         "no_credits": "没有可用积分。",
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
@@ -956,6 +961,19 @@
         },
         "rotate": {
           "label": "旋转/翻转"
+        },
+        "grid": {
+          "label": "宫格切图"
+        },
+        "adjust": {
+          "label": "调色"
+        },
+        "expand": {
+          "label": "外扩",
+          "prompt": "写要补画什么，留空就按图片内容自然外扩"
+        },
+        "mark": {
+          "label": "备注"
         }
       },
       "video": {
@@ -1052,6 +1070,12 @@
         },
         "transfer": {
           "label": "传输特性"
+        },
+        "rows": {
+          "label": "行数"
+        },
+        "cols": {
+          "label": "列数"
         }
       },
       "panel": {
@@ -1070,7 +1094,11 @@
         "sourceChanged": "素材已更换。",
         "sourceChangedByPeer": "协作者更换了素材。",
         "couldNotStart": "工具没能启动，请重试。",
-        "drawingEmpty": "请先在图上画。"
+        "drawingEmpty": "请先在图上画。",
+        "reset": "重置",
+        "imageTooLarge": "这张图片太大，这台设备上无法调色。",
+        "sourceTooLargeToExpand": "这张图片已经到外扩能做的最大尺寸。",
+        "ratioTooLarge": "超出外扩能做的最大尺寸"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1089,6 +1117,12 @@
         "grain": "颗粒",
         "fade": "褪色"
       },
+      "adjustGroup": {
+        "light": "光线",
+        "color": "颜色",
+        "detail": "细节",
+        "effects": "效果"
+      },
       "draw": {
         "brush": "画笔",
         "rect": "矩形",
@@ -1100,6 +1134,20 @@
         "undo": "撤销",
         "redo": "重做",
         "clear": "清空"
+      },
+      "mark": {
+        "select": "选择",
+        "arrow": "箭头",
+        "rect": "矩形",
+        "ellipse": "椭圆",
+        "line": "直线",
+        "pen": "画笔",
+        "text": "文字"
+      },
+      "grid": {
+        "picked": "已选 {picked} / {total}",
+        "pickAll": "全选",
+        "pickNone": "全不选"
       }
     },
     "template": {

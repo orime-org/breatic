@@ -15,6 +15,7 @@
  */
 
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import { validate } from "@server/middleware/validate.js";
 import { z } from "zod";
 import {
@@ -24,31 +25,32 @@ import {
   INGEST_NOT_STARTED,
   UPLOAD_STATUS_MAX_KEYS,
   t,
-  type NodeTaskAction,
 } from "@breatic/shared";
 import {
+  MINI_TOOLS,
   miniToolById,
+  mostOutputsOf,
 } from "@breatic/shared/mini-tools";
 import {
   assetService,
   ingestReportService,
   mediaReadService,
   studioAuthService,
-  uploadDeadlineByKey,
   uploadStatusService,
-  uploadTicketService,
   UPLOAD_FINISH_QUEUE,
   type UploadFinishJob,
 } from "@breatic/domain";
-import { openUpload } from "@server/modules/asset/upload-opening.js";
+import {
+  issueUploadTicket,
+  issueUploadTicketBatch,
+  type TicketOutcome,
+} from "@server/modules/asset/upload-ticket.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
-import { safeExt } from "@breatic/domain";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   assertStudioStorageAllowance,
-  assetUploadService,
   projectService,
 } from "@server/modules";
 import {
@@ -58,7 +60,6 @@ import {
   getStorageAdapter,
   env,
   logger,
-  getNodeTaskConfig,
 } from "@breatic/core";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 
@@ -246,23 +247,68 @@ const uploadTicketSchema = z
     }
   });
 
+/** The browser tools whose results land in a group: the only ones that upload many files at once. */
+const GROUPED_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind === "browser" && spec.groupOutputs === true);
+
 /**
- * What an upload's task row says: a browser tool's export is shown as that
- * tool, every other upload by its file name.
- * @param body - The ticket request.
- * @param body.source - What started the upload.
- * @param body.tool_name - The browser tool, on a mini-tool upload.
- * @param body.filename - The picked file's name.
- * @returns The row's action and label.
+ * One browser tool's export of many files, each onto its own node of one
+ * Space (inner#1303 §7). A cover or an avatar is one file and uses the single
+ * form, so neither `studio_id` nor `purpose` is taken here.
  */
-function uploadRowOf(body: {
-  source?: "mini_tool" | undefined;
-  tool_name?: string | undefined;
-  filename: string;
-}): { action: NodeTaskAction; label: string } {
-  return body.source === "mini_tool" && body.tool_name !== undefined
-    ? { action: "mini_tool", label: body.tool_name }
-    : { action: "upload", label: body.filename };
+const uploadTicketBatchSchema = z
+  .strictObject({
+    project_id: z.string().uuid(),
+    space_id: z.string().uuid(),
+    source: z.literal("mini_tool"),
+    tool_name: z.string().refine((id) => GROUPED_TOOLS.some((spec) => spec.id === id)),
+    items: z
+      .array(
+        z.strictObject({
+          filename: uploadTicketFields.shape.filename,
+          content_type: uploadTicketFields.shape.content_type,
+          size: uploadTicketFields.shape.size,
+          client_hash: uploadTicketFields.shape.client_hash,
+          node_id: z.string().uuid(),
+        }),
+      )
+      .min(1)
+      .max(Math.max(...GROUPED_TOOLS.map(mostOutputsOf))),
+  })
+  .superRefine((body, ctx) => {
+    if (new Set(body.items.map((item) => item.node_id)).size !== body.items.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items"], message: "each file lands on its own node" });
+    }
+  });
+
+/**
+ * The wire shape of a ticket or a dedup hit.
+ * @param outcome - The answer, other than a refusal.
+ * @returns What the browser reads.
+ */
+function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Record<string, unknown> {
+  return outcome.kind === "alreadyExists"
+    ? {
+        alreadyExists: true,
+        // The row a cover or an avatar is then pointed at.
+        assetId: outcome.assetId,
+        fileUrl: outcome.fileUrl,
+        kind: outcome.assetKind,
+        // The picture's size, read off it when it was stored (inner#1367).
+        width: outcome.width,
+        height: outcome.height,
+      }
+    : {
+        ticket: outcome.ticket,
+        storageKey: outcome.storageKey,
+        uploadUrl: outcome.uploadUrl,
+        kind: outcome.assetKind,
+        partSize: outcome.partSize,
+        totalParts: outcome.totalParts,
+        // Which task row this upload is. The browser keys a failed upload's
+        // File by it, so two uploads onto one node each keep their own (#186
+        // §3.7.2). Absent on an upload with no node.
+        taskId: outcome.taskId,
+      };
 }
 
 /**
@@ -280,10 +326,28 @@ assets.post(
   "/upload-ticket",
   requireAuth,
   rateLimitFor("upload-ticket", "user"),
-  validate("json", uploadTicketSchema),
+  validate("json", z.union([uploadTicketSchema, uploadTicketBatchSchema])),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
+
+    // A batch answers every file in order, each a ticket, a hit or a refusal.
+    if ("items" in body) {
+      await projectService.assertAccess(body.project_id, user.id, "editor");
+      const studioId = await assetService.resolveOwnerStudioId(body.project_id);
+      const outcomes = await issueUploadTicketBatch(
+        { userId: user.id, studioId, projectId: body.project_id },
+        { spaceId: body.space_id, toolName: body.tool_name },
+        body.items,
+      );
+      return c.json({
+        data: {
+          items: outcomes.map((outcome) =>
+            outcome.kind === "refused" ? { refused: { reason: outcome.reason } } : ticketBody(outcome),
+          ),
+        },
+      });
+    }
 
     // Upload is a write — edit-or-above can ask for a ticket. A project's
     // cover follows the cover rule (the studio admin may set it without being
@@ -300,166 +364,40 @@ assets.post(
         ? await assetService.resolveOwnerStudioId(body.project_id)
         : body.studio_id;
 
-    const { upload, ingest } = getStorageConfig();
-    if (body.size > upload.max_upload_bytes) {
-      logger.info(
-        { size: body.size, cap: upload.max_upload_bytes, userId: user.id },
-        "upload_ticket_rejected_over_cap",
-      );
-      return c.json(
-        { error: { message: t("server.error.upload_too_large") } },
-        413,
-      );
-    }
-
-    // Dedup: the owner studio already holding this content skips the upload
-    // entirely — no key, no grant, no ticket.
-    const dedupHit = await assetUploadService.checkUploadDedup({
-      studioId,
-      contentHash: body.client_hash,
-    });
-    if (dedupHit) {
-      logger.info(
-        { hash: body.client_hash, userId: user.id, studioId, projectId: body.project_id },
-        "upload_ticket_dedup_hit",
-      );
-      // No bytes move, but the node now shows something it did not show
-      // before: a task row is opened and settled in the same pass, pointing at
-      // the node's history row for this content (written now, or the one the
-      // node already holds).
-      // The project activity feed gets nothing, because its only shape for
-      // this is `asset:uploaded` and nothing was uploaded. A studio's avatar
-      // has no project and no node, so there is nothing to settle.
-      if (body.project_id !== undefined) {
-        await assetUploadService.settleDedupHit({
-          projectId: body.project_id,
-          hit: dedupHit,
-          userId: user.id,
-          metadata: {
-            filename: body.filename,
-            size: body.size,
-            mimeType: body.content_type,
-          },
-          row: uploadRowOf(body),
-          nodeId: body.node_id,
-          spaceId: body.space_id,
-        });
-      }
-      return c.json({
-        data: {
-          alreadyExists: true,
-          // The row a cover or an avatar is then pointed at.
-          assetId: dedupHit.assetId,
-          fileUrl: dedupHit.fileUrl,
-          kind: dedupHit.kind,
-          // The picture's size, read off it when it was stored (inner#1367).
-          width: dedupHit.width,
-          height: dedupHit.height,
-        },
-      });
-    }
-
-    // Storage gate, after the dedup return: that path consumes nothing.
-    await assertStudioStorageAllowance(studioId, "upload");
-
-    // Both settings have to be present before a byte is authorised. Without
-    // the secret the Worker would reject every ticket we sign; without the
-    // base URL the browser has nowhere to send its parts. Neither is anything
-    // the user did, so this is our own misconfiguration and reads as a 500.
-    if (!env.INGEST_SHARED_SECRET || !env.INGEST_BASE_URL) {
-      logger.error(
-        {
-          hasSecret: Boolean(env.INGEST_SHARED_SECRET),
-          hasBaseUrl: Boolean(env.INGEST_BASE_URL),
-        },
-        "upload_ticket_ingest_unconfigured",
-      );
-      throw new Error(
-        "ingest Worker is not configured: INGEST_BASE_URL and " +
-          "INGEST_SHARED_SECRET are both required",
-      );
-    }
-
-    const kind = assetService.detectAssetKind(body.content_type);
-    // One rule for what may go in a key, shared with the lane that takes an
-    // address. A separator or a query character spliced in makes publicUrl
-    // point at a key R2 does not hold, and every read of that asset 404s.
-    const ext = safeExt(body.filename);
-
-    const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
-    // The grant, and the task row this upload is on whatever node it lands on,
-    // opened before the ticket that starts it (#186, design §4.6.5). Nothing
-    // schedules a deadline: the row carries its own budget, and whoever opens
-    // this node's task list is what judges it against the clock.
-    const { key, taskId } = await openUpload(
-      {
-        ...(body.project_id !== undefined
-          ? { projectId: body.project_id }
-          : { studioId }),
-        actingUserId: user.id,
-        declaredSize: body.size,
-        taskType: kind,
-        ext,
-        expiresAt: new Date(expiresAt),
-        context: {
-          nodeId: body.node_id ?? null,
-          spaceId: body.space_id ?? null,
-          source: body.source ?? null,
-          toolName: body.tool_name ?? null,
-          // A cover is a byproduct: in the ledger, and not announced on the
-          // project feed as something uploaded to the canvas.
-          derived: body.purpose === "project_cover" ? true : (body.derived ?? null),
-          filename: body.filename,
-          assetSource: body.purpose ?? null,
-        },
-      },
-      {
-        budgetMs: getNodeTaskConfig().default_budget_ms,
-        ...uploadRowOf(body),
+    const outcome = await issueUploadTicket(
+      { userId: user.id, studioId, projectId: body.project_id },
+      body,
+      async () => {
+        await assertStudioStorageAllowance(studioId, "upload");
+        return true;
       },
     );
-    // The upload's two hours, read off the row or the grant just opened
-    // (inner#1367). The ticket carries it; every session token the Worker
-    // issues for this upload, and every call it makes for it, end there.
-    const deadlineAt = await uploadDeadlineByKey(key);
-
-    const target = await uploadTicketService.signTicketFor({
-      storageKey: key,
-      studioId,
-      userId: user.id,
-      declaredSize: body.size,
-      contentType: body.content_type,
-      expiresAt,
-      deadlineAt,
-    });
-
-    logger.info(
-      { key, kind, totalParts: target.totalParts, userId: user.id },
-      "upload_ticket_issued",
-    );
-
-    return c.json(
-      {
-        data: {
-          ticket: target.ticket,
-          storageKey: key,
-          uploadUrl: target.uploadUrl,
-          kind,
-          partSize: target.partSize,
-          totalParts: target.totalParts,
-          // Which task row this upload is. The browser keys a failed
-          // upload's File by it, so two uploads onto one node each keep
-          // their own (#186 §3.7.2). Absent on an upload with no node.
-          taskId,
-        },
-      },
-      201,
-    );
+    if (outcome.kind === "refused") {
+      return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
+    }
+    return c.json({ data: ticketBody(outcome) }, outcome.kind === "alreadyExists" ? 200 : 201);
   },
 );
 
 // ── Finishing an upload (#206) ──────────────────────────────────────
 
+/** The upload a token was signed for, as the Worker signed it. */
+type UploadSession = NonNullable<Awaited<ReturnType<typeof verifySessionToken>>>;
+
+/**
+ * Admit a request whose upload token was signed for the upload in its path,
+ * and hand the signed session on. It runs before the limiter, which keeps one
+ * bucket per user and upload id and one per user: only an id the Worker
+ * signed is counted.
+ */
+const requireUploadSession = createMiddleware<{ Variables: { uploadSession: UploadSession } }>(async (c, next) => {
+  const session = await verifySessionToken(c.req.header("x-upload-token") ?? "", env.INGEST_SHARED_SECRET, Date.now());
+  if (session === null || session.uploadId !== c.req.param("uploadId")) {
+    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
+  }
+  c.set("uploadSession", session);
+  await next();
+});
 
 /**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
@@ -478,7 +416,8 @@ assets.post(
 assets.post(
   "/uploads/:uploadId/complete",
   requireAuth,
-  rateLimitFor("upload-complete", "user"),
+  requireUploadSession,
+  rateLimitForAll([{ action: "upload-complete", keyBy: { userAndParam: "uploadId" } }, { action: "upload-complete-user", keyBy: "user" }]),
   validate(
     "json",
     z.object({
@@ -493,19 +432,8 @@ assets.post(
     }),
   ),
   async (c) => {
-    const uploadId = c.req.param("uploadId");
-    const session = await verifySessionToken(
-      c.req.header("x-upload-token") ?? "",
-      env.INGEST_SHARED_SECRET,
-      Date.now(),
-    );
-    if (session === null || session.uploadId !== uploadId) {
-      return c.json(
-        { error: { code: 401, message: t("server.auth.not_authenticated") } },
-        401,
-      );
-    }
-    const { storageKey } = session;
+    const session = c.get("uploadSession");
+    const { storageKey, uploadId } = session;
 
     // How many parts this upload has is signed into the token, so a list of
     // the wrong length is answered here rather than after a round trip. The

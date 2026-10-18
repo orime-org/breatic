@@ -17,6 +17,7 @@ import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { canvasSessions, type CanvasSessionState } from '@web/stores/canvas-session';
 import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 
 /** The three Generate panels. */
@@ -73,7 +74,12 @@ export function submitGeneration(opts: {
   void runOnce(generateIntent(opts.spaceId, opts.nodeId), {
     scope: 'generate',
     prepare: opts.buildPayload,
-    send: (key, body: TaskCreateInput) => canvasApi.createTask(body, key),
+    // Once the server takes it, a failure line an earlier upload or tool left
+    // on the node goes; the generation shows its progress in the task count.
+    send: async (key, body: TaskCreateInput) => {
+      await canvasApi.createTask(body, key);
+      useUploadMarksStore.getState().clearFailed(opts.spaceId, opts.nodeId);
+    },
     // The Space's session as it is now: its tab may have been closed and
     // opened again since the press.
     onDone: () => {

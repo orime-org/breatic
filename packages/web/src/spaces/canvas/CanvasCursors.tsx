@@ -9,27 +9,24 @@ import { useNamed } from '@web/features/collab-editor/collaborator-names-context
 import { userPaletteColor } from '@web/lib/user-color';
 import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
 import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
+import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 
 /** What the layer reads while nobody else is pointing at anything. */
 const NO_POINTERS: readonly RemotePointer[] = [];
-import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 
 /**
- * Stacking order for the cursor layer.
- *
- * `ViewportPortal` renders into `.react-flow__viewport-portal`, a sibling of
- * the node layer that carries no z-index of its own — and a positioned element
- * with a positive z-index paints over one with `auto` whatever the DOM order.
- * The canvas has several: a selected node sits at xyflow's default 1000, a
- * focus crop target at `FOCUS_TARGET_Z` (1002), a group member higher still.
- * Those are exactly the places a cursor most needs to be seen, so this clears
- * all of them with room to spare.
+ * Stacking order for the cursor layer: one above everything the canvas draws
+ * in the viewport (nodes, the new-note box, the expand frame), since those are
+ * where a peer's pointer most needs to be seen. `ViewportPortal` renders into
+ * `.react-flow__viewport-portal`, which carries no z-index of its own, so
+ * these all stack against each other.
  *
  * It cannot escape the generate panel, and does not need to: the panel rides a
  * `NodeToolbar` that portals into `.react-flow__renderer`, outside the
  * viewport's stacking context.
  */
-const CURSOR_LAYER_Z = 1100;
+const CURSOR_LAYER_Z = VIEWPORT_TOP_Z + 1;
 
 /** What the cursor layer needs to draw everyone else's pointer. */
 export interface CanvasCursorsProps {

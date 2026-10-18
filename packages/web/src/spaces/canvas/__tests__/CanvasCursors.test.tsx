@@ -11,6 +11,7 @@ import { CollaboratorNamesProvider } from '@web/features/collab-editor/collabora
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 import { CanvasCursorLayer, CanvasCursors } from '@web/spaces/canvas/CanvasCursors';
 import type { RemotePointer } from '@web/spaces/canvas/canvas-pointers';
+import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 
 // The portal renders into the canvas viewport, which no unit test has; stand in
 // a marked element so the cursors can be inspected AND the portal itself stays
@@ -117,12 +118,13 @@ describe('CanvasCursors', () => {
     expect(screen.getByText('Alice')).toBeInTheDocument();
   });
 
-  it('sits above the nodes that carry a positive z-index', () => {
-    // A selected node is at 1000 and a focus crop target at 1002; the portal's
-    // own div has no z-index, so without one here the arrow hides behind them.
+  it('sits above everything the canvas puts in the viewport', () => {
+    // Nodes, the new-note box and the expand frame all carry a z-index in the
+    // viewport's stacking context; the portal's own div has none, so without
+    // one here the arrow hides behind them.
     renderCursors([ALICE], { u1: 'Alice' });
 
-    expect(screen.getByTestId('canvas-cursors')).toHaveStyle({ zIndex: '1100' });
+    expect(screen.getByTestId('canvas-cursors')).toHaveStyle({ zIndex: String(VIEWPORT_TOP_Z + 1) });
   });
 
   it('takes no pointer events', () => {

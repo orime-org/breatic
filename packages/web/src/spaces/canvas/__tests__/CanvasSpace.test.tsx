@@ -4209,6 +4209,61 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         expect(copyAndRead(words)).toContain('__breatic_canvas_nodes__:');
       });
 
+      // A tool drawing on its node takes the reader's attention there; copy,
+      // paste and duplicate would act on the host or its neighbours instead
+      // and close the panel (inner#1303 §6.6). The clipboard events are fired
+      // by the physical key, so this holds on every keyboard layout.
+      describe('a tool layer open on a node', () => {
+        /**
+         * Mount a selected node and open the markup tool on it.
+         */
+        const mountWithMarkup = (): void => {
+          mountWithSelection();
+          act(() => {
+            canvasSessions.of('s').getState()
+              .openMiniTool('n1', 'image.mark', { sourceContent: 'https://cdn/a.png', params: {} });
+          });
+        };
+
+        it('copy leaves the clipboard alone', () => {
+          mountWithMarkup();
+          expect(copyAndRead()).toBe('');
+        });
+
+        it.each([
+          ['the space', 'space'],
+          ['the agent panel', 'agent'],
+        ] as const)('paste with %s active creates no node and keeps the tool open', (_name, region) => {
+          mountWithMarkup();
+          useUIStore.setState({ activeRegion: region });
+          const { addNode } = spyWrites();
+          dispatchPaste('hello');
+          expect(addNode).not.toHaveBeenCalled();
+          expect(canvasSessions.of('s').getState().panelKind).toBe('miniTool');
+        });
+
+        // The clone would land in the document, so the node is seeded there
+        // (the same setup that proves a duplicate does write one).
+        it('the duplicate shortcut creates no clone and is still the canvas key', async () => {
+          _resetForTests();
+          addNode('p', 's', {
+            id: 'n1',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { name: 'N', createdAt: 1, createdBy: 'u', locked: false, attachments: [] },
+          });
+          mountWithMarkup();
+          const event = new KeyboardEvent('keydown', { key: 'd', metaKey: true, bubbles: true, cancelable: true });
+          act(() => {
+            keyTarget().dispatchEvent(event);
+          });
+          await new Promise((r) => setTimeout(r, 30));
+          const ids = [...getDoc(docName.canvasSpace('p', 's')).getMap<Y.Map<unknown>>('nodesMap').keys()];
+          expect(ids).toEqual(['n1']);
+          expect(event.defaultPrevented).toBe(true);
+        });
+      });
+
       // Each of these keys has a native meaning inside a field: Backspace
       // deletes a character, Cmd+Z undoes the typing, Cmd+D and Cmd+G are the
       // browser's own. The field sits in the space region, so the region hands
@@ -4536,6 +4591,43 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
   });
 });
 
+describe('what opening a tool on a node does to the camera and its layers', () => {
+  const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
+  const inspect = src.slice(src.indexOf('const inspectNode'), src.indexOf('const openToolFromMenu'));
+  const open = src.slice(src.indexOf('const openToolFromMenu'), src.indexOf('const understandFromMenu'));
+
+  // §6.1: the picture adjust brings the camera close, no closer than the
+  // picture's own pixels and never past the canvas's own limit.
+  it('zooms in on a picture adjust when it opens', () => {
+    expect(open).toContain('inspectNode(nodeId)');
+    expect(open).toContain('spec.source === \'image\'');
+    expect(inspect).toContain('viewportToInspect(');
+    expect(inspect).toContain('- MEDIA_FRAME_PX');
+    expect(inspect).toContain('Math.min(own / media, CANVAS_MAX_ZOOM)');
+    expect(inspect).toContain('duration: PROPOSAL_FRAME_MS');
+  });
+
+  // §6.1: a picture still decoding is waited for until it has decoded, not
+  // for a count of frames.
+  it('waits for the picture to decode before it zooms', () => {
+    expect(inspect).toContain('whenDecoded(picture, step)');
+  });
+
+  // The wait can outlast the panel: a step after the reader closed the adjust
+  // or moved to another node moves nothing.
+  it('zooms only while the adjust is still open on that node', () => {
+    const step = inspect.slice(inspect.indexOf('const step'));
+    expect(step.indexOf('stillInspecting()')).toBeGreaterThan(-1);
+    expect(step.indexOf('stillInspecting()')).toBeLessThan(step.indexOf('whenDecoded('));
+  });
+
+  // §6.3: the expand frame reaches past its node and is drawn over every node.
+  it('draws the expand frame in the viewport, over every node', () => {
+    const portal = src.slice(src.lastIndexOf('<ViewportPortal>', src.indexOf('<ExpandFrameOverlay ')), src.indexOf('<ExpandFrameOverlay '));
+    expect(portal).toContain('zIndex: VIEWPORT_TOP_Z');
+  });
+});
+
 // What one press of Understand leaves the reader looking at (#2175). The node
 // it builds lands a whole node-step to the right of the one being read, which
 // on a canvas scrolled near its right edge is outside the viewport — and a
@@ -4543,42 +4635,44 @@ describe('onLocateSource absolute-position contract (item 7 grouped source)', ()
 // Selecting it sets a flag and moves nothing, so the viewport is moved too.
 // jsdom cannot render the ReactFlow viewport, so this pins the wiring the way
 // the locate-source contract above does; what that move comes to is
-// `frameBuiltNode`'s, and it has its own tests.
+// `viewportForBuilt`'s, and it has its own tests.
 describe('what an Understand press leaves on screen', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const press = src.slice(
     src.indexOf('const understandFromMenu'),
     src.indexOf('const onUploadInputChange'),
   );
-  // frameNewNode reads the source's box through measuredRects and hands it to
-  // panToFrame, which reads the viewport and asks frameBuiltNode; the three
-  // read together are the framing.
+  // frameBuilt reads the source's box through measuredRects and the live
+  // viewport, asks viewportForBuilt where to go, and moves there.
   const framing = src.slice(
-    src.indexOf('const measuredRects'),
+    src.indexOf('const frameBuilt'),
     src.indexOf('// ---- Node creation (library mailbox + right-click) ----'),
   );
+  const measured = src.slice(src.indexOf('const measuredRects'), src.indexOf('const frameBuilt'));
 
   it('moves the viewport to the node it built, not only its selection flag', () => {
     // The call, not the name: a dependency array mentions it too, and a
     // press that only lists it moves nothing.
     expect(press).toContain('setSelectAfterCreate([id])');
-    expect(press).toContain('frameNewNode(position, host.id)');
+    expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id)');
+  });
+
+  // The pan keeps the reader's zoom, so it slides in a straight line; the
+  // default 'smooth' path zooms out and back in on the way.
+  it('moves to where viewportForBuilt says, in a straight line', () => {
+    expect(framing).toContain('viewportForBuilt(');
+    expect(framing).toContain('setViewport(next');
+    expect(framing).toContain('interpolate: \'linear\'');
   });
 
   // Both boxes are read where the reader is looking right now: the source
   // from ReactFlow's own store, which folds in every parent offset, and the
   // viewport from the live transform. A grouped source read off
   // `node.position` would be measured a whole group-origin away.
-  // The pan keeps the reader's zoom, so it slides in a straight line; the
-  // default 'smooth' path zooms out and back in on the way.
-  it('slides in a straight line at the reader zoom', () => {
-    expect(framing).toContain('interpolate: \'linear\'');
-  });
-
   it('frames against the live viewport and the source node absolute box', () => {
-    expect(framing).toContain('frameBuiltNode');
-    expect(framing).toContain('positionAbsolute');
+    expect(framing).toContain('measuredRects([sourceNodeId])');
     expect(framing).toContain('rfStoreApi.getState()');
+    expect(measured).toContain('positionAbsolute');
   });
 });
 
