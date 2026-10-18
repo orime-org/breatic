@@ -514,8 +514,6 @@ export {
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
   answersMismatch,
-  ASK_USER_MAX_OPTIONS,
-  ASK_USER_MAX_QUESTIONS,
   ASK_USER_OTHER_MAX_CHARS,
   askUserAnswerSchema,
   askUserInputSchema,

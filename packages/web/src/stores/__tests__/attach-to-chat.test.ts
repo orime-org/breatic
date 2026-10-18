@@ -40,7 +40,6 @@ const { conversationRuntime } = await import('@web/stores/conversation-runtime')
 const { chatApi } = await import('@web/data/api/chat');
 const { useUIStore } = await import('@web/stores/ui');
 import type { TrayItem } from '@web/stores/chat-attachments';
-import { trayNoticeText } from '@web/stores/chat-attachments';
 
 /**
  * A canvas node, ready.
@@ -89,7 +88,7 @@ describe('adding canvas nodes to the agent', () => {
     await attachToChat('p1', [node('a'), node('b'), node('c')]);
 
     expect(chatAttachments.trayOf('c1')).toEqual([]);
-    expect(notice()).toBe(trayNoticeText({ key: 'full', limit: 2 }));
+    expect(notice()).toBe('At most 2 items can be attached');
   });
 
   it('adds nothing when no conversation could be opened', async () => {
@@ -120,7 +119,7 @@ describe('opening the list above the box for an attempt', () => {
     vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
 
     expect(await openTray('p1')).toBeUndefined();
-    expect(notice()).toBe(trayNoticeText({ key: 'unavailable' }));
+    expect(notice()).toBe('Couldn’t attach right now. Try again.');
   });
 
   it('answers nothing when no conversation could be opened', async () => {

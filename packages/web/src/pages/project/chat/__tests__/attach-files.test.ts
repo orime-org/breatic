@@ -18,7 +18,7 @@ beforeEach(() => {
 
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
-import { chatAttachments, trayNoticeText } from '@web/stores/chat-attachments';
+import { chatAttachments } from '@web/stores/chat-attachments';
 
 const CONV = 'c1';
 
@@ -180,7 +180,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)[0]).toMatchObject({ status: 'failed', failure: 'too_long' });
-    expect(notice()).toBe(trayNoticeText({ key: 'tooLong' }));
+    expect(notice()).toBe('Too much content attached. Attach fewer items or shorter files.');
   });
 
   it('turns away a text file too big to fit without reading it, and says so', async () => {
@@ -190,7 +190,7 @@ describe('attaching picked files', () => {
 
     expect(extract).not.toHaveBeenCalled();
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toBe(trayNoticeText({ key: 'tooLong' }));
+    expect(notice()).toBe('Too much content attached. Attach fewer items or shorter files.');
   });
 
   it('reads a text file whose size could still fit', async () => {
@@ -215,14 +215,14 @@ describe('attaching picked files', () => {
     await pick([file('model.glb', 'model/gltf-binary')]);
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toBe(trayNoticeText({ key: 'unsupported', filename: 'model.glb' }));
+    expect(notice()).toBe('model.glb can’t be attached');
   });
 
   it('turns away a file larger than may be uploaded, and names it', async () => {
     await pick([file('film.mp4', 'video/mp4', 2_000_000)]);
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toBe(trayNoticeText({ key: 'tooLarge', filename: 'film.mp4' }));
+    expect(notice()).toBe('film.mp4 is too large to attach');
   });
 
   it('attaches none of a batch that would pass the item limit, and says so', async () => {
@@ -232,7 +232,7 @@ describe('attaching picked files', () => {
     );
 
     expect(chatAttachments.trayOf(CONV)).toEqual([]);
-    expect(notice()).toBe(trayNoticeText({ key: 'full', limit: 2 }));
+    expect(notice()).toBe('At most 2 items can be attached');
   });
 
   it('uploads media into the project it is attached in', async () => {

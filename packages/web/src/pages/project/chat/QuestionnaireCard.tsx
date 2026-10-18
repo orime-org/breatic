@@ -72,6 +72,25 @@ function QuestionLabel({ n, header }: { n: number; header: string }): React.JSX.
 }
 
 /**
+ * A question's heading: its numbered label, its text, and whether it takes
+ * several answers.
+ * @param root0 - The component props.
+ * @param root0.n - Its number, counting from 1.
+ * @param root0.question - The question.
+ * @returns The heading row.
+ */
+function QuestionHeading({ n, question }: { n: number; question: AskUserQuestion }): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <div className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1'>
+      <QuestionLabel n={n} header={question.header} />
+      <span className='min-w-0 break-words text-sm font-medium text-foreground'>{question.question}</span>
+      {question.multiSelect ? <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span> : null}
+    </div>
+  );
+}
+
+/**
  * A questionnaire the agent put to the reader (inner#1542): numbered
  * questions answered by clicking or writing, one press to send them all.
  *
@@ -224,13 +243,7 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
 
   return (
     <div data-testid='questionnaire-question' className='flex flex-col gap-1.5'>
-      <div className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1'>
-        <QuestionLabel n={n} header={question.header} />
-        <span className='min-w-0 break-words text-sm font-medium text-foreground'>{question.question}</span>
-        {question.multiSelect ? (
-          <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span>
-        ) : null}
-      </div>
+      <QuestionHeading n={n} question={question} />
       {withMedia && question.multiSelect ? (
         <div className='grid grid-cols-3 gap-1.5'>
           {question.options.map((option, i) => {
@@ -477,13 +490,7 @@ function RepliedLine({ questions }: { questions: AskUserQuestion[] }): React.JSX
         <div data-testid='questionnaire-readonly' className='flex flex-col gap-1.5'>
           {questions.map((question, index) => (
             <div key={`${String(index)}-${question.header}`} className='flex flex-col gap-0.5'>
-              <div className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1'>
-                <QuestionLabel n={index + 1} header={question.header} />
-                <span className='min-w-0 break-words text-sm text-foreground'>{question.question}</span>
-                {question.multiSelect ? (
-                  <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span>
-                ) : null}
-              </div>
+              <QuestionHeading n={index + 1} question={question} />
               {question.options.length > 0 ? (
                 <div className='flex flex-wrap gap-x-2 text-xs text-muted-foreground'>
                   {question.options.map((option) => (

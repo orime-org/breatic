@@ -42,7 +42,6 @@ import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
-import { trayNoticeText } from '@web/stores/chat-attachments';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
 import type { WatchedWire } from '@web/test-utils/chat-wire';
 
@@ -555,7 +554,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
     });
   });
 
-  it('sends nothing and says so beside the plus sign when the limits cannot be read', async () => {
+  it('sends nothing and says so in a toast when the limits cannot be read', async () => {
     vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
     const panel = renderHook(() => useChatSession('p-1', () => read));
     await waitFor(() => {
@@ -570,7 +569,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
     });
 
     expect(wire.sent()).toHaveLength(0);
-    expect(toastSpy.warning).toHaveBeenCalledWith(trayNoticeText({ key: 'sendUnavailable' }));
+    expect(toastSpy.warning).toHaveBeenCalledWith('Couldn’t send right now. Try again.');
     expect(panel.result.current.draft).toBe('summarise this');
   });
 });

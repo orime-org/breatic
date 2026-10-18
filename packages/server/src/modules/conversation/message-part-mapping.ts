@@ -37,7 +37,10 @@ const FAILED = "data-failed";
 /** The data part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = "data-truncated";
 
-/** The data part type carrying a turn that stopped to wait for an answer. */
+/**
+ * The data part type a turn stored before inner#1542 carries when it stopped
+ * to ask; read back for those rows, never written now.
+ */
 const BLOCKED = "data-blocked";
 
 /** The data part naming the questionnaire a turn stopped at (inner#1542). */
@@ -130,7 +133,6 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
     else if (part.type === FAILED) stored.push({ type: "failed" });
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
-    else if (part.type === BLOCKED) stored.push({ type: "blocked" });
     else if (part.type === THINKING_TIME) {
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === "number" && Number.isFinite(ms) && ms >= 0) {

@@ -111,8 +111,6 @@ export {
   SAVE_IMAGE,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
-export type { AskUserContext } from "@domain/agent/tools/ask-user.js";
-export type { ToolContext } from "@domain/agent/tools/index.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";

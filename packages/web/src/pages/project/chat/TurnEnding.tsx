@@ -74,8 +74,10 @@ interface TurnEndingProps {
  * built around that one move.
  *
  * A reply with nothing in it is told apart from a turn waiting on an answer
- * by the mark the server writes, never by reading the tool names -- which
- * tools stop a turn is a list in a package this one may not import.
+ * by what the server put on it, never by reading the tool names -- which
+ * tools stop a turn is a list in a package this one may not import. A turn
+ * waiting at a questionnaire is drawn by its card; `blocked` is the mark rows
+ * stored before inner#1542 carry.
  * @param root0 - The component props.
  * @param root0.message - The message this ending belongs to.
  * @returns The line, or nothing for a turn that ended with an answer.

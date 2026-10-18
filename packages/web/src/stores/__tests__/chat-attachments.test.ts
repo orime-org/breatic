@@ -27,11 +27,10 @@ import {
 } from '@web/stores/chat-attachments';
 
 /**
- * What is said above one conversation's box.
- * @param conversationId - The conversation.
- * @returns The notice, or null.
+ * The last warning the reader was shown.
+ * @returns Its text, or null.
  */
-function noticeIn(_conversationId: string): unknown {
+function lastWarning(): unknown {
   return toastSpy.warning.mock.calls.at(-1)?.[0] ?? null;
 }
 
@@ -82,12 +81,12 @@ describe('adding a batch', () => {
 
   it('says so when a batch would pass the item limit', () => {
     chatAttachments.add('c1', [node('a'), node('b'), node('c'), node('d')], LIMITS);
-    expect(noticeIn('c1')).toBe(trayNoticeText({ key: 'full', limit: LIMITS.maxItems }));
+    expect(lastWarning()).toBe('At most 3 items can be attached');
   });
 
   it('says so when a batch would pass the length limit', () => {
     chatAttachments.add('c1', [node('big', 'y'.repeat(LIMITS.maxChars))], LIMITS);
-    expect(noticeIn('c1')).toBe(trayNoticeText({ key: 'tooLong' }));
+    expect(lastWarning()).toBe('Too much content attached. Attach fewer items or shorter files.');
   });
 
   it('refuses the whole batch when it would pass the item limit', () => {
@@ -137,7 +136,7 @@ describe('an upload coming back', () => {
       status: 'failed',
       failure: 'too_long',
     });
-    expect(noticeIn('c1')).toBe(trayNoticeText({ key: 'tooLong' }));
+    expect(lastWarning()).toBe('Too much content attached. Attach fewer items or shorter files.');
   });
 
   it('is dropped when the item was removed while it was on its way', () => {

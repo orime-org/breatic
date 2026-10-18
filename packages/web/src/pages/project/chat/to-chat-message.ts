@@ -42,7 +42,7 @@ const FAILED = 'data-failed';
 /** The part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = 'data-truncated';
 
-/** The part type carrying a turn that stopped to wait for an answer. */
+/** The mark a reply stored before inner#1542 carries when it stopped to ask. */
 const BLOCKED = 'data-blocked';
 
 /** The mark naming the questionnaire a turn stopped at (inner#1542). */
@@ -358,9 +358,12 @@ export function toChatMessage(
   const failureLines: ChatFailureLine[] = [];
   let open: Array<{ tool: string; line: ChatFailureLine }> = [];
   const deferred: number[] = [];
-  /** Put the lines waiting on an open code fence once it has closed. */
-  const placeDeferred = (): void => {
-    if (fenceOpen(body)) return;
+  /**
+   * Put the lines waiting on an open code fence once it has closed.
+   * @param force - Put them even inside an open fence: the reply has ended.
+   */
+  const placeDeferred = (force = false): void => {
+    if (!force && fenceOpen(body)) return;
     for (const index of deferred.splice(0)) body += `${body === '' ? '' : '\n\n'}${failurePlaceholder(index)}`;
   };
   /** Place the failures since the last prose, the same line twice in a row once. */
@@ -507,9 +510,7 @@ export function toChatMessage(
   }
 
   placeOpen();
-  if (deferred.length > 0) {
-    for (const index of deferred.splice(0)) body += `${body === '' ? '' : '\n\n'}${failurePlaceholder(index)}`;
-  }
+  placeDeferred(true);
 
   // A page found by two searches was handed two numbers, and the prose can
   // carry either: one line answers to both, and both numbers resolve to that

@@ -11,7 +11,7 @@ import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 // `FAILURE_LINES` 这张表。所以 `i18n-no-missing-keys` 扫不到它们（那条守卫
 // 只认「字面量本身就是 t() 的整个参数」），而且它也只读 en.json 一份。
 //
-// 缺英文那份 → 用户屏幕上直接读到 `chat.tool.failure.upstream` 这串裸 key；
+// 缺英文那份 → 用户屏幕上直接读到 `chat.tool.failure.busy` 这串裸 key；
 // 缺另外四份之一 → 那个语种的界面里冒出一句英文。两样都没有任何东西会报。
 //
 // 键从表里取，不在这儿抄一份：抄一份就会跟表漂开，而漂开的那天正是有人往

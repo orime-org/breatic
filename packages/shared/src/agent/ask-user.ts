@@ -27,10 +27,10 @@ const ONE_LINE = /^[^\n\r\u2028\u2029]+$/;
 const line = (max: number): z.ZodString => z.string().trim().min(1).max(max).regex(ONE_LINE);
 
 /** How many questions one card holds. */
-export const ASK_USER_MAX_QUESTIONS = 4;
+const ASK_USER_MAX_QUESTIONS = 4;
 
 /** How many options one question offers. */
-export const ASK_USER_MAX_OPTIONS = 5;
+const ASK_USER_MAX_OPTIONS = 5;
 
 /** How long the reader's own words on one question's "Other" line may be. */
 export const ASK_USER_OTHER_MAX_CHARS = 500;

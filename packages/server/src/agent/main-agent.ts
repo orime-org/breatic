@@ -716,7 +716,7 @@ export class MainAgent {
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
-          // Said on the wire for the same reason as the two above: the SDK
+          // Said on the wire for the same reason as the one above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
           // the reader as the turn ends. A turn that never gets here -- one
           // stopped mid-answer -- has the same figure written into its

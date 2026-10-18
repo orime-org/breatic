@@ -33,15 +33,6 @@ import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 const proposeDocumentEdit = makeProposeDocumentEdit();
 
 /**
- * Complete mapping of tool name to tool instance.
- *
- * Exported so a guard can hold every registered tool to the same rules. It is
- * this map that `buildToolSet` reads, and a tool reaches a turn by being in it
- * — the re-export block at the foot of this file is a convenience for
- * importers and nothing consults it, so a guard standing on that list would
- * miss any tool registered here without also being re-exported.
- */
-/**
  * What a turn knows that a tool needs when it is built.
  *
  * Optional at every build site: a tool built without it (a test, a probe)
@@ -52,6 +43,15 @@ export type ToolContext = AskUserContext;
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
 
+/**
+ * Complete mapping of tool name to tool instance.
+ *
+ * Exported so a guard can hold every registered tool to the same rules. It is
+ * this map that `buildToolSet` reads, and a tool reaches a turn by being in it
+ * — the re-export block at the foot of this file is a convenience for
+ * importers and nothing consults it, so a guard standing on that list would
+ * miss any tool registered here without also being re-exported.
+ */
 export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>> = {
   // How to build each tool for one turn. A tool that carries state for the
   // length of a turn -- the search tools share one space of citation numbers
@@ -190,8 +190,6 @@ export function buildToolSet(
   }
   return result;
 }
-
-export type { AskUserContext } from "@domain/agent/tools/ask-user.js";
 
 export {
   makeAskUserTool,
