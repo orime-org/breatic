@@ -26,10 +26,10 @@ export interface ToolCall {
   /** How far this use of the tool got, as the store recorded it. */
   status: 'pending' | 'success' | 'error';
   /**
-   * Which of the three endings left it without a result.
+   * Which of the four endings left it without a result.
    *
-   * A failure, a turn the user stopped and a call turned away all come over
-   * as `error`, and they are shown differently. While a turn is still
+   * A failure, a turn the user stopped, a call turned away and a call that
+   * never ran all come over as `error`, and they are shown differently. While a turn is still
    * streaming the SDK's client assembles those parts itself, so only a call
    * turned away is told apart, by the marker the server puts in its error
    * text; anything else is a failure there — a call the user stopped is left

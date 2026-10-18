@@ -413,8 +413,8 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
     // A chat that could not be read has nothing to take away. Saying loading
     // there is the whole of what a retry looks like: the scrim goes, the wait is
     // shown, and a second failure brings the scrim back. Without it the retry
-    // button changed nothing on screen at all -- the only word about it went to
-    // the notice line, which that same scrim is covering.
+    // button changed nothing in the column at all -- the only word about it was
+    // a toast, and the scrim stayed exactly as it was.
     useStore.setState((s) =>
       s.openStatus[projectId] === 'ready'
         ? s
@@ -876,7 +876,7 @@ function navigationEnded(projectId: string, token: number, landed: boolean): voi
       ? {
         openStatus: { ...s.openStatus, [projectId]: 'failed' as OpenStatus },
         // Nothing came back to quote: what failed was some request whose own
-        // sentence went to the notice line. A reason still held here is from
+        // sentence was already told in a toast. A reason still held here is from
         // an earlier failure and must not be worn as this one's.
         openFailure: (({ [projectId]: _gone, ...rest }) => rest)(s.openFailure),
       }

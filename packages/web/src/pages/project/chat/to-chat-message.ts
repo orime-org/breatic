@@ -186,8 +186,9 @@ const LEGACY = new Set<string>(Object.values(LEGACY_FAILURE_LINES));
 
 /**
  * The line a tool part that ended in an error is drawn with, or null when it
- * draws none: a call stopped, turned away, or that never ran -- the turn's
- * own ending line says what happened to those.
+ * draws none: a call turned away failed at nothing and is shown nothing, and
+ * for a call stopped or one that never ran the turn's own ending line says
+ * what happened.
  * @param part - The tool part.
  * @param part.state - Where it stands.
  * @param part.input - What the model sent.

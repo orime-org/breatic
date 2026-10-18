@@ -195,7 +195,8 @@ function toUiPart(part: MessagePart): UiPart {
     // key for the panel to translate -- a key rather than a sentence
     // because the row outlives the language it was written in -- or, for a
     // call turned away, the marker that says to draw nothing; and
-    // `failureKind` says which of the three endings this was, which is a
+    // `failureKind` says which of the four endings this was (failed,
+    // stopped, turned away, never ran), which is a
     // different question from what to say about it. The model's copy of
     // the reason names hosts, statuses and, for a refused fetch, addresses
     // inside the network, and it stops here.

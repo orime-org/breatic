@@ -108,9 +108,8 @@ interface ConversationHistorySheetProps {
   /**
    * The last attempt at the next page failed.
    *
-   * Two things follow. The reader is told here rather than in the panel: this
-   * sheet is opaque and covers the column, so a line above the composer is a
-   * line nobody can read. And what is watched changes: the end of the list stops being
+   * The reader is told in a toast as it happens (inner#1530); what this
+   * changes here is what is watched: the end of the list stops being
    * watched and a single scroll is watched instead -- a failure moves nothing,
    * so an end still in view would have the failure asking again on its own.
    */

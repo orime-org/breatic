@@ -105,10 +105,11 @@ function toMessageData(row: StoredRow): MessageData {
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- *   `main-agent.ts` writes the user's own message through here before a turn
- *   starts, so a conversation that is already gone fails the turn before any
- *   billing state exists. Later in the turn this throw does not stop the
- *   billing: a failure there is recorded and the turn still settles, having
+ *   `main-agent.ts` writes the user's own message through `addReaderMessage`,
+ *   which numbers it with the same locked insert, before a turn starts, so a
+ *   conversation that is already gone fails the turn before any billing state
+ *   exists. Here, the reply is written later in the turn, and this throw does
+ *   not stop the billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
 export async function addMessage(id: string, message: MessageInput, forModel?: unknown): Promise<number> {

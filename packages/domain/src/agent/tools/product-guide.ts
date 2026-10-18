@@ -310,7 +310,8 @@ export function renderProductGuide(): string {
       `whose line ends ${quoted(t("chat.tool.failure.busy"))}; ` +
       "the reasons say whether waiting, another link, a smaller file, more storage or edit access would help. " +
       "The same line twice in a row shows once, followed by a multiplication sign and how many times. A step " +
-      "that failed and then worked when tried again leaves no line, and a stopped reply says so in its own line. " +
+      "that failed and then worked when the same tool ran again before the reply went on leaves no line; once " +
+      "the reply has written something after the failure, the line stays. A stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
       "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +

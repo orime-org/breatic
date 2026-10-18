@@ -110,7 +110,7 @@ function trayOf(conversationId: string): readonly TrayItem[] {
  * attaching a node again after editing it sends what it says now. The rest go
  * in together only if the list then still fits both limits; a batch that
  * partly went in would leave the reader to work out which part. A refused
- * batch is said so beside the attach button.
+ * batch is told in a toast.
  * @param conversationId - The conversation it is attached in.
  * @param batch - The items, in order.
  * @param limits - The limits the list is held to.
@@ -158,7 +158,7 @@ function update(conversationId: string, id: string, change: (item: TrayItem) => 
  * An upload or extraction has what it was waiting for.
  *
  * Its length is known only now, so the list is measured again: past the
- * limit, the item fails as too long and that is said beside the attach button.
+ * limit, the item fails as too long and that is told in a toast.
  * @param conversationId - The conversation.
  * @param id - The item.
  * @param chip - What is sent for it.

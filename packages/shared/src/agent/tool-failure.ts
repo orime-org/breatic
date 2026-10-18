@@ -130,8 +130,8 @@ export type ToolFailureKind =
    */
   | "turned_away"
   /**
-   * The call never ran: the turn failed or was cut off while its arguments
-   * were still arriving. The turn's own ending line says what happened, so
+   * The call never ran: the turn failed or was cut off before it did, whether
+   * its arguments were still arriving or had just finished. The turn's own ending line says what happened, so
    * the reader is shown nothing for the call.
    */
   | "never_ran";
