@@ -1115,6 +1115,12 @@
         "grain": "颗粒",
         "fade": "褪色"
       },
+      "adjustGroup": {
+        "light": "光线",
+        "color": "颜色",
+        "detail": "细节",
+        "effects": "效果"
+      },
       "draw": {
         "brush": "画笔",
         "rect": "矩形",

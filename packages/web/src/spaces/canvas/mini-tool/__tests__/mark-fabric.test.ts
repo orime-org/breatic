@@ -149,11 +149,12 @@ describe('the markup’s look on the page', () => {
   // A face the page has not loaded is drawn and measured in another one.
   it('loads the face of every text before it is drawn', async () => {
     const load = vi.fn(() => Promise.resolve([]));
-    vi.stubGlobal('document', Object.assign(Object.create(document), { fonts: { load }, documentElement: document.documentElement }));
+    // jsdom has no font loading of its own.
+    Object.defineProperty(document, 'fonts', { value: { load }, configurable: true });
     try {
       await loadMarkFonts(OBJECTS, BOX);
     } finally {
-      vi.unstubAllGlobals();
+      Reflect.deleteProperty(document, 'fonts');
     }
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith(expect.stringContaining(TOKENS['--font-sans']), 'eye wider');

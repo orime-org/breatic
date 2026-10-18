@@ -1115,6 +1115,12 @@
         "grain": "그레인",
         "fade": "페이드"
       },
+      "adjustGroup": {
+        "light": "라이트",
+        "color": "색상",
+        "detail": "세부",
+        "effects": "효과"
+      },
       "draw": {
         "brush": "브러시",
         "rect": "사각형",

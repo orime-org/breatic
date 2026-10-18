@@ -59,6 +59,50 @@ export function markFontPx(size: number, box: DrawBox): number {
   return Math.min(box.width, box.height) * size * FONT_PER_SIZE;
 }
 
+/** The weight a markup text is written in; Inter's 500 ships with the app. */
+const MARK_FONT_WEIGHT = 500;
+
+/** A handle's side in screen pixels, as the crop and expand frames draw theirs. */
+const HANDLE_PX = 8;
+
+/**
+ * One of the product's tokens, as the page's root resolves it now.
+ * @param name - The custom property.
+ * @returns Its value.
+ * @throws {never} Never.
+ */
+function token(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+/**
+ * The family a markup text is written in: the product's sans.
+ * @returns The CSS font family list.
+ * @throws {never} Never.
+ */
+function markFontFamily(): string {
+  return token('--font-sans') || 'sans-serif';
+}
+
+/**
+ * Load the faces the texts are written in, so they are measured and drawn in
+ * them; a face the page has not loaded draws in another one.
+ * @param objects - The objects.
+ * @param box - The size they are drawn in.
+ * @returns When every face is loaded or failed to.
+ * @throws {never} Never: a face that fails to load leaves the browser's fallback.
+ */
+export async function loadMarkFonts(objects: readonly MarkObject[], box: DrawBox): Promise<void> {
+  const fonts = (document as Partial<Document>).fonts;
+  if (fonts === undefined) return;
+  const family = markFontFamily();
+  await Promise.all(
+    objects.flatMap((object) =>
+      object.kind === 'text' ? [fonts.load(`${MARK_FONT_WEIGHT} ${markFontPx(object.size, box)}px ${family}`, object.text).catch(() => [])] : [],
+    ),
+  );
+}
+
 /** What every markup object shares: a fixed stroke, no rotation, no skew, no flip. */
 const LOCKS = {
   strokeUniform: true,
@@ -100,6 +144,17 @@ function arrowPath(a: [number, number], b: [number, number], stroke: number): st
  */
 function tagged<T extends FabricObject>(shape: T, tags: MarkTags): T & MarkTags {
   shape.set(LOCKS);
+  // The crop and expand frames' grips: a background dot ringed with the
+  // foreground, round because a markup object resizes freely. Fabric draws
+  // them on its canvas, so the tokens are read off the page.
+  shape.set({
+    cornerStyle: 'circle',
+    cornerSize: HANDLE_PX,
+    transparentCorners: false,
+    cornerColor: token('--color-background'),
+    cornerStrokeColor: token('--color-foreground'),
+    borderColor: token('--color-active-border'),
+  });
   shape.setControlVisible('mtr', false);
   // A text keeps its four corners only: its scale becomes its font size, which
   // has one value for both directions (inner#1303 §6.2).
@@ -239,6 +294,8 @@ export function toFabric(object: MarkObject, box: DrawBox): MarkFabricObject {
         top: object.y * box.height,
         fill: object.color,
         fontSize: markFontPx(object.size, box),
+        fontFamily: markFontFamily(),
+        fontWeight: MARK_FONT_WEIGHT,
         originX: 'left',
         originY: 'top',
       });

@@ -1115,6 +1115,12 @@
         "grain": "Grain",
         "fade": "Fade"
       },
+      "adjustGroup": {
+        "light": "Light",
+        "color": "Color",
+        "detail": "Detail",
+        "effects": "Effects"
+      },
       "draw": {
         "brush": "Brush",
         "rect": "Rectangle",

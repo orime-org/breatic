@@ -1115,6 +1115,12 @@
         "grain": "粒子",
         "fade": "フェード"
       },
+      "adjustGroup": {
+        "light": "ライト",
+        "color": "カラー",
+        "detail": "ディテール",
+        "effects": "効果"
+      },
       "draw": {
         "brush": "ブラシ",
         "rect": "長方形",
