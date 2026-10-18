@@ -22,6 +22,8 @@
 
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
+import { Slice, type Fragment } from '@tiptap/pm/model';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
@@ -132,6 +134,41 @@ function applySpans(element: HTMLElement, props: CellProps): void {
 }
 
 /**
+ * How far a slice may stay open at one side and still keep its tables
+ * closed: the depth of the first table along that side's edge, or the open
+ * depth when no table is on it.
+ * @param content - The slice's content.
+ * @param open - How deep that side is open.
+ * @param side - -1 for the start, 1 for the end.
+ * @returns The open depth to use.
+ */
+function openAboveTables(content: Fragment, open: number, side: -1 | 1): number {
+  let node = side < 0 ? content.firstChild : content.lastChild;
+  for (let depth = 0; node !== null && depth < open; depth += 1) {
+    if (node.type.spec['tableRole'] === 'table') return depth;
+    node = side < 0 ? node.firstChild : node.lastChild;
+  }
+  return open;
+}
+
+/**
+ * Keeps a pasted table whole. A layout block's node is never isolating
+ * (BlockNote `meta.ts`), so a slice opened through a table would join its
+ * first or last cell's block with the block around the caret and leave the
+ * cell without it. Closing the slice at the table lands the table as a block.
+ */
+const keepPastedTablesWhole = new Plugin({
+  key: new PluginKey('doc-table-paste-whole'),
+  props: {
+    transformPasted: (slice) => {
+      const start = openAboveTables(slice.content, slice.openStart, -1);
+      const end = openAboveTables(slice.content, slice.openEnd, 1);
+      return start === slice.openStart && end === slice.openEnd ? slice : new Slice(slice.content, start, end);
+    },
+  },
+});
+
+/**
  * The node schema hook that gives the four table nodes their
  * prosemirror-tables role, with the table editing and column resizing
  * plugins. Only these nodes carry a role, so prosemirror-tables acts on this
@@ -142,6 +179,7 @@ const DocTableEditing = Extension.create({
   addProseMirrorPlugins: () => [
     columnResizing({ cellMinWidth: CELL_MIN_WIDTH, defaultCellMinWidth: DEFAULT_CELL_WIDTH, View: null }),
     tableEditing(),
+    keepPastedTablesWhole,
   ],
   extendNodeSchema: (extension) => {
     const role = TABLE_ROLES[extension.name];

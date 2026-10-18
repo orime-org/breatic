@@ -94,22 +94,25 @@ function tables(editor: Editor): string[][][] {
 }
 
 /**
- * The node names inside every cell, below the cell itself.
+ * Every cell's blocks with words in them, in document order.
  * @param editor - The editor.
- * @returns The names, deduplicated.
+ * @returns Per cell, each block as `type:words`.
  */
-function cellContentTypes(editor: Editor): string[] {
-  const names = new Set<string>();
+function cellBlocks(editor: Editor): string[][] {
+  const cells: string[][] = [];
   editor.prosemirrorState.doc.descendants((node) => {
     if (node.type.name !== 'docTableCell' && node.type.name !== 'docTableHeader') return true;
+    const blocks: string[] = [];
     node.descendants((inner) => {
-      names.add(inner.type.name);
-      return true;
+      if (inner.isTextblock) blocks.push(`${inner.type.name}:${inner.textContent}`);
+      return !inner.isTextblock;
     });
+    cells.push(blocks);
     return false;
   });
-  return [...names];
+  return cells;
 }
+
 
 const EXCEL_HTML =
   '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">' +
@@ -162,16 +165,29 @@ describe('pasting a table from elsewhere (A16)', () => {
     expect(tables(editor)[0]![0]).toEqual(['key', 'value']);
   });
 
-  it('keeps only the words of a list or an image inside a pasted cell', () => {
+  it('keeps a list in a pasted cell as a list, and leaves out an image from elsewhere', () => {
     const editor = open();
 
     paste(editor, { 'text/html': WEB_HTML, 'text/plain': 'key\tvalue' });
 
-    const [, body] = tables(editor)[0]!;
-    expect(body![0]).toContain('one');
-    expect(body![0]).toContain('two');
-    expect(body![1]).toContain('plain');
-    expect(cellContentTypes(editor).sort()).toEqual(['tableParagraph', 'text']);
+    expect(cellBlocks(editor)).toEqual([
+      ['paragraph:key'],
+      ['paragraph:value'],
+      ['bulletListItem:one', 'bulletListItem:two'],
+      ['paragraph:plain'],
+    ]);
+  });
+
+  it('leaves an empty paragraph in a cell that held only an image from elsewhere', () => {
+    const editor = open();
+
+    paste(editor, {
+      'text/html': '<table><tr><td>a</td><td><img src="https://example.com/x.png"></td></tr></table>',
+      'text/plain': 'a',
+    });
+
+    expect(cellBlocks(editor)).toEqual([['paragraph:a'], ['paragraph:']]);
+    expect(() => editor.prosemirrorState.doc.check()).not.toThrow();
   });
 
   it('lands a markdown pipe table as a table', () => {
