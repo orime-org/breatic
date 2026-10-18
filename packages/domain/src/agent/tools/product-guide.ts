@@ -807,10 +807,12 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, and " +
+      "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, in four " +
+      `groups headed ${quoted(t("canvas.miniTool.adjustGroup.light"))}, ${quoted(t("canvas.miniTool.adjustGroup.color"))}, ` +
+      `${quoted(t("canvas.miniTool.adjustGroup.detail"))} and ${quoted(t("canvas.miniTool.adjustGroup.effects"))}, and ` +
       "opening it on a picture zooms the canvas in until the node and its panel fill the view (no closer than shows the " +
       "picture at its own pixels, and never out); " +
-      `${quoted(t("canvas.miniTool.panel.reset"))} above them puts every one back to zero, and the arrow stays ` +
+      `${quoted(t("canvas.miniTool.panel.reset"))} on the bottom line beside the cost puts every one back to zero, and the arrow stays ` +
       `greyed out while they are all at zero. ${quoted(t("canvas.miniTool.image.inpaint.label"))}, ` +
       `${quoted(t("canvas.miniTool.image.erase.label"))} and ${quoted(t("canvas.miniTool.image.sketch.label"))} ` +
       "take the drawing straight on the node: drag " +
