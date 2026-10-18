@@ -186,3 +186,40 @@ describe('ModelParamControls', () => {
     expect(container).toBeEmptyDOMElement();
   });
 });
+
+// inner#1304: the relight colour is a row of swatches, each value's colour from the shared light terms.
+describe('swatches', () => {
+  const RELIGHT = model({
+    light_color: {
+      description: '',
+      default: 'auto',
+      values: ['auto', 'warm'],
+      value_labels: { auto: 'Auto', warm: 'Warm' },
+      fill: 'tool',
+    },
+  });
+  const SWATCHES = [
+    { kind: 'swatches' as const, name: 'light_color', options: [{ value: 'auto', label: 'Auto' }, { value: 'warm', label: 'Warm' }] },
+  ];
+
+  it('draws one swatch per value, the chosen one marked, and writes a pressed one', async () => {
+    const { LIGHT_COLORS } = await import('@breatic/shared');
+    const onChange = vi.fn();
+    render(<ModelParamControls model={RELIGHT} mode='' value={{ light_color: 'auto' }} onChange={onChange} controls={SWATCHES} />);
+    const warm = screen.getByTestId('generate-param-light_color-swatch-warm');
+    expect(warm.querySelector('span')?.style.background).toBe(hexToRgb(LIGHT_COLORS.warm!.swatch));
+    expect(screen.getByTestId('generate-param-light_color-swatch-auto')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(warm);
+    expect(onChange).toHaveBeenCalledWith({ light_color: 'warm' });
+  });
+});
+
+/**
+ * How jsdom reads a hex colour back from a style.
+ * @param hex - `#rrggbb`.
+ * @returns `rgb(r, g, b)`.
+ */
+function hexToRgb(hex: string): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
