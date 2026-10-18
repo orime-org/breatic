@@ -10,6 +10,23 @@ import { Checkbox } from '@web/components/ui/checkbox';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { OUTSIDE_DIM, handleScale } from '@web/spaces/canvas/crop/crop-geometry';
+
+/** A frame inside the tile whose checkbox has the keyboard focus, one line wide in each tone. */
+const FOCUS_FRAME = [
+  'has-[:focus-visible]:after:content-[\'\']',
+  'has-[:focus-visible]:after:pointer-events-none',
+  'has-[:focus-visible]:after:absolute',
+  'has-[:focus-visible]:after:[inset:calc(var(--grid-line)*4)]',
+  'has-[:focus-visible]:after:border-solid',
+  'has-[:focus-visible]:after:border-foreground',
+  'has-[:focus-visible]:after:[border-width:var(--grid-line)]',
+  'has-[:focus-visible]:after:outline',
+  'has-[:focus-visible]:after:outline-background',
+  'has-[:focus-visible]:after:[outline-width:var(--grid-line)]',
+].join(' ');
+
+/** The ring of a tile's mark, white on the picture in either theme. */
+const MARK_RING = 'rgb(255 255 255)';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import { gridCuts } from '@web/spaces/canvas/mini-tool/grid-export';
@@ -97,6 +114,8 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
         top: geometry.at.y,
         width: geometry.box.width,
         height: geometry.box.height,
+        // A line's width at this zoom, for the tile that holds the focus.
+        ['--grid-line' as string]: `${scale}px`,
         gridTemplateColumns: xs.slice(1).map((x, i) => `${x - (xs[i] ?? 0)}fr`).join(' '),
         gridTemplateRows: ys.slice(1).map((y, i) => `${y - (ys[i] ?? 0)}fr`).join(' '),
       }}
@@ -113,7 +132,10 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
             key={cell}
             data-testid={`mini-tool-grid-tile-${cell}`}
             data-picked={on}
-            className='nodrag nopan relative cursor-pointer'
+            // The tile whose checkbox has the keyboard focus is framed in the
+            // cut lines' two tones, inset from the cuts so the two never
+            // overlap, and the focus shows on any picture.
+            className={`nodrag nopan relative cursor-pointer ${FOCUS_FRAME}`}
             style={on ? undefined : { backgroundColor: OUTSIDE_DIM }}
             onClick={() => toggle(cell)}
           >
@@ -123,8 +145,14 @@ export function NodeGridLayer({ nodeId, wrapper }: NodeGridLayerProps): React.JS
                 checked={on}
                 onClick={(event) => event.stopPropagation()}
                 onCheckedChange={() => toggle(cell)}
-                className='absolute rounded-full'
+                // The mark sits on the picture, so it looks the same in both
+                // themes, as OUTSIDE_DIM does: picked is a dark disc with a
+                // white tick, left out an empty white ring; both carry a
+                // shadow that lifts them off any pixel. The white ring is the
+                // same in both states, so it is no selected-state border.
+                className='absolute rounded-full bg-[rgb(0_0_0/0.25)] shadow-[0_1px_3px_rgb(0_0_0/0.45)] focus-visible:ring-0 data-[state=checked]:bg-[rgb(30_30_30)] data-[state=checked]:text-white'
                 style={{
+                  borderColor: MARK_RING,
                   top: CHECK_INSET_PX * scale,
                   right: CHECK_INSET_PX * scale,
                   transform: `scale(${scale})`,
