@@ -482,7 +482,12 @@
       "audio": "더블클릭하여 업로드",
       "3d": "더블클릭하여 3D 모델 업로드",
       "web": "더블클릭하여 URL 삽입",
-      "rightClickHint": "우클릭으로 생성 등"
+      "rightClickHint": "우클릭으로 생성 등",
+      "peer": {
+        "upload": "{name} 님이 업로드 중",
+        "readText": "{name} 님이 파일을 읽는 중",
+        "tool": "{name} 님이 {tool} 실행 중"
+      }
     },
     "textNode": {
       "editorPlaceholder": "내용을 입력하세요"
@@ -910,7 +915,7 @@
         "source_cut_off": "이 주소에서 파일을 끝까지 받지 못했습니다.",
         "unsupported_type": "{kind, select, image {지원하지 않는 형식입니다. 이미지는 {formats}을(를) 지원합니다.} video {지원하지 않는 형식입니다. 동영상은 {formats}을(를) 지원합니다.} audio {지원하지 않는 형식입니다. 오디오는 {formats}을(를) 지원합니다.} other {지원하지 않는 형식입니다.}}",
         "empty": "아무것도 받지 못했습니다.",
-        "internal": "저희 쪽에서 문제가 생겼습니다.",
+        "internal": "내부 서버 오류가 발생했습니다.",
         "no_credits": "사용할 수 있는 크레딧이 없습니다.",
         "credits_held": "크레딧이 실행 중인 작업에 묶여 있습니다.",
         "declined": "모델이 이 요청을 거부했습니다.",
@@ -958,6 +963,19 @@
         },
         "rotate": {
           "label": "회전/뒤집기"
+        },
+        "grid": {
+          "label": "격자 분할"
+        },
+        "adjust": {
+          "label": "색 보정"
+        },
+        "expand": {
+          "label": "확장",
+          "prompt": "채울 내용을 입력하세요. 비워 두면 이미지에 맞게 자연스럽게 넓힙니다"
+        },
+        "mark": {
+          "label": "마크업"
         }
       },
       "video": {
@@ -1054,6 +1072,12 @@
         },
         "transfer": {
           "label": "전송 특성"
+        },
+        "rows": {
+          "label": "행 수"
+        },
+        "cols": {
+          "label": "열 수"
         }
       },
       "panel": {
@@ -1072,7 +1096,11 @@
         "sourceChanged": "소재가 바뀌었습니다.",
         "sourceChangedByPeer": "공동 작업자가 소재를 바꿨습니다.",
         "couldNotStart": "도구를 시작하지 못했습니다. 다시 시도하세요.",
-        "drawingEmpty": "먼저 그림 위에 그려 주세요."
+        "drawingEmpty": "먼저 그림 위에 그려 주세요.",
+        "reset": "초기화",
+        "imageTooLarge": "이 이미지는 너무 커서 이 기기에서 색 보정할 수 없습니다.",
+        "sourceTooLargeToExpand": "이 이미지는 이미 확장할 수 있는 최대 크기입니다.",
+        "ratioTooLarge": "확장할 수 있는 최대 크기를 넘습니다"
       },
       "adjust": {
         "exposure": "노출",
@@ -1091,6 +1119,12 @@
         "grain": "그레인",
         "fade": "페이드"
       },
+      "adjustGroup": {
+        "light": "라이트",
+        "color": "색상",
+        "detail": "세부",
+        "effects": "효과"
+      },
       "draw": {
         "brush": "브러시",
         "rect": "사각형",
@@ -1102,6 +1136,20 @@
         "undo": "실행 취소",
         "redo": "다시 실행",
         "clear": "모두 지우기"
+      },
+      "mark": {
+        "select": "선택",
+        "arrow": "화살표",
+        "rect": "사각형",
+        "ellipse": "타원",
+        "line": "직선",
+        "pen": "펜",
+        "text": "텍스트"
+      },
+      "grid": {
+        "picked": "{picked} / {total}개 선택",
+        "pickAll": "모두 선택",
+        "pickNone": "모두 선택 해제"
       }
     },
     "template": {

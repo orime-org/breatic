@@ -10,13 +10,8 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
-import {
-  ROW_GAP_PX,
-  mediaFootprintHeight,
-  shiftRightPastOccupied,
-  textFootprintHeight,
-} from '@web/spaces/canvas/lib/place-flow';
+import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
+import { ROW_GAP_PX, shiftRightPastOccupied, textFootprintHeight } from '@web/spaces/canvas/lib/place-flow';
 
 const GAP = ROW_GAP_PX;
 const batch = { x: 1000, y: 500, width: 288, height: 192 };
@@ -78,9 +73,10 @@ describe('shiftRightPastOccupied', () => {
 
 describe('footprint heights shared by the layout and the canvas', () => {
   it('draws a portrait picture as tall as the node width allows', () => {
-    const inset = 8;
-    expect(mediaFootprintHeight(1080, 1920)).toBe(
-      ((EMPTY_NODE_SIZE.width - inset) * 1920) / 1080 + inset,
+    // The shell's 1px border and NodeMediaInset's p-1, on each side.
+    const frame = 2 * 1 + 2 * 4;
+    expect(mediaNodeHeight(1080, 1920)).toBe(
+      ((EMPTY_NODE_SIZE.width - frame) * 1920) / 1080 + frame,
     );
   });
 

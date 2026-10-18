@@ -5,14 +5,17 @@ import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, Rotate
 import * as React from 'react';
 
 import {
+  ADJUST_RANGES,
   defaultAdjustValue,
   parseAdjustValue,
   type AdjustValue,
   type ModelEntry,
 } from '@breatic/shared';
 import {
+  gridShapeOf,
   isModelTool,
   localParamLabelKey,
+  pickedCellsOf,
   UPRIGHT,
   type LocalToolSpec,
   type MiniToolMedium,
@@ -26,14 +29,18 @@ import { Input } from '@web/components/ui/input';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
 import { Textarea } from '@web/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
+import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
-import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
+import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
+import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
+import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
   BLOCKING_REFUSALS,
@@ -76,13 +83,80 @@ export interface MiniToolPanelProps {
   refusal: MiniToolRefusal;
   onRun: () => void;
   onClose: () => void;
+  /** An expand tool's ratio presets: the one in use, which fit under the model's cap, and the setter. */
+  expand?: {
+    ratio: ExpandRatio;
+    fits: (ratio: ExpandRatio) => boolean;
+    onRatio: (ratio: ExpandRatio) => void;
+  };
 }
+
+/**
+ * An expand tool's ratio presets. A ratio whose frame would pass the model's
+ * cap reads as unavailable and says why on hover; it stays a hoverable
+ * control, since a natively disabled button takes no pointer and could not
+ * say so.
+ * @param props - Component props.
+ * @param props.expand - The presets.
+ * @returns The group.
+ */
+const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
+  expand,
+}: {
+  expand: NonNullable<MiniToolPanelProps['expand']>;
+}): React.JSX.Element {
+  const t = useTranslation();
+  // The draft's own export, as the frame and the drawing controls read it.
+  const exporting = useCanvasSession((s) => s.miniTool?.exporting ?? false);
+  return (
+    <div>
+      <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p>
+      {/* Free and seven fixed ratios in two even rows of four, each portrait and landscape pair side by side. */}
+      <div className='grid grid-cols-4 gap-1.5'>
+        {EXPAND_RATIOS.map((ratio) => {
+          const fits = expand.fits(ratio);
+          // Value names stay English in every language, as the crop's do.
+          const button = (
+            <Button
+              key={ratio}
+              type='button'
+              variant={null}
+              size={null}
+              data-testid={`mini-tool-expand-ratio-${ratio}`}
+              aria-current={expand.ratio === ratio}
+              aria-disabled={!fits || exporting}
+              onClick={() => {
+                if (fits && !exporting) expand.onRatio(ratio);
+              }}
+              className={`${PARAM_OPTION_CLASS} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`}
+            >
+              {ratio === 'free' ? 'Free' : ratio}
+            </Button>
+          );
+          return fits ? (
+            button
+          ) : (
+            <Tooltip key={ratio}>
+              <TooltipTrigger asChild>{button}</TooltipTrigger>
+              <TooltipContent side='top'>{t('canvas.miniTool.panel.ratioTooLarge')}</TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 /** The icon an empty slot shows: what it wants. */
 const SLOT_ICONS = { image: ImageIcon, audio: Music, video: Film } as const;
 
-/** Signed adjust sliders run from -100 to 100, as the request schema bounds them. */
-const ADJUST_FIELDS = Object.keys(defaultAdjustValue) as (keyof AdjustValue)[];
+/** The adjust's channels in titled groups (light, color, detail, effects), in the order the panel lists them; each slider runs over its `ADJUST_RANGES` range. */
+const ADJUST_GROUPS: readonly { id: 'light' | 'color' | 'detail' | 'effects'; fields: readonly (keyof AdjustValue)[] }[] = [
+  { id: 'light', fields: ['exposure', 'highlights', 'shadows', 'contrast'] },
+  { id: 'color', fields: ['saturation', 'vibrance', 'temperature', 'tint', 'hue'] },
+  { id: 'detail', fields: ['sharpness', 'noiseReduction', 'clarity'] },
+  { id: 'effects', fields: ['vignette', 'grain', 'fade'] },
+];
 
 /**
  * A slot's picks as a list.
@@ -196,6 +270,8 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   } = props;
   const t = useTranslation();
   const blocked = BLOCKING_REFUSALS.has(refusal);
+  // The adjust's sliders, whose Reset sits in the footer.
+  const adjustParam = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   return (
     <CanvasPanel
       title={
@@ -209,6 +285,10 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
+        {spec.markup === true ? <MarkControls /> : null}
+        {props.expand !== undefined ? (
+          <ExpandRatioGroup expand={props.expand} />
+        ) : null}
         {spec.slots.length > 0 ? (
           <div className='flex flex-wrap gap-1.5'>
             {spec.slots.map((slot) => {
@@ -302,13 +382,30 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         )}
       </div>
       <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
-        <span
-          data-testid='mini-tool-credit'
-          className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-        >
-          <Star className='h-3.5 w-3.5' aria-hidden='true' />
-          {creditText}
-        </span>
+        <div className='flex items-center gap-3'>
+          <span
+            data-testid='mini-tool-credit'
+            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+          >
+            <Star className='h-3.5 w-3.5' aria-hidden='true' />
+            {creditText}
+          </span>
+          {/* The adjust's Reset clears every slider; it sits in the footer
+              beside the credit, at the other end of the row from Run. */}
+          {adjustParam === undefined ? null : (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              data-testid='mini-tool-adjust-reset'
+              onClick={() => onParams({ [adjustParam.key]: defaultAdjustValue })}
+              className='gap-1 text-xs'
+            >
+              <RotateCcw className='h-3 w-3' aria-hidden='true' />
+              {t('canvas.miniTool.panel.reset')}
+            </Button>
+          )}
+        </div>
         <Button
           type='button'
           variant={null}
@@ -503,27 +600,43 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
     case 'adjust': {
       const value = parseAdjustValue(params[param.key]);
       return (
-        // The height cuts a row in half, which says the list goes on below.
-        <ScrollArea viewportClassName='max-h-72 pr-2'>
-          <div className='flex flex-col gap-2'>
-            {ADJUST_FIELDS.map((field) => (
-              <ParamSliderRow
-                key={field}
-                name={field}
-                label={t(`canvas.miniTool.adjust.${field}`)}
-                min={-100}
-                max={100}
-                step={1}
-                origin={0}
-                value={value[field]}
-                format={String}
-                onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
-                testIdPrefix='mini-tool-adjust'
-                className={undefined}
-              />
-            ))}
-          </div>
-        </ScrollArea>
+        <div className='flex flex-col gap-1.5'>
+          {/* The height cuts a row in half, which says the list goes on below.
+              The scroller runs into the panel's right gutter, so the rows end
+              where Reset and the other tools' controls do and the bar shows
+              in the gutter. */}
+          <ScrollArea className='-mr-3' viewportClassName='max-h-72 pr-3'>
+            <div className='flex flex-col gap-3'>
+              {ADJUST_GROUPS.map((group) => (
+                <section key={group.id} data-testid={`mini-tool-adjust-group-${group.id}`} className='flex flex-col gap-2'>
+                  {/* A step smaller and dimmer than the slider labels, so a
+                      group's name reads as a heading over them. */}
+                  <h3 className='text-2xs font-medium text-foreground-disabled'>{t(`canvas.miniTool.adjustGroup.${group.id}`)}</h3>
+                  {group.fields.map((field) => (
+                    <ParamSliderRow
+                      key={field}
+                      name={field}
+                      label={t(`canvas.miniTool.adjust.${field}`)}
+                      min={ADJUST_RANGES[field].min}
+                      max={ADJUST_RANGES[field].max}
+                      step={1}
+                      origin={0}
+                      value={value[field]}
+                      format={String}
+                      // Each step goes into the session draft as the thumb moves,
+                      // so the node's picture follows it (A2); nothing here is in
+                      // the document, so no step becomes an undo entry.
+                      onDraft={(next) => onParams({ [param.key]: { ...value, [field]: next } })}
+                      onChange={(partial) => onParams({ [param.key]: { ...value, ...partial } })}
+                      testIdPrefix='mini-tool-adjust'
+                      className={undefined}
+                    />
+                  ))}
+                </section>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
       );
     }
     case 'orient': {
@@ -556,5 +669,36 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
         </div>
       );
     }
+    case 'cells': {
+      // The tiles themselves are picked on the node (NodeGridLayer); this row
+      // counts them and picks all or none.
+      const shape = gridShapeOf(spec, params);
+      if (shape === null) return null;
+      const total = shape.rows * shape.cols;
+      const picked = pickedCellsOf(spec, params)?.length ?? total;
+      const all = picked === total;
+      return (
+        <div className='flex items-center gap-2'>
+          <span data-testid='mini-tool-grid-picked' className='text-xs text-muted-foreground'>
+            {t('canvas.miniTool.grid.picked', { picked, total })}
+          </span>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            data-testid='mini-tool-grid-pick-all'
+            className='ml-auto text-xs'
+            onClick={() =>
+              onParams({ [param.key]: all ? Array.from({ length: total }, (_, index) => index) : [] })
+            }
+          >
+            {t(all ? 'canvas.miniTool.grid.pickNone' : 'canvas.miniTool.grid.pickAll')}
+          </Button>
+        </div>
+      );
+    }
+    case 'list':
+      // No tool declares a list yet; video split (inner#1306) brings its cut-point control.
+      return null;
   }
 }

@@ -32,6 +32,7 @@ import {
   type MiniToolJobReport,
 } from "@breatic/shared";
 import {
+  outputsOf,
   type ContainerOp,
   type MiniToolSpec,
 } from "@breatic/shared/mini-tools";
@@ -122,7 +123,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
       actingUserId: input.userId,
       taskId: input.taskId,
       deadlineAt,
-      outputs: spec.outputs,
+      outputs: outputsOf(spec, input.params),
     }),
   };
   await upstreamStepRepo.recordInline(step.id, { ...job }, 0);

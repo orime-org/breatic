@@ -394,10 +394,22 @@ export function renderProductGuide(): string {
       "sound node takes a new file of its kind; a file of another kind is refused with " +
       `${quoted(t("canvas.upload.typeMismatch"))} A text node's picker lists text, Markdown, PDF, Word and ` +
       "Excel files: plain text, PDF, .docx and Excel files give their text, which replaces what the node held. " +
-      "Any other file, an older .doc included, leaves the node as it was, and a message names the file it " +
-      "could not read.",
-    "A running, failed or expired task changes nothing on the node, which keeps showing what it holds, or its " +
-      "empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
+      "Any other file, an older .doc included, leaves the node as it was, and a message on the node names the " +
+      "file it could not read. From the moment a file is chosen or dropped until our server has taken it in " +
+      "(on a text node, until the file has been read), " +
+      "the person uploading sees a grey shimmering placeholder on the node; an upload that ends before then " +
+      "leaves the node where it is and replaces the placeholder with a red line saying why (such as the two " +
+      "messages above), which only that person sees and which goes away when the page is refreshed, when they " +
+      "upload to the node again, or once a generation they run from the node's panel is accepted. After that " +
+      "the upload is a task, shown with the node's task icons. Meanwhile everyone else in the project sees, on an " +
+      "empty node someone is filling, that person's name followed by what they are doing in place of the first " +
+      "line: uploading, reading the file, or running the tool by its name. The line goes once our server has " +
+      "taken the work in (the node then shows its task icons) or the file is read, if it fails, if their page " +
+      "gives up waiting for an answer, when they close that Space's tab or leave the page, or when their connection " +
+      "drops; it stays while they look at another Space. While it shows, it " +
+      "takes the place of the viewer's own red line on that node, which comes back once that line goes.",
+    "Apart from that placeholder, a running, failed or expired task changes nothing on the node, which keeps " +
+      "showing what it holds, or its empty look; what its tasks did is in the column of task icons described under Generating. A picture or " +
       "video node shows its width × " +
       "height just outside its top-right corner. Video and sound nodes have their own play, time, volume and, " +
       "for video, full-screen controls.",
@@ -440,7 +452,8 @@ export function renderProductGuide(): string {
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
       "files are served from an r2.dev address it opens the file in a new tab instead), then " +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
-      `text node connected to it, and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
+      "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools), " +
+      `and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
       "are greyed while the node holds nothing. A reading that cannot " +
       `begin says ${quoted(t("canvas.understand.couldNotStart"))} A file it cannot take makes no new node and ` +
       "says why: it is larger than a reading takes, or of a type it cannot read. If the node being read is " +
@@ -806,7 +819,15 @@ export function renderProductGuide(): string {
       "required one must be filled before the arrow works; a small X on a filled box empties it), and for some " +
       "tools a text box. A crop shows a box with " +
       "eight handles on the node and takes a ratio and a size in pixels in the panel; rotating turns and flips the " +
-      "picture on the node as you press. The tools you draw with take the drawing straight on the node: drag " +
+      "picture on the node as you press. Adjusting gives a slider for each setting, starting at zero, in four " +
+      `groups headed ${quoted(t("canvas.miniTool.adjustGroup.light"))}, ${quoted(t("canvas.miniTool.adjustGroup.color"))}, ` +
+      `${quoted(t("canvas.miniTool.adjustGroup.detail"))} and ${quoted(t("canvas.miniTool.adjustGroup.effects"))}, and ` +
+      "opening it on a picture zooms the canvas in until the node and its panel fill the view (no closer than shows the " +
+      "picture at its own pixels, and never out); " +
+      `${quoted(t("canvas.miniTool.panel.reset"))} on the bottom line beside the cost puts every one back to zero, and the arrow stays ` +
+      `greyed out while they are all at zero. ${quoted(t("canvas.miniTool.image.inpaint.label"))}, ` +
+      `${quoted(t("canvas.miniTool.image.erase.label"))} and ${quoted(t("canvas.miniTool.image.sketch.label"))} ` +
+      "take the drawing straight on the node: drag " +
       `with the left button to draw. Their panel starts with a row of icons whose names show on hover: ` +
       `${quoted(t("canvas.miniTool.draw.brush"))}, ${quoted(t("canvas.miniTool.draw.rect"))}, ` +
       `${quoted(t("canvas.miniTool.draw.ellipse"))} and ${quoted(t("canvas.miniTool.draw.eraser"))}, then ` +
@@ -818,18 +839,63 @@ export function renderProductGuide(): string {
       "the picture. A rectangle or ellipse fills on a mask and is an outline on a sketch; the eraser removes only " +
       "what was drawn. While the panel is open, Cmd+Z or Ctrl+Z and the undo and redo in the view bar step through " +
       "the drawing, and the arrow stays greyed out until something is drawn. " +
+      `${quoted(t("canvas.miniTool.image.mark.label"))} writes notes on the picture for people to read: its panel ` +
+      `starts with ${quoted(t("canvas.miniTool.mark.select"))}, ${quoted(t("canvas.miniTool.mark.arrow"))}, ` +
+      `${quoted(t("canvas.miniTool.mark.rect"))}, ${quoted(t("canvas.miniTool.mark.ellipse"))}, ` +
+      `${quoted(t("canvas.miniTool.mark.line"))}, ${quoted(t("canvas.miniTool.mark.pen"))} and ` +
+      `${quoted(t("canvas.miniTool.mark.text"))}, then undo, redo and clear, with the same size slider and colour ` +
+      "dots below. A shape or text drawn goes back to selecting; until the arrow is pressed, anything drawn can be " +
+      "selected, moved, resized, restyled or deleted with Delete or Backspace, which then deletes that object and " +
+      "not the node. Shapes, lines and pen strokes are picked by pressing on or right beside their line, and a " +
+      "press inside an outlined shape reaches what is under it, except that the selected one can be dragged from " +
+      "anywhere inside its frame, unless the press lands on something drawn above it, which is picked instead; a " +
+      "text is picked anywhere in its box. While the panel is open, Cmd+Z or Ctrl+Z and the view bar's undo and redo step through the " +
+      "markup as a whole, and the [ and ] keys step the size of the selected object, or of the next one drawn when " +
+      "none is selected; while a text is being typed, these keys act on the text itself. " +
+      "The arrow stays greyed out until something is drawn or written, and the result is a plain " +
+      `picture. ${quoted(t("canvas.miniTool.image.expand.label"))} puts a frame with eight handles over the ` +
+      "picture: drag them out past its edges, and once the frame is larger the picture can be dragged inside it. " +
+      `The panel's ${quoted(t("canvas.miniTool.param.aspect.label"))} offers Free, 1:1, 2:3, 3:2, 3:4, 4:3, ` +
+      "9:16 and 16:9; picking a ratio reshapes the frame around the picture and puts the picture back where it " +
+      "sits on the node, while Free only unlocks the ratio and leaves the frame and the picture where they are; a " +
+      `ratio the model cannot make that large is greyed out and says ${quoted(t("canvas.miniTool.panel.ratioTooLarge"))} ` +
+      "on hover. Below is a box for what to fill in, which can be left empty. The arrow stays greyed out until " +
+      "the frame reaches past the picture, and the node's task icons are hidden while the frame shows. " +
+      `${quoted(t("canvas.miniTool.image.grid.label"))} draws the cut lines on the picture and has two sliders, ` +
+      `${quoted(t("canvas.miniTool.param.rows.label"))} and ${quoted(t("canvas.miniTool.param.cols.label"))}, ` +
+      "each from 1 to 8 and starting at 3. Every tile starts picked, with a round check mark in its corner; a " +
+      "tile too small on screen for the mark shows none until the canvas is zoomed in. Clicking a tile on the " +
+      "picture, or its check mark, leaves it out and darkens it, and clicking again picks it back. A line under the sliders counts the tiles picked out of all of them, with a button that reads " +
+      `${quoted(t("canvas.miniTool.grid.pickNone"))} while every tile is picked and ` +
+      `${quoted(t("canvas.miniTool.grid.pickAll"))} otherwise. Changing the rows or columns, or the picture ` +
+      "changing, picks every tile again. The arrow stays greyed out at 1 by 1 and while no tile is picked. " +
       `${quoted(t("canvas.miniTool.image.upscale.label"))} for a picture offers ` +
       `three output sizes, 2K, 4K and 8K, each showing the pixel size it comes to on that picture (its long edge ` +
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
       `and when none can be used pressing the arrow says ${quoted(t("canvas.miniTool.panel.noUsableTier"))} Below the ` +
       `sizes, ${quoted(t("canvas.generatePanel.param.creativity"))} runs from staying close to the picture to adding ` +
-      "detail of its own. The bottom line says what it costs: crop and rotate are free, the video " +
-      "tools that work on the file are billed by how long they run, and the others show an estimate. The X, Esc or " +
-      "a click on empty canvas closes the panel. Pressing the arrow puts the result in new nodes to the right of the " +
-      "source, joined to it by a line and named after it (such as CROP- followed by its name); one undo takes them " +
-      "all away, and the source stays as it was. What the run did shows in the new node's column of task icons and " +
+      "detail of its own. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
+      "grid split are free, the video tools that work on the file are billed by how long they run, and the others show an " +
+      "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
+      `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
+      "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
+      "(a crop box, an expand frame, the grid's lines and tiles, markup or a drawing), and during a focus crop, the " +
+      "arrow keys pressed on the node and Cmd or Ctrl with C, V or D do nothing, so the node stays put and the panel " +
+      "stays open; text being typed and the controls on the node, such as a player's seek bar, keep their own keys. " +
+      "Pressing the arrow puts the result in new nodes to " +
+      "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
+      `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
+      "column it was cut from, inside a new group named GRID- followed by the source's name (even when one tile is " +
+      "picked), each tile named by its place (GRID-r1c1- and so on, then the source's name), and selects the group. " +
+      "When the new nodes are not already in view, the canvas slides to show them, with the source too when both " +
+      "fit at the current zoom, and zooms out only when the new nodes alone do not fit. " +
+      "One undo takes them all away, and the source " +
+      "stays as it was. The new nodes appear at once; until our server has taken the work in, the person who " +
+      "pressed sees a grey shimmering placeholder on them, and a run that ends before then shows a red line on " +
+      "them saying why, the same as an upload. What the run did shows in the new node's column of task icons and " +
       "its task list, the same as a generation. If the node's picture or video changes while the panel is open, " +
-      "the crop, range and turns go back to their start, and anything drawn on it is cleared.",
+      "the crop, range and turns go back to their start, the expand frame goes back over the picture, and " +
+      "anything drawn or written on it is cleared.",
     "",
     "## Focus crops",
     `In a picture or video panel, ${quoted(t("canvas.generatePanel.focus"))} takes a region of a picture or ` +

@@ -8,8 +8,9 @@
  * `'ip'` — the client address (pre-auth routes); `'ip+email'` — that address
  * paired with the validated email, so people behind one egress address do not
  * use up each other's attempts (inner#1478); `'user'` — the authenticated
- * user; `'socket'` — the connection's own address, for a listener no proxy
- * stands in front of. All quotas of a request are judged in one call to core,
+ * user; `{ userAndParam }` — that user plus one route param, one bucket per
+ * thing it names (one upload); `'socket'` — the connection's own address, for
+ * a listener no proxy stands in front of. All quotas of a request are judged in one call to core,
  * so a refused request takes up room in none of them.
  *
  * The client address follows the rule collab uses (`decideClientIdentity`):
@@ -31,8 +32,11 @@ import {
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 
-/** A quota's key dimension. */
-export type KeyBy = "ip" | "ip+email" | "user" | "socket";
+/**
+ * A quota's key dimension; `{ userAndParam }` is the signed-in user plus one
+ * route param, one bucket per thing that param names (such as one upload).
+ */
+export type KeyBy = "ip" | "ip+email" | "user" | "socket" | { readonly userAndParam: string };
 
 /** One quota a route is limited by. */
 export interface Quota {
@@ -80,8 +84,11 @@ function quotaKey(
   peer: () => string | undefined,
   client: () => ClientIdentityDecision,
 ): string | null {
-  if (keyBy === "user") return (c.get("user") as { id: string } | undefined)?.id ?? "anonymous";
   if (keyBy === "socket") return peer() ?? "unknown";
+  if (keyBy !== "ip" && keyBy !== "ip+email") {
+    const user = (c.get("user") as { id: string } | undefined)?.id ?? "anonymous";
+    return keyBy === "user" ? user : `${user}:${c.req.param(keyBy.userAndParam) ?? ""}`;
+  }
   const resolved = client();
   if (resolved.kind !== "identify") return null;
   return keyBy === "ip" ? resolved.identity : `${resolved.identity}:${emailHash(c)}`;

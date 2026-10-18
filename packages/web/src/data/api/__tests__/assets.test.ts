@@ -230,3 +230,27 @@ describe('assetsApi.fetchUploadStatus', () => {
     expect(options.validateStatus?.(401)).toBe(false);
   });
 });
+
+describe('assetsApi.requestUploadTicketBatch', () => {
+  it('sends every file of one export in the batch form and returns the answers in order', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ items: [{ refused: { reason: 'storage' } }] });
+
+    const answers = await assetsApi.requestUploadTicketBatch({
+      projectId: 'p1',
+      spaceId: 's1',
+      source: 'mini_tool',
+      toolName: 'image.grid',
+      items: [{ filename: 'GRID.png', contentType: 'image/png', size: 9, hash: 'c'.repeat(64), nodeId: 'n1' }],
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledWith('/assets/upload-ticket', {
+      project_id: 'p1',
+      space_id: 's1',
+      source: 'mini_tool',
+      tool_name: 'image.grid',
+      items: [{ filename: 'GRID.png', content_type: 'image/png', size: 9, client_hash: 'c'.repeat(64), node_id: 'n1' }],
+    });
+    expect(answers).toEqual([{ refused: { reason: 'storage' } }]);
+  });
+});
+

@@ -7,10 +7,12 @@ import * as React from 'react';
 import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { paintDrawing, type DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { visibleOps, type DrawingDraft, type DrawOp } from '@web/stores/drawing-draft';
+import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 
 interface NodeDrawLayerProps {
   /** The node this layer belongs to. */
@@ -28,9 +30,7 @@ interface NodeDrawLayerProps {
  * @returns The layer, or null when this node is not being drawn on.
  */
 export function NodeDrawLayer({ nodeId, wrapper }: NodeDrawLayerProps): React.JSX.Element | null {
-  const draft = useCanvasSession((s) =>
-    s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null,
-  );
+  const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const kind = draft === null ? undefined : miniToolById(draft.toolId)?.drawing?.kind;
   const drawing = kind === undefined ? null : (draft?.drawing ?? null);
   const geometry = useMediaGeometry(wrapper, drawing !== null);
@@ -232,9 +232,11 @@ function DrawSurface({ kind, drawing, exporting, geometry }: DrawSurfaceProps): 
   const place = { left: geometry.at.x, top: geometry.at.y, width: box.width, height: box.height };
   const ringSize = (drawing.size / 100) * Math.min(box.width, box.height);
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the node
     <div
       data-testid='mini-tool-draw-layer'
-      className={`nodrag nopan absolute touch-none ${strokes ? 'cursor-none' : 'cursor-crosshair'}${exporting ? ' pointer-events-none' : ''}`}
+      onClick={stopNodeClick}
+      className={`${TOOL_LAYER_CLASS} absolute touch-none ${strokes ? 'cursor-none' : 'cursor-crosshair'}${exporting ? ' pointer-events-none' : ''}`}
       style={place}
       onPointerDown={onDown}
       onPointerMove={onMove}

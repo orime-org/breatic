@@ -28,6 +28,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 import { ForbiddenError } from "@breatic/core";
 import { assetRepo, modelCatalog } from "@breatic/domain";
+import { miniToolById } from "@breatic/shared/mini-tools";
 
 import { createApp } from "../../app.js";
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
@@ -140,6 +141,50 @@ describe("POST /mini-tools", () => {
       mask_image: "https://assets.example.com/i/mask.png",
       prompt: "a red bow tie",
     });
+  });
+
+  it("sends the padded picture and the mask of its new area to the fill model", async () => {
+    const res = await post({
+      tool: "image.expand",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+      prompt: "a beach at dusk",
+      expand: { image: "https://assets.example.com/i/padded.png", mask: "https://assets.example.com/i/mask.png" },
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.taskService.create.mock.calls[0]?.[6]).toBe("bria-genfill");
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({
+      image: "https://assets.example.com/i/padded.png",
+      mask_image: "https://assets.example.com/i/mask.png",
+      prompt: "a beach at dusk",
+    });
+  });
+
+  it("fills an empty expand prompt with the tool's own and records it on the task", async () => {
+    await post({
+      tool: "image.expand",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+      prompt: "  ",
+      expand: { image: "https://assets.example.com/i/padded.png", mask: "https://assets.example.com/i/mask.png" },
+    });
+
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({
+      prompt: miniToolById("image.expand")?.prompt?.defaultText,
+    });
+  });
+
+  it("refuses an expand run that carries no padded picture, before any row opens", async () => {
+    const res = await post({
+      tool: "image.expand",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+      prompt: "",
+    });
+
+    expect(res.status).toBe(422);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 
   it("sends the sketch composite as the only image in the list", async () => {

@@ -18,7 +18,7 @@ vi.mock('@web/lib/toast', () => ({
 // jsdom has no 2D rasteriser; the pixel check runs in Playwright.
 vi.mock('@web/spaces/canvas/mini-tool/paint-drawing', () => ({ hasInk: vi.fn() }));
 
-import type { ModelCatalog, ModelEntry } from '@breatic/shared';
+import { defaultAdjustValue, type ModelCatalog, type ModelEntry } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
@@ -117,6 +117,7 @@ describe('MiniToolPanelContainer', () => {
         source: { url: 'a.png' },
       }),
       undefined,
+      { width: 1600, height: 1000 },
     );
   });
 
@@ -181,6 +182,17 @@ describe('MiniToolPanelContainer', () => {
     expect(toast.warning).toHaveBeenCalledOnce();
   });
 
+  it('picks every grid tile again when the source changes', () => {
+    canvasSessions.of('').getState().openMiniTool('src', 'image.grid', {
+      sourceContent: 'a.png',
+      params: { rows: 3, cols: 3, skip: [] },
+    });
+    canvasSessions.of('').getState().setMiniToolParam('skip', [1, 2]);
+    const view = render(tree(source('a.png'), () => Promise.resolve()));
+    view.rerender(tree(source('b.png'), () => Promise.resolve()));
+    expect(canvasSessions.of('').getState().miniTool?.params).toEqual({ rows: 3, cols: 3, skip: [] });
+  });
+
   // The crop is converted with the size the crop box read off the shown
   // picture, the size the export crops in (inner#888 §7.4.1); the node's own
   // record of its size can be missing or stale.
@@ -200,6 +212,61 @@ describe('MiniToolPanelContainer', () => {
     expect((screen.getByTestId('mini-tool-rect-w') as HTMLInputElement).value).toBe('800');
   });
 
+  // A7: a grid lays its tiles out from the source's pixels. A node that does
+  // not record them has them read off the picture it shows (round 2, R8).
+  it('runs a grid with the size read off the shown picture when the node records none', () => {
+    const shown = document.createElement('div');
+    shown.className = 'react-flow__node';
+    shown.dataset.id = 'src';
+    const img = document.createElement('img');
+    img.dataset.testid = 'image-node-img';
+    Object.defineProperty(img, 'naturalWidth', { value: 1200 });
+    Object.defineProperty(img, 'naturalHeight', { value: 800 });
+    shown.append(img);
+    document.body.append(shown);
+    canvasSessions.of('').getState().openMiniTool('src', 'image.grid', { sourceContent: 'a.png', params: {} });
+    const onRun = vi.fn(() => Promise.resolve());
+    const sizeless: CanvasNodeView[] = [
+      { id: 'src', type: 'image', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.png' } },
+    ];
+    render(tree(sizeless, onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.grid' }), expect.anything(), undefined, {
+      width: 1200,
+      height: 800,
+    });
+    shown.remove();
+  });
+
+  // inner#1303 §6.7: an adjust's result is the source's size, which its node
+  // is built at; a node that does not record it has it read off the picture.
+  it('runs an adjust with the size read off the shown picture when the node records none', () => {
+    const shown = document.createElement('div');
+    shown.className = 'react-flow__node';
+    shown.dataset.id = 'src';
+    const img = document.createElement('img');
+    img.dataset.testid = 'image-node-img';
+    Object.defineProperty(img, 'naturalWidth', { value: 300 });
+    Object.defineProperty(img, 'naturalHeight', { value: 800 });
+    shown.append(img);
+    document.body.append(shown);
+    canvasSessions.of('').getState().openMiniTool('src', 'image.adjust', {
+      sourceContent: 'a.png',
+      params: { value: { ...defaultAdjustValue, exposure: 20 } },
+    });
+    const onRun = vi.fn(() => Promise.resolve());
+    const sizeless: CanvasNodeView[] = [
+      { id: 'src', type: 'image', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.png' } },
+    ];
+    render(tree(sizeless, onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.adjust' }), expect.anything(), undefined, {
+      width: 300,
+      height: 800,
+    });
+    shown.remove();
+  });
+
   // A12: the range shows the whole clip until dragged, and that is what runs.
   it('runs a cut nobody dragged on the whole clip', () => {
     canvasSessions.of('').getState().openMiniTool('src', 'video.cut', { sourceContent: 'a.mp4', params: { range: null } });
@@ -213,6 +280,7 @@ describe('MiniToolPanelContainer', () => {
       'src',
       expect.objectContaining({ id: 'video.cut' }),
       expect.objectContaining({ params: { range: { start: 0, end: 12 } } }),
+      undefined,
       undefined,
     );
   });
@@ -267,10 +335,101 @@ describe('MiniToolPanelContainer', () => {
       canvasSessions.of('').getState().addDrawingStep({ ...STROKE, points: [[0.2, 0.2]] });
       render(tree(source('a.png'), onRun));
       fireEvent.click(screen.getByTestId('mini-tool-run'));
-      expect(onRun).toHaveBeenCalledWith('src', expect.objectContaining({ id: 'image.erase' }), expect.anything(), {
-        kind: 'mask',
-        ops: [{ ...STROKE, points: [[0.2, 0.2]] }],
+      expect(onRun).toHaveBeenCalledWith(
+        'src',
+        expect.objectContaining({ id: 'image.erase' }),
+        expect.anything(),
+        { kind: 'strokes', ops: [{ ...STROKE, points: [[0.2, 0.2]] }] },
+        { width: 1600, height: 1000 },
+      );
+    });
+  });
+
+  describe('markup', () => {
+    const RECT = { id: 'r', kind: 'rect', color: '#FF3B30', size: 5, x: 0.1, y: 0.1, w: 0.2, h: 0.2 } as const;
+    const TEXT = { id: 't', kind: 'text', color: '#FF3B30', size: 5, x: 0.5, y: 0.5, text: 'look' } as const;
+
+    beforeEach(() => {
+      canvasSessions.of('').getState().openMiniTool('src', 'image.mark', { sourceContent: 'a.png', params: {} });
+    });
+
+    it('leaves the text being edited at the press and hands the run the objects as they then stand', () => {
+      const onRun = vi.fn(() => Promise.resolve());
+      const session = canvasSessions.of('').getState();
+      session.commitMark([RECT]);
+      session.setMarkEditingText('look');
+      // The canvas writes the text back when it leaves the edit.
+      session.registerMarkChannel({
+        exitEditing: () => {
+          canvasSessions.of('').getState().commitMark([RECT, TEXT]);
+          canvasSessions.of('').getState().setMarkEditingText(null);
+        },
+        discardSelection: () => undefined,
       });
+      render(tree(source('a.png'), onRun));
+      fireEvent.click(screen.getByTestId('mini-tool-run'));
+      expect(onRun).toHaveBeenCalledWith(
+        'src',
+        expect.objectContaining({ id: 'image.mark' }),
+        expect.anything(),
+        { kind: 'mark', objects: [RECT, TEXT] },
+        { width: 1600, height: 1000 },
+      );
+    });
+
+    // A4, §6.6: the only text emptied in its edit leaves nothing; the press
+    // leaves the edit and finds nothing to run.
+    it('runs nothing when leaving the edit leaves the markup empty', () => {
+      const onRun = vi.fn(() => Promise.resolve());
+      const session = canvasSessions.of('').getState();
+      session.commitMark([TEXT]);
+      session.selectMark('t');
+      session.setMarkEditingText('look');
+      session.registerMarkChannel({
+        exitEditing: () => {
+          canvasSessions.of('').getState().commitMark([]);
+          canvasSessions.of('').getState().setMarkEditingText(null);
+        },
+        discardSelection: () => undefined,
+      });
+      render(tree(source('a.png'), onRun));
+      act(() => canvasSessions.of('').getState().setMarkEditingText(''));
+      expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('mini-tool-run'));
+      expect(onRun).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('expand', () => {
+    // A 1600×1000 source: 1:1 wraps it at 1600×1600, 16:9 at 1778×1000.
+    const GENFILL = { ...ERASER, name: 'bria-genfill', mode: ['expand'], max_output_side: 1700 } as unknown as ModelEntry;
+
+    beforeEach(() => {
+      client.setQueryData(modelCatalogQuery().queryKey, { ...CATALOG, image: [GENFILL] });
+      canvasSessions.of('').getState().openMiniTool('src', 'image.expand', { sourceContent: 'a.png', params: {} });
+    });
+
+    // inner#1303 round 14: an earlier press still waiting holds Run only.
+    it('leaves the ratios live while an earlier press still waits', () => {
+      let release: (() => void) | undefined;
+      void runOnce(miniToolIntent('', 'src', 'image.expand'), {
+        scope: 'mini-tool',
+        prepare: () =>
+          new Promise<null>((resolve) => {
+            release = () => resolve(null);
+          }),
+        send: vi.fn(),
+      });
+      render(tree(source('a.png'), () => Promise.resolve()));
+      expect(screen.getByTestId('mini-tool-run')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).not.toHaveAttribute('aria-disabled', 'true');
+      release?.();
+    });
+
+    it('holds the ratios to the model\'s longest side', () => {
+      render(tree(source('a.png'), () => Promise.resolve()));
+      expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).not.toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByTestId('mini-tool-expand-ratio-16:9')).toHaveAttribute('aria-disabled', 'true');
     });
   });
 });

@@ -91,6 +91,7 @@ export const ImageNode = React.memo(function ImageNode({
     >
       <NodeContent
         hasContent={hasContent}
+        emptySize={knowsSize ? { width: data.width!, height: data.height! } : undefined}
         placeholder={
           <NodePlaceholder modality='image' onActivate={onActivate} />
         }

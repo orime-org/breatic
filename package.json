@@ -56,6 +56,10 @@
     "node": ">=24.15.0 <25.0.0"
   },
   "pnpm": {
+    "ignoredOptionalDependencies": [
+      "canvas",
+      "jsdom"
+    ],
     "overrides": {
       "ioredis": "5.11.1",
       "@ai-sdk/provider": "4.0.10",

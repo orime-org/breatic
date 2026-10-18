@@ -12,6 +12,7 @@ import {
 } from '@web/data/yjs/space-connection';
 import { useSocket } from '@web/data/yjs/use-socket';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
+import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
 
 interface OpenSpaceProps {
@@ -108,6 +109,9 @@ export const OpenSpace = React.memo(function OpenSpace({
       {type === 'document' ? (
         <DocumentInterceptGuard projectId={projectId} spaceId={spaceId} />
       ) : null}
+      {/* What this reader is waiting on in a canvas Space stays on the peers'
+        screens while another tab is on screen, so it is published with the tab. */}
+      {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
       {body}
     </SpaceConnection>
   );

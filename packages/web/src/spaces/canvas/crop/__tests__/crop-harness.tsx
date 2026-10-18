@@ -9,13 +9,17 @@
  */
 
 import { act, fireEvent, screen } from '@testing-library/react';
-import { ReactFlow, type Node, type NodeProps } from '@xyflow/react';
+import { ReactFlow, type Node, type NodeProps, type ReactFlowProps } from '@xyflow/react';
 import * as React from 'react';
 import { vi } from 'vitest';
 
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
+import { NodeAdjustLayer } from '@web/spaces/canvas/mini-tool/NodeAdjustLayer';
+import { NodeExpandLayer } from '@web/spaces/canvas/mini-tool/NodeExpandLayer';
+import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
+import { NodeMarkLayer } from '@web/spaces/canvas/mini-tool/NodeMarkLayer';
 
 /** The media's box on screen, and its layout size unless {@link LAYOUT} says otherwise. Mutable. */
 export const IMG_BOX = { left: 100, top: 50, width: 400, height: 300 };
@@ -47,6 +51,10 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
       )}
       <NodeCropLayer nodeId={id} wrapper={wrapper} />
       <NodeDrawLayer nodeId={id} wrapper={wrapper} />
+      <NodeGridLayer nodeId={id} wrapper={wrapper} />
+      <NodeAdjustLayer nodeId={id} wrapper={wrapper} />
+      <NodeExpandLayer nodeId={id} wrapper={wrapper} />
+      <NodeMarkLayer nodeId={id} wrapper={wrapper} />
     </div>
   );
 }
@@ -58,12 +66,16 @@ const NODE_TYPES = { media: MediaNode };
  * @param nodes - The media nodes, by id.
  * @param children - Rendered inside the ReactFlow, where canvas chrome lives.
  * @param zoom - The canvas zoom.
+ * @param pan - Where the canvas's origin sits on screen.
+ * @param flow - Grid snapping, as the canvas sets it.
  * @returns The tree.
  */
 export function cropCanvas(
   nodes: ReadonlyArray<{ id: string } & MediaNodeData>,
   children: React.ReactNode,
   zoom = 1,
+  pan = { x: 0, y: 0 },
+  flow: Pick<ReactFlowProps, 'snapToGrid' | 'snapGrid'> = {},
 ): React.JSX.Element {
   return (
     <div data-region='space'>
@@ -71,9 +83,10 @@ export function cropCanvas(
         nodes={nodes.map(({ id, ...data }) => ({ id, type: 'media', position: { x: 0, y: 0 }, data }))}
         edges={[]}
         nodeTypes={NODE_TYPES}
-        defaultViewport={{ x: 0, y: 0, zoom }}
+        defaultViewport={{ ...pan, zoom }}
         minZoom={CANVAS_MIN_ZOOM}
         maxZoom={CANVAS_MAX_ZOOM}
+        {...flow}
       >
         {children}
       </ReactFlow>

@@ -29,6 +29,21 @@ import {
   type DrawTool,
   type MaskDisplayColor,
 } from '@web/stores/drawing-draft';
+import { EMPTY_EXPAND, type ExpandDraft, type ExpandView } from '@web/stores/expand-draft';
+import {
+  EMPTY_MARK,
+  editStyleOf,
+  redoneMark,
+  restyled,
+  undoneMark,
+  withEditingText,
+  withObjects,
+  selectedMark,
+  type MarkChannel,
+  type MarkDraft,
+  type MarkObject,
+  type MarkTool,
+} from '@web/stores/mark-draft';
 import { immer } from 'zustand/middleware/immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
@@ -167,6 +182,10 @@ export interface MiniToolDraft {
   readonly sourceSize: { readonly width: number; readonly height: number } | null;
   /** What the reader has drawn; null on a tool without a drawing (inner#1302 §6.1). */
   readonly drawing: DrawingDraft | null;
+  /** The expand frame and its ratio; null on a tool that does not expand (inner#1303 §6.3). */
+  readonly expand: ExpandDraft | null;
+  /** What the reader has marked up; null on a tool that is not markup (inner#1303 §6.2). */
+  readonly mark: MarkDraft | null;
   /**
    * Run was pressed and what it makes in the browser (a browser tool's file,
    * or a drawing tool's images and their upload) is being made. Only the run
@@ -203,6 +222,21 @@ export interface FocusCrop {
 
 /** One canvas's session state and its writers. */
 export interface CanvasSessionState {
+  /**
+   * How the open markup's canvas is told to leave a text edit or drop its
+   * selection, registered by that canvas while it is mounted (inner#1303
+   * §6.2). The handlers that need it run outside the canvas and cannot reach
+   * its Fabric instance.
+   */
+  markChannel: MarkChannel | null;
+  /** Register the markup canvas's channel, or null when it unmounts. */
+  registerMarkChannel: (channel: MarkChannel | null) => void;
+  /**
+   * The colour and size the text being edited in the open markup shows
+   * (`editStyleOf`), or null when no text is being edited. Read through the
+   * session by the markup canvas, which loads apart from the page.
+   */
+  markEditStyle: () => { color: string; size: number } | null;
   /**
    * Whether the annotation tool is armed: the left menu's comment button was
    * pressed and the next canvas click says where the note goes (#1881 §6.4).
@@ -333,6 +367,33 @@ export interface CanvasSessionState {
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
   /** Record the source size the crop box read off the shown element. */
   setMiniToolSourceSize: (size: { width: number; height: number }) => void;
+  /**
+   * Set the expand frame and its ratio, on a tool that expands. A drag says how
+   * far the picture has moved; any other write that changes the frame wraps it
+   * around the picture where the node shows it, and one that leaves the frame
+   * as it was leaves the picture where it is.
+   */
+  setExpand: (next: Pick<ExpandDraft, 'frame' | 'ratio'> & { shift?: ExpandDraft['shift'] }) => void;
+  /** Record where the node shows the picture, for the expand frame drawn outside it. */
+  setExpandView: (view: ExpandView) => void;
+  /** Pick what a press on the node does in markup. */
+  setMarkTool: (tool: MarkTool) => void;
+  /** Set the markup colour; the selected object takes it too. */
+  setMarkColor: (color: string) => void;
+  /** Set the markup size; the selected object takes it too. */
+  setMarkSize: (size: number) => void;
+  /** Write the markup's objects as the canvas holds them, one step when they changed. */
+  commitMark: (objects: readonly MarkObject[]) => void;
+  /** Take the last markup step back. */
+  undoMark: () => void;
+  /** Put the last undone markup step back. */
+  redoMark: () => void;
+  /** Remove every markup object, as one step. */
+  clearMark: () => void;
+  /** Record which markup object is selected. */
+  selectMark: (id: string | null) => void;
+  /** Record the text being edited, or null when no text is. */
+  setMarkEditingText: (text: string | null) => void;
   /** Pick the shape a press on the node draws. */
   setDrawingTool: (tool: DrawTool) => void;
   /** Set the brush diameter, in percent of the source's shorter side. */
@@ -542,18 +603,36 @@ function updateDrawing(s: CanvasSessionState, next: (drawing: DrawingDraft) => D
 }
 
 /**
+ * Apply a change to the open markup draft, when there is one.
+ * @param s - The state being drafted.
+ * @param next - The change.
+ */
+function updateMark(s: CanvasSessionState, next: (mark: MarkDraft) => MarkDraft): void {
+  if (s.miniTool?.mark) s.miniTool = { ...s.miniTool, mark: castDraft(next(s.miniTool.mark as MarkDraft)) };
+}
+
+/**
  * Create one canvas's session store.
  * @returns The store.
  */
 export function createCanvasSessionStore(): CanvasSessionStore {
   return createStore<CanvasSessionState>()(
-    immer((set) => ({
+    immer((set, get) => ({
       placingAnnotation: false,
       annotationDrafts: {},
       panelHostId: null,
       panelKind: null,
       panelSession: 0,
       miniTool: null,
+      markChannel: null,
+      registerMarkChannel: (channel) =>
+        set((s) => {
+          s.markChannel = channel;
+        }),
+      markEditStyle: () => {
+        const mark = get().miniTool?.mark;
+        return mark == null ? null : editStyleOf(mark);
+      },
       focusCrop: null,
       historyFocus: null,
       editingTextNode: null,
@@ -615,13 +694,23 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               slots: {},
               sourceSize: null,
               drawing: miniToolById(toolId)?.drawing === undefined ? null : castDraft(EMPTY_DRAWING),
+              expand: miniToolById(toolId)?.expand === undefined ? null : castDraft(EMPTY_EXPAND),
+              mark: miniToolById(toolId)?.markup === true ? castDraft(EMPTY_MARK) : null,
               exporting: false,
             };
           }
         }),
       setMiniToolParam: (key, value) =>
         set((s) => {
-          if (s.miniTool) s.miniTool = { ...s.miniTool, params: { ...s.miniTool.params, [key]: value } };
+          if (!s.miniTool) return;
+          const params = { ...s.miniTool.params, [key]: value };
+          // The cells a grid leaves out are indices of its old shape; a new
+          // shape picks every cell again (inner#1303 §6.4).
+          const count = miniToolById(s.miniTool.toolId)?.outputCount;
+          if (count?.kind === 'product' && count.except !== undefined && count.params.includes(key)) {
+            params[count.except] = [];
+          }
+          s.miniTool = { ...s.miniTool, params };
         }),
       setMiniToolPrompt: (prompt) =>
         set((s) => {
@@ -653,9 +742,46 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               params: { ...s.miniTool.params, ...params },
               sourceSize: null,
               drawing,
+              expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
+              // The tool, colour and size stay as the reader set them; what was drawn goes.
+              mark:
+                s.miniTool.mark === null
+                  ? null
+                  : castDraft({ ...EMPTY_MARK, tool: s.miniTool.mark.tool, color: s.miniTool.mark.color, size: s.miniTool.mark.size }),
             };
           }
         }),
+      setExpand: (next) =>
+        set((s) => {
+          const held = s.miniTool?.expand;
+          if (s.miniTool && held) {
+            const same = JSON.stringify(held.frame) === JSON.stringify(next.frame);
+            const shift = next.shift ?? (same ? held.shift : EMPTY_EXPAND.shift);
+            s.miniTool = {
+              ...s.miniTool,
+              expand: castDraft({ ...held, frame: { ...next.frame }, ratio: next.ratio, shift: { ...shift } }),
+            };
+          }
+        }),
+      setExpandView: (view) =>
+        set((s) => {
+          if (s.miniTool?.expand && JSON.stringify(s.miniTool.expand.view) !== JSON.stringify(view)) {
+            s.miniTool = { ...s.miniTool, expand: castDraft({ ...s.miniTool.expand, view }) };
+          }
+        }),
+      // A drawing tool lets go of the selected object, so the next colour or
+      // size is the next object's (inner#1303 §6.6).
+      setMarkTool: (tool) =>
+        set((s) => updateMark(s, (m) => ({ ...m, tool, selectedId: tool === 'select' ? m.selectedId : null }))),
+      setMarkColor: (color) => set((s) => updateMark(s, (m) => restyled(m, { color }))),
+      setMarkSize: (size) => set((s) => updateMark(s, (m) => restyled(m, { size }))),
+      commitMark: (objects) => set((s) => updateMark(s, (m) => withObjects(m, objects))),
+      undoMark: () => set((s) => updateMark(s, undoneMark)),
+      redoMark: () => set((s) => updateMark(s, redoneMark)),
+      clearMark: () =>
+        set((s) => updateMark(s, (m) => ({ ...withObjects(m, []), selectedId: null }))),
+      selectMark: (id) => set((s) => updateMark(s, (m) => selectedMark(m, id))),
+      setMarkEditingText: (text) => set((s) => updateMark(s, (m) => withEditingText(m, text))),
       setMiniToolSourceSize: (size) =>
         set((s) => {
           if (s.miniTool) s.miniTool = { ...s.miniTool, sourceSize: { width: size.width, height: size.height } };
@@ -752,6 +878,17 @@ export function createCanvasSessionStore(): CanvasSessionStore {
         }),
     })),
   );
+}
+
+/**
+ * A selector for the mini-tool draft open on this node: its panel is open on
+ * the node and no slot pick is under way. Every layer on the node reads it, so
+ * they agree on when they are shown.
+ * @param nodeId - The node.
+ * @returns The selector, answering the draft or null.
+ */
+export function miniToolOpenOn(nodeId: string | null): (s: CanvasSessionState) => MiniToolDraft | null {
+  return (s) => (s.panelKind === 'miniTool' && s.panelHostId === nodeId && s.pickSession === null ? s.miniTool : null);
 }
 
 /**

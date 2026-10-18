@@ -4,13 +4,16 @@
 import { describe, it, expect } from 'vitest';
 import { type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 import { miniToolById, miniToolRequestSchema } from '@breatic/shared/mini-tools';
+import { EMPTY_MARK } from '@web/stores/mark-draft';
 
 import {
   BLOCKING_REFUSALS,
   aspectRatioOf,
   creditMode,
+  expandCapOf,
   exportsBeforeRun,
   miniToolRefusal,
+  promptRequired,
   rectForAspect,
   resolvedParams,
   setRectSide,
@@ -216,9 +219,134 @@ describe('miniToolRefusal', () => {
   });
 });
 
+describe('a grid', () => {
+  const grid = {
+    spec: tool('image.grid'),
+    entry: undefined,
+    prompt: '',
+    slots: {},
+    sourceShown: true,
+    source: { width: 400, height: 300 },
+    exporting: false,
+  };
+
+  // The tiles are laid out in the source's pixels; a press before they are
+  // known lays every row at the empty-node height.
+  it('holds Run back while the source size is unknown', () => {
+    expect(miniToolRefusal({ ...grid, source: {}, params: {} })).toBe('sourceMissing');
+  });
+
+  it('refuses one row by one column, which cuts nothing', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 1, cols: 1 } })).toBe('singleTile');
+  });
+
+  it.each([
+    [1, 2],
+    [2, 1],
+  ])('runs at %i by %i', (rows, cols) => {
+    expect(miniToolRefusal({ ...grid, params: { rows, cols } })).toBeNull();
+  });
+
+  it('runs at the default three by three', () => {
+    expect(miniToolRefusal({ ...grid, params: {} })).toBeNull();
+  });
+
+  it('runs with a single tile of three by three picked', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 3, cols: 3, skip: [0, 1, 2, 3, 5, 6, 7, 8] } })).toBeNull();
+  });
+
+  it('holds Run back while no tile is picked', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 3, cols: 3, skip: [0, 1, 2, 3, 4, 5, 6, 7, 8] } })).toBe(
+      'noTilePicked',
+    );
+  });
+
+  it('still calls one by one a single tile, whatever is picked', () => {
+    expect(miniToolRefusal({ ...grid, params: { rows: 1, cols: 1, skip: [0] } })).toBe('singleTile');
+  });
+});
+
+describe.each(['image.adjust', 'video.adjust'])('%s', (id) => {
+  const adjust = { spec: tool(id), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const source = { width: 1600, height: 1000, duration: 8 };
+
+  it('holds Run back while every slider is at zero', () => {
+    expect(miniToolRefusal({ ...adjust, source, params: {} })).toBe('adjustNeutral');
+    expect(miniToolRefusal({ ...adjust, source, params: { value: { exposure: 0 } } })).toBe('adjustNeutral');
+  });
+
+  it('runs once any slider moves', () => {
+    expect(miniToolRefusal({ ...adjust, source, params: { value: { grain: 3 } } })).toBeNull();
+  });
+});
+
+describe('the expand tool', () => {
+  const genfill = { ...entry({}, true), max_output_side: 12288 } as ModelEntry;
+  const expand = { spec: tool('image.expand'), entry: genfill, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const source = { width: 1600, height: 1000 };
+  const grown = { x: -0.25, y: 0, width: 1.5, height: 1 };
+
+  it('takes an empty prompt, since the tool has its own', () => {
+    expect(promptRequired(tool('image.expand'), genfill)).toBe(false);
+    expect(promptRequired(tool('image.inpaint'), genfill)).toBe(true);
+  });
+
+  it('exports the padded picture and its mask before the run', () => {
+    expect(exportsBeforeRun(tool('image.expand'))).toBe(true);
+  });
+
+  it('holds Run back while the frame is the source itself', () => {
+    expect(miniToolRefusal({ ...expand, source, expandFrame: { x: 0, y: 0, width: 1, height: 1 } })).toBe('frameNotExpanded');
+    expect(miniToolRefusal({ ...expand, source, expandFrame: grown })).toBeNull();
+  });
+
+  it('holds Run back while the frame pads the source by less than a pixel', () => {
+    const shot = { width: 1366, height: 768 };
+    expect(
+      miniToolRefusal({ ...expand, source: shot, expandFrame: { x: 0, y: -0.000244, width: 1, height: 1.000488 } }),
+    ).toBe('frameNotExpanded');
+  });
+
+  it('says a source too large to grow before it says the frame is not grown', () => {
+    expect(
+      miniToolRefusal({ ...expand, source: { width: 13000, height: 900 }, expandFrame: { x: 0, y: 0, width: 1, height: 1 } }),
+    ).toBe('sourceTooLargeToExpand');
+    expect(BLOCKING_REFUSALS.has('sourceTooLargeToExpand')).toBe(false);
+  });
+
+  it('stops the frame at the model\'s longest side, and nowhere for a model without one', () => {
+    expect(expandCapOf(genfill)).toBe(12288);
+    expect(expandCapOf(entry({}, true))).toBe(Infinity);
+  });
+});
+
+describe('the markup tool', () => {
+  const mark = { spec: tool('image.mark'), entry: undefined, prompt: '', slots: {}, sourceShown: true, exporting: false };
+  const RECT = { id: 'a', kind: 'rect', color: '#FF3B30', size: 5, x: 0.1, y: 0.1, w: 0.2, h: 0.2 } as const;
+
+  it('holds Run back while nothing is drawn', () => {
+    expect(miniToolRefusal({ ...mark, mark: { ...EMPTY_MARK } })).toBe('markEmpty');
+  });
+
+  it('runs with one object, or with a text still being typed', () => {
+    expect(miniToolRefusal({ ...mark, mark: { ...EMPTY_MARK, objects: [RECT] } })).toBeNull();
+    expect(miniToolRefusal({ ...mark, mark: { ...EMPTY_MARK, editingText: 'note' } })).toBeNull();
+  });
+});
+
 describe('BLOCKING_REFUSALS', () => {
   it('disables Execute for the reasons the reader fixes in the panel', () => {
-    expect([...BLOCKING_REFUSALS].sort()).toEqual(['drawingEmpty', 'exporting', 'promptMissing', 'slotMissing']);
+    expect([...BLOCKING_REFUSALS].sort()).toEqual([
+      'adjustNeutral',
+      'drawingEmpty',
+      'exporting',
+      'frameNotExpanded',
+      'markEmpty',
+      'noTilePicked',
+      'promptMissing',
+      'singleTile',
+      'slotMissing',
+    ]);
   });
 });
 

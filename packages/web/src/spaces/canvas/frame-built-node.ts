@@ -12,12 +12,18 @@
  * slide under them for no reason they can name.
  */
 
+import type { Viewport } from '@xyflow/react';
+
+import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
   centerOf,
   groupRectForMembers,
   type Point,
   type Rect,
 } from '@web/spaces/canvas/group-geometry';
+
+/** Room left around a node framed for a close look, as a fit leaves around the canvas. */
+const INSPECT_PADDING = 0.1;
 
 /** How long the canvas takes to slide what an action just made into view. */
 export const FRAME_PAN_MS = 300;
@@ -88,4 +94,94 @@ export function framedBox(copies: readonly Rect[], viewport: Rect): Rect | null 
   const all = groupRectForMembers(copies, 0);
   if (all === null) return null;
   return all.width <= viewport.width && all.height <= viewport.height ? all : (copies[0] ?? null);
+}
+
+/**
+ * The box of the nodes a press just wrote, each at the footprint it was laid
+ * out at: a node written this instant is not in ReactFlow's store yet to be
+ * measured, and it holds that footprint until something lands in it.
+ * @param built - Where the nodes were written and how large each is.
+ * @returns The box around them.
+ * @throws {never} Never.
+ */
+export function freshNodesBox(built: readonly [Rect, ...Rect[]]): Rect {
+  const x = Math.min(...built.map((at) => at.x));
+  const y = Math.min(...built.map((at) => at.y));
+  return {
+    x,
+    y,
+    width: Math.max(...built.map((at) => at.x + at.width)) - x,
+    height: Math.max(...built.map((at) => at.y + at.height)) - y,
+  };
+}
+
+/**
+ * Where to move the camera after a press builds something to the right of the
+ * node it was read from — a tool's result, a grid's group, an Understand
+ * node (inner#1303). Nothing moves while what was built is in view; else the
+ * camera slides at the reader's zoom, framing the source too when both fit;
+ * what does not fit at that zoom is shown whole by zooming out just enough, as
+ * a proposal is (`frameProposal`). It never zooms in.
+ * @param built - What the press built, in canvas coordinates.
+ * @param source - The node it was read from, or null when it is not on this canvas.
+ * @param pane - The canvas pane's size in screen pixels.
+ * @param pane.width - Its width.
+ * @param pane.height - Its height.
+ * @param now - The viewport the reader is at.
+ * @returns The viewport to move to, or null to stay.
+ * @throws {never} Never.
+ */
+export function viewportForBuilt(
+  built: Rect,
+  source: Rect | null,
+  pane: { width: number; height: number },
+  now: Viewport,
+): Viewport | null {
+  const { zoom } = now;
+  if (zoom <= 0) return null;
+  const view = { x: -now.x / zoom, y: -now.y / zoom, width: pane.width / zoom, height: pane.height / zoom };
+  if (built.width > view.width || built.height > view.height) return frameProposal(built, pane, zoom);
+  const at = frameBuiltNode(built, source, view);
+  if (at === null) return null;
+  return { x: pane.width / 2 - at.x * zoom, y: pane.height / 2 - at.y * zoom, zoom };
+}
+
+/**
+ * Where to move the camera when a tool whose effect is seen in fine detail
+ * opens on a node (the picture adjust, inner#1303 §6.1): close enough that the
+ * node and its panel fill the view, and no closer than shows the picture at
+ * its own pixels — the node then loads its full picture in place of the
+ * thumbnail. The panel hangs under the node at its screen size whatever the
+ * zoom, so only the node scales; centred under the node in the centred view,
+ * it fits across whatever the zoom, so only its height takes part. A reader
+ * already that close is left where they are; it never zooms out.
+ * @param node - The node, in canvas coordinates.
+ * @param panel - The panel under it, in screen pixels.
+ * @param panel.height - Its height.
+ * @param panel.gap - The space between the node and it.
+ * @param pane - The canvas pane's size in screen pixels.
+ * @param pane.width - Its width.
+ * @param pane.height - Its height.
+ * @param now - The viewport the reader is at.
+ * @param oneToOne - The zoom at which the picture shows at its own pixels.
+ * @returns The viewport to move to, or null to stay.
+ * @throws {never} Never.
+ */
+export function viewportToInspect(
+  node: Rect,
+  panel: { height: number; gap: number },
+  pane: { width: number; height: number },
+  now: Viewport,
+  oneToOne: number,
+): Viewport | null {
+  const across = pane.width * (1 - 2 * INSPECT_PADDING);
+  const down = pane.height * (1 - 2 * INSPECT_PADDING);
+  const zoom = Math.min(oneToOne, across / node.width, (down - panel.gap - panel.height) / node.height);
+  if (zoom <= now.zoom) return null;
+  const tall = node.height * zoom + panel.gap + panel.height;
+  return {
+    x: pane.width / 2 - (node.x + node.width / 2) * zoom,
+    y: (pane.height - tall) / 2 - node.y * zoom,
+    zoom,
+  };
 }

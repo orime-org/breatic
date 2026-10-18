@@ -56,7 +56,10 @@ export function CanvasPanel({
   children,
 }: CanvasPanelProps): React.JSX.Element {
   return (
-    <div className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'>
+    <div
+      data-canvas-panel=''
+      className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'
+    >
       <div className='flex items-center justify-between px-3 py-2.5'>
         <div className='flex items-baseline gap-2'>
           {title}

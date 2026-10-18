@@ -58,5 +58,8 @@ export function useNodeResolution(
     typeof width === 'number' && typeof height === 'number'
       ? { width, height }
       : undefined;
+  // A node that holds nothing has no picture to give a size of, even when it
+  // was built knowing the size its result will have (inner#1303 §6.7).
+  if (!content) return { resolution: undefined, setResolution: setMeasured };
   return { resolution: known ?? measured, setResolution: setMeasured };
 }
