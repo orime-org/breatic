@@ -114,8 +114,6 @@ export interface UsageRecorder {
   recordLookedUpCall(call: LookedUpCall): void;
   /** The generation ids of the OpenRouter calls to look up, for the caller to queue. */
   awaitingLookup(): readonly string[];
-  /** Credits of every row recorded so far, before any write has finished. */
-  spent(): number;
   settle(): Promise<number>;
 }
 
@@ -258,9 +256,6 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     },
     awaitingLookup() {
       return [...lookups];
-    },
-    spent() {
-      return credits;
     },
     async settle() {
       await Promise.all(pending);

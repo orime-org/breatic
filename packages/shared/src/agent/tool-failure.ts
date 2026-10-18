@@ -43,12 +43,6 @@ export const FAILURE_LINES = {
    */
   generic: "chat.tool.failure.generic",
   /**
-   * The studio cannot cover what the call would cost, so it was not made
-   * (inner#1611). Its own line because the remedy is the reader's: credits,
-   * not a retry.
-   */
-  credits: "chat.tool.failure.credits",
-  /**
    * The turn was stopped, and this use of a tool did not finish because of it.
    *
    * Covers a tool that was running when the stop landed and one the turn never

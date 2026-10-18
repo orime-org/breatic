@@ -40,7 +40,6 @@ describe("what a finished turn writes down", () => {
       ["failed", "data-failed"],
       ["truncated", "data-truncated"],
       ["blocked", "data-blocked"],
-      ["credits_exhausted", "data-credits-exhausted"],
     ] as const) {
       expect(toUiParts([{ type: stored }])).toEqual([{ type: wire, data: {} }]);
       expect(toStoredParts([{ type: wire, data: {} }] as never)).toEqual([{ type: stored }]);

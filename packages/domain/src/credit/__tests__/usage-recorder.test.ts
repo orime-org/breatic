@@ -301,14 +301,3 @@ describe("the usage recorder", () => {
     await expect(recorder.settle()).rejects.toThrow("db down");
   });
 });
-
-describe("what a recorder has spent so far (inner#1611)", () => {
-  it("adds up the credits of every row recorded, before anything is settled", () => {
-    const { recorder } = recorderWithRows(() => new Promise(() => undefined));
-    expect(recorder.spent()).toBe(0);
-    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 1 });
-    recorder.recordServiceCall({ source: "tool:web_search", service: "brave_web_search", provider: "brave", requests: 2 });
-    // 3 requests at $0.005 is 1.5 cents, doubled by the multiplier.
-    expect(recorder.spent()).toBeCloseTo(3, 9);
-  });
-});

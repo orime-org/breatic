@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { assertModelsHoldable, assertModelsPriced } from "@domain/credit/priced-models.js";
+import { assertModelsPriced } from "@domain/credit/priced-models.js";
 
 const PRICING = {
   models: {
@@ -50,17 +50,5 @@ describe("the startup price check", () => {
         providerOf,
       }),
     ).toThrow(/google\/gemini-9.*google\/gemini-8/);
-  });
-});
-
-describe("the startup check that agent calls can be held (inner#1611)", () => {
-  it("names every model with no price, including those OpenRouter reports the cost of", () => {
-    expect(() => assertModelsHoldable(["deepseek/deepseek-v4-pro", "anthropic/claude-opus-5.5", "google/x"], PRICING)).toThrow(
-      /anthropic\/claude-opus-5\.5, google\/x/,
-    );
-  });
-
-  it("passes when every model has a price", () => {
-    expect(() => assertModelsHoldable(["deepseek/deepseek-v4-pro"], PRICING)).not.toThrow();
   });
 });

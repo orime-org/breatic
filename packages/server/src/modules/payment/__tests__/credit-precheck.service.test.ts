@@ -146,16 +146,18 @@ describe("reserveForRun", () => {
 });
 
 describe("precheckCredits", () => {
-  it("lets a run through while what is left after holds covers it", async () => {
-    getCreditPosition.mockResolvedValue({ spendable: 100, held: 99, available: 1 });
-    await expect(precheckCredits(PROJECT, USER, 1)).resolves.toBeUndefined();
+  // A chat turn cannot know up front what it will cost, so it holds nothing
+  // and is admitted on the balance alone, holds or not (user 2026-10-18).
+  it("lets a chat turn through on the balance, whatever running work holds", async () => {
+    getCreditPosition.mockResolvedValue({ spendable: 100, held: 100, available: 0 });
+    await expect(precheckCredits(PROJECT, USER, 0.000001)).resolves.toBeUndefined();
   });
 
-  it("refuses with the held sentence when every credit is held, without a required figure", async () => {
-    getCreditPosition.mockResolvedValue({ spendable: 100, held: 100, available: 0 });
+  it("refuses on the balance with the sentence that names the cause, never the held one", async () => {
+    getCreditPosition.mockResolvedValue({ spendable: 0, held: 40, available: -40 });
     expect(await refusal(() => precheckCredits(PROJECT, USER, 0.000001))).toEqual({
       status: 402,
-      message: 'server.credit.held_by_running {"held":100,"available":0}',
+      message: "server.credit.none",
     });
   });
 

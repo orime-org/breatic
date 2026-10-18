@@ -3,9 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import fc from "fast-check";
-
-import { costOfModelCall, creditsForUsd, estimateModelCallCredits } from "@domain/credit/usage-cost.js";
+import { costOfModelCall, creditsForUsd } from "@domain/credit/usage-cost.js";
 
 const PRICING = {
   models: {
@@ -157,68 +155,4 @@ describe("credits for a dollar amount", () => {
     expect(creditsForUsd(0.0123, 1)).toBeCloseTo(1.23, 10);
     expect(creditsForUsd(0.0123, 2.5)).toBeCloseTo(3.075, 10);
   });
-});
-
-describe("what one model call may cost at most, held before it is made (inner#1611)", () => {
-  it("prices input at the dearer of a cache miss and a cache write of the call's lifetime", () => {
-    // 100k input at the 1h write price (8) and 16384 output at 20, per million.
-    const credits = estimateModelCallCredits(
-      { model: "anthropic/claude-opus-5.5", inputTokens: 100_000, maxOutputTokens: 16_384, cacheTtl: "1h" },
-      PRICING,
-      1,
-    );
-    expect(credits).toBeCloseTo(creditsForUsd((100_000 * 8 + 16_384 * 20) / 1_000_000, 1), 6);
-  });
-
-  it("falls back to the miss price for a model with no write price or a call that does not cache", () => {
-    expect(
-      estimateModelCallCredits(
-        { model: "deepseek/deepseek-v4-pro", inputTokens: 1_000_000, maxOutputTokens: 0, cacheTtl: "1h" },
-        PRICING,
-        1,
-      ),
-    ).toBeCloseTo(creditsForUsd(1.32, 1), 6);
-    expect(
-      estimateModelCallCredits(
-        { model: "anthropic/claude-opus-5.5", inputTokens: 1_000_000, maxOutputTokens: 0, cacheTtl: null },
-        PRICING,
-        1,
-      ),
-    ).toBeCloseTo(creditsForUsd(4, 1), 6);
-  });
-
-  it("applies the multiplier", () => {
-    const one = estimateModelCallCredits({ model: "deepseek/deepseek-v4-pro", inputTokens: 10, maxOutputTokens: 10, cacheTtl: null }, PRICING, 1);
-    const three = estimateModelCallCredits({ model: "deepseek/deepseek-v4-pro", inputTokens: 10, maxOutputTokens: 10, cacheTtl: null }, PRICING, 3);
-    expect(three).toBeCloseTo(one * 3, 9);
-  });
-
-  it("throws for a model with no price", () => {
-    expect(() =>
-      estimateModelCallCredits({ model: "nobody/unpriced", inputTokens: 1, maxOutputTokens: 1, cacheTtl: null }, PRICING, 1),
-    ).toThrow(/No price for nobody\/unpriced/);
-  });
-
-  it("is never below what the call is then billed, however its input splits across the cache", () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom("anthropic/claude-opus-5.5", "deepseek/deepseek-v4-pro"),
-        fc.constantFrom<"5m" | "1h">("5m", "1h"),
-        fc.integer({ min: 0, max: 2_000_000 }),
-        fc.integer({ min: 0, max: 2_000_000 }),
-        fc.integer({ min: 0, max: 2_000_000 }),
-        fc.integer({ min: 0, max: 16_384 }),
-        (model, cacheTtl, noCache, cacheRead, cacheWrite, output) => {
-          const inputTokens = noCache + cacheRead + cacheWrite;
-          const held = estimateModelCallCredits({ model, inputTokens, maxOutputTokens: 16_384, cacheTtl }, PRICING, 1);
-          const billed = creditsForUsd(
-            costOfModelCall({ model, provider: "direct", usage: usage(noCache, cacheRead, output, 0, cacheWrite), providerMetadata: undefined, cacheTtl }, PRICING).costUsd,
-            1,
-          );
-          return held + 1e-9 >= billed;
-        },
-      ),
-    );
-  });
-
 });

@@ -39,9 +39,6 @@ const TRUNCATED = "data-truncated";
 /** The data part type carrying a turn that stopped to wait for an answer. */
 const BLOCKED = "data-blocked";
 
-/** The data part type carrying a turn the studio's credits could not carry on (inner#1611). */
-const CREDITS_EXHAUSTED = "data-credits-exhausted";
-
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = "data-thinking-time";
 
@@ -130,7 +127,6 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === FAILED) stored.push({ type: "failed" });
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
     else if (part.type === BLOCKED) stored.push({ type: "blocked" });
-    else if (part.type === CREDITS_EXHAUSTED) stored.push({ type: "credits_exhausted" });
     else if (part.type === THINKING_TIME) {
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === "number" && Number.isFinite(ms) && ms >= 0) {
@@ -157,7 +153,6 @@ export function toUiParts(parts: MessagePart[]): UiParts {
     if (part.type === "failed") return { type: FAILED, data: {} };
     if (part.type === "truncated") return { type: TRUNCATED, data: {} };
     if (part.type === "blocked") return { type: BLOCKED, data: {} };
-    if (part.type === "credits_exhausted") return { type: CREDITS_EXHAUSTED, data: {} };
     if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
     if (part.type === "attachment") return attachmentPart(part.chip);
 

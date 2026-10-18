@@ -21,7 +21,7 @@ import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
 import { FAILURE_LINES } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
-import { holdForTool, paidToolHoldCredits, usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   AUDIO_FORMAT_NAMES,
@@ -294,7 +294,6 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
             "then ask about this address.",
         );
       }
-      await holdForTool(context, paidToolHoldCredits("understand_media"));
       running = true;
 
       let answer;

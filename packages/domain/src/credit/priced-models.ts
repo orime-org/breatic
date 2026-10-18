@@ -50,21 +50,3 @@ export function assertModelsPriced(
     );
   }
 }
-
-/**
- * Refuse to run, with payments on, when a model the agent calls has no price
- * at all (inner#1611). Each of its calls is held at its dearest before it is
- * made, which needs the price even for a model that reports its own cost.
- * @param models - The models the agent holds calls of.
- * @param pricing - The price table; the live one by default.
- * @throws {Error} Naming every model that has no price.
- */
-export function assertModelsHoldable(models: readonly string[], pricing: UsagePricing = getUsagePricing()): void {
-  const unpriced = [...new Set(models)].filter((model) => !pricing.models[model]);
-  if (unpriced.length > 0) {
-    throw new Error(
-      `No price in config/usage-pricing.yaml for ${unpriced.join(", ")}; with payments on, ` +
-        "each agent call is held at its price before it is made",
-    );
-  }
-}

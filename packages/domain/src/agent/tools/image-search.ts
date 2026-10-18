@@ -21,7 +21,7 @@ import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 
 import { braveJson } from "@domain/agent/tools/brave.js";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
-import { holdForTool, paidToolHoldCredits, usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   clip,
@@ -287,7 +287,6 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
     }
 
     const { image_search_timeout_ms: budgetMs } = getAgentConfig();
-    await holdForTool(context, paidToolHoldCredits("search_images"));
 
     try {
       const url = new URL("https://api.search.brave.com/res/v1/images/search");

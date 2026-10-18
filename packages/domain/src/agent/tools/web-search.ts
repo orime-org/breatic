@@ -14,7 +14,7 @@ import { env, getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, reasonOf, toolFailureOf } from "@breatic/shared";
 
 import { braveJson } from "@domain/agent/tools/brave.js";
-import { holdForTool, paidToolHoldCredits, usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   isStop,
@@ -376,7 +376,6 @@ export function makeSearchTools(): {
 
       const { web_search_max_tokens: maxTokens, web_search_timeout_ms: budgetMs } =
         getAgentConfig();
-      await holdForTool(context, paidToolHoldCredits("web_search"));
 
       try {
         const url = new URL("https://api.search.brave.com/res/v1/llm/context");

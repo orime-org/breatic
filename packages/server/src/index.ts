@@ -34,7 +34,7 @@ import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
-import { agentModelIds, assertModelsHoldable, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
@@ -117,9 +117,6 @@ try {
 // first call that spent money failing to record what it spent.
 try {
   assertModelsPriced([...agentModelIds(), ...textToolModels()]);
-  // With payments on, each agent call is held at its price before it is made
-  // (inner#1611), which needs a price even for a model that reports its cost.
-  if (env.PAYMENT_ENABLED) assertModelsHoldable(agentModelIds());
 } catch (err) {
   logger.error({ err }, "usage_pricing_incomplete");
   await exitProcess(1);

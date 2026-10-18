@@ -15,7 +15,6 @@ import type { Job } from "bullmq";
 import { getRawEnvVar, logger } from "@breatic/core";
 import {
   createUsageRecorder,
-  creditHoldService,
   creditLotService,
   lookupGeneration,
   type GenerationAnswer,
@@ -59,39 +58,20 @@ export async function runUsageLookup(
   });
   usage.recordLookedUpCall({ source: data.source, model: data.model, costUsd, tokens: answer?.tokens });
   const amount = await usage.settle();
-
-  // The call's turn held its estimate under this key until its price arrived
-  // (inner#1611). The charge releases it in the same commit; every other
-  // ending of this lookup releases it here.
-  const key = `${data.operationKey}:gen:${data.generationId}`;
-  /**
-   * Release the call's hold, logging a failure; the hold then expires.
-   * @returns When it is done.
-   */
-  const release = (): Promise<void> =>
-    creditHoldService.releaseHold(key).catch((err: unknown) =>
-      logger.error({ err, generationId: data.generationId }, "credit_hold_release_failed"),
-    );
-  if (amount === 0 || !data.charge) {
-    await release();
-    return;
-  }
+  if (amount === 0 || !data.charge) return;
 
   // The row is written; a retry would write a second one. A charge that
   // fails is logged for reconciliation, the way a turn's own charge is.
   try {
-    const outcome = await creditLotService.chargeOnceForGeneration(key, {
+    await creditLotService.chargeOnceForGeneration(`${data.operationKey}:gen:${data.generationId}`, {
       projectId: data.projectId,
       actorUserId: data.actorUserId,
       amount,
       description: data.description,
       model: data.model,
       provider: "openrouter",
-      releaseHold: key,
     });
-    if (outcome === null) await release();
   } catch (err) {
     logger.error({ err, generationId: data.generationId, amount }, "agent_usage_lookup_charge_failed");
-    await release();
   }
 }

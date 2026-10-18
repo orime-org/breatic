@@ -8,9 +8,11 @@
  * A run is admitted by holding its estimate (`reserveForRun`): the studio's
  * purchases less its debt less every hold still counted must cover it, and
  * the hold stays until the worker charges the run or the run ends. Concurrent
- * runs therefore see each other's estimates instead of the same balance. The
- * chat route admits a turn with `precheckCredits`, which only asks whether
- * anything is left after holds; the turn holds its own steps as it runs.
+ * runs therefore see each other's estimates instead of the same balance.
+ *
+ * A chat turn cannot know up front what it will cost, so it holds nothing: the
+ * chat route admits it with `precheckCredits` on the balance alone, and the
+ * turn is charged what it spent when it ends, into debt if need be.
  *
  * Extracted from mini-tools' route-local `checkCredits` so /canvas/tasks
  * and /mini-tools/* share ONE admission that can never drift.
@@ -124,12 +126,13 @@ export async function reserveForRun(
 }
 
 /**
- * Refuse work whose studio has less than `required` left after holds, without
- * holding anything. Skipped entirely when payments are disabled.
+ * Refuse work whose studio's balance (purchases less debt) is below
+ * `required`, holding nothing and leaving running work's holds out of it.
+ * Skipped entirely when payments are disabled.
  * @param projectId - The project the work belongs to; its studio pays.
  * @param userId - The authenticated caller.
- * @param required - Credits the studio must at least have left.
- * @throws {AppError} 402 when what is left does not cover `required`.
+ * @param required - Credits the studio's balance must at least reach.
+ * @throws {AppError} 402 when the balance does not cover `required`.
  */
 export async function precheckCredits(
   projectId: string,
@@ -139,7 +142,7 @@ export async function precheckCredits(
   if (!env.PAYMENT_ENABLED) return;
 
   const studioId = await assetService.resolveOwnerStudioId(projectId);
-  const position = await creditHoldService.getCreditPosition(studioId);
-  if (position.available >= required) return;
-  await refuse(userId, required, { studioId, spendable: position.spendable, held: position.held });
+  const { spendable } = await creditHoldService.getCreditPosition(studioId);
+  if (spendable >= required) return;
+  await refuse(userId, required, { studioId, spendable, held: 0 });
 }
