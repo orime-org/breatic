@@ -349,6 +349,21 @@ describe('CreditsTab', () => {
     expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('0');
   });
 
+  it('points at assigning more, not at waiting, when holds stand on a balance of nothing', async () => {
+    // Nothing is held out of a zero balance, so nothing will come back: the
+    // run that holds is charged into debt when it succeeds.
+    fetchStudioCredits.mockResolvedValue(
+      credits({ spendable: 0, held: 30, available: 0, lots: [{ ...credits().lots![0]!, remainingCredits: 0 }] }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    expect(document.body).toHaveTextContent('This Studio has spent all of its credits.');
+    expect(screen.getByTestId('studio-credits-unassigned-notice')).toHaveTextContent('Assign more credits from your account credits.');
+    expect(screen.queryByTestId('studio-lots-held')).toBeNull();
+    expect(document.body).not.toHaveTextContent('All credits are held by running tasks');
+  });
+
   it('has no held row while nothing is held', async () => {
     fetchStudioCredits.mockResolvedValue(credits({ held: 0, available: 4910 }));
     renderTab(<CreditsTab slug='acme' />);

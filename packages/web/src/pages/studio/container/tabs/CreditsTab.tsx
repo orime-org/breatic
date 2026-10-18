@@ -255,7 +255,6 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   // more.
   // What running tasks hold until they are charged (inner#1611), and what is
   // left once they are taken off: the figure a run is admitted against.
-  const held = head.held ?? 0;
   const available = head.available ?? head.spendable ?? 0;
   // The part of the balance the holds take. Holds larger than the balance
   // take all of it, and a studio that owes has none for them to take, so the
@@ -266,7 +265,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
       ? 'debt'
       : available > 0
         ? 'spendable'
-        : held > 0
+        : heldTaken > 0
           ? 'held'
           : (head.lots ?? []).length > 0
             ? 'depleted'
