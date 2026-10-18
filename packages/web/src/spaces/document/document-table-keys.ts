@@ -167,8 +167,8 @@ function cellDepth($pos: ResolvedPos): number {
  * a cell's or a table's edge (design 5.3):
  *
  * - at the start of the paragraph that opens a cell it does nothing; a
- *   heading or list item there turns into a paragraph first, which the body's
- *   own Backspace does;
+ *   quoted one loses its quote first, and a heading or list item there turns
+ *   into a paragraph first, which the body's own Backspace does;
  * - at the start of the block right under a table it moves the caret to the
  *   end of the table's last cell, and joins nothing.
  * @param view - The editor view.
@@ -185,12 +185,17 @@ function backspaceAtEdge(view: EditorView): boolean {
   const index = $head.index(depth - 1);
   if (isTableCell(parent) && index === 0) {
     const content = $head.node(depth).firstChild;
-    return content?.type.name === 'paragraph' && content.attrs['quoted'] !== true;
+    if (content?.type.name !== 'paragraph') return false;
+    if (content.attrs['quoted'] === true) {
+      view.dispatch(view.state.tr.setNodeMarkup($head.before(depth) + 1, undefined, { ...content.attrs, quoted: false }));
+    }
+    return true;
   }
   if (cellDepth($head) > 0) return false;
-  // The text before the block is in a table's cell only when a table ends
-  // right before it.
-  const inTable = Selection.findFrom(view.state.doc.resolve($head.before(depth)), -1, true);
+  // What a selection can stand on before the block is in a table's cell only
+  // when a table ends right before it: a divider or a picture between them is
+  // a block of its own, which the body's Backspace takes.
+  const inTable = Selection.findFrom(view.state.doc.resolve($head.before(depth)), -1);
   if (inTable === null || cellDepth(inTable.$head) < 0) return false;
   view.dispatch(view.state.tr.setSelection(inTable).scrollIntoView());
   return true;
@@ -208,11 +213,11 @@ function deleteAtEdge(view: EditorView): boolean {
   if (!(selection instanceof TextSelection) || !selection.empty) return false;
   const { $head } = selection;
   if ($head.parentOffset !== $head.parent.content.size) return false;
-  const next = Selection.findFrom(doc.resolve($head.after()), 1, true);
+  const next = Selection.findFrom(doc.resolve($head.after()), 1);
   const cell = cellDepth($head);
   if (cell > 0) return next === null || next.from > $head.end(cell);
-  // Outside a cell, the next text is in a cell only when a table starts
-  // right after the block.
+  // Outside a cell, what a selection can stand on next is in a cell only when
+  // a table starts right after the block.
   return next !== null && cellDepth(next.$head) > 0;
 }
 
@@ -271,12 +276,16 @@ function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
   if (cell === null || at === null) return false;
   const before = dir === 'up' || dir === 'left';
-  // The caret's line among the cell's lines, and the cell among the table's;
-  // where it stands on that line is the view's to say.
-  const line = selection.$head.index(cell.depth + 1);
-  const edgeRow = before
-    ? line === 0 && at.top === 0
-    : line === cell.nodeAfter!.childCount - 1 && at.bottom === at.map.height;
+  // The caret's block is the cell's first or last at every level down from
+  // the cell, a nested one included (`prosemirror-tables` `atEndOfCell`), and
+  // the cell is in the table's first or last row; where the caret stands on
+  // that line is the view's to say.
+  const { $head } = selection;
+  let edgeLine = true;
+  for (let d = $head.depth - 1; d > cell.depth; d -= 1) {
+    if (before ? $head.index(d) !== 0 : $head.indexAfter(d) !== $head.node(d).childCount) edgeLine = false;
+  }
+  const edgeRow = edgeLine && (before ? at.top === 0 : at.bottom === at.map.height);
   const edgeColumn = dir === 'left' ? at.left === 0 : dir === 'right' ? at.right === at.map.width : true;
   if (!edgeRow || !edgeColumn || !view.endOfTextblock(dir)) return false;
   // Just outside the table itself; past it that way, anything a selection can

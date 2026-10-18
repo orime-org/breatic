@@ -713,3 +713,107 @@ describe('a quote in a cell (inner#1619 design 5.3)', () => {
   });
 });
 
+
+describe('keys at a table edge, with blocks around it (inner#1619 design 5.3)', () => {
+  /**
+   * Opens a mounted editor holding the given blocks.
+   * @param blocks - The blocks.
+   * @returns The editor.
+   */
+  function openWith(blocks: unknown[]): Editor {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, blocks as never);
+    return editor;
+  }
+
+  /**
+   * Puts the caret at the start or the end of some words.
+   * @param editor - The editor.
+   * @param words - The words.
+   * @param end - Whether at their end.
+   */
+  function caretAt(editor: Editor, words: string, end = false): void {
+    let at = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text === words) at = pos + (end ? words.length : 0);
+      return at < 0;
+    });
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+  }
+
+  /**
+   * The top-level blocks' types.
+   * @param editor - The editor.
+   * @returns Them, in order.
+   */
+  function topTypes(editor: Editor): string[] {
+    return (editor.document as unknown as { type: string }[]).map((b) => b.type);
+  }
+
+  const p = (text: string, props: Record<string, unknown> = {}): unknown => ({ type: 'paragraph', props, content: text });
+
+  it('takes the quote off a quoted line that opens a cell, on Backspace at its start, and keeps it in the cell', () => {
+    const editor = openWith([p('top'), tableBlock({ rows: [{ cells: [{ blocks: [p('Q', { quoted: true }), p('next')] }, 'b1'] }] })]);
+    caretAt(editor, 'Q');
+
+    expect(press(editor, 'Backspace')).toBe(true);
+
+    expect(topTypes(editor)).toEqual(['paragraph', 'docTable']);
+    expect(caretCell(editor)).toBe('Qnext');
+    let quoted: unknown = null;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'paragraph' && node.textContent === 'Q') quoted = node.attrs['quoted'];
+      return true;
+    });
+    expect(quoted).toBe(false);
+  });
+
+  it('leaves Backspace under a divider that stands below a table to the body', () => {
+    const editor = openWith([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }), { type: 'divider' }, p('below')]);
+    caretAt(editor, 'below');
+
+    press(editor, 'Backspace');
+
+    expect(caretCell(editor)).toBeNull();
+  });
+
+  it('leaves Delete above a divider that stands over a table to the body', () => {
+    const editor = openWith([p('above'), { type: 'divider' }, tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })]);
+    caretAt(editor, 'above', true);
+    const before = editor.prosemirrorState;
+
+    press(editor, 'Delete');
+
+    const after = editor.prosemirrorState;
+    expect(after.doc.eq(before.doc) && after.selection.eq(before.selection)).toBe(false);
+  });
+
+  it('goes down into nested blocks of the last cell before leaving a table that ends the body', () => {
+    const editor = openWith([
+      tableBlock({ rows: [{ cells: ['a1', { blocks: [{ type: 'bulletListItem', content: 'b1', children: [{ type: 'bulletListItem', content: 'kid' }] }] }] }] }),
+    ]);
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    caretAt(editor, 'b1', true);
+
+    press(editor, 'ArrowDown');
+
+    expect(topTypes(editor)).toEqual(['docTable']);
+  });
+
+  it('goes up to the parent of a nested block in the first cell before leaving a table that starts the body', () => {
+    const editor = openWith([
+      tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'bulletListItem', content: 'parent', children: [{ type: 'bulletListItem', content: 'child' }] }] }, 'b1'] }] }),
+    ]);
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    caretAt(editor, 'child');
+
+    press(editor, 'ArrowUp');
+
+    expect(topTypes(editor)).toEqual(['docTable']);
+  });
+});
