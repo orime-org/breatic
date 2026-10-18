@@ -224,6 +224,7 @@ const NO_RESULT = "This call has no result: the turn ended before it did.";
 function withEveryCallAnswered(messages: readonly ModelMessage[]): ModelMessage[] {
   const out: ModelMessage[] = [];
   let open: Array<{ toolCallId: string; toolName: string }> = [];
+  /** Answer the calls still open, in one tool message after the last one. */
   const close = (): void => {
     if (open.length === 0) return;
     out.push({
