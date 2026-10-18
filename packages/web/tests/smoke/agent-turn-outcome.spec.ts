@@ -77,15 +77,15 @@ test('a turn that produced nothing says so', async ({ page }) => {
   await expect(page.getByTestId('message-bubble-empty')).toHaveText('No reply this turn');
 });
 
-test('tool steps that failed the same way while the turn carried on share one line', async ({
+test('each tool step that did not finish says which and why, where it happened (inner#1620)', async ({
   page,
 }) => {
   await answerWith(page, [
     { type: 'start-step' },
     { type: 'tool-input-available', toolCallId: 'c1', toolName: 'web_search', input: { query: 'cats' } },
-    { type: 'tool-output-error', toolCallId: 'c1', errorText: 'chat.tool.failure.upstream' },
+    { type: 'tool-output-error', toolCallId: 'c1', errorText: 'chat.tool.failure.busy' },
     { type: 'tool-input-available', toolCallId: 'c2', toolName: 'web_search', input: { query: 'dogs' } },
-    { type: 'tool-output-error', toolCallId: 'c2', errorText: 'chat.tool.failure.unreachable' },
+    { type: 'tool-output-error', toolCallId: 'c2', errorText: 'chat.tool.failure.noConnection' },
     { type: 'finish-step' },
     { type: 'start-step' },
     { type: 'text-start', id: 't' },
@@ -97,10 +97,17 @@ test('tool steps that failed the same way while the turn carried on share one li
   await sendOne(page);
 
   await page.waitForTimeout(PAST_THE_TOAST_MS);
-  await expect(page.getByTestId('message-bubble-tool-failed')).toHaveText(['Execution error ×2']);
-  await expect(page.getByTestId('message-bubble-content').last()).toHaveText(
-    'Carrying on without it.',
-  );
+  const lines = page.getByTestId('message-bubble-tool-failed');
+  await expect(lines).toHaveText([
+    'Search for “cats” didn\'t finish: the service ran into an error, try again later',
+    'Search for “dogs” didn\'t finish: couldn\'t reach the service, try again later',
+  ]);
+  const prose = page.getByTestId('markdown-body').last().locator('p');
+  await expect(prose).toHaveText('Carrying on without it.');
+  // In place: the lines sit inside the reply, above the prose the turn went on with.
+  const lastLine = await lines.last().boundingBox();
+  const proseBox = await prose.boundingBox();
+  expect(lastLine!.y).toBeLessThan(proseBox!.y);
   await expect(page.getByTestId('message-bubble-error')).toHaveCount(0);
 });
 

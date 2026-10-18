@@ -167,7 +167,14 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
       .flatMap((m) => m.parts)
       .filter((part) => part.type === 'tool-understand_media' && sameAddress(part.input?.url, asked))
       .at(-1) ?? null;
-  return { reply: (await body.innerText()).trim(), toolLines, call };
+  // The prose the model wrote, without the line a step that did not finish
+  // leaves inside it (inner#1620).
+  const reply = await body.evaluate((el) => {
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll('[data-testid="message-bubble-tool-failed"]').forEach((line) => line.remove());
+    return (copy.innerText || copy.textContent || '').trim();
+  });
+  return { reply, toolLines, call };
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -277,7 +284,7 @@ test('tells the user a video format it cannot watch is one to convert @needs-int
   expect(call?.failureKind).toBe('tool_failed');
   // The line for a refusal of our own. The endpoint turning the file down
   // would show the upstream line instead.
-  expect(call?.errorText).toBe('chat.tool.failure.generic');
+  expect(call?.errorText).toBe('chat.tool.failure.unsupportedType');
   expect(reply.length).toBeGreaterThan(0);
 });
 
@@ -295,7 +302,7 @@ test('tells the user an image format it cannot read is one to convert @needs-int
 
   expect(call?.state).toBe('output-error');
   expect(call?.failureKind).toBe('tool_failed');
-  expect(call?.errorText).toBe('chat.tool.failure.generic');
+  expect(call?.errorText).toBe('chat.tool.failure.unsupportedType');
   expect(reply.length).toBeGreaterThan(0);
 });
 
