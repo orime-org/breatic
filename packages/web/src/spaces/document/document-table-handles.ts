@@ -134,7 +134,9 @@ class TableHoverView {
 
   /** Follows the table through a change: gone, shrunk, or moved. */
   update(): void {
-    if (this.state === undefined) return;
+    // Hidden handles are placed again from the DOM on the next move over a
+    // cell (BlockNote's own view keeps the same guard, `TableHandles.ts`).
+    if (this.state?.show !== true) return;
     const frame = this.view.dom.querySelector(`${FRAME}[data-id="${this.state.block.id}"]`);
     const body = frame?.querySelector('tbody');
     if (body === null || body === undefined) {

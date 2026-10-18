@@ -81,16 +81,6 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { documentTableHandlesExtension } from '@web/spaces/document/document-table-handles';
 
-/** What the library's handle state carries, as far as these read it. */
-interface HandlesState {
-  readonly show: boolean;
-  readonly block: { readonly id: string };
-  readonly rowIndex: number | undefined;
-  readonly colIndex: number | undefined;
-  /** The hovered cell's box, read when the handles were last placed. */
-  readonly referencePosCell: DOMRect | undefined;
-}
-
 /** What the controller hands a handle. */
 interface TableHandleProps {
   readonly orientation: 'row' | 'column';
@@ -288,7 +278,7 @@ export function DocumentTableHandle({
   const t = useTranslation();
   const editor = useBlockNoteEditor() as unknown as HandleEditor;
   const handles = useExtension(documentTableHandlesExtension);
-  const state = useExtensionState(documentTableHandlesExtension) as HandlesState | undefined;
+  const state = useExtensionState(documentTableHandlesExtension);
   const holdsSelection = useHoldsSelection(editor);
   const [open, setOpen] = React.useState(false);
   // The handles are frozen for this handle's drag so the handle, the drag's

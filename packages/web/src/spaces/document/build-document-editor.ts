@@ -237,15 +237,6 @@ export function buildDocumentEditor(
     // is all this has to say and is how the rest of this product's chrome is
     // drawn.
     dropCursor: { color: false, width: 2, hooks: { computeDropPosition: holdDropLineInTableDrags(fileDropPosition) } },
-    // Merge and split, a fill colour per cell, and a header row and column.
-    // Cell text colour stays off: a cell's text takes the same text colour
-    // mark every other run does.
-    tables: {
-      splitCells: true,
-      cellBackgroundColor: true,
-      cellTextColor: false,
-      headers: true,
-    },
     // The gutter left of the body counts as the row beside it, as far out as
     // the strip stands: a table's own handle is reached there, level with the
     // table, since over its cells the strip belongs to their blocks

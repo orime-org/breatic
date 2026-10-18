@@ -96,6 +96,17 @@ describe('the cell the pointer is over', () => {
     expect(hovered(editor)?.show).toBe(false);
   });
 
+  it('reads nothing while the handles are hidden, whatever changes in the document', () => {
+    const editor = open();
+    pointAt(editor, 'a1');
+    pointAt(editor, 'lead');
+    const hidden = hovered(editor);
+
+    editor.insertBlocks([{ type: 'paragraph', content: 'more' }] as never, editor.document[0]!, 'after');
+
+    expect(hovered(editor)).toBe(hidden);
+  });
+
   it('stays on its cell while frozen', () => {
     const editor = open();
     pointAt(editor, 'a1');
