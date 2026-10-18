@@ -127,8 +127,18 @@ test('relight lays the light out on the left, and a reference picture takes the 
   await expect(left.getByTestId('generate-camera-angle')).toHaveCount(0);
   await expect(right.getByTestId('generate-param-light_color-value')).toContainText('from reference');
 
-  await left.getByTestId('mini-tool-reference-clear').click();
+  await page.getByTestId('mini-tool-slot-image.relight-light_reference-clear').click();
   await expect(left.getByTestId('generate-camera-angle')).toBeVisible();
+
+  // The sphere shines in the colour picked: a preset, then one picked by hand.
+  const sphereCanvas = left.getByTestId('generate-camera-angle-sphere');
+  await right.getByTestId('generate-param-light_color-swatch-cool').click();
+  await expect(sphereCanvas).toHaveAttribute('data-light', '#8fc0ff');
+  await right.getByTestId('generate-param-light_color-swatch-custom').click();
+  await page.getByTestId('generate-param-light_color-custom-input').fill('ff00aa');
+  await expect(right.getByTestId('generate-param-light_color-value')).toHaveText('#FF00AA');
+  await expect(sphereCanvas).toHaveAttribute('data-light', '#ff00aa');
+  await page.keyboard.press('Escape');
 });
 
 test('restyle holds Run until a style picture is picked @needs-internet', async () => {
@@ -161,9 +171,12 @@ test.describe('real runs @needs-internet @needs-model', () => {
     expect(await runToResult('ANGLE')).toMatch(/^https?:\/\//);
   });
 
-  test('relight runs to a new picture downstream with the light set by hand', async () => {
+  test('relight runs to a new picture downstream with the light set by hand, in a colour picked by hand', async () => {
     await openTool(page, source, 'image.relight');
-    await page.getByTestId('generate-param-light_color-swatch-warm').click();
+    await page.getByTestId('generate-param-light_color-swatch-custom').click();
+    await page.getByTestId('generate-param-light_color-custom-input').fill('ff3d7f');
+    await expect(page.getByTestId('generate-param-light_color-value')).toHaveText('#FF3D7F');
+    await page.keyboard.press('Escape');
     expect(await runToResult('RELIGHT')).toMatch(/^https?:\/\//);
   });
 
