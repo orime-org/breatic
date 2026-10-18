@@ -46,6 +46,7 @@ loadLocales();
 
 const { projectService, recentService, studioService } = await import("@server/modules");
 const inviteService = await import("@server/modules/project-invite/projectInvite.service.js");
+const studioInviteService = await import("@server/modules/studio/studioInvite.service.js");
 
 let sql: ReturnType<typeof postgres>;
 const sent: OutgoingEvent[] = [];
@@ -158,12 +159,36 @@ describe("project invitations", () => {
     );
     await runWithConsent(ACCEPT, () => inviteService.confirmInvite(invitationId, invitee.id));
 
-    const props = { studio_id: owner.studioId, project_id: project.id, scope: "project", role: "editor" };
+    const props = {
+      studio_id: owner.studioId, project_id: project.id, scope: "project", role: "editor", invitation_id: invitationId,
+    };
     expect(eventsOf("member_invited")).toEqual([
       expect.objectContaining({ user_id: owner.id, insert_id: `invite:${invitationId}`, event_properties: props }),
     ]);
     expect(eventsOf("invitation_accepted")).toEqual([
       expect.objectContaining({ user_id: invitee.id, insert_id: `invite-accepted:${invitationId}`, event_properties: props }),
+    ]);
+  });
+});
+
+describe("studio invitations", () => {
+  it("carries the invitation id on both sides so acceptances can be matched to invites", async () => {
+    const admin = await member();
+    const invitee = await member();
+    const slug = `ra-team-${crypto.randomUUID().slice(0, 8)}`;
+    const team = await studioService.createTeamStudio(admin.id, "Team", slug);
+
+    const { invitationId } = await runWithConsent(ACCEPT, () =>
+      studioInviteService.createInvite(slug, admin.id, invitee.email, "guest"),
+    );
+    await runWithConsent(ACCEPT, () => studioInviteService.confirmInvite(invitationId, invitee.id));
+
+    const props = { studio_id: team.id, scope: "studio", role: "guest", invitation_id: invitationId };
+    expect(eventsOf("member_invited")).toEqual([
+      expect.objectContaining({ user_id: admin.id, event_properties: props }),
+    ]);
+    expect(eventsOf("invitation_accepted")).toEqual([
+      expect.objectContaining({ user_id: invitee.id, event_properties: props }),
     ]);
   });
 });
