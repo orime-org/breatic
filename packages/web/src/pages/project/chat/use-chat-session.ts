@@ -392,9 +392,13 @@ export function useChatSession(
   // changing and the rest were settled long ago. Keyed on the message object
   // itself, which the chat leaves untouched for everything it is not
   // rewriting, so identity is exactly the question "did this one change".
-  // A reply resumed after a questionnaire is drawn as two (`splitAtAnswer`),
+  // A reply resumed after a questionnaire is drawn as several (`splitAtAnswer`),
   // so one message can stand for more than one view.
   const rendered = React.useRef(new Map<StoredUiMessage, ChatMessage[]>());
+  // Every part of a split reply but the last ends at an answered card and
+  // changes no more, while the SDK replaces the message on every chunk; kept
+  // by id and length so the streaming tail is the only view rebuilt.
+  const settledParts = React.useRef(new Map<string, ChatMessage>());
 
   const messages = React.useMemo(() => {
     // The one the reader just sent is held back until the answer starts: the
@@ -404,6 +408,7 @@ export function useChatSession(
     const shown = visibleMessages(onScreen, status);
     const last = shown[shown.length - 1];
     const kept = new Map<StoredUiMessage, ChatMessage[]>();
+    const keptParts = new Map<string, ChatMessage>();
     const out = shown.flatMap((m) => {
       // What a reader needs announced is a failure they are living through,
       // not every failure the conversation ever had — those come back with the
@@ -420,13 +425,22 @@ export function useChatSession(
       const views =
         before && tail && Boolean(tail.failedJustNow) === justNow && Boolean(tail.streaming) === streaming
           ? before
-          : splitAtAnswer(m).map((half, i, halves) =>
-            i === halves.length - 1 ? toChatMessage(half, { failedJustNow: justNow, streaming }) : toChatMessage(half),
-          );
+          : splitAtAnswer(m).map((half, i, halves) => {
+            if (i === halves.length - 1) return toChatMessage(half, { failedJustNow: justNow, streaming });
+            const key = `${half.id}#${String(half.parts.length)}`;
+            const view = settledParts.current.get(key) ?? toChatMessage(half);
+            keptParts.set(key, view);
+            return view;
+          });
+      // Views carried over whole keep their settled parts for the next render.
+      if (views === before) {
+        for (const [key, view] of settledParts.current) if (views.includes(view)) keptParts.set(key, view);
+      }
       kept.set(m, views);
       return views;
     });
     rendered.current = kept;
+    settledParts.current = keptParts;
     return out;
   }, [onScreen, status, error]);
 

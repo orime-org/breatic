@@ -268,6 +268,35 @@ describe('a reply as the panel draws it', () => {
   });
 });
 
+describe('a reply resumed after a questionnaire (inner#1542)', () => {
+  it('hands back the same object for the answered part while the rest streams', async () => {
+    const panel = await anOpenPanel();
+    await aReplyStartsArriving(panel);
+    const input = { questions: [{ header: 'Ratio', question: 'Which ratio?', multiSelect: false, options: [{ label: '16:9' }, { label: '9:16' }] }] };
+    act(() => {
+      wire.current()?.push({ type: 'tool-input-available', toolCallId: 'ask-1', toolName: 'ask_user', input });
+      wire.current()?.push({ type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } });
+      wire.current()?.push({ type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }] } });
+      wire.current()?.push({ type: 'text-start', id: 't2' });
+      wire.current()?.push({ type: 'text-delta', id: 't2', delta: 'Here' });
+    });
+    await waitFor(() => {
+      expect(panel.result.current.messages.at(-1)?.content).toBe('Here');
+    });
+    const answered = panel.result.current.messages.at(-2);
+    expect(answered?.questionnaires?.[0]?.state).toBe('answered');
+
+    act(() => {
+      wire.current()?.push({ type: 'text-delta', id: 't2', delta: ' it is' });
+    });
+    await waitFor(() => {
+      expect(panel.result.current.messages.at(-1)?.content).toBe('Here it is');
+    });
+
+    expect(panel.result.current.messages.at(-2)).toBe(answered);
+  });
+});
+
 describe('a turn that failed', () => {
   it('is marked on the reply, and marked as happening now', async () => {
     const panel = await anOpenPanel();
