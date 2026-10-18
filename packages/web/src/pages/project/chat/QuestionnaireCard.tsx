@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Music, Play } from 'lucide-react';
-import { ASK_USER_OTHER_MAX_CHARS } from '@breatic/shared';
+import { ASK_USER_OTHER_MAX_CHARS, getLocale } from '@breatic/shared';
 import type { AskUserAnswer, AskUserQuestion } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -320,7 +320,7 @@ function OptionRow({
     <div className='flex items-start gap-2 rounded-chrome border border-border px-2 py-1.5'>
       <span className='mt-0.5 flex'>{children}</span>
       <label htmlFor={id} className='flex min-w-0 flex-1 cursor-pointer flex-col'>
-        <span className='text-sm text-foreground'>{label}</span>
+        <span className='break-words text-sm text-foreground'>{label}</span>
         {description ? <span className='text-xs text-muted-foreground'>{description}</span> : null}
       </label>
     </div>
@@ -418,11 +418,9 @@ function AnsweredSummary({
                 {t('chat.questionnaire.skipped')}
               </span>
             ) : (
-              given.map((words, i) => (
-                <span key={`${String(i)}-${words}`} className='text-foreground'>
-                  {words}
-                </span>
-              ))
+              <span data-testid='questionnaire-answer' className='min-w-0 break-words text-foreground'>
+                {new Intl.ListFormat(getLocale(), { type: 'conjunction' }).format(given)}
+              </span>
             )}
           </div>
         );

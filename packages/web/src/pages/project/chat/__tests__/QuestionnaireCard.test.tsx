@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AskUserQuestion } from '@breatic/shared';
+import { getLocale, type AskUserQuestion } from '@breatic/shared';
 
 const warning = vi.fn();
 vi.mock('@web/lib/toast', () => ({ toast: { warning: (...args: unknown[]) => warning(...args), error: vi.fn() } }));
@@ -204,6 +204,37 @@ describe('a card already answered', () => {
     expect(rows[1]).toHaveTextContent('A dog');
     expect(within(rows[2]!).getByTestId('questionnaire-skipped')).toBeInTheDocument();
     expect(screen.queryByTestId('questionnaire-submit')).toBeNull();
+  });
+
+  it('joins several answers to one question as a list in the reader\'s language', () => {
+    render(
+      <QuestionnaireCard
+        questionnaire={{
+          toolCallId: 'ask-1',
+          questions: QUESTIONS,
+          state: 'answered',
+          answers: [{ index: 1, selected: ['People', 'City'], other: 'A dog' }],
+        }}
+      />,
+    );
+    const joined = new Intl.ListFormat(getLocale(), { type: 'conjunction' }).format(['People', 'City', 'A dog']);
+
+    expect(screen.getByTestId('questionnaire-answer')).toHaveTextContent(joined);
+  });
+
+  it('lets a long answer with no spaces wrap inside the card', () => {
+    render(
+      <QuestionnaireCard
+        questionnaire={{
+          toolCallId: 'ask-1',
+          questions: QUESTIONS,
+          state: 'answered',
+          answers: [{ index: 0, selected: [], other: `https://example.com/${'a'.repeat(200)}` }],
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('questionnaire-answer')).toHaveClass('min-w-0', 'break-words');
   });
 });
 
