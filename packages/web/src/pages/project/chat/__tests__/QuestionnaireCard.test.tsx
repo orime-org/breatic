@@ -178,6 +178,23 @@ describe('a card waiting for the reader', () => {
   });
 });
 
+describe('model text on the card', () => {
+  it('wraps a long word in the question and in an option description', () => {
+    const long = `https://example.com/${'a'.repeat(120)}`;
+    render(
+      <QuestionnaireCard
+        questionnaire={{
+          toolCallId: 'ask-1',
+          questions: [{ header: 'Ref', question: long, multiSelect: false, options: [{ label: 'A', description: `${long}-d` }, { label: 'B' }] }],
+          state: 'awaiting',
+        }}
+      />,
+    );
+    expect(screen.getByText(long)).toHaveClass('break-words');
+    expect(screen.getByText(`${long}-d`)).toHaveClass('break-words');
+  });
+});
+
 describe('a card already answered', () => {
   it('reads as each question with its answer, a skipped one marked as such', () => {
     render(

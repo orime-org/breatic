@@ -226,7 +226,7 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
     <div data-testid='questionnaire-question' className='flex flex-col gap-1.5'>
       <div className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1'>
         <QuestionLabel n={n} header={question.header} />
-        <span className='text-sm font-medium text-foreground'>{question.question}</span>
+        <span className='min-w-0 break-words text-sm font-medium text-foreground'>{question.question}</span>
         {question.multiSelect ? (
           <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span>
         ) : null}
@@ -321,7 +321,7 @@ function OptionRow({
       <span className='mt-0.5 flex'>{children}</span>
       <label htmlFor={id} className='flex min-w-0 flex-1 cursor-pointer flex-col'>
         <span className='break-words text-sm text-foreground'>{label}</span>
-        {description ? <span className='text-xs text-muted-foreground'>{description}</span> : null}
+        {description ? <span className='break-words text-xs text-muted-foreground'>{description}</span> : null}
       </label>
     </div>
   );
@@ -459,7 +459,7 @@ function RepliedLine({ questions }: { questions: AskUserQuestion[] }): React.JSX
             <div key={`${String(index)}-${question.header}`} className='flex flex-col gap-0.5'>
               <div className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1'>
                 <QuestionLabel n={index + 1} header={question.header} />
-                <span className='text-sm text-foreground'>{question.question}</span>
+                <span className='min-w-0 break-words text-sm text-foreground'>{question.question}</span>
                 {question.multiSelect ? (
                   <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span>
                 ) : null}
@@ -467,7 +467,9 @@ function RepliedLine({ questions }: { questions: AskUserQuestion[] }): React.JSX
               {question.options.length > 0 ? (
                 <div className='flex flex-wrap gap-x-2 text-xs text-muted-foreground'>
                   {question.options.map((option) => (
-                    <span key={option.label}>{option.label}</span>
+                    <span key={option.label} className='min-w-0 break-words'>
+                      {option.label}
+                    </span>
                   ))}
                 </div>
               ) : null}
