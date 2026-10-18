@@ -19,13 +19,6 @@ import { NO_ATTACHMENTS, type TrayItem } from '@web/stores/chat-attachments';
 import type { TurnPhase } from '@web/stores/conversation-runtime';
 import type { ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
-/**
- * The id the at-limit line carries, so the box can point at it.
- *
- * The limit refuses the keystroke without saying anything, and the line that
- * says why is drawn on the panel's own edge -- out of the field.
- */
-export const CHAT_LIMIT_NOTICE_ID = 'chat-composer-at-limit';
 
 interface ChatComposerProps {
   /** The conversation the box writes into. */
@@ -135,7 +128,6 @@ function ChatComposerInner({
     attachments,
     readOnly: frozen,
     ariaLabel: t('chat.composer.inputAria'),
-    describedBy: atLimit.showing ? CHAT_LIMIT_NOTICE_ID : undefined,
     onChange,
     onEnter: () => submitRef.current(),
     onPasteFiles: (files) => onAttachFiles?.(files),
@@ -241,17 +233,6 @@ function ChatComposerInner({
             ))}
           </div>
         </div>
-      ) : null}
-      {atLimit.showing ? (
-        // On the box's own top edge, where this panel puts everything it has
-        // to say about the box below.
-        <p
-          id={CHAT_LIMIT_NOTICE_ID}
-          data-testid='chat-composer-limit'
-          className='px-3 pt-1.5 text-xs text-muted-foreground'
-        >
-          {t('chat.composer.atLimit', { limit: CHAT_MESSAGE_MAX_CHARS })}
-        </p>
       ) : null}
       {/* Ten lines of writing, then it scrolls -- past that the conversation
           would be the smaller half of the column. The scrolling is the

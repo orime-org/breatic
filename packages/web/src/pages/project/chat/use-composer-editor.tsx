@@ -41,8 +41,6 @@ export interface ComposerEditorInput {
   readOnly: boolean;
   /** The box's accessible name. */
   ariaLabel: string;
-  /** The id of the line describing the box, while there is one. */
-  describedBy: string | undefined;
   /** Called with the draft after each edit. */
   onChange: (next: string) => void;
   /** Enter without Shift, outside an IME composition and with no `@` list open. */
@@ -228,9 +226,7 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
     if (!editor || editor.isDestroyed) return;
     const dom = editor.view.dom;
     dom.setAttribute('aria-label', input.ariaLabel);
-    if (input.describedBy) dom.setAttribute('aria-describedby', input.describedBy);
-    else dom.removeAttribute('aria-describedby');
-  }, [editor, input.ariaLabel, input.describedBy]);
+  }, [editor, input.ariaLabel]);
 
   return editor;
 }
