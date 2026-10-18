@@ -490,6 +490,16 @@ describe("a questionnaire waiting for the reader (inner#1542)", () => {
     ]);
   });
 
+  it("puts the mark after everything else the asking segment holds, where the live stream writes it", () => {
+    const parts = toUiParts([
+      { type: "text", text: "Two things first." },
+      { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] }, status: "awaiting" },
+      { type: "thinking-time", ms: 1200 },
+    ]);
+
+    expect(parts.map((p) => p.type)).toEqual(["text", "tool-ask_user", "data-thinking-time", "data-ask-awaiting"]);
+  });
+
   it("reads back as an answered call once the reader has answered", () => {
     const parts = toUiParts([
       {

@@ -199,7 +199,7 @@ describe("the resumed segment", () => {
       new MainAgent().answer("ask-1", { answers: [] }, 3, undefined, "UTC", {}),
     );
     for await (const chunk of turn) void chunk;
-    const kept = storedReply().forModel as { messages: ModelMessage[]; turnTokens: number };
+    const kept = storedReply().forModel as unknown as { messages: ModelMessage[]; turnTokens: number };
     expect(kept.turnTokens).toBe(measureMessages(kept.messages));
   });
 

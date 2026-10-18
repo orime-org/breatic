@@ -150,15 +150,17 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
  */
 export function toUiParts(parts: MessagePart[]): UiParts {
   // A questionnaire still waiting reads back the way it went out: the call,
-  // and the mark naming it as the card the reader is shown.
-  return parts.flatMap((part): UiPart[] =>
+  // and after everything else the segment that asked holds, the mark naming
+  // it as the card the reader is shown.
+  const ui = parts.map((part): UiPart =>
     part.type === "tool" && part.status === "awaiting"
-      ? [
-          { type: `tool-${part.toolName}`, toolCallId: part.toolCallId, input: part.input, state: "input-available" },
-          { type: ASK_AWAITING, data: { toolCallId: part.toolCallId } },
-        ]
-      : [toUiPart(part)],
+      ? { type: `tool-${part.toolName}`, toolCallId: part.toolCallId, input: part.input, state: "input-available" }
+      : toUiPart(part),
   );
+  const marks = parts.flatMap((part): UiPart[] =>
+    part.type === "tool" && part.status === "awaiting" ? [{ type: ASK_AWAITING, data: { toolCallId: part.toolCallId } }] : [],
+  );
+  return [...ui, ...marks];
 }
 
 /**
