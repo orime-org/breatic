@@ -23,6 +23,7 @@
 
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
+import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
@@ -102,6 +103,11 @@ export interface ChargeInput {
   tokensUsed?: number;
   model?: string;
   provider?: string;
+  /**
+   * The hold this charge settles (inner#1611). Released in the charge's own
+   * commit, so a charge that fails leaves it in place.
+   */
+  releaseHold?: string;
 }
 
 /** What actually happened to a charge. */
@@ -300,6 +306,7 @@ export async function chargeForGeneration(
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
     return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
   }
 
@@ -313,6 +320,7 @@ export async function chargeForGeneration(
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
     return {
       billed: false,
       charged: 0,
@@ -327,9 +335,12 @@ export async function chargeForGeneration(
     // order, so two charges on one studio — or a charge and a designation —
     // queue up rather than each holding half of what the other needs. The
     // whole order is `studios` → `studio_members` → `studio_credit_debts` →
-    // `credit_lots`; a charge joins it at the debt, a designation one table
-    // earlier, and accepting a transfer at the membership.
+    // `credit_holds` → `credit_lots`; a charge joins it at the debt, a
+    // designation one table earlier, and accepting a transfer at the
+    // membership. An admission that holds credits takes the same debt lock, so
+    // it sees this charge and the hold it releases together.
     await creditLotRepo.lockDebt(studioId, tx);
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
     const locked: { id: string; remaining: number }[] = [];

@@ -1717,6 +1717,41 @@ export const studioCreditDebts = pgTable(
   ],
 );
 
+/**
+ * Credits reserved for work that has started and is not yet charged
+ * (inner#1611, 0099). An admission counts the studio's purchases less its debt
+ * less every hold still counted; the charge that settles the work releases its
+ * hold in the same transaction. A hold stops counting at `expires_at` without
+ * the row changing. The CHECKs live in the migration, as `credit_lots`' do.
+ */
+export const creditHolds = pgTable(
+  "credit_holds",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // The key of the work held for: a task id, a chat turn, one consolidation
+    // attempt, one generation awaiting its cost. Used once.
+    referenceId: varchar("reference_id", { length: 255 }).notNull(),
+    // Never negative. CHECK in 0099.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    // 'held' | 'released'. CHECK in 0099.
+    status: varchar("status", { length: 16 }).$type<"held" | "released">().default("held").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // Set exactly when released. CHECK in 0099.
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("credit_holds_reference_id_idx").on(table.referenceId),
+    index("credit_holds_studio_held_idx").on(table.studioId, table.expiresAt),
+  ],
+);
+
 // ── 9. Conversation Memories ─────────────────────────────────────────
 
 export const conversationMemories = pgTable(
