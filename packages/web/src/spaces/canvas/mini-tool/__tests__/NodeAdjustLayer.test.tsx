@@ -187,9 +187,10 @@ describe('NodeAdjustLayer', () => {
     expect(layer.parentElement).toHaveStyle({ width: '400px', height: '300px' });
   });
 
-  // A preview past the shared square holds a WebGL backend of its own, and
-  // the browser grants only a few contexts; the layer that drew it lets it go
-  // when its picture adjust closes (§6.1).
+  // A preview past the shared buffer holds a WebGL backend of its own, and
+  // the browser grants only a few contexts; the layer with the picture adjust
+  // open lets it go when the adjust closes, its Space tab is hidden or the
+  // node goes (§6.1).
   it('lets the preview’s own backend go when the panel closes', async () => {
     mount('image.adjust', { value: defaultAdjustValue });
     await pictureLoaded();
@@ -221,7 +222,18 @@ describe('NodeAdjustLayer', () => {
     expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
   });
 
-  // Every node mounts a layer; one with no picture adjust open holds nothing.
+  it('lets the preview’s own backend go when the node goes with its adjust open', async () => {
+    const { unmount } = render(cropCanvas([NODE], null, 1));
+    act(() => store().openMiniTool('n1', 'image.adjust', { sourceContent: NODE.src, params: { value: defaultAdjustValue } }));
+    await pictureLoaded();
+    flushFrames();
+    await pictureLoaded();
+    unmount();
+    expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
+  });
+
+  // Every node that takes edges mounts a layer; one with no picture adjust
+  // open holds nothing.
   it('leaves the open preview’s backend alone when another node goes', async () => {
     const other = { id: 'n2', kind: 'img' as const, src: 'https://cdn/b.png' };
     const { rerender } = render(cropCanvas([NODE, other], null, 1));
@@ -233,9 +245,9 @@ describe('NodeAdjustLayer', () => {
     expect(drawing.releasePreviewBackend).not.toHaveBeenCalled();
   });
 
-  // A Space tab hidden with a frame asked for cancels it; shown again, the
-  // sliders still draw.
-  it('draws again after its Space tab is hidden and shown with a frame pending', async () => {
+  // A Space tab hidden with a frame asked for cancels it and lets the
+  // preview's backend go; shown again, the sliders still draw.
+  it('lets go on a hidden Space tab and draws again once it shows, a frame pending', async () => {
     const shown = (mode: 'visible' | 'hidden'): React.JSX.Element => (
       <React.Activity mode={mode}>{cropCanvas([NODE], null, 1)}</React.Activity>
     );
@@ -246,6 +258,7 @@ describe('NodeAdjustLayer', () => {
     await pictureLoaded();
     act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 10 }));
     rerender(shown('hidden'));
+    expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
     rerender(shown('visible'));
     await pictureLoaded();
     drawing.drawAdjustedPreview.mockClear();

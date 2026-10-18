@@ -264,9 +264,11 @@ describe('previewBackend', () => {
    */
   const graphics = () => {
     const shared = { tileSize: 4096, gl: { ...liveGl(4096), MAX_TEXTURE_SIZE: 0x0d33, getParameter: () => 16384 } };
-    const made: { size: [number, number]; released: boolean; lost: boolean; filtered: number }[] = [];
+    const made: { size: [number, number]; released: boolean; lost: boolean; filtered: number; priorReleased: boolean }[] = [];
     class Backend {
-      record = { size: [0, 0] as [number, number], released: false, lost: false, filtered: 0 };
+      record = { size: [0, 0] as [number, number], released: false, lost: false, filtered: 0, priorReleased: false };
+      // Fabric keeps the tile size on the backend; drawAdjusted reads it to tell WebGL from 2D.
+      readonly tileSize: number;
       gl = {
         getExtension: () => ({ loseContext: () => undefined }),
         isContextLost: () => this.record.released || this.record.lost,
@@ -276,6 +278,8 @@ describe('previewBackend', () => {
         canvas: { width: 0, height: 0 },
       };
       constructor(readonly options: { tileSize: number }) {
+        this.tileSize = options.tileSize;
+        this.record.priorReleased = made.every((m) => m.released);
         made.push(this.record);
       }
       setupGLContext(width: number, height: number): void {
@@ -342,6 +346,7 @@ describe('previewBackend', () => {
       [8200, 5400],
     ]);
     expect(made.map((m) => m.released)).toEqual([true, false]);
+    expect(made[1]?.priorReleased).toBe(true);
   });
 
   it('halves a preview past what the graphics take', () => {
@@ -354,10 +359,11 @@ describe('previewBackend', () => {
     const { fabric, made } = graphics();
     graphicsStub.current = fabric;
     const target = document.createElement('canvas');
-    const drew = await drawAdjustedPreview(picture(4100, 2700), { width: 4100, height: 2700 }, { ...defaultAdjustValue, sharpness: 50 }, target);
-    expect(drew.size).toEqual({ width: 4100, height: 2700 });
-    expect([target.width, target.height]).toEqual([4100, 2700]);
-    expect(made.map((m) => [m.size, m.filtered])).toEqual([[[4100, 2700], 1]]);
+    // Shown at 5000 of its 8200 pixels, more than half, so drawn at its own.
+    const drew = await drawAdjustedPreview(picture(8200, 5400), { width: 5000, height: 3293 }, { ...defaultAdjustValue, sharpness: 50 }, target);
+    expect(drew.size).toEqual({ width: 8200, height: 5400 });
+    expect([target.width, target.height]).toEqual([8200, 5400]);
+    expect(made.map((m) => [m.size, m.filtered])).toEqual([[[8200, 5400], 1]]);
   });
 });
 
