@@ -15,6 +15,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { positionOf, select } from './paste-harness';
+import { TARGETS, expected, shape, where } from './paste-matrix';
 
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
@@ -232,5 +233,15 @@ describe('a pasted picture file, as an undo step', () => {
     pasteFile(handle);
     handle.undoManager.undo();
     expect({ lines: lines(handle), caret: caret(handle) }).toEqual({ lines: ['paragraph:abcd'], caret: 'abcd@2' });
+  });
+});
+
+describe('a pasted picture file, at every target the placement takes (design §5.4.6)', () => {
+  it.each(Object.keys(TARGETS))('%s', (target) => {
+    const handle = openBody(TARGETS[target]!.blocks);
+    TARGETS[target]!.select(handle.editor);
+    pasteFile(handle);
+    const [body, selection] = expected(target, 'P', true);
+    expect({ body: shape(handle.editor), selection: where(handle.editor) }).toEqual({ body, selection });
   });
 });
