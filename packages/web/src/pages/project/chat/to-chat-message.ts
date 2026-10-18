@@ -309,15 +309,19 @@ function questionnaireOf(
  * two messages; splitting the live one the same way keeps the card above what
  * the turn said after it, with or without a reload in between.
  * @param message - The message as the conversation holds it.
+ * @param options - What is true of the message right now.
+ * @param options.open - The turn is still writing it: a card answered last
+ *   in it opens an empty part below, where what the turn says next arrives
+ *   and the wait for it is drawn.
  * @returns It, or its parts, split after each card answered in it; each part
  *   after the first named after the call it follows.
  */
-export function splitAtAnswer(message: UIMessage): UIMessage[] {
+export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boolean } = {}): UIMessage[] {
   const views: UIMessage[] = [];
   let from = 0;
   let id = message.id;
   for (const [at, part] of message.parts.entries()) {
-    if (part.type !== ASK_AWAITING || at === message.parts.length - 1) continue;
+    if (part.type !== ASK_AWAITING || (!open && at === message.parts.length - 1)) continue;
     const callId = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
     const answered = message.parts.some(
       (p) => isToolUIPart(p) && p.toolCallId === callId && p.state === 'output-available',

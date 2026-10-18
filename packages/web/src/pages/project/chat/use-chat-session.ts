@@ -425,7 +425,7 @@ export function useChatSession(
       const views =
         before && tail && Boolean(tail.failedJustNow) === justNow && Boolean(tail.streaming) === streaming
           ? before
-          : splitAtAnswer(m).map((half, i, halves) => {
+          : splitAtAnswer(m, { open: streaming }).map((half, i, halves) => {
             if (i === halves.length - 1) return toChatMessage(half, { failedJustNow: justNow, streaming });
             const key = `${half.id}#${String(half.parts.length)}`;
             const view = settledParts.current.get(key) ?? toChatMessage(half);

@@ -140,4 +140,20 @@ describe('a reply resumed after the reader answered on the card', () => {
 
     expect(splitAtAnswer(answered)).toEqual([answered]);
   });
+
+  it('opens an empty part below the answered card while the turn is still being written', () => {
+    const answered = reply([ask('ask-1', 'output-available', { output: { answers: ANSWERS } }), awaiting('ask-1')]);
+
+    const [asked, resumed, ...rest] = splitAtAnswer(answered, { open: true });
+
+    expect(rest).toEqual([]);
+    expect(asked?.parts.map((p) => p.type)).toEqual(['tool-ask_user', 'data-ask-awaiting']);
+    expect(resumed).toMatchObject({ id: 'm1~ask-1', parts: [] });
+  });
+
+  it('stays whole while the turn is written when the card is still waiting', () => {
+    const waiting = reply([ask('ask-1', 'input-available'), awaiting('ask-1')]);
+
+    expect(splitAtAnswer(waiting, { open: true })).toEqual([waiting]);
+  });
 });
