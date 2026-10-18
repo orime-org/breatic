@@ -181,24 +181,32 @@ function sayWhenItOpens(
 }
 
 /**
- * Keep a resumed turn in the reply it resumes.
+ * Keep every message under the name this end gave it.
  *
- * The server names every reply it streams, and a resumed one gets a fresh
- * name: it never sees the id this end gave the paused reply. `Chat` replaces
- * the last message only when the reply's id matches it and pushes a new one
- * otherwise (`ai@7.0.68` `index.js:17977`), so the resumed turn would arrive
- * as a second copy of the paused reply with the rest appended. Naming it after
- * the paused reply is what the SDK's own continuation does on the server
- * (`getResponseUIMessageId`, `index.js:6532`).
- * @param stream - The resumed turn's stream.
- * @param replyId - The id of the paused reply on this end.
- * @returns The same frames, the start named after the paused reply.
+ * The server names each reply it streams on its `start` frame, and that name
+ * is one this end never gave out. `Chat` replaces the last message only while
+ * the reply's id matches it and pushes a new one otherwise (`ai@7.0.68`
+ * `index.js:17977`), and a frame written before `start` has already stored
+ * the reply under this end's name. So a renamed `start` adds a second message:
+ * after the frames a turn opens with, a copy of the reply so far; on a turn
+ * resumed after a questionnaire, a copy of the paused reply. Without a name
+ * on `start` the SDK keeps the one it has (`index.js:7368`), which is the
+ * paused reply's when a turn resumes, as the SDK's own continuation names it
+ * (`getResponseUIMessageId`, `index.js:6532`). Nothing on either side reads
+ * the server's name.
+ * @param stream - A turn's stream.
+ * @returns The same frames, `start` without a name.
  */
-function resumeIn(stream: ReadableStream<UIMessageChunk>, replyId: string): ReadableStream<UIMessageChunk> {
+function keepOurNames(stream: ReadableStream<UIMessageChunk>): ReadableStream<UIMessageChunk> {
   return stream.pipeThrough(
     new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
-        controller.enqueue(chunk.type === 'start' && chunk.messageId !== undefined ? { ...chunk, messageId: replyId } : chunk);
+        if (chunk.type === 'start' && chunk.messageId !== undefined) {
+          const { messageId: _named, ...rest } = chunk;
+          controller.enqueue(rest);
+          return;
+        }
+        controller.enqueue(chunk);
       },
     }),
   );
@@ -284,10 +292,8 @@ function transportFor(
       const carried = attachedOn(options.messages[options.messages.length - 1]);
       // An answer leaves the box alone: what is in it is not what was sent.
       const isAnswer = answering.has(conversationId);
-      const paused = options.messages[options.messages.length - 1];
-      const sent = await wire.sendMessages(options);
       return sayWhenItOpens(
-        isAnswer && paused?.role === 'assistant' ? resumeIn(sent, paused.id) : sent,
+        keepOurNames(await wire.sendMessages(options)),
         // On every answering frame, because the fold begins after the turn
         // has already opened: the server writes the conversation's name
         // first, every turn, and only then stops to fold. Clearing on the

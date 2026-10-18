@@ -197,4 +197,24 @@ describe('writing a message instead of answering', () => {
 
     expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { repliedInChat: true } });
   });
+
+  it('adds one reply for the turn when the frames arrive in the order the server writes them', async () => {
+    // A named conversation's turn opens with its title, then the cards the
+    // message closed, then the model's reply under the server's own id.
+    answer = () =>
+      streaming([
+        { type: 'data-conversation-titled', data: { title: 'Poster' } },
+        { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } },
+        { type: 'start', messageId: 'named-by-the-server' },
+        { type: 'text-start', id: 't' },
+        { type: 'text-delta', id: 't', delta: 'Sure.' },
+        { type: 'text-end', id: 't' },
+        { type: 'finish' },
+      ]);
+    const chat = pausedChat();
+    await sendInSession('c-1', 'never mind, something else');
+
+    expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant']);
+    expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { repliedInChat: true } });
+  });
 });

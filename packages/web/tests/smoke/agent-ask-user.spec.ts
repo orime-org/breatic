@@ -150,6 +150,9 @@ test('a message written instead closes the card as replied to', async () => {
 
   await expect(page.getByTestId('questionnaire-replied-toggle')).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId('questionnaire-submit')).toHaveCount(0);
+  // The turn the message started is one reply, not an empty one ahead of it.
+  await expect(page.getByText('Sure.')).toBeVisible();
+  await expect(page.getByTestId('message-bubble-empty')).toHaveCount(0);
 });
 
 test('a real turn asks with a card that waits through a reload, and answering resumes it @needs-model', async () => {
