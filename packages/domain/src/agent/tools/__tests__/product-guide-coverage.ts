@@ -617,6 +617,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.credit.designation_locked": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.designation_not_purchased": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.granted_elsewhere": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.credit.held_by_running": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.credit.in_debt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.credit.not_studio_admin": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.refund_already_asked": { excluded: REASONS.NOT_ON_THESE_SCREENS },

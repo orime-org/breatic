@@ -173,6 +173,20 @@ usage_lookup_delay_ms: 30000
 # 30, 60, 120, 240 and 480 s).
 usage_lookup_attempts: 6
 
+# How long a chat turn's credit hold counts without being moved, in
+# milliseconds. Each step of the turn moves it on; a turn whose process died
+# frees its credits after this. A call whose cost is looked up later keeps its
+# hold this long too, so this must outlast the lookups above (about sixteen
+# minutes).
+credit_hold_ttl_ms: 1800000
+
+# Credits a paying tool holds before it runs, for the tools whose price is
+# known only once the call is over. Measured costs per call: media
+# understanding up to about 0.7, judging a few thousandths.
+paid_tool_hold_credits:
+  understand_media: 2
+  judge_likelihood: 0.1
+
 # How much the model may write about one piece of media, in tokens.
 # The same figure web_search takes, for the same measured reason: 2048 returns
 # about a third of the text 8192 does, and the difference in time is 19ms.

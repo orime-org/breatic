@@ -23,7 +23,7 @@ import { z } from "zod";
 
 import { toolFailed } from "@domain/agent/tools/failure.js";
 import { askJev, JEV_PINS } from "@domain/agent/tools/jev.js";
-import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
+import { holdForTool, paidToolHoldCredits, usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import type { JevAnswers } from "@domain/agent/tools/jev.js";
 
@@ -149,6 +149,7 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, Usag
       );
     }
 
+    await holdForTool(context, paidToolHoldCredits("judge_likelihood"));
     return askJev({
       apiKey,
       state,

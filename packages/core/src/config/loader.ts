@@ -311,6 +311,25 @@ const agentConfigSchema = z.object({
    * missing. Retries back off exponentially from the delay above.
    */
   usage_lookup_attempts: z.number().int().min(1).max(20).default(6),
+  /**
+   * How long a chat turn's credit hold counts without being moved, in
+   * milliseconds (inner#1611). Each step moves it on, so a turn still working
+   * keeps it; a turn whose process died frees its credits after this. Also how
+   * long a call awaiting its cost keeps its hold, so it must outlast the
+   * lookups above.
+   */
+  credit_hold_ttl_ms: z.number().int().min(60_000).max(MAX_TIMER_MS).default(1_800_000),
+  /**
+   * Credits a paying tool holds before it runs, for the tools whose price is
+   * known only after the call (inner#1611). The Brave searches hold their
+   * per-request price from `usage-pricing.yaml` instead.
+   */
+  paid_tool_hold_credits: z
+    .object({
+      understand_media: z.number().positive().default(2),
+      judge_likelihood: z.number().positive().default(0.1),
+    })
+    .default({ understand_media: 2, judge_likelihood: 0.1 }),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
 }).superRefine((config, ctx) => {
