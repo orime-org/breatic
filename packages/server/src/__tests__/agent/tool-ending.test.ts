@@ -138,6 +138,9 @@ describe("a call the SDK refused, in either shape it arrives in", () => {
       kind: "tool_failed",
       readerKey: FAILURE_LINES.ourFault,
     });
+    // The same story to both: our side failed, the call itself was fine.
+    expect(endingOf(new Error("boom")).forModel).toMatch(/our side/);
+    expect(endingOf(new Error("boom")).forModel).not.toMatch(/correct the call/i);
     expect(endingOf("text part 1 not found")).toMatchObject({
       kind: "tool_failed",
       readerKey: FAILURE_LINES.ourFault,

@@ -166,11 +166,18 @@ function refusedFailure(err: UnderstandRefused): Error {
     case "media":
       // 413 is the provider's body ceiling, reached by the file; any other
       // code here is the inline request this side built (`understand.ts`).
-      return toolFailed(
-        `The service would not take this media: ${err.detail}. ` +
-          "Tell the user, and do not send the same file again.",
-        err.status === 413 ? FAILURE_LINES.fileTooLarge : FAILURE_LINES.ourFault,
-      );
+      return err.status === 413
+        ? toolFailed(
+          `The service would not take this media: ${err.detail}. ` +
+            "Tell the user, and do not send the same file again.",
+          FAILURE_LINES.fileTooLarge,
+        )
+        : toolFailed(
+          `The service turned down the request this side built for this media: ${err.detail}. ` +
+            "That is a fault on our side, not in the file; trying once more may work, and if it fails " +
+            "again tell the user it is unavailable, without blaming anything they sent.",
+          FAILURE_LINES.ourFault,
+        );
     case "unfetchable":
       // An image travels as its address and the backend fetches it, so this
       // one is about reaching the address rather than about the file. Moving

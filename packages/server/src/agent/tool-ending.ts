@@ -119,9 +119,12 @@ export function endingOf(err: unknown): ToolFailure {
   if (refusedBySdk(err)) {
     return { kind: "turned_away", forModel: `${said} Correct the call and try once more.` };
   }
+  // Anything else is our own code failing: the call itself was fine.
   return {
     kind: "tool_failed",
-    forModel: `${said} Correct the call and try once more.`,
+    forModel:
+      `${said} This failed on our side, not because of the call's arguments. Trying once more may work; ` +
+      "if it fails again, tell the user it could not be done.",
     readerKey: FAILURE_LINES.ourFault,
   };
 }

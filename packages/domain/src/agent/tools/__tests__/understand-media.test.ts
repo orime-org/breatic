@@ -471,9 +471,11 @@ describe("understand_media — a call the service refused", () => {
   it("puts a request we built that the service refused down to our server", async () => {
     understandMediaAtMock.mockRejectedValue(new UnderstandRefused(400, "Invalid request body", "media"));
 
-    const { readerKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
+    const { forModel, readerKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
 
     expect(readerKey).toBe("chat.tool.failure.ourFault");
+    expect(forModel).toMatch(/our side/);
+    expect(forModel).not.toContain("do not send the same file again");
   });
 
   it("leaves a question the model may reword as one worth rewording", async () => {
