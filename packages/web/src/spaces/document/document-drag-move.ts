@@ -36,6 +36,7 @@ import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
+import { isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /**
  * Where a row would land for a drop at the given document position.
@@ -63,7 +64,9 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * schema with an empty paragraph, and the reader would watch a blank row
  * appear under the block they dragged out of. The document's own top-level
  * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
- * requires it, so it stays and the insert below is what keeps it occupied.
+ * requires it, so it stays and the insert below is what keeps it occupied. A
+ * table cell is exempt too: it is a place in its table, and the refill is
+ * the empty paragraph a cell a block left holds.
  * @param doc - The document the row sits in.
  * @param row - The row about to leave.
  * @returns The range to remove.
@@ -73,7 +76,9 @@ export function rangeToLift(
   row: RowInDocument,
 ): { from: number; to: number } {
   const $row = doc.resolve(row.from);
-  if ($row.parent.childCount > 1 || $row.depth <= 1) {
+  // A table cell keeps its place: the schema refills it with an empty
+  // paragraph once its only block leaves (inner#1619 T6).
+  if ($row.parent.childCount > 1 || $row.depth <= 1 || isTableCell($row.parent)) {
     return { from: row.from, to: row.to };
   }
   return { from: $row.before($row.depth), to: $row.after($row.depth) };
