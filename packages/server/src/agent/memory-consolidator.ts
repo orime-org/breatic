@@ -26,17 +26,20 @@
 
 import { stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
+import { randomUUID } from "node:crypto";
 import {
   generateTextRetry,
   getModel,
   callOptionsFor,
-  creditLotService,
+  creditHoldService,
   createUsageRecorder,
+  estimateModelCallCredits,
   handOffLookups,
   resolveProvider,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
-import { getAgentConfig, logger } from "@breatic/core";
+import { env, getAgentConfig, getUsagePricing, logger } from "@breatic/core";
+import { settleHeldUsage } from "@server/agent/turn-credit-hold.js";
 import { memoryService } from "@server/modules";
 
 const CONSOLIDATION_PROMPT = `\
@@ -186,6 +189,10 @@ interface ConsolidationBill {
   usage: UsageRecorder;
   /** Which model spent it. */
   model: string;
+  /** The hold this attempt ran under (inner#1611). */
+  holdKey: string;
+  /** What a call of it still waiting for a price is held at. */
+  lookupHoldCredits: number;
 }
 
 /**
@@ -212,28 +219,30 @@ async function bill(input: ConsolidationBill): Promise<void> {
   const { userId, conversationId, projectId, watermarkBefore, usage, model } = input;
 
   try {
-    const amount = await usage.settle();
-    // An OpenRouter call whose cost is not in hand is looked up and charged
-    // later, under a key of its own.
-    await handOffLookups(usage.awaitingLookup(), usage.operation, {
-      model,
-      description: "Memory consolidation",
-      charge: true,
-    }).catch((err: unknown) =>
-      logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
-    );
-    if (amount === 0) return;
-    const outcome = await creditLotService.chargeOnceForGeneration(
-      usage.operation.operationKey,
-      {
+    const { outcome } = await settleHeldUsage({
+      usage,
+      holdKey: input.holdKey,
+      chargeKey: usage.operation.operationKey,
+      lookupHoldCredits: input.lookupHoldCredits,
+      handOff: async () => {
+        // An OpenRouter call whose cost is not in hand is looked up and
+        // charged later, under a key of its own.
+        await handOffLookups(usage.awaitingLookup(), usage.operation, {
+          model,
+          description: "Memory consolidation",
+          charge: true,
+        }).catch((err: unknown) =>
+          logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
+        );
+      },
+      charge: {
         projectId,
         actorUserId: userId,
-        amount,
         description: "Memory consolidation",
         model,
         provider: resolveProvider(model),
       },
-    );
+    });
 
     if (outcome && outcome.shortfall > 0) {
       // The pool ran out, or its credits were reassigned while this ran. The
@@ -352,6 +361,39 @@ export async function consolidateWindow(
     return "untouched";
   }
 
+  // The fold is held at the most it can cost before the model is called
+  // (inner#1611), under a key of this attempt alone: a fold the reader
+  // stopped is tried again over the same window, and its charge key stays
+  // the same so it is paid for once. A studio that cannot cover it keeps the
+  // window, and the turn's own first call is held for at least as much.
+  const holdKey = `${consolidationKey(conversationId, watermarkBefore)}:${randomUUID()}`;
+  let lookupHoldCredits = 0;
+  try {
+    lookupHoldCredits = env.PAYMENT_ENABLED
+      ? estimateModelCallCredits(
+          // A character counted as a token: the prompt is text, and counting it
+          // this way only ever holds more.
+          { model: config.consolidation_model, inputTokens: prompt.length, maxOutputTokens: config.max_output_tokens, cacheTtl: null },
+          getUsagePricing(),
+          env.CREDIT_MULTIPLIER,
+        )
+      : 0;
+    const admitted = await creditHoldService.reserveCredits({
+      projectId,
+      actorUserId: userId,
+      referenceId: holdKey,
+      amount: lookupHoldCredits,
+      ttlMs: config.credit_hold_ttl_ms,
+    });
+    if (!admitted.ok) {
+      logger.info({ ...where, held: admitted.held, spendable: admitted.spendable }, "memory_consolidation_no_credits");
+      return "untouched";
+    }
+  } catch (err) {
+    logger.error({ err, ...where }, "memory_consolidation_untouched");
+    return "untouched";
+  }
+
   // From here on the model is involved, so every ending below has a call
   // behind it that has to be paid for and cannot be repeated for free.
   try {
@@ -399,6 +441,8 @@ export async function consolidateWindow(
       watermarkBefore,
       usage,
       model: config.consolidation_model,
+      holdKey,
+      lookupHoldCredits,
     });
 
     const answer = readAnswer(result.text.trim());
@@ -440,6 +484,11 @@ export async function consolidateWindow(
     );
     return outcome;
   } catch (err) {
+    // Whatever was held for a call that failed, or that the reader stopped,
+    // is free again; a fold that was already charged released it then.
+    await creditHoldService.releaseHold(holdKey).catch((releaseErr: unknown) =>
+      logger.error({ err: releaseErr, ...where }, "credit_hold_release_failed"),
+    );
     // The reader leaving is the one ending here that keeps the window: they
     // come back to a conversation that folds it again, and the charge is
     // already keyed so the second attempt is not paid for twice.

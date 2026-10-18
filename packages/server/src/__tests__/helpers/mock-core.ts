@@ -39,7 +39,10 @@ import {
 // route names it on the row, on the job and against the charge, and a copy
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
-import { creditsForUsd as REAL_CREDITS_FOR_USD } from "../../../../domain/src/credit/usage-cost.js";
+import {
+  creditsForUsd as REAL_CREDITS_FOR_USD,
+  estimateModelCallCredits as REAL_ESTIMATE_MODEL_CALL_CREDITS,
+} from "../../../../domain/src/credit/usage-cost.js";
 import { instructionsText as REAL_INSTRUCTIONS_TEXT } from "../../../../domain/src/agent/instructions.js";
 import { containerCostUsd as REAL_CONTAINER_COST_USD } from "../../../../domain/src/credit/container-cost.js";
 // Real: the tracker is pure, and what a turn hands off depends on it.
@@ -493,6 +496,18 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     MONOREPO_ROOT: "/tmp",
     // The real config underneath, so every field the code reads exists; only
     // the values these suites depend on are set here.
+    // A turn holds each call at its price before it is made (inner#1611), and
+    // the suites run on model ids the real table does not list ("test",
+    // "test/model", provider variants). Startup refuses an unpriced agent
+    // model in production; here every model has a price.
+    getUsagePricing: () => {
+      const real = (actual.getUsagePricing as () => { models: Record<string, unknown>; services: unknown })();
+      const fallback = { input_cache_hit_per_mtok: 0.1, input_cache_miss_per_mtok: 1, output_per_mtok: 2 };
+      return {
+        ...real,
+        models: new Proxy(real.models, { get: (models, model: string) => models[model] ?? fallback }),
+      };
+    },
     getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_tokens: 850000, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
@@ -552,6 +567,7 @@ function usageRecorderDouble(options: {
   recordServiceCall: () => void;
   recordLookedUpCall: () => void;
   awaitingLookup: () => readonly string[];
+  spent: () => number;
   settle: () => Promise<number>;
 } {
   let credits = 0;
@@ -564,6 +580,7 @@ function usageRecorderDouble(options: {
     recordServiceCall: () => {},
     recordLookedUpCall: () => {},
     awaitingLookup: () => [],
+    spent: () => credits,
     settle: async () => credits,
   };
 }
@@ -574,8 +591,8 @@ export const domainMock = () => ({
   isGenerationId: realIsGenerationId,
   handOffLookups: mocks.handOffLookups,
   // The same shape as the real one: every tool in the set gets the recorder.
-  usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
-    Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
+  usageContextFor: (tools: Record<string, unknown>, usage: unknown, hold?: unknown) =>
+    Object.fromEntries(Object.keys(tools).map((name) => [name, hold ? { usage, hold } : { usage }])),
   SMALLEST_CREDIT: 0.000001,
   UPLOAD_FINISH_QUEUE: "upload-finish",
   uploadStatusService: { statusOf: vi.fn().mockResolvedValue([]) },
@@ -606,6 +623,7 @@ export const domainMock = () => ({
   MIN_TASK_CREDIT_COST: 5,
   // Arithmetic, so the real one: a double would be a second copy of the rate.
   creditsForUsd: REAL_CREDITS_FOR_USD,
+  estimateModelCallCredits: REAL_ESTIMATE_MODEL_CALL_CREDITS,
   containerCostUsd: REAL_CONTAINER_COST_USD,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,

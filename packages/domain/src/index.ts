@@ -38,9 +38,9 @@ export {
   type UsageFeature,
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
-export { usageContextFor } from "@domain/agent/tools/usage-context.js";
-export { creditsForUsd, type ModelCallUsage } from "@domain/credit/usage-cost.js";
-export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
+export { usageContextFor, type ToolHold } from "@domain/agent/tools/usage-context.js";
+export { creditsForUsd, estimateModelCallCredits, type ModelCallUsage } from "@domain/credit/usage-cost.js";
+export { agentModelIds, assertModelsHoldable, assertModelsPriced } from "@domain/credit/priced-models.js";
 export {
   USAGE_LOOKUP_QUEUE,
   handOffLookups,

@@ -129,6 +129,13 @@ const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence.]";
 
 /**
+ * The note that says a turn stopped because its studio ran out of credits
+ * (inner#1611): nothing went wrong and nobody stopped it, and carrying on
+ * needs credits rather than a retry.
+ */
+const CREDITS_NOTE = "[This turn stopped partway: the studio ran out of credits.]";
+
+/**
  * The note a reply ends on when its turn did not end on its own.
  *
  * Read off the reply's stored parts, which record how the turn ended, so a
@@ -142,6 +149,7 @@ export function endingNote(parts: readonly MessagePart[]): string | undefined {
   if (parts.some((p) => p.type === "interrupted")) return STOP_NOTE;
   if (parts.some((p) => p.type === "failed")) return FAILED_NOTE;
   if (parts.some((p) => p.type === "truncated")) return TRUNCATED_NOTE;
+  if (parts.some((p) => p.type === "credits_exhausted")) return CREDITS_NOTE;
   return undefined;
 }
 

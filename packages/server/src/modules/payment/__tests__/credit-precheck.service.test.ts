@@ -11,10 +11,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as CoreModule from "@breatic/core";
+import type * as SharedModule from "@breatic/shared";
 
 const { env } = vi.hoisted(() => ({ env: { PAYMENT_ENABLED: true } }));
 vi.mock("@breatic/core", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@breatic/core")>();
+  const real = await importOriginal<typeof CoreModule>();
   return {
     AppError: real.AppError,
     env,
@@ -23,7 +25,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 vi.mock("@breatic/shared", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@breatic/shared")>()),
+  ...(await importOriginal<typeof SharedModule>()),
   t: (key: string, params?: Record<string, unknown>) => `${key}${params ? ` ${JSON.stringify(params)}` : ""}`,
 }));
 

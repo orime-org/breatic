@@ -197,6 +197,14 @@ describe("history on its way to the model", () => {
     expect(String((note as { content: string }).content)).toMatch(/output limit/i);
   });
 
+  it("tells the model a turn stopped because the studio ran out of credits (inner#1611)", () => {
+    const history = [stored("assistant", [{ type: "text", text: "first, " }, { type: "credits_exhausted" }])];
+
+    const [said, note] = toModelMessages(history);
+    expect(String((said as { content: string }).content)).toBe("first, ");
+    expect(String((note as { content: string }).content)).toMatch(/out of credits/i);
+  });
+
   it("says a turn was stopped rather than cut off when it was both", () => {
     // A reader who presses stop on a turn already at the ceiling leaves both
     // marks. What the next turn needs to know is that nobody wants the rest.

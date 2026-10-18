@@ -38,6 +38,7 @@ function recorder(awaiting: string[] = []): UsageRecorder & { recordModelCall: R
     recordServiceCall: vi.fn(),
     recordLookedUpCall: vi.fn(),
     awaitingLookup: () => awaiting,
+    spent: () => 0,
     settle: vi.fn(async () => 0),
   };
 }

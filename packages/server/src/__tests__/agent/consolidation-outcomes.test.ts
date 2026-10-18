@@ -398,6 +398,7 @@ describe("a consolidation that works", () => {
       recordServiceCall: vi.fn(),
       recordLookedUpCall: vi.fn(),
       awaitingLookup: () => ["gen-5"],
+      spent: () => 0,
       settle: async () => 0,
     });
 
@@ -630,5 +631,80 @@ describe("two tabs that consolidated the same conversation", () => {
     expect(chargeOnceForGeneration.mock.calls[0]?.[0]).toBe(
       `consolidate:${CONVERSATION}:7`,
     );
+  });
+});
+
+describe("the credits a fold holds (inner#1611)", () => {
+  /**
+   * The key the fold's hold was placed under.
+   * @returns It.
+   */
+  async function heldKey(): Promise<string> {
+    const { mocks } = await import("../helpers/mock-core.js");
+    const call = mocks.creditHoldService.reserveCredits.mock.calls[0]?.[0] as { referenceId: string } | undefined;
+    if (!call) throw new Error("the fold held nothing");
+    return call.referenceId;
+  }
+
+  beforeEach(async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: true });
+  });
+
+  it("holds the most the fold can cost, under a key of its own attempt, before calling the model", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    const order: string[] = [];
+    mocks.creditHoldService.reserveCredits.mockImplementationOnce(async () => {
+      order.push("hold");
+      return { ok: true };
+    });
+    generateTextRetry.mockImplementationOnce(async () => {
+      order.push("call");
+      return GOOD_ANSWER;
+    });
+
+    await consolidate();
+
+    expect(order).toEqual(["hold", "call"]);
+    const request = mocks.creditHoldService.reserveCredits.mock.calls[0]?.[0] as { referenceId: string; amount: number };
+    expect(request.referenceId).toMatch(new RegExp(`^consolidate:${CONVERSATION}:7:.+`));
+    // At least the output ceiling at the double's price of 2 a million, times 2.5.
+    expect(request.amount).toBeGreaterThan((OUTPUT_CEILING * 2 * 100 * 2.5) / 1_000_000);
+  });
+
+  it("leaves the window and calls no model when the studio cannot cover the fold", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    mocks.creditHoldService.reserveCredits.mockResolvedValueOnce({ ok: false, studioId: "s", spendable: 0, held: 0 });
+
+    expect(await consolidate()).toBe("untouched");
+    expect(generateTextRetry).not.toHaveBeenCalled();
+    expect(discardConsolidation).not.toHaveBeenCalled();
+  });
+
+  it("charges the fold and releases its hold in the same charge", async () => {
+    await consolidate();
+
+    expect(chargeOnceForGeneration).toHaveBeenCalledWith(
+      `consolidate:${CONVERSATION}:7`,
+      expect.objectContaining({ releaseHold: await heldKey() }),
+    );
+  });
+
+  it("releases its hold when the model call fails", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    generateTextRetry.mockRejectedValueOnce(new Error("provider down"));
+
+    await consolidate();
+
+    expect(mocks.creditHoldService.releaseHold).toHaveBeenCalledWith(await heldKey());
+  });
+
+  it("holds a retry of the same window under a new key", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    await consolidate();
+    await consolidate();
+
+    const keys = mocks.creditHoldService.reserveCredits.mock.calls.map((call) => (call[0] as { referenceId: string }).referenceId);
+    expect(new Set(keys).size).toBe(2);
   });
 });

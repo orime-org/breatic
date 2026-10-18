@@ -237,7 +237,14 @@ export type MessagePart =
    * list of tools that block lives in `@breatic/domain`, which the panel may
    * not import; a second copy of that list is a second thing to keep true.
    */
-  | { type: "blocked" };
+  | { type: "blocked" }
+  /**
+   * The turn stopped before a model call the studio could not cover
+   * (inner#1611). Not a fault and not the reader's doing: what ran out is the
+   * studio's credits, so the reader is told that, and the next turn's model
+   * reads that it stopped for this reason.
+   */
+  | { type: "credits_exhausted" };
 
 /**
  * Single message within a conversation, as the rest of the app handles it.

@@ -23,7 +23,7 @@ import type { OpenDocument, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig } from "@breatic/core";
-import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
+import { assetService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
@@ -37,6 +37,7 @@ import { toStoredParts } from "@server/modules/conversation/message-part-mapping
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
 import { foldIfOverBudget } from "@server/agent/turn-budget.js";
 import { requestTokens } from "@server/agent/request-size.js";
+import { openTurnHold, settleHeldUsage, type TurnHold } from "@server/agent/turn-credit-hold.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -44,7 +45,7 @@ import { lastFullSnapshotKey, prefixHash, replayRows } from "@server/agent/histo
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
 import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
-import { measureMessages } from "@server/agent/payload-size.js";
+import { measureInstructionsAndTools, measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { writeAskUserText } from "@server/agent/ask-user-text.js";
@@ -263,6 +264,29 @@ export class MainAgent {
       return asked;
     };
 
+    /**
+     * Stop before a call the studio cannot cover (inner#1611).
+     *
+     * The SDK asks only when the loop would go on, and asks every condition at
+     * once, so a step that already stops for another reason is not held for.
+     * The next request carries the first one and every step since.
+     * @param options - The steps so far, from the SDK.
+     * @param options.steps - Every step this turn has completed.
+     * @returns Whether the turn should stop here.
+     */
+    const stopIfOutOfCredits = async (options: {
+      steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
+    }): Promise<boolean> => {
+      if (!hold) return false;
+      if (options.steps.length >= agentCfg.max_tool_iterations) return false;
+      const asked = (options.steps[options.steps.length - 1]?.content ?? []).some(
+        (part) => part.type === "tool-result" && part.toolName === ASK_USER,
+      );
+      if (asked) return false;
+      const nextRequest = firstRequestTokens + measureMessages(options.steps.flatMap((step) => step.response.messages));
+      return !(await hold.coverNextCall(nextRequest));
+    };
+
     // Every paid call this turn makes is recorded where it happens, one row
     // each (#296); the turn is charged what those rows add up to. Model calls
     // are recorded as each one's response arrives, never from `result.usage`:
@@ -279,6 +303,10 @@ export class MainAgent {
     });
     // Set once the model is known; records the turn's model calls.
     let calls: ModelCallWatch | undefined;
+    // What the turn holds of the studio's credits while it runs (inner#1611),
+    // and the size of its first request, which every later request carries.
+    let hold: TurnHold | undefined;
+    let firstRequestTokens = 0;
 
     // The SDK does not throw when the provider fails. It puts an `error`
     // chunk on the stream and closes it normally, so nothing rejects and
@@ -482,6 +510,24 @@ export class MainAgent {
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
       turnStudioId = studioId;
+
+      // The first call is held before it is made; a studio that cannot cover
+      // it ends the turn here, saying so, with no model call behind it.
+      hold = openTurnHold({
+        projectId,
+        userId,
+        key: usage.operation.operationKey,
+        usage,
+        model: agentConfig.modelId,
+        cacheTtl: agentCfg.prompt_cache_ttl,
+      });
+      // What the first request carries: the instructions, the tools and the
+      // messages as they go out, counted the way the payload is measured.
+      firstRequestTokens = measureInstructionsAndTools(agentConfig) + measureMessages(messages);
+      if (!(await hold.coverNextCall(firstRequestTokens))) {
+        writer.write({ type: "data-credits-exhausted", data: {} });
+        return new ReadableStream<UIMessageChunk>({ start: (controller) => controller.close() });
+      }
       const watch = watchModelCalls(usage, {
         model: agentConfig.modelId,
         description: "Agent chat",
@@ -514,8 +560,9 @@ export class MainAgent {
           saveToStorage: saveToStorageFor({ projectId, userId }),
           studioId,
           openDocument,
+          hold,
         }) as never,
-        stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
+        stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked, stopIfOutOfCredits],
         // Per call, which is the only unit there is: the `stopWhen` above
         // lets one turn make many, and each of them is bounded by this. An
         // answer with no ceiling is carried whole by every later turn's
@@ -643,6 +690,12 @@ export class MainAgent {
           // a part of the reply, so storage and a reload get it too.
           if (askedTheUser) {
             writer.write({ type: "data-blocked", data: {} });
+          }
+          // A turn whose next call the studio could not cover stopped there;
+          // said on the wire so the panel draws the ending, and kept with the
+          // reply for the same reason the frame above is.
+          if (hold?.exhausted) {
+            writer.write({ type: "data-credits-exhausted", data: {} });
           }
           // Said on the wire for the same reason as the two above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
@@ -791,27 +844,30 @@ export class MainAgent {
               );
             },
             bill: async () => {
-              // An OpenRouter call whose cost is not in hand is looked up and
-              // charged later, under a key of its own.
-              await calls?.handOff().catch((err: unknown) =>
-                logger.error({ err, userId, conversationId, turnIndex }, "usage_lookup_enqueue_failed"),
-              );
-              creditsUsed = await usage.settle();
-              if (creditsUsed === 0) return;
-
-              // The turn-scoped refKey makes this idempotent: a reconnect or
-              // a re-entry on the same turn will not double-charge.
-              const outcome = await creditLotService.chargeOnceForGeneration(
-                usage.operation.operationKey,
-                {
+              // Held calls still waiting for their price keep a hold of their
+              // own until the lookup charges them (inner#1611).
+              const settled = await settleHeldUsage({
+                usage,
+                holdKey: usage.operation.operationKey,
+                chargeKey: usage.operation.operationKey,
+                lookupHoldCredits: hold?.lookupHoldCredits() ?? 0,
+                handOff: async () => {
+                  // An OpenRouter call whose cost is not in hand is looked up
+                  // and charged later, under a key of its own.
+                  await calls?.handOff().catch((err: unknown) =>
+                    logger.error({ err, userId, conversationId, turnIndex }, "usage_lookup_enqueue_failed"),
+                  );
+                },
+                charge: {
                   projectId,
                   actorUserId: userId,
-                  amount: creditsUsed,
                   description: "Agent chat",
                   model: modelId,
                   provider: resolveProvider(modelId),
                 },
-              );
+              });
+              creditsUsed = settled.credits;
+              const outcome = settled.outcome;
               if (outcome && outcome.shortfall > 0) {
                 // The pool ran out mid-turn, or its credits were reassigned
                 // while the model was answering. The reply is already with the

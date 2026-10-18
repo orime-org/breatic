@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 
 import fc from "fast-check";
 
-import { assertModelsPriced, costOfModelCall, creditsForUsd, estimateModelCallCredits } from "@domain/credit/usage-cost.js";
+import { costOfModelCall, creditsForUsd, estimateModelCallCredits } from "@domain/credit/usage-cost.js";
 
 const PRICING = {
   models: {
@@ -221,8 +221,4 @@ describe("what one model call may cost at most, held before it is made (inner#16
     );
   });
 
-  it("names every agent model that has no price", () => {
-    expect(() => assertModelsPriced(["anthropic/claude-opus-5.5", "x/one", "x/two"], PRICING)).toThrow(/x\/one, x\/two/);
-    expect(() => assertModelsPriced(["anthropic/claude-opus-5.5"], PRICING)).not.toThrow();
-  });
 });

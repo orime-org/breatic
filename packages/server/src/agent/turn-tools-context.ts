@@ -19,6 +19,7 @@ import {
   usageContextFor,
   type OpenDocument,
   type SaveToStorage,
+  type ToolHold,
 } from "@breatic/domain";
 
 type UsageRecorder = Parameters<typeof usageContextFor>[1];
@@ -32,15 +33,17 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
  * @param turn.studioId - The studio whose material a proposal may name.
  * @param turn.openDocument - The document the reader has open, which a
  *   document proposal goes to, or null when none can be read.
+ * @param turn.hold - The turn's credit hold, which a paying tool grows before
+ *   it spends (inner#1611); absent when the turn holds nothing.
  * @returns The context, by tool name.
  * @throws {never} Never.
  */
 export function turnToolsContext(
   tools: Readonly<Record<string, unknown>>,
   usage: UsageRecorder,
-  turn: { saveToStorage: SaveToStorage; studioId: string; openDocument: OpenDocument | null },
+  turn: { saveToStorage: SaveToStorage; studioId: string; openDocument: OpenDocument | null; hold?: ToolHold },
 ): Record<string, Record<string, unknown>> {
-  const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage) };
+  const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage, turn.hold) };
   if (context[SAVE_IMAGE]) context[SAVE_IMAGE] = { ...context[SAVE_IMAGE], saveToStorage: turn.saveToStorage };
   if (context[PROPOSE_CANVAS_ACTION]) {
     context[PROPOSE_CANVAS_ACTION] = { ...context[PROPOSE_CANVAS_ACTION], studioId: turn.studioId };

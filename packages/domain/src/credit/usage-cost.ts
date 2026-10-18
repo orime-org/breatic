@@ -163,19 +163,3 @@ export function estimateModelCallCredits(call: PlannedModelCall, pricing: UsageP
   const inputPrice = Math.max(price.input_cache_miss_per_mtok, write ?? 0);
   return creditsForUsd((call.inputTokens * inputPrice + call.maxOutputTokens * price.output_per_mtok) / 1_000_000, multiplier);
 }
-
-/**
- * Check that every model the agent can call has a price, so its calls can be
- * held before they are made.
- * @param models - The models to check.
- * @param pricing - The price table.
- * @throws {Error} Naming every model with no price.
- */
-export function assertModelsPriced(models: readonly string[], pricing: UsagePricing): void {
-  const missing = [...new Set(models)].filter((model) => !pricing.models[model]);
-  if (missing.length > 0) {
-    throw new Error(
-      `config/usage-pricing.yaml has no price for ${missing.join(", ")}; with payments on, agent calls are held at their price before they are made`,
-    );
-  }
-}
