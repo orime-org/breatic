@@ -3,21 +3,10 @@
 
 import { useEffect, useRef } from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import {
-  ActivityNewSignalSchema,
-  CreditsChangedSignalSchema,
-  type ACTIVITY_NEW_SIGNAL,
-  type CREDITS_CHANGED_SIGNAL,
-} from '@breatic/shared';
+import type { ActivityNewSignal, CreditsChangedSignal } from '@breatic/shared';
 
 /** How long a burst of signals (a bulk op emits many) is gathered into one call. */
 const COALESCE_MS = 250;
-
-/** The project signals the meta doc carries, by their `t`. */
-const SCHEMA_OF = {
-  'activity:new': ActivityNewSignalSchema,
-  'credits:changed': CreditsChangedSignalSchema,
-} as const;
 
 /**
  * Call back when the meta-doc socket carries a project signal.
@@ -35,7 +24,7 @@ const SCHEMA_OF = {
 export function useProjectSignal(
   provider: Pick<HocuspocusProvider, 'on' | 'off'> | null | undefined,
   projectId: string,
-  signal: typeof ACTIVITY_NEW_SIGNAL | typeof CREDITS_CHANGED_SIGNAL,
+  signal: ActivityNewSignal['t'] | CreditsChangedSignal['t'],
   onSignal: () => void,
 ): void {
   const latest = useRef(onSignal);
@@ -43,7 +32,6 @@ export function useProjectSignal(
 
   useEffect(() => {
     if (!provider) return;
-    const schema = SCHEMA_OF[signal];
     let debounce: ReturnType<typeof setTimeout> | null = null;
     /**
      * Parse a stateless payload and call back on the signal for this project.
@@ -52,8 +40,9 @@ export function useProjectSignal(
      */
     const onStateless = (data: { payload: string }): void => {
       try {
-        const parsed = schema.safeParse(JSON.parse(data.payload));
-        if (parsed.success && parsed.data.projectId === projectId) {
+        const parsed: unknown = JSON.parse(data.payload);
+        const { t, projectId: about } = (parsed ?? {}) as { t?: unknown; projectId?: unknown };
+        if (t === signal && about === projectId) {
           if (debounce) clearTimeout(debounce);
           debounce = setTimeout(() => latest.current(), COALESCE_MS);
         }

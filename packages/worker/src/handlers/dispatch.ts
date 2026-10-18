@@ -399,9 +399,7 @@ async function runTaskBody(
     // A crash between marking the task billed and charging it leaves the
     // run's hold standing, and this job now completes, so nothing after it
     // releases the hold. Releasing one that is already released does nothing.
-    await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
-      logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
-    );
+    await releaseRunHold(taskId, userId);
     // #1580 adversarial fix: a crash in the window between billing and the
     // Stage-4 publish leaves the node handling with a billed, persisted
     // result. On redelivery, RE-EMIT the done write-backs from the stored
@@ -1124,6 +1122,18 @@ export interface RunCharge {
 }
 
 /**
+ * Release a run's credit hold. A release that fails is logged and the hold
+ * expires on its own; the run's outcome is written either way.
+ * @param taskId - The run, whose task id keys its hold.
+ * @param userId - Who started it, for the log.
+ */
+async function releaseRunHold(taskId: string, userId: string): Promise<void> {
+  await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
+    logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
+  );
+}
+
+/**
  * Charge a completed run what it actually cost, or release what was held for
  * it (inner#1611).
  *
@@ -1139,9 +1149,7 @@ export interface RunCharge {
 export async function settleRunCharge(run: RunCharge): Promise<void> {
   const { taskId, userId } = run;
   if (!run.wasFirst || run.creditsUsed <= 0) {
-    await creditHoldService.releaseHold(taskId).catch((err: unknown) =>
-      logger.error({ err, taskId, userId }, "credit_hold_release_failed"),
-    );
+    await releaseRunHold(taskId, userId);
     return;
   }
   try {
@@ -1216,11 +1224,7 @@ export async function finishFailedRun(end: FailedRunEnd): Promise<void> {
   if (end.settles) await upstreamStepRepo.failOpenSteps(end.taskId, end.errorMessage);
   // The run is over, so what was held for it is free again (inner#1611). A
   // release that fails leaves the hold to expire; the outcome is still written.
-  if (end.settles) {
-    await creditHoldService.releaseHold(end.taskId).catch((err: unknown) =>
-      logger.error({ err, taskId: end.taskId, userId: end.userId }, "credit_hold_release_failed"),
-    );
-  }
+  if (end.settles) await releaseRunHold(end.taskId, end.userId);
   await recordFailureHistory(
     end.taskId,
     end.projectId,

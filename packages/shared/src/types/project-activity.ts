@@ -172,9 +172,7 @@ export type ActivityNewSignal = z.infer<typeof ActivityNewSignalSchema>;
  */
 export const CREDITS_CHANGED_SIGNAL = "credits:changed" as const;
 
-export const CreditsChangedSignalSchema = z.object({
-  t: z.literal(CREDITS_CHANGED_SIGNAL),
-  projectId: z.string(),
-});
-
-export type CreditsChangedSignal = z.infer<typeof CreditsChangedSignalSchema>;
+export interface CreditsChangedSignal {
+  t: typeof CREDITS_CHANGED_SIGNAL;
+  projectId: string;
+}

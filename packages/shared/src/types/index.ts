@@ -228,7 +228,6 @@ export {
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
   ActivityNewSignalSchema,
-  CreditsChangedSignalSchema,
 } from "@shared/types/project-activity.js";
 export type {
   ProjectActivityType,
