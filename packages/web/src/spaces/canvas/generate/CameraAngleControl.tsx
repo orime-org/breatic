@@ -17,7 +17,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { corsUrl } from '@web/lib/cors-url';
 import { cn } from '@web/lib/utils';
 import { CAMERA_SPHERE, type AngleParams, type AngleSphere } from '@web/spaces/canvas/generate/angle-spheres';
-import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
+import type { CameraAngleSphereProps, LightTint } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
 import { cameraAngleNames, optionLabel, rangeStops } from '@web/spaces/canvas/generate/model-controls';
 import { ParamSliderRow, type SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { useSphereColors } from '@web/spaces/canvas/generate/use-sphere-colors';
@@ -87,6 +87,8 @@ interface CameraAngleControlProps {
   onChange: (partial: Record<string, unknown>) => void;
   /** The first image the model is sent, which sits on the card; absent for a plain card. */
   subjectUrl: string | undefined;
+  /** The light a light sphere shines in (inner#1304). */
+  tint?: LightTint;
 }
 
 /**
@@ -147,6 +149,7 @@ function prefersReducedMotion(): boolean {
  * @param root0.value - What the node holds.
  * @param root0.onChange - Called with every param of the pose.
  * @param root0.subjectUrl - The picture on the card.
+ * @param root0.tint - The light a light sphere shines in.
  * @returns The control.
  */
 export function CameraAngleControl({
@@ -156,6 +159,7 @@ export function CameraAngleControl({
   value,
   onChange,
   subjectUrl,
+  tint,
 }: CameraAngleControlProps): React.JSX.Element {
   const t = useTranslation();
   const colors = useSphereColors();
@@ -373,69 +377,79 @@ export function CameraAngleControl({
     distance: onDistanceDraft,
   };
 
-  return (
-    <div className='flex flex-col gap-3'>
-      <div>
-        <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
-          <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{t(sphere.titleKey)}</span>
-          <span data-testid='generate-camera-angle-pose' className='truncate text-foreground'>
-            {poseWords.join(' · ')}
-          </span>
-        </div>
-        {/* `application` is the ARIA role for a widget that draws itself and
-            takes the keyboard over, as this one does: the arrow keys and +/-
-            move the camera. There is no standard role for a pose picked on a
-            sphere, and the lint rules' allow-lists cover only the built-in
-            interactive roles; the same reasoning as the crop region in
-            `ImageCropDialog.tsx`. It is focusable, labelled, keyboard-operable
-            and shows a focus ring. */}
-        {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
-        <div
-          ref={groupRef}
-          role='application'
-          tabIndex={0}
-          aria-label={t(sphere.titleKey)}
-          data-testid='generate-camera-angle'
-          onKeyDown={onKeyDown}
-          onKeyUp={onKeyUp}
-          onBlur={endHeldKey}
-          className={cn(
-            'relative aspect-[4/3] w-full touch-none overflow-hidden rounded-chrome border border-border bg-muted outline-none',
-            'focus-visible:ring-1 focus-visible:ring-ring',
-          )}
+  // The camera's sphere sits beside its three sliders; the light's sits above
+  // its two, in the relight panel's left column (inner#1304).
+  const beside = sphere.marker === 'camera';
+  const heading = (
+    <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
+      <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{t(sphere.titleKey)}</span>
+      <span data-testid='generate-camera-angle-pose' className='truncate text-foreground'>
+        {poseWords.join(' · ')}
+      </span>
+    </div>
+  );
+  const pictured = (
+    <>
+      {/* `application` is the ARIA role for a widget that draws itself and
+          takes the keyboard over, as this one does: the arrow keys and +/-
+          move the camera. There is no standard role for a pose picked on a
+          sphere, and the lint rules' allow-lists cover only the built-in
+          interactive roles; the same reasoning as the crop region in
+          `ImageCropDialog.tsx`. It is focusable, labelled, keyboard-operable
+          and shows a focus ring. */}
+      {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+      <div
+        ref={groupRef}
+        role='application'
+        tabIndex={0}
+        aria-label={t(sphere.titleKey)}
+        data-testid='generate-camera-angle'
+        onKeyDown={onKeyDown}
+        onKeyUp={onKeyUp}
+        onBlur={endHeldKey}
+        className={cn(
+          'relative w-full touch-none overflow-hidden rounded-chrome border border-border bg-muted outline-none',
+          // Beside its sliders the sphere fills their height; above them it keeps 4:3.
+          beside ? 'min-h-0 flex-1' : 'aspect-[4/3]',
+          'focus-visible:ring-1 focus-visible:ring-ring',
+        )}
+      >
+        {unavailable ? (
+          <SphereUnavailable />
+        ) : (
+          <React.Suspense fallback={null}>
+            <LazySphere
+              pose={spherePose}
+              grid={grid}
+              marker={sphere.marker}
+              subjectUrl={subjectUrl === undefined ? undefined : corsUrl(subjectUrl)}
+              colors={colors}
+              {...(tint !== undefined && { tint })}
+              animate={!prefersReducedMotion()}
+              onDragStart={onDragStart}
+              onDrag={onDrag}
+              onDragEnd={onDragEnd}
+              onUnavailable={onUnavailable}
+            />
+          </React.Suspense>
+        )}
+        <Button
+          type='button'
+          variant='outline'
+          size='compact'
+          data-testid='generate-camera-angle-reset'
+          onClick={onReset}
+          className='absolute right-1.5 top-1.5 gap-1 text-2xs'
         >
-          {unavailable ? (
-            <SphereUnavailable />
-          ) : (
-            <React.Suspense fallback={null}>
-              <LazySphere
-                pose={spherePose}
-                grid={grid}
-                marker={sphere.marker}
-                subjectUrl={subjectUrl === undefined ? undefined : corsUrl(subjectUrl)}
-                colors={colors}
-                animate={!prefersReducedMotion()}
-                onDragStart={onDragStart}
-                onDrag={onDrag}
-                onDragEnd={onDragEnd}
-                onUnavailable={onUnavailable}
-              />
-            </React.Suspense>
-          )}
-          <Button
-            type='button'
-            variant='outline'
-            size='compact'
-            data-testid='generate-camera-angle-reset'
-            onClick={onReset}
-            className='absolute right-1.5 top-1.5 gap-1 text-2xs'
-          >
-            <RotateCcw className='h-3 w-3' aria-hidden='true' />
-            {t('canvas.generatePanel.cameraAngle.reset')}
-          </Button>
-        </div>
-        {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+          <RotateCcw className='h-3 w-3' aria-hidden='true' />
+          {t('canvas.generatePanel.cameraAngle.reset')}
+        </Button>
       </div>
+      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+    </>
+  );
+  const sliders = (
+    <>
       {axes.map((axis) => {
         const name = params[axis];
         if (name === undefined) return null;
@@ -460,6 +474,25 @@ export function CameraAngleControl({
           />
         );
       })}
+    </>
+  );
+  // Beside, the pose line spans both columns so it reads whole, and the
+  // sliders take a little more than half so their step names stay apart.
+  return beside ? (
+    <div data-testid='generate-camera-angle-control' data-layout='beside'>
+      {heading}
+      <div className='grid grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-3'>
+        <div className='flex flex-col'>{pictured}</div>
+        <div className='flex flex-col justify-between gap-3'>{sliders}</div>
+      </div>
+    </div>
+  ) : (
+    <div data-testid='generate-camera-angle-control' data-layout='stack' className='flex flex-col gap-3'>
+      <div>
+        {heading}
+        {pictured}
+      </div>
+      {sliders}
     </div>
   );
 }

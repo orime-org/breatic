@@ -741,6 +741,7 @@
         "light_azimuth": "光源方向",
         "light_elevation": "光源高度",
         "light_color": "光的顏色",
+        "light_color_hex": "自訂光色",
         "light_intensity": "強度",
         "light_quality": "光質"
       },

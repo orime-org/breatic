@@ -753,6 +753,7 @@
         "light_azimuth": "Light direction",
         "light_elevation": "Light height",
         "light_color": "Light colour",
+        "light_color_hex": "Custom light colour",
         "light_intensity": "Intensity",
         "light_quality": "Light quality"
       },

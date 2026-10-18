@@ -741,6 +741,7 @@
         "light_azimuth": "光の方向",
         "light_elevation": "光の高さ",
         "light_color": "光の色",
+        "light_color_hex": "カスタムの光の色",
         "light_intensity": "強さ",
         "light_quality": "光の質"
       },

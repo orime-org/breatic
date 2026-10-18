@@ -741,6 +741,7 @@
         "light_azimuth": "조명 방향",
         "light_elevation": "조명 높이",
         "light_color": "조명 색",
+        "light_color_hex": "사용자 지정 조명 색",
         "light_intensity": "강도",
         "light_quality": "조명 질감"
       },

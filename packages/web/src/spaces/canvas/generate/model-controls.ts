@@ -46,10 +46,16 @@ export type ModelControl =
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
   | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams }
   | { kind: 'lightAngle'; name: 'light_angle'; params: AngleParams }
-  | { kind: 'swatches'; name: string; options: ParamOption[] };
+  | {
+      kind: 'swatches';
+      name: string;
+      options: ParamOption[];
+      /** The param a colour picked by hand is written to, as the last cell. */
+      custom?: string;
+    };
 
 /** How a mini-tool's registry asks a param to be drawn (inner#1304). */
-export type ParamDisplay = 'swatches' | 'lightAngle';
+export type ParamDisplay = 'swatches' | 'swatchCustom' | 'lightAngle';
 
 /**
  * How a pose on a sphere reads, azimuth then elevation then distance, each step
@@ -184,7 +190,8 @@ export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
  * panel also fills (`panel`) is drawn; any other is left to the request.
  * The model's camera pose and the params the registry marks as the light
  * sphere are each one sphere, drawn where the first of its params is listed;
- * a param marked as swatches is a row of colours.
+ * a param marked as swatches is a row of colours, whose last cell writes the
+ * param marked as swatchCustom.
  * @param model - The pinned model.
  * @param keys - The params the tool lists.
  * @param display - How the registry asks a listed param to be drawn.
@@ -199,6 +206,7 @@ export function controlsForKeys(
   const pose = model.camera_angle;
   const inPose = new Set(pose ? CAMERA_ANGLE_AXES.map((axis) => pose[axis]) : []);
   const light = keys.filter((key) => display[key] === 'lightAngle');
+  const custom = keys.find((key) => display[key] === 'swatchCustom');
   for (const name of keys) {
     const spec = model.params[name];
     if (spec === undefined || (spec.fill !== 'tool' && spec.fill !== 'panel')) continue;
@@ -213,9 +221,10 @@ export function controlsForKeys(
       }
       continue;
     }
+    if (name === custom) continue;
     const control = controlFor(name, spec);
     if (control?.kind === 'choice' && display[name] === 'swatches') {
-      controls.push({ kind: 'swatches', name, options: control.options });
+      controls.push({ kind: 'swatches', name, options: control.options, ...(custom !== undefined && { custom }) });
     } else if (control) {
       controls.push(control);
     }

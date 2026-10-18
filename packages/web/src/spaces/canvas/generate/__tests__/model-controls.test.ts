@@ -419,6 +419,37 @@ describe('controlsForKeys for the batch-four tools', () => {
   });
 });
 
+// inner#1304: a colour picked by hand is the swatch row's last cell.
+describe('controlsForKeys with a custom colour', () => {
+  it('joins the param marked swatchCustom to the swatches it follows', () => {
+    const relight = model({
+      light_color: {
+        description: '',
+        default: 'auto',
+        values: ['auto', 'warm', 'custom'],
+        value_labels: { auto: 'Auto', warm: 'Warm', custom: 'Custom' },
+        fill: 'tool',
+        label: 'Colour',
+      },
+      light_color_hex: { description: '', default: null, type: 'text', fill: 'tool', label: 'Custom colour' },
+    });
+    expect(
+      controlsForKeys(relight, ['light_color', 'light_color_hex'], { light_color: 'swatches', light_color_hex: 'swatchCustom' }),
+    ).toEqual([
+      {
+        kind: 'swatches',
+        name: 'light_color',
+        options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'warm', label: 'Warm' },
+          { value: 'custom', label: 'Custom' },
+        ],
+        custom: 'light_color_hex',
+      },
+    ]);
+  });
+});
+
 describe('every param a model tool shows is named in every locale', () => {
   const keys = [...new Set(MINI_TOOLS.flatMap((tool) => toolParamKeys(tool)))];
   it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s', (lang) => {

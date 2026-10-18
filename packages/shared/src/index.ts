@@ -476,6 +476,7 @@ export {
   type CameraAngleAxis,
 } from "@shared/camera-angle.js";
 export {
+  AUTO_LIGHT_SWATCH,
   LIGHT_COLORS,
   LIGHT_INTENSITIES,
   LIGHT_QUALITIES,

@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@web/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
@@ -18,6 +19,12 @@ interface EmptyImageColorPickerProps {
   value: string;
   /** Called with the new hex as the user picks / types. */
   onChange: (hex: string) => void;
+  /** What opens the picker, in place of the round swatch (the relight colour row's last cell). */
+  trigger?: React.ReactElement;
+  /** The hex field's test id. */
+  inputTestId?: string;
+  /** The trigger's name, shown on hover. */
+  tip?: string;
 }
 
 /**
@@ -31,11 +38,17 @@ interface EmptyImageColorPickerProps {
  * @param root0 - Component props.
  * @param root0.value - The current hex colour.
  * @param root0.onChange - Called with the new hex on pick / type.
+ * @param root0.trigger - What opens the picker, when not the round swatch.
+ * @param root0.inputTestId - The hex field's test id.
+ * @param root0.tip - The trigger's name, shown on hover.
  * @returns The swatch trigger + colour-picker popover.
  */
 export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
   value,
   onChange,
+  trigger,
+  inputTestId,
+  tip,
 }: EmptyImageColorPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -43,9 +56,9 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
   // in-canvas overlay pattern; see
   // packages/web/AGENTS.md#canvas-overlays-follow-the-viewport).
   useFollowCanvasViewport(open);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+  const opener = (
+    <PopoverTrigger asChild>
+      {trigger ?? (
         <Button
           type='button'
           variant={null}
@@ -59,7 +72,19 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
           // (a hover SCALE did change the rect — the earlier user-reported bug).
           className='h-8 w-8 rounded-full border border-border transition hover:border-active-border hover:opacity-70 focus-visible:border-active-border focus-visible:outline-none'
         />
-      </PopoverTrigger>
+      )}
+    </PopoverTrigger>
+  );
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      {tip === undefined ? (
+        opener
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>{opener}</TooltipTrigger>
+          <TooltipContent side='top'>{tip}</TooltipContent>
+        </Tooltip>
+      )}
       <PopoverContent
         side='top'
         align='start'
@@ -72,6 +97,7 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
             color={value}
             onChange={onChange}
             prefixed
+            {...(inputTestId !== undefined && { 'data-testid': inputTestId })}
             aria-label={t('canvas.emptyImage.color.custom')}
             className='w-full rounded-content-sm border border-border bg-transparent px-2 py-1 text-sm uppercase tabular-nums text-popover-foreground focus-visible:border-active-border focus-visible:outline-none'
           />

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, X, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
+import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -236,45 +236,23 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
 
 /**
  * A picked picture shown large in place of the controls it decides, with a
- * line saying so and a way to remove it (inner#1304).
+ * line saying so (inner#1304). It is removed from its slot's thumbnail; the
+ * picture fills the column's height, whole.
  * @param root0 - Props.
  * @param root0.url - The picture.
  * @param root0.note - The line under it.
- * @param root0.clearLabel - The remove button's name.
- * @param root0.onClear - Removes the pick.
  * @returns The preview.
  */
-function ReferencePreview({
-  url,
-  note,
-  clearLabel,
-  onClear,
-}: {
-  url: string;
-  note: string;
-  clearLabel: string;
-  onClear: () => void;
-}): React.JSX.Element {
+function ReferencePreview({ url, note }: { url: string; note: string }): React.JSX.Element {
   return (
-    <div className='flex flex-col gap-1.5'>
-      <div className='relative overflow-hidden rounded-chrome border border-border bg-muted'>
+    <div className='flex flex-1 flex-col gap-1.5'>
+      <div className='relative aspect-[4/3] flex-1 overflow-hidden rounded-chrome border border-border bg-muted'>
         <img
           data-testid='mini-tool-reference-preview'
           src={corsUrl(url)}
           alt=''
-          className='aspect-[4/3] w-full object-contain'
+          className='absolute inset-0 h-full w-full object-contain'
         />
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='mini-tool-reference-clear'
-          aria-label={clearLabel}
-          onClick={onClear}
-          className='absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-popover text-muted-foreground shadow-sm hover-enabled:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-        >
-          <X className='h-3.5 w-3.5' aria-hidden='true' />
-        </Button>
       </div>
       <p className='text-xs text-muted-foreground'>{note}</p>
     </div>
@@ -345,9 +323,10 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   /**
    * The model's controls, drawn on the source.
    * @param controls - Which of them.
+   * @param className - In a column, `contents`: each control is spaced as one of the column's own groups.
    * @returns The block, or null when there are none.
    */
-  const controlsOf = (controls: readonly ModelControl[]): React.ReactNode =>
+  const controlsOf = (controls: readonly ModelControl[], className?: string): React.ReactNode =>
     modelEntry !== undefined && controls.length > 0 ? (
       <ModelParamControls
         model={modelEntry}
@@ -355,6 +334,8 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         value={params}
         onChange={onParams}
         controls={controls}
+        evenOptions
+        {...(className !== undefined && { className })}
         {...(props.source.url !== undefined && { subjectUrl: props.source.url })}
         {...(referenceShown !== undefined && { autoNote: t('canvas.miniTool.relight.fromReference') })}
       />
@@ -371,7 +352,9 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     <div className='flex flex-wrap gap-1.5'>
       {spec.slots.map((slot) => {
         const picks = picksOf(slots[slot.key]);
-        const required = !slotOptional(slot, modelEntry);
+        // A required slot says so only while it holds nothing; a filled
+        // tile is as wide as its empty word, so the picture is not a strip.
+        const required = !slotOptional(slot, modelEntry) && picks.length === 0;
         const label = t('canvas.miniTool.panel.slot', { kind: slot.accepts, required: required ? 'yes' : 'no' });
         const testId = `mini-tool-slot-${spec.id}-${slot.key}`;
         const cap = slotCaps[slot.key];
@@ -439,7 +422,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       {slotTiles}
       {promptFirst ? promptBox : null}
       {sizeTierGroups}
-      {controlsOf(rightControls)}
+      {controlsOf(rightControls, columns ? 'contents' : undefined)}
     </>
   );
   // The adjust's sliders, whose Reset sits in the footer.
@@ -454,7 +437,9 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       closeLabel={t('canvas.miniTool.panel.close')}
       closeTestId='mini-tool-panel-close'
       onClose={onClose}
-      wide={columns !== undefined}
+      // The camera sphere lays itself beside its sliders, which takes the wide panel too.
+      wide={columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
+      testId='mini-tool-panel'
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
@@ -467,17 +452,12 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
             <div className='grid grid-cols-2 gap-3'>
               <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
                 {referenceShown !== undefined ? (
-                  <ReferencePreview
-                    url={referenceShown.url}
-                    note={t('canvas.miniTool.relight.referenceNote')}
-                    clearLabel={t('canvas.miniTool.panel.clearSlot')}
-                    onClear={() => onClearSlot(referenceShown.key)}
-                  />
+                  <ReferencePreview url={referenceShown.url} note={t('canvas.miniTool.relight.referenceNote')} />
                 ) : (
                   controlsOf(leftControls)
                 )}
               </div>
-              <div data-testid='mini-tool-column-right' className='flex flex-col gap-2.5'>
+              <div data-testid='mini-tool-column-right' className='flex flex-col justify-between gap-2.5'>
                 {modelBody}
               </div>
             </div>

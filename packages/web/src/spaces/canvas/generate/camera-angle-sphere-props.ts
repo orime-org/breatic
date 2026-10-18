@@ -22,6 +22,14 @@ export interface SphereColors {
   card: string;
 }
 
+/** The light a light sphere draws: the colour picked and how strongly it shows (inner#1304). */
+export interface LightTint {
+  /** A CSS colour. */
+  color: string;
+  /** How strongly the glow and the lit side of the card show, 0 to 1. */
+  strength: number;
+}
+
 /** The sphere's props. */
 export interface CameraAngleSphereProps {
   /** The pose to draw; any azimuth, elevation and distance, on the grid or off it. */
@@ -33,6 +41,8 @@ export interface CameraAngleSphereProps {
   /** The picture on the card, already in CORS form; absent for a plain card. */
   subjectUrl: string | undefined;
   colors: SphereColors;
+  /** The light a light marker shines in; the marker takes the theme's accent when absent. */
+  tint?: LightTint;
   /** Whether a move to a new pose is animated (off under prefers-reduced-motion). */
   animate: boolean;
   /** Called when the pointer is pressed on the sphere. */

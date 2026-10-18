@@ -474,6 +474,43 @@ describe('the batch-four panels', () => {
     expect(sphere.last?.subjectUrl).toBe(`${SOURCE}?cors=1`);
   });
 
+  // inner#1304 visual review.
+  it('clears the reference from its slot alone, never from the large picture', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).getByTestId('mini-tool-reference-preview')).toBeInTheDocument();
+    expect(within(left).queryByRole('button')).toBeNull();
+    expect(screen.getByTestId('mini-tool-slot-image.relight-light_reference-clear')).toBeInTheDocument();
+  });
+
+  it('says a slot is required only while it holds nothing', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true, max_items: 3 } }),
+      params: {},
+      slots: { style: [{ url: REFERENCE }] },
+      slotCaps: { style: 3 },
+    });
+    expect(screen.getByTestId('mini-tool-slot-image.restyle-style')).toHaveAccessibleName('Image');
+  });
+
+  it('takes the wide panel for the camera sphere, laid beside its sliders', async () => {
+    const qwen = {
+      ...pinned({}),
+      camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+    } as ModelEntry;
+    mount({
+      spec: tool('image.angle'),
+      modelEntry: qwen,
+      modelControls: [{ kind: 'cameraAngle', name: 'camera_angle', params: qwen.camera_angle! }],
+      params: { horizontal_angle: 0, vertical_angle: 0, distance: 1 },
+      source: { width: 768, height: 1152, url: SOURCE },
+    });
+    await screen.findByTestId('fake-sphere');
+    expect(screen.getByTestId('generate-camera-angle-control')).toHaveAttribute('data-layout', 'beside');
+    expect(screen.getByTestId('mini-tool-panel').className).toContain('w-[min(560px,92vw)]');
+  });
+
   it('keeps a prompt that holds Run back before the params', () => {
     mount({
       spec: tool('image.quickEdit'),

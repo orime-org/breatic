@@ -30,6 +30,9 @@ export const LIGHT_COLORS: Readonly<Record<string, LightColorTerm>> = {
   purple: { phrase: "purple", swatch: "#8e4ec6" },
 };
 
+/** The colour the light sphere draws an Auto light in: Auto leaves the colour to the model. */
+export const AUTO_LIGHT_SWATCH = "#ffd27a";
+
 /** A colour picked by hand: `#` and six hex digits. */
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 

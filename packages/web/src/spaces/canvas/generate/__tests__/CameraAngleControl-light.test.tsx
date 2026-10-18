@@ -58,6 +58,24 @@ describe('the light sphere', () => {
     expect(screen.getByTestId('generate-camera-angle-pose')).toHaveTextContent('Right · High');
   });
 
+  it('lays the sphere above its sliders, and hands the sphere the light it is given', async () => {
+    const tint = { color: '#8fc0ff', strength: 0.6 };
+    render(
+      <CameraAngleControl
+        sphere={LIGHT_SPHERE}
+        params={LIGHT_PARAMS}
+        specs={LIGHT_SPECS}
+        value={{ light_azimuth: 315, light_elevation: 30 }}
+        onChange={() => {}}
+        subjectUrl={undefined}
+        tint={tint}
+      />,
+    );
+    await screen.findByTestId('fake-sphere');
+    expect(screen.getByTestId('generate-camera-angle-control')).toHaveAttribute('data-layout', 'stack');
+    expect(sphere.last?.tint).toEqual(tint);
+  });
+
   it('hands the sphere the light grid and the light marker', async () => {
     await draw();
     expect(sphere.last?.grid).toEqual(LIGHT_ANGLE_GRID);

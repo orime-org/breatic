@@ -219,6 +219,73 @@ describe('swatches', () => {
   });
 });
 
+// inner#1304: the last swatch opens the colour picker the empty image node uses.
+describe('swatches with a colour picked by hand', () => {
+  const RELIGHT = model({
+    light_color: {
+      description: '',
+      default: 'auto',
+      values: ['auto', 'warm', 'custom'],
+      value_labels: { auto: 'Auto', warm: 'Warm', custom: 'Custom' },
+      fill: 'tool',
+    },
+    light_color_hex: { description: '', default: null, type: 'text', fill: 'tool' },
+  });
+  const SWATCHES = [
+    {
+      kind: 'swatches' as const,
+      name: 'light_color',
+      options: [
+        { value: 'auto', label: 'Auto' },
+        { value: 'warm', label: 'Warm' },
+        { value: 'custom', label: 'Custom' },
+      ],
+      custom: 'light_color_hex',
+    },
+  ];
+
+  /**
+   * Draws the row.
+   * @param value - What the draft holds.
+   * @returns The write spy.
+   */
+  function drawRow(value: Record<string, unknown>): ReturnType<typeof vi.fn> {
+    const onChange = vi.fn();
+    render(
+      <TooltipProvider>
+        <ModelParamControls model={RELIGHT} mode='' value={value} onChange={onChange} controls={SWATCHES} />
+      </TooltipProvider>,
+    );
+    return onChange;
+  }
+
+  it('draws the last cell empty until a colour is picked, and writes Custom with the colour picked', () => {
+    const onChange = drawRow({ light_color: 'auto' });
+    const cell = screen.getByTestId('generate-param-light_color-swatch-custom');
+    expect(cell).toHaveAttribute('data-picked', 'false');
+    fireEvent.click(cell);
+    fireEvent.change(screen.getByTestId('generate-param-light_color-custom-input'), { target: { value: '#8fc0ff' } });
+    expect(onChange).toHaveBeenLastCalledWith({ light_color: 'custom', light_color_hex: '#8fc0ff' });
+  });
+
+  it('shows the colour picked on the cell, and names it beside the row while chosen', () => {
+    drawRow({ light_color: 'custom', light_color_hex: '#8fc0ff' });
+    const cell = screen.getByTestId('generate-param-light_color-swatch-custom');
+    expect(cell).toHaveAttribute('data-picked', 'true');
+    expect(cell).toHaveAttribute('aria-pressed', 'true');
+    expect(cell.querySelector('span')?.style.background).toBe(hexToRgb('#8fc0ff'));
+    expect(screen.getByTestId('generate-param-light_color-value')).toHaveTextContent('#8FC0FF');
+  });
+
+  it('keeps the colour picked on the cell after a preset is chosen', () => {
+    drawRow({ light_color: 'warm', light_color_hex: '#8fc0ff' });
+    const cell = screen.getByTestId('generate-param-light_color-swatch-custom');
+    expect(cell).toHaveAttribute('data-picked', 'true');
+    expect(cell).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('generate-param-light_color-value')).toHaveTextContent('Warm');
+  });
+});
+
 /**
  * How jsdom reads a hex colour back from a style.
  * @param hex - `#rrggbb`.
