@@ -71,7 +71,7 @@ const RELIGHT = {
   takes_prompt: true,
   params: {
     images: LIST_IMAGES,
-    light_reference: { fill: "canvas", accepts: "image", optional: true },
+    light_reference: { fill: "tool", accepts: "image", optional: true },
     aspect_ratio: { fill: "none", values: ["auto", "1:1", "2:3", "3:2", "16:9"], absent_value: "auto" },
   },
 };

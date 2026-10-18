@@ -257,7 +257,7 @@ models:
         description: "Picture whose lighting to take"
         default: null
         accepts: "image"
-        fill: "canvas"
+        fill: "tool"
         optional: true
       output_format:
         description: "Output file format"
