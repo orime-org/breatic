@@ -231,18 +231,40 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
           <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span>
         ) : null}
       </div>
-      {withMedia ? (
+      {withMedia && question.multiSelect ? (
         <div className='grid grid-cols-3 gap-1.5'>
-          {question.options.map((option) => (
-            <MediaTile
-              key={option.label}
-              option={option}
-              pressed={given.selected.includes(option.label)}
-              disabled={disabled}
-              onPress={() => toggle(option.label)}
-            />
-          ))}
+          {question.options.map((option, i) => {
+            const id = `${idBase}-${String(i)}`;
+            return (
+              <MediaTile key={option.label} id={id} option={option}>
+                <Checkbox
+                  id={id}
+                  checked={given.selected.includes(option.label)}
+                  disabled={disabled}
+                  onCheckedChange={() => toggle(option.label)}
+                />
+              </MediaTile>
+            );
+          })}
         </div>
+      ) : withMedia ? (
+        <RadioGroup
+          value={given.selected[0] ?? ''}
+          disabled={disabled}
+          onValueChange={(label) => toggle(label)}
+          className='grid grid-cols-3 gap-1.5'
+          aria-label={question.question}
+        >
+          {question.options.map((option, i) => {
+            const id = `${idBase}-${String(i)}`;
+            const picked = given.selected[0] === option.label;
+            return (
+              <MediaTile key={option.label} id={id} option={option}>
+                <RadioGroupItem id={id} value={option.label} onClick={picked ? () => toggle(option.label) : undefined} />
+              </MediaTile>
+            );
+          })}
+        </RadioGroup>
       ) : question.multiSelect ? (
         <div className='flex flex-col gap-1'>
           {question.options.map((option, i) => {
@@ -329,48 +351,43 @@ function OptionRow({
 
 /**
  * An option shown by its picture, the cover of its clip, or the name of its
- * sound, with the full thing on hover.
+ * sound, with the full thing on hover; picked through the same control in
+ * front of its name a text option has, the whole tile clickable through the
+ * label.
  * @param root0 - The component props.
+ * @param root0.id - The control's id.
  * @param root0.option - The option.
- * @param root0.pressed - Whether it is picked.
- * @param root0.disabled - Whether everything is held still.
- * @param root0.onPress - Called on a press.
+ * @param root0.children - The control.
  * @returns The tile.
  */
 function MediaTile({
+  id,
   option,
-  pressed,
-  disabled,
-  onPress,
+  children,
 }: {
+  id: string;
   option: AskUserQuestion['options'][number];
-  pressed: boolean;
-  disabled: boolean;
-  onPress: () => void;
+  children: React.ReactNode;
 }): React.JSX.Element {
   const media = option.media;
   const still = media?.kind === 'image' ? media.url : media?.kind === 'video' ? media.poster : undefined;
   return (
-    <HoverPreview
-      kind={media?.kind ?? 'image'}
-      src={media?.url}
-      poster={media?.kind === 'video' ? media.poster : undefined}
-      alt={option.label}
+    <label
+      htmlFor={id}
+      data-testid='questionnaire-tile'
+      className='flex cursor-pointer flex-col overflow-hidden rounded-chrome border border-border'
     >
-      <Button
-        type='button'
-        variant={null}
-        size={null}
-        data-testid='questionnaire-tile'
-        aria-pressed={pressed}
-        disabled={disabled}
-        onClick={onPress}
-        className={cn(
-          'flex h-auto flex-col overflow-hidden rounded-chrome border border-border p-0 text-left hover-enabled:bg-accent',
-          pressed && 'border-active-border',
-        )}
+      {/* Opens upward: the chat column has no room on either side of it. */}
+      <HoverPreview
+        kind={media?.kind ?? 'image'}
+        src={media?.url}
+        poster={media?.kind === 'video' ? media.poster : undefined}
+        alt={option.label}
+        side='top'
       >
-        <span className='flex aspect-[4/3] w-full items-center justify-center bg-accent text-muted-foreground'>
+        {/* `overflow-hidden` lets the 4:3 box hold: a box whose overflow is
+            visible grows to fit a taller picture. */}
+        <span className='flex aspect-[4/3] w-full items-center justify-center overflow-hidden bg-accent text-muted-foreground'>
           {still ? (
             <img src={still} alt='' className='size-full object-cover' />
           ) : media?.kind === 'audio' ? (
@@ -379,9 +396,12 @@ function MediaTile({
             <Play className='size-5' aria-hidden='true' />
           )}
         </span>
-        <span className='w-full truncate px-1.5 py-1 text-xs text-foreground'>{option.label}</span>
-      </Button>
-    </HoverPreview>
+      </HoverPreview>
+      <span className='flex min-w-0 items-center gap-1.5 px-1.5 py-1'>
+        {children}
+        <span className='min-w-0 flex-1 truncate text-xs text-foreground'>{option.label}</span>
+      </span>
+    </label>
   );
 }
 

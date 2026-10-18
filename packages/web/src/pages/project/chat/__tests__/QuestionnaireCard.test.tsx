@@ -107,7 +107,6 @@ describe('a card waiting for the reader', () => {
   });
 
   it('shows options that carry media as tiles: the picture, the cover of a clip, a sound by its name', async () => {
-    const user = userEvent.setup();
     waitingCard();
     const tiles = within(question(3)).getAllByTestId('questionnaire-tile');
     expect(tiles.map((t) => t.querySelector('img')?.getAttribute('src') ?? null)).toEqual([
@@ -116,10 +115,31 @@ describe('a card waiting for the reader', () => {
       null,
     ]);
     expect(tiles[2]).toHaveTextContent('Beat');
-    await user.click(tiles[1]!);
-    expect(tiles[1]).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('marks a picked tile with the same check in front of its name a text option has, a click on the picture picking it', async () => {
+    const user = userEvent.setup();
+    waitingCard();
+    const tiles = within(question(3)).getAllByTestId('questionnaire-tile');
+    const radios = within(question(3)).getAllByRole('radio');
+    expect(radios).toHaveLength(3);
+    await user.click(tiles[1]!.querySelector('img')!);
+    expect(radios[1]).toHaveAttribute('data-state', 'checked');
     await user.click(tiles[0]!);
-    expect(tiles[1]).toHaveAttribute('aria-pressed', 'false');
+    expect(radios[0]).toHaveAttribute('data-state', 'checked');
+    expect(radios[1]).toHaveAttribute('data-state', 'unchecked');
+    await user.click(radios[0]!);
+    expect(radios[0]).toHaveAttribute('data-state', 'unchecked');
+  });
+
+  it('marks tiles on a question that takes several with check boxes', async () => {
+    const user = userEvent.setup();
+    const several: AskUserQuestion = { ...QUESTIONS[2]!, multiSelect: true };
+    render(<QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: [several], state: 'awaiting' }} onAnswer={vi.fn()} />);
+    const tiles = screen.getAllByTestId('questionnaire-tile');
+    await user.click(tiles[0]!);
+    await user.click(tiles[2]!);
+    expect(screen.getAllByRole('checkbox').map((box) => box.getAttribute('data-state'))).toEqual(['checked', 'unchecked', 'checked']);
   });
 
   it('says to answer at least one question when nothing is answered, and sends nothing', async () => {
