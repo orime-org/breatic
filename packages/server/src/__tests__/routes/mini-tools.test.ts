@@ -65,6 +65,25 @@ const SEEDREAM = {
   takes_prompt: true,
   params: { images: { fill: "tool", accepts: "image", type: "list", max_items: 1 } },
 };
+const LIST_IMAGES = { fill: "tool", accepts: "image", type: "list", max_items: 1 };
+const RELIGHT = {
+  name: "nano-banana-2-relight",
+  takes_prompt: true,
+  params: {
+    images: LIST_IMAGES,
+    light_reference: { fill: "canvas", accepts: "image", optional: true },
+    aspect_ratio: { fill: "none", values: ["auto", "1:1", "2:3", "3:2", "16:9"], absent_value: "auto" },
+  },
+};
+const RESTYLE = {
+  name: "gpt-image-2.5-sunburst-edit",
+  takes_prompt: true,
+  params: {
+    images: { ...LIST_IMAGES, max_items: 4 },
+    style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, optional: true },
+  },
+};
+const QUICK_EDIT = { name: "nano-banana-2-quick-edit", takes_prompt: true, params: { images: LIST_IMAGES } };
 const VOCALS = {
   name: "vocal-remover",
   takes_prompt: false,
@@ -99,7 +118,7 @@ describe("POST /mini-tools", () => {
       keyFromUrl: (url: string) => (url.startsWith("https://assets.example.com/") ? url.slice(27) : null),
     });
     vi.mocked(modelCatalog.getModelCatalog).mockReturnValue({
-      image: [CRYSTAL, GENFILL, SEEDREAM],
+      image: [CRYSTAL, GENFILL, SEEDREAM, RELIGHT, RESTYLE, QUICK_EDIT],
       video: [],
       audio: [VOCALS],
       tts: [],
@@ -173,6 +192,56 @@ describe("POST /mini-tools", () => {
     expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({
       prompt: miniToolById("image.expand")?.prompt?.defaultText,
     });
+  });
+
+  // inner#1304: the restyle prefix always goes; what the reader wrote follows it.
+  it("sends the restyle prefix alone, or with the reader's words after it", async () => {
+    const preamble = miniToolById("image.restyle")?.prompt?.preamble;
+    const run = (prompt: string): Promise<Response> =>
+      post({
+        tool: "image.restyle",
+        node_ids: [NODE_A],
+        source: { url: "https://assets.example.com/i/a.png" },
+        prompt,
+        slots: { style: [{ url: "https://assets.example.com/i/s.png" }] },
+      });
+    await run(" ");
+    await run("thick brush strokes");
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({ prompt: preamble });
+    expect(mocks.taskService.create.mock.calls[1]?.[5]).toMatchObject({
+      prompt: `${preamble} Also: thick brush strokes`,
+    });
+  });
+
+  it("sends an empty relight note as it is", async () => {
+    await post({
+      tool: "image.relight",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png", width: 768, height: 1152 },
+      prompt: "",
+    });
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({ prompt: "" });
+  });
+
+  it("records the catalog ratio nearest the source's size on a relight run", async () => {
+    await post({
+      tool: "image.relight",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png", width: 768, height: 1152 },
+    });
+    await post({ tool: "image.relight", node_ids: [NODE_A], source: { url: "https://assets.example.com/i/a.png" } });
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({ aspect_ratio: "2:3" });
+    expect(mocks.taskService.create.mock.calls[1]?.[5]).toMatchObject({ aspect_ratio: "auto" });
+  });
+
+  it("records no ratio on a tool that does not declare one", async () => {
+    await post({
+      tool: "image.quickEdit",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png", width: 768, height: 1152 },
+      prompt: "make it night",
+    });
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).not.toHaveProperty("aspect_ratio");
   });
 
   it("refuses an expand run that carries no padded picture, before any row opens", async () => {
