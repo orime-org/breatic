@@ -46,7 +46,7 @@ import {
   type Alignment,
 } from '@web/spaces/document/document-align-run';
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;
@@ -80,8 +80,7 @@ export type CellScope = 'row' | 'column' | 'cell';
 export function cellAt(doc: PMNode, cellPos: number): CellAt | null {
   if (cellPos < 0 || cellPos >= doc.content.size) return null;
   const cell = doc.nodeAt(cellPos);
-  const role = cell?.type.spec['tableRole'] as string | undefined;
-  if (role !== 'cell' && role !== 'header_cell') return null;
+  if (cell === null || !isTableCell(cell)) return null;
   const $cell = doc.resolve(cellPos);
   const table = $cell.node($cell.depth - 1);
   const tableStart = $cell.start($cell.depth - 1);
@@ -569,8 +568,7 @@ export function wholeEmptyTableSelected(state: EditorState): string | null {
   if (at === null) return null;
   let empty = true;
   at.table.descendants((node) => {
-    const role = node.type.spec['tableRole'] as string | undefined;
-    if (role !== 'cell' && role !== 'header_cell') return true;
+    if (!isTableCell(node)) return true;
     if (!isEmptyCell(node)) empty = false;
     return false;
   });

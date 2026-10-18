@@ -22,7 +22,7 @@
 
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
-import { Slice, type Fragment } from '@tiptap/pm/model';
+import { Slice, type Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { flushSync } from 'react-dom';
@@ -52,6 +52,16 @@ const TABLE_ROLES: Readonly<Record<string, string>> = {
   [DOC_TABLE_CELL]: 'cell',
   [DOC_TABLE_HEADER]: 'header_cell',
 };
+
+/**
+ * Whether a node is a table cell, a header cell included.
+ * @param node - The node.
+ * @returns True for a cell.
+ */
+export function isTableCell(node: PMNode): boolean {
+  const role = node.type.spec['tableRole'];
+  return role === 'cell' || role === 'header_cell';
+}
 
 /** A cell's props. */
 interface CellProps {

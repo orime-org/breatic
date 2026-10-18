@@ -473,7 +473,7 @@ describe('blockPreviewContent', () => {
     // a1 is scrolled off whole; b1 is cut by the frame's left edge and is drawn
     // whole; c1 is in view.
     layOut(editor, { a1: [-30, 90], b1: [90, 230], c1: [230, 380], ab: [-30, 230], c2: [230, 380] });
-    const row = view.dom.querySelector('.bn-block-outer')!;
+    const row = view.dom.querySelector('[data-node-type="docTable"]')!;
     const root = buildDragPreview(view, blockPreviewContent(view, [row.cloneNode(true) as Element]), () => ({ width: 100, height: 20 }));
     // Taken out, not hidden by a style: WebKit draws a column set to
     // `visibility: collapse`. A cell merged across a column left out loses it.
@@ -492,7 +492,7 @@ describe('blockPreviewContent', () => {
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { ab: [-30, 230], c1: [230, 380], a2: [-30, 90], b2: [90, 230], c2: [230, 380] });
-    const row = view.dom.querySelector('.bn-block-outer')!;
+    const row = view.dom.querySelector('[data-node-type="docTable"]')!;
     const contentPlaced = blockPreviewContent(view, [row.cloneNode(true) as Element]);
     const content = contentPlaced.content;
     expect(cellTexts(content)).toEqual([['ab', 'c1'], ['b2', 'c2']]);
@@ -507,7 +507,7 @@ describe('blockPreviewContent', () => {
     // (`updateColumnsOnResize`), which the copy would carry past the columns
     // it keeps.
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
-    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('[data-node-type="docTable"]')!.cloneNode(true) as Element]);
     const content = contentPlaced.content;
     expect(heldTable(content)).toEqual({ cols: ['100px', '120px', '140px'], table: ['360px', '0px', 'fixed'], rows: ['30px', '50px'] });
   });
@@ -521,7 +521,7 @@ describe('blockPreviewContent', () => {
     const view = editor.prosemirrorView!;
     scrollFrame(editor, 150);
     layOut(editor, { a1: [-30, 90], a2: [-30, 90], merged: [90, 230] }, [30, 90]);
-    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('.bn-block-outer')!.cloneNode(true) as Element]);
+    const contentPlaced = blockPreviewContent(view, [view.dom.querySelector('[data-node-type="docTable"]')!.cloneNode(true) as Element]);
     const content = contentPlaced.content;
     // The merged cell spans an empty row, at its height, as in the body.
     expect(cellTexts(content)).toEqual([['merged'], []]);
@@ -583,7 +583,7 @@ describe('tableLinePreviewContent', () => {
     const editor = open([tableBlock({ columnWidths: [100, 200, 300], rows })]);
     const contentPlaced = tableLinePreviewContent(editor.prosemirrorView!, cellOf(editor, 'b2'), 'row')!;
     const content = contentPlaced.content;
-    const tableElement = '[data-content-type="table"]';
+    const tableElement = '[data-node-type="docTable"]';
     expect(content.querySelector(tableElement) ?? content.matches(tableElement)).toBeTruthy();
     expect(cellTexts(content)).toEqual([['a2', 'b2', 'c2']]);
     expect([...content.querySelectorAll<HTMLElement>('colgroup col')].map((col) => col.style.width)).toEqual(['100px', '200px', '300px']);
@@ -592,7 +592,7 @@ describe('tableLinePreviewContent', () => {
   it('leaves a quoted table\'s rule off a column, which is not the block it stands beside', () => {
     const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
-    const tableElement = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
+    const tableElement = view.dom.querySelector<HTMLElement>('[data-node-type="docTable"]')!;
     QUOTE_RUN_ATTRIBUTES.forEach((name) => tableElement.setAttribute(name, ''));
     const column = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'column')!.content;
     expect(QUOTE_RUN_ATTRIBUTES.filter((name) => column.hasAttribute(name))).toEqual([]);
@@ -624,7 +624,7 @@ describe('tableLinePreviewContent', () => {
     );
     // The block's own box carries what its quote's indent adds; the
     // `.bn-block` it sits in does not.
-    const tableElement = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
+    const tableElement = view.dom.querySelector<HTMLElement>('[data-node-type="docTable"]')!;
     tableElement.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
     tableElement.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
     const rowPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
@@ -681,7 +681,7 @@ describe('tableLinePreviewContent', () => {
     const editor = open([tableBlock({ rows })]);
     const view = editor.prosemirrorView!;
     const sheet = document.createElement('style');
-    sheet.textContent = '.bn-block-outer > .bn-block > [data-content-type="table"] { letter-spacing: 3px; }';
+    sheet.textContent = '.bn-block-group > [data-node-type="docTable"] { letter-spacing: 3px; }';
     document.head.append(sheet);
     try {
       const contentPlaced = tableLinePreviewContent(view, cellOf(editor, 'b2'), 'row')!;
@@ -741,7 +741,7 @@ describe('tableRowsPreviewContent', () => {
     view.dom.querySelector<HTMLElement>('table')!.style.minWidth = '900px';
     // The block's own box carries what its quote's indent adds; the
     // `.bn-block` it sits in does not.
-    const tableElement = view.dom.querySelector<HTMLElement>('[data-content-type="table"]')!;
+    const tableElement = view.dom.querySelector<HTMLElement>('[data-node-type="docTable"]')!;
     tableElement.getBoundingClientRect = () => ({ width: 744, height: 120 }) as DOMRect;
     tableElement.parentElement!.getBoundingClientRect = () => ({ width: 720, height: 120 }) as DOMRect;
     const contentPlaced = tableRowsPreviewContent(view, cellOf(editor, 'b2'), 1, 3)!;

@@ -74,7 +74,7 @@ const SCROLL_VIEWPORT = '[data-radix-scroll-area-viewport]';
 /** A media block's box: the media and nothing around it. */
 const MEDIA_BOX = '[data-media-box]';
 /** A table block. */
-const TABLE_BLOCK = '[data-content-type="table"]';
+const TABLE_BLOCK = '[data-content-type="table"], [data-node-type="docTable"]';
 
 /** The library's wrapper around a table (prosemirror-tables `TableView`). */
 const TABLE_WRAPPER = '.tableWrapper';
@@ -92,6 +92,16 @@ const NESTED_GROUP = ':scope > .bn-block > .bn-block-group';
 const BLOCK_GROUP_CLASS = 'bn-block-group';
 /** A block in the body, with the blocks nested under it. */
 const ROW = '.bn-block-outer';
+
+/**
+ * The element a block with an id is drawn in: a block's row, or a table's
+ * own frame, which holds its rows and stands for the block (inner#1619).
+ * @param id - The block's id.
+ * @returns The selector.
+ */
+function rowWithId(id: string): string {
+  return `${ROW}[data-id="${id}"], [data-node-type="docTable"][data-id="${id}"]`;
+}
 
 /**
  * The scale that brings a longest side over {@link PREVIEW_LONGEST_SIDE} down to
@@ -416,7 +426,7 @@ function dropColumns(table: Element | null | undefined, off: number, spans: Read
  */
 function originalRow(view: EditorView, copy: Element): Element | null {
   const id = copy.getAttribute('data-id');
-  return id === null ? null : view.dom.querySelector(`${ROW}[data-id="${id}"]`);
+  return id === null ? null : view.dom.querySelector(rowWithId(id));
 }
 
 /**
@@ -764,7 +774,7 @@ export function captionPreviewContent(input: HTMLInputElement): PlacedContent {
  * @param blockId - The row.
  */
 export function previewRowDrag(view: EditorView, dataTransfer: DataTransfer | null, blockId: string): void {
-  const row = view.dom.querySelector(`${ROW}[data-id="${blockId}"]`);
+  const row = view.dom.querySelector(rowWithId(blockId));
   if (row === null || !dataTransfer) return;
   setDragPreview(view, dataTransfer, blockPreviewContent(view, [row.cloneNode(true) as Element]));
 }

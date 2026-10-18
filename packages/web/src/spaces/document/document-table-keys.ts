@@ -25,7 +25,7 @@ import { createExtension } from '@blocknote/core';
 import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type { ResolvedPos } from '@tiptap/pm/model';
 import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
   addRowAfter,
@@ -34,6 +34,7 @@ import {
   goToNextCell,
   isInTable,
 } from '@tiptap/pm/tables';
+import { isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -148,15 +149,6 @@ function containerDepth($pos: ResolvedPos): number {
   return -1;
 }
 
-/**
- * Whether a node is a table cell (a header cell included).
- * @param node - The node.
- * @returns True for a cell.
- */
-function isCell(node: PMNode): boolean {
-  const role = node.type.spec['tableRole'];
-  return role === 'cell' || role === 'header_cell';
-}
 
 /**
  * The innermost cell around a position.
@@ -165,7 +157,7 @@ function isCell(node: PMNode): boolean {
  */
 function cellDepth($pos: ResolvedPos): number {
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (isCell($pos.node(depth))) return depth;
+    if (isTableCell($pos.node(depth))) return depth;
   }
   return -1;
 }
@@ -191,7 +183,7 @@ function backspaceAtEdge(view: EditorView): boolean {
   if (depth < 0) return false;
   const parent = $head.node(depth - 1);
   const index = $head.index(depth - 1);
-  if (isCell(parent) && index === 0) {
+  if (isTableCell(parent) && index === 0) {
     const content = $head.node(depth).firstChild;
     return content?.type.name === 'paragraph' && content.attrs['quoted'] !== true;
   }
