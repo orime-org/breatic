@@ -7,7 +7,7 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
+import type { AskUserAnswer, AskUserQuestion, CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -106,6 +106,22 @@ export interface ChatAsset {
   pageUrl?: string;
   /** What to call it. */
   title: string;
+}
+
+/**
+ * A questionnaire the agent put to the reader (inner#1542), with where it
+ * stands: waiting for an answer, answered on the card, or replied to by a
+ * message the reader wrote instead.
+ */
+export interface ChatQuestionnaire {
+  /** The `ask_user` call that put it. */
+  toolCallId: string;
+  /** The questions, in the order the card numbers them. */
+  questions: AskUserQuestion[];
+  /** Where it stands. */
+  state: 'awaiting' | 'answered' | 'replied';
+  /** The answers given on the card, once it is answered there. */
+  answers?: AskUserAnswer['answers'];
 }
 
 export interface ChatMessage {
@@ -235,6 +251,12 @@ export interface ChatMessage {
    * nowhere for that to live and the message may be several turns old.
    */
   proposals?: CanvasProposal[];
+  /**
+   * The questionnaires this turn put to the reader, each drawn as a card.
+   * Absent on a turn that asked nothing; a question stored before the card
+   * existed is in the reply's words instead.
+   */
+  questionnaires?: ChatQuestionnaire[];
   /**
    * The document edits this turn proposed (inner#1509), each drawn as a card
    * the reader presses to land it. Rebuilt from the stored tool calls; whether

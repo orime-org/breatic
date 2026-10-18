@@ -23,7 +23,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
-import type { ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
+import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -87,6 +87,17 @@ const TITLED = 'data-conversation-titled';
 
 /** The chunk the server says a turn stopped to fold memory on. */
 const CONSOLIDATING = 'data-memory-consolidating';
+
+/** The chunk the server names a questionnaire a message closed on (inner#1542). */
+const ASK_REPLIED = 'data-ask-replied';
+
+/**
+ * The conversations whose running turn is an answer to a questionnaire, and
+ * which call it answers. Such a turn carries on the paused reply rather than
+ * saying anything of the reader's, so the parts of a send that are about the
+ * reader's words leave it alone.
+ */
+const answering = new Map<string, string>();
 
 /** Every conversation whose state is being kept, by conversation id. */
 const sessions = new Map<string, Chat<StoredUiMessage>>();
@@ -209,6 +220,9 @@ function transportFor(
     credentials: 'include',
     prepareSendMessagesRequest: ({ messages, body: carried }) => {
       const last = messages[messages.length - 1];
+      // An answer to a questionnaire says nothing of the reader's: the last
+      // message is the paused reply, whose words and items are not theirs.
+      const isAnswer = (carried as { answer?: unknown } | undefined)?.answer !== undefined;
       const said = (last?.parts ?? [])
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map((part) => part.text)
@@ -230,10 +244,10 @@ function transportFor(
           // What the send was handed for this one message: the reader's
           // Spaces, read when they pressed send (`sendInSession`).
           ...carried,
-          message: said,
+          message: isAnswer ? '' : said,
           project_id: projectId,
           conversation_id: conversationId,
-          attached_chips: attachedOn(last),
+          attached_chips: isAnswer ? [] : attachedOn(last),
           // Read on every send: the agent is told the time where the reader is
           // now, and a laptop can change zones mid-session.
           time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -244,6 +258,8 @@ function transportFor(
   return {
     sendMessages: async (options) => {
       const carried = attachedOn(options.messages[options.messages.length - 1]);
+      // An answer leaves the box alone: what is in it is not what was sent.
+      const isAnswer = answering.has(conversationId);
       return sayWhenItOpens(
         await wire.sendMessages(options),
         // On every answering frame, because the fold begins after the turn
@@ -265,7 +281,7 @@ function transportFor(
           const turn = runningTurn.get(conversationId);
           if (turn === undefined) return;
           answeredTurn.set(conversationId, turn);
-          onFirstFrame(carried);
+          if (!isAnswer) onFirstFrame(carried);
         },
       );
     },
@@ -420,6 +436,47 @@ function giveUpOn(conversationId: string): void {
 const givenUpOn = new Set<string>();
 
 /**
+ * Write a questionnaire call's result into whichever message holds the call.
+ *
+ * The call is in the reply that asked, which is not the message a turn is
+ * writing when a typed message closes it, nor when the server answers a
+ * second answer with how the call already stands.
+ * @param chat - The session.
+ * @param toolCallId - The call.
+ * @param result - What it ended with.
+ */
+function settleAsk(chat: Chat<StoredUiMessage>, toolCallId: string, result: AskUserResult): void {
+  const at = chat.messages.findIndex((m) =>
+    m.parts.some((p) => (p as { toolCallId?: unknown }).toolCallId === toolCallId),
+  );
+  const message = chat.messages[at];
+  if (message === undefined) return;
+  const parts = message.parts.map((p) =>
+    (p as { toolCallId?: unknown }).toolCallId === toolCallId
+      ? ({ ...p, state: 'output-available', output: result } as unknown as typeof p)
+      : p,
+  );
+  chat.messages = chat.messages.map((m, i) => (i === at ? { ...message, parts } : m));
+}
+
+/**
+ * How a refused answer says the call stands, when the refusal is the server
+ * saying it was already answered (409 with the call in the body).
+ * @param error - Whatever the turn ended with.
+ * @returns The call's result, or undefined for any other refusal.
+ */
+function callAlreadyAnswered(error: unknown): AskUserResult | undefined {
+  try {
+    const body: unknown = JSON.parse(error instanceof Error ? error.message : '');
+    const { error: envelope, call } = body as { error?: { code?: unknown }; call?: { status?: unknown; output?: unknown } };
+    if (envelope?.code !== 409 || call?.status !== 'success') return undefined;
+    return call.output as AskUserResult;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Settle a turn, whichever way it ended.
  *
  * The one place a turn's ending is written down. Every way out arrives here:
@@ -444,6 +501,8 @@ function settleTurn(
   how: { isAbort: boolean; isDisconnect: boolean; isError: boolean },
 ): void {
   const gaveUp = givenUpOn.delete(conversationId);
+  const answeredCall = answering.get(conversationId);
+  answering.delete(conversationId);
   stopWatching(conversationId);
   runningTurn.delete(conversationId);
   // A turn that failed, was stopped, or folded and then said nothing would
@@ -461,7 +520,16 @@ function settleTurn(
   answeredTurn.delete(conversationId);
   const last = chat.messages[chat.messages.length - 1];
 
-  if (how.isAbort || how.isError) {
+  // An answer refused before the turn resumed leaves the card waiting, or,
+  // when the card was answered elsewhere, draws it as the store holds it; the
+  // paused reply carries no mark either way, since nothing of it failed.
+  if (answeredCall !== undefined && !beganAnswering && (how.isAbort || how.isError)) {
+    const stands = callAlreadyAnswered(chat.error);
+    if (stands !== undefined) {
+      settleAsk(chat, answeredCall, stands);
+      return;
+    }
+  } else if (how.isAbort || how.isError) {
     if (!beganAnswering && last?.role === 'user') {
       // Take it back, and only here. Nothing of this turn ever began, which
       // means the server refused it before the turn ran -- so there is
@@ -583,6 +651,40 @@ export async function sendInSession(
 }
 
 /**
+ * Answer the questionnaire a conversation's turn stopped at, and watch the
+ * stream the resumed turn comes back on (inner#1542).
+ *
+ * Sent with no message, the way the SDK's own human-in-the-loop carries on a
+ * paused reply: what the turn says next follows the card in that message, and
+ * nothing of the reader's is added to the list.
+ * @param conversationId - The conversation.
+ * @param toolCallId - The questionnaire call answered.
+ * @param answers - The answers given on the card.
+ * @param spaces - The reader's Spaces, sent beside the answer and not kept.
+ * @returns When the turn is over, however it ended.
+ */
+export async function answerInSession(
+  conversationId: string,
+  toolCallId: string,
+  answers: AskUserAnswer['answers'],
+  spaces: ChatSpaceContext = {},
+): Promise<void> {
+  const chat = sessions.get(conversationId);
+  if (!chat) return;
+  const pressedAt = Date.now();
+  const turn = (turnsRun.get(conversationId) ?? 0) + 1;
+  turnsRun.set(conversationId, turn);
+  runningTurn.set(conversationId, turn);
+  answering.set(conversationId, toolCallId);
+  void expectAnotherBeat(conversationId, turn, pressedAt);
+  try {
+    await chat.sendMessage(undefined, { body: { ...spaces, answer: { toolCallId, answers } } });
+  } catch {
+    // Already settled in `onFinish`, as for a typed message.
+  }
+}
+
+/**
  * Stop the turn a conversation is running, as the reader asked.
  *
  * Stopping is what this end can do; whether the server sees it as the reader
@@ -622,6 +724,11 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
       }
       if (part.type === CONSOLIDATING) {
         noteConsolidating(conversationId);
+        return;
+      }
+      if (part.type === ASK_REPLIED) {
+        const id = (part.data as { toolCallId?: unknown } | null)?.toolCallId;
+        if (typeof id === 'string') settleAsk(chat, id, { repliedInChat: true });
         return;
       }
       if (part.type !== TITLED) return;
@@ -699,6 +806,7 @@ export function evictChatSession(conversationId: string): void {
   runningTurn.delete(conversationId);
   answeredTurn.delete(conversationId);
   givenUpOn.delete(conversationId);
+  answering.delete(conversationId);
 }
 
 /**
@@ -717,4 +825,5 @@ export function evictAllChatSessions(): void {
   runningTurn.clear();
   answeredTurn.clear();
   givenUpOn.clear();
+  answering.clear();
 }

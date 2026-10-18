@@ -449,6 +449,17 @@
       "kind": "{kind, select, canvas {Canvas} image {Image} video {Video} audio {Audio} text {Text} other {Item}}",
       "nodes": "{count, plural, one {# node} other {# nodes}}",
       "more": "{count} more"
+    },
+    "questionnaire": {
+      "submit": "Submit",
+      "hint": "If none of these fit, you can reply in the box below.",
+      "other": "Other…",
+      "multi": "Pick any",
+      "skipped": "Skipped",
+      "replied": "You replied in the chat",
+      "show": "Show",
+      "hide": "Hide",
+      "atLeastOne": "Answer at least one question."
     }
   },
   "canvas": {

@@ -449,6 +449,17 @@
       "kind": "{kind, select, canvas {Canvas} image {图片} video {视频} audio {音频} text {文本} other {内容}}",
       "nodes": "{count} 个节点",
       "more": "还有 {count} 个"
+    },
+    "questionnaire": {
+      "submit": "提交",
+      "hint": "以上都不认可时，可以直接在输入框回复",
+      "other": "其他，自己写…",
+      "multi": "可多选",
+      "skipped": "跳过",
+      "replied": "你已在对话中回复",
+      "show": "展开",
+      "hide": "收起",
+      "atLeastOne": "至少答一题"
     }
   },
   "canvas": {

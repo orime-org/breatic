@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 import { cleanup, render, screen } from '@testing-library/react';
 
 import { MessageBubble } from '@web/pages/project/chat/MessageBubble';
+import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnaire-answer';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
@@ -342,5 +344,33 @@ describe('MessageBubble — what the reader attached', () => {
     setup({ id: 'm1', role: 'assistant', content: 'here', hasExpiredProposal: true, streaming: true });
 
     expect(screen.queryByTestId('proposal-expired')).not.toBeInTheDocument();
+  });
+});
+
+describe('MessageBubble — a questionnaire (inner#1542)', () => {
+  const questionnaire = {
+    toolCallId: 'ask-1',
+    questions: [{ header: 'Ratio', question: 'Which ratio?', multiSelect: false, options: [{ label: '16:9' }, { label: '9:16' }] }],
+    state: 'awaiting' as const,
+  };
+
+  it('draws the card, and its answers go to the panel that holds the conversation', async () => {
+    const answer = vi.fn(async () => undefined);
+    render(
+      <QuestionnaireAnswerContext.Provider value={answer}>
+        <MessageBubble message={{ id: 'a1', role: 'assistant', content: '', questionnaires: [questionnaire] }} />
+      </QuestionnaireAnswerContext.Provider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('radio')[1]!);
+    await user.click(screen.getByTestId('questionnaire-submit'));
+
+    expect(answer).toHaveBeenCalledWith('ask-1', [{ index: 0, selected: ['9:16'] }]);
+  });
+
+  it('counts the card as something the turn produced, so no empty line follows it', () => {
+    render(<MessageBubble message={{ id: 'a1', role: 'assistant', content: '', questionnaires: [questionnaire] }} />);
+
+    expect(screen.queryByTestId('message-bubble-empty')).toBeNull();
   });
 });

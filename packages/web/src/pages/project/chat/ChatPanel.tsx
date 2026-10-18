@@ -23,6 +23,7 @@ import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHi
 import { MessageList } from '@web/pages/project/chat/MessageList';
 import { useAttachFiles } from '@web/pages/project/chat/use-attach-files';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
+import { QuestionnaireAnswerContext } from '@web/pages/project/chat/questionnaire-answer';
 import { readSpaceContext } from '@web/pages/project/chat/space-context';
 import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 
@@ -126,6 +127,7 @@ export function ChatPanel({
     mishap,
     loadEarlier,
     send,
+    answer,
     abort,
     conversations,
     hasMoreConversations,
@@ -320,24 +322,28 @@ export function ChatPanel({
       // off the top, or the composer off the bottom.
       className='flex w-full min-h-0 flex-1 flex-col'
     >
-      <MessageList
-        // The conversation travels as a prop rather than as a key. The list
-        // does have to notice a switch -- it is what tells it to follow the
-        // bottom again -- but keying it made React tear down the scroller and
-        // every bubble to do it, and the scroller it discarded stayed in the
-        // document: an empty half-column above the conversation, in every
-        // project, from the moment the first one opened.
-        conversationId={currentId}
-        messages={messages}
-        consolidating={consolidating}
-        ready={ready}
-        skeleton={skeleton}
-        sentCount={sentCount}
-        hasEarlier={hasMore}
-        onLoadEarlier={loadEarlier}
-        onQuickAction={quickAction}
-        navigating={navigating}
-      />
+      {/* A questionnaire card inside a message answers in the conversation
+          this panel holds (inner#1542). */}
+      <QuestionnaireAnswerContext.Provider value={answer}>
+        <MessageList
+          // The conversation travels as a prop rather than as a key. The list
+          // does have to notice a switch -- it is what tells it to follow the
+          // bottom again -- but keying it made React tear down the scroller and
+          // every bubble to do it, and the scroller it discarded stayed in the
+          // document: an empty half-column above the conversation, in every
+          // project, from the moment the first one opened.
+          conversationId={currentId}
+          messages={messages}
+          consolidating={consolidating}
+          ready={ready}
+          skeleton={skeleton}
+          sentCount={sentCount}
+          hasEarlier={hasMore}
+          onLoadEarlier={loadEarlier}
+          onQuickAction={quickAction}
+          navigating={navigating}
+        />
+      </QuestionnaireAnswerContext.Provider>
       {/* One line, on the top edge of the composer, for everything this panel
           has to say -- and it says each thing once. Nothing here is a state
           the chat is in, so nothing here stays. */}

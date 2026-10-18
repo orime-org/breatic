@@ -449,6 +449,17 @@
       "kind": "{kind, select, canvas {Canvas} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
       "nodes": "노드 {count}개",
       "more": "외 {count}개"
+    },
+    "questionnaire": {
+      "submit": "제출",
+      "hint": "해당하는 것이 없으면 입력창에 바로 답할 수 있습니다",
+      "other": "기타(직접 입력)…",
+      "multi": "여러 개 선택 가능",
+      "skipped": "건너뜀",
+      "replied": "대화에서 답했습니다",
+      "show": "펼치기",
+      "hide": "접기",
+      "atLeastOne": "적어도 한 문제에 답해 주세요"
     }
   },
   "canvas": {

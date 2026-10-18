@@ -449,6 +449,17 @@
       "kind": "{kind, select, canvas {Canvas} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
       "nodes": "{count} 個のノード",
       "more": "ほか {count} 件"
+    },
+    "questionnaire": {
+      "submit": "送信",
+      "hint": "どれも合わない場合は、入力欄で直接返信できます",
+      "other": "その他（自由に入力）…",
+      "multi": "複数選択可",
+      "skipped": "スキップ",
+      "replied": "チャットで返信しました",
+      "show": "開く",
+      "hide": "閉じる",
+      "atLeastOne": "少なくとも1問に答えてください"
     }
   },
   "canvas": {

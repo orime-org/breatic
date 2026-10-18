@@ -4,10 +4,10 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { ChatAttachedChip } from '@breatic/shared';
+import type { AskUserAnswer, ChatAttachedChip } from '@breatic/shared';
 
 import { NOTICE_LINGERS_MS } from '@web/pages/project/chat/notice-timing';
-import { toChatMessage } from '@web/pages/project/chat/to-chat-message';
+import { splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
 
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -15,7 +15,7 @@ import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatAttachments } from '@web/stores/chat-attachments';
-import { chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { answerInSession, chatSessionFor, sendInSession, stopChatSession } from '@web/stores/chat-sessions';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -94,6 +94,11 @@ export interface ChatSession {
    * moment it happens, and nothing on the screen moves for it.
    */
   send: (draft: string) => Promise<void>;
+  /**
+   * Answer the questionnaire the conversation on screen stopped at
+   * (inner#1542); the turn that asked resumes. Resolves when that turn is over.
+   */
+  answer: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
   /** Stop the turn in flight. */
   abort: () => void;
   /** The conversations fetched so far here, most recently used first. */
@@ -314,6 +319,23 @@ export function useChatSession(
     [projectId, noteTitle, emptyTheBox, readSpaces],
   );
 
+  const answer = React.useCallback(
+    async (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> => {
+      // The card is in the conversation on screen, which is where it goes.
+      // The Spaces are read at the press, as for a typed message.
+      const opened = conversationId;
+      if (opened === undefined) return;
+      const spaces = readSpaces();
+      const limits = await chatApi.streamConfig().catch(() => null);
+      if (limits === null) {
+        chatAttachments.say(opened, { key: 'sendUnavailable' });
+        return;
+      }
+      await answerInSession(opened, toolCallId, answers, clipSpaceContext(spaces, limits, []));
+    },
+    [conversationId, readSpaces],
+  );
+
   const abort = React.useCallback((): void => {
     if (conversationId) stopChatSession(conversationId);
   }, [conversationId]);
@@ -429,7 +451,9 @@ export function useChatSession(
   // changing and the rest were settled long ago. Keyed on the message object
   // itself, which the chat leaves untouched for everything it is not
   // rewriting, so identity is exactly the question "did this one change".
-  const rendered = React.useRef(new Map<StoredUiMessage, ChatMessage>());
+  // A reply resumed after a questionnaire is drawn as two (`splitAtAnswer`),
+  // so one message can stand for more than one view.
+  const rendered = React.useRef(new Map<StoredUiMessage, ChatMessage[]>());
 
   const messages = React.useMemo(() => {
     // The one the reader just sent is held back until the answer starts: the
@@ -438,8 +462,8 @@ export function useChatSession(
     // to be waiting through.
     const shown = visibleMessages(onScreen, status);
     const last = shown[shown.length - 1];
-    const kept = new Map<StoredUiMessage, ChatMessage>();
-    const out = shown.map((m) => {
+    const kept = new Map<StoredUiMessage, ChatMessage[]>();
+    const out = shown.flatMap((m) => {
       // What a reader needs announced is a failure they are living through,
       // not every failure the conversation ever had — those come back with the
       // history and would be read out again on every open. What tells the two
@@ -448,16 +472,18 @@ export function useChatSession(
       const justNow = error !== undefined && m === last && m.role === 'assistant';
       const streaming = status === 'streaming' && m === last && m.role === 'assistant';
       const before = rendered.current.get(m);
+      const tail = before?.at(-1);
       // The comparisons matter on the message whose situation has just
-      // changed while nothing about the message itself did.
-      const view =
-        before &&
-        Boolean(before.failedJustNow) === justNow &&
-        Boolean(before.streaming) === streaming
+      // changed while nothing about the message itself did. What is still
+      // arriving, or has just failed, is the later half of a split reply.
+      const views =
+        before && tail && Boolean(tail.failedJustNow) === justNow && Boolean(tail.streaming) === streaming
           ? before
-          : toChatMessage(m, { failedJustNow: justNow, streaming });
-      kept.set(m, view);
-      return view;
+          : splitAtAnswer(m).map((half, i, halves) =>
+            i === halves.length - 1 ? toChatMessage(half, { failedJustNow: justNow, streaming }) : toChatMessage(half),
+          );
+      kept.set(m, views);
+      return views;
     });
     rendered.current = kept;
     return out;
@@ -473,6 +499,7 @@ export function useChatSession(
     mishap,
     loadEarlier,
     send,
+    answer,
     abort,
     conversations,
     hasMoreConversations,

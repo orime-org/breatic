@@ -17,9 +17,9 @@
 import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import type { z } from 'zod';
-import { canvasProposalSchema, chipOfPart, documentProposalSchema, isReaderLine, stripDsml, TURNED_AWAY } from '@breatic/shared';
+import { canvasProposalSchema, chipOfPart, documentProposalSchema, isReaderLine, readQuestionnaire, stripDsml, TURNED_AWAY } from '@breatic/shared';
 import type { CanvasProposal, ChatAttachedChip, DocumentProposal } from '@breatic/shared';
-import type { ChatAsset, ChatMessage, ChatSource, ToolCall } from '@web/pages/project/chat/types';
+import type { ChatAsset, ChatMessage, ChatQuestionnaire, ChatSource, ToolCall } from '@web/pages/project/chat/types';
 
 /** The part type carrying a turn that was stopped. */
 const INTERRUPTED = 'data-interrupted';
@@ -32,6 +32,12 @@ const TRUNCATED = 'data-truncated';
 
 /** The part type carrying a turn that stopped to wait for an answer. */
 const BLOCKED = 'data-blocked';
+
+/** The mark naming the questionnaire a turn stopped at (inner#1542). */
+const ASK_AWAITING = 'data-ask-awaiting';
+
+/** The tool that puts a questionnaire to the reader. */
+const ASK_TOOL = 'ask_user';
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = 'data-thinking-time';
@@ -161,6 +167,78 @@ function statusOf(state: string, stillRunning: boolean): ToolCall['status'] {
 }
 
 /**
+ * The call a mark names as the card the reader is shown, for each mark.
+ * @param parts - The message's parts.
+ * @returns The named call ids, in order.
+ */
+function awaitedCalls(parts: UIMessage['parts']): Set<string> {
+  const named = new Set<string>();
+  for (const part of parts) {
+    if (part.type !== ASK_AWAITING) continue;
+    const id = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
+    if (typeof id === 'string') named.add(id);
+  }
+  return named;
+}
+
+/**
+ * The questionnaire one `ask_user` part carries, with where it stands, or
+ * null when it carries none to draw: a call still arriving, one turned away,
+ * or one stored before the card existed.
+ * @param part - The tool part.
+ * @param part.toolCallId - Its call.
+ * @param part.state - Where it stands.
+ * @param part.input - What the model sent.
+ * @param part.output - What it ended with, once it has.
+ * @param awaited - The calls named as the card the reader is shown.
+ * @returns The questionnaire, or null.
+ */
+function questionnaireOf(
+  part: { toolCallId: string; state: string; input?: unknown; output?: unknown },
+  awaited: ReadonlySet<string>,
+): ChatQuestionnaire | null {
+  const asked = readQuestionnaire(part.input);
+  if (asked === null) return null;
+  const base = { toolCallId: part.toolCallId, questions: asked.questions };
+  if (part.state === 'output-available') {
+    const output = part.output as { answers?: unknown; repliedInChat?: unknown } | null | undefined;
+    if (output?.repliedInChat === true) return { ...base, state: 'replied' };
+    if (Array.isArray(output?.answers)) {
+      return { ...base, state: 'answered', answers: output.answers as ChatQuestionnaire['answers'] };
+    }
+    return null;
+  }
+  return part.state === 'input-available' && awaited.has(part.toolCallId) ? { ...base, state: 'awaiting' } : null;
+}
+
+/**
+ * A reply as the panel lays it out: whole, or split where the segment that
+ * asked a questionnaire ended, once the reader answered on the card and the
+ * turn went on in the same message (inner#1542).
+ *
+ * The server stores the two segments as two rows, so a reload reads them as
+ * two messages; splitting the live one the same way keeps the card above what
+ * the turn said after it, with or without a reload in between.
+ * @param message - The message as the conversation holds it.
+ * @returns It, or its two halves; the second named after the call it follows.
+ */
+export function splitAtAnswer(message: UIMessage): UIMessage[] {
+  for (const [at, part] of message.parts.entries()) {
+    if (part.type !== ASK_AWAITING) continue;
+    const id = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
+    const answered = message.parts.some(
+      (p) => isToolUIPart(p) && p.toolCallId === id && p.state === 'output-available',
+    );
+    if (!answered || typeof id !== 'string' || at === message.parts.length - 1) return [message];
+    return [
+      { ...message, parts: message.parts.slice(0, at + 1) },
+      { ...message, id: `${message.id}~${id}`, parts: message.parts.slice(at + 1) },
+    ];
+  }
+  return [message];
+}
+
+/**
  * Adapt one message into what the panel renders.
  * @param message - The message as the conversation holds it.
  * @param options - What is true of this message right now rather than of the
@@ -192,6 +270,9 @@ export function toChatMessage(
   const assets: ChatAsset[] = [];
   const proposals: CanvasProposal[] = [];
   const documentProposals: DocumentProposal[] = [];
+  const questionnaires: ChatQuestionnaire[] = [];
+  // Read before the loop, because the mark comes after the call it names.
+  const awaited = awaitedCalls(message.parts);
   let hasExpiredProposal = false;
   const attachments: ChatAttachedChip[] = [];
   // The server writes it onto the stored message; a message this reader has
@@ -206,7 +287,13 @@ export function toChatMessage(
 
   for (const part of message.parts) {
     if (isToolUIPart(part)) {
-      const status = statusOf(part.state, options.streaming === true);
+      const isAsk = getToolName(part) === ASK_TOOL;
+      // A card waiting for the reader is not a call that came to nothing; a
+      // second card in the step, which the server named nothing for, was
+      // turned away rather than failed.
+      const waiting = isAsk && part.state === 'input-available' && awaited.has(part.toolCallId);
+      const turnedAwayAsk = isAsk && part.state === 'input-available' && awaited.size > 0 && !waiting;
+      const status = waiting ? 'pending' : statusOf(part.state, options.streaming === true);
       // Cut short rather than failed: it never reached an end state of its
       // own, and the turn it belonged to was stopped.
       const cutShort =
@@ -222,7 +309,7 @@ export function toChatMessage(
         ...cutShort,
         // Turned away to steer the model: the wire's one error field says so
         // while the turn runs, and a replayed part says so in its kind below.
-        ...(status === 'error' && 'errorText' in part && part.errorText === TURNED_AWAY
+        ...((status === 'error' && 'errorText' in part && part.errorText === TURNED_AWAY) || turnedAwayAsk
           ? ({ failureKind: 'turned_away' } as const)
           : {}),
         // Declared by the tool, carried by the SDK. Read off whatever the
@@ -261,6 +348,10 @@ export function toChatMessage(
       }
       if (status === 'success' && getToolName(part) === SEARCH_TOOL) {
         found.push(...sourcesOf(part.output));
+      }
+      if (isAsk) {
+        const questionnaire = questionnaireOf(part, awaited);
+        if (questionnaire !== null) questionnaires.push(questionnaire);
       }
       continue;
     }
@@ -326,6 +417,7 @@ export function toChatMessage(
     ...(assets.length > 0 ? { assets } : {}),
     ...(proposals.length > 0 ? { proposals } : {}),
     ...(documentProposals.length > 0 ? { documentProposals } : {}),
+    ...(questionnaires.length > 0 ? { questionnaires } : {}),
     ...(hasExpiredProposal ? { hasExpiredProposal: true as const } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(options.failedJustNow === true ? { failedJustNow: true as const } : {}),

@@ -713,20 +713,6 @@ export class MainAgent {
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
-          // The step stopped at a questionnaire when it holds an `ask_user`
-          // call the schema took and nothing has answered. The first is the
-          // card the reader is shown; any later one in the step is turned
-          // away. Said on the wire here, while the writer is still open, so
-          // the panel draws the card as waiting rather than as a call that
-          // came to nothing -- the rule lives on this side only.
-          const asks = toolCalls
-            .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
-            .map((call) => call.toolCallId);
-          if (asks[0] !== undefined) {
-            awaitingCall = asks[0];
-            turnedAwayCalls = asks.slice(1);
-            writer.write({ type: "data-ask-awaiting", data: { toolCallId: awaitingCall } });
-          }
           // Said on the wire for the same reason as the two above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
           // the reader as the turn ends. A turn that never gets here -- one
@@ -735,6 +721,23 @@ export class MainAgent {
           closeThinking();
           if (thoughtForMs > 0) {
             writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
+          }
+          // The step stopped at a questionnaire when it holds an `ask_user`
+          // call the schema took and nothing has answered. The first is the
+          // card the reader is shown; any later one in the step is turned
+          // away. Said on the wire here, while the writer is still open, so
+          // the panel draws the card as waiting rather than as a call that
+          // came to nothing -- the rule lives on this side only. Written last,
+          // so it is the last part of the segment that asked: the browser
+          // splits the reply there once the reader answers and the turn
+          // resumes in the same message.
+          const asks = toolCalls
+            .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
+            .map((call) => call.toolCallId);
+          if (asks[0] !== undefined) {
+            awaitingCall = asks[0];
+            turnedAwayCalls = asks.slice(1);
+            writer.write({ type: "data-ask-awaiting", data: { toolCallId: awaitingCall } });
           }
         },
       });
