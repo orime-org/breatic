@@ -438,7 +438,7 @@ describe("how a turn's ending reads back when the conversation is reopened", () 
     ]);
     expect(parts.find((p) => p.type === "tool-always_fails")).toMatchObject({
       state: "output-error",
-      errorText: "chat.tool.failure.generic",
+      errorText: "chat.tool.failure.ourFault",
       failureKind: "tool_failed",
     });
     expect(parts.find((p) => p.type === "text")).toMatchObject({ text: "Carrying on without it." });
