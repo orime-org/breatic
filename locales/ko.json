@@ -995,6 +995,7 @@
         "restyle": {
           "label": "스타일 변환",
           "prompt": "덧붙일 내용이 있으면 입력하세요(예: 색을 더 부드럽게)",
+          "slotTitle": "스타일 이미지",
           "slot": {
             "style": "스타일을 가져올 이미지를 최대 3개 고르세요"
           }
@@ -1183,7 +1184,8 @@
         "optional": "선택",
         "followsReference": "이 이미지의 조명을 따릅니다",
         "referenceNote": "조명은 이 이미지에서 가져옵니다. 오른쪽의 색상, 강도, 질감이 이를 덮어씁니다.",
-        "fromReference": "참고 이미지 따름"
+        "fromReference": "참고 이미지 따름",
+        "sourceFromReference": "참고 이미지를 따름"
       }
     },
     "template": {

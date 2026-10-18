@@ -995,6 +995,7 @@
         "restyle": {
           "label": "风格化",
           "prompt": "想补充的可以写在这里，比如：颜色柔和一些",
+          "slotTitle": "风格图",
           "slot": {
             "style": "选最多三张图，照它们的风格来画"
           }
@@ -1183,7 +1184,8 @@
         "optional": "可选",
         "followsReference": "光照跟随这张图",
         "referenceNote": "光照取自这张图。右侧的颜色、强度、光质会覆盖它。",
-        "fromReference": "跟随参考图"
+        "fromReference": "跟随参考图",
+        "sourceFromReference": "跟随参考图"
       }
     },
     "template": {

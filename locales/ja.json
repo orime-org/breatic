@@ -995,6 +995,7 @@
         "restyle": {
           "label": "スタイル変換",
           "prompt": "補足があれば入力（例：色を柔らかめに）",
+          "slotTitle": "スタイル画像",
           "slot": {
             "style": "スタイルを使う画像を最大 3 枚選択"
           }
@@ -1183,7 +1184,8 @@
         "optional": "任意",
         "followsReference": "この画像の光に合わせます",
         "referenceNote": "光はこの画像から取ります。右側の色・強さ・質で上書きできます。",
-        "fromReference": "参考画像に合わせる"
+        "fromReference": "参考画像に合わせる",
+        "sourceFromReference": "参考画像に合わせる"
       }
     },
     "template": {

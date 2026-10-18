@@ -492,7 +492,8 @@ export function CameraAngleControl({
         {heading}
         {pictured}
       </div>
-      {sliders}
+      {/* Each row's 24px step words already leave room under them. */}
+      <div className='flex flex-col'>{sliders}</div>
     </div>
   );
 }

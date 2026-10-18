@@ -557,6 +557,7 @@ describe("batch-four tools", () => {
     expect(restyle.slots.map((s) => [s.key, s.param, s.many, s.required])).toEqual([
       ["style", "style_images", true, true],
     ]);
+    expect(restyle.slots[0]?.titleKey).toBe("canvas.miniTool.image.restyle.slotTitle");
     expect(isModelTool(restyle) && restyle.params).toEqual([{ key: "resolution", default: "2k" }, { key: "quality" }]);
     expect(restyle.prompt?.defaultText).toBe("");
     expect(restyle.prompt?.preamble).toMatch(/style references/);

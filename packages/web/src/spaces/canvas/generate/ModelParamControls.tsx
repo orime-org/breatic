@@ -277,6 +277,8 @@ function SwatchRow({ name, label, options, shown, custom, customShown, onChange,
               onChange={(hex) => onChange({ [name]: 'custom', [custom]: hex })}
               inputTestId={`generate-param-${name}-custom-input`}
               tip={option.label}
+              side='bottom'
+              align='end'
               trigger={
                 <Button
                   type='button'

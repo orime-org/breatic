@@ -241,11 +241,27 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
  * @param root0 - Props.
  * @param root0.url - The picture.
  * @param root0.note - The line under it.
+ * @param root0.title - The heading the column keeps in both states.
+ * @param root0.source - Where the light now comes from, beside the heading.
  * @returns The preview.
  */
-function ReferencePreview({ url, note }: { url: string; note: string }): React.JSX.Element {
+function ReferencePreview({
+  url,
+  note,
+  title,
+  source,
+}: {
+  url: string;
+  note: string;
+  title: string;
+  source: string;
+}): React.JSX.Element {
   return (
     <div className='flex flex-1 flex-col gap-1.5'>
+      <div className='flex items-center justify-between gap-2 text-xs font-medium'>
+        <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{title}</span>
+        <span className='truncate text-foreground'>{source}</span>
+      </div>
       <div className='relative aspect-[4/3] flex-1 overflow-hidden rounded-chrome border border-border bg-muted'>
         <img
           data-testid='mini-tool-reference-preview'
@@ -401,9 +417,17 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       })}
     </div>
   ) : null;
+  const titleKey = spec.slots.find((slot) => slot.titleKey !== undefined)?.titleKey;
   const slotTiles =
-    filledRule === undefined || tiles === null ? (
-      tiles
+    tiles === null ? null : filledRule === undefined ? (
+      titleKey === undefined ? (
+        tiles
+      ) : (
+        <div>
+          <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t(titleKey)}</p>
+          {tiles}
+        </div>
+      )
     ) : (
       <div>
         <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
@@ -452,7 +476,12 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
             <div className='grid grid-cols-2 gap-5'>
               <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
                 {referenceShown !== undefined ? (
-                  <ReferencePreview url={referenceShown.url} note={t('canvas.miniTool.relight.referenceNote')} />
+                  <ReferencePreview
+                    url={referenceShown.url}
+                    note={t('canvas.miniTool.relight.referenceNote')}
+                    title={t('canvas.miniTool.relight.lightTitle')}
+                    source={t('canvas.miniTool.relight.sourceFromReference')}
+                  />
                 ) : (
                   controlsOf(leftControls)
                 )}

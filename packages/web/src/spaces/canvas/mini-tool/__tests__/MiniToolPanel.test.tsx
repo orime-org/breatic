@@ -483,6 +483,22 @@ describe('the batch-four panels', () => {
     expect(screen.getByTestId('mini-tool-slot-image.relight-light_reference-clear')).toBeInTheDocument();
   });
 
+  it('names the restyle slot above its tiles', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true, max_items: 3 } }),
+      params: {},
+    });
+    expect(screen.getByText('Style pictures')).toBeInTheDocument();
+  });
+
+  it('keeps the light heading over the reference, saying the light follows it', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).getByText('Light source')).toBeInTheDocument();
+    expect(within(left).getByText('Follows the reference')).toBeInTheDocument();
+  });
+
   it('says a slot is required only while it holds nothing', () => {
     mount({
       spec: tool('image.restyle'),

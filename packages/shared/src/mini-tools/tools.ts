@@ -310,7 +310,9 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     guide: "redraws the picture in the style of up to three pictures you pick",
     icon: "Palette",
     params: [{ key: "resolution", default: "2k" }, { key: "quality" }],
-    slots: [{ ...slot("image.restyle", "style", "style_images", "image", true), required: true }],
+    slots: [
+      { ...slot("image.restyle", "style", "style_images", "image", true), required: true, titleKey: key("image.restyle", "slotTitle") },
+    ],
     outputs: [{ modality: "image", namePrefix: "RESTYLE" }],
     sourceParam: "images",
     sourceMany: true,

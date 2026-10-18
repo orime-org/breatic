@@ -995,6 +995,7 @@
         "restyle": {
           "label": "Restyle",
           "prompt": "Anything to add, if you like — e.g. keep the colours softer",
+          "slotTitle": "Style pictures",
           "slot": {
             "style": "Pick up to three pictures whose style to use"
           }
@@ -1183,7 +1184,8 @@
         "optional": "Optional",
         "followsReference": "Light follows this picture",
         "referenceNote": "Light comes from this picture. Colour, intensity and quality on the right override it.",
-        "fromReference": "from reference"
+        "fromReference": "from reference",
+        "sourceFromReference": "Follows the reference"
       }
     },
     "template": {

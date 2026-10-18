@@ -190,6 +190,8 @@ export interface MiniToolSlot {
   readonly bannerKey: string;
   /** Present when the tool needs the slot filled, though its param is optional in the catalog. */
   readonly required?: true;
+  /** The name shown above the slot's tiles, when the tiles alone do not say what they are for. */
+  readonly titleKey?: string;
 }
 
 /** One result node the tool produces. */

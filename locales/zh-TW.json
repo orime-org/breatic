@@ -995,6 +995,7 @@
         "restyle": {
           "label": "風格化",
           "prompt": "想補充的可以寫在這裡，例如：顏色柔和一些",
+          "slotTitle": "風格圖",
           "slot": {
             "style": "選最多三張圖，照它們的風格來畫"
           }
@@ -1183,7 +1184,8 @@
         "optional": "選填",
         "followsReference": "光照跟隨這張圖",
         "referenceNote": "光照取自這張圖。右側的顏色、強度、光質會覆蓋它。",
-        "fromReference": "跟隨參考圖"
+        "fromReference": "跟隨參考圖",
+        "sourceFromReference": "跟隨參考圖"
       }
     },
     "template": {

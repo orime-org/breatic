@@ -25,6 +25,9 @@ interface EmptyImageColorPickerProps {
   inputTestId?: string;
   /** The trigger's name, shown on hover. */
   tip?: string;
+  /** Where the picker opens from the trigger; above it, at its start, when absent. */
+  side?: 'top' | 'bottom';
+  align?: 'start' | 'end';
 }
 
 /**
@@ -41,6 +44,8 @@ interface EmptyImageColorPickerProps {
  * @param root0.trigger - What opens the picker, when not the round swatch.
  * @param root0.inputTestId - The hex field's test id.
  * @param root0.tip - The trigger's name, shown on hover.
+ * @param root0.side - Which side of the trigger the picker opens on.
+ * @param root0.align - Which edge of the trigger it lines up with.
  * @returns The swatch trigger + colour-picker popover.
  */
 export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
@@ -49,6 +54,8 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
   trigger,
   inputTestId,
   tip,
+  side = 'top',
+  align = 'start',
 }: EmptyImageColorPickerProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
@@ -86,12 +93,14 @@ export const EmptyImageColorPicker = React.memo(function EmptyImageColorPicker({
         </Tooltip>
       )}
       <PopoverContent
-        side='top'
-        align='start'
+        side={side}
+        align={align}
         avoidCollisions={false}
-        className='w-auto rounded-overlay border border-border bg-popover p-3'
+        className='w-auto rounded-overlay border border-border bg-popover p-3 shadow-md'
       >
-        <div className='empty-image-color-picker flex flex-col gap-2'>
+        {/* react-colorful injects its own unlayered corners (8px); an important
+            utility outranks them, so the field shares the 6px overlay corner. */}
+        <div className='empty-image-color-picker flex flex-col gap-2 [&_.react-colorful__last-control]:!rounded-b-overlay [&_.react-colorful__saturation]:!rounded-t-overlay'>
           <HexColorPicker color={value} onChange={onChange} />
           <HexColorInput
             color={value}

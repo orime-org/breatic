@@ -884,9 +884,11 @@ export function renderProductGuide(): string {
       "which opens a colour picker for any colour, " +
       `${quoted(t("canvas.generatePanel.param.light_intensity"))}, ${quoted(t("canvas.generatePanel.param.light_quality"))} ` +
       `and ${quoted(t("canvas.generatePanel.param.resolution"))}. With a reference picked, it shows large on the left in ` +
-      "place of the sphere and the light comes from it; colour, intensity and quality left on Auto follow it too, and " +
-      `setting one overrides it. ${quoted(t("canvas.miniTool.image.restyle.label"))} needs one to three style pictures ` +
-      `picked from the canvas, and has ${quoted(t("canvas.generatePanel.param.resolution"))} and ` +
+      `place of the sphere, the heading there reads ${quoted(t("canvas.miniTool.relight.sourceFromReference"))}, and the ` +
+      "light comes from it; colour, intensity and quality left on Auto follow it too, and " +
+      `setting one overrides it. ${quoted(t("canvas.miniTool.image.restyle.label"))} needs one to three pictures under ` +
+      `${quoted(t("canvas.miniTool.image.restyle.slotTitle"))}, picked from the canvas, and has ` +
+      `${quoted(t("canvas.generatePanel.param.resolution"))} and ` +
       `${quoted(t("canvas.generatePanel.param.quality"))}. ${quoted(t("canvas.miniTool.image.quickEdit.label"))} has ` +
       `only a box for what to change, which must be filled, and ${quoted(t("canvas.generatePanel.param.resolution"))}; ` +
       "the picture itself stays as it was. On these three other tools a box at the bottom takes anything to add and " +

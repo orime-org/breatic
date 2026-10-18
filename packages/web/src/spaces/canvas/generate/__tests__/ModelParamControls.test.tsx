@@ -268,6 +268,14 @@ describe('swatches with a colour picked by hand', () => {
     expect(onChange).toHaveBeenLastCalledWith({ light_color: 'custom', light_color_hex: '#8fc0ff' });
   });
 
+  it('opens the picker below the row, at its right end', () => {
+    drawRow({ light_color: 'auto' });
+    fireEvent.click(screen.getByTestId('generate-param-light_color-swatch-custom'));
+    const content = screen.getByRole('dialog');
+    expect(content).toHaveAttribute('data-side', 'bottom');
+    expect(content).toHaveAttribute('data-align', 'end');
+  });
+
   it('shows the colour picked on the cell, and names it beside the row while chosen', () => {
     drawRow({ light_color: 'custom', light_color_hex: '#8fc0ff' });
     const cell = screen.getByTestId('generate-param-light_color-swatch-custom');

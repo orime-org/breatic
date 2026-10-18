@@ -119,7 +119,7 @@ export function ParamOptionGroup({
             aria-current={value === option.value}
             disabled={option.disabled}
             onClick={() => onSelect(option.value)}
-            className={cn(PARAM_OPTION_CLASS, even && 'basis-0 min-w-fit')}
+            className={cn(PARAM_OPTION_CLASS, even && 'basis-0 min-w-fit px-1')}
           >
             {option.label}
           </Button>
