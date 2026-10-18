@@ -91,3 +91,19 @@ describe('the side menu at a table', () => {
     expect(hover(editor, 80, 20, above)).toBe(above);
   });
 });
+
+describe('the side menu in a cell', () => {
+  it('stands for the block in the cell when the pointer is in the cell but on no block, as in its padding', () => {
+    const { editor, tableId, cellBlockId } = open();
+    const line = editor.prosemirrorView.dom.querySelector(`[data-node-type="blockContainer"][data-id="${cellBlockId}"]`)!;
+    line.getBoundingClientRect = () => new DOMRect(140, 106, 60, 22);
+
+    expect(hover(editor, 210, 135, tableId)).toBe(cellBlockId);
+  });
+
+  it('leaves the table when the pointer is in no cell', () => {
+    const { editor, tableId } = open();
+
+    expect(hover(editor, 80, 120, tableId)).toBe(tableId);
+  });
+});
