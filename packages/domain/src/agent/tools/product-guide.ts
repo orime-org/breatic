@@ -327,15 +327,15 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("chat.message.truncated"))}`,
     `  - ${quoted(t("chat.message.interrupted"))}`,
     `  - ${quoted(t("chat.message.empty"))}`,
-    "A reply can end with a card of one to four questions from the assistant, numbered from 1. Each question " +
-      `has options to click -- one, or several where it says ${quoted(t("chat.questionnaire.multi"))} -- and ` +
-      "options that are pictures, clips or sounds show as squares that preview when hovered; clicking a picked " +
+    "A reply can end with a card of one to four questions from the assistant, numbered from 1. A question may " +
+      `have options to click -- one, or several where it says ${quoted(t("chat.questionnaire.multi"))} -- and ` +
+      "options that are pictures, clips or sounds show as tiles that preview when hovered; clicking a picked " +
       `one again lets go of it. Each question has a line reading ${quoted(t("chat.questionnaire.other"))} for an ` +
       "answer in the reader's own words, which on a one-answer question takes the place of a picked option. " +
       `${quoted(t("chat.questionnaire.submit"))} sends every answer at once and the assistant goes on from there; ` +
       "a question left alone is sent as skipped, and pressing it with nothing answered shows " +
       `${quoted(t("chat.questionnaire.atLeastOne"))} as a message and sends nothing. Under the button the card ` +
-      `reads ${quoted(t("chat.questionnaire.hint"))} as a hint. A reply typed or spoken in the box instead -- the numbers can ` +
+      `reads ${quoted(t("chat.questionnaire.hint"))} as a hint. A reply typed in the box instead -- the numbers can ` +
       "point at the questions -- goes as an ordinary message, and the card then shrinks to " +
       `${quoted(t("chat.questionnaire.replied"))}, which ${quoted(t("chat.questionnaire.show"))} opens to show ` +
       `the questions again and ${quoted(t("chat.questionnaire.hide"))} closes. An answered card lists each ` +
