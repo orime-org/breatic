@@ -247,6 +247,16 @@ export const mocks = {
   // answer in credits, and a charge reports what it took and what it could
   // not. A route suite that leaves these unmocked reaches the real queries
   // against the empty mock `db` and 500s.
+  // Credit holds (inner#1611). Admission passes unless a case says otherwise;
+  // a refusal carries the figures the 402 sentence is built from.
+  creditHoldService: {
+    reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
+    releaseHold: vi.fn().mockResolvedValue(undefined),
+    resizeHold: vi.fn().mockResolvedValue(true),
+    extendHold: vi.fn().mockResolvedValue(true),
+    placeHold: vi.fn().mockResolvedValue(undefined),
+    getCreditPosition: vi.fn().mockResolvedValue({ spendable: 100, held: 0, available: 100 }),
+  },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
     // hands zod an undefined pattern: the schema still builds, and the first
@@ -588,6 +598,7 @@ export const domainMock = () => ({
   taskRepo: mocks.taskRepo,
   UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
+  creditHoldService: mocks.creditHoldService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },

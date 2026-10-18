@@ -17,6 +17,7 @@
       "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
       "none": "Not enough credits. Add credits to continue.",
+      "held_by_running": "{held} credits are held by running tasks. {available} available now.",
       "granted_elsewhere": "Your credits were granted, and can only be used in your personal Studio.",
       "refund_already_asked": "This purchase has already been sent for a refund.",
       "refund_restored": "Credits were restored to this purchase after its refund failed, so it can no longer be refunded.",

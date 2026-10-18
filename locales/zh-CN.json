@@ -17,6 +17,7 @@
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。",
+      "held_by_running": "{held} 积分正被进行中的任务占用，现在可用 {available}。",
       "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
       "refund_already_asked": "这笔已经提交过退款。",
       "refund_restored": "这笔退款失败后已恢复为积分，不能再申请退款。",

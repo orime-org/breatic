@@ -345,6 +345,10 @@ export interface StudioCreditsView {
   spendable?: number;
   /** What it owes, as a positive number. First page only. */
   debt?: number;
+  /** What running work holds until it is charged (inner#1611). First page only. */
+  held?: number;
+  /** `spendable - held`: what the next run can take. First page only. */
+  available?: number;
   /** The lots it holds right now, newest first. First page only. */
   lots?: StudioLotView[];
   /** This studio's spending, one line per event, newest first. */

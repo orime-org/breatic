@@ -965,6 +965,10 @@ function spendableFrom(lots: string, debt: string): number {
 export interface StudioCreditsSnapshot {
   spendable: number;
   debt: number;
+  /** What running work holds (inner#1611). */
+  held: number;
+  /** `spendable - held`, what the next run is admitted against. */
+  available: number;
   lots: creditLotRepo.StudioLot[];
   ledger: creditLotRepo.StudioLedgerRow[];
 }
@@ -989,15 +993,18 @@ export async function readStudioCredits(
 ): Promise<StudioCreditsSnapshot> {
   return db.transaction(
     async (tx) => {
-      const [lots, debt, designated, ledger] = await Promise.all([
+      const [lots, debt, held, designated, ledger] = await Promise.all([
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
+        creditHoldRepo.sumHeldForStudio(studioId, tx),
         creditLotRepo.listLotsByStudio(studioId, tx),
         creditLotRepo.listLedgerByStudio(studioId, limit, null, tx),
       ]);
       return {
         spendable: spendableFrom(lots, debt),
         debt: toMicroCredits(debt) / 1_000_000,
+        held: toMicroCredits(held) / 1_000_000,
+        available: (toMicroCredits(lots) - toMicroCredits(debt) - toMicroCredits(held)) / 1_000_000,
         lots: designated,
         ledger,
       };

@@ -17,8 +17,8 @@
 
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
-import { nodeTaskService, taskService } from "@breatic/domain";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
+import { reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
 import type { NodeTaskAction, TaskFailureReason } from "@breatic/shared";
@@ -139,7 +139,7 @@ export async function failOpenedTasks(
  * @param opts.userId - Who started it.
  * @param opts.action - What the rows say this run is.
  * @param opts.label - What the rows name it by.
- * @param opts.credits - The credits the run is checked against.
+ * @param opts.credits - The run's estimate, held until the worker charges the run or it ends.
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
@@ -171,7 +171,7 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    await precheckCredits(projectId, opts.userId, await opts.credits());
+    await reserveForRun(projectId, opts.userId, taskId, await opts.credits());
     const job = await opts.enqueue();
     // Queueing is the point of no return: the job runs whether or not its id
     // is kept. The id is for whoever has to find the job in the queue by hand.
@@ -184,6 +184,9 @@ export async function startRowedRun(opts: {
   } catch (err) {
     const reason: TaskFailureReason = err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
     for (const settle of [
+      // Before queueing, so whatever was held for this run is released;
+      // a refused admission held nothing, and releasing it does nothing.
+      (): Promise<unknown> => creditHoldService.releaseHold(taskId),
       (): Promise<unknown> => taskService.markFailed(taskId, reason),
       (): Promise<unknown> => failOpenedTasks(projectId, spaceId, rows, reason),
     ]) {
