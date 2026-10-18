@@ -39,6 +39,10 @@ const BATCH_ONE = {
     "image.erase",
     "image.sketch",
     "image.expand",
+    "image.angle",
+    "image.relight",
+    "image.restyle",
+    "image.quickEdit",
   ],
   video: [
     "video.cut",
@@ -384,9 +388,9 @@ describe("drawing tools", () => {
     expect(miniToolById("image.erase")?.prompt).toBeUndefined();
   });
 
-  it("marks the sketch tool's source param as a list and no other tool's", () => {
+  it("marks a source param as a list only where the pinned model takes a list of images", () => {
     const lists = MINI_TOOLS.filter((tool) => tool.sourceMany).map((tool) => tool.id);
-    expect(lists).toEqual(["image.sketch"]);
+    expect(lists).toEqual(["image.sketch", "image.angle", "image.relight", "image.restyle", "image.quickEdit"]);
   });
 
   it("names every media param a tool fills, the mask included", () => {
@@ -486,5 +490,132 @@ describe("drawing tools", () => {
       });
       expect(parsed.success).toBe(false);
     });
+  });
+});
+
+// inner#1304: multi-angle, relight, restyle and quick edit.
+describe("batch-four tools", () => {
+  const SOURCE = "https://cdn.example.com/a.png";
+  const base = {
+    project_id: "00000000-0000-4000-8000-000000000001",
+    space_id: "00000000-0000-4000-8000-000000000002",
+    node_ids: ["00000000-0000-4000-8000-000000000003"],
+    source: { url: SOURCE, width: 768, height: 1152 },
+    slots: {},
+  };
+
+  it("pins each tool to its model, prefix and icon, one image out", () => {
+    const rows = ["image.angle", "image.relight", "image.restyle", "image.quickEdit"].map((id) => {
+      const tool = miniToolById(id)!;
+      return [id, modelOf(tool), tool.icon, outputsOf(tool, {}).map((o) => [o.modality, o.namePrefix])];
+    });
+    expect(rows).toEqual([
+      ["image.angle", "qwen-image-edit-multiple-angles", "Rotate3d", [["image", "ANGLE"]]],
+      ["image.relight", "nano-banana-2-relight", "Lightbulb", [["image", "RELIGHT"]]],
+      ["image.restyle", "gpt-image-2.5-sunburst-edit", "Palette", [["image", "RESTYLE"]]],
+      ["image.quickEdit", "nano-banana-2-quick-edit", "SquarePen", [["image", "EDIT"]]],
+    ]);
+  });
+
+  it("exposes the camera pose on the multi-angle tool, with a prompt that may stay empty", () => {
+    const angle = miniToolById("image.angle")!;
+    expect(toolParamKeys(angle)).toEqual(["horizontal_angle", "vertical_angle", "distance"]);
+    expect(angle.slots).toEqual([]);
+    expect(angle.prompt?.defaultText).toBe("");
+  });
+
+  it("draws the light direction as one sphere and the colour as swatches, at 2K by default", () => {
+    const relight = miniToolById("image.relight")!;
+    expect(isModelTool(relight) && relight.params).toEqual([
+      { key: "light_azimuth", display: "lightAngle" },
+      { key: "light_elevation", display: "lightAngle" },
+      { key: "light_color", display: "swatches" },
+      { key: "light_intensity" },
+      { key: "light_quality" },
+      { key: "resolution", default: "2k" },
+    ]);
+    expect(relight.prompt?.defaultText).toBe("");
+    expect(relight.sourceAspectParam).toBe("aspect_ratio");
+  });
+
+  it("takes an optional light reference that hides the direction once filled", () => {
+    const relight = miniToolById("image.relight")!;
+    expect(relight.slots.map((s) => [s.key, s.param, s.accepts, s.many, s.required])).toEqual([
+      ["light_reference", "light_reference", "image", false, undefined],
+    ]);
+    expect(relight.panel).toEqual({
+      columns: { left: ["light_azimuth", "light_elevation"] },
+      whenSlotFilled: { slot: "light_reference", hide: ["light_azimuth", "light_elevation"] },
+    });
+  });
+
+  it("requires one to three style pictures and always prefixes the restyle prompt", () => {
+    const restyle = miniToolById("image.restyle")!;
+    expect(restyle.slots.map((s) => [s.key, s.param, s.many, s.required])).toEqual([
+      ["style", "style_images", true, true],
+    ]);
+    expect(isModelTool(restyle) && restyle.params).toEqual([{ key: "resolution", default: "2k" }, { key: "quality" }]);
+    expect(restyle.prompt?.defaultText).toBe("");
+    expect(restyle.prompt?.preamble).toMatch(/style references/);
+  });
+
+  it("asks quick edit for a prompt it cannot run without", () => {
+    const quickEdit = miniToolById("image.quickEdit")!;
+    expect(isModelTool(quickEdit) && quickEdit.params).toEqual([{ key: "resolution", default: "2k" }]);
+    expect(quickEdit.prompt?.defaultText).toBeUndefined();
+    expect(quickEdit.prompt?.preamble).toBeUndefined();
+  });
+
+  it("names in a panel layout only the tool's own params and slots", () => {
+    for (const tool of MINI_TOOLS) {
+      if (tool.panel === undefined) continue;
+      const keys = new Set(tool.params.map((p) => p.key));
+      for (const key of [...(tool.panel.columns?.left ?? []), ...(tool.panel.whenSlotFilled?.hide ?? [])]) {
+        expect(keys.has(key), `${tool.id}.${key}`).toBe(true);
+      }
+      const slot = tool.panel.whenSlotFilled?.slot;
+      if (slot !== undefined) expect(tool.slots.map((s) => s.key), tool.id).toContain(slot);
+    }
+  });
+
+  it("keeps the server-filled aspect param out of what the reader sends", () => {
+    for (const tool of MINI_TOOLS) {
+      if (tool.sourceAspectParam === undefined) continue;
+      expect(toolParamKeys(tool), tool.id).not.toContain(tool.sourceAspectParam);
+    }
+    const parsed = miniToolRequestSchema.safeParse({
+      ...base,
+      tool: "image.relight",
+      params: { light_azimuth: 315, aspect_ratio: "2:3" },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("takes a relight run with its light settings and a reference picture", () => {
+    const parsed = miniToolRequestSchema.safeParse({
+      ...base,
+      tool: "image.relight",
+      prompt: "",
+      params: {
+        light_azimuth: 315,
+        light_elevation: 30,
+        light_color: "warm",
+        light_intensity: "auto",
+        light_quality: "soft",
+        resolution: "2k",
+      },
+      slots: { light_reference: { url: "https://cdn.example.com/ref.png" } },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("takes a restyle run with up to its style pictures", () => {
+    const parsed = miniToolRequestSchema.safeParse({
+      ...base,
+      tool: "image.restyle",
+      params: { resolution: "2k", quality: "medium" },
+      slots: { style: [{ url: "https://cdn.example.com/s1.png" }, { url: "https://cdn.example.com/s2.png" }] },
+    });
+    expect(parsed.success).toBe(true);
   });
 });
