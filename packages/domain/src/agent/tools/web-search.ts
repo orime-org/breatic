@@ -310,9 +310,11 @@ export function renderSearchForModel(answer: SearchAnswer): string {
  * reservation is one synchronous statement, which JavaScript runs to
  * completion, so calls running together cannot interleave inside it.
  *
- * The count starts at zero every turn, so a reply's sources read `1` upward
- * however long the conversation before it was, and each reply's row stands on
- * its own.
+ * The count starts at zero each time the tools are built, so a reply's
+ * sources read `1` upward however long the conversation before it was, and
+ * each reply's row stands on its own. A turn resumed after a questionnaire is
+ * built afresh and is a row of its own, so its sources read `1` upward too;
+ * the description tells the model so.
  * @returns This turn's search tools, keyed as the model names them.
  */
 export function makeSearchTools(): {
@@ -330,7 +332,8 @@ export function makeSearchTools(): {
       "[2][5]. Searches within one reply share one run of numbers, so use the number each " +
       "source arrived with in this reply. Every reply numbers its own sources from one, so a " +
       "number an earlier reply used stands for something else here: write about those " +
-      "sources in words. Never write a number no source arrived with in this reply. The " +
+      "sources in words. What you write after the user answers an ask_user card numbers its " +
+      "sources from one again, so treat the numbers from before the card the same way. Never write a number no source arrived with in this reply. The " +
       "panel shows the sources under your reply by themselves, so do not list their " +
       "addresses in it.",
     inputSchema,

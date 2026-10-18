@@ -1002,6 +1002,12 @@ describe("web_search pins the numbers and words it promises", () => {
     expect(both).not.toMatch(/spreads the same/i);
   });
 
+  it("says the part of a reply after an answered questionnaire numbers its sources from one again", () => {
+    // The resumed part builds its search tools afresh, so its numbers restart
+    // while the model still sees the numbers from before the card.
+    expect(webSearch.description).toMatch(/ask_user[^.]*from one again/);
+  });
+
   it("closes the reason for a status it would take no differently", async () => {
     // The widest residual class: 400, 402, 404 aside, 409, 410, 413, 415, 451.
     httpRequestMock.mockImplementation(async () => new Response(null, { status: 409 }));
