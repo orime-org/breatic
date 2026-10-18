@@ -466,11 +466,22 @@ export {
   CAMERA_ANGLE_AXES,
   CAMERA_ANGLE_GRID,
   DEFAULT_CAMERA_ANGLE,
+  DEFAULT_LIGHT_ANGLE,
+  LIGHT_ANGLE_AXES,
+  LIGHT_ANGLE_GRID,
   nearestCameraAngle,
   stepCameraAngle,
+  type AngleGrid,
   type CameraAngle,
   type CameraAngleAxis,
 } from "@shared/camera-angle.js";
+export {
+  LIGHT_COLORS,
+  LIGHT_INTENSITIES,
+  LIGHT_QUALITIES,
+  lightDirectionPhrase,
+  type LightColorTerm,
+} from "@shared/relight-terms.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   MULTI_SHOT_MODE,
