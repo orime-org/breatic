@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
+import { ArrowUp, X, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -31,10 +31,11 @@ import { Slider } from '@web/components/ui/slider';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { corsUrl } from '@web/lib/cors-url';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
-import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
+import { controlParams, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
@@ -47,6 +48,8 @@ import {
   aspectRatioOf,
   rectForAspect,
   setRectSide,
+  hiddenParams,
+  slotOptional,
   type CropRect,
   type MiniToolRefusal,
   type MiniToolSourceInfo,
@@ -232,6 +235,53 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
 });
 
 /**
+ * A picked picture shown large in place of the controls it decides, with a
+ * line saying so and a way to remove it (inner#1304).
+ * @param root0 - Props.
+ * @param root0.url - The picture.
+ * @param root0.note - The line under it.
+ * @param root0.clearLabel - The remove button's name.
+ * @param root0.onClear - Removes the pick.
+ * @returns The preview.
+ */
+function ReferencePreview({
+  url,
+  note,
+  clearLabel,
+  onClear,
+}: {
+  url: string;
+  note: string;
+  clearLabel: string;
+  onClear: () => void;
+}): React.JSX.Element {
+  return (
+    <div className='flex flex-col gap-1.5'>
+      <div className='relative overflow-hidden rounded-chrome border border-border bg-muted'>
+        <img
+          data-testid='mini-tool-reference-preview'
+          src={corsUrl(url)}
+          alt=''
+          className='aspect-[4/3] w-full object-contain'
+        />
+        <Button
+          type='button'
+          variant={null}
+          size={null}
+          data-testid='mini-tool-reference-clear'
+          aria-label={clearLabel}
+          onClick={onClear}
+          className='absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-popover text-muted-foreground shadow-sm hover-enabled:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        >
+          <X className='h-3.5 w-3.5' aria-hidden='true' />
+        </Button>
+      </div>
+      <p className='text-xs text-muted-foreground'>{note}</p>
+    </div>
+  );
+}
+
+/**
  * Seconds as `m:ss.s`.
  * @param seconds - The time.
  * @returns The text.
@@ -270,6 +320,118 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   } = props;
   const t = useTranslation();
   const blocked = BLOCKING_REFUSALS.has(refusal);
+  // A prompt that may stay empty is an addition, drawn last across the panel;
+  // one that holds Run back is the tool's main input, drawn before the params.
+  const promptFirst = spec.prompt?.defaultText === undefined;
+  const promptBox = spec.prompt !== undefined ? (
+    <Textarea
+      data-testid='mini-tool-prompt'
+      value={prompt}
+      placeholder={t(spec.prompt.placeholderKey)}
+      onChange={(event) => onPrompt(event.target.value)}
+      rows={3}
+      className='resize-none text-sm'
+    />
+  ) : null;
+  const columns = spec.panel?.columns;
+  const filledRule = spec.panel?.whenSlotFilled;
+  const hidden = new Set(hiddenParams(spec, slots));
+  const reference = filledRule === undefined ? undefined : picksOf(slots[filledRule.slot])[0];
+  const referenceShown = filledRule !== undefined && reference !== undefined ? { key: filledRule.slot, url: reference.url } : undefined;
+  const visibleControls = (modelControls ?? []).filter((control) => !controlParams(control).some((key) => hidden.has(key)));
+  const leftKeys = new Set(columns?.left ?? []);
+  const leftControls = visibleControls.filter((control) => controlParams(control).some((key) => leftKeys.has(key)));
+  const rightControls = visibleControls.filter((control) => !leftControls.includes(control));
+  /**
+   * The model's controls, drawn on the source.
+   * @param controls - Which of them.
+   * @returns The block, or null when there are none.
+   */
+  const controlsOf = (controls: readonly ModelControl[]): React.ReactNode =>
+    modelEntry !== undefined && controls.length > 0 ? (
+      <ModelParamControls
+        model={modelEntry}
+        mode=''
+        value={params}
+        onChange={onParams}
+        controls={controls}
+        {...(props.source.url !== undefined && { subjectUrl: props.source.url })}
+        {...(referenceShown !== undefined && { autoNote: t('canvas.miniTool.relight.fromReference') })}
+      />
+    ) : null;
+  const sizeTierGroups = sizeTiers.map((choice) => (
+    <SizeTierGroup
+      key={choice.key}
+      choice={choice}
+      label={t(`canvas.generatePanel.param.${choice.key}`)}
+      onParams={onParams}
+    />
+  ));
+  const tiles = spec.slots.length > 0 ? (
+    <div className='flex flex-wrap gap-1.5'>
+      {spec.slots.map((slot) => {
+        const picks = picksOf(slots[slot.key]);
+        const required = !slotOptional(slot, modelEntry);
+        const label = t('canvas.miniTool.panel.slot', { kind: slot.accepts, required: required ? 'yes' : 'no' });
+        const testId = `mini-tool-slot-${spec.id}-${slot.key}`;
+        const cap = slotCaps[slot.key];
+        const room = slot.many ? cap === undefined || picks.length < cap : picks.length === 0;
+        return (
+          <React.Fragment key={slot.key}>
+            {/* A one-item slot is one button, filled or not, so focus
+                      returns to it by its test id when a pick ends. */}
+            {(slot.many ? picks : []).map((value) => (
+              <SlotTool
+                key={value.url}
+                testId={`${testId}-${value.url}`}
+                thumbnailTestId={`${testId}-thumb`}
+                clearTestId={`${testId}-clear`}
+                Icon={SLOT_ICONS[slot.accepts]}
+                onPick={() => onPickSlot(slot.key)}
+                active={pickingSlot === slot.key}
+                pick={slotPick(slot.accepts, value)}
+                onClear={() => onClearSlot(slot.key, slot.many ? value.url : undefined)}
+                disabled={false}
+                clearLabel={t('canvas.miniTool.panel.clearSlot')}
+                label={label}
+                tip={t(slot.bannerKey)}
+              />
+            ))}
+            {room || !slot.many ? (
+              <SlotTool
+                testId={testId}
+                thumbnailTestId={`${testId}-thumb`}
+                clearTestId={`${testId}-clear`}
+                Icon={SLOT_ICONS[slot.accepts]}
+                onPick={() => onPickSlot(slot.key)}
+                active={pickingSlot === slot.key}
+                {...(!slot.many && picks[0] !== undefined && { pick: slotPick(slot.accepts, picks[0]) })}
+                onClear={() => onClearSlot(slot.key)}
+                disabled={false}
+                clearLabel={t('canvas.miniTool.panel.clearSlot')}
+                label={label}
+                tip={t(slot.bannerKey)}
+              />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  ) : null;
+  const slotTiles =
+    filledRule === undefined || tiles === null ? (
+      tiles
+    ) : (
+      <div>
+        <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
+          <span className='text-muted-foreground'>{t('canvas.miniTool.relight.referenceTitle')}</span>
+          <span className='truncate text-muted-foreground'>
+            {t(referenceShown === undefined ? 'canvas.miniTool.relight.optional' : 'canvas.miniTool.relight.followsReference')}
+          </span>
+        </div>
+        {tiles}
+      </div>
+    );
   // The adjust's sliders, whose Reset sits in the footer.
   const adjustParam = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   return (
@@ -282,6 +444,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       closeLabel={t('canvas.miniTool.panel.close')}
       closeTestId='mini-tool-panel-close'
       onClose={onClose}
+      wide={columns !== undefined}
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
@@ -289,97 +452,52 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         {props.expand !== undefined ? (
           <ExpandRatioGroup expand={props.expand} />
         ) : null}
-        {spec.slots.length > 0 ? (
-          <div className='flex flex-wrap gap-1.5'>
-            {spec.slots.map((slot) => {
-              const picks = picksOf(slots[slot.key]);
-              const required = modelEntry?.params[slot.param]?.optional !== true;
-              const label = t('canvas.miniTool.panel.slot', { kind: slot.accepts, required: required ? 'yes' : 'no' });
-              const testId = `mini-tool-slot-${spec.id}-${slot.key}`;
-              const cap = slotCaps[slot.key];
-              const room = slot.many ? cap === undefined || picks.length < cap : picks.length === 0;
-              return (
-                <React.Fragment key={slot.key}>
-                  {/* A one-item slot is one button, filled or not, so focus
-                      returns to it by its test id when a pick ends. */}
-                  {(slot.many ? picks : []).map((value) => (
-                    <SlotTool
-                      key={value.url}
-                      testId={`${testId}-${value.url}`}
-                      thumbnailTestId={`${testId}-thumb`}
-                      clearTestId={`${testId}-clear`}
-                      Icon={SLOT_ICONS[slot.accepts]}
-                      onPick={() => onPickSlot(slot.key)}
-                      active={pickingSlot === slot.key}
-                      pick={slotPick(slot.accepts, value)}
-                      onClear={() => onClearSlot(slot.key, slot.many ? value.url : undefined)}
-                      disabled={false}
-                      clearLabel={t('canvas.miniTool.panel.clearSlot')}
-                      label={label}
-                      tip={t(slot.bannerKey)}
-                    />
-                  ))}
-                  {room || !slot.many ? (
-                    <SlotTool
-                      testId={testId}
-                      thumbnailTestId={`${testId}-thumb`}
-                      clearTestId={`${testId}-clear`}
-                      Icon={SLOT_ICONS[slot.accepts]}
-                      onPick={() => onPickSlot(slot.key)}
-                      active={pickingSlot === slot.key}
-                      {...(!slot.many && picks[0] !== undefined && { pick: slotPick(slot.accepts, picks[0]) })}
-                      onClear={() => onClearSlot(slot.key)}
-                      disabled={false}
-                      clearLabel={t('canvas.miniTool.panel.clearSlot')}
-                      label={label}
-                      tip={t(slot.bannerKey)}
-                    />
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        ) : null}
-        {spec.prompt !== undefined ? (
-          <Textarea
-            data-testid='mini-tool-prompt'
-            value={prompt}
-            placeholder={t(spec.prompt.placeholderKey)}
-            onChange={(event) => onPrompt(event.target.value)}
-            rows={3}
-            className='resize-none text-sm'
-          />
-        ) : null}
-        {sizeTiers.map((choice) => (
-          <SizeTierGroup
-            key={choice.key}
-            choice={choice}
-            label={t(`canvas.generatePanel.param.${choice.key}`)}
-            onParams={onParams}
-          />
-        ))}
         {isModelTool(spec) ? (
-          modelEntry !== undefined && modelControls !== undefined && modelControls.length > 0 ? (
-            <ModelParamControls
-              model={modelEntry}
-              mode=''
-              value={params}
-              onChange={onParams}
-              controls={modelControls}
-            />
-          ) : null
+          columns ? (
+            <div className='grid grid-cols-2 gap-3'>
+              <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
+                {referenceShown !== undefined ? (
+                  <ReferencePreview
+                    url={referenceShown.url}
+                    note={t('canvas.miniTool.relight.referenceNote')}
+                    clearLabel={t('canvas.miniTool.panel.clearSlot')}
+                    onClear={() => onClearSlot(referenceShown.key)}
+                  />
+                ) : (
+                  controlsOf(leftControls)
+                )}
+              </div>
+              <div data-testid='mini-tool-column-right' className='flex flex-col gap-2.5'>
+                {slotTiles}
+                {promptFirst ? promptBox : null}
+                {sizeTierGroups}
+                {controlsOf(rightControls)}
+              </div>
+            </div>
+          ) : (
+            <>
+              {slotTiles}
+              {promptFirst ? promptBox : null}
+              {sizeTierGroups}
+              {controlsOf(visibleControls)}
+            </>
+          )
         ) : (
-          spec.params.map((param) => (
-            <LocalParamControl
-              key={param.key}
-              param={param}
-              spec={spec}
-              params={params}
-              onParams={onParams}
-              source={props.source}
-            />
-          ))
+          <>
+            {slotTiles}
+            {spec.params.map((param) => (
+              <LocalParamControl
+                key={param.key}
+                param={param}
+                spec={spec}
+                params={params}
+                onParams={onParams}
+                source={props.source}
+              />
+            ))}
+          </>
         )}
+        {promptFirst ? null : promptBox}
       </div>
       <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
         <div className='flex items-center gap-3'>

@@ -34,6 +34,8 @@ export interface CanvasPanelProps {
   closeTestId?: string;
   /** The panel's body, below the header. */
   children: React.ReactNode;
+  /** Whether the body is laid out in two columns, which takes the wide panel. */
+  wide?: boolean;
 }
 
 /**
@@ -45,6 +47,7 @@ export interface CanvasPanelProps {
  * @param props.onClose - Closes the panel.
  * @param props.closeTestId - Test hook for the close button.
  * @param props.children - The panel's body.
+ * @param props.wide - Whether the body takes the wide panel.
  * @returns The panel element.
  */
 export function CanvasPanel({
@@ -54,11 +57,12 @@ export function CanvasPanel({
   onClose,
   closeTestId,
   children,
+  wide = false,
 }: CanvasPanelProps): React.JSX.Element {
   return (
     <div
       data-canvas-panel=''
-      className='nowheel nodrag flex w-[min(344px,92vw)] flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md'
+      className={`nowheel nodrag flex ${wide ? 'w-[min(560px,92vw)]' : 'w-[min(344px,92vw)]'} flex-col rounded-overlay border border-border bg-popover text-popover-foreground shadow-md`}
     >
       <div className='flex items-center justify-between px-3 py-2.5'>
         <div className='flex items-baseline gap-2'>

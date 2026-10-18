@@ -3,10 +3,13 @@
 
 import * as React from 'react';
 
-import type { ModelEntry } from '@breatic/shared';
+import { LIGHT_COLORS, type ModelEntry } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
+import { LIGHT_SPHERE } from '@web/spaces/canvas/generate/angle-spheres';
 import { CameraAngleControl } from '@web/spaces/canvas/generate/CameraAngleControl';
+import { SWATCH, SWATCH_DOT, Tip } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -36,6 +39,8 @@ interface ModelParamControlsProps {
    * passes the params its tool lists (inner#888 §5).
    */
   controls?: readonly ModelControl[];
+  /** Said after an Auto value's name, when something else decides it (a light reference). */
+  autoNote?: string;
 }
 
 /**
@@ -51,6 +56,7 @@ interface ModelParamControlsProps {
  * @param root0.include - Which controls to draw.
  * @param root0.subjectUrl - The first image the model is sent.
  * @param root0.controls - The controls to draw in place of the model's own.
+ * @param root0.autoNote - Said after an Auto value's name.
  * @returns The controls, or null when the model has none of its own.
  */
 export const ModelParamControls = React.memo(function ModelParamControls({
@@ -62,6 +68,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   include,
   subjectUrl,
   controls: given,
+  autoNote,
 }: ModelParamControlsProps): React.JSX.Element | null {
   const t = useTranslation();
   const controls = React.useMemo(
@@ -72,9 +79,10 @@ export const ModelParamControls = React.memo(function ModelParamControls({
   return (
     <div className={cn('flex flex-col gap-3', className)}>
       {controls.map((control) =>
-        control.kind === 'cameraAngle' ? (
+        control.kind === 'cameraAngle' || control.kind === 'lightAngle' ? (
           <CameraAngleControl
             key={control.name}
+            {...(control.kind === 'lightAngle' && { sphere: LIGHT_SPHERE })}
             params={control.params}
             specs={model.params}
             value={value}
@@ -88,6 +96,7 @@ export const ModelParamControls = React.memo(function ModelParamControls({
             label={t(`canvas.generatePanel.param.${control.name}`)}
             shown={value[control.name]}
             onChange={onChange}
+            autoNote={autoNote}
           />
         ),
       )}
@@ -96,10 +105,11 @@ export const ModelParamControls = React.memo(function ModelParamControls({
 });
 
 interface ModelControlRowProps {
-  control: Exclude<ModelControl, { kind: 'cameraAngle' }>;
+  control: Exclude<ModelControl, { kind: 'cameraAngle' } | { kind: 'lightAngle' }>;
   label: string;
   shown: unknown;
   onChange: (partial: Record<string, unknown>) => void;
+  autoNote: string | undefined;
 }
 
 /**
@@ -109,9 +119,10 @@ interface ModelControlRowProps {
  * @param root0.label - Its name on screen.
  * @param root0.shown - What it is set to.
  * @param root0.onChange - Called with the changed param.
+ * @param root0.autoNote - Said after an Auto value's name.
  * @returns The row.
  */
-function ModelControlRow({ control, label, shown, onChange }: ModelControlRowProps): React.JSX.Element {
+function ModelControlRow({ control, label, shown, onChange, autoNote }: ModelControlRowProps): React.JSX.Element {
   const t = useTranslation();
   const prefix = `generate-param-${control.name}`;
   switch (control.kind) {
@@ -162,6 +173,17 @@ function ModelControlRow({ control, label, shown, onChange }: ModelControlRowPro
           onChange={onChange}
         />
       );
+    case 'swatches':
+      return (
+        <SwatchRow
+          name={control.name}
+          label={label}
+          options={control.options}
+          shown={shown}
+          onChange={onChange}
+          autoNote={autoNote}
+        />
+      );
     case 'text':
       return (
         <TextControl
@@ -172,6 +194,68 @@ function ModelControlRow({ control, label, shown, onChange }: ModelControlRowPro
         />
       );
   }
+}
+
+// Auto has no colour of its own: it follows the reference, or the picture.
+const AUTO_SWATCH = `conic-gradient(${[LIGHT_COLORS.warm, LIGHT_COLORS.cool, LIGHT_COLORS.green, LIGHT_COLORS.sunset, LIGHT_COLORS.warm]
+  .map((term) => term?.swatch)
+  .join(', ')})`;
+
+interface SwatchRowProps {
+  name: string;
+  label: string;
+  options: readonly { value: string | number; label: string }[];
+  shown: unknown;
+  onChange: (partial: Record<string, unknown>) => void;
+  autoNote: string | undefined;
+}
+
+/**
+ * A choice of light colours as a row of swatches, each named in a hover tip
+ * (inner#1304).
+ * @param root0 - Props.
+ * @param root0.name - The param name.
+ * @param root0.label - Its name on screen.
+ * @param root0.options - Its values, with their names.
+ * @param root0.shown - What it is set to.
+ * @param root0.onChange - Called with the chosen value.
+ * @param root0.autoNote - Said after Auto's name.
+ * @returns The row.
+ */
+function SwatchRow({ name, label, options, shown, onChange, autoNote }: SwatchRowProps): React.JSX.Element {
+  const chosen = options.find((option) => option.value === shown);
+  const named = chosen?.value === 'auto' && autoNote !== undefined ? `${chosen.label} · ${autoNote}` : chosen?.label;
+  return (
+    <div>
+      <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
+        <span className='text-muted-foreground'>{label}</span>
+        <span data-testid={`generate-param-${name}-value`} className='truncate text-foreground'>
+          {named}
+        </span>
+      </div>
+      <div className='flex flex-wrap gap-0.5'>
+        {options.map((option) => (
+          <Tip key={option.value} tip={option.label}>
+            <Button
+              type='button'
+              variant={null}
+              size={null}
+              data-testid={`generate-param-${name}-swatch-${option.value}`}
+              aria-label={option.label}
+              aria-pressed={shown === option.value}
+              onClick={() => onChange({ [name]: option.value })}
+              className={SWATCH}
+            >
+              <span
+                className={SWATCH_DOT}
+                style={{ background: LIGHT_COLORS[String(option.value)]?.swatch ?? AUTO_SWATCH }}
+              />
+            </Button>
+          </Tip>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface TextControlProps {

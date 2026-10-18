@@ -10,7 +10,7 @@
  * page's chunk named by a second file, which `verify-chunks` refuses.
  */
 
-import type { CameraAngle } from '@breatic/shared';
+import type { AngleGrid, CameraAngle } from '@breatic/shared';
 
 /** The colours the scene is drawn in, as CSS colour strings off the theme tokens. */
 export interface SphereColors {
@@ -26,6 +26,10 @@ export interface SphereColors {
 export interface CameraAngleSphereProps {
   /** The pose to draw; any azimuth, elevation and distance, on the grid or off it. */
   pose: CameraAngle;
+  /** The grid the pose snaps to: its azimuth ticks and the range of heights a drag reaches. */
+  grid: AngleGrid;
+  /** What sits on the sphere: a camera looking in, or a light shining in. */
+  marker: 'camera' | 'light';
   /** The picture on the card, already in CORS form; absent for a plain card. */
   subjectUrl: string | undefined;
   colors: SphereColors;

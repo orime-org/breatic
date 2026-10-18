@@ -9,6 +9,7 @@ import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
 
@@ -205,7 +206,11 @@ describe('swatches', () => {
   it('draws one swatch per value, the chosen one marked, and writes a pressed one', async () => {
     const { LIGHT_COLORS } = await import('@breatic/shared');
     const onChange = vi.fn();
-    render(<ModelParamControls model={RELIGHT} mode='' value={{ light_color: 'auto' }} onChange={onChange} controls={SWATCHES} />);
+    render(
+      <TooltipProvider>
+        <ModelParamControls model={RELIGHT} mode='' value={{ light_color: 'auto' }} onChange={onChange} controls={SWATCHES} />
+      </TooltipProvider>,
+    );
     const warm = screen.getByTestId('generate-param-light_color-swatch-warm');
     expect(warm.querySelector('span')?.style.background).toBe(hexToRgb(LIGHT_COLORS.warm!.swatch));
     expect(screen.getByTestId('generate-param-light_color-swatch-auto')).toHaveAttribute('aria-pressed', 'true');

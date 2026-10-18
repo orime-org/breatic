@@ -5,14 +5,10 @@ import { RotateCcw } from 'lucide-react';
 import * as React from 'react';
 
 import {
-  CAMERA_ANGLE_AXES,
-  CAMERA_ANGLE_GRID,
-  DEFAULT_CAMERA_ANGLE,
   nearestCameraAngle,
   stepCameraAngle,
   type CameraAngle,
   type CameraAngleAxis,
-  type CameraAngleParams,
   type ParamDescriptor,
 } from '@breatic/shared';
 
@@ -20,6 +16,7 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { corsUrl } from '@web/lib/cors-url';
 import { cn } from '@web/lib/utils';
+import { CAMERA_SPHERE, type AngleParams, type AngleSphere } from '@web/spaces/canvas/generate/angle-spheres';
 import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
 import { cameraAngleNames, optionLabel, rangeStops } from '@web/spaces/canvas/generate/model-controls';
 import { ParamSliderRow, type SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
@@ -78,40 +75,39 @@ const LazySphere = React.lazy(
 );
 
 interface CameraAngleControlProps {
-  /** The three params the pose is written to. */
-  params: CameraAngleParams;
+  /** Which sphere this is: its grid, axes, reset pose and name. The camera's when absent. */
+  sphere?: AngleSphere;
+  /** The params the pose is written to, one per axis the sphere sets. */
+  params: AngleParams;
   /** The model's params, whose `value_labels` name each step. */
   specs: Readonly<Record<string, ParamDescriptor>>;
   /** What the node holds, by param name. */
   value: Readonly<Record<string, unknown>>;
-  /** Called with all three params at once, once per gesture. */
+  /** Called with every param of the pose at once, once per gesture. */
   onChange: (partial: Record<string, unknown>) => void;
   /** The first image the model is sent, which sits on the card; absent for a plain card. */
   subjectUrl: string | undefined;
 }
 
 /**
- * The pose the node holds, read off its three params.
- * @param params - The three param names.
+ * The pose the node holds, read off its params.
+ * @param sphere - The sphere.
+ * @param params - The param names.
  * @param value - What the node holds.
- * @returns The pose, each axis falling back to the default when unset.
+ * @returns The pose, each axis falling back to the sphere's reset pose when unset.
  */
-function storedPose(params: CameraAngleParams, value: Readonly<Record<string, unknown>>): CameraAngle {
+function storedPose(sphere: AngleSphere, params: AngleParams, value: Readonly<Record<string, unknown>>): CameraAngle {
   /**
-   * One axis's number, or the default's.
-   * @param name - The param name.
-   * @param axis - The axis it stands for.
+   * One axis's number, or the reset pose's.
+   * @param axis - The axis.
    * @returns The value.
    */
-  const read = (name: string, axis: CameraAngleAxis): number => {
-    const v = value[name];
-    return typeof v === 'number' ? v : DEFAULT_CAMERA_ANGLE[axis];
+  const read = (axis: CameraAngleAxis): number => {
+    const name = params[axis];
+    const v = name === undefined ? undefined : value[name];
+    return typeof v === 'number' ? v : sphere.reset[axis];
   };
-  return nearestCameraAngle({
-    azimuth: read(params.azimuth, 'azimuth'),
-    elevation: read(params.elevation, 'elevation'),
-    distance: read(params.distance, 'distance'),
-  });
+  return nearestCameraAngle({ azimuth: read('azimuth'), elevation: read('elevation'), distance: read('distance') }, sphere.grid);
 }
 
 /**
@@ -145,17 +141,27 @@ function prefersReducedMotion(): boolean {
  * it and written when it ends; the rest of that wheel gesture moves nothing
  * until the wheel has been still for a moment (design §6).
  * @param root0 - Props.
- * @param root0.params - The three param names.
+ * @param root0.sphere - Which sphere: the camera's when absent.
+ * @param root0.params - The param names, one per axis the sphere sets.
  * @param root0.specs - The model's params.
  * @param root0.value - What the node holds.
- * @param root0.onChange - Called with the three params.
+ * @param root0.onChange - Called with every param of the pose.
  * @param root0.subjectUrl - The picture on the card.
  * @returns The control.
  */
-export function CameraAngleControl({ params, specs, value, onChange, subjectUrl }: CameraAngleControlProps): React.JSX.Element {
+export function CameraAngleControl({
+  sphere = CAMERA_SPHERE,
+  params,
+  specs,
+  value,
+  onChange,
+  subjectUrl,
+}: CameraAngleControlProps): React.JSX.Element {
   const t = useTranslation();
   const colors = useSphereColors();
-  const stored = storedPose(params, value);
+  const { grid, axes } = sphere;
+  const hasDistance = axes.includes('distance');
+  const stored = storedPose(sphere, params, value);
   const [gesture, setGesture] = React.useState<Gesture>(null);
   const [unavailable, setUnavailable] = React.useState(false);
   const groupRef = React.useRef<HTMLDivElement>(null);
@@ -196,16 +202,16 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
 
   const commit = React.useCallback(
     (change: Partial<CameraAngle>): void => {
-      const next = nearestCameraAngle({ ...onScreen(), ...change });
+      const next = nearestCameraAngle({ ...onScreen(), ...change }, grid);
       track(null);
       if (samePose(next, live.current.stored)) return;
       // The written pose is the one on screen from here on; the next render
       // replaces it with what the node holds. Another input handled in this
       // same event (a blur flush, then a slider press) starts from it.
       live.current.stored = next;
-      onChange(Object.fromEntries(CAMERA_ANGLE_AXES.map((axis) => [params[axis], next[axis]])));
+      onChange(Object.fromEntries(axes.map((axis) => [params[axis], next[axis]])));
     },
-    [onChange, params, onScreen, track],
+    [onChange, params, onScreen, track, grid, axes],
   );
 
   const onDragStart = React.useCallback((): void => {
@@ -215,9 +221,12 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     (pose: CameraAngle): void => {
       const current = live.current.gesture;
       if (current?.kind !== 'drag') return;
-      track({ ...current, pose: { ...current.pose, azimuth: pose.azimuth, elevation: pose.elevation } });
+      // Straight overhead every azimuth meets in one point, so the light keeps the side it came from.
+      const overhead = nearestCameraAngle(pose, grid).elevation >= 90;
+      const azimuth = overhead ? current.pose.azimuth : pose.azimuth;
+      track({ ...current, pose: { ...current.pose, azimuth, elevation: pose.elevation } });
     },
-    [track],
+    [track, grid],
   );
   const onDragEnd = React.useCallback((): void => {
     if (live.current.gesture?.kind === 'drag') commit({});
@@ -226,7 +235,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
 
   React.useEffect(() => {
     const el = groupRef.current;
-    if (!el) return;
+    if (!el || !hasDistance) return;
     /**
      * One wheel event: the page never scrolls or zooms under the sphere, and a
      * gesture moves the distance at most one step.
@@ -240,7 +249,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
         steps.sum += event.deltaY;
         if (Math.abs(steps.sum) >= WHEEL_STEP_DELTA) {
           steps.moved = true;
-          const next = stepCameraAngle(onScreen(), 'distance', steps.sum > 0 ? 1 : -1);
+          const next = stepCameraAngle(onScreen(), 'distance', steps.sum > 0 ? 1 : -1, grid);
           const current = live.current.gesture;
           // A gesture in progress carries the step and writes it when it ends.
           if (current) track({ ...current, pose: next });
@@ -258,7 +267,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [commit, onScreen, track]);
+  }, [commit, onScreen, track, hasDistance, grid]);
 
   // A press writes one step; each repeat of a held key moves the picture, and
   // letting go of a camera key (or the sphere losing focus) writes where the
@@ -277,14 +286,14 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
         return;
       }
       const hit = KEY_STEPS[event.key];
-      if (!hit) return;
+      if (!hit || !axes.includes(hit[0])) return;
       event.preventDefault();
       if (live.current.gesture?.kind === 'drag') return;
-      const next = stepCameraAngle(onScreen(), hit[0], hit[1]);
+      const next = stepCameraAngle(onScreen(), hit[0], hit[1], grid);
       if (event.repeat) track({ kind: 'key', pose: next });
       else commit(next);
     },
-    [commit, endHeldKey, onScreen, track],
+    [commit, endHeldKey, onScreen, track, axes, grid],
   );
   const onKeyUp = React.useCallback(
     (event: React.KeyboardEvent): void => {
@@ -297,14 +306,14 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     (partial: Record<string, number>): void => {
       const [[name, v] = []] = Object.entries(partial);
       if (name === undefined || v === undefined) return;
-      const axis = CAMERA_ANGLE_AXES.find((a) => params[a] === name);
+      const axis = axes.find((a) => params[a] === name);
       if (!axis) return;
       // A slider's late write (a held key flushed on blur) belongs to a
       // gesture the sphere drag has already taken over from.
       if (live.current.gesture?.kind === 'drag') return;
       commit({ [axis]: v });
     },
-    [commit, params],
+    [commit, params, axes],
   );
   /**
    * A slider moved without writing: the picture follows that axis.
@@ -333,8 +342,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     () => ({ azimuth: shownAzimuth, elevation: shownElevation, distance: shownDistance }),
     [shownAzimuth, shownElevation, shownDistance],
   );
-  const named = nearestCameraAngle(spherePose);
-  const poseWords = cameraAngleNames(specs, params, named);
+  const named = nearestCameraAngle(spherePose, grid);
+  const poseWords = cameraAngleNames(specs, params, named, grid);
   // The sliders show the pose on screen; a dragged slider's own thumb wins
   // inside ParamSliderRow.
   const shownOnSliders = gesture ? named : undefined;
@@ -344,17 +353,17 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     (): Record<CameraAngleAxis, SliderStop[]> => ({
       azimuth: rangeStops(specs[params.azimuth] ?? {}).filter((s) => NAMED_AZIMUTHS.includes(s.value)),
       elevation: rangeStops(specs[params.elevation] ?? {}),
-      distance: rangeStops(specs[params.distance] ?? {}),
+      distance: params.distance === undefined ? [] : rangeStops(specs[params.distance] ?? {}),
     }),
     [specs, params],
   );
-  const onReset = React.useCallback((): void => commit(DEFAULT_CAMERA_ANGLE), [commit]);
+  const onReset = React.useCallback((): void => commit(sphere.reset), [commit, sphere]);
   // How each slider's value reads beside its name: an angle by degrees and the step's name, the distance by name.
   const formats = React.useMemo(
     (): Record<CameraAngleAxis, (v: number) => string> => ({
       azimuth: (v) => `${v}° ${optionLabel(specs[params.azimuth] ?? {}, v)}`,
       elevation: (v) => `${v}° ${optionLabel(specs[params.elevation] ?? {}, v)}`,
-      distance: (v) => optionLabel(specs[params.distance] ?? {}, v),
+      distance: (v) => (params.distance === undefined ? String(v) : optionLabel(specs[params.distance] ?? {}, v)),
     }),
     [specs, params],
   );
@@ -368,7 +377,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
     <div className='flex flex-col gap-3'>
       <div>
         <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
-          <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{t('canvas.generatePanel.cameraAngle.title')}</span>
+          <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{t(sphere.titleKey)}</span>
           <span data-testid='generate-camera-angle-pose' className='truncate text-foreground'>
             {poseWords.join(' · ')}
           </span>
@@ -385,7 +394,7 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
           ref={groupRef}
           role='application'
           tabIndex={0}
-          aria-label={t('canvas.generatePanel.cameraAngle.title')}
+          aria-label={t(sphere.titleKey)}
           data-testid='generate-camera-angle'
           onKeyDown={onKeyDown}
           onKeyUp={onKeyUp}
@@ -401,6 +410,8 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
             <React.Suspense fallback={null}>
               <LazySphere
                 pose={spherePose}
+                grid={grid}
+                marker={sphere.marker}
                 subjectUrl={subjectUrl === undefined ? undefined : corsUrl(subjectUrl)}
                 colors={colors}
                 animate={!prefersReducedMotion()}
@@ -425,16 +436,18 @@ export function CameraAngleControl({ params, specs, value, onChange, subjectUrl 
         </div>
         {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       </div>
-      {CAMERA_ANGLE_AXES.map((axis) => {
-        const grid = CAMERA_ANGLE_GRID[axis];
+      {axes.map((axis) => {
+        const name = params[axis];
+        if (name === undefined) return null;
+        const steps = grid[axis];
         return (
           <ParamSliderRow
             key={axis}
-            name={params[axis]}
-            label={t(`canvas.generatePanel.param.${params[axis]}`)}
-            min={grid[0]}
-            max={grid[grid.length - 1]}
-            step={grid[1] - grid[0]}
+            name={name}
+            label={t(`canvas.generatePanel.param.${name}`)}
+            min={steps[0] ?? 0}
+            max={steps[steps.length - 1] ?? 0}
+            step={(steps[1] ?? 1) - (steps[0] ?? 0)}
             stops={stops[axis]}
             value={stored[axis]}
             draft={shownOnSliders?.[axis]}

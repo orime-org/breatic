@@ -32,14 +32,13 @@ import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
   expandCapOf,
-  laysOutInSourcePixels,
+  readsShownSize,
   miniToolRefusal,
   resolvedParams,
   sizeTierChoices,
   slotLengthCap,
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { expandDrop, frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
@@ -211,11 +210,7 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 ||
-      spec.drawing !== undefined ||
-      laysOutInSourcePixels(spec) ||
-      keepsSourceSize(spec)) &&
-      (dataWidth === undefined || dataHeight === undefined),
+    readsShownSize(spec) && (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
@@ -284,17 +279,20 @@ function OpenMiniToolPanel({
     () => sizeTierChoices(spec, entry, draftParams ?? {}, source),
     [spec, entry, draftParams, source],
   );
+  const slots = draft?.slots ?? NO_SLOTS;
   const params = React.useMemo(
-    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers),
-    [spec, entry, draftParams, source, sizeTiers],
+    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers, slots),
+    [spec, entry, draftParams, source, sizeTiers, slots],
   );
   // A param chosen as an output size draws as tiers; the rest as the model's controls.
   const modelControls = React.useMemo(() => {
     if (entry === undefined) return undefined;
     const tiered = new Set(tieredParamKeys(spec));
-    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)));
+    const display = Object.fromEntries(
+      isModelTool(spec) ? spec.params.flatMap((param) => (param.display === undefined ? [] : [[param.key, param.display]])) : [],
+    );
+    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)), display);
   }, [entry, spec]);
-  const slots = draft?.slots ?? NO_SLOTS;
   const prompt = draft?.prompt ?? '';
   const slotCaps = React.useMemo(
     () => Object.fromEntries(spec.slots.map((slot) => [slot.key, entry?.params[slot.param]?.max_items])),

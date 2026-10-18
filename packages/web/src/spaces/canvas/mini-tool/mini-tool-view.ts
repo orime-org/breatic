@@ -12,6 +12,7 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
+import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
   defaultSizeTier,
@@ -20,6 +21,7 @@ import {
   pickedCellsOf,
   sizeTierOptions,
   tieredParamKeys,
+  type MiniToolSlot,
   type MiniToolSlotValue,
   type MiniToolSpec,
   type SizeTierOption,
@@ -126,6 +128,7 @@ export function sizeTierChoices(
  * @param draft - The panel's draft params.
  * @param source - The source as the panel knows it.
  * @param tiers - The size tiers as they fall on the source.
+ * @param slots - The draft slots; a param the panel hides while a slot is filled is not sent.
  * @returns The params by key.
  */
 export function resolvedParams(
@@ -134,6 +137,7 @@ export function resolvedParams(
   draft: Readonly<Record<string, unknown>>,
   source: MiniToolSourceInfo = {},
   tiers: readonly SizeTierChoice[] = sizeTierChoices(spec, entry, draft, source),
+  slots: MiniToolSlots = {},
 ): Record<string, unknown> {
   if (!isModelTool(spec)) {
     const out: Record<string, unknown> = { ...draft };
@@ -145,28 +149,55 @@ export function resolvedParams(
     return out;
   }
   const tierOf = new Map(tiers.map((choice) => [choice.key, choice]));
+  const hidden = new Set(hiddenParams(spec, slots));
   const out: Record<string, unknown> = {};
   for (const param of spec.params) {
+    if (hidden.has(param.key)) continue;
     if (param.sizeTiers !== undefined) {
       const choice = tierOf.get(param.key);
       const tier = choice?.options.find((option) => option.label === choice.selected);
       if (tier !== undefined) out[param.key] = tier.megapixels;
       continue;
     }
-    const value = param.key in draft ? draft[param.key] : entry?.params[param.key]?.default;
+    const value = param.key in draft ? draft[param.key] : (param.default ?? entry?.params[param.key]?.default);
     if (value !== undefined && value !== null) out[param.key] = value;
   }
   return out;
 }
 
+/** The draft slots, by slot key. */
+type MiniToolSlots = Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
+
 /**
- * Whether a slot may stay empty: its yaml param says `optional`.
+ * Whether a slot holds anything.
+ * @param held - What the draft holds for it.
+ * @returns True when it holds a pick.
+ */
+export function slotFilled(held: MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined): boolean {
+  return held !== undefined && !(Array.isArray(held) && held.length === 0);
+}
+
+/**
+ * The params the panel hides, and the run does not send, while the slot the
+ * tool names holds a pick.
+ * @param spec - The tool.
+ * @param slots - The draft slots.
+ * @returns The hidden param keys.
+ */
+export function hiddenParams(spec: MiniToolSpec, slots: MiniToolSlots): readonly string[] {
+  const rule = spec.panel?.whenSlotFilled;
+  return rule !== undefined && slotFilled(slots[rule.slot]) ? rule.hide : [];
+}
+
+/**
+ * Whether a slot may stay empty: the tool does not require it and its yaml
+ * param says `optional`.
+ * @param slot - The slot.
  * @param entry - The pinned model's catalog entry.
- * @param param - The param the slot fills.
  * @returns True when the run goes without it.
  */
-function slotOptional(entry: ModelEntry | undefined, param: string): boolean {
-  return entry?.params[param]?.optional === true;
+export function slotOptional(slot: MiniToolSlot, entry: ModelEntry | undefined): boolean {
+  return slot.required !== true && entry?.params[slot.param]?.optional === true;
 }
 
 /**
@@ -192,7 +223,7 @@ export function promptRequired(spec: MiniToolSpec, entry: ModelEntry | undefined
 export function slotLengthCap(
   spec: MiniToolSpec,
   entry: ModelEntry | undefined,
-  slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>,
+  slots: MiniToolSlots,
 ): number | null {
   for (const slot of spec.slots) {
     const cap = entry?.params[slot.param]?.max_total_duration;
@@ -213,6 +244,23 @@ export function slotLengthCap(
  */
 export function laysOutInSourcePixels(spec: MiniToolSpec): boolean {
   return spec.expand !== undefined || spec.outputLayout === 'grid';
+}
+
+/**
+ * Whether the panel reads the size of the picture the node shows when the
+ * node's data does not carry it: the tool measures something on the source,
+ * or the server takes its ratio from the size the request says.
+ * @param spec - The tool.
+ * @returns True when the shown size is read.
+ */
+export function readsShownSize(spec: MiniToolSpec): boolean {
+  return (
+    tieredParamKeys(spec).length > 0 ||
+    spec.drawing !== undefined ||
+    laysOutInSourcePixels(spec) ||
+    keepsSourceSize(spec) ||
+    spec.sourceAspectParam !== undefined
+  );
 }
 
 /**
@@ -237,7 +285,7 @@ export function miniToolRefusal(input: {
   spec: MiniToolSpec;
   entry: ModelEntry | undefined;
   prompt: string;
-  slots: Readonly<Record<string, MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined>>;
+  slots: MiniToolSlots;
   sourceShown: boolean;
   source?: MiniToolSourceInfo;
   tiers?: readonly SizeTierChoice[];
@@ -260,9 +308,7 @@ export function miniToolRefusal(input: {
     if (choices.some((choice) => choice.selected === undefined)) return 'noUsableTier';
   }
   for (const slot of spec.slots) {
-    const held = slots[slot.key];
-    const empty = held === undefined || (Array.isArray(held) && held.length === 0);
-    if (empty && !slotOptional(entry, slot.param)) return 'slotMissing';
+    if (!slotFilled(slots[slot.key]) && !slotOptional(slot, entry)) return 'slotMissing';
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
