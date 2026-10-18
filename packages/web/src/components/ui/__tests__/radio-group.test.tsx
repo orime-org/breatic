@@ -22,14 +22,19 @@ describe('RadioGroup', () => {
     expect(screen.getAllByRole('radio')).toHaveLength(2);
   });
 
-  it('items use the visible form-control border token (border-border, not border-input)', () => {
+  it('draws its unchecked ring in a border a person can see, the one the check box uses', () => {
+    // Unchecked, the ring is the whole of what says the control is there:
+    // `border-border` measured 1.32:1 in light and 1.22:1 in dark on the
+    // questionnaire card, under WCAG 1.4.11's 3:1, beside a check box drawn
+    // in `border-muted-foreground`.
     render(
       <RadioGroup defaultValue='a'>
         <RadioGroupItem value='a' aria-label='A' />
       </RadioGroup>,
     );
     const radio = screen.getByRole('radio', { name: 'A' });
-    expect(radio.className).toContain('border-border');
+    expect(radio.className).toContain('border-muted-foreground');
+    expect(radio.className).not.toMatch(/(^|\s)border-border(\s|$)/);
     expect(radio.className).not.toContain('border-input');
   });
 

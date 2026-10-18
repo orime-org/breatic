@@ -185,7 +185,7 @@ describe("judge_likelihood is in the agent's hands", () => {
   it("says so rather than throwing bare when a turn reaches it without a key", async () => {
     apiKey = undefined;
     const { readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.generic);
+    expect(readerKey).toBe(FAILURE_LINES.unavailable);
   });
 });
 
@@ -523,7 +523,7 @@ describe("failing says what broke", () => {
   it("tells the model which kind of refusal a non-2xx was", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf({ error: "rate limited" }, 429));
     const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.upstream);
+    expect(readerKey).toBe(FAILURE_LINES.busy);
     expect(forModel).toContain("429");
     expect(forModel, "a fault on their side, so no rewording reaches it").toContain(
       "Do not repeat",
@@ -531,10 +531,18 @@ describe("failing says what broke", () => {
     expect(forModel).not.toContain("openrouter.ai");
   });
 
+  it("tells the reader the feature is unavailable when our account cannot pay, and the model to stop", async () => {
+    httpRequestMock.mockResolvedValueOnce(responseOf({ error: { message: "Insufficient credits" } }, 402));
+    const { forModel, readerKey } = await failureOf(askAll);
+    expect(readerKey).toBe(FAILURE_LINES.unavailable);
+    expect(forModel).toContain("Do not repeat");
+    expect(forModel).not.toContain("different wording");
+  });
+
   it("carries a failure when the body is the JSON literal null", async () => {
     httpRequestMock.mockResolvedValueOnce(responseOf(null));
     const { readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.upstream);
+    expect(readerKey).toBe(FAILURE_LINES.badAnswer);
   });
 
   it("lets the model rewrite a request the service would not take", async () => {
@@ -593,7 +601,7 @@ describe("failing says what broke", () => {
       new Error("http request to https://openrouter.ai/api/alpha/decisions timed out"),
     );
     const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.unreachable);
+    expect(readerKey).toBe(FAILURE_LINES.noConnection);
     expect(forModel).not.toContain("openrouter.ai");
   });
 
@@ -621,7 +629,7 @@ describe("failing says what broke", () => {
     );
     const began = Date.now();
     const { readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.unreachable);
+    expect(readerKey).toBe(FAILURE_LINES.noConnection);
     expect(Date.now() - began, "one budget, not two").toBeLessThan(320);
   });
 
@@ -675,7 +683,7 @@ describe("failing says what broke", () => {
     // the figure running out.
     httpRequestMock.mockResolvedValueOnce(new Response("", { status: 200 }));
     const { forModel, readerKey } = await failureOf(askAll);
-    expect(readerKey).toBe(FAILURE_LINES.upstream);
+    expect(readerKey).toBe(FAILURE_LINES.busy);
     expect(forModel).toContain("while reading the answer");
     expect(forModel, "asking again may get it").toContain("Asking once more");
   });

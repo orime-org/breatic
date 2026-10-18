@@ -6,12 +6,10 @@ import * as React from 'react';
 import { newId } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api';
-import { useTranslation } from '@web/i18n/use-translation';
 import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { openTray } from '@web/stores/attach-to-chat';
-import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
 
 /**
  * Upload one file for a chat message.
@@ -26,29 +24,6 @@ import { useTrayNotice, type TrayNotice } from '@web/stores/chat-attachments';
  */
 async function uploadForChat(file: File, projectId: string): Promise<string> {
   return (await uploadMedia(file, { projectId, derived: true })).fileUrl;
-}
-
-/**
- * What the reader is told about their last attempt to attach something or send.
- * @param said - What the tray said.
- * @param t - The translator.
- * @returns The sentence.
- */
-function noticeText(said: TrayNotice, t: ReturnType<typeof useTranslation>): string {
-  switch (said.key) {
-    case 'unavailable':
-      return t('chat.composer.attachUnavailable');
-    case 'sendUnavailable':
-      return t('chat.composer.sendUnavailable');
-    case 'full':
-      return t('chat.composer.attachFull', { limit: said.limit });
-    case 'tooLong':
-      return t('chat.composer.attachTooLong');
-    case 'tooLarge':
-      return t('chat.composer.attachTooLarge', { filename: said.filename });
-    case 'unsupported':
-      return t('chat.composer.attachUnsupported', { filename: said.filename });
-  }
 }
 
 /** The real dependencies. */
@@ -66,19 +41,14 @@ export interface AttachFiles {
   attach: (files: File[]) => void;
   /** What the file picker offers. */
   accept: string;
-  /** What to say about the last attempt, if anything. */
-  notice: string | undefined;
 }
 
 /**
  * The composer's attach button.
  * @param projectId - The project the chat is in.
- * @param conversationId - The conversation on screen, whose notice is shown.
  * @returns What the composer needs.
  */
-export function useAttachFiles(projectId: string, conversationId: string | undefined): AttachFiles {
-  const t = useTranslation();
-  const said = useTrayNotice(conversationId);
+export function useAttachFiles(projectId: string): AttachFiles {
 
   const attach = React.useCallback(
     (files: File[]): void => {
@@ -89,10 +59,5 @@ export function useAttachFiles(projectId: string, conversationId: string | undef
 
   const accept = React.useMemo(() => attachAccept(), []);
 
-  // Worked out on every render: `t` keeps one identity across a language
-  // switch, so a memo on it would keep the first language. A string compares
-  // by value, so the composer's memo still holds.
-  const notice = said === null ? undefined : noticeText(said, t);
-
-  return { attach, accept, notice };
+  return { attach, accept };
 }

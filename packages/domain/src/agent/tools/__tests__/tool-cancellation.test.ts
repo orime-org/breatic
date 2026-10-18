@@ -72,7 +72,15 @@ describe("tools accept the cancellation signal", () => {
     ]);
   });
 
-  for (const [name, execute] of registeredTools()) {
+  it("has one tool with nothing to run, the question that waits for the reader", () => {
+    // ask_user has no `execute`: a call to it is answered by the reader in a
+    // later request, so there is no work in this turn to cancel.
+    expect(registeredTools().filter(([, execute]) => execute === undefined).map(([name]) => name)).toEqual([
+      "ask_user",
+    ]);
+  });
+
+  for (const [name, execute] of registeredTools().filter(([, run]) => run !== undefined)) {
     it(`${name} declares the options argument`, () => {
       expect(typeof execute).toBe("function");
       expect(execute.length).toBeGreaterThanOrEqual(2);

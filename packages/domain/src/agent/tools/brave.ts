@@ -11,15 +11,15 @@
  * invariant among them -- a subscription token must not travel to a host a
  * redirect names -- is stated in one place rather than copied per endpoint.
  */
-import { FAILURE_LINES, httpRequest, reasonOf, readWithin } from "@breatic/shared";
+import { httpRequest, reasonOf, readWithin } from "@breatic/shared";
 
 import {
+  failedWith,
   isStop,
   notOurPayloadReason,
   readFailedReason,
   refusalReason,
   stoppedByUser,
-  toolFailed,
 } from "@domain/agent/tools/failure.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
 
@@ -111,7 +111,7 @@ export async function braveJson(request: BraveRequest): Promise<unknown> {
     // against a real server, a socket broken 0 to 50ms after the headers is
     // always still healthy here, and an await of 30ms is what makes it reject.
     void res.body?.cancel();
-    throw toolFailed(refusalReason(voice, query, res.status), FAILURE_LINES.upstream);
+    throw failedWith(refusalReason(voice, query, res.status));
   }
   onBilled();
 
@@ -123,12 +123,12 @@ export async function braveJson(request: BraveRequest): Promise<unknown> {
     // this: that guard passes anything carrying failure detail straight
     // through, past the question of whether the user stopped.
     if (isStop(err, abortSignal)) throw stoppedByUser();
-    throw toolFailed(readFailedReason(voice, query, reasonOf(err)), FAILURE_LINES.upstream);
+    throw failedWith(readFailedReason(voice, query, reasonOf(err)));
   }
 
   try {
     return JSON.parse(text) as unknown;
   } catch {
-    throw toolFailed(notOurPayloadReason(voice, query), FAILURE_LINES.upstream);
+    throw failedWith(notOurPayloadReason(voice, query));
   }
 }

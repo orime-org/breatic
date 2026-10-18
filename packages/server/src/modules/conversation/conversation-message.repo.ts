@@ -19,7 +19,7 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, gt, max } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, gt, max, sql } from "drizzle-orm";
 import {
   db,
   conversations,
@@ -105,73 +105,234 @@ function toMessageData(row: StoredRow): MessageData {
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- *   `main-agent.ts` writes the user's own message through here before a turn
- *   starts, so a conversation that is already gone fails the turn before any
- *   billing state exists. Later in the turn this throw does not stop the
- *   billing: a failure there is recorded and the turn still settles, having
+ *   `main-agent.ts` writes the user's own message through `addReaderMessage`,
+ *   which numbers it with the same locked insert, before a turn starts, so a
+ *   conversation that is already gone fails the turn before any billing state
+ *   exists. Here, the reply is written later in the turn, and this throw does
+ *   not stop the billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
 export async function addMessage(id: string, message: MessageInput, forModel?: unknown): Promise<number> {
+  return db.transaction(async (tx) => insertIn(tx, id, message, forModel));
+}
+
+/**
+ * Lock the conversation row and append one message, inside a transaction.
+ *
+ * The lock is what serialises everything that numbers a turn or settles a
+ * waiting question in this conversation: two writers holding it in turn see
+ * each other's work.
+ * @param tx - The transaction.
+ * @param id - Conversation UUID.
+ * @param message - The message.
+ * @param forModel - The reply as it was sent to the model.
+ * @returns The turn index the message went into.
+ * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
+ */
+async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: unknown): Promise<number> {
+  const owner = await tx
+    .select({ userId: conversations.userId })
+    .from(conversations)
+    .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
+    .for("update")
+    .limit(1);
+
+  if (!owner[0]) {
+    throw new NotFoundError(t("server.conversation.not_found"));
+  }
+
+  let turnIndex: number;
+  if (message.role === "assistant") {
+    // A reply goes in the turn it answers, and only its caller knows which
+    // that is. Taking the newest turn instead gives the same number exactly
+    // while nothing else has happened since the question — and when
+    // something has, which is what two open tabs or a reply slower than the
+    // next question produce, the answer is filed under a question nobody
+    // asked there and the one it answered reads as never answered.
+    turnIndex = message.turnIndex;
+  } else {
+    // Deliberately NOT filtered on `deleted_at`: the turn index is a
+    // monotonic counter that doubles as a billing key, so it must never step
+    // back onto a number a cascade-deleted message already used.
+    const turnRows = await tx
+      .select({ maxTurn: max(conversationMessages.turnIndex) })
+      .from(conversationMessages)
+      .where(eq(conversationMessages.conversationId, id));
+
+    turnIndex = (turnRows[0]?.maxTurn ?? 0) + 1;
+  }
+
+  const seqRows = await tx
+    .select({ maxSeq: max(conversationMessages.seq) })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, id),
+        eq(conversationMessages.turnIndex, turnIndex),
+      ),
+    );
+  const seq = seqRows[0]?.maxSeq == null ? 0 : seqRows[0].maxSeq + 1;
+
+  await tx.insert(conversationMessages).values({
+    conversationId: id,
+    userId: owner[0].userId,
+    role: message.role,
+    turnIndex,
+    seq,
+    parts: message.parts,
+    ...(forModel === undefined ? {} : { forModel }),
+  });
+
+  await tx
+    .update(conversations)
+    .set({ updatedAt: new Date() })
+    .where(eq(conversations.id, id));
+
+  return turnIndex;
+}
+
+/** The result a question waiting for the reader is settled with. */
+export interface AskSettlement {
+  /** The call's output as stored and drawn. */
+  output: unknown;
+  /** The tool result appended to the asking row's `for_model`, as sent to the model. */
+  forModel: unknown;
+}
+
+/**
+ * Settle one waiting question inside an asking row: the part takes its
+ * output, and the result is appended to the row's copy of what was sent, so
+ * the call and its result are always replayed from the same row.
+ * @param tx - The transaction holding the conversation lock.
+ * @param row - The asking row, read under that lock.
+ * @param row.id - Its id.
+ * @param row.parts - Its parts.
+ * @param row.forModel - Its copy of what was sent, if any.
+ * @param toolCallId - The waiting call.
+ * @param settlement - What it is settled with.
+ * @returns The row as it now stands.
+ */
+async function settleInRow(
+  tx: DbTx,
+  row: { id: string; parts: MessagePart[]; forModel: unknown },
+  toolCallId: string,
+  settlement: AskSettlement,
+): Promise<{ id: string; parts: MessagePart[]; forModel: unknown }> {
+  const parts = row.parts.map((part) =>
+    part.type === "tool" && part.toolCallId === toolCallId ? { ...part, status: "success" as const, output: settlement.output } : part,
+  );
+  const kept = row.forModel as { messages?: unknown[] } | null;
+  const forModel =
+    kept && Array.isArray(kept.messages) ? { ...kept, messages: [...kept.messages, settlement.forModel] } : kept;
+  await tx.update(conversationMessages).set({ parts, forModel }).where(eq(conversationMessages.id, row.id));
+  return { id: row.id, parts, forModel };
+}
+
+/**
+ * Append the reader's message and, in the same transaction, settle every
+ * question the agent is waiting on in this conversation.
+ *
+ * A message written instead of answering a card closes the card. Every
+ * waiting call is closed, wherever its row sits: with two tabs open, a card
+ * can be stored after a turn another tab started, and a call left without a
+ * result makes every later request in the conversation fail.
+ * @param id - Conversation UUID.
+ * @param message - The reader's message.
+ * @param settle - The settlement for a waiting call, given its id.
+ * @returns The turn index the message opened, and the calls it closed.
+ * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
+ */
+export async function addReaderMessage(
+  id: string,
+  message: MessageInput,
+  settle: (toolCallId: string) => AskSettlement,
+): Promise<{ turnIndex: number; closedAsks: string[] }> {
   return db.transaction(async (tx) => {
-    const owner = await tx
-      .select({ userId: conversations.userId })
-      .from(conversations)
-      .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
-      .for("update")
-      .limit(1);
-
-    if (!owner[0]) {
-      throw new NotFoundError(t("server.conversation.not_found"));
-    }
-
-    let turnIndex: number;
-    if (message.role === "assistant") {
-      // A reply goes in the turn it answers, and only its caller knows which
-      // that is. Taking the newest turn instead gives the same number exactly
-      // while nothing else has happened since the question — and when
-      // something has, which is what two open tabs or a reply slower than the
-      // next question produce, the answer is filed under a question nobody
-      // asked there and the one it answered reads as never answered.
-      turnIndex = message.turnIndex;
-    } else {
-      // Deliberately NOT filtered on `deleted_at`: the turn index is a
-      // monotonic counter that doubles as a billing key, so it must never step
-      // back onto a number a cascade-deleted message already used.
-      const turnRows = await tx
-        .select({ maxTurn: max(conversationMessages.turnIndex) })
-        .from(conversationMessages)
-        .where(eq(conversationMessages.conversationId, id));
-
-      turnIndex = (turnRows[0]?.maxTurn ?? 0) + 1;
-    }
-
-    const seqRows = await tx
-      .select({ maxSeq: max(conversationMessages.seq) })
+    const turnIndex = await insertIn(tx, id, message);
+    const asking = await tx
+      .select({ id: conversationMessages.id, parts: conversationMessages.parts, forModel: conversationMessages.forModel })
       .from(conversationMessages)
       .where(
         and(
           eq(conversationMessages.conversationId, id),
-          eq(conversationMessages.turnIndex, turnIndex),
+          eq(conversationMessages.role, "assistant"),
+          isNull(conversationMessages.deletedAt),
+          sql`${conversationMessages.parts} @> ${JSON.stringify([{ status: "awaiting" }])}::jsonb`,
         ),
-      );
-    const seq = seqRows[0]?.maxSeq == null ? 0 : seqRows[0].maxSeq + 1;
+      )
+      .orderBy(conversationMessages.turnIndex, conversationMessages.seq)
+      .for("update");
+    const closedAsks: string[] = [];
+    for (const row of asking) {
+      let current = row;
+      for (const part of row.parts) {
+        if (part.type !== "tool" || part.status !== "awaiting") continue;
+        current = await settleInRow(tx, current, part.toolCallId, settle(part.toolCallId));
+        closedAsks.push(part.toolCallId);
+      }
+    }
+    return { turnIndex, closedAsks };
+  });
+}
 
-    await tx.insert(conversationMessages).values({
-      conversationId: id,
-      userId: owner[0].userId,
-      role: message.role,
-      turnIndex,
-      seq,
-      parts: message.parts,
-      ...(forModel === undefined ? {} : { forModel }),
-    });
+/** How an answer to a waiting question was taken. */
+export type AnswerOutcome =
+  | { kind: "answered"; turnIndex: number }
+  | { kind: "settled"; status: string; output: unknown }
+  | { kind: "mismatch"; reason: string }
+  | { kind: "missing" };
 
-    await tx
-      .update(conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(conversations.id, id));
-
-    return turnIndex;
+/**
+ * Settle a waiting question with the reader's answer, once.
+ *
+ * Under the conversation lock: the question is settled only while it is still
+ * waiting, so of two answers (or an answer and a message) the first to take
+ * the lock is the one that counts, and every later one is told how the call
+ * now stands.
+ * @param id - Conversation UUID.
+ * @param toolCallId - The call the answer is for.
+ * @param check - Holds the answer to the call's stored input; a reason when
+ *   it does not fit, otherwise the settlement.
+ * @returns How it went.
+ * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
+ */
+export async function answerWaitingAsk(
+  id: string,
+  toolCallId: string,
+  check: (input: unknown) => { reason: string } | AskSettlement,
+): Promise<AnswerOutcome> {
+  return db.transaction(async (tx) => {
+    const owner = await tx
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(and(eq(conversations.id, id), isNull(conversations.deletedAt)))
+      .for("update")
+      .limit(1);
+    if (!owner[0]) throw new NotFoundError(t("server.conversation.not_found"));
+    const [row] = await tx
+      .select({
+        id: conversationMessages.id,
+        turnIndex: conversationMessages.turnIndex,
+        parts: conversationMessages.parts,
+        forModel: conversationMessages.forModel,
+      })
+      .from(conversationMessages)
+      .where(
+        and(
+          eq(conversationMessages.conversationId, id),
+          eq(conversationMessages.role, "assistant"),
+          isNull(conversationMessages.deletedAt),
+          sql`${conversationMessages.parts} @> ${JSON.stringify([{ toolCallId }])}::jsonb`,
+        ),
+      )
+      .limit(1);
+    const part = row?.parts.find((p) => p.type === "tool" && p.toolCallId === toolCallId);
+    if (row === undefined || part?.type !== "tool") return { kind: "missing" };
+    if (part.status !== "awaiting") return { kind: "settled", status: part.status, output: part.output };
+    const checked = check(part.input);
+    if ("reason" in checked) return { kind: "mismatch", reason: checked.reason };
+    await settleInRow(tx, row, toolCallId, checked);
+    return { kind: "answered", turnIndex: row.turnIndex };
   });
 }
 

@@ -62,7 +62,7 @@ describe('一个工具调用走到哪了', () => {
           toolCallId: 'call-1',
           state: 'output-error',
           input: {},
-          errorText: 'chat.tool.failure.unreachable',
+          errorText: 'chat.tool.failure.busy',
           failureKind: 'tool_failed',
         },
       ],
@@ -72,7 +72,7 @@ describe('一个工具调用走到哪了', () => {
       const view = toChatMessage(failed, { streaming });
       expect(view.toolCalls?.[0]?.status).toBe('error');
       // 带过来的是要翻译的键，不是原因本身——原因只给模型。
-      expect(view.toolCalls?.[0]?.failureKey).toBe('chat.tool.failure.unreachable');
+      expect(view.failureLines?.[0]?.reason).toBe('chat.tool.failure.busy');
       expect(view.toolCalls?.[0]?.failureKind).toBe('tool_failed');
     }
   });
@@ -100,7 +100,7 @@ describe('一个工具调用走到哪了', () => {
     const view = toChatMessage(streaming, { streaming: true });
 
     expect(view.toolCalls?.[0]?.status).toBe('error');
-    expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
+    expect(view.failureLines?.[0]?.reason).toBe('chat.tool.failure.ourFault');
     expect(view.toolCalls?.[0]?.failureKind).toBeUndefined();
   });
 
@@ -187,14 +187,14 @@ describe('直播中的失败文案', () => {
           toolCallId: 'call-live',
           state: 'output-error',
           input: { url: 'https://example.com' },
-          errorText: 'chat.tool.failure.upstream',
+          errorText: 'chat.tool.failure.busy',
         },
       ],
     } as unknown as UIMessage;
 
     const view = toChatMessage(message, { streaming: false });
 
-    expect(view.toolCalls?.[0]?.failureKey).toBe('chat.tool.failure.upstream');
+    expect(view.failureLines?.[0]?.reason).toBe('chat.tool.failure.busy');
   });
 
   it('表以外的字符串一概不当文案用', () => {
@@ -215,7 +215,7 @@ describe('直播中的失败文案', () => {
 
     const view = toChatMessage(message, { streaming: false });
 
-    expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
+    expect(view.failureLines?.[0]?.reason).toBe('chat.tool.failure.ourFault');
   });
 });
 
@@ -233,7 +233,7 @@ describe('工具真失败之后这一轮才被停掉', () => {
           toolCallId: 'call-failed',
           state: 'output-error',
           input: { url: 'https://example.com' },
-          errorText: 'chat.tool.failure.upstream',
+          errorText: 'chat.tool.failure.busy',
         },
         { type: 'data-interrupted', data: {} },
       ],
@@ -242,7 +242,7 @@ describe('工具真失败之后这一轮才被停掉', () => {
     const view = toChatMessage(message, { streaming: false });
 
     expect(view.toolCalls?.[0]?.failureKind).not.toBe('user_aborted');
-    expect(view.toolCalls?.[0]?.failureKey).toBe('chat.tool.failure.upstream');
+    expect(view.failureLines?.[0]?.reason).toBe('chat.tool.failure.busy');
   });
 
   it('还没跑完的调用在这一轮被停时算用户停止', () => {
@@ -322,7 +322,7 @@ describe('a call turned away to steer the model', () => {
     const view = toChatMessage(message, { streaming: false });
 
     expect(view.toolCalls?.[0]?.failureKind).toBe('turned_away');
-    expect(view.toolCalls?.[0]?.failureKey).toBeUndefined();
+    expect(view.failureLines).toBeUndefined();
   });
 });
 

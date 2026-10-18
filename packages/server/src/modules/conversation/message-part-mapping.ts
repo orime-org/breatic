@@ -19,7 +19,8 @@
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
 import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
-import type { MessageData, MessagePart, StoredMessageMetadata } from "@breatic/shared";
+import type { MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
+import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 
 /** What one message's parts look like on the wire. */
 type UiParts = UIMessage["parts"];
@@ -36,8 +37,14 @@ const FAILED = "data-failed";
 /** The data part type carrying a turn the output ceiling cut off. */
 const TRUNCATED = "data-truncated";
 
-/** The data part type carrying a turn that stopped to wait for an answer. */
+/**
+ * The data part type a turn stored before inner#1542 carries when it stopped
+ * to ask; read back for those rows, never written now.
+ */
 const BLOCKED = "data-blocked";
+
+/** The data part naming the questionnaire a turn stopped at (inner#1542). */
+const ASK_AWAITING = "data-ask-awaiting";
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = "data-thinking-time";
@@ -126,7 +133,6 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
     else if (part.type === FAILED) stored.push({ type: "failed" });
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
-    else if (part.type === BLOCKED) stored.push({ type: "blocked" });
     else if (part.type === THINKING_TIME) {
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
       if (typeof ms === "number" && Number.isFinite(ms) && ms >= 0) {
@@ -146,43 +152,66 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
  * @returns The same message in the shape the SDK's client reads.
  */
 export function toUiParts(parts: MessagePart[]): UiParts {
-  return parts.map((part): UiPart => {
-    if (part.type === "text") return { type: "text", text: part.text };
-    if (part.type === "reasoning") return { type: "reasoning", text: part.text };
-    if (part.type === "interrupted") return { type: INTERRUPTED, data: {} };
-    if (part.type === "failed") return { type: FAILED, data: {} };
-    if (part.type === "truncated") return { type: TRUNCATED, data: {} };
-    if (part.type === "blocked") return { type: BLOCKED, data: {} };
-    if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
-    if (part.type === "attachment") return attachmentPart(part.chip);
+  // A questionnaire still waiting reads back the way it went out: the call,
+  // and after everything else the segment that asked holds, the mark naming
+  // it as the card the reader is shown.
+  const ui = parts.map((part): UiPart =>
+    part.type === "tool" && part.status === "awaiting"
+      ? { type: `tool-${part.toolName}`, toolCallId: part.toolCallId, input: part.input, state: "input-available" }
+      : toUiPart(part),
+  );
+  const marks = parts.flatMap((part): UiPart[] =>
+    part.type === "tool" && part.status === "awaiting" ? [{ type: ASK_AWAITING, data: { toolCallId: part.toolCallId } }] : [],
+  );
+  return [...ui, ...marks];
+}
+
+/**
+ * One stored part, as the client renders it.
+ * @param part - The part as it was written down.
+ * @returns The same part in the shape the SDK's client reads.
+ */
+function toUiPart(part: MessagePart): UiPart {
+  if (part.type === "text") return { type: "text", text: part.text };
+  if (part.type === "reasoning") return { type: "reasoning", text: part.text };
+  if (part.type === "interrupted") return { type: INTERRUPTED, data: {} };
+  if (part.type === "failed") return { type: FAILED, data: {} };
+  if (part.type === "truncated") return { type: TRUNCATED, data: {} };
+  if (part.type === "blocked") return { type: BLOCKED, data: {} };
+  if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
+  if (part.type === "attachment") return attachmentPart(part.chip);
 
 
-    const base = {
-      type: `tool-${part.toolName}`,
-      toolCallId: part.toolCallId,
-      input: part.input,
-    };
-    if (part.status === "success") {
-      return { ...base, state: "output-available", output: part.output } as UiPart;
-    }
-    if (part.status === "error") {
-      // Two fields, and neither of them is the reason. `errorText` carries a
-      // key for the panel to translate -- a key rather than a sentence
-      // because the row outlives the language it was written in -- or, for a
-      // call turned away, the marker that says to draw nothing; and
-      // `failureKind` says which of the three endings this was, which is a
-      // different question from what to say about it. The model's copy of
-      // the reason names hosts, statuses and, for a refused fetch, addresses
-      // inside the network, and it stops here.
-      return {
-        ...base,
-        state: "output-error",
-        errorText: part.failure === undefined ? undefined : wireLineOf(part.failure),
-        failureKind: part.failure?.kind,
-      } as UiPart;
-    }
-    return { ...base, state: "input-available" } as UiPart;
-  });
+  const base = {
+    type: `tool-${part.toolName}`,
+    toolCallId: part.toolCallId,
+    input: part.input,
+  };
+  if (part.status === "success") {
+    return { ...base, state: "output-available", output: part.output } as UiPart;
+  }
+  if (part.status === "error") {
+    // Two fields, and neither of them is the reason. `errorText` carries a
+    // key for the panel to translate -- a key rather than a sentence
+    // because the row outlives the language it was written in -- or, for a
+    // call turned away, the marker that says to draw nothing; and
+    // `failureKind` says which of the four endings this was (failed,
+    // stopped, turned away, never ran), which is a
+    // different question from what to say about it. The model's copy of
+    // the reason names hosts, statuses and, for a refused fetch, addresses
+    // inside the network, and it stops here.
+    // A row stored before a call that never ran had an ending of its own
+    // carries the same reason as one, and reads back as one (inner#1620).
+    const failure: ToolFailure | undefined =
+      part.failure?.forModel === NOTHING_OF_IT_RAN ? { kind: "never_ran", forModel: NOTHING_OF_IT_RAN } : part.failure;
+    return {
+      ...base,
+      state: "output-error",
+      errorText: failure === undefined ? undefined : wireLineOf(failure),
+      failureKind: failure?.kind,
+    } as UiPart;
+  }
+  return { ...base, state: "input-available" } as UiPart;
 }
 
 /**

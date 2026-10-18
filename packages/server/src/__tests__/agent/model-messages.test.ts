@@ -674,3 +674,53 @@ describe("a stored reply with DSML markup in its text", () => {
     expect(toModelMessages(history)).toContainEqual({ role: "assistant", content: "Here is the plan.\n\n" });
   });
 });
+
+describe("a questionnaire read back from its parts (inner#1542)", () => {
+  const questionnaire = { questions: [{ header: "Ratio", question: "Which ratio?", multiSelect: false, options: [{ label: "16:9" }] }] };
+
+  it("goes back as the call and the reader's answers once it is answered", () => {
+    const out = toModelMessages([
+      stored("assistant", [
+        { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: questionnaire, status: "success", output: { answers: [{ index: 0, selected: ["16:9"] }] } },
+      ]),
+    ]);
+
+    expect(out).toEqual([
+      { role: "assistant", content: [expect.objectContaining({ type: "tool-call", toolCallId: "ask-1", toolName: "ask_user" })] },
+      {
+        role: "tool",
+        content: [
+          expect.objectContaining({
+            type: "tool-result",
+            toolCallId: "ask-1",
+            output: { type: "json", value: { answers: [{ index: 0, selected: ["16:9"] }] } },
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("goes back with word that the reader wrote a message instead", () => {
+    const out = toModelMessages([
+      stored("assistant", [
+        { type: "tool", toolCallId: "ask-2", toolName: "ask_user", input: questionnaire, status: "success", output: { repliedInChat: true } },
+      ]),
+    ]);
+
+    expect(out).toContainEqual({
+      role: "tool",
+      content: [expect.objectContaining({ toolCallId: "ask-2", output: { type: "json", value: { repliedInChat: true } } })],
+    });
+  });
+
+  it("is left out while it still waits, so no call goes without its result", () => {
+    const out = toModelMessages([
+      stored("assistant", [
+        { type: "text", text: "Two things first." },
+        { type: "tool", toolCallId: "ask-3", toolName: "ask_user", input: questionnaire, status: "awaiting" },
+      ]),
+    ]);
+
+    expect(out).toEqual([{ role: "assistant", content: "Two things first." }]);
+  });
+});

@@ -11,6 +11,7 @@
  * two places to watch instead of one.
  */
 
+import { t } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
 
 /**
@@ -43,27 +44,6 @@ export type ChatMishap = {
    * conversation it was about.
    */
   deliberate?: boolean;
-  /**
-   * It is about the list, or about one row in it.
-   *
-   * The list covers the whole column while it is open, so the panel's own
-   * line -- on the top edge of the composer -- is a line nobody can read
-   * then. This marks the words as ones the list can carry; whether they
-   * actually go there is decided by whether the list is on screen, since the
-   * header renames the conversation too and the list is shut for that.
-   */
-  aboutRow?: boolean;
-  /**
-   * Which telling this is.
-   *
-   * Two failures in a row say the same words, and a line that says the same
-   * words is a line React leaves alone -- the DOM does not move and a screen
-   * reader announces nothing. So the reader presses send a second time, it
-   * fails a second time, and nothing whatever happens on screen. This is what
-   * makes each telling its own: the panel keys the line by it, so the same
-   * sentence is torn down and put up again, which is both visible and spoken.
-   */
-  at: number;
   /** The project it happened in. */
   projectId: string;
   /** The conversation, or null when there is not one yet to speak of. */
@@ -85,9 +65,6 @@ export type ChatMishap = {
 
 const watchers = new Set<(mishap: ChatMishap) => void>();
 
-/** How many have been told, which is what makes each one its own. */
-let told = 0;
-
 /**
  * Be told when something goes wrong, for as long as you are looking.
  * @param watch - Called once per mishap.
@@ -101,24 +78,11 @@ export function watchChatMishaps(watch: (mishap: ChatMishap) => void): () => voi
 }
 
 /**
- * One mishap as a caller states it, before it is given its telling number.
- *
- * Distributive on purpose. A bare `Omit<ChatMishap, 'at'>` flattens the union
- * to the keys its branches share, which is `kind` alone -- so `message` is
- * dropped from the type entirely and `{ kind: 'server' }` with nothing to
- * quote type-checks. Naming a bare type parameter in the check makes the
- * conditional distribute, so each branch is narrowed on its own and keeps what
- * it carries.
- */
-type Reportable<M> = M extends unknown ? Omit<M, 'at'> : never;
-
-/**
  * Tell whoever is watching. Nobody watching means it is not told.
  * @param mishap - What went wrong.
  */
-export function tell(mishap: Reportable<ChatMishap>): void {
-  told += 1;
-  for (const watch of watchers) watch({ ...mishap, at: told });
+export function tell(mishap: ChatMishap): void {
+  for (const watch of watchers) watch(mishap);
 }
 
 /**
@@ -157,4 +121,22 @@ function serverSentence(err: unknown): string | undefined {
 export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
   const said = serverSentence(err);
   return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
+}
+
+/**
+ * The sentence a mishap is told with, in the reader's language at the moment
+ * it is told (inner#1530: a toast, said once).
+ *
+ * The server's own sentence passes through -- it was written for the reader,
+ * in their language. A conversation that is gone is not an error, so it says
+ * that. A turn that answered with nothing of ours says the reply is not
+ * coming; no answer at all says only that the network failed.
+ * @param mishap - What happened.
+ * @returns The sentence.
+ */
+export function mishapLine(mishap: ChatMishap): string {
+  if (mishap.kind === 'gone') return t('chat.conversation.gone');
+  if (mishap.kind === 'server') return mishap.message;
+  if (mishap.kind === 'turn') return t('chat.error.turnFailed');
+  return t('chat.error.network');
 }

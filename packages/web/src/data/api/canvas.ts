@@ -4,6 +4,7 @@
 import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
+import { noteCreditsChanged } from '@web/data/api/credits';
 
 export interface CanvasTask {
   id: string;
@@ -134,7 +135,11 @@ export const canvasApi = {
    * @throws {import('@web/data/api/types').ApiException} On 402 / 409 / 503 etc.
    */
   createTask(body: TaskCreateInput, key: string): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key));
+    // Admitted or refused, the run held or failed to hold the project's
+    // credits, so the top bar reads them again (inner#1611).
+    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
   },
   /**
    * Start a run that reads one node's media into a text node the browser has
@@ -160,7 +165,9 @@ export const canvasApi = {
     reader_locale: string;
     source_mime_type?: string;
   }, key: string): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key));
+    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
   },
   /**
    * Have the server fetch an address into storage for a node (#207).

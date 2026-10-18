@@ -23,6 +23,7 @@
 export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+export * as creditHoldService from "@domain/credit/creditHold.service.js";
 export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
 export {
   containerCostUsd,
@@ -111,7 +112,6 @@ export {
   SAVE_IMAGE,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
-export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";

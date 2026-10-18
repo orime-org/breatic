@@ -17,6 +17,7 @@
       "in_debt": "이 Studio는 크레딧 {owed}을 미납했습니다. 다음에 지정하는 크레딧이 먼저 충당됩니다.",
       "unassigned": "지정되지 않은 크레딧이 {available} 있습니다. 사용하려면 Studio에 지정하세요.",
       "none": "크레딧이 부족합니다. 충전해 주세요.",
+      "held_by_running": "크레딧 {held}이 실행 중인 작업에 묶여 있습니다. 지금 사용할 수 있는 크레딧은 {available}입니다.",
       "granted_elsewhere": "보유한 크레딧은 지급된 것이라 개인 Studio에서만 사용할 수 있습니다.",
       "refund_already_asked": "이 구매는 이미 환불을 신청했습니다.",
       "refund_restored": "환불에 실패한 뒤 크레딧으로 복원된 구매라 더 이상 환불을 신청할 수 없습니다.",
@@ -165,7 +166,10 @@
       "attachments_too_many": "첨부가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
       "current_space_too_long": "현재 Space의 내용이 너무 깁니다. 최대 {limit, number}자까지이며, 현재 {actual, number}자입니다.",
       "spaces_too_many": "목록의 Space가 너무 많습니다. 최대 {limit, number}개까지이며, 이 메시지는 {actual, number}개입니다.",
-      "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다."
+      "references_too_many": "첨부 참조가 너무 많습니다. 메시지 하나에 최대 {limit, number}번까지이며, 이 메시지에는 {actual, number}번 있습니다.",
+      "ask_not_found": "이 대화에 이 질문 카드가 없습니다.",
+      "ask_already_answered": "이 질문 카드에는 이미 답했습니다.",
+      "answer_mismatch": "이 답변은 카드의 질문과 맞지 않습니다."
     },
     "mail": {
       "studio_invite": {
@@ -350,10 +354,24 @@
     "tool": {
       "unfinished": "중지됨",
       "failure": {
-        "upstream": "실행 오류",
-        "unreachable": "실행 오류",
-        "generic": "실행 오류"
+        "busy": "서비스에 오류가 발생했습니다. 잠시 후 다시 시도하세요",
+        "noConnection": "서비스에 연결할 수 없습니다. 잠시 후 다시 시도하세요",
+        "refused": "서비스가 이 요청을 받지 않았습니다",
+        "unavailable": "지금은 이 기능을 사용할 수 없습니다",
+        "badAnswer": "서비스가 사용할 수 없는 결과를 보냈습니다",
+        "linkUnreachable": "이 주소를 열 수 없습니다. 다른 링크를 사용해 보세요",
+        "fileTooLarge": "파일이 너무 큽니다",
+        "unsupportedType": "지원하지 않는 파일 형식입니다",
+        "emptyFile": "파일이 비어 있습니다",
+        "tooSlow": "파일 다운로드가 너무 느려 완료되지 않았습니다",
+        "storageFull": "Studio 저장 공간이 가득 찼습니다",
+        "noPermission": "이 Project의 편집 권한이 없습니다",
+        "tooFrequent": "방금 가져온 링크가 너무 많습니다. 1분 후 다시 시도하세요",
+        "declined": "서비스가 이 내용의 처리를 거부했습니다",
+        "ourFault": "서버에 문제가 발생했습니다. 다시 시도하세요"
       },
+      "failedLine": "{step} 실패: {reason}",
+      "failedStep": "{step} 실패",
       "failureTimes": "{line} ×{count}",
       "searching": "“{query}” 검색 중",
       "searchingImages": "“{query}” 이미지 검색 중",
@@ -365,7 +383,20 @@
       "readingGuide": "제품 사용법 확인 중",
       "understanding": "미디어 확인 중",
       "judging": "가늠하는 중",
-      "running": "{tool} 실행 중"
+      "running": "{tool} 실행 중",
+      "step": {
+        "webSearch": "“{query}” 검색",
+        "searchImages": "“{query}” 이미지 검색",
+        "understandMedia": "미디어 확인",
+        "saveImage": "이미지 저장",
+        "judge": "판단",
+        "proposeCanvas": "제안 작성",
+        "proposeDocument": "수정안 작성",
+        "listModels": "사용 가능한 모델 확인",
+        "canvasCapabilities": "Canvas 기능 확인",
+        "productGuide": "사용법 확인",
+        "other": "{tool} 실행"
+      }
     },
     "loadEarlier": "이전 메시지 불러오기",
     "conversation": {
@@ -446,6 +477,19 @@
       "kind": "{kind, select, canvas {Canvas} image {이미지} video {동영상} audio {오디오} text {텍스트} other {항목}}",
       "nodes": "노드 {count}개",
       "more": "외 {count}개"
+    },
+    "questionnaire": {
+      "submit": "제출",
+      "hint": "해당하는 것이 없으면 입력창에 바로 답할 수 있습니다",
+      "other": "기타(직접 입력)…",
+      "ownWords": "답변을 입력하세요…",
+      "multi": "여러 개 선택 가능",
+      "skipped": "건너뜀",
+      "yourAnswers": "내 답변",
+      "replied": "대화에서 답했습니다",
+      "show": "펼치기",
+      "hide": "접기",
+      "atLeastOne": "적어도 한 문제에 답해 주세요"
     }
   },
   "canvas": {
@@ -922,6 +966,7 @@
         "empty": "아무것도 받지 못했습니다.",
         "internal": "내부 서버 오류가 발생했습니다.",
         "no_credits": "사용할 수 있는 크레딧이 없습니다.",
+        "credits_held": "크레딧이 실행 중인 작업에 묶여 있습니다.",
         "declined": "모델이 이 요청을 거부했습니다.",
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
@@ -1861,9 +1906,12 @@
         "spendableHint": "이 Studio의 Project에서 생성하면 여기 크레딧을 씁니다.",
         "noneHint": "이 Studio에 지정된 크레딧이 아직 없습니다.",
         "nonePrompt": "크레딧은 Studio에 지정해야 쓸 수 있습니다. 계정 크레딧에서 지정하세요.",
-        "lotsTitle": "크레딧 내역",
+        "lotsTitle": "크레딧 팩 내역",
         "lotsDebt": "미납",
         "lotsTotal": "합계",
+        "lotsHeld": "실행 중인 작업에 묶임",
+        "lotsHeldNote": "작업이 끝나면 실제 비용만큼 차감되고 남는 부분은 돌아옵니다",
+        "heldHint": "크레딧이 모두 실행 중인 작업이 끝날 때까지 묶여 있습니다.",
         "depletedHint": "이 Studio의 크레딧을 모두 사용했습니다.",
         "debtHint": "다음에 지정하는 크레딧은 미납분에 먼저 충당됩니다.",
         "depletedPrompt": "계정 크레딧에서 새로 지정하세요.",
@@ -2267,7 +2315,7 @@
       "month": "월간",
       "year": "연간"
     },
-    "saveTwoMonths": "12개월을 10개월 가격에",
+    "saveTwoMonths": "두 달 무료",
     "yearSaving": "연간 결제 시 약 {percent}% 절약",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {

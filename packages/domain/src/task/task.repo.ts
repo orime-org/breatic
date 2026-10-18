@@ -109,6 +109,7 @@ export async function softDeleteTask(id: string): Promise<void> {
  * @param data.params - Provider/tool parameters for the task.
  * @param data.model - Model identifier to run the task with, if applicable.
  * @param data.source - Which lane opened this task; defaults to `"task"`.
+ * @param data.id - The row's id, when the caller held credits under it first.
  * @returns The created `TaskEntity`.
  */
 export async function createTask(data: {
@@ -126,10 +127,16 @@ export async function createTask(data: {
    * column default is never what lands.
    */
   source?: GenerationSource;
+  /**
+   * The row's id when the caller had to know it before the row existed: the
+   * canvas route holds the run's credits under it first (inner#1611).
+   */
+  id?: string;
 }): Promise<TaskEntity> {
   const rows = await db
     .insert(tasks)
     .values({
+      ...(data.id === undefined ? {} : { id: data.id }),
       userId: data.userId,
       projectId: data.projectId,
       spaceId: data.spaceId,

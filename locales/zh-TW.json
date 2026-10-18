@@ -17,6 +17,7 @@
       "in_debt": "這個 Studio 欠著 {owed} 點數，指定新的點數會先抵掉它。",
       "unassigned": "你有 {available} 點數未指定，指定給 Studio 後才能使用。",
       "none": "點數不足，請先儲值。",
+      "held_by_running": "{held} 點數正被進行中的任務凍結，目前可用 {available}。",
       "granted_elsewhere": "你的點數是贈送的，只能用在你的個人 Studio 裡。",
       "refund_already_asked": "這筆已經提交過退款。",
       "refund_restored": "這筆退款失敗後已恢復為點數，不能再申請退款。",
@@ -165,7 +166,10 @@
       "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
       "current_space_too_long": "目前 Space 的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 個，這則有 {actual, number} 個。",
-      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。"
+      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
+      "ask_not_found": "這段對話裡沒有這張問題卡片。",
+      "ask_already_answered": "這張問題卡片已經回答過了。",
+      "answer_mismatch": "這些答案和卡片上的問題對不上。"
     },
     "mail": {
       "studio_invite": {
@@ -350,10 +354,24 @@
     "tool": {
       "unfinished": "已停止",
       "failure": {
-        "upstream": "執行錯誤",
-        "unreachable": "執行錯誤",
-        "generic": "執行錯誤"
+        "busy": "服務出錯了，稍後可以再試",
+        "noConnection": "連不上服務，稍後可以再試",
+        "refused": "服務沒有接受這次請求",
+        "unavailable": "這項功能暫時無法使用",
+        "badAnswer": "服務回傳的內容無法使用",
+        "linkUnreachable": "這個網址打不開，可以換一個連結",
+        "fileTooLarge": "檔案太大",
+        "unsupportedType": "不支援這種檔案格式",
+        "emptyFile": "檔案是空的",
+        "tooSlow": "檔案下載太慢，沒能下完",
+        "storageFull": "Studio 的儲存空間已滿",
+        "noPermission": "你在這個 Project 裡沒有編輯權限",
+        "tooFrequent": "剛才取的連結太多，等一分鐘再試",
+        "declined": "服務拒絕處理這項內容",
+        "ourFault": "伺服器出了問題，可以再試一次"
       },
+      "failedLine": "{step}沒有完成：{reason}",
+      "failedStep": "{step}沒有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜尋「{query}」",
       "searchingImages": "正在找「{query}」的圖片",
@@ -365,7 +383,20 @@
       "readingGuide": "正在查產品怎麼用",
       "understanding": "正在檢視媒體",
       "judging": "正在權衡",
-      "running": "正在呼叫 {tool}"
+      "running": "正在呼叫 {tool}",
+      "step": {
+        "webSearch": "搜尋「{query}」",
+        "searchImages": "找「{query}」的圖片",
+        "understandMedia": "檢視媒體",
+        "saveImage": "儲存圖片",
+        "judge": "權衡",
+        "proposeCanvas": "擬提議",
+        "proposeDocument": "擬修改提議",
+        "listModels": "查可用的模型",
+        "canvasCapabilities": "查 Canvas 能做什麼",
+        "productGuide": "查產品怎麼用",
+        "other": "呼叫 {tool}"
+      }
     },
     "loadEarlier": "載入更早的訊息",
     "conversation": {
@@ -446,6 +477,19 @@
       "kind": "{kind, select, canvas {Canvas} image {圖片} video {影片} audio {音訊} text {文字} other {內容}}",
       "nodes": "{count} 個節點",
       "more": "還有 {count} 個"
+    },
+    "questionnaire": {
+      "submit": "提交",
+      "hint": "以上都不認可時，可以直接在輸入框回覆",
+      "other": "其他，自己寫…",
+      "ownWords": "寫下你的回答…",
+      "multi": "可多選",
+      "skipped": "略過",
+      "yourAnswers": "你的回答",
+      "replied": "你已在對話中回覆",
+      "show": "展開",
+      "hide": "收起",
+      "atLeastOne": "至少回答一題"
     }
   },
   "canvas": {
@@ -921,7 +965,8 @@
         "unsupported_type": "{kind, select, image {不是支援的格式，圖片只收 {formats}。} video {不是支援的格式，影片只收 {formats}。} audio {不是支援的格式，音訊只收 {formats}。} other {不是支援的格式。}}",
         "empty": "沒有拿到任何內容。",
         "internal": "伺服器內部錯誤。",
-        "no_credits": "沒有可用積分。",
+        "no_credits": "沒有可用點數。",
+        "credits_held": "點數正被進行中的任務凍結。",
         "declined": "模型拒絕了這次請求。",
         "media_refused": "模型不接受這個檔案。",
         "tool_failed": "工具沒能處理這個檔案。",
@@ -1861,9 +1906,12 @@
         "spendableHint": "在這個 Studio 的 Project 裡生成，花的都是這裡的點數。",
         "noneHint": "還沒有點數指定給這個 Studio。",
         "nonePrompt": "買來的點數需要先指定給一個 Studio 才能使用。到帳號點數裡指定。",
-        "lotsTitle": "點數明細",
+        "lotsTitle": "點數包明細",
         "lotsDebt": "欠帳",
         "lotsTotal": "合計",
+        "lotsHeld": "進行中凍結",
+        "lotsHeldNote": "任務結束後按實際花費扣除，多出的部分會退回",
+        "heldHint": "點數都被進行中的任務凍結，直到任務結束。",
         "depletedHint": "這個 Studio 的點數已經用完。",
         "debtHint": "新指定進來的點數會先抵掉欠帳。",
         "depletedPrompt": "到帳號點數裡指定新的點數。",
@@ -2267,7 +2315,7 @@
       "month": "月付",
       "year": "年付"
     },
-    "saveTwoMonths": "十二個月，按十個月的價",
+    "saveTwoMonths": "省兩個月",
     "yearSaving": "年付約省 {percent}%",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {

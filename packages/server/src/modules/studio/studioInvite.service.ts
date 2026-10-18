@@ -181,7 +181,7 @@ export async function createInvite(
   trackServerEvent("member_invited", {
     userId: inviterUserId,
     insertId: `invite:${invitationId}`,
-    properties: { studio_id: studio.id, scope: "studio", role },
+    properties: { studio_id: studio.id, scope: "studio", role, invitation_id: invitationId },
   });
   return {
     invitationId,
@@ -223,7 +223,7 @@ export async function confirmInvite(
   trackServerEvent("invitation_accepted", {
     userId: receiverUserId,
     insertId: `invite-accepted:${invitationId}`,
-    properties: { studio_id: accepted.studioId, scope: "studio", role: accepted.role },
+    properties: { studio_id: accepted.studioId, scope: "studio", role: accepted.role, invitation_id: invitationId },
   });
 }
 

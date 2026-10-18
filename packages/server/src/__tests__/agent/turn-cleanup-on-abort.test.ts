@@ -118,7 +118,8 @@ vi.mock("@server/modules", async (importOriginal) => {
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
-  addMessage, getMessages }));
+  addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
 vi.mock("@server/agent/turn-budget.js", () => ({
   foldIfOverBudget,
@@ -275,5 +276,36 @@ describe("一个回合扣不满时", () => {
     );
     expect(line, "短扣没有留下任何对账记录").toBeDefined();
     expect(line?.[0]).toMatchObject({ shortfall: 70, charged: 30 });
+  });
+
+  it("logs a turn charge whose readers could not be told", async () => {
+    chargeOnceForGeneration.mockResolvedValueOnce({
+      billed: true,
+      charged: 30,
+      shortfall: 0,
+      studioId: "s1",
+      lotIds: ["l1"],
+      signalFailure: new Error("redis down"),
+    } as never);
+    mocks.logger.error.mockClear();
+
+    const { MainAgent } = await import("@server/agent/main-agent.js");
+    const { runWithContext } = await import("@breatic/core");
+    await runWithContext(
+      { userId: "u1", conversationId: "c1", projectId: "p1" },
+      async () => {
+        const agent = new MainAgent();
+        const reader = (await agent.chat("hi")).getReader();
+        await reader.read();
+        await reader.read();
+        await reader.read();
+        await reader.cancel();
+      },
+    );
+
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "p1" }),
+      "credits_signal_failed",
+    );
   });
 });

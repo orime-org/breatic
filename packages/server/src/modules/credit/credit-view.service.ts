@@ -12,7 +12,7 @@
  * the largest pack.
  */
 
-import { assetService, creditLotRepo, creditLotService } from "@breatic/domain";
+import { assetService, creditHoldService, creditLotRepo, creditLotService } from "@breatic/domain";
 import type { LotContext, PayerLedgerRow } from "@breatic/domain";
 import { decodeActivityCursor } from "@breatic/core";
 import { toPage } from "@server/utils/keyset-page.js";
@@ -23,6 +23,7 @@ import type {
   CreditLedgerView,
   CreditLotView,
   CreditPage,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioLedgerView,
   StudioLotView,
@@ -187,17 +188,19 @@ export async function listLedger(
 }
 
 /**
- * What the studio owning a project can spend, for the project's top bar.
+ * What the studio owning a project has, for the project's top bar.
  *
- * The same figure the studio's credits page shows, below zero when the studio
- * owes. Reached by project id because that is what the page holds.
+ * The same figures the studio's credits page shows: spendable is below zero
+ * when the studio owes, and available is what the next run is admitted
+ * against once running work's holds are counted (inner#1611). Reached by
+ * project id because that is what the page holds.
  * @param projectId - The project being viewed.
- * @returns The studio's spendable credits.
+ * @returns The studio's spendable, held and available credits.
  * @throws {NotFoundError} When the project has no live studio.
  */
-export async function getProjectCredits(projectId: string): Promise<number> {
+export async function getProjectCredits(projectId: string): Promise<ProjectCreditsView> {
   const studioId = await assetService.resolveOwnerStudioId(projectId);
-  return creditLotService.getSpendableCredits(studioId);
+  return creditHoldService.getCreditPosition(studioId);
 }
 
 /**
@@ -284,6 +287,8 @@ export async function getStudioCredits(
   return {
     spendable: snapshot.spendable,
     debt: snapshot.debt,
+    held: snapshot.held,
+    available: snapshot.available,
     lots: snapshot.lots.map(toStudioLotView),
     ledger: toPage(snapshot.ledger, size, toStudioLedgerView, studioLedgerKey),
   };

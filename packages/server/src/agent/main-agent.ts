@@ -10,7 +10,7 @@
 
 import { createUIMessageStream, stepCountIs } from "ai";
 import { streamTextRetry } from "@breatic/domain";
-import type { ModelMessage, StopCondition, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
+import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
 import { callOptionsFor, getModel, resolveProvider, systemFor } from "@breatic/domain";
 import {
@@ -18,19 +18,18 @@ import {
   finalizeTurn,
   ASK_USER,
 } from "@breatic/domain";
-import type { AskUserPayload } from "@breatic/domain";
 import type { OpenDocument, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { readerClockNote } from "@server/agent/reader-clock.js";
-import { getAgentConfig } from "@breatic/core";
+import { getAgentConfig, getStorageAdapter } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
-import type { ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
+import type { AskUserResult, ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
-import { openSpaceKey, userMessageForModel } from "@server/agent/user-turn.js";
+import { continuationMessageForModel, openSpaceKey, userMessageForModel } from "@server/agent/user-turn.js";
 import type { UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
@@ -47,7 +46,30 @@ import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type Settle
 import { measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
-import { writeAskUserText } from "@server/agent/ask-user-text.js";
+import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
+
+/**
+ * What opened a segment of a turn: the reader's message, or the reader's
+ * answer to a questionnaire the turn stopped at (inner#1542).
+ */
+type Opening =
+  | {
+      kind: "message";
+      clockNote: string;
+      turn: UserTurn;
+      /** The questionnaires this message closed instead of answering them. */
+      closedAsks: string[];
+    }
+  | {
+      kind: "answer";
+      clockNote: string;
+      space: ChatSpaceContext;
+      toolCallId: string;
+      result: AskUserResult;
+    };
+
+/** What a waiting questionnaire is settled with when the reader writes a message instead. */
+const REPLIED_IN_CHAT: AskUserResult = { repliedInChat: true };
 
 /**
  * What a client is told when the turn's own code fails.
@@ -119,13 +141,21 @@ export class MainAgent {
     // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
     // retries — see domain/src/credit/creditLot.service.ts
     // `chargeOnceForGeneration`.
-    const turnIndex = await messageRepo.addMessage(conversationId, {
-      role: "user",
-      parts: [
-        ...attached.map((chip): MessagePart => ({ type: "attachment", chip })),
-        { type: "text", text: said },
-      ],
-    });
+    //
+    // Every questionnaire still waiting is closed by this message, in the
+    // same transaction: its result says the reader wrote a message instead,
+    // and is kept beside the call in the row that asked.
+    const { turnIndex, closedAsks } = await messageRepo.addReaderMessage(
+      conversationId,
+      {
+        role: "user",
+        parts: [
+          ...attached.map((chip): MessagePart => ({ type: "attachment", chip })),
+          { type: "text", text: said },
+        ],
+      },
+      (toolCallId) => ({ output: REPLIED_IN_CHAT, forModel: askResultForModel(toolCallId, REPLIED_IN_CHAT) }),
+    );
 
     // A conversation takes its name from the first thing said in it, so this
     // is the moment it gets one -- after the write above, which is what there
@@ -150,8 +180,46 @@ export class MainAgent {
     // follow it, read fresh with each message. The message is kept as it was
     // sent and later turns send it again as it is, so a provider's prefix
     // cache matches everything up to the new message.
-    const ask = { clockNote: readerClockNote(new Date(), timeZone), turn: { ...space, chips: attached, message: said } };
-    return this.runStream(ask, turnIndex, title, openDocumentOf(space), signal);
+    const opening: Opening = {
+      kind: "message",
+      clockNote: readerClockNote(new Date(), timeZone),
+      turn: { ...space, chips: attached, message: said },
+      closedAsks,
+    };
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal);
+  }
+
+  /**
+   * Resume a turn that stopped at a questionnaire, once the reader's answer
+   * has been taken (inner#1542).
+   *
+   * The answer is already in the store -- the route settled it before calling
+   * this -- so what runs here is the turn's next segment: the paused turn as
+   * history, the answer as the call's result, and the model asked again.
+   * @param toolCallId - The questionnaire call answered.
+   * @param result - What it was answered with.
+   * @param turnIndex - The turn that asked.
+   * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param timeZone - The zone the reader's browser reported, if any.
+   * @param space - The project's Spaces and the one the reader has open.
+   * @returns The segment, as the SDK's own message chunks.
+   */
+  async answer(
+    toolCallId: string,
+    result: AskUserResult,
+    turnIndex: number,
+    signal?: AbortSignal,
+    timeZone?: string,
+    space: ChatSpaceContext = {},
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    const opening: Opening = {
+      kind: "answer",
+      clockNote: readerClockNote(new Date(), timeZone),
+      space,
+      toolCallId,
+      result,
+    };
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal);
   }
 
   /**
@@ -176,12 +244,10 @@ export class MainAgent {
    * the conversation and its history -- is time the
    * reader spends in front of a screen where nothing has happened, and a
    * stream that exists already has somewhere to put the name in the meantime.
-   * @param ask - This turn's user message before it is laid out: the
-   *   reader's clock, and the Spaces, attachments and typed words. Laid out
-   *   with each assembly, which knows whether the history already holds the
-   *   open Space, and put in front of the model on its own.
-   * @param ask.clockNote - The line saying what time it is for the reader.
-   * @param ask.turn - What the message is made of.
+   * @param opening - What opened this segment: the reader's message (the
+   *   clock, Spaces, attachments and typed words, laid out with each assembly,
+   *   which knows whether the history already holds the open Space), or the
+   *   reader's answer to the questionnaire the turn stopped at.
    * @param turnIndex - The turn this run answers. A parameter and not a
    *   context field: it is known one line before the call, both the reply and
    *   the charge are filed under it, and neither has anything sensible to do
@@ -198,7 +264,7 @@ export class MainAgent {
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
-    ask: { clockNote: string; turn: UserTurn },
+    opening: Opening,
     turnIndex: number,
     title: string | null,
     openDocument: OpenDocument | null,
@@ -219,14 +285,15 @@ export class MainAgent {
     // that produced the reply.
     let turnTools: Readonly<Record<string, Tool>> = {};
 
-    // Whether this turn ended by putting a question to the reader.
-    //
-    // Written by the stop condition below, because that is the only place
-    // that knows. Asking the reader something and running out of steps both
-    // end as `stopWhen` firing, and the SDK reports the same `finishReason`
-    // for either -- so a turn waiting on an answer and a turn that hit its
-    // ceiling are indistinguishable from the outside.
-    let askedTheUser = false;
+    // The questionnaire this segment stopped at, if it did, and the ones put
+    // in the same step after it. Decided when the model's stream finishes:
+    // `ask_user` has no `execute`, so the SDK stops the step at it and never
+    // consults `stopWhen` (`ai@7.0.68` `dist/index.js:10046-10053`).
+    let awaitingCall: string | undefined;
+    let turnedAwayCalls: string[] = [];
+    // Media a questionnaire may show: what `search_images` returned in this
+    // conversation, read from the history and added to as this turn searches.
+    const vouchedMedia = new Set<string>();
     /** Where the stretch of thinking now open began, if one is. */
     let thinkingOpenedAt: number | undefined;
     /** How long the turn has thought so far, summed over closed stretches. */
@@ -238,31 +305,6 @@ export class MainAgent {
       thinkingOpenedAt = undefined;
     };
 
-    /**
-     * Stop after a step that asked the reader something, and record that it
-     * did.
-     * @param options - The steps so far, from the SDK.
-     * @param options.steps - Every step this turn has completed.
-     * @returns Whether the turn should stop here.
-     */
-    const stopIfItAsked = async (options: {
-      steps: Parameters<StopCondition<ToolSet>>[0]["steps"];
-    }): Promise<boolean> => {
-      // A question counts once it exists, which is what a `tool-result` on
-      // `ask_user` says. The SDK's own `hasToolCall` answers a
-      // different question -- whether the step holds a call by that name --
-      // and a call refused over its arguments is still one of those: it is
-      // enqueued first and the error follows. Stopping on it ends the turn
-      // over a question that was never put, so the model never reads the
-      // complaint telling it which field to fix, and the reader is left with
-      // nothing to answer.
-      const asked = (options.steps[options.steps.length - 1]?.content ?? []).some(
-        (part) => part.type === "tool-result" && part.toolName === ASK_USER,
-      );
-      if (asked) askedTheUser = true;
-      return asked;
-    };
-
     // Every paid call this turn makes is recorded where it happens, one row
     // each (#296); the turn is charged what those rows add up to. Model calls
     // are recorded as each one's response arrives, never from `result.usage`:
@@ -270,7 +312,13 @@ export class MainAgent {
     // the reader leaving mid-loop -- reading it would drive the rest of the
     // loop after everyone has gone.
     const usage = createUsageRecorder({
-      operationKey: `turn:${conversationId}:${turnIndex}`,
+      // A segment resumed after a questionnaire is charged on its own: the
+      // charge below is taken once per key, and the segment that asked has
+      // already settled under the turn's.
+      operationKey:
+        opening.kind === "answer"
+          ? `turn:${conversationId}:${String(turnIndex)}:answer:${opening.toolCallId}`
+          : `turn:${conversationId}:${String(turnIndex)}`,
       feature: "chat_turn",
       actorUserId: userId,
       projectId,
@@ -348,18 +396,31 @@ export class MainAgent {
           logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_unfinished_step_unconvertible");
         }
       }
-      const note = endingNote(ended.stored);
+      // A segment paused at a questionnaire has not ended: its answer is
+      // appended to this copy and must follow the call it answers.
+      const note = ended.exit === "blocked" ? undefined : endingNote(ended.stored);
+      // A resumed segment's own message is kept in its row, since no reader's
+      // row holds it; its hash is of everything before that message, which is
+      // what the next request will have sent ahead of this row.
+      const own = opening.kind === "answer" ? sent.userKept.messages : [];
+      const ahead = opening.kind === "answer" ? sent.messages.slice(0, -own.length) : sent.messages;
       const messages: ModelMessage[] = [
+        ...own,
         ...collected,
+        // Every call in a kept copy has its result: a second question turned
+        // away in the step that stopped gets its refusal here.
+        ...(ended.exit === "blocked" && turnedAwayCalls.length > 0 ? [turnedAwayForModel(turnedAwayCalls)] : []),
         ...unfinished,
         ...(note === undefined ? [] : [{ role: "assistant" as const, content: note }]),
       ];
       return {
         messages,
-        prefixHash: prefixHash(sent.agentConfig, sent.messages),
+        prefixHash: prefixHash(sent.agentConfig, ahead),
+        ...(opening.kind === "answer" && sent.userKept.snapshot !== undefined ? { snapshot: sent.userKept.snapshot } : {}),
         ...replyTokens(reported, {
           user: measureMessages(sent.userKept.messages),
-          reply: measureMessages(messages),
+          // A resumed segment's own message is the `user` above; counted once.
+          reply: measureMessages(messages.slice(own.length)),
           request: requestTokens(sent),
         }),
       };
@@ -378,27 +439,44 @@ export class MainAgent {
       // The running turn is left out of the history on purpose. Its message
       // is put in front of the model separately, below, so a copy in the
       // history would be the same question asked twice.
+      //
+      // A resumed segment is the exception: the turn it resumes is its
+      // history, the paused reply with the answer appended to it included.
       const { memoryContext, history, watermark } = await buildTurnContext(
         userId,
         conversationId,
         projectId,
-        turnIndex,
+        opening.kind === "answer" ? turnIndex + 1 : turnIndex,
       );
+
+      for (const row of history) {
+        for (const part of row.parts) {
+          if (part.type === "tool" && part.toolName === "search_images" && part.status === "success") {
+            for (const url of searchedPictures(part.output)) vouchedMedia.add(url);
+          }
+        }
+      }
+      const storage = await getStorageAdapter();
 
       // One factory decides model, instructions and tools — see
       // domain/agent/agent-config.ts for why nothing else may assemble them.
       const agentConfig: ResolvedAgentConfig = buildAgentConfig({
         basePrompt: buildSystemPrompt(),
         memoryContext,
+        toolContext: { mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url) },
       });
 
       // The open Space goes as one line while it is what the history,
       // folded as it is now, last sent of it in full.
-      const open = openSpaceKey(ask.turn.current_space);
+      const space = opening.kind === "message" ? opening.turn : opening.space;
+      const open = openSpaceKey(space.current_space);
       const unchanged = open !== undefined && lastFullSnapshotKey(history, open.spaceId) === open.key;
       const userMessage: ModelMessage = {
         role: "user",
-        content: userMessageForModel(ask.clockNote, ask.turn, unchanged),
+        content:
+          opening.kind === "message"
+            ? userMessageForModel(opening.clockNote, opening.turn, unchanged)
+            : continuationMessageForModel(opening.clockNote, opening.space, unchanged),
       };
       const replayed = replayRows(history, agentConfig);
       // Kept as it is so what is stored is what went out.
@@ -430,7 +508,12 @@ export class MainAgent {
       // the request is whole: the instructions carry the persona and the
       // memory, and the tool definitions reach the provider as an
       // argument of their own.
+      // A resumed segment does not fold: it is in the middle of a tool round,
+      // and a fold changes the memory in the instructions, after which the
+      // paused reply would be sent again without its thinking. The fold waits
+      // for the reader's next message, when the round is closed.
       if (
+        opening.kind === "message" &&
         await foldIfOverBudget(assembly, {
           userId,
           conversationId,
@@ -472,10 +555,14 @@ export class MainAgent {
       // render the message from its parts the way they always did, so the
       // cache stops matching from this message on and this turn's reply goes
       // back without its thinking.
-      try {
-        await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
-      } catch (err) {
-        logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
+      // A resumed segment's own message is kept in its reply row instead: the
+      // reader's row of this turn holds the message that opened it.
+      if (opening.kind === "message") {
+        try {
+          await messageRepo.setUserForModel(conversationId, turnIndex, assembly.userKept);
+        } catch (err) {
+          logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_user_for_model_write_failed");
+        }
       }
       turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
@@ -515,7 +602,7 @@ export class MainAgent {
           studioId,
           openDocument,
         }) as never,
-        stopWhen: [stepCountIs(agentCfg.max_tool_iterations), stopIfItAsked],
+        stopWhen: stepCountIs(agentCfg.max_tool_iterations),
         // Per call, which is the only unit there is: the `stopWhen` above
         // lets one turn make many, and each of them is bounded by this. An
         // answer with no ceiling is carried whole by every later turn's
@@ -569,16 +656,6 @@ export class MainAgent {
         onStepFinish: (step) => {
           steps.push(step.response.messages);
           lastStepUnsent = step.finishReason === "error";
-          for (const part of step.content) {
-            // A question, reaching the reader as words rather than as a payload
-            // on a tool part, and written here rather than inside the tool
-            // because the stream is on this side of it. A turn asks one
-            // question: the tool answers its first call and turns every later
-            // one away, so at most one `tool-result` arrives here.
-            if (part.type === "tool-result" && part.toolName === ASK_USER) {
-              writeAskUserText(writer, part.toolCallId, part.output as AskUserPayload);
-            }
-          }
         },
         onToolExecutionEnd: ({ toolCall, toolOutput }) => {
           // Both endings are kept, because the chunk carrying either one can
@@ -616,6 +693,11 @@ export class MainAgent {
             return;
           }
           whatToolAnswered.set(toolCall.toolCallId, toolOutput.output);
+          // A picture found in this turn may be shown on a questionnaire the
+          // model puts later in the same turn.
+          if (toolCall.toolName === "search_images") {
+            for (const url of searchedPictures(toolOutput.output)) vouchedMedia.add(url);
+          }
         },
         // Deliberately does nothing. The same failure reaches the end of the
         // stream as an error chunk and is recorded there, alongside the ones
@@ -630,21 +712,11 @@ export class MainAgent {
         // work out for itself -- the same reason a failed turn puts its own
         // mark on the reply as it happens. The SDK turns the frame into a
         // part of the reply, which is what carries it into storage and back.
-        onFinish: ({ finishReason }) => {
+        onFinish: ({ finishReason, toolCalls }) => {
           if (finishReason === "length") {
             writer.write({ type: "data-truncated", data: {} });
           }
-          // Said here for the same reason: the panel draws a neutral line and
-          // no retry for a turn waiting on an answer, and it cannot work out
-          // that this is what happened. Which tools block is a list in
-          // `@breatic/domain`, and the web build may not import that package
-          // -- a copy of the list on the other side is a second thing that
-          // has to stay true as tools are added. The SDK turns the frame into
-          // a part of the reply, so storage and a reload get it too.
-          if (askedTheUser) {
-            writer.write({ type: "data-blocked", data: {} });
-          }
-          // Said on the wire for the same reason as the two above: the SDK
+          // Said on the wire for the same reason as the one above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
           // the reader as the turn ends. A turn that never gets here -- one
           // stopped mid-answer -- has the same figure written into its
@@ -652,6 +724,28 @@ export class MainAgent {
           closeThinking();
           if (thoughtForMs > 0) {
             writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
+          }
+          // The step stopped at a questionnaire when it holds an `ask_user`
+          // call the schema took and nothing has answered. The first is the
+          // card the reader is shown; any later one in the step is turned
+          // away. Said on the wire here, while the writer is still open, so
+          // the panel draws the card as waiting rather than as a call that
+          // came to nothing -- the rule lives on this side only. Written last,
+          // so it is the last part of the segment that asked: the browser
+          // splits the reply there once the reader answers and the turn
+          // resumes in the same message. A step that ended on an error is a
+          // failed turn, stored with its calls as never run, so it names no
+          // card.
+          const asks =
+            finishReason === "error"
+              ? []
+              : toolCalls
+                .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
+                .map((call) => call.toolCallId);
+          if (asks[0] !== undefined) {
+            awaitingCall = asks[0];
+            turnedAwayCalls = asks.slice(1);
+            writer.write({ type: "data-ask-awaiting", data: { toolCallId: awaitingCall } });
           }
         },
       });
@@ -668,7 +762,7 @@ export class MainAgent {
       return result.toUIMessageStream({ onError: (err) => wireLineOf(endingOf(err)) });
     };
 
-    return createUIMessageStream({
+    const stream = createUIMessageStream({
       execute: async ({ writer }) => {
         // A conversation is named after the first thing said in it, and the
         // name is settled before the model is asked anything. Written ahead
@@ -676,6 +770,10 @@ export class MainAgent {
         // placeholder while the rest of this is still going on.
         if (title !== null) {
           writer.write({ type: "data-conversation-titled", data: { title } });
+        }
+        // The cards a message closed, so the panel shows them as replied to.
+        if (opening.kind === "message") {
+          for (const toolCallId of opening.closedAsks) writer.write({ type: "data-ask-replied", data: { toolCallId } });
         }
         writer.merge(await askTheModel(writer));
       },
@@ -694,7 +792,7 @@ export class MainAgent {
           ? "aborted"
           : failure !== undefined
             ? "failed"
-            : askedTheUser
+            : awaitingCall !== undefined
               ? "blocked"
               : "completed";
 
@@ -747,6 +845,16 @@ export class MainAgent {
         const leftHanging: ToolFailure = endingWithNothingRun(exit === "aborted");
         for (const [i, part] of replyParts.entries()) {
           if (part.type !== "tool" || part.status !== "pending") continue;
+          // The card the reader is shown waits for them; a second card in the
+          // same step was turned away. Neither is a call that came to nothing.
+          if (exit === "blocked" && part.toolCallId === awaitingCall) {
+            replyParts[i] = { ...part, status: "awaiting" };
+            continue;
+          }
+          if (exit === "blocked" && turnedAwayCalls.includes(part.toolCallId)) {
+            replyParts[i] = { ...part, status: "error", failure: { kind: "turned_away", forModel: SECOND_QUESTION_TURNED_AWAY } };
+            continue;
+          }
           // A call the SDK already reported on can still be left pending
           // here: the ending is reported before the chunk carrying it is
           // pulled from the stream, and a stream that ends in between
@@ -828,6 +936,12 @@ export class MainAgent {
                   "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
                 );
               }
+              if (outcome?.signalFailure) {
+                logger.error(
+                  { err: outcome.signalFailure, userId, conversationId, turnIndex, projectId },
+                  "credits_signal_failed",
+                );
+              }
             },
           },
         });
@@ -864,6 +978,25 @@ export class MainAgent {
         );
       },
     });
+    if (opening.kind !== "answer") return stream;
+    // The card a resumed segment answers, as the SDK's own result chunk, put
+    // ahead of everything so the browser settles that call in the message it
+    // is continuing. Ahead of the stream rather than written into it: what is
+    // written into it is also what this side assembles the reply row from,
+    // and that row is the resumed segment alone -- the call is in the row
+    // that asked.
+    const answered: UIMessageChunk = {
+      type: "tool-output-available",
+      toolCallId: opening.toolCallId,
+      output: opening.result,
+    };
+    return stream.pipeThrough(
+      new TransformStream<UIMessageChunk, UIMessageChunk>({
+        start(controller) {
+          controller.enqueue(answered);
+        },
+      }),
+    );
   }
 
   /**
@@ -909,4 +1042,17 @@ export class MainAgent {
     const { userId, conversationId } = this.ctx;
     logger.error({ err, userId, conversationId }, "agent_turn_failed");
   }
+}
+
+/**
+ * The picture addresses a `search_images` answer carries.
+ * @param output - What the tool answered.
+ * @returns Each picture's thumbnail address.
+ */
+function searchedPictures(output: unknown): string[] {
+  const images = (output as { images?: unknown } | null)?.images;
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((image) => (image as { thumbnailUrl?: unknown } | null)?.thumbnailUrl)
+    .filter((url): url is string => typeof url === "string");
 }

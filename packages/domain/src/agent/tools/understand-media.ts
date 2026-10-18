@@ -19,7 +19,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { FAILURE_LINES } from "@breatic/shared";
+import { FAILURE_LINES, type FailureLine } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
@@ -103,36 +103,30 @@ function unavailableFailure(err: MediaUnavailable): Error {
       return toolFailed(
         `${size} over the ${err.limit} byte limit, so it was not sent. ` +
           "Tell the user it is too large, and say the limit.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.fileTooLarge,
       );
     }
     case "unsupported-type":
-      return toolFailed(unsupportedSentence(err.declaredType), FAILURE_LINES.generic);
+      return toolFailed(unsupportedSentence(err.declaredType), FAILURE_LINES.unsupportedType);
     case "slow":
       // No count: the read gives up on a budget, and how much had arrived by
-      // then is not something that side comes away with. The address answered
-      // everything it was asked, so this is not the line for an address that
-      // said nothing — the three reader lines carry the same sentence today,
-      // and the panel renders none of them, so the choice is for when it does.
+      // then is not something that side comes away with.
       return toolFailed(
         "That file took too long to arrive. Tell the user the download did not finish.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.tooSlow,
       );
     case "empty":
-      // The address answered everything it was asked, so not the unreachable
-      // line. Same as above: which line is picked makes no visible difference
-      // yet, and is recorded for when the panel tells them apart.
       return toolFailed(
         "That address holds an empty file, so there was nothing to look at. " +
           "Tell the user the file is empty.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.emptyFile,
       );
     case "unreachable":
       return toolFailed(
         err.status
           ? `That address answered ${err.status}, so there was nothing to look at.`
           : `That address could not be reached: ${err.detail ?? "no answer"}.`,
-        FAILURE_LINES.unreachable,
+        FAILURE_LINES.linkUnreachable,
       );
   }
 }
@@ -143,12 +137,14 @@ function unavailableFailure(err: MediaUnavailable): Error {
  * Naming the address would send the model to blame a url that was fine, and
  * the endpoint has no business in a conversation.
  * @param cause - What was caught.
+ * @param readerKey - Whether the service failed (`busy`) or never answered
+ *   at all (`noConnection`).
  * @returns The sentence for the model, and the line a reader is shown.
  */
-function serviceSilent(cause: unknown): Error {
+function serviceSilent(cause: unknown, readerKey: FailureLine): Error {
   return toolFailed(
     "The media understanding service did not answer. Tell the user to try again shortly.",
-    FAILURE_LINES.upstream,
+    readerKey,
     cause,
   );
 }
@@ -168,11 +164,20 @@ function serviceSilent(cause: unknown): Error {
 function refusedFailure(err: UnderstandRefused): Error {
   switch (err.kind) {
     case "media":
-      return toolFailed(
-        `The service would not take this media: ${err.detail}. ` +
-          "Tell the user, and do not send the same file again.",
-        FAILURE_LINES.upstream,
-      );
+      // 413 is the provider's body ceiling, reached by the file; any other
+      // code here is the inline request this side built (`understand.ts`).
+      return err.status === 413
+        ? toolFailed(
+          `The service would not take this media: ${err.detail}. ` +
+            "Tell the user, and do not send the same file again.",
+          FAILURE_LINES.fileTooLarge,
+        )
+        : toolFailed(
+          `The service turned down the request this side built for this media: ${err.detail}. ` +
+            "That is a fault on our side, not in the file; trying once more may work, and if it fails " +
+            "again tell the user it is unavailable, without blaming anything they sent.",
+          FAILURE_LINES.ourFault,
+        );
     case "unfetchable":
       // An image travels as its address and the backend fetches it, so this
       // one is about reaching the address rather than about the file. Moving
@@ -181,13 +186,13 @@ function refusedFailure(err: UnderstandRefused): Error {
       return toolFailed(
         `The service could not reach that address: ${err.detail}. ` +
           "Tell the user to put the file somewhere the service can reach, or give another address.",
-        FAILURE_LINES.upstream,
+        FAILURE_LINES.linkUnreachable,
       );
     case "content-filter":
       return toolFailed(
         `The service declined to answer this question about the media: ${err.detail}. ` +
           "Asking differently may work.",
-        FAILURE_LINES.upstream,
+        FAILURE_LINES.declined,
       );
     case "deployment":
       // Not a word about the file. The account, the credential and the model
@@ -196,10 +201,10 @@ function refusedFailure(err: UnderstandRefused): Error {
       return toolFailed(
         `Media understanding is not available right now: ${err.detail}. ` +
           "Tell the user it is unavailable, and do not blame anything they sent.",
-        FAILURE_LINES.upstream,
+        FAILURE_LINES.unavailable,
       );
     case "transient":
-      return serviceSilent(err);
+      return serviceSilent(err, FAILURE_LINES.busy);
   }
 }
 
@@ -278,7 +283,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         throw toolFailed(
           "Media understanding is not available on this deployment: it has no credentials. " +
             "Tell the user, and do not try again.",
-          FAILURE_LINES.generic,
+          FAILURE_LINES.unavailable,
         );
       }
 
@@ -319,7 +324,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
         // Our own request failing outright, before any answer to judge.
-        throw serviceSilent(err);
+        throw serviceSilent(err, FAILURE_LINES.noConnection);
       } finally {
         running = false;
       }
@@ -335,7 +340,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
                 "writing anything. Ask for something shorter."
             : `The model returned nothing about this ${answer.kind} (it stopped for ` +
                 `${answer.finishReason}). Asking differently may work.`,
-          FAILURE_LINES.upstream,
+          FAILURE_LINES.badAnswer,
         );
       }
 

@@ -25,6 +25,7 @@ import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import {
   clip,
+  failedWith,
   isStop,
   keepInside,
   nextMovesFor,
@@ -274,15 +275,13 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
     const apiKey = env.BRAVE_SEARCH_API_KEY;
     if (!apiKey) {
       // Defensive: `buildToolSet` leaves this tool out of the set entirely when
-      // the key is missing, so a turn should never reach here. The reader's
-      // line is the one for a failure nothing described, because a line of its
-      // own would exist for this branch alone.
+      // the key is missing, so a turn should never reach here.
       throw toolFailed(
         reason(
           "Image search is not available on this deployment: it has no search credentials.",
           MOVES.stop,
         ),
-        FAILURE_LINES.generic,
+        FAILURE_LINES.unavailable,
       );
     }
 
@@ -316,7 +315,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
       // what happened is an answer this side could not read.
       const found: unknown = (data as { results?: unknown } | null)?.results;
       if (!Array.isArray(found)) {
-        throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
+        throw failedWith(notOurPayloadReason(VOICE, shown));
       }
       if (found.length === 0) return { query, images: [], sent: 0 };
 
@@ -326,7 +325,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
       // Results arrived and not one of them could be read: the answer is the
       // endpoint's payload in name only.
       if (images.length === 0) {
-        throw toolFailed(notOurPayloadReason(VOICE, shown), FAILURE_LINES.upstream);
+        throw failedWith(notOurPayloadReason(VOICE, shown));
       }
 
       return { query, images, sent: found.length };
@@ -337,10 +336,7 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
       if (toolFailureOf(err) !== undefined) throw err;
       if (isStop(err, abortSignal)) throw stoppedByUser();
 
-      throw toolFailed(
-        unreachableReason(VOICE, shown, reasonOf(err)),
-        FAILURE_LINES.unreachable,
-      );
+      throw failedWith(unreachableReason(VOICE, shown, reasonOf(err)));
     }
   },
 });

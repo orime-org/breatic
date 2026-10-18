@@ -37,7 +37,7 @@ import {
   setSession,
   sessionCookieName,
 } from "@breatic/core";
-import { creditLotService } from "@breatic/domain";
+import { creditHoldService, creditLotService } from "@breatic/domain";
 import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-routes-test-driver";
@@ -539,7 +539,50 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+describe("GET /studio/:slug/credits — holds (inner#1611)", () => {
+  it("reports what running work holds and what is left beside the spendable figure", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 100, fx.studioId);
+    await creditHoldService.reserveCredits({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      referenceId: `studio-hold-${Date.now()}`,
+      amount: 30,
+      ttlMs: 3_600_000,
+    });
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { spendable: number; held: number; available: number } };
+    expect(body.data).toMatchObject({ spendable: 100, held: 30, available: 70 });
+  });
+});
+
 describe("GET /projects/:id/credits", () => {
+  it("reports what running work holds and what is left (inner#1611)", async () => {
+    const fx = await seedFixture();
+    await sql`
+      INSERT INTO project_members (project_id, user_id, role)
+      VALUES (${fx.projectId}, ${fx.userId}, 'owner')
+    `;
+    await seedLot(fx, 100, fx.studioId);
+    await creditHoldService.reserveCredits({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      referenceId: `project-hold-${Date.now()}`,
+      amount: 40,
+      ttlMs: 3_600_000,
+    });
+
+    const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { spendable: 100, held: 40, available: 60 } });
+  });
+
   it("未登录答 401", async () => {
     const fx = await seedFixture();
     const res = await app.request(`/api/v1/projects/${fx.projectId}/credits`);

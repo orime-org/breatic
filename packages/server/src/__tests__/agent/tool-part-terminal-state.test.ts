@@ -21,7 +21,7 @@ import { tool } from "ai";
 import { carrying } from "@breatic/shared";
 import { z } from "zod";
 import type * as CoreModule from "@breatic/core";
-import { FINISHED_ASKING_FOR_A_TOOL, saying } from "../helpers/model-double.js";
+import { FINISHED_ASKING_FOR_A_TOOL, finishing, saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 import type { MessagePart } from "@breatic/shared";
 
@@ -140,7 +140,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         // 会把这一轮停在那儿等人回答的那一类。用真工具本体:这条用例问的是
         // 「参数被真 schema 拒掉的一次调用会不会把这一轮停在那儿」,自己写一份
         // 形状差不多的 schema 只能证明我写的那份拒了什么。
-        ask_user: makeAskUserTool(),
+        ask_user: makeAskUserTool({ mediaUrlAllowed: () => false }),
       },
     }),
     finalizeTurn: async (opts: { steps: { persist?: () => Promise<void> } }) => {
@@ -170,6 +170,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 // The turn asks the conversation what it is called, so it can say so in the
@@ -278,6 +279,33 @@ describe("一次问用户的调用,参数没过 schema 的时候", () => {
     });
 
     expect(thisCase.modelCalls).toBeGreaterThan(1);
+  });
+});
+
+describe("a questionnaire asked in a step that ran out of room", () => {
+  it("keeps no ending note after the question, so the answer appended later follows its call", async () => {
+    thisCase.parts = [
+      {
+        type: "tool-call",
+        toolCallId: "tc-ask",
+        toolName: "ask_user",
+        input: JSON.stringify({ questions: [{ header: "Style", question: "Which style?", options: [{ label: "Calm" }, { label: "Busy" }] }] }),
+      },
+      finishing("length", 1),
+    ];
+
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("帮我做张海报");
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+
+    const stored = addMessage.mock.calls.find((call) => call[1].role === "assistant") as unknown[] | undefined;
+    const kept = stored?.[2] as { messages: Array<{ role: string; content: unknown }> } | undefined;
+    const last = kept?.messages.at(-1);
+    expect(last?.role).toBe("assistant");
+    expect(JSON.stringify(last?.content)).toContain("tc-ask");
   });
 });
 

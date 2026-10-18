@@ -384,7 +384,7 @@ export function makeProposeCanvasAction(): Tool<z.infer<typeof inputSchema>, Pro
     "Before proposing any shape with an empty node in it, find out whether " +
     "they have that material, since the answer decides the shape: when the " +
     "message carries the canvas they have open, under \"The Space the reader " +
-    "has open\", look there first; ask_user once when it is not there or no " +
+    "has open\", look there first; ask with ask_user when it is not there or no " +
     "canvas came with the message. Wire an edge where a node draws on another's " +
     "work or on what the reader puts in an empty node; belonging is said by " +
     "the group, not edges. " +

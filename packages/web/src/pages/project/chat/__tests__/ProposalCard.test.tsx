@@ -17,6 +17,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
+import { t } from '@breatic/shared';
 
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
@@ -28,8 +29,9 @@ vi.mock('@web/data/api', () => ({
 }));
 
 const warn = vi.fn();
+const fail = vi.fn();
 vi.mock('@web/lib/toast', () => ({
-  toast: { warning: (line: string) => warn(line) },
+  toast: { warning: (line: string) => warn(line), error: (line: string) => fail(line) },
 }));
 
 /** A proposal of an empty node feeding one generation node. */
@@ -126,6 +128,7 @@ afterEach(() => {
   cleanup();
   listModels.mockReset();
   warn.mockReset();
+  fail.mockReset();
 });
 
 describe('what the card says before it is pressed', () => {
@@ -415,17 +418,18 @@ describe('pressing it', () => {
     await waitFor(() =>
       expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false),
     );
-    expect(screen.queryByTestId('proposal-failed')).toBeNull();
+    expect(fail).not.toHaveBeenCalled();
   });
 
-  it('says so in place when the canvas could not build it, and can be pressed again', async () => {
+  it('says so in a toast when the canvas could not build it, and can be pressed again', async () => {
     listModels.mockResolvedValue(CATALOG);
     renderCard();
 
     await userEvent.click(screen.getByTestId('proposal-use'));
     act(() => useCanvasStore.getState().reportProposalOutcome('failed'));
 
-    await waitFor(() => expect(screen.getByTestId('proposal-failed')).toBeTruthy());
+    await waitFor(() => expect(fail).toHaveBeenCalledWith(t('chat.proposal.failed')));
+    expect(screen.queryByTestId('proposal-failed')).toBeNull();
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
   });
 

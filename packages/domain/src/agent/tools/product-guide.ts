@@ -158,7 +158,8 @@ export function renderProductGuide(): string {
       "current language, which lists the five languages; an icon for the theme, which offers " +
       `${quoted(t("preferences.themeMode.light"))}, ${quoted(t("preferences.themeMode.dark"))} and ` +
       `${quoted(t("preferences.themeMode.system"))}; and a star with the credits left in the studio this ` +
-      "project belongs to, which everyone generating here draws on (a grey bar while it loads, a dash when it " +
+      "project belongs to, which everyone generating here draws on, less what generations, readings and tools still running hold " +
+      "until they are charged (a grey bar while it loads, a dash when it " +
       "cannot be loaded); it only shows the balance, and topping up is not done here. The owner also has a " +
       "person icon with a plus, which opens " +
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +
@@ -252,8 +253,8 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.composer.send"))}) sends too. A message goes only when the box has some words, no reply ` +
       "is being written and every attachment has finished uploading; otherwise Enter does nothing and the button " +
       "is greyed. While a reply is being written the button becomes a red square, which stops the reply. A " +
-      `message holds up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters; at the limit a line at the top ` +
-      "of the box, above the text, says so.",
+      `message holds up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters; at the limit a short message at the top ` +
+      "of the screen says so, and again for each key the full box turns away.",
     "The plus sign at the bottom left of the box attaches up to " +
       `${String(getAgentConfig().attachment_max_items)} pictures, videos, sounds, PDF, Word (.docx), Excel or ` +
       "plain text files to the next message; pasting such files into the box (a screenshot, a copied file) " +
@@ -269,8 +270,9 @@ export function renderProductGuide(): string {
       "previews it and its X removes it. A " +
       "chip that could not be uploaded or read shows a red mark and says why; it has to be removed with its X before " +
       "the message can go. Something that cannot be attached at all -- too many items, a file too large or of a " +
-      `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said on a line beside the ` +
-      "plus sign. When a message cannot be sent at that moment, the same line says " +
+      `kind that is not taken, or ${quoted(t("chat.composer.attachTooLong"))} -- is said in a short message at ` +
+      "the top of the screen that goes away by itself. When a message cannot be sent at that moment, such a " +
+      "message says " +
       `${quoted(t("chat.composer.sendUnavailable"))} and the words stay in the box. ` +
       "Pasting canvas nodes copied on the canvas, or a picture copied in this chat, into the box " +
       "attaches them too. A sent message cannot be edited and a " +
@@ -304,10 +306,13 @@ export function renderProductGuide(): string {
       `that opens to show the thinking; it reads ${quoted(t("chat.thinkingNow"))} while the thinking runs, and ` +
       `afterwards how long it took, such as ${quoted(t("chat.thinkingFor", { m: 0, s: 12 }))}, or ` +
       `${quoted(t("chat.thinking"))} when that is not known. While the reply runs, a line may name what it is ` +
-      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends. A step that failed ` +
-      `while the reply carried on leaves a red line under the reply, such as ` +
-      `${quoted(t("chat.tool.failure.generic"))}; steps that failed the same way share one line, followed by ` +
-      `a multiplication sign and how many times. ` +
+      `doing, such as ${quoted(t("chat.tool.readingGuide"))}; it goes when that step ends. A step that did ` +
+      `not finish leaves a red line where it happened in the reply, naming the step and why, such as a search ` +
+      `whose line ends ${quoted(t("chat.tool.failure.busy"))}; ` +
+      "the reasons say whether waiting, another link, a smaller file, more storage or edit access would help. " +
+      "The same line twice in a row shows once, followed by a multiplication sign and how many times. A step " +
+      "that failed and then worked when the same tool ran again before the reply went on leaves no line; once " +
+      "the reply has written something after the failure, the line stays. A stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
       "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
@@ -324,14 +329,29 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("chat.message.truncated"))}`,
     `  - ${quoted(t("chat.message.interrupted"))}`,
     `  - ${quoted(t("chat.message.empty"))}`,
-    "A reply can end with a question from the assistant: the options under it are numbered from one, and its " +
-      `last line reads ${quoted(t("chat.message.blocked"))}. The options cannot be clicked: type a number, or ` +
-      "an answer in your own words, and send it.",
+    "A reply can end with a card of one to four questions from the assistant, numbered from 1. A question may " +
+      `have options to click -- one, or several where it says ${quoted(t("chat.questionnaire.multi"))} -- and ` +
+      "options that are pictures, clips or sounds show as tiles that preview when hovered; clicking anywhere on " +
+      "an option picks it and outlines it, and clicking a picked one again lets go of it. A question with options " +
+      `has a line reading ${quoted(t("chat.questionnaire.other"))} for an answer in the reader's own words, which ` +
+      "on a one-answer question takes the place of a picked option; a question with none has only a line reading " +
+      `${quoted(t("chat.questionnaire.ownWords"))}. ` +
+      `${quoted(t("chat.questionnaire.submit"))} sends every answer at once and the assistant goes on from there; ` +
+      "a question left alone is sent as skipped, and pressing it with nothing answered shows " +
+      `${quoted(t("chat.questionnaire.atLeastOne"))} as a message and sends nothing. Under the button the card ` +
+      `reads ${quoted(t("chat.questionnaire.hint"))} as a hint. A reply typed in the box instead -- the numbers can ` +
+      "point at the questions -- goes as an ordinary message, and the card then shrinks to " +
+      `${quoted(t("chat.questionnaire.replied"))}, which ${quoted(t("chat.questionnaire.show"))} opens to show ` +
+      `the questions again and ${quoted(t("chat.questionnaire.hide"))} closes. An answered card is headed ` +
+      `${quoted(t("chat.questionnaire.yourAnswers"))} and lists each question with its answer, or ` +
+      `${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
+      `message says ${quoted(t("server.chat.answer_mismatch"))} when the answers do not fit the questions, and ` +
+      `${quoted(t("server.chat.ask_not_found"))} when the card is no longer in the conversation.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
       "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
-      `a line above the box says so, such as ${quoted(t("chat.error.network"))}, or ` +
+      `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
-      "credits in the project's studio to be answered; with none, the line reads " +
+      "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
       "a studio. Credits are bought from the account menu on the studio pages, under " +
       `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
@@ -341,7 +361,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.conversation.delete"))} asks ${quoted(t("chat.conversation.deleteTitle"))} with ` +
       `${quoted(t("chat.conversation.deleteBody"))} and ${quoted(t("chat.conversation.deleteCancel"))} or ` +
       `${quoted(t("chat.conversation.deleteConfirm"))}. With none it shows ${quoted(t("chat.history.empty"))}; ` +
-      `if older ones cannot be loaded, ${quoted(t("chat.history.moreFailed"))}`,
+      `if older ones cannot be loaded, a short message says ${quoted(t("chat.history.moreFailed"))}`,
     "",
     "## Making nodes",
     "- Right-click an empty spot on the canvas (inside a group's box you get the group's menu instead) and pick " +
@@ -1003,8 +1023,8 @@ export function renderProductGuide(): string {
       "something is already there, at the first spot to its right where they cover nothing already on the canvas, joined " +
       "by the proposal's edges (a node filling a slot through fills gets no line) and grouped when there are two or more, as one step undo reverses; " +
       "the view then moves to centre them, zooming out only as far as it takes to show all of them. The button reads " +
-      `${quoted(t("chat.proposal.building"))} meanwhile, and ${quoted(t("chat.proposal.failed"))} appears if it ` +
-      "fails, with nothing placed. A proposal kept from before its shape changed shows " +
+      `${quoted(t("chat.proposal.building"))} meanwhile, and a short message says ` +
+      `${quoted(t("chat.proposal.failed"))} if it fails, with nothing placed. A proposal kept from before its shape changed shows ` +
       `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
       "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
