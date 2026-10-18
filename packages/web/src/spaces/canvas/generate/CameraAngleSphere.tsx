@@ -13,16 +13,16 @@
 import * as React from 'react';
 import * as THREE from 'three';
 
-import type { CameraAngle } from '@breatic/shared';
+import type { AngleGrid, CameraAngle } from '@breatic/shared';
 
 import {
   angleFromOffset,
+  elevationRange,
   cameraOffset,
   pickOnSphere,
   radiusFor,
 } from '@web/spaces/canvas/generate/camera-angle-geometry';
 import type { CameraAngleSphereProps, SphereColors } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
-import type { AngleGrid } from '@breatic/shared';
 
 /** Where the card's centre sits. */
 const CENTER = new THREE.Vector3(0, 0.15, 0);
@@ -98,15 +98,6 @@ function arcPoints(from: number, to: number): THREE.Vector3[] {
     points.push(new THREE.Vector3(0, Math.sin(r), Math.cos(r)));
   }
   return points;
-}
-
-/**
- * The lowest and highest elevation a grid holds.
- * @param grid - The grid.
- * @returns Degrees, low then high.
- */
-function elevationRange(grid: AngleGrid): [number, number] {
-  return [grid.elevation[0] ?? 0, grid.elevation[grid.elevation.length - 1] ?? 0];
 }
 
 /**
@@ -398,7 +389,7 @@ export default function CameraAngleSphere(props: CameraAngleSphereProps): React.
     const { azimuth, elevation } = angleFromOffset(
       { x: point.x - CENTER.x, y: point.y - CENTER.y, z: point.z - CENTER.z },
       r,
-      elevationRange(latest.current.grid),
+      latest.current.grid,
     );
     latest.current.onDrag({ azimuth, elevation, distance: latest.current.pose.distance });
   }, []);
