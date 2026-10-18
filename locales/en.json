@@ -1782,7 +1782,7 @@
         "lotsTotal": "Total",
         "lotsHeld": "Held by running tasks",
         "lotsHeldNote": "Charged at the actual cost when they finish; any surplus comes back",
-        "heldHint": "All credits are held by running tasks and are released when they finish.",
+        "heldHint": "All credits are held by running tasks until they finish.",
         "depletedHint": "This Studio has spent all of its credits.",
         "debtHint": "Credits assigned next will pay off what is owed first.",
         "depletedPrompt": "Assign more credits from your account credits.",

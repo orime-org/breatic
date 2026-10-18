@@ -377,7 +377,7 @@ describe('CreditsTab', () => {
     renderTab(<CreditsTab slug='acme' />);
 
     await screen.findByTestId('studio-spendable');
-    const sentence = 'All credits are held by running tasks and are released when they finish.';
+    const sentence = 'All credits are held by running tasks until they finish.';
     // Said once, under the figure: there is nothing to do but wait, so there
     // is no notice with a next step.
     expect(document.body.textContent?.split(sentence)).toHaveLength(2);
