@@ -19,7 +19,8 @@ describe("resolution tiers on screen", () => {
           for (const value of spec.values ?? []) {
             if (typeof value !== "string" || !/^[\d.]+k$/.test(value)) continue;
             tiers += 1;
-            if (spec.value_labels?.[value] !== value.toUpperCase()) unlabelled.push(`${model.name}.${name}=${value}`);
+            const labels = new Map<string, string>(Object.entries(spec.value_labels ?? {}));
+            if (labels.get(value) !== value.toUpperCase()) unlabelled.push(`${model.name}.${name}=${value}`);
           }
         }
       }
