@@ -23,6 +23,19 @@ describe('a table in the body', () => {
     expect(ruleBody('.doc-body [data-node-type=\'docTable\'] th')).toContain('font-weight: bold');
   });
 
+  it('gives a cell that holds blocks room for a block\'s strip on its left (inner#1619 design 5.3)', () => {
+    // The row handle's clearance (CELL_STRIP_INSET, 12px), the 24px strip, a 4px gap.
+    for (const tail of ['td', 'th']) {
+      expect(ruleBody(`.doc-body [data-node-type='docTable'] tr > ${tail}`)).toContain(
+        'padding-left: calc(var(--space-6) + 1.5rem + var(--space-2))',
+      );
+      // A cell is a small body: its first block stands flush, as the document's does.
+      expect(
+        ruleBody(`.doc-body [data-node-type='docTable'] ${tail} > .bn-block-outer:first-child > .bn-block > .bn-block-content`),
+      ).toContain('--doc-block-lift: 0px');
+    }
+  });
+
   it('fills a cell with the same tint a highlight uses, for every hue', () => {
     for (const hue of COLOUR_HUES) {
       for (const cell of [

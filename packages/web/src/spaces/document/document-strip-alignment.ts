@@ -57,6 +57,19 @@ import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
  */
 export const STRIP_OUTSET = 12;
 
+/** The strip's width: one 24px handle (`STRIP_BUTTON` in `DocumentBlockHandle`). */
+export const STRIP_SIZE = 24;
+
+/**
+ * How far in from a table cell's left line the strip of a block in that cell
+ * stands (inner#1619 design 5.3): the cell is a small body, and the strip sits
+ * in its left padding. The row handle on the table's left line keeps a 24px
+ * circle clear (WCAG 2.2 SC 2.5.8), which reaches this far into the first
+ * column; the cell's left padding in `index.css` holds this, the 24px strip
+ * and a gap before the words.
+ */
+export const CELL_STRIP_INSET = 12;
+
 /**
  * The carrier's placement: the library's left-start against the row, with its
  * table of per-type offsets replaced by one sideways move.
@@ -83,10 +96,18 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
           name: 'bodyEdge',
           // Both lefts are read in viewport coordinates: floating-ui's own
           // `rects` are in the carrier's offset-parent coordinates.
-          fn: ({ x, elements }) => {
+          fn: ({ x, elements, rects }) => {
             const root = bodyOf()?.firstElementChild;
             if (root == null) return {};
             const rowLeft = elements.reference.getBoundingClientRect().left;
+            // A block in a table cell: the strip stands in the cell's left
+            // padding, whatever the block's nesting in the cell.
+            const anchor = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
+            const cell = anchor?.closest('td, th');
+            if (cell != null) {
+              const left = cell.getBoundingClientRect().left + CELL_STRIP_INSET;
+              return { x: x + left - (rowLeft - rects.floating.width) };
+            }
             return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };
           },
         },

@@ -17,6 +17,7 @@ import type { MiddlewareState } from '@floating-ui/react';
 
 import {
   firstLineOf,
+  CELL_STRIP_INSET,
   stripPlacement,
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
@@ -161,5 +162,28 @@ describe('the first line of a media block (inner#1127)', () => {
     expect(line?.top).toBe(200);
     expect(line?.height).toBe(22.5);
     block.remove();
+  });
+});
+
+describe('a block in a table cell has its strip in the cell (inner#1619 design 5.3)', () => {
+  it('puts the carrier CELL_STRIP_INSET in from the cell\'s left line, whatever the block\'s nesting', async () => {
+    const body = document.createElement('div');
+    const root = document.createElement('div');
+    body.appendChild(root);
+    root.getBoundingClientRect = (): DOMRect => ({ left: 400 }) as DOMRect;
+    const cell = document.createElement('td');
+    cell.getBoundingClientRect = (): DOMRect => ({ left: 600 }) as DOMRect;
+    const block = document.createElement('div');
+    cell.appendChild(block);
+    const [edge] = stripPlacement(() => body).useFloatingOptions.middleware;
+    // A block nested once in the cell, at 680; a 24px carrier left-start at 656.
+    const reference = { getBoundingClientRect: (): DOMRect => ({ left: 680 }) as DOMRect, contextElement: block };
+    const state = {
+      x: 656,
+      rects: { reference: { x: 380 }, floating: { width: 24 } },
+      elements: { reference },
+    } as unknown as MiddlewareState;
+
+    expect(await edge.fn(state)).toEqual({ x: 600 + CELL_STRIP_INSET });
   });
 });

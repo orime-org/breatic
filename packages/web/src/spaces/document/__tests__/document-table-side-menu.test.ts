@@ -1,0 +1,93 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+/**
+ * inner#1619 design 5.3: with the pointer on a block in a cell the side menu
+ * is that block's; at the table's height outside its cells it is the table's.
+ */
+
+import { afterEach, describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import { SideMenuExtension } from '@blocknote/core/extensions';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+
+type Editor = ReturnType<typeof buildDocumentEditor>;
+
+const mounted: Editor[] = [];
+
+afterEach(() => {
+  for (const editor of mounted.splice(0)) editor.unmount();
+  document.body.innerHTML = '';
+});
+
+/** The first cell's box, where the cases put it. */
+const CELL = new DOMRect(100, 100, 120, 40);
+
+/**
+ * A mounted editor holding a paragraph and a table, its first cell boxed at
+ * {@link CELL}.
+ * @returns The editor, and the ids of the table and the first cell's block.
+ */
+function open(): { editor: Editor; tableId: string; cellBlockId: string } {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  editor.mount(host);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, [
+    { type: 'paragraph', content: 'above' },
+    tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+  ] as never);
+  const table = editor.document[1] as unknown as { id: string; children: { children: { children: { id: string }[] }[] }[] };
+  const cellBlockId = table.children[0]!.children[0]!.children[0]!.id;
+  const td = editor.prosemirrorView.dom.querySelector('td')!;
+  td.getBoundingClientRect = () => CELL;
+  return { editor, tableId: table.id, cellBlockId };
+}
+
+/**
+ * Moves the pointer, then has the side menu name a block, as its own
+ * listener does on that move.
+ * @param editor - The editor.
+ * @param x - Where the pointer goes.
+ * @param y - Where the pointer goes.
+ * @param blockId - The block the side menu names.
+ * @returns The block the side menu ends up standing for.
+ */
+function hover(editor: Editor, x: number, y: number, blockId: string): string | undefined {
+  window.dispatchEvent(new MouseEvent('mousemove', { clientX: x, clientY: y }));
+  const sideMenu = editor.getExtension(SideMenuExtension)!;
+  sideMenu.store.setState({ show: true, referencePos: new DOMRect(), block: editor.getBlock(blockId) as never });
+  return sideMenu.store.state?.block.id;
+}
+
+describe('the side menu at a table', () => {
+  it('stands for the block in the cell the pointer is in', () => {
+    const { editor, cellBlockId } = open();
+
+    expect(hover(editor, 150, 120, cellBlockId)).toBe(cellBlockId);
+  });
+
+  it('stands for the table when the pointer is left of the cell, in the gutter', () => {
+    const { editor, tableId, cellBlockId } = open();
+
+    expect(hover(editor, 80, 120, cellBlockId)).toBe(tableId);
+  });
+
+  it('stands for the table when the pointer is right of the table', () => {
+    const { editor, tableId, cellBlockId } = open();
+
+    expect(hover(editor, 400, 120, cellBlockId)).toBe(tableId);
+  });
+
+  it('leaves a block outside any table as it is', () => {
+    const { editor } = open();
+    const above = (editor.document[0] as unknown as { id: string }).id;
+
+    expect(hover(editor, 80, 20, above)).toBe(above);
+  });
+});
