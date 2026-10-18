@@ -28,6 +28,7 @@ import { t } from "@breatic/shared";
  */
 export class CreditsHeldError extends AppError {
   /**
+   * Build the refusal.
    * @param message - The refusal, already translated.
    */
   constructor(message: string) {
