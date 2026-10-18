@@ -368,6 +368,15 @@ describe('MessageBubble — a questionnaire (inner#1542)', () => {
     expect(answer).toHaveBeenCalledWith('ask-1', [{ index: 0, selected: ['9:16'] }]);
   });
 
+  it('keeps an answered card on screen while the turn it resumed is streaming', () => {
+    const answered = { ...questionnaire, state: 'answered' as const, answers: [{ index: 0, selected: ['9:16'] }] };
+    render(
+      <MessageBubble message={{ id: 'a1', role: 'assistant', content: '', questionnaires: [answered], streaming: true }} />,
+    );
+
+    expect(screen.getByTestId('questionnaire-card')).toBeInTheDocument();
+  });
+
   it('counts the card as something the turn produced, so no empty line follows it', () => {
     render(<MessageBubble message={{ id: 'a1', role: 'assistant', content: '', questionnaires: [questionnaire] }} />);
 

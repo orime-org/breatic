@@ -194,8 +194,11 @@ export const MessageBubble = React.memo(function MessageBubble({
               <DocumentProposalCard key={proposal.proposalId} proposal={proposal} />
             ))}
           {/* What the turn asked the reader, after everything it offered: the
-            turn stopped there and waits on it (inner#1542). */}
-          {running || message.questionnaires === undefined
+            turn stopped there and waits on it (inner#1542). Drawn while the
+            turn runs too: a waiting card exists only once the server named
+            it, last in its segment, and an answered one stays above the
+            reply it resumed. */}
+          {message.questionnaires === undefined
             ? null
             : message.questionnaires.map((questionnaire) => (
               <QuestionnaireCard key={questionnaire.toolCallId} questionnaire={questionnaire} onAnswer={answer} />
