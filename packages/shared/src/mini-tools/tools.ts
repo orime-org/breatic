@@ -286,6 +286,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
       { key: "light_azimuth", display: "lightAngle" },
       { key: "light_elevation", display: "lightAngle" },
       { key: "light_color", display: "swatches" },
+      { key: "light_color_hex", display: "swatchCustom" },
       { key: "light_intensity" },
       { key: "light_quality" },
       { key: "resolution", default: "2k" },

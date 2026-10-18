@@ -171,10 +171,11 @@ export interface MiniToolModelParam {
   readonly default?: string | number;
   /**
    * How the panel draws the param, when not by its declaration: `swatches` a
-   * row of colours; `lightAngle` the light sphere, which takes the two params
-   * so marked, the azimuth first.
+   * row of colours; `swatchCustom` the colour picked by hand, drawn as the
+   * last cell of that row; `lightAngle` the light sphere, which takes the two
+   * params so marked, the azimuth first.
    */
-  readonly display?: "swatches" | "lightAngle";
+  readonly display?: "swatches" | "swatchCustom" | "lightAngle";
 }
 
 /** A second piece of media the tool reads, picked from the canvas. */

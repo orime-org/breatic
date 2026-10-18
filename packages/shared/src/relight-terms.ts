@@ -23,13 +23,29 @@ export interface LightColorTerm {
 export const LIGHT_COLORS: Readonly<Record<string, LightColorTerm>> = {
   white: { phrase: "neutral white", swatch: "#f5f5f2" },
   warm: { phrase: "warm", swatch: "#ffcf96" },
-  golden: { phrase: "warm golden", swatch: "#f2b33d" },
   sunset: { phrase: "orange sunset", swatch: "#f07a3a" },
   cool: { phrase: "cool blue", swatch: "#8fc0ff" },
   red: { phrase: "red", swatch: "#e5484d" },
   green: { phrase: "green", swatch: "#46a758" },
   purple: { phrase: "purple", swatch: "#8e4ec6" },
 };
+
+/** A colour picked by hand: `#` and six hex digits. */
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/**
+ * The light colour a relight run asks for: a preset by its catalog value, or
+ * for `custom` the colour picked by hand, told to the model as its hex code.
+ * @param color - The `light_color` value.
+ * @param hex - The `light_color_hex` value.
+ * @returns The colour, or undefined for Auto and for Custom without a well-formed colour.
+ */
+export function lightColorOf(color: unknown, hex: unknown): LightColorTerm | undefined {
+  if (color === "custom") {
+    return typeof hex === "string" && HEX_COLOR.test(hex) ? { phrase: hex.toUpperCase(), swatch: hex } : undefined;
+  }
+  return LIGHT_COLORS[String(color)];
+}
 
 export const LIGHT_INTENSITIES: Readonly<Record<string, string>> = {
   low: "dim",

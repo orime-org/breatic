@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import { LIGHT_ANGLE_GRID } from "@shared/camera-angle.js";
 import {
   LIGHT_COLORS,
+  lightColorOf,
   LIGHT_INTENSITIES,
   LIGHT_QUALITIES,
   lightDirectionPhrase,
@@ -36,7 +37,7 @@ describe("lightDirectionPhrase", () => {
 
 describe("light terms", () => {
   it("gives every colour but Auto a phrase and a swatch", () => {
-    expect(Object.keys(LIGHT_COLORS)).toEqual(["white", "warm", "golden", "sunset", "cool", "red", "green", "purple"]);
+    expect(Object.keys(LIGHT_COLORS)).toEqual(["white", "warm", "sunset", "cool", "red", "green", "purple"]);
     for (const [value, term] of Object.entries(LIGHT_COLORS)) {
       expect(term.phrase, value).not.toBe("");
       expect(term.swatch, value).toMatch(/^#[0-9a-f]{6}$/);
@@ -46,5 +47,22 @@ describe("light terms", () => {
   it("gives every intensity and quality but Auto a phrase", () => {
     expect(Object.keys(LIGHT_INTENSITIES)).toEqual(["low", "medium", "high"]);
     expect(Object.keys(LIGHT_QUALITIES)).toEqual(["soft", "hard"]);
+  });
+});
+
+describe("lightColorOf", () => {
+  it("reads a preset by its name, and Auto as no colour", () => {
+    expect(lightColorOf("cool", undefined)).toEqual(LIGHT_COLORS.cool);
+    expect(lightColorOf("auto", "#123456")).toBeUndefined();
+  });
+
+  it("reads Custom as the colour picked, written as the reader sees it", () => {
+    expect(lightColorOf("custom", "#8fc0ff")).toEqual({ phrase: "#8FC0FF", swatch: "#8fc0ff" });
+  });
+
+  it("reads Custom without a well-formed colour as no colour", () => {
+    for (const hex of [undefined, "", "8fc0ff", "#8fc0f", "#8fc0ffff", "#zzzzzz", 0x8fc0ff, "red"]) {
+      expect(lightColorOf("custom", hex), String(hex)).toBeUndefined();
+    }
   });
 });

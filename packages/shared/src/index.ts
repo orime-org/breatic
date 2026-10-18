@@ -479,6 +479,7 @@ export {
   LIGHT_COLORS,
   LIGHT_INTENSITIES,
   LIGHT_QUALITIES,
+  lightColorOf,
   lightDirectionPhrase,
   type LightColorTerm,
 } from "@shared/relight-terms.js";
