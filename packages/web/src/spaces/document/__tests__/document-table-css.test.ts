@@ -13,11 +13,25 @@ import { COLOUR_HUES } from '@web/spaces/document/document-colour-run';
 import { declarationsOf, ruleBody, selectorEndingIn } from './index-css-rules';
 
 describe('a table in the body', () => {
+  it('draws the table whose cells hold blocks with lines round every cell and bold header cells', () => {
+    expect(ruleBody('.doc-body [data-node-type=\'docTable\'] table')).toContain('width: auto !important');
+    for (const tail of ['td', 'th']) {
+      const body = ruleBody(`.doc-body [data-node-type='docTable'] ${tail}`);
+      expect(body).toContain('border-style: solid');
+      expect(body).toContain('border-width: 1px');
+    }
+    expect(ruleBody('.doc-body [data-node-type=\'docTable\'] th')).toContain('font-weight: bold');
+  });
+
   it('fills a cell with the same tint a highlight uses, for every hue', () => {
     for (const hue of COLOUR_HUES) {
-      expect(ruleBody(`[data-content-type='table'] [data-background-color='${hue}']`)).toContain(
-        `background-color: var(--color-palette-${hue}-highlight)`,
-      );
+      for (const cell of [
+        `[data-content-type='table'] [data-background-color='${hue}']`,
+        `[data-node-type='docTable'] td[data-background-color='${hue}']`,
+        `[data-node-type='docTable'] th[data-background-color='${hue}']`,
+      ]) {
+        expect(ruleBody(cell)).toContain(`background-color: var(--color-palette-${hue}-highlight)`);
+      }
     }
   });
 
@@ -28,6 +42,12 @@ describe('a table in the body', () => {
     expect(ruleBody('.doc-body [data-content-type=\'table\'] td')).toContain('padding: var(--space-3) var(--space-5)');
     expect(ruleBody('.doc-body [data-content-type=\'table\'] th')).toContain('padding: var(--space-3) var(--space-5)');
     expect(ruleBody('.doc-body [data-content-type=\'table\'] th')).toContain('background-color: var(--color-muted)');
+    // The table whose cells hold blocks shares every one of these rules.
+    for (const tail of ['td', 'th']) {
+      expect(selectorEndingIn(`.doc-body [data-node-type='docTable'] ${tail}`)).toBe(
+        selectorEndingIn(`.doc-body [data-content-type='table'] ${tail}`),
+      );
+    }
     expect(ruleBody('.doc-body .selectedCell::after')).toContain('background: var(--color-selection)');
     expect(ruleBody('.column-resize-handle')).toContain('background-color: var(--color-ring)');
   });
@@ -41,6 +61,8 @@ describe('a table in the body', () => {
     const body = ruleBody('.doc-body .selectedCell > p');
     expect(body).toContain('position: relative');
     expect(body).toContain('z-index: 3');
+    // A cell that holds blocks raises its blocks the same way.
+    expect(selectorEndingIn('.selectedCell > .bn-block-outer')).toBe(selectorEndingIn('.selectedCell > p'));
   });
 
   it('paints the cells a row or column menu acts on the way selected cells are painted (A6)', () => {
@@ -67,6 +89,9 @@ describe('a table in the body', () => {
     // lands; a floor of the table's own max-content width does.
     const body = ruleBody('table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth])))');
     expect(body).toContain('min-width: max-content');
+    expect(selectorEndingIn('table:not(:has(td:not([colwidth]))):not(:has(th:not([colwidth])))')).toContain(
+      '[data-node-type=\'docTable\']',
+    );
   });
 
   it('keeps room under the table for its scrollbar, and none on the other sides', () => {
@@ -75,6 +100,9 @@ describe('a table in the body', () => {
     // handles are drawn in the library's portal, centred on the table's lines.
     const paddings = declarationsOf('[data-content-type=\'table\'] .tableWrapper', 'padding');
     expect(paddings.map(({ value }) => value)).toEqual(['0 0 0.5rem 0']);
+    expect(declarationsOf('[data-node-type=\'docTable\'] .tableWrapper', 'padding').map(({ value }) => value)).toEqual([
+      '0 0 0.5rem 0',
+    ]);
   });
 
   it('lets presses through the library box a moved row or column handle leaves behind', () => {

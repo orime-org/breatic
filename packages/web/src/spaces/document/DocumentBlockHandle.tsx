@@ -77,6 +77,7 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -190,8 +191,12 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
         return {
           empty: isEmptyParagraph(live),
           quoted: live?.props?.[QUOTED] === true,
-          lone: only != null && only.attrs.id === live?.id && only.childCount === 1,
-          table: live?.type === 'table',
+          // A table's own node holds its rows, so it is alone with what it holds.
+          lone:
+            only != null &&
+            only.attrs.id === live?.id &&
+            (only.type.name !== 'blockContainer' || only.childCount === 1),
+          table: live?.type === DOC_TABLE,
         };
       },
       [rowNow],

@@ -98,6 +98,8 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
   });
   table.style.width = fixed ? `${total}px` : '';
   table.style.minWidth = fixed ? '' : `${total}px`;
+  // The width prosemirror-tables' stylesheet gives a column with none stored.
+  table.style.setProperty('--default-cell-min-width', `${String(DEFAULT_CELL_WIDTH)}px`);
 }
 
 /**
@@ -114,6 +116,7 @@ function mountScroller(host: HTMLElement, table: HTMLElement): Root {
     root.render(
       <DocumentTableScroller>
         <div
+          className='tableWrapper'
           ref={(slot) => {
             if (slot !== null && table.parentElement !== slot) slot.appendChild(table);
           }}
@@ -125,7 +128,9 @@ function mountScroller(host: HTMLElement, table: HTMLElement): Root {
 }
 
 /**
- * Writes a cell's spans onto its element, which the browser lays out by.
+ * Writes a cell's spans onto its element, which the browser lays out by, and
+ * its stored widths as `colwidth`, which the table rules read to tell a sized
+ * column from one the browser sizes.
  * @param element - The `<td>` or `<th>`.
  * @param props - The cell's props.
  */
@@ -134,6 +139,8 @@ function applySpans(element: HTMLElement, props: CellProps): void {
     if (value === undefined || value === 1) element.removeAttribute(name);
     else element.setAttribute(name, String(value));
   }
+  if (Array.isArray(props.colwidth)) element.setAttribute('colwidth', props.colwidth.join(','));
+  else element.removeAttribute('colwidth');
 }
 
 /**
@@ -256,7 +263,9 @@ const CELL_PROP_SCHEMA = {
   backgroundColor: { default: 'default' as const },
   colspan: { default: 1 as const },
   rowspan: { default: 1 as const },
-  colwidth: { default: undefined, type: 'string' as const },
+  // Null is what a cell without a stored width holds, the same value the node
+  // attribute defaults to, so no `data-colwidth` is written for it.
+  colwidth: { default: null as unknown as undefined, type: 'string' as const },
 };
 
 /**
@@ -389,7 +398,6 @@ export function docTableSpecs(): DocTableSpecs {
         dom.className = 'doc-table';
         const host = document.createElement('div');
         host.className = 'doc-table-scroller';
-        host.contentEditable = 'false';
         dom.appendChild(host);
         const root = mountScroller(host, element);
         return {

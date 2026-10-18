@@ -277,5 +277,29 @@ describe('a table cell holds blocks', () => {
 
     expect(again[0]!.children[0]!.children[0]!.props['colwidth']).toBeNull();
   });
+
+  it('draws the table where the reader can edit its cells, in the wrapper the table rules style', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [table([[[{ type: 'paragraph', content: 'a' }]]])] as never);
+
+    const element = document.querySelector('[data-node-type="docTable"] table')!;
+    expect(element.parentElement?.classList.contains('tableWrapper')).toBe(true);
+    expect(element.closest('[contenteditable="false"]')).toBeNull();
+  });
+
+  it('writes a stored column width on the cell, and no width where none is stored', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      table([[[{ type: 'paragraph', content: 'a' }], [{ type: 'paragraph', content: 'b' }]]]),
+    ] as never);
+    const view = editor.prosemirrorView;
+    const cell = first(editor, 'docTableCell');
+    view.dispatch(view.state.tr.setNodeAttribute(cell.pos, 'colwidth', [140]));
+
+    const [sized, unsized] = [...document.querySelectorAll<HTMLElement>('[data-node-type="docTable"] td')];
+    expect(sized!.getAttribute('colwidth')).toBe('140');
+    expect(unsized!.hasAttribute('colwidth')).toBe(false);
+    expect(unsized!.hasAttribute('data-colwidth')).toBe(false);
+  });
 });
 
