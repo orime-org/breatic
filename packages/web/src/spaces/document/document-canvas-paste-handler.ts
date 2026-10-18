@@ -10,7 +10,7 @@
  */
 
 import { blockToNode } from '@blocknote/core';
-import { Fragment, Slice } from '@tiptap/pm/model';
+import { Fragment, Slice, type ResolvedPos } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 import { CellSelection, handlePaste as tablePaste } from '@tiptap/pm/tables';
 
@@ -18,7 +18,7 @@ import { newId } from '@breatic/shared';
 
 import { parseClipboard } from '@web/spaces/canvas/node-clipboard';
 import { planCanvasPaste } from '@web/spaces/document/document-canvas-paste';
-import { inTableCell, type BlockSpec, type PasteHandler } from '@web/spaces/document/document-file-input';
+import type { BlockSpec, PasteHandler } from '@web/spaces/document/document-file-input';
 import { putBlocks, putContent } from '@web/spaces/document/document-put';
 import { pendingBlock } from '@web/spaces/document/document-uploads';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
@@ -29,6 +29,19 @@ export interface CanvasPasteSink {
   start: (uploadId: string, source: UploadSource) => void;
   /** Tells the reader how many nodes could not be pasted. */
   notPasted: (count: number) => void;
+}
+
+/**
+ * Whether a position is inside a table cell.
+ * @param $at - The position.
+ * @returns True when one of its ancestors is a cell.
+ */
+function inTableCell($at: ResolvedPos): boolean {
+  for (let depth = $at.depth; depth > 0; depth -= 1) {
+    const name = $at.node(depth).type.name;
+    if (name === 'tableCell' || name === 'tableHeader') return true;
+  }
+  return false;
 }
 
 /**

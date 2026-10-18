@@ -19,7 +19,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { newId } from '@breatic/shared';
 
-import { gapAtDrop, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
+import { gapAtDrop, insertAtGapTr, quotedAs, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { cellInline, textOf, wordsIn, type Read, type ReadBlock } from '@web/spaces/document/document-paste-read';
@@ -62,7 +62,7 @@ type Editor = Pick<BlockNoteEditor<never, never, never>, 'pasteHTML' | 'pasteTex
 };
 
 /** Block types whose content is words, which join a line they are put in. */
-const WORDS = new Set(['paragraph', 'heading', 'bulletListItem', 'numberedListItem', 'checkListItem', 'toggleListItem', 'quote']);
+const WORDS = new Set(['paragraph', 'heading', 'bulletListItem', 'numberedListItem', 'checkListItem']);
 
 /**
  * Whether a block is a line of words with nothing nested: what joins the
@@ -398,8 +398,7 @@ function aim(view: EditorView, $drop: ResolvedPos, opened: boolean): void {
     return;
   }
   const gap = gapAtDrop(view.state.doc, $drop.pos);
-  const line = blockToNode({ id: newId(), type: 'paragraph', props: { [QUOTED]: quotedBeside(view.state.doc, gap) } } as never, view.state.schema);
-  const tr = view.state.tr.insert(gap, line);
+  const tr = insertAtGapTr(view.state, gap, [{ type: 'paragraph' }]);
   view.dispatch(tr.setSelection(TextSelection.create(tr.doc, gap + 2)));
 }
 
@@ -472,7 +471,25 @@ function putAtSelection(editor: Editor, content: Content, wordsIntoTarget: boole
   const $caret = view.state.selection.$from;
   const target = textOnlyAt($caret);
   if (target !== null) return putInTextOnly(editor, content, target, wordsIntoTarget);
+  if (!$caret.parent.isTextblock) return putInGap(view, content.blocks, $caret.pos);
   return putInLine(view, content.blocks, $caret, replaced);
+}
+
+/**
+ * Puts content in the gap between two blocks the caret stands in (a gap
+ * cursor's), every piece a block of its own, quoted when the line beside the
+ * gap is, as ProseMirror's own paste there puts its blocks.
+ * @param view - The view.
+ * @param blocks - The content.
+ * @param gap - The gap.
+ * @returns Where the content landed.
+ */
+function putInGap(view: EditorView, blocks: readonly ReadBlock[], gap: number): Placed {
+  const nodes = containers(quotedBeside(view.state.doc, gap) ? quotedAs(blocks, true) : blocks, view.state);
+  const tr = view.state.tr.insert(gap, nodes);
+  finishCaret(tr, nodes, gap);
+  view.dispatch(tr.scrollIntoView());
+  return { kind: 'range', from: gap, to: gap + nodes.reduce((sum, node) => sum + node.nodeSize, 0) };
 }
 
 /**

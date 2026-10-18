@@ -232,8 +232,9 @@ interface PreEditState {
  * The meta a caret move carries (`true`) when the edit that follows it in the
  * same event is to undo back to where the caret was before the move: a drop
  * puts the caret at the drop point and then pastes there (inner#1351 design
- * §5.4.1). The event lets it go (`false`) when it ends, whether or not it
- * changed the document.
+ * §5.4.1). That edit takes the held selection and lets it go; a transaction
+ * marked `false`, which the event dispatches when it ends, lets it go when no
+ * edit followed.
  */
 export const HOLD_PRE_EDIT_SELECTION = 'documentHoldPreEditSelection';
 
@@ -263,8 +264,8 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
        * transaction that carries the user's own edit — the appended follow-ups
        * of the same dispatch would replace "before the edit" with "after it".
        * A caret move marked {@link HOLD_PRE_EDIT_SELECTION} `true` keeps the
-       * selection from before it for the next edit instead, until a
-       * transaction marked `false` lets it go.
+       * selection from before it for the next edit instead, which takes it
+       * and lets it go; a transaction marked `false` lets it go unused.
        * @param tr - The transaction being applied.
        * @param value - The previous state.
        * @param _oldState - The state before the transaction.

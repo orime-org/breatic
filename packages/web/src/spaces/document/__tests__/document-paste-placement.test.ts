@@ -484,6 +484,23 @@ describe('content holding a medium, pasted with the caret in the gap between two
   });
 });
 
+describe('content holding a medium, pasted in the gap between two quoted pictures', () => {
+  it('is quoted as they are', async () => {
+    const editor = open([{ type: 'image', props: { url: `${OURS}a.png`, quoted: true } }, { type: 'image', props: { url: `${OURS}b.png`, quoted: true } }]);
+    const view = editor.prosemirrorView;
+    let second = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image' && String(node.attrs['url']).endsWith('b.png')) second = pos - 1;
+      return second < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(new GapCursor(view.state.doc.resolve(second))));
+    view.focus();
+    pasteWeb(editor, [W, P]);
+    await settled();
+    expect(lines(editor)).toEqual([`image(${OURS}a.png)[q]`, 'paragraph[q]:w', `image(${PIC})[q]`, 'paragraph[q]:', `image(${OURS}b.png)[q]`]);
+  });
+});
+
 describe('the caret after content, with nested blocks about', () => {
   const withKid = (words: string): unknown => ({ type: 'paragraph', content: words, children: [{ type: 'paragraph', content: 'kid' }] });
 

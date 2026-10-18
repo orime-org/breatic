@@ -376,7 +376,7 @@ function trimEnd(content: readonly Inline[], end: 'start' | 'end', pattern: RegE
 }
 
 /** List item block types, whose media go under the item. */
-const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem', 'toggleListItem']);
+const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem']);
 
 /**
  * The media blocks markers stand for, each found once.
@@ -536,6 +536,27 @@ function cleanTable(content: unknown, indices: number[]): unknown {
 }
 
 /**
+ * Blocks without the line break that closes a line's words: a `<br>` ending
+ * a block draws no line of its own, so `<p><br></p>` is an empty line, as
+ * ProseMirror parses it. Code keeps every line break.
+ * @param blocks - The blocks.
+ * @returns The blocks.
+ */
+function withoutClosingBreak(blocks: readonly ReadBlock[]): ReadBlock[] {
+  return blocks.map((block) => {
+    const children = withoutClosingBreak(block.children ?? []);
+    if (block.type === 'codeBlock' || !Array.isArray(block.content)) return { ...block, children };
+    const content = [...(block.content as Inline[])];
+    const last = content[content.length - 1];
+    if (typeof last?.text === 'string' && last.text.endsWith('\n')) {
+      if (last.text === '\n') content.pop();
+      else content[content.length - 1] = { ...last, text: last.text.slice(0, -1) };
+    }
+    return { ...block, content, children };
+  });
+}
+
+/**
  * Outside HTML read into blocks by markers (§5.4.2).
  * @param reader - The editor.
  * @param html - The HTML.
@@ -548,7 +569,7 @@ function readByMarkers(reader: BlockReader, html: string, lands: (url: string) =
   fillAddresses(body, lands);
   const { media, lost } = markMedia(body, lands);
   const found = new Set<number>();
-  const blocks = placeMarkers(reader.tryParseHTMLToBlocks(body.innerHTML) as ReadBlock[], media, found);
+  const blocks = placeMarkers(withoutClosingBreak(reader.tryParseHTMLToBlocks(body.innerHTML) as ReadBlock[]), media, found);
   return { blocks, lost: lost + media.length - found.size };
 }
 
@@ -599,12 +620,13 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
     return { blocks: reader.tryParseHTMLToBlocks(code) as ReadBlock[], lost: 0, plain: plainOnly, paste: (r) => r.pasteHTML(code) };
   }
   const markdown = data.types.includes('text/markdown');
-  if (!markdown && !HTML_MEDIA.test(html) && html !== '' && !isMarkdown(plain)) {
+  const withMedia = HTML_MEDIA.test(html);
+  if (!markdown && !withMedia && html !== '' && !isMarkdown(plain)) {
     const even = evened(html);
     return { blocks: reader.tryParseHTMLToBlocks(even) as ReadBlock[], lost: 0, plain: null, paste: (r) => r.pasteHTML(even) };
   }
-  if (!markdown && plain === '' && html === '') return { blocks: [], lost: 0, plain: plainOnly, paste: () => undefined };
-  const source = markdown ? markdownToHTML(data.getData('text/markdown')) : HTML_MEDIA.test(html) ? html : markdownToHTML(plain);
+  if (!markdown && plain === '' && html === '') return { blocks: [], lost: 0, plain: null, paste: () => undefined };
+  const source = markdown ? markdownToHTML(data.getData('text/markdown')) : withMedia ? html : markdownToHTML(plain);
   const { blocks, lost } = readByMarkers(reader, source, lands);
   return { blocks, lost, plain: plainOnly, paste: (r) => r.pasteHTML(r.blocksToFullHTML(blocks as never), true) };
 }

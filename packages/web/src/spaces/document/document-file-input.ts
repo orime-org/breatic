@@ -25,7 +25,7 @@ import {
   type ComputeDropPositionContext,
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
-import { Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
@@ -33,7 +33,7 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
 import { HTML_MEDIA_SELECTOR } from '@web/spaces/document/document-media-types';
 
 /** A position between two blocks, where inserted blocks go. */
-export type UploadGap = number;
+export type BlockGap = number;
 
 /** BlockNote's paste hook, as this editor's options take it. */
 export type PasteHandler = NonNullable<
@@ -47,7 +47,7 @@ export interface FilesArrival {
    * The gap a drop puts them in, or null for a paste, which puts them at the
    * selection by the body's placement (inner#1351 design §5.4.3).
    */
-  readonly gap: UploadGap | null;
+  readonly gap: BlockGap | null;
 }
 
 /** Where arriving files are handed over. */
@@ -84,7 +84,7 @@ export function pastedFiles(data: DataTransfer): File[] | null {
  * @param at - The position the pointer is over.
  * @returns The gap.
  */
-export function gapAtDrop(doc: PMNode, at: number): UploadGap {
+export function gapAtDrop(doc: PMNode, at: number): BlockGap {
   return landingFor(doc, at, blockToNode({ type: 'paragraph' } as never, doc.type.schema));
 }
 
@@ -100,19 +100,6 @@ export function fileDropPosition(context: ComputeDropPositionContext): ComputeDr
   if (view.dragging !== null || !carriesFiles(event)) return defaultPosition;
   if (!view.editable || defaultPosition === null) return null;
   return { pos: gapAtDrop(view.state.doc, defaultPosition.pos), orientation: 'block-horizontal' };
-}
-
-/**
- * Whether a position is inside a table cell.
- * @param $at - The position.
- * @returns True when one of its ancestors is a cell.
- */
-export function inTableCell($at: ResolvedPos): boolean {
-  for (let depth = $at.depth; depth > 0; depth -= 1) {
-    const name = $at.node(depth).type.name;
-    if (name === 'tableCell' || name === 'tableHeader') return true;
-  }
-  return false;
 }
 
 /** A block to insert, as BlockNote takes one. */
@@ -147,7 +134,7 @@ export function quotedAs<T extends BlockSpec>(blocks: readonly T[], quoted: bool
  * @param gap - The gap.
  * @returns True when that line is quoted.
  */
-export function quotedBeside(doc: PMNode, gap: UploadGap): boolean {
+export function quotedBeside(doc: PMNode, gap: BlockGap): boolean {
   const $gap = doc.resolve(gap);
   const beside: PMNode | null = $gap.nodeBefore ?? $gap.nodeAfter;
   return beside?.firstChild?.attrs[QUOTED] === true;
@@ -162,7 +149,7 @@ export function quotedBeside(doc: PMNode, gap: UploadGap): boolean {
  */
 export function insertAtGapTr(
   state: EditorState,
-  gap: UploadGap,
+  gap: BlockGap,
   blocks: readonly BlockSpec[],
 ): Transaction {
   const nodes = quotedAs(blocks, quotedBeside(state.doc, gap)).map((block) =>

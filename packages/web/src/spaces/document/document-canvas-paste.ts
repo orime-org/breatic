@@ -111,7 +111,7 @@ function text(data: Record<string, unknown>, key: string): string {
 function itemOf(node: ClipboardNode): PastedItem | null {
   if (node.type === 'text') {
     const words = bodyText(node.data['body']);
-    return words === '' ? null : { kind: 'text', lines: words.split('\n') };
+    return words.replace(/\n/g, '') === '' ? null : { kind: 'text', lines: words.split('\n') };
   }
   if (!isMediaBlockType(node.type)) return null;
   const content = text(node.data, 'content');

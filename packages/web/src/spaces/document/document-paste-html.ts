@@ -18,15 +18,13 @@ import { putContent } from '@web/spaces/document/document-put';
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
  * @param context.editor - The editor.
- * @param context.defaultPasteHandler - BlockNote's own paste, for a body without the pasted-media extension.
+ * @param context.defaultPasteHandler - BlockNote's own paste, for a paste event with no clipboard.
  * @returns Whether the paste was handled.
  */
 export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
   const data = event.clipboardData;
   const pasted = editor.getExtension(PASTED_MEDIA_KEY) as PastedMediaJudge | undefined;
-  if (data === null || pasted === undefined || editor.prosemirrorView === undefined || editor.prosemirrorView === null) {
-    return defaultPasteHandler();
-  }
+  if (data === null || pasted === undefined) return defaultPasteHandler();
   putContent(editor as never, readTransfer(editor as never, data, pasted.lands), {
     wordsIntoTarget: true,
     judge: pasted.judge,

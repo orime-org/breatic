@@ -205,6 +205,16 @@ describe('an empty line written as a line break, beside a medium', () => {
     expect(tree(editor)).toEqual(['codeBlock:x = 1', `image(${A}||)`, 'paragraph:after']);
   });
 
+  it('of two, leaves one: the first still draws its line', async () => {
+    const { editor } = await read(`<p>a<br><br></p><img src="${A}">`);
+    expect(tree(editor)).toEqual(['paragraph:a\n', `image(${A}||)`, 'paragraph:end']);
+  });
+
+  it('ending code stays: code keeps every line break', async () => {
+    const { editor } = await read(`<pre><code>a\n\n</code></pre><img src="${A}">`);
+    expect(tree(editor)).toEqual(['codeBlock:a\n\n', `image(${A}||)`, 'paragraph:end']);
+  });
+
   it('keeps a break between words', async () => {
     const { tree: lines } = { tree: tree((await read(`<p>a<br>b<br></p><img src="${A}">`)).editor) };
     expect(lines).toEqual(['paragraph:a\nb', `image(${A}||)`, 'paragraph:end']);
