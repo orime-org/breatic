@@ -673,3 +673,43 @@ function cellBlockTypes(editor: Editor, column: number): string[] {
   return types;
 }
 
+describe('a quote in a cell (inner#1619 design 5.3)', () => {
+  it('Enter on an empty quoted line at the top of a cell opens another quoted line in the cell', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      tableBlock({
+        rows: [
+          {
+            cells: [
+              {
+                blocks: [
+                  { type: 'paragraph', content: 'q', props: { quoted: true } },
+                  { type: 'paragraph', props: { quoted: true } },
+                ],
+              },
+              'b',
+            ],
+          },
+        ],
+      }),
+    ] as never);
+    const view = editor.prosemirrorView;
+    const cell = table(editor).child(0).child(0);
+    let tablePos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (tablePos < 0 && node.type.name === 'docTable') tablePos = pos;
+      return tablePos < 0;
+    });
+    // Table, row and cell each open one level; past the first block, into
+    // the second's container and its paragraph.
+    const emptyLine = tablePos + 1 + 1 + 1 + cell.child(0).nodeSize + 2;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, emptyLine)));
+
+    press(editor, 'Enter');
+
+    const quoted: boolean[] = [];
+    table(editor).child(0).child(0).forEach((container) => quoted.push(container.firstChild!.attrs['quoted'] === true));
+    expect(quoted).toEqual([true, true, true]);
+  });
+});
+

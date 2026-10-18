@@ -100,7 +100,10 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // opening a block rather than replacing anything, so a selection reaching
     // it would leave what the reader highlighted where it was.
     const blockEmpty = tr.selection.empty && blockContent.node.childCount === 0;
-    const indented = tr.doc.resolve(bnBlock.beforePos).depth > 1;
+    // Indented means nested under another block; a block at the top of a
+    // table cell is at the top of that cell's own body (inner#1619).
+    const $block = tr.doc.resolve(bnBlock.beforePos);
+    const indented = $block.depth > 1 && $block.parent.type.name === 'blockGroup';
 
     if (blockEmpty) {
       // An empty selection sits in a textblock, so the caret is at offset 0.
