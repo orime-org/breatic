@@ -15,6 +15,8 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
@@ -869,4 +871,37 @@ test('T6: a block dragged from the body into a cell lands in it', async () => {
     [['paragraph:a1', 'paragraph:lead'], ['paragraph:b1']],
     [['paragraph:a2'], ['paragraph:b2']],
   ]);
+});
+
+test('T7: a picture picked from the plus on an empty line in a narrow cell lands in that cell, no wider than it', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 1, 3);
+  await page.keyboard.type('narrow');
+  const cell = page.locator(`${EDITOR} td`).nth(1);
+  const box = await cell.boundingBox();
+  // Clear of the cell's top right corner, where the caret cell's button stands.
+  await page.mouse.click(box!.x + 50, box!.y + box!.height / 2);
+  await page.mouse.move(5, 5);
+  await page.mouse.move(box!.x + 50, box!.y + box!.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-plus').click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('doc-block-insert-image').click();
+  await (await chooser).setFiles({
+    name: 'portrait.png',
+    mimeType: 'image/png',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/portrait.png')),
+  });
+
+  const media = cell.locator('[data-content-type="image"] [data-media-box]');
+  await expect(media).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(`${EDITOR} [data-content-type="image"]`)).toHaveCount(1);
+  const sizes = await cell.evaluate((td) => {
+    const style = getComputedStyle(td);
+    return {
+      inner: td.getBoundingClientRect().width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      media: td.querySelector('[data-media-box]')!.getBoundingClientRect().width,
+    };
+  });
+  expect(sizes.media).toBeGreaterThan(0);
+  expect(sizes.media).toBeLessThanOrEqual(sizes.inner + 1);
 });
