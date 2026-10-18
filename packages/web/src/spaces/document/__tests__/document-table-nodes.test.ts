@@ -266,5 +266,16 @@ describe('a table cell holds blocks', () => {
 
     expect(again[0]!.children[0]!.children[0]!.props['colwidth']).toEqual([140]);
   });
+
+  it('reads no width back for a column that had none', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [table([[[{ type: 'paragraph', content: 'a' }]]])] as never);
+
+    const again = editor.tryParseHTMLToBlocks(editor.blocksToHTMLLossy(editor.document as never)) as unknown as {
+      children: { children: { props: Record<string, unknown> }[] }[];
+    }[];
+
+    expect(again[0]!.children[0]!.children[0]!.props['colwidth']).toBeNull();
+  });
 });
 

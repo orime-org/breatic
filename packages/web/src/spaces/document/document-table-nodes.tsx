@@ -203,7 +203,7 @@ const CELL_PROP_SCHEMA = {
  */
 function readColwidth(element: HTMLElement): (number | null)[] | null {
   const written = element.getAttribute('data-colwidth') ?? element.getAttribute('colwidth');
-  if (written === null || written === '') return null;
+  if (written === null || written === '' || written === 'null') return null;
   return written.split(',').map((width) => {
     const value = Number.parseInt(width, 10);
     return Number.isFinite(value) ? value : null;

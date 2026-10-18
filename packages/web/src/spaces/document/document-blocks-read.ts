@@ -13,6 +13,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 /** One top-level block as the Agent is sent it. */
 export interface ReadBlock {
@@ -93,7 +94,7 @@ export function readTopBlocks(editor: BlockNoteEditor<never, never, never>): Rea
     const start = typeof block.props.start === 'number' ? block.props.start : 1;
     listNumber = block.type !== 'numberedListItem' ? 0 : listNumber === 0 ? start : listNumber + 1;
     const shown = listNumber > 1 ? { ...block, props: { ...block.props, start: listNumber } } : block;
-    const markdown = editor.blocksToMarkdownLossy([shown as never]).trim();
+    const markdown = blocksMarkdown(editor, [shown]);
     const node = nodes.get(block.id);
     if (markdown === '' || node === undefined) continue;
     out.push({ id: block.id, type: block.type, markdown, text: blockPlainText(node), lossy: lossyBlock(node) });

@@ -422,7 +422,7 @@ describe('an open document', () => {
     let cellAt = -1;
     let wordsAt = -1;
     view.state.doc.descendants((node, pos) => {
-      if (cellAt < 0 && (node.type.name === 'tableHeader' || node.type.name === 'tableCell')) cellAt = pos;
+      if (cellAt < 0 && (node.type.name === 'docTableHeader' || node.type.name === 'docTableCell')) cellAt = pos;
       if (wordsAt < 0 && node.isText && node.text === 'Commented words') wordsAt = pos;
       return true;
     });
@@ -443,7 +443,7 @@ describe('an open document', () => {
     const view = editor.prosemirrorView!;
     let cellAt = -1;
     view.state.doc.descendants((node, pos) => {
-      if (cellAt < 0 && (node.type.name === 'tableHeader' || node.type.name === 'tableCell')) cellAt = pos;
+      if (cellAt < 0 && (node.type.name === 'docTableHeader' || node.type.name === 'docTableCell')) cellAt = pos;
       return cellAt < 0;
     });
     const cell = view.state.doc.nodeAt(cellAt)!;

@@ -21,6 +21,7 @@ import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
 import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-button';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -109,7 +110,7 @@ export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
   if (block === undefined || node === undefined) {
     throw new Error(`no block ${blockId} in the document`);
   }
-  const markdown = editor.blocksToMarkdownLossy([block]).trimEnd();
+  const markdown = blocksMarkdown(editor, [block]);
   const words = node.textBetween(0, node.content.size, '\n', '\n');
   return textItem(`document-block-${blockId}`, nameFrom(words), markdown);
 }

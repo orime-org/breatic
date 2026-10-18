@@ -273,6 +273,19 @@ describe('blockItem', () => {
     expect((second.chip?.data_snapshot as { text: string }).text).toBe('after');
   });
 
+  it('hands over the blocks in the cells of a table', () => {
+    const editor = open([
+      tableBlock({
+        rows: [{ cells: ['a', { blocks: [{ type: 'heading', props: { level: 2 }, content: 'Scene' }] }] }],
+      }),
+    ]);
+
+    const text = String(blockItem(editor, idAt(editor, 0)).chip?.data_snapshot['text']);
+
+    expect(text).toContain('<h2');
+    expect(text).toContain('Scene');
+  });
+
   it('takes the name of a table from its cells', () => {
     const editor = open([
       tableBlock({
