@@ -1100,9 +1100,9 @@ export function renderProductGuide(): string {
     "- Clicking the empty space below the last block starts a new block there, unless the last block is already " +
       "empty. Clicking a to-do's box ticks or unticks it. Clicking a link opens it in a new tab. Selected words " +
       "can be dragged elsewhere. Pasting Markdown turns it into headings, lists and so on (inside a code block it " +
-      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, keeping " +
-      "only the words of any list in its cells and dropping pictures; pasted with the caret in a cell, it fills " +
-      "the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
+      "stays plain text); a table copied from a spreadsheet, a web page or Markdown arrives as a table, its cells " +
+      "keeping their headings, lists and other blocks, with pictures from other sites left out; pasted with the " +
+      "caret in a cell, it fills the cells from that one instead. Pasting an image, video or audio file uploads it (see below); any other " +
       "file is refused with a message.",
     "- Selecting text shows a bar, left to right: an icon of the current block type with a small arrow, an " +
       "alignment icon with an arrow, bold B, italic I, strikethrough S and underline U icons, a link icon, a code " +
@@ -1160,7 +1160,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      "in its first cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
+      "table does not go inside a cell. The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
@@ -1224,15 +1225,20 @@ export function renderProductGuide(): string {
     "- With the caret in a cell, a small box with a down arrow shows at that cell's top right corner; it opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
       `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
-      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. Tab moves to the next ` +
-      "cell, and in the last cell it adds a row first; Shift+Tab moves back. Enter and Shift+Enter break the line " +
-      "inside the cell. A cell holds only words: no lists, headings or other blocks. Dragging across cells " +
-      "selects them. With words selected inside one cell, or with cells selected, the text bar has its block " +
-      "type button greyed and in its colour menu the rows " +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. A cell holds blocks ` +
+      "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
+      "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
+      "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
+      "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
+      "Shift+Tab moves back. Backspace at the start of a cell and Delete at its end stay in the cell. Dragging " +
+      "across cells selects them. With words selected inside a cell, or with cells selected, the text bar's block " +
+      "type button changes the blocks in that cell or in every selected cell, and its colour menu has the rows " +
       `${quoted(t("spaces.document.commands.textColor"))}, ${quoted(t("spaces.document.table.textHighlight"))} and ` +
       `${quoted(t("spaces.document.table.cellFill"))}; with cells selected it also shows a merge icon after the ` +
-      "speech bubble with a plus that merges them into one. With every cell of an empty table selected, Backspace or " +
-      "Delete removes the table.",
+      "speech bubble with a plus that merges them into one, the blocks of every cell that held something one after " +
+      "another and the empty cells adding nothing. With every cell of an empty table selected, Backspace or Delete " +
+      "removes the table.",
     `- An empty document shows ${quoted(t("spaces.document.placeholder"))}. Three dots at the top right open a ` +
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
