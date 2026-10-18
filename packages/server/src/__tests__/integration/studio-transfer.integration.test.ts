@@ -172,7 +172,6 @@ async function countByType(userId: string, type: string): Promise<number> {
   return rows[0]!.c;
 }
 
-/** Force a notification's expiry into the past (simulate the 7-day timeout). */
 /**
  * Read a transfer's status and why it failed, if it did.
  * @param transferId - The transfer.
@@ -187,6 +186,7 @@ async function outcomeOf(
   return row!;
 }
 
+/** Force a notification's expiry into the past (simulate the 7-day timeout). */
 async function expireTransfer(transferId: string): Promise<void> {
   // Both projections move together, exactly as the create path writes them:
   // the decision gate reads the ROW, the bell reads the entry, and a test that

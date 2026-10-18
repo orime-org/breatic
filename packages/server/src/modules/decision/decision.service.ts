@@ -47,7 +47,7 @@ import type { RequestDetail } from "@server/modules/decision/decision.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { MS_PER_DAY } from "@server/config/limits.js";
-import type { FailedReason } from "@server/utils/deferred-decision.js";
+import type { RequestFailedReason } from "@breatic/shared";
 
 
 /** Terminal status words meaning the recipient said yes. */
@@ -100,7 +100,7 @@ const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
 function decideState(input: {
   kind: DecisionKind;
   status: string;
-  failedReason: FailedReason | null;
+  failedReason: RequestFailedReason | null;
   deleted: boolean;
   expiresAt: Date;
   recipientAlreadyIn: boolean;

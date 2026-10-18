@@ -37,7 +37,7 @@ import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudi
 import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import type { DecisionGrantRole } from "@breatic/shared";
+import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
@@ -51,7 +51,7 @@ import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { isRefused, refusalError } from "@server/utils/deferred-decision.js";
-import type { FailedReason, Refused } from "@server/utils/deferred-decision.js";
+import type { Refused } from "@server/utils/deferred-decision.js";
 
 
 /** What the join dialog needs about a project the caller cannot enter. */
@@ -304,7 +304,7 @@ async function openForDecision(
  * @param reason - Its deadline passed, or what it was about stopped holding.
  * @param tx - The enclosing transaction.
  */
-async function fail(req: OpenRequest, reason: FailedReason, tx: DbTx): Promise<void> {
+async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Promise<void> {
   await requestsRepo.failIfPending(req.id, reason, tx);
   if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
 }

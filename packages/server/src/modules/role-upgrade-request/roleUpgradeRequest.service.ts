@@ -57,12 +57,12 @@ import {
   isRefused,
   refusalError,
 } from "@server/utils/deferred-decision.js";
-import type { FailedReason, Refused } from "@server/utils/deferred-decision.js";
+import type { Refused } from "@server/utils/deferred-decision.js";
 import { projectMembersRepo } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { NotificationEntity } from "@breatic/shared";
+import type { NotificationEntity, RequestFailedReason } from "@breatic/shared";
 
 interface RoleUpgradeRequestInput {
   requesterUserId: string;
@@ -561,7 +561,7 @@ async function settle(
  * @param reason - Its deadline passed, or what it was about stopped holding.
  * @param tx - The deciding transaction.
  */
-async function fail(req: OpenRequest, reason: FailedReason, tx: DbTx): Promise<void> {
+async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Promise<void> {
   await requestsRepo.failIfPending(req.id, reason, tx);
   if (req.notificationId !== null) {
     await notificationRepo.retire(req.notificationId, tx);

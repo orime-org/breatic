@@ -22,6 +22,13 @@ export type DecisionKind =
   | "studio_transfer";
 
 /**
+ * Why a request nobody could answer ended, stored as `failed_reason` beside
+ * `status = 'failed'` in each request table: its deadline passed, or what it
+ * was about stopped holding.
+ */
+export type RequestFailedReason = "expired" | "invalidated";
+
+/**
  * What the landing page found behind a token.
  *
  * The six tables spell their terminal statuses three different ways

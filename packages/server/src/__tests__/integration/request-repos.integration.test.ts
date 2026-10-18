@@ -16,7 +16,7 @@
  *
  *   - Creating reaps first. A timed-out row keeps `status = 'pending'` and
  *     holds its slot (the index predicate cannot reference `now()`), so the
- *     create path flips stale pendings to `expired` in the same transaction
+ *     create path fails stale pendings as `expired` in the same transaction
  *     that takes the slot. Without this, a request nobody answered locks its
  *     key forever — for a transfer, that is the whole container.
  *   - A LIVE pending still blocks. The reaper only touches expired ones, so a

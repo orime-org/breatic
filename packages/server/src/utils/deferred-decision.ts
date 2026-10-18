@@ -27,13 +27,6 @@
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 
-/**
- * Why a request nobody could answer ended, stored as `failed_reason` beside
- * `status = 'failed'`: its deadline passed, or what it was about stopped
- * holding.
- */
-export type FailedReason = "expired" | "invalidated";
-
 /** Why a decision was refused, carried out of the transaction as a value. */
 export type Refusal = "not_found" | "forbidden" | "conflict";
 

@@ -28,8 +28,7 @@ import {
   studioTransfers,
   projectMembersRepo,
 } from "@breatic/core";
-import type { DecisionKind } from "@breatic/shared";
-import type { FailedReason } from "@server/utils/deferred-decision.js";
+import type { DecisionKind, RequestFailedReason } from "@breatic/shared";
 
 /** Bare identity of the request a token resolved to. */
 export interface ResolvedRequest {
@@ -38,7 +37,7 @@ export interface ResolvedRequest {
   /** The row's own status word, in that table's vocabulary. */
   status: string;
   /** Why a `failed` request ended; null on every other status. */
-  failedReason: FailedReason | null;
+  failedReason: RequestFailedReason | null;
   /** Whether the row was soft-deleted, normally along with its container. */
   deleted: boolean;
   /** When the request was filed — with `expiresAt`, it derives the window. */
@@ -70,8 +69,8 @@ const SOURCES = [
  * @param expiresAt - The request table's `expires_at` column.
  * @returns SQL that evaluates to the row's `failed_reason`.
  */
-export function failedReasonAtNow(expiresAt: AnyPgColumn): SQL<FailedReason> {
-  return sql<FailedReason>`CASE WHEN ${expiresAt} <= now() THEN 'expired' ELSE 'invalidated' END`;
+export function failedReasonAtNow(expiresAt: AnyPgColumn): SQL<RequestFailedReason> {
+  return sql<RequestFailedReason>`CASE WHEN ${expiresAt} <= now() THEN 'expired' ELSE 'invalidated' END`;
 }
 
 /**
@@ -109,7 +108,7 @@ export async function resolveByToken(
       kind: source.kind,
       id: row.id,
       status: row.status,
-      failedReason: row.failedReason as FailedReason | null,
+      failedReason: row.failedReason,
       deleted: row.deletedAt !== null,
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,

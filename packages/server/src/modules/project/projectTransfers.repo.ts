@@ -37,7 +37,7 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { mintShareToken } from "@server/utils/share-token.js";
-import type { FailedReason } from "@server/utils/deferred-decision.js";
+import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a transfer sits in its lifecycle. */
 export type ProjectTransferStatus =
@@ -296,7 +296,7 @@ export async function settleIfPending(
  */
 export async function failIfPending(
   id: string,
-  reason: FailedReason,
+  reason: RequestFailedReason,
   tx: DbTx,
 ): Promise<boolean> {
   const rows = await tx

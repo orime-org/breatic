@@ -23,10 +23,9 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectJoinRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { DecisionGrantRole } from "@breatic/shared";
+import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
 import { mintShareToken } from "@server/utils/share-token.js";
 import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
-import type { FailedReason } from "@server/utils/deferred-decision.js";
 
 /** Where a request sits in its lifecycle. */
 export type ProjectJoinStatus =
@@ -231,7 +230,7 @@ export async function settleIfPending(
  */
 export async function failIfPending(
   id: string,
-  reason: FailedReason,
+  reason: RequestFailedReason,
   tx: DbTx,
 ): Promise<boolean> {
   const rows = await tx

@@ -32,7 +32,13 @@ import {
 // A self-referencing FK needs its column type spelled out, since the table is
 // still being defined at the point the reference is written.
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import type { Attribution, ConsentRecord, ConsentSnapshot, MessagePart } from "@breatic/shared";
+import type {
+  Attribution,
+  ConsentRecord,
+  ConsentSnapshot,
+  MessagePart,
+  RequestFailedReason,
+} from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
@@ -1939,9 +1945,9 @@ export const notifications = pgTable(
 // "active members only" — studio auth / member-list / member-count queries
 // need zero status filter, and a pending invitee can never be mistaken for a
 // real member (the rejected-by-design rationale, DD §2). `status` flows pending
-// → accepted | declined | expired | revoked (append-only lifecycle; rows are
+// → accepted | declined | revoked | failed (append-only lifecycle; rows are
 // soft-deleted only). A pending invite that times out keeps `status = 'pending'`
-// until it is reaped to `expired`: the `one_pending` partial index ignores
+// until it is reaped to `failed` with reason `expired`: the `one_pending` partial index ignores
 // `expires_at`, so re-invite (`expireStalePending`) flips the stale row before
 // taking the slot (#1769). All FKs are `onDelete: restrict` except
 // `notification_id` (`set null` — the bell row may be GC'd). One LIVE pending
@@ -1966,11 +1972,11 @@ export const studioInvitations = pgTable(
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * Why a `failed` request ended: 'expired' (nobody answered before its
      * deadline) or 'invalidated' (what it was about stopped holding). Null on
      * every other status (CHECK in 0098).
      */
-    failedReason: varchar("failed_reason", { length: 16 }),
+    failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     /**
      * The bell notification that surfaces this invite, so settling it can mark
      * that row read in the same transaction — whether the recipient answered
@@ -2048,11 +2054,11 @@ export const projectInvitations = pgTable(
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'revoked'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * Why a `failed` request ended: 'expired' (nobody answered before its
      * deadline) or 'invalidated' (what it was about stopped holding). Null on
      * every other status (CHECK in 0098).
      */
-    failedReason: varchar("failed_reason", { length: 16 }),
+    failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     /**
      * The bell notification that surfaces this invite, so settling it can mark
      * that row read in the same transaction — whether the recipient answered
@@ -2138,11 +2144,11 @@ export const roleUpgradeRequests = pgTable(
      */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * Why a `failed` request ended: 'expired' (nobody answered before its
      * deadline) or 'invalidated' (what it was about stopped holding). Null on
      * every other status (CHECK in 0098).
      */
-    failedReason: varchar("failed_reason", { length: 16 }),
+    failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     /** Who decided. Null while pending, and stays null on expiry / cancel. */
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
       onDelete: "restrict",
@@ -2206,11 +2212,11 @@ export const projectJoinRequests = pgTable(
     /** Lifecycle: 'pending' | 'approved' | 'rejected' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * Why a `failed` request ended: 'expired' (nobody answered before its
      * deadline) or 'invalidated' (what it was about stopped holding). Null on
      * every other status (CHECK in 0098).
      */
-    failedReason: varchar("failed_reason", { length: 16 }),
+    failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     /** The role the owner granted: 'viewer' | 'editor'; non-null iff approved. */
     grantedRole: varchar("granted_role", { length: 16 }),
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
@@ -2260,11 +2266,11 @@ export const projectTransfers = pgTable(
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * Why a `failed` request ended: 'expired' (nobody answered before its
      * deadline) or 'invalidated' (what it was about stopped holding). Null on
      * every other status (CHECK in 0098).
      */
-    failedReason: varchar("failed_reason", { length: 16 }),
+    failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** Bell row for the recipient; marked read in the deciding transaction. */
     notificationId: uuid("notification_id").references(() => notifications.id, {
@@ -2312,11 +2318,11 @@ export const studioTransfers = pgTable(
     /** Lifecycle: 'pending' | 'accepted' | 'declined' | 'failed' | 'cancelled'. */
     status: varchar("status", { length: 16 }).notNull(),
     /**
-     * Why a `failed` request ended: 'failed' (nobody answered before its
+     * Why a `failed` request ended: 'expired' (nobody answered before its
      * deadline) or 'invalidated' (what it was about stopped holding). Null on
      * every other status (CHECK in 0098).
      */
-    failedReason: varchar("failed_reason", { length: 16 }),
+    failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** Bell row for the recipient; marked read in the deciding transaction. */
     notificationId: uuid("notification_id").references(() => notifications.id, {

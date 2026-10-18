@@ -240,12 +240,12 @@ async function againstArchive(
     await sweep.begin(async (c) => {
       await c`SELECT id FROM projects WHERE id = ${projectId} AND deleted_at IS NULL FOR UPDATE`;
       await c`
-        UPDATE role_upgrade_requests SET status = 'failed', decided_at = null,
+        UPDATE role_upgrade_requests SET status = 'failed',
           failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
         WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
       `;
       await c`
-        UPDATE project_join_requests SET status = 'failed', decided_at = null,
+        UPDATE project_join_requests SET status = 'failed',
           failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
         WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
       `;
@@ -253,7 +253,7 @@ async function againstArchive(
       await waitUntilBlockedOn(sql, parkedOn, 1);
       try {
         const swept = await c<{ notification_id: string | null }[]>`
-          UPDATE project_transfers SET status = 'failed', decided_at = null,
+          UPDATE project_transfers SET status = 'failed',
             failed_reason = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'invalidated' END
           WHERE project_id = ${projectId} AND status = 'pending' AND deleted_at IS NULL
           RETURNING notification_id

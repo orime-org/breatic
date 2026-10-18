@@ -58,7 +58,8 @@ import {
   isRefused,
   refusalError,
 } from "@server/utils/deferred-decision.js";
-import type { FailedReason, Refused } from "@server/utils/deferred-decision.js";
+import type { Refused } from "@server/utils/deferred-decision.js";
+import type { RequestFailedReason } from "@breatic/shared";
 
 /**
  * The current admin offers the studio to an existing member.
@@ -471,7 +472,7 @@ async function settle(
  */
 async function fail(
   offer: OpenOffer,
-  reason: FailedReason,
+  reason: RequestFailedReason,
   tx: DbTx,
 ): Promise<void> {
   await transfersRepo.failIfPending(offer.id, reason, tx);

@@ -21,6 +21,7 @@ export type {
   DecisionAction,
   DecisionGrantRole,
   DecisionResult,
+  RequestFailedReason,
 } from "@shared/types/decision.js";
 
 export type {
