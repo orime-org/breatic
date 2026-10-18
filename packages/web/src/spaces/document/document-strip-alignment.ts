@@ -47,6 +47,7 @@ import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
 import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
+import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * How far the strip stands out from the body's left edge, the same on every
@@ -59,16 +60,6 @@ export const STRIP_OUTSET = 12;
 
 /** The strip's width: one 24px handle (`STRIP_BUTTON` in `DocumentBlockHandle`). */
 export const STRIP_SIZE = 24;
-
-/**
- * How far in from a table cell's left line the strip of a block in that cell
- * stands (inner#1619 design 5.3): the cell is a small body, and the strip sits
- * in its left padding. The row handle on the table's left line keeps a 24px
- * circle clear (WCAG 2.2 SC 2.5.8), which reaches this far into the first
- * column; the cell's left padding in `index.css` holds this, the 24px strip
- * and a gap before the words.
- */
-export const CELL_STRIP_INSET = 12;
 
 /**
  * The carrier's placement: the library's left-start against the row, with its
@@ -100,12 +91,18 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             const root = bodyOf()?.firstElementChild;
             if (root == null) return {};
             const rowLeft = elements.reference.getBoundingClientRect().left;
-            // A block in a table cell: the strip stands in the cell's left
-            // padding, whatever the block's nesting in the cell.
+            // A block in a table cell, whatever its nesting there: the strip
+            // stands outside the cell's left line (inner#1619 T13), in the
+            // cell to the left clear of the line's column-resize zone, or
+            // centred on the table's left line in the first column, where the
+            // row handle stands on the same line.
             const anchor = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
             const cell = anchor?.closest('td, th');
             if (cell != null) {
-              const left = cell.getBoundingClientRect().left + CELL_STRIP_INSET;
+              const line = cell.getBoundingClientRect().left;
+              const tableLine = cell.closest('tbody')?.getBoundingClientRect().left;
+              const firstColumn = tableLine !== undefined && Math.abs(line - tableLine) < 1;
+              const left = firstColumn ? line - rects.floating.width / 2 : line - COLUMN_RESIZE_ZONE - 1 - rects.floating.width;
               return { x: x + left - (rowLeft - rects.floating.width) };
             }
             return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };

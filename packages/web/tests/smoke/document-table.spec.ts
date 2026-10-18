@@ -233,7 +233,8 @@ async function selectCells(p: Page, from: string | number, to: string | number):
   const a = await at(from).boundingBox();
   const b = await at(to).boundingBox();
   if (a === null || b === null) throw new Error('a cell has no box');
-  await p.mouse.move(a.x + 10, a.y + a.height / 2);
+  // On the cell's words, right of a first-column block's handle on the table's left line.
+  await p.mouse.move(a.x + 20, a.y + a.height / 2);
   await p.mouse.down();
   await p.mouse.move(b.x + b.width - 10, b.y + b.height / 2, { steps: 6 });
   await p.mouse.up();
@@ -485,12 +486,12 @@ test('A9 and A10: selecting cells offers a merge, and a merged cell splits back'
   await expect(page.locator(`${EDITOR} tr`).first().locator('td')).toHaveCount(2);
 });
 
-test('A11: the cell button is on the caret cell only, and aligns that cell', async () => {
+test('A11: the cell button is on the hovered cell only, and aligns that cell', async () => {
   await openFreshDocument(page);
   await smallTable(page);
   await expect(page.getByTestId('doc-table-cell-button')).toHaveCount(0);
 
-  await cell(page, 'b2').click();
+  await hoverCell(page, 'b2');
   const button = await page.getByTestId('doc-table-cell-button').boundingBox();
   const b2 = await cell(page, 'b2').boundingBox();
   expect(button!.x + button!.width).toBeLessThanOrEqual(b2!.x + b2!.width);
@@ -505,7 +506,8 @@ test('A11: the cell button is on the caret cell only, and aligns that cell', asy
   );
   expect(aligned.filter((a) => a === 'center')).toHaveLength(1);
 
-  // The cell was redrawn with its new alignment; the button stays on it.
+  // The cell was redrawn with its new alignment; the button comes up on it.
+  await hoverCell(page, 'b2');
   await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
   const again = await page.getByTestId('doc-table-cell-button').boundingBox();
   const redrawn = await cell(page, 'b2').boundingBox();
@@ -514,10 +516,27 @@ test('A11: the cell button is on the caret cell only, and aligns that cell', asy
   expect(again!.y).toBeGreaterThanOrEqual(redrawn!.y);
 });
 
-test('A11: after switching to another Space and back, the cell button follows the caret again', async () => {
-  const a = await openFreshDocument(page);
+test('T13: the row and column handles and the cell button go once the pointer leaves the table, the caret still in a cell (inner#1402)', async () => {
+  await openFreshDocument(page);
   await smallTable(page);
   await cell(page, 'b2').click();
+  await hoverCell(page, 'b2');
+  for (const id of ['doc-table-row-handle', 'doc-table-col-handle', 'doc-table-cell-button']) {
+    await expect(page.getByTestId(id)).toBeVisible();
+  }
+
+  // Out of the body altogether, to the page's left edge.
+  await page.mouse.move(2, 300, { steps: 4 });
+
+  for (const id of ['doc-table-row-handle', 'doc-table-col-handle', 'doc-table-cell-button']) {
+    await expect(page.getByTestId(id)).toHaveCount(0);
+  }
+});
+
+test('A11: after switching to another Space and back, the cell button follows the pointer again', async () => {
+  const a = await openFreshDocument(page);
+  await smallTable(page);
+  await hoverCell(page, 'b2');
   await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
 
   const b = await createSpace(page, 'document', `table-other-${Date.now()}`);
@@ -528,7 +547,7 @@ test('A11: after switching to another Space and back, the cell button follows th
   await page.getByTestId(`space-tab-${a}`).click();
   await expect(cell(page, 'a1')).toBeVisible({ timeout: 15_000 });
 
-  await clickAndSettle(page, cell(page, 'a1'));
+  await hoverCell(page, 'a1');
 
   const button = await page.getByTestId('doc-table-cell-button').boundingBox();
   const a1 = await cell(page, 'a1').boundingBox();
@@ -536,6 +555,29 @@ test('A11: after switching to another Space and back, the cell button follows th
   expect(button!.x + button!.width).toBeLessThanOrEqual(a1!.x + a1!.width);
   expect(button!.y).toBeGreaterThanOrEqual(a1!.y);
   expect(button!.y + button!.height).toBeLessThanOrEqual(a1!.y + a1!.height);
+});
+
+test('T13: a block\'s handle stands outside its cell\'s left line, and in the first column the row handle makes way for it', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+
+  // A middle column: the handle in the cell to the left, clear of the line's
+  // column-resize zone (5px either side).
+  const middle = await (await hoverWordsInCell(page, 'b1')).boundingBox();
+  const b1 = await cell(page, 'b1').boundingBox();
+  expect(Math.abs(middle!.x + middle!.width - (b1!.x - 6))).toBeLessThan(2);
+  const words = await page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^b1$/ }).first().boundingBox();
+  // The cell keeps no room for the handle: its words start at the usual 10px.
+  expect(words!.x - b1!.x).toBeLessThan(14);
+
+  // The first column, on a row of one line: the two handles on the table's
+  // left line, the row handle below the block's.
+  const first = await (await hoverWordsInCell(page, 'a1')).boundingBox();
+  const row = await page.getByTestId('doc-table-row-handle').boundingBox();
+  const table = await page.locator(`${EDITOR} table`).first().boundingBox();
+  expect(Math.abs(first!.x + first!.width / 2 - table!.x)).toBeLessThan(2);
+  expect(Math.abs(row!.x + row!.width / 2 - table!.x)).toBeLessThan(2);
+  expect(row!.y).toBeGreaterThanOrEqual(first!.y + first!.height);
 });
 
 test('A6: the row and column handles sit centred on the table\'s lines, the table icon clear of the first row handle', async () => {
@@ -608,8 +650,9 @@ test('A6, A11 and A12: on a wide table scrolled sideways, the row handle sits on
   await openFreshDocument(page);
   await insertTable(page, 2, 9);
   await fill(page, ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
-  // The caret in the first cell, then the table scrolled until that cell is out of sight.
-  await cell(page, 'c1').click();
+  // The pointer over the first cell, then the table scrolled until that cell is out of sight.
+  await cell(page, 'c1').scrollIntoViewIfNeeded();
+  await hoverCell(page, 'c1');
   await expect(page.getByTestId('doc-table-cell-button')).toBeVisible();
   const frame = page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first();
   await frame.evaluate((viewport) => {

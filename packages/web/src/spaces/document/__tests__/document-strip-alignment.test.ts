@@ -17,10 +17,10 @@ import type { MiddlewareState } from '@floating-ui/react';
 
 import {
   firstLineOf,
-  CELL_STRIP_INSET,
   stripPlacement,
   stripOffsetFromRowTop,
 } from '@web/spaces/document/document-strip-alignment';
+import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 
 /** The strip's measured height: one 24px handle in a flex wrapper. */
 const STRIP = 24;
@@ -165,25 +165,44 @@ describe('the first line of a media block (inner#1127)', () => {
   });
 });
 
-describe('a block in a table cell has its strip in the cell (inner#1619 design 5.3)', () => {
-  it('puts the carrier CELL_STRIP_INSET in from the cell\'s left line, whatever the block\'s nesting', async () => {
-    const body = document.createElement('div');
-    const root = document.createElement('div');
-    body.appendChild(root);
-    root.getBoundingClientRect = (): DOMRect => ({ left: 400 }) as DOMRect;
-    const cell = document.createElement('td');
-    cell.getBoundingClientRect = (): DOMRect => ({ left: 600 }) as DOMRect;
-    const block = document.createElement('div');
-    cell.appendChild(block);
-    const [edge] = stripPlacement(() => body).useFloatingOptions.middleware;
-    // A block nested once in the cell, at 680; a 24px carrier left-start at 656.
-    const reference = { getBoundingClientRect: (): DOMRect => ({ left: 680 }) as DOMRect, contextElement: block };
-    const state = {
-      x: 656,
-      rects: { reference: { x: 380 }, floating: { width: 24 } },
-      elements: { reference },
-    } as unknown as MiddlewareState;
+/**
+ * Places the strip of a block in a cell.
+ * @param cellLeft - The cell's left line.
+ * @param tableLeft - The table body's left line.
+ * @returns What the placement hands back.
+ */
+async function placeInCell(cellLeft: number, tableLeft: number): Promise<{ x?: number }> {
+  const body = document.createElement('div');
+  const root = document.createElement('div');
+  body.appendChild(root);
+  root.getBoundingClientRect = (): DOMRect => ({ left: 300 }) as DOMRect;
+  const tbody = document.createElement('tbody');
+  tbody.getBoundingClientRect = (): DOMRect => ({ left: tableLeft }) as DOMRect;
+  const tr = document.createElement('tr');
+  const cell = document.createElement('td');
+  cell.getBoundingClientRect = (): DOMRect => ({ left: cellLeft }) as DOMRect;
+  const block = document.createElement('div');
+  tbody.appendChild(tr);
+  tr.appendChild(cell);
+  cell.appendChild(block);
+  const [edge] = stripPlacement(() => body).useFloatingOptions.middleware;
+  // A block nested once in the cell, 80px in; a 24px carrier left-start beside it.
+  const reference = { getBoundingClientRect: (): DOMRect => ({ left: cellLeft + 80 }) as DOMRect, contextElement: block };
+  const state = {
+    x: cellLeft + 80 - STRIP,
+    rects: { reference: { x: 0 }, floating: { width: STRIP } },
+    elements: { reference },
+  } as unknown as MiddlewareState;
+  return edge.fn(state);
+}
 
-    expect(await edge.fn(state)).toEqual({ x: 600 + CELL_STRIP_INSET });
+describe('a block in a table cell has its strip outside the cell\'s left line (inner#1619 T13)', () => {
+  it('puts the strip in the cell to the left, clear of the line\'s column-resize zone, whatever the block\'s nesting', async () => {
+    expect(await placeInCell(600, 400)).toEqual({ x: 600 - COLUMN_RESIZE_ZONE - 1 - STRIP });
+  });
+
+  it('centres the strip on the table\'s left line in the first column', async () => {
+    expect(await placeInCell(400, 400)).toEqual({ x: 400 - STRIP / 2 });
   });
 });
+

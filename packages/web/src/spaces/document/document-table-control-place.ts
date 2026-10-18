@@ -13,6 +13,7 @@
  * disagree about where it is.
  */
 
+import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 
 /** A box in viewport coordinates. */
 export interface Box {
@@ -22,9 +23,14 @@ export interface Box {
   readonly bottom: number;
 }
 
-/** The cell button's side, and its inset from the corner it sits in. */
+/**
+ * The cell button's side, and its inset from the corner it sits in: from the
+ * top line, and from the right line clear of that line's column-resize zone,
+ * since the button comes up on whatever cell the pointer is over.
+ */
 const BUTTON = 20;
 const INSET = 2;
+const RIGHT_INSET = COLUMN_RESIZE_ZONE + 1;
 
 /** The column handle's width and height (`w-6`, `h-3`), and the row handle's width (`w-3`). */
 export const COLUMN_HANDLE_WIDTH = 24;
@@ -55,9 +61,10 @@ const CLEARANCE = 24;
  * @returns The box, or null when that part has no room for the button.
  */
 export function cellButtonBox(visible: Box): Box | null {
-  const room = BUTTON + 2 * INSET;
-  if (visible.right - visible.left < room || visible.bottom - visible.top < room) return null;
-  const right = visible.right - INSET;
+  if (visible.right - visible.left < BUTTON + INSET + RIGHT_INSET || visible.bottom - visible.top < BUTTON + 2 * INSET) {
+    return null;
+  }
+  const right = visible.right - RIGHT_INSET;
   const top = visible.top + INSET;
   return { left: right - BUTTON, top, right, bottom: top + BUTTON };
 }
@@ -117,4 +124,36 @@ export function columnHandleCentre(visible: Box, lineY: number, button: Box | nu
     }
   }
   return null;
+}
+
+/** The row handle's height (`DocumentTableHandle`). */
+const ROW_HANDLE_HEIGHT = 24;
+
+/** The room the row handle keeps from a block handle on its line. */
+const HANDLE_STACK_GAP = 4;
+
+/**
+ * How far the row handle moves up or down to clear the handle of a block in
+ * the first column, which stands on the same line (inner#1619 T13). The block
+ * handle keeps its place on the block's first line; the row handle, centred
+ * on its row, moves only when the two would touch, to whichever side of the
+ * block handle leaves it nearer the row's middle, below when both are as near.
+ * @param row - The row's top and bottom.
+ * @param row.top - The row's top.
+ * @param row.bottom - The row's bottom.
+ * @param strip - The block handle's top and bottom, or null when none stands on the line.
+ * @returns The vertical shift, zero when nothing is in the way.
+ */
+export function rowHandleShift(
+  row: { readonly top: number; readonly bottom: number },
+  strip: { readonly top: number; readonly bottom: number } | null,
+): number {
+  const middle = (row.top + row.bottom) / 2;
+  const half = ROW_HANDLE_HEIGHT / 2;
+  if (strip === null || middle + half <= strip.top - HANDLE_STACK_GAP || middle - half >= strip.bottom + HANDLE_STACK_GAP) {
+    return 0;
+  }
+  const below = strip.bottom + HANDLE_STACK_GAP + half;
+  const above = strip.top - HANDLE_STACK_GAP - half;
+  return (Math.abs(below - middle) <= Math.abs(above - middle) ? below : above) - middle;
 }

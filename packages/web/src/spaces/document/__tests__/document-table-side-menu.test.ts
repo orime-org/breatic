@@ -84,6 +84,20 @@ describe('the side menu at a table', () => {
     expect(hover(editor, 400, 120, cellBlockId)).toBe(tableId);
   });
 
+  it('leaves the menu on its block while the pointer is on the menu itself, wherever that is drawn', () => {
+    const { editor, cellBlockId } = open();
+    const strip = document.createElement('div');
+    strip.setAttribute('data-row-id', cellBlockId);
+    document.body.appendChild(strip);
+    // Over the gutter, where the table would otherwise take the menu.
+    strip.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 80, clientY: 120 }));
+    const sideMenu = editor.getExtension(SideMenuExtension)!;
+
+    sideMenu.store.setState({ show: true, referencePos: new DOMRect(), block: editor.getBlock(cellBlockId) as never });
+
+    expect(sideMenu.store.state?.block.id).toBe(cellBlockId);
+  });
+
   it('leaves a block outside any table as it is', () => {
     const { editor } = open();
     const above = (editor.document[0] as unknown as { id: string }).id;

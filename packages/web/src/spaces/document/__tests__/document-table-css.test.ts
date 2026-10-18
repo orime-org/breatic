@@ -31,12 +31,10 @@ describe('a table in the body', () => {
     }
   });
 
-  it('gives a cell that holds blocks room for a block\'s strip on its left (inner#1619 design 5.3)', () => {
-    // The row handle's clearance (CELL_STRIP_INSET, 12px), the 24px strip, a 4px gap.
+  it('pads a cell that holds blocks as any table cell, its blocks\' strips standing outside it (inner#1619 T13)', () => {
+    expect(declarationsOf('[data-node-type=\'docTable\']', 'padding-left')).toEqual([]);
     for (const tail of ['td', 'th']) {
-      expect(ruleBody(`.doc-body [data-node-type='docTable'] tr > ${tail}`)).toContain(
-        'padding-left: calc(var(--space-6) + 1.5rem + var(--space-2))',
-      );
+      expect(ruleBody(`.doc-body [data-node-type='docTable'] ${tail}`)).toContain('padding: var(--space-3) var(--space-5)');
       // A cell is a small body: its first block stands flush, as the document's does.
       expect(
         ruleBody(`.doc-body [data-node-type='docTable'] ${tail} > .bn-block-outer:first-child > .bn-block > .bn-block-content`),

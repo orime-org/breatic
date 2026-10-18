@@ -2087,15 +2087,6 @@ body {
     width: min(var(--doc-media-width, 100%), 100%) !important;
   }
 
-  /* A cell that holds blocks keeps the strip of the block under the pointer
-     in its left padding (inner#1619 design 5.3): the row handle's clearance
-     (`CELL_STRIP_INSET` in `document-strip-alignment.ts`), the 24px strip, and
-     a gap before the words. */
-  .doc-body [data-node-type='docTable'] tr > td,
-  .doc-body [data-node-type='docTable'] tr > th {
-    padding-left: calc(var(--space-6) + 1.5rem + var(--space-2));
-  }
-
   /* Selected cells, and the cells an open row or column menu acts on: one look
      (inner#1126 A6). The library draws this layer for `.selectedCell` only, so
      the rule draws it whole. */

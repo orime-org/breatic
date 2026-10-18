@@ -39,6 +39,13 @@ const CELL_MIN_WIDTH = 35;
 /** The width a column without a stored width counts as. */
 export const DEFAULT_CELL_WIDTH = 120;
 
+/**
+ * How far either side of a column's line the pointer picks up its width
+ * (prosemirror-tables `handleWidth`); a block's handle in the next cell keeps
+ * clear of it.
+ */
+export const COLUMN_RESIZE_ZONE = 5;
+
 /** The table's block types. */
 export const DOC_TABLE = 'docTable';
 export const DOC_TABLE_ROW = 'docTableRow';
@@ -295,7 +302,12 @@ const DocTablePeerFixIds = Extension.create({
 const DocTableEditing = Extension.create({
   name: 'docTableEditing',
   addProseMirrorPlugins: () => [
-    columnResizing({ cellMinWidth: CELL_MIN_WIDTH, defaultCellMinWidth: DEFAULT_CELL_WIDTH, View: null }),
+    columnResizing({
+      handleWidth: COLUMN_RESIZE_ZONE,
+      cellMinWidth: CELL_MIN_WIDTH,
+      defaultCellMinWidth: DEFAULT_CELL_WIDTH,
+      View: null,
+    }),
     tableEditing(),
     keepPastedTablesWhole,
   ],

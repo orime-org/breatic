@@ -92,18 +92,24 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
     const sideMenu = ours.getExtension(SideMenuExtension);
     if (sideMenu === undefined) return;
     let pointer: Point | undefined;
+    // Whether the pointer is on the menu itself. A block's handle in a cell
+    // is drawn over the cell to its left (inner#1619 T13): the menu stays on
+    // its block there, as BlockNote keeps it (`SideMenu.ts:169-178`), and its
+    // drag starts from there.
+    let onMenu = false;
     // On the window in the capture phase, ahead of the side menu's own
     // listener on the document, so the point is current when its state moves.
     window.addEventListener(
       'mousemove',
       (event) => {
         pointer = { x: event.clientX, y: event.clientY };
+        onMenu = event.target instanceof Element && event.target.closest('[data-row-id]') !== null;
       },
       { signal, capture: true },
     );
     const unsubscribe = sideMenu.store.subscribe(() => {
       const state = sideMenu.store.state;
-      if (state?.show !== true || pointer === undefined) return;
+      if (state?.show !== true || pointer === undefined || onMenu) return;
       // The menu hides as the editor unmounts, when its view is gone.
       const body = domElementOf(ours);
       if (body === null) return;
