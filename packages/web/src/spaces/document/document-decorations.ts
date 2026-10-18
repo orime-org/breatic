@@ -38,7 +38,7 @@ import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf } from '@web/spaces/document/document-table-nodes';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
@@ -91,10 +91,8 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
 function indentDepth(doc: PMNode, pos: number): number {
   const $pos = doc.resolve(pos);
   // A table cell is a body of its own: its blocks count their levels from it.
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (isTableCell($pos.node(depth))) return ($pos.depth - depth) / 2;
-  }
-  return ($pos.depth - 1) / 2;
+  const cell = cellDepthOf($pos);
+  return ($pos.depth - (cell > 0 ? cell : 1)) / 2;
 }
 
 /** How many shapes a bulleted list cycles through before repeating. */

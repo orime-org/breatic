@@ -38,13 +38,12 @@ import {
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { holdsBlocks } from '@web/spaces/document/document-table-nodes';
 
 /** A drag this module draws the preview of. */
 export type SelectionDragKind = 'caption' | 'selection';
 
 /** BlockNote's group of blocks. */
-const BLOCK_GROUP = 'blockGroup';
 
 /**
  * Which drag a dragstart in the body is, of the two this module draws.
@@ -90,7 +89,7 @@ function touchedBlocks(doc: PMNode, from: number, to: number): number[] {
   let depth = $from.sharedDepth($to.pos);
   // A table cell holds blocks the way a group does: a range in one cell
   // touches that cell's blocks.
-  while (depth > 0 && $from.node(depth).type.name !== BLOCK_GROUP && !isTableCell($from.node(depth))) depth -= 1;
+  while (depth > 0 && !holdsBlocks($from.node(depth))) depth -= 1;
   const group = $from.node(depth);
   if (group.childCount === 0) return [];
   const first = Math.min($from.index(depth), group.childCount - 1);

@@ -291,7 +291,7 @@ export function setCellsAttr(
   value: unknown,
 ): void {
   runOnTable(editor, cellPos, (tr, at) => {
-    const cells = at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+    const cells = scopeCells(at, scope);
     writeCellsAttr(tr, cells, name, value);
   });
 }
@@ -335,6 +335,16 @@ function scopeRect(
 }
 
 /**
+ * The positions before the cells of a scope around a cell.
+ * @param at - The cell, placed in its table.
+ * @param scope - Its row, its column, or the cell alone.
+ * @returns The positions.
+ */
+function scopeCells(at: CellAt, scope: CellScope): number[] {
+  return at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+}
+
+/**
  * The cells a command written to a scope reaches, from one cell in it.
  * @param doc - The document.
  * @param cellPos - The position before the cell.
@@ -344,7 +354,7 @@ function scopeRect(
 export function cellsOfScope(doc: PMNode, cellPos: number, scope: CellScope): number[] {
   const at = cellAt(doc, cellPos);
   if (at === null) return [];
-  return at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+  return scopeCells(at, scope);
 }
 
 /**
@@ -377,7 +387,7 @@ export function blocksInCells(doc: PMNode, cells: readonly number[]): BlockUnder
  */
 export function alignCellsAt(editor: TableEditor, cellPos: number, scope: CellScope, alignment: Alignment): void {
   runOnTable(editor, cellPos, (tr, at) => {
-    const cells = at.map.cellsInRect(scopeRect(at, scope)).map((rel) => at.tableStart + rel);
+    const cells = scopeCells(at, scope);
     writeAlignment(tr, blocksInCells(tr.doc, cells), alignment);
   });
 }

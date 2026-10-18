@@ -33,7 +33,7 @@ import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as copying reads it. */
 type CopyEditor = BlockNoteEditor<never, never, never>;
@@ -52,12 +52,8 @@ interface Clipped {
  */
 function oneCellDepth(selection: Selection): number {
   const { $from, $to } = selection;
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    if (isTableCell($from.node(depth))) {
-      return $to.depth >= depth && $to.node(depth) === $from.node(depth) ? depth : -1;
-    }
-  }
-  return -1;
+  const depth = cellDepthOf($from);
+  return depth > 0 && $to.depth >= depth && $to.node(depth) === $from.node(depth) ? depth : -1;
 }
 
 /**

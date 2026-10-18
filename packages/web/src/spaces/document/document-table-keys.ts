@@ -34,7 +34,7 @@ import {
   goToNextCell,
   isInTable,
 } from '@tiptap/pm/tables';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -151,18 +151,6 @@ function containerDepth($pos: ResolvedPos): number {
 
 
 /**
- * The innermost cell around a position.
- * @param $pos - The position.
- * @returns The cell's depth, or -1 outside any cell.
- */
-function cellDepth($pos: ResolvedPos): number {
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    if (isTableCell($pos.node(depth))) return depth;
-  }
-  return -1;
-}
-
-/**
  * Backspace at the start of a block where the body's own would reach across
  * a cell's or a table's edge (design 5.3):
  *
@@ -191,12 +179,12 @@ function backspaceAtEdge(view: EditorView): boolean {
     }
     return true;
   }
-  if (cellDepth($head) > 0) return false;
+  if (cellDepthOf($head) > 0) return false;
   // What a selection can stand on before the block is in a table's cell only
   // when a table ends right before it: a divider or a picture between them is
   // a block of its own, which the body's Backspace takes.
   const inTable = Selection.findFrom(view.state.doc.resolve($head.before(depth)), -1);
-  if (inTable === null || cellDepth(inTable.$head) < 0) return false;
+  if (inTable === null || cellDepthOf(inTable.$head) < 0) return false;
   view.dispatch(view.state.tr.setSelection(inTable).scrollIntoView());
   return true;
 }
@@ -214,11 +202,11 @@ function deleteAtEdge(view: EditorView): boolean {
   const { $head } = selection;
   if ($head.parentOffset !== $head.parent.content.size) return false;
   const next = Selection.findFrom(doc.resolve($head.after()), 1);
-  const cell = cellDepth($head);
+  const cell = cellDepthOf($head);
   if (cell > 0) return next === null || next.from > $head.end(cell);
   // Outside a cell, what a selection can stand on next is in a cell only when
   // a table starts right after the block.
-  return next !== null && cellDepth(next.$head) > 0;
+  return next !== null && cellDepthOf(next.$head) > 0;
 }
 
 /**

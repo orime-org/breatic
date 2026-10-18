@@ -22,7 +22,7 @@
 
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
-import { Slice, type Fragment, type Node as PMNode } from '@tiptap/pm/model';
+import { Slice, type Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { flushSync } from 'react-dom';
@@ -64,6 +64,27 @@ export function isTableCell(node: PMNode): boolean {
 }
 
 /**
+ * Whether a node holds blocks as a body does: a block group or a table cell.
+ * @param node - The node.
+ * @returns True for either.
+ */
+export function holdsBlocks(node: PMNode): boolean {
+  return node.type.name === 'blockGroup' || isTableCell(node);
+}
+
+/**
+ * The innermost table cell around a position.
+ * @param $pos - The position.
+ * @returns The cell's depth, or -1 outside any cell.
+ */
+export function cellDepthOf($pos: ResolvedPos): number {
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    if (isTableCell($pos.node(depth))) return depth;
+  }
+  return -1;
+}
+
+/**
  * Whether the block a block id names stands in a table cell.
  * @param doc - The document.
  * @param blockId - The block.
@@ -73,10 +94,7 @@ export function blockInTableCell(doc: PMNode, blockId: string): boolean {
   let inCell = false;
   doc.descendants((node, pos) => {
     if (node.attrs['id'] !== blockId) return !inCell;
-    const $pos = doc.resolve(pos);
-    for (let depth = $pos.depth; depth > 0; depth -= 1) {
-      if (isTableCell($pos.node(depth))) inCell = true;
-    }
+    inCell = cellDepthOf(doc.resolve(pos)) > 0;
     return false;
   });
   return inCell;

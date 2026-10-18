@@ -38,7 +38,7 @@ import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { syncBindingOf, type SyncBound } from '@web/spaces/document/document-link-tracking';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { holdsBlocks } from '@web/spaces/document/document-table-nodes';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
@@ -192,7 +192,7 @@ export function blockGapAt(doc: PMNode, pos: number): number {
   const $at = doc.resolve(Math.min(Math.max(pos, 1), doc.content.size - 1));
   for (let depth = $at.depth; depth > 0; depth -= 1) {
     const holder = $at.node(depth);
-    if (holder.type.name !== 'blockGroup' && !isTableCell(holder)) continue;
+    if (!holdsBlocks(holder)) continue;
     if (depth === $at.depth) return $at.pos;
     const row = $at.node(depth + 1);
     const children = row.lastChild;
