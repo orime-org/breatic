@@ -209,13 +209,14 @@ export interface AskSettlement {
  * @param row.forModel - Its copy of what was sent, if any.
  * @param toolCallId - The waiting call.
  * @param settlement - What it is settled with.
+ * @returns The row as it now stands.
  */
 async function settleInRow(
   tx: DbTx,
   row: { id: string; parts: MessagePart[]; forModel: unknown },
   toolCallId: string,
   settlement: AskSettlement,
-): Promise<void> {
+): Promise<{ id: string; parts: MessagePart[]; forModel: unknown }> {
   const parts = row.parts.map((part) =>
     part.type === "tool" && part.toolCallId === toolCallId ? { ...part, status: "success" as const, output: settlement.output } : part,
   );
@@ -223,29 +224,31 @@ async function settleInRow(
   const forModel =
     kept && Array.isArray(kept.messages) ? { ...kept, messages: [...kept.messages, settlement.forModel] } : kept;
   await tx.update(conversationMessages).set({ parts, forModel }).where(eq(conversationMessages.id, row.id));
+  return { id: row.id, parts, forModel };
 }
 
 /**
- * Append the reader's message and, in the same transaction, settle the
- * question the agent is waiting on in this conversation, if there is one.
+ * Append the reader's message and, in the same transaction, settle every
+ * question the agent is waiting on in this conversation.
  *
- * A message written instead of answering the card closes the card: the
- * waiting call is in the newest reply, because any later turn would already
- * have closed it.
+ * A message written instead of answering a card closes the card. Every
+ * waiting call is closed, wherever its row sits: with two tabs open, a card
+ * can be stored after a turn another tab started, and a call left without a
+ * result makes every later request in the conversation fail.
  * @param id - Conversation UUID.
  * @param message - The reader's message.
  * @param settle - The settlement for a waiting call, given its id.
- * @returns The turn index the message opened, and the call it closed if any.
+ * @returns The turn index the message opened, and the calls it closed.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
 export async function addReaderMessage(
   id: string,
   message: MessageInput,
   settle: (toolCallId: string) => AskSettlement,
-): Promise<{ turnIndex: number; closedAsk: string | null }> {
+): Promise<{ turnIndex: number; closedAsks: string[] }> {
   return db.transaction(async (tx) => {
     const turnIndex = await insertIn(tx, id, message);
-    const [newest] = await tx
+    const asking = await tx
       .select({ id: conversationMessages.id, parts: conversationMessages.parts, forModel: conversationMessages.forModel })
       .from(conversationMessages)
       .where(
@@ -253,15 +256,21 @@ export async function addReaderMessage(
           eq(conversationMessages.conversationId, id),
           eq(conversationMessages.role, "assistant"),
           isNull(conversationMessages.deletedAt),
+          sql`${conversationMessages.parts} @> ${JSON.stringify([{ status: "awaiting" }])}::jsonb`,
         ),
       )
-      .orderBy(desc(conversationMessages.turnIndex), desc(conversationMessages.seq))
-      .limit(1)
+      .orderBy(conversationMessages.turnIndex, conversationMessages.seq)
       .for("update");
-    const waiting = newest?.parts.find((part) => part.type === "tool" && part.status === "awaiting");
-    if (newest === undefined || waiting?.type !== "tool") return { turnIndex, closedAsk: null };
-    await settleInRow(tx, newest, waiting.toolCallId, settle(waiting.toolCallId));
-    return { turnIndex, closedAsk: waiting.toolCallId };
+    const closedAsks: string[] = [];
+    for (const row of asking) {
+      let current = row;
+      for (const part of row.parts) {
+        if (part.type !== "tool" || part.status !== "awaiting") continue;
+        current = await settleInRow(tx, current, part.toolCallId, settle(part.toolCallId));
+        closedAsks.push(part.toolCallId);
+      }
+    }
+    return { turnIndex, closedAsks };
   });
 }
 

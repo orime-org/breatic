@@ -394,6 +394,29 @@ describe("writing a message instead", () => {
     expect(resultAt).toBeLessThan(saidAt);
   });
 
+  it("closes a card stored behind a later turn, so the conversation can still be sent", async () => {
+    // Two tabs: the asking row lands after a turn another tab started, so it
+    // is not the newest reply when the next message arrives.
+    const chat = await askedIn("ask-late");
+    await sql`
+      INSERT INTO conversation_messages (conversation_id, user_id, turn_index, seq, role, parts)
+      VALUES
+        (${chat.conversationId}, ${chat.userId}, 2, 0, 'user', ${sql.json([{ type: "text", text: "from the other tab" }])}),
+        (${chat.conversationId}, ${chat.userId}, 2, 1, 'assistant', ${sql.json([{ type: "text", text: "sure" }])})
+    `;
+    model.calls = [];
+    const { status, chunks } = await post(chat, { message: "and now this" });
+
+    expect(status).toBe(200);
+    expect(chunks).toContainEqual(expect.objectContaining({ type: "data-ask-replied", data: { toolCallId: "ask-late" } }));
+    expect(chunks.some((c) => c.type === "error")).toBe(false);
+    expect(model.calls).toHaveLength(1);
+    expect(askPart(await storedRows(chat.conversationId), "ask-late")).toMatchObject({
+      status: "success",
+      output: { repliedInChat: true },
+    });
+  });
+
   it("closes the card, so an answer arriving after it is refused", async () => {
     const chat = await askedIn("ask-8");
     await post(chat, { message: "never mind, something else" });

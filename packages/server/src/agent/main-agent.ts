@@ -57,8 +57,8 @@ type Opening =
       kind: "message";
       clockNote: string;
       turn: UserTurn;
-      /** The questionnaire this message closed instead of answering it, if any. */
-      closedAsk: string | null;
+      /** The questionnaires this message closed instead of answering them. */
+      closedAsks: string[];
     }
   | {
       kind: "answer";
@@ -142,10 +142,10 @@ export class MainAgent {
     // retries — see domain/src/credit/creditLot.service.ts
     // `chargeOnceForGeneration`.
     //
-    // A questionnaire the turn before stopped at is closed by this message, in
-    // the same transaction: its result says the reader wrote a message
-    // instead, and is kept beside the call in the row that asked.
-    const { turnIndex, closedAsk } = await messageRepo.addReaderMessage(
+    // Every questionnaire still waiting is closed by this message, in the
+    // same transaction: its result says the reader wrote a message instead,
+    // and is kept beside the call in the row that asked.
+    const { turnIndex, closedAsks } = await messageRepo.addReaderMessage(
       conversationId,
       {
         role: "user",
@@ -184,7 +184,7 @@ export class MainAgent {
       kind: "message",
       clockNote: readerClockNote(new Date(), timeZone),
       turn: { ...space, chips: attached, message: said },
-      closedAsk,
+      closedAsks,
     };
     return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal);
   }
@@ -763,9 +763,9 @@ export class MainAgent {
         if (title !== null) {
           writer.write({ type: "data-conversation-titled", data: { title } });
         }
-        // The card a message closed, so the panel shows it as replied to.
-        if (opening.kind === "message" && opening.closedAsk !== null) {
-          writer.write({ type: "data-ask-replied", data: { toolCallId: opening.closedAsk } });
+        // The cards a message closed, so the panel shows them as replied to.
+        if (opening.kind === "message") {
+          for (const toolCallId of opening.closedAsks) writer.write({ type: "data-ask-replied", data: { toolCallId } });
         }
         writer.merge(await askTheModel(writer));
       },

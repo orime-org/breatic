@@ -58,7 +58,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 7),
-  addReaderMessage: vi.fn(async () => ({ turnIndex: 7, closedAsk: null })),
+  addReaderMessage: vi.fn(async () => ({ turnIndex: 7, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
