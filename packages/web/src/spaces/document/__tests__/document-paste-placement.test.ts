@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection } from '@tiptap/pm/state';
 
 import { serializeClipboard, type ClipboardNode } from '@web/spaces/canvas/node-clipboard';
@@ -450,6 +451,36 @@ describe('the line opened for the caret, in a quote', () => {
     pasteFormats(editor, { 'text/html': `<img src="${PIC}">`, 'text/plain': '' });
     await settled();
     expect(lines(editor)).toEqual(['paragraph[q]:a', `image(${PIC})[q]`, 'paragraph[q]:', `image(${OURS}q.png)[q]`]);
+  });
+});
+
+describe('content holding a medium, pasted with the caret in the gap between two pictures', () => {
+  /**
+   * Opens two pictures with the caret in the gap between them, where an
+   * arrow key from the second one puts it.
+   * @returns The editor.
+   */
+  function gap(): Editor {
+    const editor = open([{ type: 'image', props: { url: `${OURS}a.png` } }, { type: 'image', props: { url: `${OURS}b.png` } }]);
+    const view = editor.prosemirrorView;
+    let second = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image' && String(node.attrs['url']).endsWith('b.png')) second = pos - 1;
+      return second < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(new GapCursor(view.state.doc.resolve(second))));
+    view.focus();
+    return editor;
+  }
+
+  it.each(SOURCES)('lands there, from %s', async (_source, put, img) => {
+    const editor = gap();
+    put(editor, [W, P]);
+    await settled();
+    expect({ lines: lines(editor), caret: caret(editor) }).toEqual({
+      lines: [`image(${OURS}a.png)`, 'paragraph:w', img(PIC), 'paragraph:', `image(${OURS}b.png)`],
+      caret: '@0',
+    });
   });
 });
 

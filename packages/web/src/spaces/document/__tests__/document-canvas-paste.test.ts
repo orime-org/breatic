@@ -123,6 +123,12 @@ describe('what each node becomes', () => {
     expect(plan.notPasted).toBe(2);
   });
 
+  it('a text node of empty lines alone counts as not pasted', () => {
+    const plan = planCanvasPaste(payload(node('t', 'text', 0, 0, { body: body('', '') })));
+    expect(plan.items).toEqual([]);
+    expect(plan.notPasted).toBe(1);
+  });
+
   it('an external address that cannot be fetched counts as not pasted', () => {
     const plan = planCanvasPaste(
       payload(node('x', 'image', 0, 0, { name: 'Plain', content: 'http://imgs.example/x.jpg' }, { external: true })),

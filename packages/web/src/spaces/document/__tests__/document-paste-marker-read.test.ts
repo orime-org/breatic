@@ -11,7 +11,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 
-import { OURS, caretIn, open, paste, settled, unmountAll, type Editor, type Sink } from './paste-harness';
+import { OURS, caretIn, open, paste, positionOf, select, settled, unmountAll, type Editor, type Sink } from './paste-harness';
 
 afterEach(unmountAll);
 
@@ -185,6 +185,29 @@ describe('a video or an audio given only by its sources', () => {
     const { editor, sink } = await read(html);
     expect(tree(editor)).toEqual([block, 'paragraph:end']);
     expect(told(sink)).toBe(0);
+  });
+});
+
+describe('an empty line written as a line break, beside a medium', () => {
+  it('is an empty line: nothing joins the words after the caret', async () => {
+    const { editor } = open([{ type: 'paragraph', content: 'abcd' }]);
+    select(editor, positionOf(editor, 'abcd', 2));
+    paste(editor, `<p><img src="${A}"></p><p><br></p>`, '');
+    await settled();
+    expect(tree(editor)).toEqual(['paragraph:ab', `image(${A}||)`, 'paragraph:cd']);
+  });
+
+  it('puts nothing in a code block', async () => {
+    const { editor } = open([{ type: 'codeBlock', content: 'x = 1' }, { type: 'paragraph', content: 'after' }]);
+    caretIn(editor, 0);
+    paste(editor, `<p><img src="${A}"></p><p><br></p>`, '');
+    await settled();
+    expect(tree(editor)).toEqual(['codeBlock:x = 1', `image(${A}||)`, 'paragraph:after']);
+  });
+
+  it('keeps a break between words', async () => {
+    const { tree: lines } = { tree: tree((await read(`<p>a<br>b<br></p><img src="${A}">`)).editor) };
+    expect(lines).toEqual(['paragraph:a\nb', `image(${A}||)`, 'paragraph:end']);
   });
 });
 
