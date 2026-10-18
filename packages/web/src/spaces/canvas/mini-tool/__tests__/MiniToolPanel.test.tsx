@@ -281,6 +281,29 @@ describe('MiniToolPanel', () => {
       expect(props.onParams).toHaveBeenLastCalledWith({ value: { ...defaultAdjustValue, exposure: 1 } });
     });
 
+    // Lightroom and Camera Raw split the same channels into titled groups.
+    it('lays the sliders out in Light, Color, Detail and Effects, every channel once', () => {
+      mount({ spec: tool(id), params: {}, source });
+      const groups = screen.getAllByTestId(/^mini-tool-adjust-group-/);
+      expect(groups.map((group) => group.dataset.testid)).toEqual([
+        'mini-tool-adjust-group-light',
+        'mini-tool-adjust-group-color',
+        'mini-tool-adjust-group-detail',
+        'mini-tool-adjust-group-effects',
+      ]);
+      const fields = groups.map((group) =>
+        Array.from(group.querySelectorAll('[data-testid$="-slider"]'), (el) => el.getAttribute('data-testid')!.replace(/^mini-tool-adjust-|-slider$/g, '')),
+      );
+      expect(fields).toEqual([
+        ['exposure', 'highlights', 'shadows', 'contrast'],
+        ['saturation', 'vibrance', 'temperature', 'tint', 'hue'],
+        ['sharpness', 'noiseReduction', 'clarity'],
+        ['vignette', 'grain', 'fade'],
+      ]);
+      expect(fields.flat().sort()).toEqual(Object.keys(defaultAdjustValue).sort());
+      expect(groups.map((group) => group.querySelector('h3')?.textContent)).toEqual(['Light', 'Color', 'Detail', 'Effects']);
+    });
+
     it('puts every slider back to zero from Reset', () => {
       const props = mount({ spec: tool(id), params: { value: { ...defaultAdjustValue, exposure: 40 } }, source });
       fireEvent.click(screen.getByTestId('mini-tool-adjust-reset'));

@@ -6,10 +6,10 @@
  * resizes one (inner#1303 §6.2).
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { Point, util } from 'fabric';
 
-import { fromFabric, markBackground, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
+import { fromFabric, loadMarkFonts, markBackground, markStrokePx, toFabric } from '@web/spaces/canvas/mini-tool/mark-fabric';
 import type { MarkObject } from '@web/stores/mark-draft';
 
 const BOX = { width: 400, height: 300 };
@@ -106,5 +106,56 @@ describe('markBackground', () => {
 describe('markStrokePx', () => {
   it('draws a size as a share of the shorter side, so preview and export match', () => {
     expect(markStrokePx(8, { width: 400, height: 300 }) * (3000 / 300)).toBeCloseTo(markStrokePx(8, { width: 4000, height: 3000 }), 6);
+  });
+});
+
+// The product's tokens, as the page's root holds them.
+const TOKENS = {
+  '--color-background': 'rgb(240, 240, 240)',
+  '--color-foreground': 'rgb(30, 30, 30)',
+  '--color-active-border': 'rgb(95, 95, 95)',
+  '--font-sans': 'Inter, "Noto Sans SC", sans-serif',
+};
+
+describe('the markup’s look on the page', () => {
+  beforeEach(() => {
+    for (const [name, value] of Object.entries(TOKENS)) document.documentElement.style.setProperty(name, value);
+  });
+  afterEach(() => {
+    for (const name of Object.keys(TOKENS)) document.documentElement.style.removeProperty(name);
+  });
+
+  // The crop and expand frames draw an 8px dot filled with the background and
+  // ringed with the foreground; a markup object resizes freely, so its
+  // handles are round as theirs are at a free ratio.
+  it.each(OBJECTS.map((object) => [object.kind, object] as const))('gives a %s the product’s handles', (_kind, object) => {
+    const shape = toFabric(object, BOX);
+    expect(shape).toMatchObject({
+      cornerStyle: 'circle',
+      cornerSize: 8,
+      transparentCorners: false,
+      cornerColor: TOKENS['--color-background'],
+      cornerStrokeColor: TOKENS['--color-foreground'],
+      borderColor: TOKENS['--color-active-border'],
+    });
+  });
+
+  it('writes a text in the product’s sans', () => {
+    const text = toFabric(OBJECTS[5]!, BOX) as unknown as { fontFamily: string; fontWeight: number | string };
+    expect(text.fontFamily).toBe(TOKENS['--font-sans']);
+    expect(Number(text.fontWeight)).toBe(500);
+  });
+
+  // A face the page has not loaded is drawn and measured in another one.
+  it('loads the face of every text before it is drawn', async () => {
+    const load = vi.fn(() => Promise.resolve([]));
+    vi.stubGlobal('document', Object.assign(Object.create(document), { fonts: { load }, documentElement: document.documentElement }));
+    try {
+      await loadMarkFonts(OBJECTS, BOX);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledWith(expect.stringContaining(TOKENS['--font-sans']), 'eye wider');
   });
 });

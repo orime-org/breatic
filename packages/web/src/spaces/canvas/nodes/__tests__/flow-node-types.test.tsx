@@ -405,7 +405,7 @@ function StoreGrabber(): null {
  * @param zoom - Canvas zoom to put in the xyflow store; its default when absent.
  * @returns Nothing; assert against the screen.
  */
-function renderImage(data: Record<string, unknown>, zoom?: number): void {
+function renderImage(data: Record<string, unknown>, zoom?: number, selected = false): void {
   const Image = FLOW_NODE_TYPES.image;
   render(
     // The app hangs one tooltip provider at its root; the counts column
@@ -416,7 +416,7 @@ function renderImage(data: Record<string, unknown>, zoom?: number): void {
         <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
           deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
           reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
-          <Image {...({ id: 'n1', type: 'image', data, selected: false } as unknown as NodeProps)} />
+          <Image {...({ id: 'n1', type: 'image', data, selected } as unknown as NodeProps)} />
         </CanvasActionsContext.Provider>
       </ReactFlowProvider>
     </TooltipProvider>,
@@ -510,6 +510,23 @@ describe('the counts while a tool is open on the node', () => {
     canvasSessions.of('').getState().openMiniTool('n1', 'image.crop', { sourceContent: ONE_OF_EACH.content, params: {} });
     renderImage(ONE_OF_EACH);
     expect(screen.getByTestId('node-task-counts-anchor')).toBeInTheDocument();
+  });
+
+  // The expand frame draws its own edge and eight grips on the node's border;
+  // the node's selected border and connection dots there would be a second
+  // edge and a second grip at the same place.
+  it('leaves the node’s edge and grips to the expand frame', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.expand', { sourceContent: ONE_OF_EACH.content, params: {} });
+    renderImage(ONE_OF_EACH, undefined, true);
+    expect(document.querySelector('[data-selected]')).toHaveAttribute('data-selected', 'false');
+    expect(screen.queryAllByTestId('handle-dot')).toHaveLength(0);
+  });
+
+  it('keeps the node’s edge and grips beside a tool that keeps to the node', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.crop', { sourceContent: ONE_OF_EACH.content, params: {} });
+    renderImage(ONE_OF_EACH, undefined, true);
+    expect(document.querySelector('[data-selected]')).toHaveAttribute('data-selected', 'true');
+    expect(screen.queryAllByTestId('handle-dot').length).toBeGreaterThan(0);
   });
 });
 
