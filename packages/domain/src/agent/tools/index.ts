@@ -7,7 +7,7 @@
 import type { Tool } from "ai";
 import { env } from "@breatic/core";
 
-import { makeAskUserTool } from "@domain/agent/tools/ask-user.js";
+import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
 import {
   ASK_USER,
@@ -41,7 +41,18 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * importers and nothing consults it, so a guard standing on that list would
  * miss any tool registered here without also being re-exported.
  */
-export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
+/**
+ * What a turn knows that a tool needs when it is built.
+ *
+ * Optional at every build site: a tool built without it (a test, a probe)
+ * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
+ */
+export type ToolContext = AskUserContext;
+
+/** The context a tool gets when its caller has none: no media is vouched for. */
+export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
+
+export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>> = {
   // How to build each tool for one turn. A tool that carries state for the
   // length of a turn -- the search tools share one space of citation numbers
   // -- gets a fresh one per turn from here, and a tool that carries none
@@ -52,7 +63,7 @@ export const TOOL_MAP: Readonly<Record<string, () => Tool>> = {
   // than the string: the lists below and the turn's own test for whether to
   // wait for an answer read the same one, so there is no second spelling of
   // it to keep in step.
-  [ASK_USER]: () => makeAskUserTool(),
+  [ASK_USER]: (context = NO_TOOL_CONTEXT) => makeAskUserTool(context),
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
@@ -160,6 +171,7 @@ function isConfigured(name: string): boolean {
  * Unknown names are skipped, and so are tools whose required configuration is
  * missing — see `TOOL_REQUIREMENTS`.
  * @param toolNames - Array of tool name strings to include.
+ * @param context - What the turn knows that a tool needs when it is built.
  * @returns A `Record<string, Tool>` suitable for the AI SDK `tools` option.
  * @example
  * ```ts
@@ -167,16 +179,19 @@ function isConfigured(name: string): boolean {
  * const tools = buildToolSet(BASELINE_TOOLS);
  * ```
  */
-export function buildToolSet(toolNames: readonly string[]): Record<string, Tool> {
+export function buildToolSet(
+  toolNames: readonly string[],
+  context: ToolContext = NO_TOOL_CONTEXT,
+): Record<string, Tool> {
   const result: Record<string, Tool> = {};
   for (const name of toolNames) {
     const build = TOOL_MAP[name];
-    if (build && isConfigured(name)) result[name] = build();
+    if (build && isConfigured(name)) result[name] = build(context);
   }
   return result;
 }
 
-export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
+export type { AskUserContext } from "@domain/agent/tools/ask-user.js";
 
 export {
   makeAskUserTool,

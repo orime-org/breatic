@@ -20,6 +20,7 @@ import {
   BASELINE_TOOLS,
   CANVAS_TOOLS,
   buildToolSet,
+  type ToolContext,
 } from "@domain/agent/tools/index.js";
 
 /** What a caller tells the factory about the run it is about to start. */
@@ -33,6 +34,8 @@ export interface AgentConfigRequest {
   basePrompt: string;
   /** The conversation and project layers, when the caller has any. */
   memoryContext?: MemoryContext;
+  /** What the turn knows that a tool needs when it is built. */
+  toolContext?: ToolContext;
 }
 
 /** The three things, resolved. */
@@ -59,7 +62,7 @@ export interface ResolvedAgentConfig {
 export function buildAgentConfig(
   request: AgentConfigRequest,
 ): ResolvedAgentConfig {
-  const { basePrompt, memoryContext } = request;
+  const { basePrompt, memoryContext, toolContext } = request;
 
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
 
@@ -72,6 +75,6 @@ export function buildAgentConfig(
         ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }
         : {}),
     },
-    tools: buildToolSet(toolNames),
+    tools: buildToolSet(toolNames, toolContext),
   };
 }

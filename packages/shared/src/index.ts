@@ -513,6 +513,16 @@ export {
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
+  answersMismatch,
+  ASK_USER_MAX_OPTIONS,
+  ASK_USER_MAX_QUESTIONS,
+  ASK_USER_OTHER_MAX_CHARS,
+  askUserAnswerSchema,
+  askUserInputSchema,
+  readQuestionnaire,
+} from "@shared/agent/ask-user.js";
+export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from "@shared/agent/ask-user.js";
+export {
   carrying,
   FAILURE_LINES,
   isReaderLine,

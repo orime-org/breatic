@@ -144,8 +144,12 @@ export type MessagePart =
        * model needs to see to correct itself.
        */
       input: Record<string, unknown> | string;
-      /** How far this use of the tool got. */
-      status: "pending" | "success" | "error";
+      /**
+       * How far this use of the tool got. `awaiting` is an `ask_user` call
+       * the reader has not answered yet: the turn stopped at it, and the
+       * answer comes back as its result in a later request (inner#1542).
+       */
+      status: "pending" | "awaiting" | "success" | "error";
       /**
        * What the tool returned, as the tool returned it -- what the panel
        * draws from.
