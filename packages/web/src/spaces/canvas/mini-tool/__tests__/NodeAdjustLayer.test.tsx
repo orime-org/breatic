@@ -8,6 +8,7 @@
  */
 
 import { act, render, screen } from '@testing-library/react';
+import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const drawing = vi.hoisted(() => ({
@@ -33,16 +34,22 @@ const NODE = { id: 'n1', kind: 'img' as const, src: 'https://cdn/a.png' };
 /** The session store the canvas under test reads. */
 const store = () => canvasSessions.of('').getState();
 
-/** Frames asked for and not yet run. */
-let frames: FrameRequestCallback[] = [];
+/** Frames asked for and not yet run or cancelled, by id. */
+let frames = new Map<number, FrameRequestCallback>();
+let nextFrame = 0;
 
 beforeEach(() => {
   installLayout();
   canvasSessions.clear();
   drawing.drawAdjustedPreview.mockClear();
-  frames = [];
-  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => frames.push(cb));
-  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  drawing.releasePreviewBackend.mockClear();
+  frames = new Map();
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+    nextFrame += 1;
+    frames.set(nextFrame, cb);
+    return nextFrame;
+  });
+  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
 });
 
 afterEach(() => {
@@ -59,8 +66,8 @@ async function pictureLoaded(): Promise<void> {
 
 /** Run the frames asked for so far. */
 function flushFrames(): void {
-  const due = frames;
-  frames = [];
+  const due = [...frames.values()];
+  frames = new Map();
   act(() => due.forEach((cb) => cb(0)));
 }
 
@@ -142,8 +149,8 @@ describe('NodeAdjustLayer', () => {
     expect(screen.getByTestId('mini-tool-adjust-layer')).toHaveClass('invisible');
   });
 
-  // The preview is drawn at the pixels the node takes on screen, so zooming
-  // in shows what the export will do to fine detail.
+  // The layer asks for the pixels the node takes on screen and previewFrame
+  // picks the shrink, so zooming in shows what the export does to fine detail.
   it('asks for the size the node shows on screen', async () => {
     mount('image.adjust', { value: { ...defaultAdjustValue, sharpness: 50 } }, 2);
     await pictureLoaded();
@@ -180,16 +187,68 @@ describe('NodeAdjustLayer', () => {
     expect(layer.parentElement).toHaveStyle({ width: '400px', height: '300px' });
   });
 
-  // A preview past the shared square holds a WebGL backend of its own; the
-  // browser grants only a few contexts, so it goes with the layer.
-  it('lets the preview’s own backend go when the layer goes', async () => {
-    const { unmount } = render(cropCanvas([NODE], null, 1));
+  // A preview past the shared square holds a WebGL backend of its own, and
+  // the browser grants only a few contexts; the layer that drew it lets it go
+  // when its picture adjust closes (§6.1).
+  it('lets the preview’s own backend go when the panel closes', async () => {
+    mount('image.adjust', { value: defaultAdjustValue });
+    await pictureLoaded();
+    flushFrames();
+    await pictureLoaded();
+    expect(drawing.releasePreviewBackend).not.toHaveBeenCalled();
+    act(() => store().closePanelOn('n1', 'miniTool'));
+    expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets go of a backend a draw still in flight makes after the panel closes', async () => {
+    let finish: (drew: Awaited<ReturnType<typeof drawing.drawAdjustedPreview>>) => void = () => undefined;
+    drawing.drawAdjustedPreview.mockReturnValueOnce(new Promise((done) => (finish = done)));
+    mount('image.adjust', { value: defaultAdjustValue });
+    await pictureLoaded();
+    flushFrames();
+    act(() => store().closePanelOn('n1', 'miniTool'));
+    drawing.releasePreviewBackend.mockClear();
+    await act(async () => finish({ size: { width: 400, height: 300 }, frame: { width: 400, height: 300 } }));
+    expect(drawing.releasePreviewBackend).toHaveBeenCalledTimes(1);
+  });
+
+  // Every node mounts a layer; one with no picture adjust open holds nothing.
+  it('leaves the open preview’s backend alone when another node goes', async () => {
+    const other = { id: 'n2', kind: 'img' as const, src: 'https://cdn/b.png' };
+    const { rerender } = render(cropCanvas([NODE, other], null, 1));
     act(() => store().openMiniTool('n1', 'image.adjust', { sourceContent: NODE.src, params: { value: defaultAdjustValue } }));
     await pictureLoaded();
     flushFrames();
-    drawing.releasePreviewBackend.mockClear();
-    unmount();
-    expect(drawing.releasePreviewBackend).toHaveBeenCalled();
+    await pictureLoaded();
+    rerender(cropCanvas([NODE], null, 1));
+    expect(drawing.releasePreviewBackend).not.toHaveBeenCalled();
+  });
+
+  // A Space tab hidden with a frame asked for cancels it; shown again, the
+  // sliders still draw.
+  it('draws again after its Space tab is hidden and shown with a frame pending', async () => {
+    const shown = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      <React.Activity mode={mode}>{cropCanvas([NODE], null, 1)}</React.Activity>
+    );
+    const { rerender } = render(shown('visible'));
+    act(() => store().openMiniTool('n1', 'image.adjust', { sourceContent: NODE.src, params: { value: defaultAdjustValue } }));
+    await pictureLoaded();
+    flushFrames();
+    await pictureLoaded();
+    act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 10 }));
+    rerender(shown('hidden'));
+    rerender(shown('visible'));
+    await pictureLoaded();
+    drawing.drawAdjustedPreview.mockClear();
+    flushFrames();
+    act(() => store().setMiniToolParam('value', { ...defaultAdjustValue, contrast: 30 }));
+    flushFrames();
+    expect(drawing.drawAdjustedPreview).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ contrast: 30 }),
+      expect.anything(),
+    );
   });
 
   it('draws nothing for another tool', () => {

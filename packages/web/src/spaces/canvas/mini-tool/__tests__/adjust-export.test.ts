@@ -16,6 +16,7 @@ import {
   assertCanExport,
   backendSides,
   drawAdjusted,
+  drawAdjustedPreview,
   drawableSize,
   exportBackendSide,
   liveSharedBackend,
@@ -27,6 +28,28 @@ import {
   releasePreviewBackend,
 } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { adjustFilters } from '@web/spaces/canvas/mini-tool/adjust-filters';
+
+// Fabric's backend calls, swapped for a fake where a test sets one.
+const graphicsStub = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
+vi.mock('fabric', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const pick = (name: string): unknown => graphicsStub.current?.[name] ?? actual[name];
+  return {
+    ...actual,
+    get getFilterBackend() {
+      return pick('getFilterBackend');
+    },
+    get initFilterBackend() {
+      return pick('initFilterBackend');
+    },
+    get setFilterBackend() {
+      return pick('setFilterBackend');
+    },
+    get WebGLFilterBackend() {
+      return pick('WebGLFilterBackend');
+    },
+  };
+});
 
 vi.mock('@web/spaces/canvas/mini-tool/adjust-filters', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/spaces/canvas/mini-tool/adjust-filters')>();
@@ -228,27 +251,42 @@ describe('shapedBackend', () => {
 // A preview past the shared square draws through a backend of its own shape,
 // as an export does, so a large picture zoomed in to 1:1 is not halved.
 describe('previewBackend', () => {
-  afterEach(() => releasePreviewBackend());
+  afterEach(() => {
+    releasePreviewBackend();
+    graphicsStub.current = null;
+  });
 
   /**
    * Fabric's backend calls over a live shared square of 4096, on graphics
-   * that take 16384, making shaped backends on demand.
+   * that take 16384, making shaped backends on demand whose buffers are what
+   * they asked for.
    * @returns The calls, the shared backend and the shaped ones made.
    */
   const graphics = () => {
     const shared = { tileSize: 4096, gl: { ...liveGl(4096), MAX_TEXTURE_SIZE: 0x0d33, getParameter: () => 16384 } };
-    const made: { size: [number, number]; released: boolean }[] = [];
+    const made: { size: [number, number]; released: boolean; lost: boolean; filtered: number }[] = [];
     class Backend {
-      record = { size: [0, 0] as [number, number], released: false };
+      record = { size: [0, 0] as [number, number], released: false, lost: false, filtered: 0 };
       gl = {
         getExtension: () => ({ loseContext: () => undefined }),
-        isContextLost: () => this.record.released,
+        isContextLost: () => this.record.released || this.record.lost,
+        deleteTexture: vi.fn(),
+        drawingBufferWidth: 0,
+        drawingBufferHeight: 0,
+        canvas: { width: 0, height: 0 },
       };
       constructor(readonly options: { tileSize: number }) {
         made.push(this.record);
       }
       setupGLContext(width: number, height: number): void {
         this.record.size = [width, height];
+        this.gl.drawingBufferWidth = width;
+        this.gl.drawingBufferHeight = height;
+        this.gl.canvas = { width, height };
+      }
+      applyFilters(): undefined {
+        this.record.filtered += 1;
+        return undefined;
       }
       dispose(): void {
         this.record.released = true;
@@ -282,6 +320,44 @@ describe('previewBackend', () => {
     previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4100, height: 2700 });
     expect(previewBackend(fabric, { width: 4100, height: 2700 }, { width: 1000, height: 659 })).toBe(shared);
     expect(made[0]?.released).toBe(true);
+  });
+
+  // A context can be lost at any moment (Khronos, "HandlingContextLost") and
+  // stays lost, so a held backend that lost it is made again.
+  it('makes the backend again once the held one lost its context', () => {
+    const { fabric, made } = graphics();
+    const first = previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4100, height: 2700 });
+    made[0].lost = true;
+    expect(previewBackend(fabric, { width: 4100, height: 2700 }, { width: 4100, height: 2700 })).not.toBe(first);
+    expect(made).toHaveLength(2);
+    expect(made[0]?.released).toBe(true);
+  });
+
+  it('lets one shaped backend go before making one of another size', () => {
+    const { fabric, made } = graphics();
+    previewBackend(fabric, { width: 8200, height: 5400 }, { width: 4100, height: 2700 });
+    previewBackend(fabric, { width: 8200, height: 5400 }, { width: 8200, height: 5400 });
+    expect(made.map((m) => m.size)).toEqual([
+      [4100, 2700],
+      [8200, 5400],
+    ]);
+    expect(made.map((m) => m.released)).toEqual([true, false]);
+  });
+
+  it('halves a preview past what the graphics take', () => {
+    const { fabric, made } = graphics();
+    previewBackend(fabric, { width: 20000, height: 10000 }, { width: 20000, height: 10000 });
+    expect(made.map((m) => m.size)).toEqual([[10000, 5000]]);
+  });
+
+  it('draws the preview through the backend it picks', async () => {
+    const { fabric, made } = graphics();
+    graphicsStub.current = fabric;
+    const target = document.createElement('canvas');
+    const drew = await drawAdjustedPreview(picture(4100, 2700), { width: 4100, height: 2700 }, { ...defaultAdjustValue, sharpness: 50 }, target);
+    expect(drew.size).toEqual({ width: 4100, height: 2700 });
+    expect([target.width, target.height]).toEqual([4100, 2700]);
+    expect(made.map((m) => [m.size, m.filtered])).toEqual([[[4100, 2700], 1]]);
   });
 });
 

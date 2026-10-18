@@ -357,9 +357,9 @@ describe('adjustPixels', () => {
     );
 
     // The preview the layer draws, at the size previewFrame picks, holds the
-    // export shrunk to that size at low noise reduction: a colour edge
-    // carries no fringe the result does not have, wherever it falls, the
-    // picture's borders included. One row is drawn at 1:1 as a control.
+    // export shrunk to that size: a colour edge carries no fringe the result
+    // does not have, wherever it falls, the picture's borders included at low
+    // noise reduction. At a shrink of 1 the preview is the export.
     it.each([
       [800, 576, 1],
       [601, 300, 2],
@@ -384,7 +384,8 @@ describe('adjustPixels', () => {
       for (let n = 0; n < 6; n++) edges.push(Math.floor(width * 0.3) + 7 * n);
       for (const colours of [BLUE, BRICK, BW]) {
         for (const edge of edges) {
-          for (const noiseReduction of [1, 10]) {
+          const inside = edge > 16 && edge < width - 16;
+          for (const noiseReduction of inside ? [1, 10, 30, 100] : [1, 10]) {
             const value = { ...defaultAdjustValue, noiseReduction };
             const source = halves(width, 1, edge, colours);
             const preview = drawnAt(source, row, rowFrame);
@@ -392,7 +393,8 @@ describe('adjustPixels', () => {
             const exported = { ...source, data: new Uint8ClampedArray(source.data) };
             adjustPixels(exported, value, 7, exported);
             const gap = maxDiff(preview.data, drawnAt(exported, row, rowFrame).data);
-            expect(gap, `${colours.join('/')} edge ${edge} noise reduction ${noiseReduction}`).toBeLessThanOrEqual(10);
+            const allowed = factor === 1 ? 0 : noiseReduction <= 10 ? 10 : 15;
+            expect(gap, `${colours.join('/')} edge ${edge} noise reduction ${noiseReduction}`).toBeLessThanOrEqual(allowed);
           }
         }
       }
