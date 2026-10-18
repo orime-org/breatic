@@ -217,6 +217,32 @@ describe('selectionItem over table cells', () => {
     view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[3]!, cells[0]!)));
     expect(selectionItem(editor).name).toBe('a');
   });
+
+  it('hands over the blocks of the selected cells, not a table of empty cells (inner#1619 T10)', () => {
+    const editor = open([
+      tableBlock({
+        rows: [
+          { cells: [{ blocks: [{ type: 'heading', props: { level: 2 }, content: 'Scene' }] }, { blocks: [{ type: 'bulletListItem', content: 'one' }, { type: 'bulletListItem', content: 'two' }] }] },
+          { cells: ['c', 'd'] },
+        ],
+      }),
+    ]);
+    const cells: number[] = [];
+    editor.prosemirrorView!.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      return true;
+    });
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[3]!)));
+
+    const text = (selectionItem(editor).chip as { data_snapshot: { text: string } }).data_snapshot.text;
+
+    expect(text).toContain('<h2');
+    expect(text).toContain('Scene');
+    expect(text).toContain('one');
+    expect(text).toContain('two');
+    expect(text).toContain('c');
+  });
 });
 
 describe('selectionItem over the whole document', () => {

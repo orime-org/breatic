@@ -89,7 +89,8 @@ function pipeTable(editor: MarkdownEditor, table: BlockLike): string {
           .blocksToMarkdownLossy((cell.children ?? []) as never)
           .trim()
           .replace(/\|/g, '\\|')
-          .replace(/\n/g, '<br>'),
+          // A hard break is written as a backslash before the newline.
+          .replace(/\\?\n/g, '<br>'),
     );
     return `| ${texts.join(' | ')} |`;
   });
@@ -131,6 +132,29 @@ function tableMarkdown(editor: MarkdownEditor, table: BlockLike): string {
 }
 
 /**
+ * Whether a block has a table under it, at any depth.
+ * @param block - The block.
+ * @returns True when one is.
+ */
+function holdsTable(block: BlockLike): boolean {
+  return (block.children ?? []).some((child) => child.type === DOC_TABLE || holdsTable(child));
+}
+
+/**
+ * Indents every line of some Markdown.
+ * @param markdown - The Markdown.
+ * @param width - How many spaces.
+ * @returns It, indented.
+ */
+function indented(markdown: string, width: number): string {
+  const pad = ' '.repeat(width);
+  return markdown
+    .split('\n')
+    .map((line) => (line === '' ? line : `${pad}${line}`))
+    .join('\n');
+}
+
+/**
  * Blocks as Markdown, tables written so their cells' blocks survive.
  * @param editor - The editor.
  * @param blocks - The blocks, as the editor's block API hands them.
@@ -148,6 +172,13 @@ export function blocksMarkdown(editor: MarkdownEditor, blocks: readonly BlockLik
     if (block.type === DOC_TABLE) {
       flush();
       parts.push(tableMarkdown(editor, block));
+    } else if (holdsTable(block)) {
+      // BlockNote's export would flatten the table under it: the block goes
+      // alone, and what is nested under it follows, under a list item's marker.
+      flush();
+      const own = editor.blocksToMarkdownLossy([{ ...block, children: [] }] as never).trim();
+      const marker = /^(?:[*+-]|\d+\.)\s+/.exec(own)?.[0].length ?? 0;
+      parts.push(own, indented(blocksMarkdown(editor, block.children ?? []), marker));
     } else {
       run.push(block);
     }

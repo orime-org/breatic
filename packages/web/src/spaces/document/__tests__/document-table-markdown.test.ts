@@ -167,3 +167,38 @@ describe('a table as Markdown', () => {
     );
   });
 });
+
+describe('tables the Markdown carries whole (inner#1619 T10)', () => {
+  it('keeps a line break in a cell as <br> alone', () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['h1', 'h2'] }, { cells: ['a', 'c'] }] })]);
+    let at = -1;
+    editor.prosemirrorState.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text === 'a') at = pos + 1;
+      return at < 0;
+    });
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.insert(at, [view.state.schema.nodes.hardBreak!.create(), view.state.schema.text('b')]));
+
+    const markdown = blocksMarkdown(editor as never, editor.document as never);
+
+    expect(markdown).toContain('| a<br>b |');
+  });
+
+  it('keeps the blocks of a table nested under a list item', () => {
+    const editor = open([
+      {
+        type: 'bulletListItem',
+        content: 'parent',
+        children: [
+          tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'heading', props: { level: 2 }, content: 'Big' }, { type: 'bulletListItem', content: 'a' }] }, 'x'] }] }),
+        ],
+      },
+    ]);
+
+    const markdown = blocksMarkdown(editor as never, editor.document as never);
+
+    expect(markdown).toContain('parent');
+    expect(markdown).toContain('<h2');
+    expect(markdown).not.toContain('Biga');
+  });
+});
