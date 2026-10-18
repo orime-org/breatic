@@ -47,6 +47,7 @@ import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
 import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
 import { useConsolidating } from '@web/stores/consolidating';
+import { onCreditsChanged } from '@web/data/api/credits';
 import {
   OPENING_BEAT,
   stubChatWire,
@@ -131,6 +132,20 @@ describe('第一帧之前被服务端拒掉', () => {
 
     expect(told).toHaveLength(1);
     expect(told[0]).toMatchObject({ kind: 'server', message: '积分不足' });
+  });
+});
+
+describe('the credits a turn spends (inner#1611)', () => {
+  it('says the project\'s credits changed once a turn ends, however it ended', async () => {
+    const heard: string[] = [];
+    const stop = onCreditsChanged((projectId) => void heard.push(projectId));
+    stubRefusingWire(402, '积分不足');
+    aConversation();
+    await sendInSession('c-1', '帮我找参考图');
+    await settle();
+    stop();
+
+    expect(heard).toEqual(['p-1']);
   });
 });
 

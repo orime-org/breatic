@@ -326,6 +326,43 @@ describe('CreditsTab', () => {
     expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('-320');
   });
 
+  it('shows what is left after running tasks\' holds, and the hold as its own row before the total (inner#1611)', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: 4910, held: 800, available: 4110 }));
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByTestId('studio-spendable')).toHaveTextContent('4,110');
+    const held = screen.getByTestId('studio-lots-held');
+    expect(held).toHaveTextContent('Held by running tasks');
+    expect(held).toHaveTextContent('-800');
+    expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('4,110');
+  });
+
+  it('has no held row while nothing is held', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ held: 0, available: 4910 }));
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    expect(screen.queryByTestId('studio-lots-held')).toBeNull();
+  });
+
+  it('says the credits are held, not spent, when running tasks hold all of them', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: 80, held: 80, available: 0 }));
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    const sentence = 'All credits are held by running tasks and are released when they finish.';
+    expect(document.body).toHaveTextContent(sentence);
+    expect(screen.getByTestId('studio-credits-unassigned-notice')).toHaveTextContent(sentence);
+    expect(document.body).not.toHaveTextContent('This Studio has spent all of its credits.');
+  });
+
+  it('titles the list as the credit packs it lists', async () => {
+    fetchStudioCredits.mockResolvedValue(credits());
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByText('Credit packs')).toBeInTheDocument();
+  });
+
   it('一笔都没有也不欠账时，这一块才是空态', async () => {
     fetchStudioCredits.mockResolvedValue(
       credits({ spendable: 0, debt: 0, lots: [] }),

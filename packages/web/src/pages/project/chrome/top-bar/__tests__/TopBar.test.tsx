@@ -267,15 +267,22 @@ describe('TopBar', () => {
 });
 
 describe('toCreditsReadout', () => {
+  it('reads out what is left once running tasks\' holds are taken off (inner#1611)', () => {
+    expect(toCreditsReadout({ data: { spendable: 120, held: 80, available: 40 }, isError: false })).toEqual({
+      status: 'ready',
+      value: 40,
+    });
+  });
+
   it('reads out the balance once an answer has arrived', () => {
-    expect(toCreditsReadout({ data: { spendable: -320 }, isError: false })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: -320, held: 0, available: -320 }, isError: false })).toEqual({
       status: 'ready',
       value: -320,
     });
   });
 
   it('reads out zero as a balance, because that is what it is', () => {
-    expect(toCreditsReadout({ data: { spendable: 0 }, isError: false })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: 0, held: 0, available: 0 }, isError: false })).toEqual({
       status: 'ready',
       value: 0,
     });
@@ -296,7 +303,7 @@ describe('toCreditsReadout', () => {
   it('keeps the last balance when a refetch fails', () => {
     // React Query holds the previous answer through a failed refetch, and one
     // refetch old beats replacing a real figure with "unknown".
-    expect(toCreditsReadout({ data: { spendable: 4910 }, isError: true })).toEqual({
+    expect(toCreditsReadout({ data: { spendable: 4910, held: 0, available: 4910 }, isError: true })).toEqual({
       status: 'ready',
       value: 4910,
     });

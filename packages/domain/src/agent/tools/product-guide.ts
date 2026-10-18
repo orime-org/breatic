@@ -158,7 +158,8 @@ export function renderProductGuide(): string {
       "current language, which lists the five languages; an icon for the theme, which offers " +
       `${quoted(t("preferences.themeMode.light"))}, ${quoted(t("preferences.themeMode.dark"))} and ` +
       `${quoted(t("preferences.themeMode.system"))}; and a star with the credits left in the studio this ` +
-      "project belongs to, which everyone generating here draws on (a grey bar while it loads, a dash when it " +
+      "project belongs to, which everyone generating here draws on, less what generations still running hold " +
+      "until they are charged (a grey bar while it loads, a dash when it " +
       "cannot be loaded); it only shows the balance, and topping up is not done here. The owner also has a " +
       "person icon with a plus, which opens " +
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +

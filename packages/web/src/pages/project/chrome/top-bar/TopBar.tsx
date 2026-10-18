@@ -21,6 +21,7 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
+import type { ProjectCredits } from '@web/data/api/credits';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
 
@@ -49,15 +50,16 @@ export type CreditsReadout =
  * refetch fails, and a balance that is one refetch old still beats replacing it
  * with "unknown".
  * @param query - The query's data and whether it has settled on an error.
- * @param query.data - The balance, once an answer has arrived.
+ * @param query.data - The studio's credits, once an answer has arrived; the
+ *   pill reads what is left after running tasks' holds (inner#1611).
  * @param query.isError - Whether the query gave up.
  * @returns What to show.
  */
 export function toCreditsReadout(query: {
-  data?: { spendable: number } | undefined;
+  data?: ProjectCredits | undefined;
   isError: boolean;
 }): CreditsReadout {
-  if (query.data) return { status: 'ready', value: query.data.spendable };
+  if (query.data) return { status: 'ready', value: query.data.available };
   return query.isError ? { status: 'error' } : { status: 'pending' };
 }
 

@@ -79,20 +79,50 @@ export async function designateCreditLot(
   );
 }
 
+/** What the studio owning a project has, as its top bar reads it. */
+export interface ProjectCredits {
+  /** Purchases less debt; below zero when the studio owes. */
+  spendable: number;
+  /** What running tasks hold until they are charged (inner#1611). */
+  held: number;
+  /** `spendable - held`: what the next run can take. */
+  available: number;
+}
+
 /**
- * Read what the studio owning a project can spend.
+ * Read what the studio owning a project has.
  *
  * Its own request, separate from the project's detail: this figure moves with
  * every generation while the project's name and role do not.
  * @param projectId - The project being viewed.
- * @returns What its studio has left, below zero when the studio owes.
+ * @returns What its studio has, holds and has left.
  */
-export async function fetchProjectCredits(
-  projectId: string,
-): Promise<{ spendable: number }> {
-  return apiGet<{ spendable: number }>(
-    `/projects/${encodeURIComponent(projectId)}/credits`,
-  );
+export async function fetchProjectCredits(projectId: string): Promise<ProjectCredits> {
+  return apiGet<ProjectCredits>(`/projects/${encodeURIComponent(projectId)}/credits`);
+}
+
+/** Who wants to hear that a project's credits may have moved. */
+const creditsListeners = new Set<(projectId: string) => void>();
+
+/**
+ * Say that a project's credits may have moved: a request that holds or spends
+ * them returned, admitted or refused (inner#1611).
+ * @param projectId - The project.
+ */
+export function noteCreditsChanged(projectId: string): void {
+  for (const listener of creditsListeners) listener(projectId);
+}
+
+/**
+ * Hear when a project's credits may have moved.
+ * @param listener - Called with the project's id.
+ * @returns A function that stops listening.
+ */
+export function onCreditsChanged(listener: (projectId: string) => void): () => void {
+  creditsListeners.add(listener);
+  return () => {
+    creditsListeners.delete(listener);
+  };
 }
 
 /**
