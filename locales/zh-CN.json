@@ -2234,7 +2234,7 @@
       "month": "月付",
       "year": "年付"
     },
-    "saveTwoMonths": "十二个月，按十个月的价",
+    "saveTwoMonths": "省两个月",
     "yearSaving": "年付约省 {percent}%",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
