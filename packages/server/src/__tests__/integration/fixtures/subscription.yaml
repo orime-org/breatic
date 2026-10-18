@@ -39,6 +39,4 @@ plans:
           test: "price_fixture_team_year"
           live: ""
 
-stale_after_days: 14
-
 stripe_call_timeout_ms: 5000

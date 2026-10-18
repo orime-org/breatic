@@ -309,8 +309,8 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 | `config/worker.yaml` | Worker 并发(按队列:`tasks` 50、其余 5)、重试、问结果的间隔 |
 | `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制。**单文档并发可写连接数上限不在这里**——它来自档位,见 `config/membership.yaml` 的 `concurrent_editors`;一条 socket 承载多少文档也不在这里,由 `@breatic/shared` 的 `MAX_SPACES_PER_PROJECT` + 1 推出(`packages/collab/src/infra/socket-ceilings.ts`) |
 | `config/pricing.yaml` | **不随仓库分发**(见本表下方那条),积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID)+ `trial_grant.credits`(新账号建成个人 Studio 那一刻发多少体验积分;只在计费打开的部署发,**零是真值零**不是哨兵) |
-| `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位**每个计费周期**(月 / 年)各一个价 + test/live Stripe Price ID + 订阅状态过期判据 + 问 Stripe 现状的超时。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
-| `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。加载器 `packages/core/src/config/membership.ts` |
+| `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位**每个计费周期**(月 / 年)各一个价 + test/live Stripe Price ID + 问 Stripe 现状的超时。只有 server 读它。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
+| `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。另有 `stale_after_days`:订阅过了付费期后还按原档位算几天(默认 14,即 Stripe 重试扣款的周期)。加载器 `packages/core/src/config/membership.ts` |
 | `config/auth.yaml` | 启用邮件时注册验证码的三个旋钮:有效期 `ttl_seconds`、每个码最多比对几次 `max_attempts_per_code`、同一邮箱两次发码的最短间隔 `resend_cooldown_seconds`。加载器 `packages/server/src/config/auth.ts` |
 | `config/legal.yaml` | 当前生效的使用条款版本 `terms_version`。登录和注册两张卡片底部那行条款小字之下建的每个新账号,在 `users` 上记下这个版本和建号时刻(`terms_version` / `terms_accepted_at`;migration 0089 之前建的账号两列为空)。breatic.ai 上的条款改版时改它。加载器 `packages/server/src/config/legal.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)` / `rateLimitForAll(specs)`;**key 维度(IP、IP+邮箱、user、user 加一个路由参数(`upload-complete` 按上传 id,每个上传一个桶),还是连接地址)按 action 写死在代码里**,只有次数进 yaml。IP 取法同 collab,是 core 的 `decideClientIdentity`:本机回环不计数,非回环取我们 nginx 写的 `X-Real-IP`(IPv6 归并到 /64),都没有就答 403。一个请求的几道额度一次判定(一段 Lua 脚本),任一道满了就哪道都不写。内部接口的 `internal-api` 按连接地址计,Redis 出错时拒绝(503)|
@@ -321,7 +321,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 | `config/models/<模态>/models.yaml` · `providers.yaml` · `config/models/modes.yaml` | AI 模型目录(按模态分目录):`models.yaml` 列这个模态的全部模型,每个带 WaveSpeed 定价契约(`base_price` / 公式 / `discount_rate`)、每个参数发往上游时叫什么(`upstream`)、额外的上游调用(`extra_steps`);`providers.yaml` 是上游的地址、key 名与并发;`modes.yaml` 是模式的名字与说明。字段说明写在各文件表头 |
 | `config/voice-samples.json` | 音色样音的固定公开地址 `base_url`(所有部署都从这里播,`sample_key` 是它下面的路径;读者是 domain 的 `voice-sample-config.ts`)、每种语言念的那句话,以及个别模型要多带的参数。目录新增音色时,维护样音的人用指向这个地址的存储设置跑一次 `pnpm voice-samples`(`packages/worker/src/voice-samples.ts`),把 `config/models/tts/models.yaml` 里 `sample_key` 点名、这个地址还没有的样音生成上去;`config/models/video/models.yaml` 里 `camera_commands` 的 `sample_key` 点名的运镜指令预览片段也由这一步生成,用模型的文生视频端点拍同一个场景,再转码成 640 宽、无音轨、`moov` 在文件头的 mp4 |
 
-**`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**`PAYMENT_ENABLED=true` 时 server 启动预检这两份,读不出来就退出**;之后 `subscription.yaml` 还会在读生效档位时被打开一次(档位上限、`/auth/me` 与登录下发的档位、会员面板都要判一条过了付费期的订阅还认不认它的档,读 `stale_after_days`),没有订阅行的账号走不到那一步。
+**`config/subscription.yaml` 和 `config/pricing.yaml` 两份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象。仓里跟着的是各自的 `.template`(价格 0、price id 空串),照着填自己的;两份 schema 都要求正整数,所以没改过的模板一读就被拒。**`PAYMENT_ENABLED=true` 时 server 启动预检这两份,读不出来就退出**;读生效档位时要判一条过了付费期的订阅还认不认它的档,用的 `stale_after_days` 在 `config/membership.yaml` 里:档位上限(collab 给文档定可编辑人数也要读)、`/auth/me` 与登录下发的档位、会员面板都走这一步,而 `subscription.yaml` 只挂进 server。
 
 ### Logging
 
