@@ -384,7 +384,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.upload.typeMismatch"))} A text node's picker lists text, Markdown, PDF, Word and ` +
       "Excel files: plain text, PDF, .docx and Excel files give their text, which replaces what the node held. " +
       "Any other file, an older .doc included, leaves the node as it was, and a message on the node names the " +
-      "file it could not read. From the moment a file is chosen or dropped until our server has taken it in, " +
+      "file it could not read. From the moment a file is chosen or dropped until our server has taken it in " +
+      "(on a text node, until the file has been read), " +
       "the person uploading sees a grey shimmering placeholder on the node; an upload that ends before then " +
       "leaves the node where it is and replaces the placeholder with a red line saying why (such as the two " +
       "messages above), which only that person sees and which goes away when the page is refreshed, when they " +

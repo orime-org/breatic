@@ -262,7 +262,7 @@ async function uploadExpand(
  * The browser's own work for a press, after its nodes are built, and the check
  * that the source is still there.
  * @param run - The press.
- * @returns The file or images made, or why the press stops here.
+ * @returns The browser tool's files and what the press uploaded, or why the press stops here.
  */
 async function prepare(run: MiniToolRun): Promise<{ files?: ExportedFile[]; uploads: PressUploads } | Stopped> {
   const { spec, snapshot, capture } = run;
@@ -372,8 +372,8 @@ function refusalOf(err: unknown): UploadMarkMessage {
  *
  * The nodes and their group are built at the press, laid out from the sizes
  * the results will have, and the uploader sees them wait (inner#1303 §6.7).
- * The browser's own work follows: a browser tool's file, or a drawing tool's
- * images and their upload. A failure there, a source deleted meanwhile, or a
+ * The browser's own work follows: a browser tool's files, a drawing tool's
+ * images, or an expand tool's padded picture and mask, and their upload. A failure there, a source deleted meanwhile, or a
  * server tool's refused request is said on the nodes, which stay.
  *
  * One press per tool and node runs at a time (inner#1490): a press while one

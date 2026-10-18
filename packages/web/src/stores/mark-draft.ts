@@ -6,7 +6,9 @@
  * of what is drawn; the canvas on the node renders from it and writes the
  * reader's gestures back. Positions are shares of the source, as a drawing's
  * are, so one list draws the preview at the node's size and the export at the
- * source's. Size is a percent of the source's shorter side, as the brush's is.
+ * source's. Size is the brush slider's value, taken against the source's
+ * shorter side: a stroke is size/400 of it and a text's font size/100 of it
+ * (`markStrokePx`, `markFontPx`).
  */
 
 import { BRUSH_SIZE, INK } from '@web/stores/drawing-draft';
@@ -149,7 +151,8 @@ export function redoneMark(draft: MarkDraft): MarkDraft {
 }
 
 /**
- * The draft with a style change: the pen always, and the selected object as
+ * The draft with a style change: the colour and size new objects take always,
+ * and the selected object as
  * one step when no text is being edited (the canvas sets an edited text's
  * style itself and writes it back on leaving the edit).
  * @param draft - The draft.
@@ -279,7 +282,7 @@ export function markCanRedo(draft: MarkDraft): boolean {
 
 /**
  * The size one press of `[` or `]` gives: one step from the selected object's
- * size as it shows, or from the pen's with nothing selected, held to the slider's
+ * size as it shows, or from the size new objects take with nothing selected, held to the slider's
  * range. A text scaled past either end keeps its size until the key moves it
  * back toward the range.
  * @param draft - The draft.

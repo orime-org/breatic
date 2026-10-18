@@ -115,7 +115,8 @@ export const ADJUST_RANGES: Readonly<Record<keyof AdjustValue, AdjustRange>> = {
 /**
  * What one adjust value comes to, as numbers both the video filter and the
  * picture's filters read, so a slider means the same on either. A stage that
- * does nothing is zero (or null for the channel mix).
+ * does nothing is zero, except the contrast and saturation multipliers, which
+ * are one, and the channel mix, which is null.
  */
 export interface AdjustTerms {
   /** Added to every channel, in [-1, 1]. */

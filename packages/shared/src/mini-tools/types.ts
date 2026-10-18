@@ -117,7 +117,6 @@ export interface OrientParam {
   readonly key: string;
 }
 
-/** A param a browser or container tool declares in full. */
 /** A list of numbers the reader enters, such as cut points; capped at `maxItems`. */
 export interface ListParam {
   readonly kind: "list";
@@ -135,6 +134,7 @@ export interface CellsParam {
   readonly key: string;
 }
 
+/** A param a browser or container tool declares in full. */
 export type MiniToolParam =
   | NumberParam
   | EnumParam
@@ -265,7 +265,11 @@ interface VariableOutputs {
   readonly outputs?: never;
 }
 
-/** A tool run on a pinned catalog model. Its params are unvalidated, so its outputs are fixed. */
+/**
+ * A tool run on a pinned catalog model. The registry does not declare its
+ * params (the server checks them against the model's catalog entry at run
+ * time), so nothing can count results from them and its outputs are fixed.
+ */
 export interface ModelToolSpec extends MiniToolBase, FixedOutputs {
   readonly run: { readonly kind: "model"; readonly model: string };
   readonly params: readonly MiniToolModelParam[];

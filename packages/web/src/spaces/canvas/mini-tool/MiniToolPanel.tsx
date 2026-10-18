@@ -111,7 +111,7 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
   return (
     <div>
       <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t('canvas.miniTool.param.aspect.label')}</p>
-      {/* Eight fixed ratios in two even rows, each portrait and landscape pair side by side. */}
+      {/* Free and seven fixed ratios in two even rows of four, each portrait and landscape pair side by side. */}
       <div className='grid grid-cols-4 gap-1.5'>
         {EXPAND_RATIOS.map((ratio) => {
           const fits = expand.fits(ratio);
@@ -150,8 +150,7 @@ const ExpandRatioGroup = React.memo(function ExpandRatioGroup({
 /** The icon an empty slot shows: what it wants. */
 const SLOT_ICONS = { image: ImageIcon, audio: Music, video: Film } as const;
 
-/** The adjust's channels, in the order the panel lists them; each runs over its `ADJUST_RANGES` range. */
-/** The adjust's channels in titled groups, as Lightroom and Camera Raw lay them out. */
+/** The adjust's channels in titled groups (light, color, detail, effects), in the order the panel lists them; each slider runs over its `ADJUST_RANGES` range. */
 const ADJUST_GROUPS: readonly { id: 'light' | 'color' | 'detail' | 'effects'; fields: readonly (keyof AdjustValue)[] }[] = [
   { id: 'light', fields: ['exposure', 'highlights', 'shadows', 'contrast'] },
   { id: 'color', fields: ['saturation', 'vibrance', 'temperature', 'tint', 'hue'] },

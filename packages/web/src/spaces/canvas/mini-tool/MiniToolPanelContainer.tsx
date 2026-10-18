@@ -227,8 +227,9 @@ function OpenMiniToolPanel({
     [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
 
-  // An expand frame is measured in the source's pixels, which go into the
-  // draft the node's frame reads; the frame reads the model's cap itself.
+  // An expand frame is held as shares of the source and sized against the
+  // source's pixels, which go into the draft (`sourceSize`) that
+  // `ExpandFrameOverlay` reads; the overlay reads the model's cap itself.
   const expandDraft = draft?.expand ?? null;
   // The panel hangs under the expand frame, which reaches past the node. Read
   // from the draft and the node's size, which the canvas keeps while the node

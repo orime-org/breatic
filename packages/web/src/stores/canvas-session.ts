@@ -743,7 +743,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
               sourceSize: null,
               drawing,
               expand: s.miniTool.expand === null ? null : castDraft(EMPTY_EXPAND),
-              // The pen stays as the reader set it; what was drawn goes.
+              // The tool, colour and size stay as the reader set them; what was drawn goes.
               mark:
                 s.miniTool.mark === null
                   ? null

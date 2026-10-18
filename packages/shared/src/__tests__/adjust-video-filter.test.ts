@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The video adjust filter's output, pinned character for character so moving
- * its coefficients into a shared function leaves what ffmpeg is told unchanged
+ * The video adjust filter's output, pinned character for character, so that
+ * moving its coefficients into a shared function changes nothing ffmpeg is
+ * told except the hue rotation, which is passed in radians as `H`
  * (inner#1303 §6.1).
  */
 
