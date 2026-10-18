@@ -216,7 +216,7 @@ async function requestOf(
 
 /**
  * Play `archiveProject`'s statements from a separate connection in its own
- * order — lock the project, expire its role upgrades and join requests — then
+ * order — lock the project, fail its role upgrades and join requests — then
  * start `other`, and once `other` has parked, play the rest of the sweep.
  * Played by hand so `other` can be started in the middle of the sweep; that
  * the real `archiveProject` takes the project row before any request row is

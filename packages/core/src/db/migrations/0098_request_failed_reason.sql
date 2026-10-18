@@ -1,7 +1,7 @@
 -- A request nobody could answer ends as `failed`, and `failed_reason` says why
 -- (inner#1023): `expired` when its deadline passed, `invalidated` when what it
--- was about stopped holding (the studio or project changed hands, the
--- requester already got what they asked for, the project was archived).
+-- was about stopped holding (for example the studio or project changed hands,
+-- the requester already got what they asked for, the project was archived).
 --
 -- The old status `expired` covered both. Rows carrying it are backfilled from
 -- the trace the old premise-lost writers left: they pulled `expires_at` back

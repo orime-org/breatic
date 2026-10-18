@@ -77,7 +77,7 @@ const INVITE_KINDS = new Set<DecisionKind>(["studio_invite", "project_invite"]);
 
 
 /**
- * Decides which of the four dead ends, or none of them, this request is in.
+ * Decides which dead end, if any, this request is in.
  *
  * Order is load-bearing. Deleted wins over everything, because a request that
  * went away with its project is gone whatever its status column still says.

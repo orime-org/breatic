@@ -144,10 +144,12 @@ async function outboxTypes(projectId: string): Promise<string[]> {
 }
 
 /**
- * Read a request row's status and whether its bell entry is still unread.
+ * Read a request row's status, why it failed if it did, and whether its bell
+ * entry is still unread.
  * @param table - Request table name.
  * @param id - Request id.
- * @returns The status and the bell entry's read state.
+ * @returns The status, the failure reason (null when it did not fail), and
+ *   the bell entry's read state.
  */
 async function stateOf(
   table: string,

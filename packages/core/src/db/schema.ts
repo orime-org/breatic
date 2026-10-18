@@ -2149,7 +2149,7 @@ export const roleUpgradeRequests = pgTable(
      * every other status (CHECK in 0098).
      */
     failedReason: varchar("failed_reason", { length: 16 }).$type<RequestFailedReason>(),
-    /** Who decided. Null while pending, and stays null on expiry / cancel. */
+    /** Who decided. Null while pending, and stays null when the request fails or is cancelled. */
     decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
       onDelete: "restrict",
     }),

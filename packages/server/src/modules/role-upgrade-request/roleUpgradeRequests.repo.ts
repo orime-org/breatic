@@ -316,8 +316,9 @@ export async function failIfPending(
  * hatch: without it, anyone holding the id could withdraw someone else's ask.
  *
  * `decided_by_user_id` stays null — nobody ruled on this — but `decided_at` is
- * set, because a person did end it. See {@link settleIfPending} for why those
- * are separate questions.
+ * set, because a person did end it: `decided_at` records that a person ended
+ * the request, `decided_by_user_id` who ruled on it, and a cancel has the
+ * first without the second.
  * @param id - Request id.
  * @param requesterUserId - The person withdrawing; must own the request.
  * @param tx - Optional enclosing transaction.
