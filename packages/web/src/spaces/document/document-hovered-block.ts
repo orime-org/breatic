@@ -37,6 +37,11 @@ import {
  */
 export function selectionOverBlockContent(doc: PMNode, blockId: string): Selection {
   const row = rowById(doc, blockId);
+  // A table is a block whose own node holds its rows: the node stands for the
+  // block, the same node selection a click on its handle makes.
+  if (row !== undefined && row.node.type.name !== 'blockContainer') {
+    return NodeSelection.create(doc, row.from);
+  }
   const content = row === undefined ? undefined : contentRangeOf(row);
   if (row === undefined || content === undefined) {
     throw new Error(`no block carries the id ${blockId}`);

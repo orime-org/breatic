@@ -53,13 +53,13 @@ function writtenBlockId(proposalId: string, n: number): string {
  * A block anywhere in the body, by id.
  * @param doc - The body.
  * @param id - The block id.
- * @returns The block's `blockContainer` and where it starts, or null.
+ * @returns The block's node (a `blockContainer`, or a table's own node) and where it starts, or null.
  */
 function blockById(doc: ProseMirrorNode, id: string): { node: ProseMirrorNode; pos: number } | null {
   let found: { node: ProseMirrorNode; pos: number } | null = null;
   doc.descendants((node, pos) => {
     if (found !== null) return false;
-    if (node.type.name === 'blockContainer' && node.attrs.id === id) found = { node, pos };
+    if (node.type.isInGroup('bnBlock') && node.attrs.id === id) found = { node, pos };
     return found === null;
   });
   return found;

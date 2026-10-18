@@ -1055,6 +1055,8 @@ describe('an empty line a selection holds', () => {
       { type: 'numberedListItem', content: '' },
       { type: 'checkListItem', content: '' },
       tableBlock({ rows: [{ cells: ['', 'x'] }] }),
+      // A stored table from before cells held blocks.
+      { type: 'table', content: { type: 'tableContent', rows: [{ cells: ['', 'y'] }] } },
     ]);
     view.focus();
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -1070,7 +1072,7 @@ describe('an empty line a selection holds', () => {
     );
 
     expect(textblocks.map((type) => type.name).filter((name) => !kinds.has(name))).toEqual([]);
-    expect(view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)).toHaveLength(7);
+    expect(view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)).toHaveLength(8);
     expect(undrawn.map((el) => el.outerHTML)).toEqual([]);
   });
 

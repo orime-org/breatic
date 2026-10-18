@@ -59,7 +59,7 @@ export function bodyEdgeAt(doc: Node, pos: number): BodyEdge | null {
 /**
  * The position of the content node of the block at one end of the body: the
  * first root block's, or the last block's in document order, nested blocks
- * included.
+ * included. For a table, whose own node holds its rows, the table's node.
  * @param doc - The document.
  * @param edge - Which end.
  * @returns The position, or null in an empty body.
@@ -67,7 +67,8 @@ export function bodyEdgeAt(doc: Node, pos: number): BodyEdge | null {
 export function bodyEdgeBlockPos(doc: Node, edge: BodyEdge): number | null {
   const group = doc.firstChild;
   if (!group || group.childCount === 0) return null;
-  if (edge === 'start') return 2;
+  // A table holds its rows in its own node, which stands for the block.
+  if (edge === 'start') return group.firstChild!.type.name === 'blockContainer' ? 2 : 1;
   let container = group.lastChild!;
   let pos = 1 + group.content.size - container.nodeSize;
   while (container.lastChild?.type.name === 'blockGroup') {
@@ -76,7 +77,7 @@ export function bodyEdgeBlockPos(doc: Node, edge: BodyEdge): number | null {
     container = nested.lastChild!;
     pos = groupPos + nested.nodeSize - 1 - container.nodeSize;
   }
-  return pos + 1;
+  return container.type.name === 'blockContainer' ? pos + 1 : pos;
 }
 
 /**
@@ -386,8 +387,16 @@ export function bodyEdgeBetween(doc: Node, anchor: number, head: number): Select
  */
 export function textEnds(selection: Selection): { anchor: number; head: number } {
   if (selection instanceof CellSelection) {
-    // Before the cell, then into it, then into the line it holds.
-    return { anchor: selection.$anchorCell.pos + 2, head: selection.$headCell.pos + 2 };
+    // The first place text can sit in each end cell.
+    const doc = selection.$anchorCell.doc;
+    /**
+     * Where text starts in a cell.
+     * @param cellPos - The position before the cell.
+     * @returns The first text position inside it.
+     */
+    const textIn = (cellPos: number): number =>
+      Selection.findFrom(doc.resolve(cellPos + 1), 1, true)?.from ?? cellPos + 1;
+    return { anchor: textIn(selection.$anchorCell.pos), head: textIn(selection.$headCell.pos) };
   }
   if (!(selection instanceof BodyEdgeSelection)) return { anchor: selection.anchor, head: selection.head };
   const doc = selection.$head.doc;

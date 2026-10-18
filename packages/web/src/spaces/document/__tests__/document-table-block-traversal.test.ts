@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1126 A14: a table is one block to every command that walks the blocks
- * under a selection. Block types never reach into it, the quote row takes the
- * whole table, and typing a shorthand in a cell stays text in that cell.
+ * inner#1126 A14 as inner#1619 T2 changes it: a cell holds blocks, so the
+ * blocks in a cell are blocks to every command that walks the blocks under a
+ * selection, and a shorthand typed in a cell works as in the body. A selection
+ * that takes the whole table in reads it as one block.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -144,55 +145,68 @@ function type(editor: Editor, text: string): void {
   }
 }
 
+/**
+ * The texts of the quoted blocks in the table's cells.
+ * @param editor - The editor.
+ * @returns Them, in document order.
+ */
+function quotedIn(editor: Editor): string[] {
+  const out: string[] = [];
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.isTextblock && node.attrs['quoted'] === true) out.push(node.textContent);
+    return !node.isTextblock;
+  });
+  return out;
+}
+
 describe('a table under a selection', () => {
-  it('is no block for the rows that are not quote, from inside a cell', () => {
+  it('is the block the caret is in, from inside a cell', () => {
     const editor = open([TABLE]);
     select(editor, 'a1', 'a1');
     const { doc, selection } = editor.prosemirrorState;
 
-    expect(blocksUnder(doc, selection)).toEqual([]);
-    expect(blocksUnderFor(doc, selection, 'heading-1')).toEqual([]);
-    expect(canRunBlockType(editor)).toBe(false);
+    expect(blocksUnder(doc, selection).map(({ node }) => node.textContent)).toEqual(['a1']);
+    expect(blocksUnderFor(doc, selection, 'heading-1').map(({ node }) => node.textContent)).toEqual(['a1']);
+    expect(canRunBlockType(editor)).toBe(true);
   });
 
-  it('is one block for the quote row', () => {
+  it('is the blocks of the cells words run across, for the quote row', () => {
     const editor = open([TABLE]);
     select(editor, 'a1', 'b2');
     const { doc, selection } = editor.prosemirrorState;
 
     const covered = blocksUnderFor(doc, selection, 'quote');
-    expect(covered.map(({ node }) => node.type.name)).toEqual(['docTable']);
+    expect(covered.map(({ node }) => node.textContent)).toEqual(['a1', 'b1', 'a2', 'b2']);
   });
 
-  it('leaves the table alone for every content row pressed in a cell', () => {
+  it('turns the block in a cell into each content row, and keeps the table', () => {
     for (const row of CONTENT_ROWS) {
       const editor = open([TABLE]);
       select(editor, 'b1', 'b1');
 
-      expect(() => runBlockType(editor, row)).not.toThrow();
+      runBlockType(editor, row);
+
       expect(types(editor)).toEqual(['docTable']);
       expect(cells(editor)).toEqual([
         ['a1', 'b1'],
         ['a2', 'b2'],
       ]);
+      expect(tickedOver(editor.prosemirrorState.doc, editor.prosemirrorState.selection).has(row)).toBe(true);
       editor.unmount();
       mounted.pop();
     }
   });
 
-  it('quotes and unquotes the whole table from a cell', () => {
+  it('quotes and unquotes the block in a cell, not the table', () => {
     const editor = open([TABLE]);
     select(editor, 'a2', 'a2');
 
     runBlockType(editor, 'quote');
-    expect((editor.document[0] as { props: { quoted: boolean } }).props.quoted).toBe(true);
-    expect(cells(editor)).toEqual([
-      ['a1', 'b1'],
-      ['a2', 'b2'],
-    ]);
+    expect((editor.document[0] as { props: { quoted: boolean } }).props.quoted).toBe(false);
+    expect(quotedIn(editor)).toEqual(['a2']);
 
     runBlockType(editor, 'quote');
-    expect((editor.document[0] as { props: { quoted: boolean } }).props.quoted).toBe(false);
+    expect(quotedIn(editor)).toEqual([]);
   });
 
   it('converts the paragraphs around a table and leaves the table', () => {
@@ -229,9 +243,9 @@ describe('a table under a selection', () => {
     expect(tickedOver(doc, selection).has('heading-2')).toBe(true);
   });
 
-  it('keeps three dashes typed in a cell as text', () => {
+  it('turns three dashes typed in a cell into a divider in that cell', () => {
     const editor = open([TABLE]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     // An emptied cell, so the dashes start the line the rule looks at.
     const at = posOf(view.state.doc, 'b2');
     const tr = view.state.tr.delete(at, at + 2);
@@ -241,6 +255,15 @@ describe('a table under a selection', () => {
     type(editor, '---');
 
     expect(types(editor)).toEqual(['docTable']);
-    expect(cells(editor)[1]).toEqual(['a2', '---']);
+    const kinds: string[] = [];
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'docTableRow') return true;
+      if (node.type.name === 'docTableCell') {
+        node.forEach((container) => kinds.push(container.firstChild!.type.name));
+        return false;
+      }
+      return true;
+    });
+    expect(kinds).toEqual(['paragraph', 'paragraph', 'paragraph', 'divider', 'paragraph']);
   });
 });

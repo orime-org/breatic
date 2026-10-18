@@ -238,4 +238,33 @@ describe('a table cell holds blocks', () => {
     expect(TableMap.get(first(editor, 'docTable').node).width).toBe(3);
     expect(() => editor.prosemirrorState.doc.check()).not.toThrow();
   });
+
+  it('reads an HTML table into cells that hold blocks, with spans and widths', () => {
+    const editor = open();
+    const blocks = editor.tryParseHTMLToBlocks(
+      '<table><tbody><tr><td colspan="2" colwidth="100,80"><h2>T</h2><ul><li>x</li></ul></td></tr>' +
+        '<tr><th>h</th><td>plain</td></tr></tbody></table>',
+    ) as unknown as Shape[];
+
+    expect(blocks.map((block) => block.type)).toEqual(['docTable']);
+    const [first, second] = (blocks[0] as unknown as { children: { children: Shape[] }[] }).children;
+    expect(first!.children[0]!.props).toMatchObject({ colspan: 2, colwidth: [100, 80] });
+    expect(first!.children[0]!.children.map((block) => block.type)).toEqual(['heading', 'bulletListItem']);
+    expect(second!.children.map((cell) => cell.type)).toEqual(['docTableHeader', 'docTableCell']);
+  });
+
+  it('keeps the column widths through the HTML the editor writes', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [table([[[{ type: 'paragraph', content: 'a' }]]])] as never);
+    const view = editor.prosemirrorView;
+    const cell = first(editor, 'docTableCell');
+    view.dispatch(view.state.tr.setNodeAttribute(cell.pos, 'colwidth', [140]));
+
+    const again = editor.tryParseHTMLToBlocks(editor.blocksToFullHTML(editor.document as never)) as unknown as {
+      children: { children: { props: Record<string, unknown> }[] }[];
+    }[];
+
+    expect(again[0]!.children[0]!.children[0]!.props['colwidth']).toEqual([140]);
+  });
 });
+

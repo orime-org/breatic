@@ -76,7 +76,11 @@ function open(blocks: unknown[], lastBottom = 100): Editor {
  * @param lastBottom - The bottom of the last block's line.
  */
 function layOut(view: EditorView, lastBottom: number): void {
-  const lines = view.dom.querySelectorAll('.bn-block-content');
+  // A table's frame stands for the table; the blocks in its cells are not
+  // blocks of the body's ends.
+  const lines = [...view.dom.querySelectorAll('.bn-block-content, [data-node-type="docTable"]')].filter(
+    (el) => el.parentElement?.closest('[data-node-type="docTable"]') === null,
+  );
   place(view.dom, { top: -40, bottom: 400 });
   place(lines[0]!, { top: 0, bottom: 20 });
   place(lines[lines.length - 1]!, { top: lastBottom - 20, bottom: lastBottom });

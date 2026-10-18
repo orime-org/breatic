@@ -20,7 +20,7 @@
  * - Cells exclude `docTable`; a table never goes inside a cell.
  */
 
-import { createBlockSpec, createExtension } from '@blocknote/core';
+import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { flushSync } from 'react-dom';
@@ -158,13 +158,53 @@ const CELL_PROP_SCHEMA = {
 };
 
 /**
+ * A cell's column widths read off an element: `data-colwidth` as this editor
+ * writes it, `colwidth` as prosemirror-tables and other editors write it.
+ * @param element - The `<td>`, `<th>` or the cell's element.
+ * @returns One width per column the cell spans, or null when none is given.
+ */
+function readColwidth(element: HTMLElement): (number | null)[] | null {
+  const written = element.getAttribute('data-colwidth') ?? element.getAttribute('colwidth');
+  if (written === null || written === '') return null;
+  return written.split(',').map((width) => {
+    const value = Number.parseInt(width, 10);
+    return Number.isFinite(value) ? value : null;
+  });
+}
+
+/**
+ * The column widths as a node attribute. BlockNote turns a prop into an
+ * attribute that parses as a single string or number, and prosemirror-tables
+ * reads one width per spanned column, so the attribute reads and writes the
+ * list itself.
+ */
+const COLWIDTH_ATTRIBUTE = {
+  default: null,
+  keepOnSplit: true,
+  parseHTML: readColwidth,
+  renderHTML: (attributes: { colwidth?: readonly (number | null)[] | null }): Record<string, string> =>
+    Array.isArray(attributes.colwidth) ? { 'data-colwidth': attributes.colwidth.join(',') } : {},
+};
+
+/**
+ * Reads an integer attribute of at least 1, as a span is written.
+ * @param element - The element.
+ * @param name - The attribute.
+ * @returns The span, 1 when absent or unreadable.
+ */
+function readSpan(element: HTMLElement, name: string): number {
+  const value = Number.parseInt(element.getAttribute(name) ?? '1', 10);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/**
  * One of the two cell kinds.
  * @param type - `docTableCell` or `docTableHeader`.
  * @param tag - The element it draws.
- * @returns Its spec factory.
+ * @returns Its spec, its node built with {@link COLWIDTH_ATTRIBUTE}.
  */
-function cellSpec(type: typeof DOC_TABLE_CELL | typeof DOC_TABLE_HEADER, tag: 'td' | 'th'): () => unknown {
-  return createBlockSpec(
+function cellSpec(type: typeof DOC_TABLE_CELL | typeof DOC_TABLE_HEADER, tag: 'td' | 'th'): unknown {
+  const spec = createBlockSpec(
     {
       type,
       propSchema: CELL_PROP_SCHEMA,
@@ -175,6 +215,16 @@ function cellSpec(type: typeof DOC_TABLE_CELL | typeof DOC_TABLE_HEADER, tag: 't
     },
     {
       experimental_keyboard: { emptyChildEnter: 'stay' },
+      // A cell of any `<table>` read in, pasted or written by the Agent; its
+      // content parses as blocks.
+      parse: (element: HTMLElement) =>
+        element.tagName === tag.toUpperCase()
+          ? {
+            colspan: readSpan(element, 'colspan'),
+            rowspan: readSpan(element, 'rowspan'),
+            colwidth: readColwidth(element),
+          }
+          : undefined,
       renderFrame: (block: { props: CellProps }) => {
         const cell = document.createElement(tag);
         applySpans(cell, block.props);
@@ -188,7 +238,14 @@ function cellSpec(type: typeof DOC_TABLE_CELL | typeof DOC_TABLE_HEADER, tag: 't
         };
       },
     } as never,
-  );
+  )();
+  const built = addNodeAndExtensionsToSpec(spec.config as never, spec.implementation as never, spec.extensions);
+  const node = built.implementation.node.extend({
+    addAttributes(this: { parent?: () => Record<string, unknown> }) {
+      return { ...(this.parent?.() ?? {}), colwidth: COLWIDTH_ATTRIBUTE };
+    },
+  });
+  return { ...spec, implementation: { ...spec.implementation, node } };
 }
 
 /** The four specs, keyed by type. */
@@ -216,6 +273,7 @@ export function docTableSpecs(): DocTableSpecs {
       children: { allow: [DOC_TABLE_ROW], min: 1, dissolve: false },
     },
     {
+      parse: (element: HTMLElement) => (element.tagName === 'TABLE' ? {} : undefined),
       renderFrame(this: FrameContext, block: TableBlockLike) {
         const element = document.createElement('table');
         const colgroup = document.createElement('colgroup');
@@ -259,6 +317,7 @@ export function docTableSpecs(): DocTableSpecs {
       children: { allow: [DOC_TABLE_CELL, DOC_TABLE_HEADER], min: 0 },
     },
     {
+      parse: (element: HTMLElement) => (element.tagName === 'TR' ? {} : undefined),
       renderFrame: () => {
         const element = document.createElement('tr');
         return { dom: element, slot: element };
@@ -268,7 +327,7 @@ export function docTableSpecs(): DocTableSpecs {
   return {
     docTable: table(),
     docTableRow: row(),
-    docTableCell: cellSpec(DOC_TABLE_CELL, 'td')(),
-    docTableHeader: cellSpec(DOC_TABLE_HEADER, 'th')(),
+    docTableCell: cellSpec(DOC_TABLE_CELL, 'td'),
+    docTableHeader: cellSpec(DOC_TABLE_HEADER, 'th'),
   };
 }

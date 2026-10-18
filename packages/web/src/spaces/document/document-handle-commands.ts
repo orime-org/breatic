@@ -114,11 +114,13 @@ export interface IndentReach {
 export function indentReach(doc: PMNode, blockId: string): IndentReach {
   let reach: IndentReach = { in: false, out: false };
   doc.descendants((node, pos) => {
-    if (node.type.name !== 'blockContainer' || node.attrs['id'] !== blockId) {
+    if (!node.type.isInGroup('bnBlock') || node.attrs['id'] !== blockId) {
       return true;
     }
     const $before = doc.resolve(pos);
-    reach = { in: $before.nodeBefore !== null, out: $before.depth > 1 };
+    // A block at the top of a table cell stays in the cell: only a block
+    // nested in a group comes out one level.
+    reach = { in: $before.nodeBefore !== null, out: $before.depth > 1 && $before.parent.type.name === 'blockGroup' };
     return false;
   });
   return reach;

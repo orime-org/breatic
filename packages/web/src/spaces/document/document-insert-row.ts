@@ -22,6 +22,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
 import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** How many rows and columns a new table has. */
@@ -38,24 +39,26 @@ interface BlockSpec {
   readonly type: string;
   readonly props?: Readonly<Record<string, unknown>>;
   readonly content?: unknown;
+  readonly children?: readonly BlockSpec[];
 }
 
 /**
  * An empty table of a size.
  * @param size - Rows and columns.
  * @param quoted - Whether it sits in a quote.
- * @returns The block, every cell empty.
+ * @returns The block, every cell one empty paragraph.
  */
 function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
   return {
-    type: 'table',
+    type: DOC_TABLE,
     props: { [QUOTED]: quoted },
-    content: {
-      type: 'tableContent',
-      rows: Array.from({ length: size.rows }, () => ({
-        cells: Array.from({ length: size.cols }, () => []),
+    children: Array.from({ length: size.rows }, () => ({
+      type: DOC_TABLE_ROW,
+      children: Array.from({ length: size.cols }, () => ({
+        type: DOC_TABLE_CELL,
+        children: [{ type: 'paragraph' }],
       })),
-    },
+    })),
   };
 }
 

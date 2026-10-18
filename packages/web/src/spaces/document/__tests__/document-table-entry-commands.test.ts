@@ -74,8 +74,11 @@ interface Seen {
  * @returns `type` or `type>child,child`.
  */
 function shape(editor: Editor): string[] {
+  // A table's children are its rows: the table reads as one block.
   return (editor.document as unknown as Seen[]).map((b) =>
-    b.children.length === 0 ? b.type : `${b.type}>${b.children.map((c) => c.type).join(',')}`,
+    b.children.length === 0 || b.type === 'docTable'
+      ? b.type
+      : `${b.type}>${b.children.map((c) => c.type).join(',')}`,
   );
 }
 
@@ -120,7 +123,7 @@ describe('indenting a table off its entry', () => {
 
     indentRow(editor, id, true);
 
-    expect(shape(editor)).toEqual(['paragraph>table']);
+    expect(shape(editor)).toEqual(['paragraph>docTable']);
     const { selection } = editor.prosemirrorState;
     expect(selection.empty).toBe(true);
     expect(selection.$head.parent.textContent).toBe('above');
@@ -171,7 +174,7 @@ describe('the other rows of the table entry', () => {
     expect(shape(editor)).toEqual(['docTable', 'docTable']);
     const texts: string[] = [];
     editor.prosemirrorState.doc.descendants((node) => {
-      if (node.type.name === 'tableParagraph') texts.push(node.textContent);
+      if (node.type.name === 'paragraph') texts.push(node.textContent);
     });
     expect(texts).toEqual(['a', 'b', 'c', 'd', 'a', 'b', 'c', 'd']);
   });

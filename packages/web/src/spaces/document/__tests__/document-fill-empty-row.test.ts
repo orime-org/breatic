@@ -221,7 +221,7 @@ interface SeenTable {
   id: string;
   type: string;
   props: Record<string, unknown>;
-  content: { rows: { cells: { content: { text?: string }[] }[] }[] };
+  children: { children: { children: { content: { text?: string }[] }[] }[] }[];
 }
 
 /**
@@ -230,8 +230,8 @@ interface SeenTable {
  * @returns One array of cell texts per row.
  */
 function cellTexts(block: SeenTable): string[][] {
-  return block.content.rows.map((row) =>
-    row.cells.map((cell) => cell.content.map((c) => c.text ?? '').join('')),
+  return block.children.map((row) =>
+    row.children.map((cell) => cell.children.map((b) => b.content.map((c) => c.text ?? '').join('')).join('/')),
   );
 }
 
@@ -243,8 +243,12 @@ function cellTexts(block: SeenTable): string[][] {
 function caretPlace(editor: Editor): { line: string; row?: number; col?: number } {
   const { $head } = editor.prosemirrorState.selection;
   const line = $head.parent.type.name;
-  if (line !== 'tableParagraph') return { line };
-  return { line, row: $head.index($head.depth - 3), col: $head.index($head.depth - 2) };
+  for (let depth = $head.depth; depth > 0; depth -= 1) {
+    if ($head.node(depth).type.name === 'docTableCell') {
+      return { line: `${line} in a cell`, row: $head.index(depth - 2), col: $head.index(depth - 1) };
+    }
+  }
+  return { line };
 }
 
 describe('a table picked on the plus (inner#1126 A2)', () => {
@@ -263,7 +267,7 @@ describe('a table picked on the plus (inner#1126 A2)', () => {
       ['', '', ''],
       ['', '', ''],
     ]);
-    expect(caretPlace(editor)).toEqual({ line: 'tableParagraph', row: 0, col: 0 });
+    expect(caretPlace(editor)).toEqual({ line: 'paragraph in a cell', row: 0, col: 0 });
     expect(editor.document).toHaveLength(3);
   });
 
