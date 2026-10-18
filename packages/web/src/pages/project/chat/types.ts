@@ -140,6 +140,16 @@ export interface ChatMessage {
    */
   content: string;
   /**
+   * The same turn goes on in the reply after this one: its copy is offered
+   * once, at the end of the turn. Only ever `true`.
+   */
+  continued?: true;
+  /**
+   * What the copy at the end of a turn drawn as several replies copies: all
+   * of it. Absent where the reply's own words are all of it.
+   */
+  copyText?: string;
+  /**
    * The prose with a placeholder where each failure line sits, for the
    * renderer alone (inner#1620). Absent when no step failed; `content` stays
    * what the reader copies.

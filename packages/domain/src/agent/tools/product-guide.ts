@@ -329,17 +329,20 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("chat.message.empty"))}`,
     "A reply can end with a card of one to four questions from the assistant, numbered from 1. A question may " +
       `have options to click -- one, or several where it says ${quoted(t("chat.questionnaire.multi"))} -- and ` +
-      "options that are pictures, clips or sounds show as tiles that preview when hovered; clicking a picked " +
-      `one again lets go of it. Each question has a line reading ${quoted(t("chat.questionnaire.other"))} for an ` +
-      "answer in the reader's own words, which on a one-answer question takes the place of a picked option. " +
+      "options that are pictures, clips or sounds show as tiles that preview when hovered; clicking anywhere on " +
+      "an option picks it and outlines it, and clicking a picked one again lets go of it. A question with options " +
+      `has a line reading ${quoted(t("chat.questionnaire.other"))} for an answer in the reader's own words, which ` +
+      "on a one-answer question takes the place of a picked option; a question with none has only a line reading " +
+      `${quoted(t("chat.questionnaire.ownWords"))}. ` +
       `${quoted(t("chat.questionnaire.submit"))} sends every answer at once and the assistant goes on from there; ` +
       "a question left alone is sent as skipped, and pressing it with nothing answered shows " +
       `${quoted(t("chat.questionnaire.atLeastOne"))} as a message and sends nothing. Under the button the card ` +
       `reads ${quoted(t("chat.questionnaire.hint"))} as a hint. A reply typed in the box instead -- the numbers can ` +
       "point at the questions -- goes as an ordinary message, and the card then shrinks to " +
       `${quoted(t("chat.questionnaire.replied"))}, which ${quoted(t("chat.questionnaire.show"))} opens to show ` +
-      `the questions again and ${quoted(t("chat.questionnaire.hide"))} closes. An answered card lists each ` +
-      `question with its answer, or ${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
+      `the questions again and ${quoted(t("chat.questionnaire.hide"))} closes. An answered card is headed ` +
+      `${quoted(t("chat.questionnaire.yourAnswers"))} and lists each question with its answer, or ` +
+      `${quoted(t("chat.questionnaire.skipped"))} for one left alone. A short ` +
       `message says ${quoted(t("server.chat.answer_mismatch"))} when the answers do not fit the questions, and ` +
       `${quoted(t("server.chat.ask_not_found"))} when the card is no longer in the conversation.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +

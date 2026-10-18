@@ -69,6 +69,15 @@ export const MessageBubble = React.memo(function MessageBubble({
     [message.toolCalls],
   );
   const running = message.streaming === true;
+  // A turn drawn as several replies offers one copy, of all of it, at its end;
+  // a reply the turn goes on after keeps only where its answer came from.
+  const copied = isUser
+    ? message.content === ''
+      ? ''
+      : wordsWithLabels(t, message.content, message.attachments)
+    : message.continued === true
+      ? ''
+      : (message.copyText ?? message.content);
   return (
     <div
       data-testid='message-bubble'
@@ -225,9 +234,9 @@ export const MessageBubble = React.memo(function MessageBubble({
             nothing to copy yet and asking for it again mid-flight would race
             the turn that is running. Where the answer came from is on this
             line too, so a turn that searched and said nothing still has one. */}
-        {running || (message.content === '' && message.sources === undefined) ? null : (
+        {running || (copied === '' && message.sources === undefined) ? null : (
           <TurnActions
-            text={isUser ? wordsWithLabels(t, message.content, message.attachments) : message.content}
+            text={copied}
             {...(isUser ? { own: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
             {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}

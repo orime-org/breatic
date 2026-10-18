@@ -11,7 +11,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { UIMessage } from 'ai';
-import { splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
+import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
+import type { ChatMessage } from '@web/pages/project/chat/types';
 
 const QUESTIONS = [
   { header: 'Ratio', question: 'Which ratio?', multiSelect: false, options: [{ label: '16:9' }, { label: '9:16' }] },
@@ -155,5 +156,33 @@ describe('a reply resumed after the reader answered on the card', () => {
     const waiting = reply([ask('ask-1', 'input-available'), awaiting('ask-1')]);
 
     expect(splitAtAnswer(waiting, { open: true })).toEqual([waiting]);
+  });
+});
+
+describe('a turn drawn as more than one reply', () => {
+  const said = (id: string, role: ChatMessage['role'], content: string): ChatMessage => ({ id, role, content });
+
+  it('offers one copy, at its end, of everything it said', () => {
+    const views = [said('u', 'user', 'make me a poster'), said('a', 'assistant', 'Two things first.'), said('a~ask', 'assistant', 'Here is the plan.')];
+
+    const [, asked, resumed] = joinContinued(views);
+
+    expect(asked).toMatchObject({ continued: true });
+    expect(resumed?.copyText).toBe('Two things first.\n\nHere is the plan.');
+  });
+
+  it('leaves replies the reader\'s messages separate untouched', () => {
+    const views = [said('u1', 'user', 'a'), said('a1', 'assistant', 'one'), said('u2', 'user', 'b'), said('a2', 'assistant', 'two')];
+
+    expect(joinContinued(views)).toEqual(views);
+  });
+
+  it('hands back the same objects for views that need nothing', () => {
+    const views = [said('u1', 'user', 'a'), said('a1', 'assistant', 'one')];
+
+    const out = joinContinued(views);
+
+    expect(out[0]).toBe(views[0]);
+    expect(out[1]).toBe(views[1]);
   });
 });

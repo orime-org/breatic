@@ -487,3 +487,10 @@ describe('MessageBubble — a step that did not finish (inner#1620)', () => {
     expect(screen.getByTestId('message-bubble-tool-failed').querySelector('span:last-child')).toHaveClass('min-w-0', 'break-words');
   });
 });
+
+describe('a reply the same turn goes on after', () => {
+  it('offers no copy of its own', () => {
+    setup({ id: 'a1', role: 'assistant', content: 'Two things first.', continued: true });
+    expect(screen.queryByTestId('turn-copy')).toBeNull();
+  });
+});

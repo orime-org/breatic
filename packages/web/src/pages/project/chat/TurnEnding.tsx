@@ -27,9 +27,9 @@ const TONES = {
  * own sitting under the reply, and what this is is a note about the reply --
  * the colour of the mark and of the words is what says how to take it.
  *
- * The mark is centred against the line rather than against the block: the two
- * are the same while there is one line, and stop being the same the moment a
- * translation takes two.
+ * The mark is centred against the first line rather than against the block:
+ * the two are the same while there is one line, and a failure line naming its
+ * step and cause often takes two.
  * @param root0 - What to draw.
  * @param root0.testId - What the test looks it up by.
  * @param root0.text - The line itself.
@@ -53,9 +53,9 @@ function EndingLine({
     <div
       data-testid={testId}
       {...(alert === true ? { role: 'alert' } : {})}
-      className={cn('mt-[0.85em] flex items-center gap-1.5 text-xs', colour)}
+      className={cn('mt-[0.85em] flex items-start gap-1.5 text-xs', colour)}
     >
-      <Icon className='size-3.5 shrink-0' aria-hidden='true' />
+      <Icon className='mt-px size-3.5 shrink-0' aria-hidden='true' />
       <span className='min-w-0 break-words'>{text}</span>
     </div>
   );

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { Music, Play } from 'lucide-react';
+import { ChevronDown, ChevronUp, Music, Play } from 'lucide-react';
 import { ASK_USER_OTHER_MAX_CHARS, getLocale } from '@breatic/shared';
 import type { AskUserAnswer, AskUserQuestion } from '@breatic/shared';
 
@@ -52,13 +52,14 @@ function answersOf(given: readonly Given[]): AskUserAnswer['answers'] {
  * @param root0 - The component props.
  * @param root0.n - Its number, counting from 1.
  * @param root0.header - Its short label.
+ * @param root0.className - Where it sits in its parent's layout.
  * @returns The label.
  */
-function QuestionLabel({ n, header }: { n: number; header: string }): React.JSX.Element {
+function QuestionLabel({ n, header, className }: { n: number; header: string; className?: string }): React.JSX.Element {
   return (
     <span
       data-testid='questionnaire-question-label'
-      className='whitespace-nowrap rounded-chrome-sm bg-accent px-1.5 text-xs text-muted-foreground'
+      className={cn('whitespace-nowrap rounded-chrome-sm bg-accent px-1.5 text-xs text-muted-foreground', className)}
     >
       {`${String(n)}. ${header}`}
     </span>
@@ -71,15 +72,35 @@ function QuestionLabel({ n, header }: { n: number; header: string }): React.JSX.
  * @param root0 - The component props.
  * @param root0.n - Its number, counting from 1.
  * @param root0.question - The question.
+ * @param root0.readOnly - It is a record of what was asked, quieter than a question waiting.
  * @returns The heading row.
  */
-function QuestionHeading({ n, question }: { n: number; question: AskUserQuestion }): React.JSX.Element {
+function QuestionHeading({
+  n,
+  question,
+  readOnly = false,
+}: {
+  n: number;
+  question: AskUserQuestion;
+  readOnly?: boolean;
+}): React.JSX.Element {
   const t = useTranslation();
+  // The label holds the left edge and a long question wraps beside it, so
+  // every heading on the card starts the same way.
   return (
-    <div className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1'>
-      <QuestionLabel n={n} header={question.header} />
-      <span className='min-w-0 break-words text-sm font-medium text-foreground'>{question.question}</span>
-      {question.multiSelect ? <span className='text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span> : null}
+    <div className='flex items-baseline gap-1.5'>
+      <QuestionLabel n={n} header={question.header} className='flex-none' />
+      <span
+        className={cn(
+          'min-w-0 break-words text-sm',
+          readOnly ? 'text-muted-foreground' : 'font-medium text-foreground',
+        )}
+      >
+        {question.question}
+      </span>
+      {question.multiSelect ? (
+        <span className='flex-none text-xs text-muted-foreground'>{t('chat.questionnaire.multi')}</span>
+      ) : null}
     </div>
   );
 }
@@ -236,12 +257,14 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
     onChange({ selected: !question.multiSelect && other.trim() !== '' ? [] : given.selected, other });
   };
 
+  // With no options to pick from, the line is the answer itself, not "other".
+  const ownWords = t(question.options.length === 0 ? 'chat.questionnaire.ownWords' : 'chat.questionnaire.other');
   const Item = withMedia ? MediaTile : OptionRow;
   const layout = withMedia ? 'grid grid-cols-3 gap-1.5' : 'flex flex-col gap-1';
   const items = question.options.map((option, i) => {
     const id = `${idBase}-${String(i)}`;
     return (
-      <Item key={option.label} id={id} option={option}>
+      <Item key={option.label} id={id} option={option} picked={given.selected.includes(option.label)}>
         {question.multiSelect ? (
           <Checkbox
             id={id}
@@ -283,8 +306,8 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
         disabled={disabled}
         maxLength={ASK_USER_OTHER_MAX_CHARS}
         autoComplete='off'
-        placeholder={t('chat.questionnaire.other')}
-        aria-label={`${String(n)}. ${question.header} ${t('chat.questionnaire.other')}`}
+        placeholder={ownWords}
+        aria-label={`${String(n)}. ${question.header} ${ownWords}`}
         onChange={(event) => write(event.target.value)}
         className='h-8 text-xs'
       />
@@ -294,31 +317,44 @@ function QuestionField({ n, question, given, disabled, onChange }: QuestionField
 
 /**
  * One option as a row: its control, then its label and description, the
- * whole row clickable through the label.
+ * whole box clickable through the label; a picked one is drawn as picked.
  * @param root0 - The component props.
  * @param root0.id - The control's id.
  * @param root0.option - The option.
+ * @param root0.picked - Whether it is picked.
  * @param root0.children - The control.
  * @returns The row.
  */
 function OptionRow({
   id,
   option,
+  picked,
   children,
 }: {
   id: string;
   option: AskUserQuestion['options'][number];
+  picked: boolean;
   children: React.ReactNode;
 }): React.JSX.Element {
   const { label, description } = option;
   return (
-    <div className='flex items-start gap-2 rounded-chrome border border-border px-2 py-1.5'>
+    <label
+      htmlFor={id}
+      data-testid='questionnaire-option'
+      data-picked={picked}
+      className={cn(
+        'flex cursor-pointer items-start gap-2 rounded-chrome border border-border px-2 py-1.5',
+        // The same picked look a tile has; no fill, which would take the
+        // grey description below 4.5:1.
+        picked && 'border-active-border',
+      )}
+    >
       <span className='mt-0.5 flex'>{children}</span>
-      <label htmlFor={id} className='flex min-w-0 flex-1 cursor-pointer flex-col'>
+      <span className='flex min-w-0 flex-1 flex-col'>
         <span className='break-words text-sm text-foreground'>{label}</span>
         {description ? <span className='break-words text-xs text-muted-foreground'>{description}</span> : null}
-      </label>
-    </div>
+      </span>
+    </label>
   );
 }
 
@@ -330,16 +366,19 @@ function OptionRow({
  * @param root0 - The component props.
  * @param root0.id - The control's id.
  * @param root0.option - The option.
+ * @param root0.picked - Whether it is picked.
  * @param root0.children - The control.
  * @returns The tile.
  */
 function MediaTile({
   id,
   option,
+  picked,
   children,
 }: {
   id: string;
   option: AskUserQuestion['options'][number];
+  picked: boolean;
   children: React.ReactNode;
 }): React.JSX.Element {
   const media = option.media;
@@ -348,7 +387,11 @@ function MediaTile({
     <label
       htmlFor={id}
       data-testid='questionnaire-tile'
-      className='flex cursor-pointer flex-col overflow-hidden rounded-chrome border border-border'
+      data-picked={picked}
+      className={cn(
+        'flex cursor-pointer flex-col overflow-hidden rounded-chrome border border-border',
+        picked && 'border-active-border',
+      )}
     >
       {/* Opens upward: the chat column has no room on either side of it. */}
       <HoverPreview
@@ -370,9 +413,11 @@ function MediaTile({
           )}
         </span>
       </HoverPreview>
-      <span className='flex min-w-0 items-center gap-1.5 px-1.5 py-1'>
+      {/* The whole name, wrapped: the end of it is often what tells two
+          pictures apart. Tiles in a row stretch to the tallest. */}
+      <span className='flex min-w-0 items-start gap-1.5 px-1.5 py-1'>
         {children}
-        <span className='min-w-0 flex-1 truncate text-xs text-foreground'>{option.label}</span>
+        <span className='min-w-0 flex-1 break-words text-xs text-foreground'>{option.label}</span>
       </span>
     </label>
   );
@@ -396,28 +441,35 @@ function AnsweredSummary({
   const t = useTranslation();
   return (
     <div className='flex flex-col gap-1'>
-      {questions.map((question, index) => {
-        const answer = answers.find((a) => a.index === index);
-        const given = [...(answer?.selected ?? []), ...(answer?.other === undefined ? [] : [answer.other])];
-        return (
-          <div
-            key={`${String(index)}-${question.header}`}
-            data-testid='questionnaire-summary-row'
-            className='flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-sm'
-          >
-            <QuestionLabel n={index + 1} header={question.header} />
-            {given.length === 0 ? (
-              <span data-testid='questionnaire-skipped' className='text-muted-foreground'>
-                {t('chat.questionnaire.skipped')}
-              </span>
-            ) : (
-              <span data-testid='questionnaire-answer' className='min-w-0 break-words text-foreground'>
-                {new Intl.ListFormat(getLocale(), { type: 'conjunction' }).format(given)}
-              </span>
-            )}
-          </div>
-        );
-      })}
+      <p data-testid='questionnaire-summary-title' className='text-xs text-muted-foreground'>
+        {t('chat.questionnaire.yourAnswers')}
+      </p>
+      {/* Labels in one column and answers lined up in the next, read down as
+          question then answer. */}
+      <div className='grid grid-cols-[auto_1fr] items-baseline gap-x-2 gap-y-1 text-sm'>
+        {questions.map((question, index) => {
+          const answer = answers.find((a) => a.index === index);
+          const given = [...(answer?.selected ?? []), ...(answer?.other === undefined ? [] : [answer.other])];
+          return (
+            <div
+              key={`${String(index)}-${question.header}`}
+              data-testid='questionnaire-summary-row'
+              className='contents'
+            >
+              <QuestionLabel n={index + 1} header={question.header} className='justify-self-start' />
+              {given.length === 0 ? (
+                <span data-testid='questionnaire-skipped' className='text-muted-foreground'>
+                  {t('chat.questionnaire.skipped')}
+                </span>
+              ) : (
+                <span data-testid='questionnaire-answer' className='min-w-0 break-words text-foreground'>
+                  {new Intl.ListFormat(getLocale(), { type: 'conjunction' }).format(given)}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -444,20 +496,19 @@ function RepliedLine({ questions }: { questions: AskUserQuestion[] }): React.JSX
         className='flex w-full items-center justify-between text-left text-sm text-muted-foreground hover-enabled:text-foreground'
       >
         <span>{t('chat.questionnaire.replied')}</span>
-        <span className='text-xs'>{open ? t('chat.questionnaire.hide') : t('chat.questionnaire.show')}</span>
+        <span className='inline-flex items-center gap-0.5 text-xs'>
+          {open ? t('chat.questionnaire.hide') : t('chat.questionnaire.show')}
+          {open ? <ChevronUp className='size-3' aria-hidden='true' /> : <ChevronDown className='size-3' aria-hidden='true' />}
+        </span>
       </Button>
       {open ? (
         <div data-testid='questionnaire-readonly' className='flex flex-col gap-1.5'>
           {questions.map((question, index) => (
             <div key={`${String(index)}-${question.header}`} className='flex flex-col gap-0.5'>
-              <QuestionHeading n={index + 1} question={question} />
+              <QuestionHeading n={index + 1} question={question} readOnly />
               {question.options.length > 0 ? (
-                <div className='flex flex-wrap gap-x-2 text-xs text-muted-foreground'>
-                  {question.options.map((option) => (
-                    <span key={option.label} className='min-w-0 break-words'>
-                      {option.label}
-                    </span>
-                  ))}
+                <div data-testid='questionnaire-readonly-options' className='break-words text-xs text-muted-foreground'>
+                  {question.options.map((option) => option.label).join(' · ')}
                 </div>
               ) : null}
             </div>

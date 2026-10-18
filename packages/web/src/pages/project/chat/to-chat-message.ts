@@ -559,3 +559,55 @@ export function toChatMessage(
     ...(options.streaming === true ? { streaming: true } : {}),
   };
 }
+
+/** Views already marked as going on, so an unchanged view keeps one object. */
+const continuedViews = new WeakMap<ChatMessage, ChatMessage>();
+/** Turn ends already given their copy, by the text they copy. */
+const endedViews = new WeakMap<ChatMessage, { text: string; view: ChatMessage }>();
+
+/**
+ * Join the replies one turn is drawn as: a turn resumed after a questionnaire
+ * reads as one reply going on, live and read back, so it offers one copy, at
+ * its end, of everything it said.
+ *
+ * Replies of one turn sit next to each other with no message of the reader's
+ * between them, which is the only way two replies sit next to each other.
+ * Views that need nothing are handed back as they came, and a view marked
+ * once is the same object every time, so the bubbles' memo holds.
+ * @param views - The column, in order.
+ * @returns The same column, each reply the turn goes on after marked, and the
+ *   last reply of such a turn copying all of it.
+ */
+export function joinContinued(views: readonly ChatMessage[]): ChatMessage[] {
+  const out = [...views];
+  let start = 0;
+  for (let i = 0; i <= out.length; i += 1) {
+    const view = out[i];
+    if (view !== undefined && view.role === 'assistant') continue;
+    // out[start..i) is a run of replies; a run of one is an ordinary turn.
+    if (i - start > 1) {
+      const said = out.slice(start, i).map((v) => v.content).filter((c) => c !== '');
+      for (let j = start; j < i - 1; j += 1) {
+        const earlier = out[j]!;
+        let marked = continuedViews.get(earlier);
+        if (marked === undefined) {
+          marked = { ...earlier, continued: true };
+          continuedViews.set(earlier, marked);
+        }
+        out[j] = marked;
+      }
+      const last = out[i - 1]!;
+      const text = said.join('\n\n');
+      const cached = endedViews.get(last);
+      if (cached?.text === text) {
+        out[i - 1] = cached.view;
+      } else {
+        const ended = { ...last, copyText: text };
+        endedViews.set(last, { text, view: ended });
+        out[i - 1] = ended;
+      }
+    }
+    start = i + 1;
+  }
+  return out;
+}

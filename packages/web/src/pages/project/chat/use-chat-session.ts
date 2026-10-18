@@ -6,7 +6,7 @@ import { useChat } from '@ai-sdk/react';
 
 import type { AskUserAnswer, ChatAttachedChip } from '@breatic/shared';
 
-import { splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
+import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
 import { visibleMessages } from '@web/pages/project/chat/visible-messages';
 
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -441,7 +441,7 @@ export function useChatSession(
     });
     rendered.current = kept;
     settledParts.current = keptParts;
-    return out;
+    return joinContinued(out);
   }, [onScreen, status, error]);
 
   return {

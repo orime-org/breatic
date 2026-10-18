@@ -147,6 +147,35 @@ describe('a card waiting for the reader', () => {
     expect(screen.getAllByRole('checkbox').map((box) => box.getAttribute('data-state'))).toEqual(['checked', 'unchecked', 'checked']);
   });
 
+  it('picks a text option from anywhere in its box, not only from its words', async () => {
+    const user = userEvent.setup();
+    waitingCard();
+    const [, tall] = within(question(1)).getAllByTestId('questionnaire-option');
+    await user.click(tall!);
+    expect(within(question(1)).getAllByRole('radio')[1]).toHaveAttribute('data-state', 'checked');
+  });
+
+  it('marks a picked option and a picked tile as picked, the rest not', async () => {
+    const user = userEvent.setup();
+    waitingCard();
+    await user.click(within(question(2)).getAllByTestId('questionnaire-option')[0]!);
+    await user.click(within(question(3)).getAllByTestId('questionnaire-tile')[1]!);
+    expect(within(question(2)).getAllByTestId('questionnaire-option').map((o) => o.dataset.picked)).toEqual(['true', 'false']);
+    expect(within(question(3)).getAllByTestId('questionnaire-tile').map((o) => o.dataset.picked)).toEqual(['false', 'true', 'false']);
+  });
+
+  it('asks a question with no options for the reader\'s own words, and one with options for anything else', () => {
+    render(
+      <QuestionnaireAnswerContext.Provider value={{ answer: vi.fn(), busy: false }}>
+        <QuestionnaireCard
+          questionnaire={{ toolCallId: 'ask-1', questions: [QUESTIONS[0]!, { header: 'Product', question: 'What is it?', multiSelect: false, options: [] }], state: 'awaiting' }}
+        />
+      </QuestionnaireAnswerContext.Provider>,
+    );
+    expect(within(question(1)).getByRole('textbox')).toHaveAttribute('placeholder', 'Other…');
+    expect(within(question(2)).getByRole('textbox')).toHaveAttribute('placeholder', 'Write your answer…');
+  });
+
   it('says to answer at least one question when nothing is answered, and sends nothing', async () => {
     const user = userEvent.setup();
     const onAnswer = vi.fn(async () => undefined);
@@ -246,6 +275,13 @@ describe('a card already answered', () => {
     expect(screen.queryByTestId('questionnaire-submit')).toBeNull();
   });
 
+  it('says above the summary that these are the reader\'s answers', () => {
+    render(
+      <QuestionnaireCard questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'answered', answers: [{ index: 0, selected: ['9:16'] }] }} />,
+    );
+    expect(screen.getByTestId('questionnaire-summary-title')).toHaveTextContent('Your answers');
+  });
+
   it('joins several answers to one question as a list in the reader\'s language', () => {
     render(
       <QuestionnaireCard
@@ -291,6 +327,7 @@ describe('a card the reader replied to in the chat', () => {
       '2. Elements',
       '3. Style',
     ]);
+    expect(within(list).getAllByTestId('questionnaire-readonly-options')[0]).toHaveTextContent('16:9 · 9:16');
     expect(within(list).queryByRole('radio')).toBeNull();
     expect(within(list).queryByRole('textbox')).toBeNull();
     expect(screen.queryByTestId('questionnaire-submit')).toBeNull();
