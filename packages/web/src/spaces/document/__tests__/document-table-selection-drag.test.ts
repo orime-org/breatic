@@ -78,12 +78,28 @@ function select(editor: Editor, anchor: number, head: number): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
 }
 
+/**
+ * The words of the table's last cell.
+ * @param editor - The editor.
+ * @returns The words.
+ */
+function lastCellWords(editor: Editor): string {
+  let words = '';
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') words = node.textContent;
+    return true;
+  });
+  return words;
+}
+
 describe('prosemirror-tables narrowing a text selection (patched)', () => {
-  it('leaves a selection from above the table to the start of a cell as it is', () => {
+  it('leaves a selection from above the table to the start of a cell unnarrowed: it takes the whole table (inner#1619 T14)', () => {
     const editor = open();
     select(editor, textPos(editor, 'above') + 2, textPos(editor, 'b1'));
     const { selection } = editor.prosemirrorState;
-    expect([selection.from, selection.to]).toEqual([textPos(editor, 'above') + 2, textPos(editor, 'b1')]);
+    expect(selection.from).toBe(textPos(editor, 'above') + 2);
+    expect(selection.$to.parent.textContent).toBe(lastCellWords(editor));
+    expect(selection.$to.parentOffset).toBe(selection.$to.parent.content.size);
   });
 
   it('still narrows one from a cell to the start of another cell of the same table', () => {

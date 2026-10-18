@@ -245,14 +245,38 @@ function collapseInCell(view: EditorView, dir: -1 | 1): boolean {
 type EdgeArrow = 'up' | 'down' | 'left' | 'right';
 
 /**
+ * Where a caret on its way out of a table leaves it: on the first row going
+ * up or the last going down, at the start of the first cell going left or the
+ * end of the last going right — its block the cell's first or last at every
+ * level down from the cell, a nested one included (`prosemirror-tables`
+ * `atEndOfCell`), and on that line as far as the view says.
+ * @param view - The editor view.
+ * @param $head - The caret.
+ * @param dir - Which arrow.
+ * @returns The table's id and the position just outside the table that way, or null when the caret stays in it.
+ */
+function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { blockId: string; edge: number } | null {
+  const cell = cellAround($head);
+  const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
+  if (cell === null || at === null) return null;
+  const before = dir === 'up' || dir === 'left';
+  let edgeLine = true;
+  for (let d = $head.depth - 1; d > cell.depth; d -= 1) {
+    if (before ? $head.index(d) !== 0 : $head.indexAfter(d) !== $head.node(d).childCount) edgeLine = false;
+  }
+  const edgeRow = edgeLine && (before ? at.top === 0 : at.bottom === at.map.height);
+  const edgeColumn = dir === 'left' ? at.left === 0 : dir === 'right' ? at.right === at.map.width : true;
+  if (!edgeRow || !edgeColumn || !view.endOfTextblock(dir)) return null;
+  return { blockId: at.blockId, edge: before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1) };
+}
+
+/**
  * Opens a line beside a table at an end of the body, when the caret is on its
- * way out of it: on the first row going up or the last going down, at the
- * start of the first cell going left or the end of the last going right.
- * Nothing past such a table can take a selection, and the table plugin's own
- * arrow falls back into the table (`prosemirror-tables` `arrow`,
- * `dist/index.js:2143-2151`). Under the table this is the keyboard's way to
- * the line a click on the space below the last block opens; above it, to a
- * line before a table the body starts with.
+ * way out of it (`tableExit`). Nothing past such a table can take a
+ * selection, and the table plugin's own arrow falls back into the table
+ * (`prosemirror-tables` `arrow`, `dist/index.js:2143-2151`). Under the table
+ * this is the keyboard's way to the line a click on the space below the last
+ * block opens; above it, to a line before a table the body starts with.
  * @param editor - The editor.
  * @param dir - Which arrow.
  * @returns Whether the key was claimed.
@@ -260,30 +284,35 @@ type EdgeArrow = 'up' | 'down' | 'left' | 'right';
 function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   const view = editor.prosemirrorView;
   const { selection } = view.state;
-  const cell = selection.empty ? cellAround(selection.$head) : null;
-  const at = cell === null ? null : cellAt(view.state.doc, cell.pos);
-  if (cell === null || at === null) return false;
+  const exit = selection.empty ? tableExit(view, selection.$head, dir) : null;
+  if (exit === null) return false;
   const before = dir === 'up' || dir === 'left';
-  // The caret's block is the cell's first or last at every level down from
-  // the cell, a nested one included (`prosemirror-tables` `atEndOfCell`), and
-  // the cell is in the table's first or last row; where the caret stands on
-  // that line is the view's to say.
-  const { $head } = selection;
-  let edgeLine = true;
-  for (let d = $head.depth - 1; d > cell.depth; d -= 1) {
-    if (before ? $head.index(d) !== 0 : $head.indexAfter(d) !== $head.node(d).childCount) edgeLine = false;
-  }
-  const edgeRow = edgeLine && (before ? at.top === 0 : at.bottom === at.map.height);
-  const edgeColumn = dir === 'left' ? at.left === 0 : dir === 'right' ? at.right === at.map.width : true;
-  if (!edgeRow || !edgeColumn || !view.endOfTextblock(dir)) return false;
-  // Just outside the table itself; past it that way, anything a selection can
-  // stand on — a block nested under the table, a divider — means the body
-  // goes on.
-  const edge = before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1);
-  if (Selection.findFrom(view.state.doc.resolve(edge), before ? -1 : 1) !== null) return false;
-  const [opened] = editor.insertBlocks([{ type: 'paragraph' }] as never, at.blockId, before ? 'before' : 'after');
+  // Past the table that way, anything a selection can stand on — a block
+  // nested under the table, a divider — means the body goes on.
+  if (Selection.findFrom(view.state.doc.resolve(exit.edge), before ? -1 : 1) !== null) return false;
+  const [opened] = editor.insertBlocks([{ type: 'paragraph' }] as never, exit.blockId, before ? 'before' : 'after');
   if (opened === undefined) return false;
   editor.setTextCursorPosition(opened, 'start');
+  return true;
+}
+
+/**
+ * Shift and an arrow on the way out of a table run the selection's head to
+ * the nearest words past it, which takes the whole table into the selection
+ * (inner#1619 T14, `document-table-leave-selection.ts`). The browser's own
+ * extension stops inside the table's frame.
+ * @param view - The editor view.
+ * @param dir - Up or down.
+ * @returns Whether the key was claimed.
+ */
+function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
+  const { selection, doc } = view.state;
+  if (!(selection instanceof TextSelection)) return false;
+  const exit = tableExit(view, selection.$head, dir);
+  if (exit === null) return false;
+  const past = Selection.findFrom(doc.resolve(exit.edge), dir === 'up' ? -1 : 1, true);
+  if (past === null) return false;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, past.head)).scrollIntoView());
   return true;
 }
 
@@ -308,6 +337,8 @@ export const documentTableKeysExtension = createExtension(() => ({
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, 1) || leaveEdgeTable(editor, 'right'),
     ArrowUp: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'up'),
+    'Shift-ArrowUp': ({ editor }: { editor: KeysEditor }) => extendOutOfTable(editor.prosemirrorView, 'up'),
+    'Shift-ArrowDown': ({ editor }: { editor: KeysEditor }) => extendOutOfTable(editor.prosemirrorView, 'down'),
     ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'down'),
   },
 }) as never);

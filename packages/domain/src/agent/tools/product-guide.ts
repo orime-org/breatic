@@ -1223,7 +1223,10 @@ export function renderProductGuide(): string {
       "a row. While one of these " +
       "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
       "column's right side changes that column's width only; the other columns keep theirs and the table " +
-      "grows. A table wider than the page scrolls sideways inside its own frame.",
+      "grows. A table wider than the page scrolls sideways inside its own frame. A selection that runs from a " +
+      "cell out of the table, by Shift and an arrow or by dragging past the table's edge, takes the whole " +
+      "table: every cell shows as selected, and typing or deleting takes the table away with the rest of the " +
+      "selection.",
     "- Hovering a cell also shows a small box with a down arrow at that cell's top right corner; the handles " +
       "and this box go when the pointer leaves the table. The box opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +

@@ -2087,11 +2087,13 @@ body {
     width: min(var(--doc-media-width, 100%), 100%) !important;
   }
 
-  /* Selected cells, and the cells an open row or column menu acts on: one look
-     (inner#1126 A6). The library draws this layer for `.selectedCell` only, so
+  /* Selected cells, the cells an open row or column menu acts on, and the
+     cells of a table a selection runs out of: one look (inner#1126 A6,
+     inner#1619 T14). The library draws this layer for `.selectedCell` only, so
      the rule draws it whole. */
   .doc-body .selectedCell::after,
-  .doc-body .doc-table-target::after {
+  .doc-body .doc-table-target::after,
+  .doc-body .doc-table-in-selection::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -2103,7 +2105,8 @@ body {
   /* A cell selection is the selection too: not drawn while the body does not
      hold the focus. A row or column an open menu acts on is drawn — the menu is
      the body's own layer, and the body holds while it is open. */
-  .doc-body[contenteditable='true']:not([data-body-holds]) .selectedCell::after {
+  .doc-body[contenteditable='true']:not([data-body-holds]) .selectedCell::after,
+  .doc-body[contenteditable='true']:not([data-body-holds]) .doc-table-in-selection::after {
     content: none;
   }
 
@@ -2114,8 +2117,10 @@ body {
      the cell as well, drawn by being absolutely placed. */
   .doc-body .selectedCell > p,
   .doc-body .doc-table-target > p,
+  .doc-body .doc-table-in-selection > p,
   .doc-body .selectedCell > .bn-block-outer,
-  .doc-body .doc-table-target > .bn-block-outer {
+  .doc-body .doc-table-target > .bn-block-outer,
+  .doc-body .doc-table-in-selection > .bn-block-outer {
     position: relative;
     z-index: 3;
   }

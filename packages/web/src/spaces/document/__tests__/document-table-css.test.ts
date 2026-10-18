@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { COLOUR_HUES } from '@web/spaces/document/document-colour-run';
 
+import { IN_SELECTION } from '@web/spaces/document/document-table-leave-selection';
 import { declarationsOf, ruleBody, selectorEndingIn } from './index-css-rules';
 
 describe('a table in the body', () => {
@@ -100,6 +101,14 @@ describe('a table in the body', () => {
 
   it('draws no selected cells while an editable body does not hold the focus (inner#1127 A21)', () => {
     expect(ruleBody(':not([data-body-holds]) .selectedCell::after')).toContain('content: none');
+  });
+
+  it('paints the cells of a table a selection runs out of the way selected cells are painted (inner#1619 T14)', () => {
+    expect(selectorEndingIn(`.doc-body .${IN_SELECTION}::after`)).toBe(selectorEndingIn('.doc-body .selectedCell::after'));
+    expect(selectorEndingIn(`.${IN_SELECTION} > p`)).toBe(selectorEndingIn('.selectedCell > p'));
+    expect(selectorEndingIn(`:not([data-body-holds]) .${IN_SELECTION}::after`)).toBe(
+      selectorEndingIn(':not([data-body-holds]) .selectedCell::after'),
+    );
   });
 
   it('lets a table whose every column has a stored width grow to the sum of its columns (A12)', () => {

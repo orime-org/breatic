@@ -774,7 +774,7 @@ describe('the space below a trailing block that has no text', () => {
 describe('a table at an end of the body (inner#1126 A3)', () => {
   const TABLE = tableBlock({ rows: [{ cells: ['c1', 'c2'] }, { cells: ['c3', 'c4'] }] });
 
-  it('takes a Shift+click inside a last table to the click', () => {
+  it('takes a Shift+click inside a last table into the table, which it takes whole (inner#1619 T14)', () => {
     const view = open([{ type: 'paragraph', content: 'Above' }, TABLE], 100).prosemirrorView!;
     select(view, textStart(view, 'Above') + 1);
     const target = textStart(view, 'c3') + 1;
@@ -783,7 +783,7 @@ describe('a table at an end of the body (inner#1126 A3)', () => {
     press(view, 90, { shiftKey: true });
 
     expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
-    expect(view.state.selection.head).toBe(target);
+    expect(view.state.selection.head).toBe(textStart(view, 'c4') + 2);
   });
 
   it('takes a Shift+click below a last table to the end', () => {
@@ -797,7 +797,7 @@ describe('a table at an end of the body (inner#1126 A3)', () => {
     expect(view.state.selection.head).toBe(bodyEdgePos(view.state.doc, 'end'));
   });
 
-  it('takes a Shift+click inside a first table to the click', () => {
+  it('takes a Shift+click inside a first table into the table, which it takes whole (inner#1619 T14)', () => {
     const view = open([TABLE, { type: 'paragraph', content: 'Below' }], 100).prosemirrorView!;
     select(view, textStart(view, 'Below') + 1);
     const target = textStart(view, 'c2') + 1;
@@ -806,7 +806,7 @@ describe('a table at an end of the body (inner#1126 A3)', () => {
     press(view, 10, { shiftKey: true });
 
     expect(view.state.selection).not.toBeInstanceOf(BodyEdgeSelection);
-    expect(view.state.selection.head).toBe(target);
+    expect(view.state.selection.head).toBe(textStart(view, 'c1'));
   });
 
   it('takes a Shift+click above a first table to the start', () => {

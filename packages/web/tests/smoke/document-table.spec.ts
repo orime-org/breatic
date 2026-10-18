@@ -948,3 +948,42 @@ test('T7: a picture picked from the plus on an empty line in a narrow cell lands
   expect(sizes.media).toBeGreaterThan(0);
   expect(sizes.media).toBeLessThanOrEqual(sizes.inner + 1);
 });
+
+test('T14: a selection run from a cell out of the table with the keyboard takes the whole table, and a typed key replaces it', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  await clickAndSettle(page, page.locator(TOP).nth(2));
+  await page.keyboard.type('below');
+  // Past the undo manager's 500ms capture window, so the undo below takes
+  // back the typed key alone and not the words put in just before it.
+  await page.waitForTimeout(600);
+  await cell(page, 'b2').click();
+
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(page.locator(`${EDITOR} td.doc-table-in-selection`)).toHaveCount(4);
+  await page.keyboard.type('X');
+
+  await expect(page.locator(`${EDITOR} [data-node-type='docTable']`)).toHaveCount(0);
+  await expect(page.locator(TOP).first()).toHaveText('lead');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2']]]);
+});
+
+test('T14: a mouse drag from a cell to below the table takes the whole table, and Backspace takes it away whole', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  await clickAndSettle(page, page.locator(TOP).nth(2));
+  await page.keyboard.type('below');
+  const from = await page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^b1$/ }).boundingBox();
+  const to = await page.locator(TOP).nth(2).boundingBox();
+
+  await page.mouse.move(from!.x + 6, from!.y + from!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to!.x + 20, to!.y + to!.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator(`${EDITOR} td.doc-table-in-selection`)).toHaveCount(4);
+  await page.keyboard.press('Backspace');
+
+  await expect(page.locator(`${EDITOR} [data-node-type='docTable']`)).toHaveCount(0);
+  await expect(page.locator(TOP).first()).toHaveText('lead');
+});
