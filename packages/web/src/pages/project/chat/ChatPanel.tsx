@@ -146,6 +146,7 @@ export function ChatPanel({
   // Collapsing them into one would put the empty-conversation greeting on
   // screen during the wait, which is a whole screenful of the wrong thing.
   const ready = status === 'ready';
+  const answering = React.useMemo(() => ({ answer, busy: turnPhase !== 'idle' }), [answer, turnPhase]);
   // A long conversation folds its oldest part into memory before this turn is
   // answered, which is a second model call in front of the reply. Read here
   // rather than passed down the turn: the panel can be unmounted when the
@@ -252,7 +253,7 @@ export function ChatPanel({
     >
       {/* A questionnaire card inside a message answers in the conversation
           this panel holds (inner#1542). */}
-      <QuestionnaireAnswerContext.Provider value={answer}>
+      <QuestionnaireAnswerContext.Provider value={answering}>
         <MessageList
           // The conversation travels as a prop rather than as a key. The list
           // does have to notice a switch -- it is what tells it to follow the

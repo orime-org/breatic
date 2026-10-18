@@ -670,7 +670,9 @@ export async function answerInSession(
   spaces: ChatSpaceContext = {},
 ): Promise<void> {
   const chat = sessions.get(conversationId);
-  if (!chat) return;
+  // One request at a time on a conversation: the turn in flight settles the
+  // card one way or the other, and the card's button waits on it meanwhile.
+  if (!chat || runningTurn.has(conversationId)) return;
   const pressedAt = Date.now();
   const turn = (turnsRun.get(conversationId) ?? 0) + 1;
   turnsRun.set(conversationId, turn);

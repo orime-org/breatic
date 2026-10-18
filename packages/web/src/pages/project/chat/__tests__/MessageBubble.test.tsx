@@ -357,7 +357,7 @@ describe('MessageBubble — a questionnaire (inner#1542)', () => {
   it('draws the card, and its answers go to the panel that holds the conversation', async () => {
     const answer = vi.fn(async () => undefined);
     render(
-      <QuestionnaireAnswerContext.Provider value={answer}>
+      <QuestionnaireAnswerContext.Provider value={{ answer, busy: false }}>
         <MessageBubble message={{ id: 'a1', role: 'assistant', content: '', questionnaires: [questionnaire] }} />
       </QuestionnaireAnswerContext.Provider>,
     );

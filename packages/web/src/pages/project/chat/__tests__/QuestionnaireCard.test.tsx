@@ -150,6 +150,23 @@ describe('a card waiting for the reader', () => {
     finish();
   });
 
+  it('waits on a turn the conversation is already running, and sends nothing meanwhile', async () => {
+    const user = userEvent.setup();
+    const onAnswer = vi.fn(async () => undefined);
+    render(
+      <QuestionnaireCard
+        questionnaire={{ toolCallId: 'ask-1', questions: QUESTIONS, state: 'awaiting' }}
+        onAnswer={onAnswer}
+        busy
+      />,
+    );
+    await user.click(within(question(1)).getAllByRole('radio')[1]!);
+    const submit = screen.getByTestId('questionnaire-submit');
+    expect(submit).toHaveAttribute('aria-busy', 'true');
+    await user.click(submit);
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
   it('carries the hint that a reply in the box will do', () => {
     waitingCard();
     expect(screen.getByTestId('questionnaire-hint')).toBeInTheDocument();

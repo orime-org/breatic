@@ -14,5 +14,11 @@ import type { AskUserAnswer } from '@breatic/shared';
 /** Sends a card's answers; resolves when the turn they resume is over. */
 export type AnswerQuestionnaire = (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
 
+/** The panel's way of answering, and whether a turn is running in its conversation. */
+export interface QuestionnaireAnswering {
+  answer: AnswerQuestionnaire;
+  busy: boolean;
+}
+
 /** The panel's way of answering, or undefined outside one. */
-export const QuestionnaireAnswerContext = React.createContext<AnswerQuestionnaire | undefined>(undefined);
+export const QuestionnaireAnswerContext = React.createContext<QuestionnaireAnswering | undefined>(undefined);

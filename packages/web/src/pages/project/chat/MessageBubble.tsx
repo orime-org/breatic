@@ -70,7 +70,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     [message.toolCalls],
   );
   const running = message.streaming === true;
-  const answer = React.useContext(QuestionnaireAnswerContext);
+  const answering = React.useContext(QuestionnaireAnswerContext);
   return (
     <div
       data-testid='message-bubble'
@@ -201,7 +201,12 @@ export const MessageBubble = React.memo(function MessageBubble({
           {message.questionnaires === undefined
             ? null
             : message.questionnaires.map((questionnaire) => (
-              <QuestionnaireCard key={questionnaire.toolCallId} questionnaire={questionnaire} onAnswer={answer} />
+              <QuestionnaireCard
+                key={questionnaire.toolCallId}
+                questionnaire={questionnaire}
+                onAnswer={answering?.answer}
+                busy={answering?.busy}
+              />
             ))}
           {/* A proposal stored in a shape this build can no longer place is
             named where its card would be, so the reader knows to ask again

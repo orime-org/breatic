@@ -36,6 +36,8 @@ interface QuestionnaireCardProps {
    * the card is only read, which leaves a waiting card with nothing to press.
    */
   onAnswer?: (toolCallId: string, answers: AskUserAnswer['answers']) => Promise<void>;
+  /** A turn is running in the conversation; the press waits for it to end. */
+  busy?: boolean;
 }
 
 /**
@@ -78,11 +80,13 @@ function QuestionLabel({ n, header }: { n: number; header: string }): React.JSX.
  * @param root0 - The component props.
  * @param root0.questionnaire - The card and where it stands.
  * @param root0.onAnswer - Sends the answers.
+ * @param root0.busy - A turn is running in the conversation.
  * @returns The card.
  */
 export const QuestionnaireCard = React.memo(function QuestionnaireCard({
   questionnaire,
   onAnswer,
+  busy = false,
 }: QuestionnaireCardProps): React.JSX.Element {
   return (
     <div
@@ -90,7 +94,7 @@ export const QuestionnaireCard = React.memo(function QuestionnaireCard({
       className='mt-2 flex flex-col gap-3 rounded-overlay border border-border bg-popover px-3 py-2.5'
     >
       {questionnaire.state === 'awaiting' ? (
-        <WaitingCard questionnaire={questionnaire} onAnswer={onAnswer} />
+        <WaitingCard questionnaire={questionnaire} onAnswer={onAnswer} busy={busy} />
       ) : questionnaire.state === 'answered' ? (
         <AnsweredSummary questions={questionnaire.questions} answers={questionnaire.answers ?? []} />
       ) : (
@@ -105,9 +109,10 @@ export const QuestionnaireCard = React.memo(function QuestionnaireCard({
  * @param root0 - The component props.
  * @param root0.questionnaire - The card.
  * @param root0.onAnswer - Sends the answers.
+ * @param root0.busy - A turn is running in the conversation.
  * @returns The questions and the press.
  */
-function WaitingCard({ questionnaire, onAnswer }: QuestionnaireCardProps): React.JSX.Element {
+function WaitingCard({ questionnaire, onAnswer, busy }: QuestionnaireCardProps): React.JSX.Element {
   const t = useTranslation();
   const { toolCallId, questions } = questionnaire;
   const [given, setGiven] = React.useState<Given[]>(() => questions.map(() => NOTHING));
@@ -149,7 +154,7 @@ function WaitingCard({ questionnaire, onAnswer }: QuestionnaireCardProps): React
         <ProposalActions>
           <ProposalAction
             data-testid='questionnaire-submit'
-            loading={sending}
+            loading={sending || busy === true}
             aria-disabled={answers.length === 0 ? true : undefined}
             className={cn(answers.length === 0 && 'opacity-50')}
             onClick={() => void submit()}

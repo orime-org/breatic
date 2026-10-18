@@ -161,6 +161,24 @@ describe('answering a card', () => {
   });
 });
 
+describe('a turn already running in the conversation', () => {
+  it('takes no answer until it is over, so one request runs at a time', async () => {
+    const held = new Promise<Response>(() => undefined);
+    globalThis.fetch = ((_url: string, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return held;
+    }) as typeof globalThis.fetch;
+    pausedChat();
+    void sendInSession('c-1', 'never mind, something else');
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+
+    await answerInSession('c-1', 'ask-1', ANSWERS);
+
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty('answer');
+  });
+});
+
 describe('writing a message instead of answering', () => {
   it('shows the card it closed as replied to, in the earlier reply', async () => {
     answer = () =>
