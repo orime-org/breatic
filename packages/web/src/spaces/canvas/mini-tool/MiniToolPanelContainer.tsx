@@ -398,8 +398,10 @@ function OpenMiniToolPanel({
     // A grid lays its tiles out from the source's pixels before the export.
     const sourceSize =
       source.width !== undefined && source.height !== undefined ? { width: source.width, height: source.height } : undefined;
+    // Pressing Run leaves picking, as pressing generate does (inner#1304).
+    if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source.width, source.height, sessionStore, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source.width, source.height, sessionStore, endPick, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);
