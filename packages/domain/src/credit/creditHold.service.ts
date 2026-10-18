@@ -9,8 +9,8 @@
  * the same credits and pass, and the charges that follow push the studio into
  * debt. Here an admission counts what the purchases hold, less the debt, less
  * every hold still counted, and writes its own hold before letting the work
- * start. Admissions, resizes and charges on one studio all take the studio's
- * debt lock first, so they queue and each sees what the one before it held.
+ * start. Admissions and charges on one studio both take the studio's debt
+ * lock first, so they queue and each sees what the one before it held.
  *
  * Holds exist only while payments are on; with payments off every admission
  * passes and nothing is written, as before.
@@ -20,7 +20,7 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, toMicroCredits } from "@domain/credit/credit-math.js";
-import { db, env, NotFoundError } from "@breatic/core";
+import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
 /** One hold asked for. */
@@ -64,17 +64,12 @@ export interface CreditPosition {
  * holds, in micro-credits.
  * @param studioId - The studio.
  * @param tx - The transaction that takes and keeps the lock.
- * @param excludeReferenceId - A hold to leave out of the sum, when it is the one being moved.
  * @returns Spendable and counted holds, in micro-credits.
  */
-async function lockedRoom(
-  studioId: string,
-  tx: DbTx,
-  excludeReferenceId?: string,
-): Promise<{ spendable: number; held: number }> {
+async function lockedRoom(studioId: string, tx: DbTx): Promise<{ spendable: number; held: number }> {
   const debt = await creditLotRepo.lockDebt(studioId, tx);
   const lots = await creditLotRepo.sumSpendableForStudio(studioId, tx);
-  const held = await creditHoldRepo.sumHeldForStudio(studioId, tx, excludeReferenceId);
+  const held = await creditHoldRepo.sumHeldForStudio(studioId, tx);
   return { spendable: toMicroCredits(lots) - toMicroCredits(debt), held: toMicroCredits(held) };
 }
 
@@ -128,90 +123,6 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
       tx,
     );
     return { ok: true };
-  });
-}
-
-/**
- * Set a running piece of work's hold to a new amount, creating it on first use.
- *
- * For work whose cost grows as it runs, such as a chat turn. The new amount
- * must fit beside every other counted hold; the expiry moves on each time, so
- * a long-running turn keeps its hold. A released hold belongs to work that has
- * ended and is never moved again.
- * @param request - The new amount, and how long it counts from now.
- * @returns Whether the hold now stands at the new amount.
- * @throws {NotFoundError} When the project has no live studio.
- */
-export async function resizeHold(request: HoldRequest): Promise<boolean> {
-  if (!env.PAYMENT_ENABLED) return true;
-  const studioId = await resolveOwnerStudioId(request.projectId);
-  const amount = toMicroCredits(request.amount);
-  return db.transaction(async (tx) => {
-    const room = await lockedRoom(studioId, tx, request.referenceId);
-    const existing = await creditHoldRepo.findHold(request.referenceId, tx, true);
-    if (existing?.status === "released") return false;
-    if (room.spendable - room.held < amount) return false;
-    if (existing) {
-      await creditHoldRepo.updateHold(request.referenceId, fromMicroCredits(amount), expiryFor(request.ttlMs), tx);
-    } else {
-      await creditHoldRepo.insertHold(
-        {
-          studioId,
-          actorUserId: request.actorUserId,
-          referenceId: request.referenceId,
-          amount: fromMicroCredits(amount),
-          expiresAt: expiryFor(request.ttlMs),
-        },
-        tx,
-      );
-    }
-    return true;
-  });
-}
-
-/**
- * Add to an existing hold, for a cost that arises while the work runs.
- * @param input - Which hold, by how much, and how long it counts from now.
- * @param input.referenceId - The hold's key.
- * @param input.delta - Credits to add.
- * @param input.ttlMs - How long it counts from now.
- * @returns Whether the hold grew; false when it does not exist, was released, or the addition does not fit.
- */
-export async function extendHold(input: { referenceId: string; delta: number; ttlMs: number }): Promise<boolean> {
-  if (!env.PAYMENT_ENABLED) return true;
-  const found = await creditHoldRepo.findHold(input.referenceId);
-  if (!found || found.status === "released") return false;
-  return db.transaction(async (tx) => {
-    const room = await lockedRoom(found.studioId, tx, input.referenceId);
-    const existing = await creditHoldRepo.findHold(input.referenceId, tx, true);
-    if (!existing || existing.status === "released") return false;
-    const amount = toMicroCredits(existing.amount) + toMicroCredits(input.delta);
-    if (room.spendable - room.held < amount) return false;
-    await creditHoldRepo.updateHold(input.referenceId, fromMicroCredits(amount), expiryFor(input.ttlMs), tx);
-    return true;
-  });
-}
-
-/**
- * Hold credits for spend that has already happened and is waiting for its
- * price, without asking whether it fits: the money is gone either way, and the
- * hold only keeps later admissions from counting it as free.
- * @param request - What to hold.
- * @throws {Error} When the database fails.
- */
-export async function placeHold(request: HoldRequest): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
-  const studioId = await resolveOwnerStudioId(request.projectId).catch((err: unknown) => {
-    if (err instanceof NotFoundError) return null;
-    throw err;
-  });
-  if (studioId === null) return;
-  await creditHoldRepo.insertHold({
-    studioId,
-    actorUserId: request.actorUserId,
-    referenceId: request.referenceId,
-    amount: fromMicroCredits(toMicroCredits(request.amount)),
-    expiresAt: expiryFor(request.ttlMs),
   });
 }
 

@@ -252,9 +252,6 @@ export const mocks = {
   creditHoldService: {
     reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
     releaseHold: vi.fn().mockResolvedValue(undefined),
-    resizeHold: vi.fn().mockResolvedValue(true),
-    extendHold: vi.fn().mockResolvedValue(true),
-    placeHold: vi.fn().mockResolvedValue(undefined),
     getCreditPosition: vi.fn().mockResolvedValue({ spendable: 100, held: 0, available: 100 }),
   },
   creditLotService: {

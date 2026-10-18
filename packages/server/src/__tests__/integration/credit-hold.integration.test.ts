@@ -232,9 +232,6 @@ describe("reserveCredits", () => {
     payments(false);
     try {
       expect(await creditHoldService.reserveCredits(req(fx, reference, 1_000))).toEqual({ ok: true });
-      expect(await creditHoldService.resizeHold(req(fx, reference, 1_000))).toBe(true);
-      expect(await creditHoldService.extendHold({ referenceId: reference, delta: 5, ttlMs: HOUR })).toBe(true);
-      await creditHoldService.placeHold(req(fx, ref("off-place"), 5));
     } finally {
       payments(true);
     }
@@ -242,64 +239,7 @@ describe("reserveCredits", () => {
   });
 });
 
-describe("resizeHold and extendHold", () => {
-  it("creates the hold on first use and moves it while the new amount fits", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("turn");
-    expect(await creditHoldService.resizeHold(req(fx, reference, 40))).toBe(true);
-    expect(await creditHoldService.resizeHold(req(fx, reference, 95))).toBe(true);
-    expect(await creditHoldService.resizeHold(req(fx, reference, 101))).toBe(false);
-    expect(await holdRows(reference)).toEqual([{ status: "held", amount: "95.000000" }]);
-  });
-
-  it("counts only the other holds when deciding whether a resize fits", async () => {
-    const fx = await studioWith(100);
-    await creditHoldService.reserveCredits(req(fx, ref("other"), 50));
-    const reference = ref("turn2");
-    expect(await creditHoldService.resizeHold(req(fx, reference, 50))).toBe(true);
-    expect(await creditHoldService.resizeHold(req(fx, reference, 51))).toBe(false);
-  });
-
-  it("refuses to move a released hold", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("done");
-    await creditHoldService.resizeHold(req(fx, reference, 10));
-    await creditHoldService.releaseHold(reference);
-    expect(await creditHoldService.resizeHold(req(fx, reference, 10))).toBe(false);
-    expect(await creditHoldService.extendHold({ referenceId: reference, delta: 1, ttlMs: HOUR })).toBe(false);
-  });
-
-  it("revives an expired hold of a turn that is still running, if it fits", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("long-turn");
-    await creditHoldService.resizeHold(req(fx, reference, 10));
-    await sql`UPDATE credit_holds SET expires_at = now() - interval '1 second' WHERE reference_id = ${reference}`;
-    expect(await creditHoldService.resizeHold(req(fx, reference, 20))).toBe(true);
-    expect((await creditHoldService.getCreditPosition(fx.studioId)).held).toBe(20);
-  });
-
-  it("adds to the current amount while it fits", async () => {
-    const fx = await studioWith(100);
-    const reference = ref("tools");
-    await creditHoldService.resizeHold(req(fx, reference, 60));
-    expect(await creditHoldService.extendHold({ referenceId: reference, delta: 30, ttlMs: HOUR })).toBe(true);
-    expect(await creditHoldService.extendHold({ referenceId: reference, delta: 11, ttlMs: HOUR })).toBe(false);
-    expect(await holdRows(reference)).toEqual([{ status: "held", amount: "90.000000" }]);
-  });
-
-  it("refuses to extend a hold that does not exist", async () => {
-    expect(await creditHoldService.extendHold({ referenceId: ref("ghost"), delta: 1, ttlMs: HOUR })).toBe(false);
-  });
-});
-
-describe("placeHold and releaseHold", () => {
-  it("places a hold for spend that already happened even when it does not fit", async () => {
-    const fx = await studioWith(10);
-    const reference = ref("lookup");
-    await creditHoldService.placeHold(req(fx, reference, 50));
-    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 10, held: 50, available: -40 });
-  });
-
+describe("releaseHold", () => {
   it("releases once and ignores a second release or an unknown key", async () => {
     const fx = await studioWith(100);
     const reference = ref("rel");
@@ -370,11 +310,10 @@ describe("chargeForGeneration with a hold", () => {
 
 describe("hold invariant", () => {
   it("never lets admitted holds exceed what the studio can spend", async () => {
-    // I1: whenever an admission or a resize succeeds, the holds still counted
+    // I1: whenever an admission succeeds, the holds still counted
     // add up to no more than the purchases less the debt.
     const op = fc.oneof(
       fc.record({ kind: fc.constant("reserve" as const), amount: fc.integer({ min: 1, max: 80 }) }),
-      fc.record({ kind: fc.constant("resize" as const), slot: fc.integer({ min: 0, max: 2 }), amount: fc.integer({ min: 0, max: 80 }) }),
       fc.record({ kind: fc.constant("release" as const), slot: fc.integer({ min: 0, max: 5 }) }),
       fc.record({ kind: fc.constant("charge" as const), slot: fc.integer({ min: 0, max: 5 }), amount: fc.integer({ min: 0, max: 60 }) }),
     );
@@ -382,15 +321,12 @@ describe("hold invariant", () => {
       fc.asyncProperty(fc.array(op, { minLength: 1, maxLength: 12 }), async (ops) => {
         const fx = await studioWith(100);
         const keys: string[] = [];
-        const turns = [ref("t0"), ref("t1"), ref("t2")];
         for (const o of ops) {
           let admitted = false;
           if (o.kind === "reserve") {
             const k = ref("p");
             keys.push(k);
             admitted = (await creditHoldService.reserveCredits(req(fx, k, o.amount))).ok;
-          } else if (o.kind === "resize") {
-            admitted = await creditHoldService.resizeHold(req(fx, turns[o.slot]!, o.amount));
           } else if (o.kind === "release") {
             const k = keys[o.slot];
             if (k) await creditHoldService.releaseHold(k);
