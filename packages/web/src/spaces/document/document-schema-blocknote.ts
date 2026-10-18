@@ -36,7 +36,8 @@ import {
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
-import { buildTableSpec } from '@web/spaces/document/document-table-blocknote';
+import { legacyTableSpec } from '@web/spaces/document/document-table-legacy';
+import { docTableSpecs } from '@web/spaces/document/document-table-nodes';
 import {
   unsupportedBlockSpec,
   unsupportedInlineSpec,
@@ -146,7 +147,10 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
-    table: buildTableSpec(),
+    // Stored tables from before cells held blocks, shown until collab
+    // converts them (inner#1619).
+    table: legacyTableSpec(),
+    ...docTableSpecs(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
     image: withMediaView(withProps(enabled.image, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS })),

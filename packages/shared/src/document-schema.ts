@@ -123,6 +123,12 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     codeBlock: ["language", "quoted"],
     divider: ["quoted"],
     doc: [],
+    // The table whose cells hold blocks (inner#1619). Each is a layout block:
+    // its node holds its children directly and carries the block id itself.
+    docTable: ["id", "quoted", "textColor"],
+    docTableCell: ["backgroundColor", "colspan", "colwidth", "id", "rowspan"],
+    docTableHeader: ["backgroundColor", "colspan", "colwidth", "id", "rowspan"],
+    docTableRow: ["id"],
     hardBreak: [],
     image: [
       "backgroundColor",
@@ -155,6 +161,9 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textColor",
     ],
     paragraph: ["backgroundColor", "quoted", "textAlignment", "textColor"],
+    // The table before cells held blocks. collab converts it to `docTable`
+    // when it loads a document; the editor keeps the node so one that is
+    // still there shows.
     table: ["quoted", "textColor"],
     tableCell: [
       "backgroundColor",
