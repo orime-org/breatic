@@ -44,6 +44,10 @@ function nodeOf(id: string): Locator {
 async function pickOther(testId: string): Promise<void> {
   await page.getByTestId(testId).click();
   await nodeOf(other).click();
+  // A slot that takes several pictures keeps picking until its banner's Exit;
+  // while it does, a right-click on a node opens no menu.
+  const exit = page.getByTestId('reference-pick-exit');
+  if (await exit.isVisible()) await exit.click();
 }
 
 /**
@@ -58,9 +62,7 @@ async function runToResult(prefix: string): Promise<string> {
   await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(before + 1, { timeout: 30_000 });
   const result = visibleSpace(page).locator('.react-flow__node', { hasText: `${prefix}-` }).last();
   const picture = result.getByTestId('image-node-img');
-  // The model answers in about a minute; the Worker pulling its picture off the
-  // provider's CDN has taken six minutes from a local machine.
-  await expect(picture).toHaveAttribute('src', /^https?:\/\//, { timeout: 15 * 60_000 });
+  await expect(picture).toHaveAttribute('src', /^https?:\/\//, { timeout: RUN_MS });
   return (await picture.getAttribute('src')) ?? '';
 }
 
@@ -150,26 +152,41 @@ test('quick edit holds Run until it is told what to change @needs-internet', asy
   await expect(run).toBeEnabled();
 });
 
-test('each tool runs its model to a new picture downstream @needs-internet @needs-model', async () => {
-  // Five model runs one after another, each fetched back through the Worker.
-  test.setTimeout(60 * 60_000);
-  await openTool(page, source, 'image.angle');
-  await runToResult('ANGLE');
+// Measured from the press to the stored picture (2026-10-18): 34s to 2m34s.
+// Each run gets twice the slowest, so a stuck run fails within minutes.
+const RUN_MS = 5 * 60_000;
 
-  await openTool(page, source, 'image.relight');
-  await page.getByTestId('generate-param-light_color-swatch-warm').click();
-  await runToResult('RELIGHT');
+test.describe('real runs @needs-internet @needs-model', () => {
+  // The opening, the run and the stored picture together.
+  test.beforeEach(() => test.setTimeout(RUN_MS + 60_000));
 
-  await openTool(page, source, 'image.relight');
-  await pickOther('mini-tool-slot-image.relight-light_reference');
-  await expect(page.getByTestId('mini-tool-reference-preview')).toBeVisible({ timeout: 15_000 });
-  await runToResult('RELIGHT');
+  test('multi-angle runs to a new picture downstream', async () => {
+    await openTool(page, source, 'image.angle');
+    expect(await runToResult('ANGLE')).toMatch(/^https?:\/\//);
+  });
 
-  await openTool(page, source, 'image.restyle');
-  await pickOther('mini-tool-slot-image.restyle-style');
-  await runToResult('RESTYLE');
+  test('relight runs to a new picture downstream with the light set by hand', async () => {
+    await openTool(page, source, 'image.relight');
+    await page.getByTestId('generate-param-light_color-swatch-warm').click();
+    expect(await runToResult('RELIGHT')).toMatch(/^https?:\/\//);
+  });
 
-  await openTool(page, source, 'image.quickEdit');
-  await page.getByTestId('mini-tool-prompt').fill('make it a rainy night');
-  await runToResult('EDIT');
+  test('relight runs to a new picture downstream with the light of a reference', async () => {
+    await openTool(page, source, 'image.relight');
+    await pickOther('mini-tool-slot-image.relight-light_reference');
+    await expect(page.getByTestId('mini-tool-reference-preview')).toBeVisible({ timeout: 15_000 });
+    expect(await runToResult('RELIGHT')).toMatch(/^https?:\/\//);
+  });
+
+  test('restyle runs to a new picture downstream', async () => {
+    await openTool(page, source, 'image.restyle');
+    await pickOther('mini-tool-slot-image.restyle-style');
+    expect(await runToResult('RESTYLE')).toMatch(/^https?:\/\//);
+  });
+
+  test('quick edit runs to a new picture downstream', async () => {
+    await openTool(page, source, 'image.quickEdit');
+    await page.getByTestId('mini-tool-prompt').fill('make it a rainy night');
+    expect(await runToResult('EDIT')).toMatch(/^https?:\/\//);
+  });
 });
