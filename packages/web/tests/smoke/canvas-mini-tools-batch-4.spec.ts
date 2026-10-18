@@ -44,10 +44,6 @@ function nodeOf(id: string): Locator {
 async function pickOther(testId: string): Promise<void> {
   await page.getByTestId(testId).click();
   await nodeOf(other).click();
-  // A slot that takes several pictures keeps picking until its banner's Exit;
-  // while it does, a right-click on a node opens no menu.
-  const exit = page.getByTestId('reference-pick-exit');
-  if (await exit.isVisible()) await exit.click();
 }
 
 /**
@@ -178,10 +174,13 @@ test.describe('real runs @needs-internet @needs-model', () => {
     expect(await runToResult('RELIGHT')).toMatch(/^https?:\/\//);
   });
 
-  test('restyle runs to a new picture downstream', async () => {
+  test('restyle runs to a new picture downstream, and Run ends the pick of more styles', async () => {
     await openTool(page, source, 'image.restyle');
     await pickOther('mini-tool-slot-image.restyle-style');
+    // The slot takes up to three, so picking goes on after the first.
+    await expect(page.getByTestId('reference-pick-exit')).toBeVisible();
     expect(await runToResult('RESTYLE')).toMatch(/^https?:\/\//);
+    await expect(page.getByTestId('reference-pick-exit')).toHaveCount(0);
   });
 
   test('quick edit runs to a new picture downstream', async () => {
