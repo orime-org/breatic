@@ -100,6 +100,15 @@ describe("settleRunCharge", () => {
     );
   });
 
+  it("logs a charge whose readers could not be told", async () => {
+    h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 7, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down") });
+    await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
+    expect(h.error).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "task-1", projectId: "proj-1" }),
+      "credits_signal_failed",
+    );
+  });
+
   it("logs a charge that failed and leaves the hold to its expiry", async () => {
     h.chargeForGeneration.mockRejectedValue(new Error("db down"));
     await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });

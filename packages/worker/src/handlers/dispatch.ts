@@ -1170,6 +1170,9 @@ export async function settleRunCharge(run: RunCharge): Promise<void> {
         "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
       );
     }
+    if (outcome.signalFailure) {
+      logger.error({ err: outcome.signalFailure, taskId, userId, projectId: run.projectId }, "credits_signal_failed");
+    }
   } catch (err) {
     // Deduct failed AFTER the CAS marked billed_at. The file is already
     // persisted and the task is completed. Log loudly for manual

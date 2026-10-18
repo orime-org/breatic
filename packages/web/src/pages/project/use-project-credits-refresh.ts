@@ -6,14 +6,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import { onCreditsChanged } from '@web/data/api/credits';
-import { useActivitySignal } from '@web/pages/project/use-activity-signal';
+import { ACTIVITY_NEW_SIGNAL, CREDITS_CHANGED_SIGNAL } from '@breatic/shared';
+
+import { useProjectSignal } from '@web/pages/project/use-project-signal';
 
 /**
  * Read the project's credits again whenever they may have moved (inner#1611):
- * when this reader's own spend in the project returns, and when anyone's
- * generation in it ends. Focus refetching is off app-wide, so nothing else
- * reads the figure again; work another member starts has no signal and shows
- * on the next of these, or on the next visit.
+ * when this reader's own run request returns (its hold), when anyone's
+ * generation in the project ends, and when any charge on its studio commits.
+ * Focus refetching is off app-wide, so nothing else reads the figure again;
+ * a hold another member's run takes shows on the next of these, or on the
+ * next visit.
  * @param projectId - The project being viewed.
  * @param provider - The live meta-doc provider, or null while there is none.
  */
@@ -34,5 +37,6 @@ export function useProjectCreditsRefresh(
     [projectId, refresh],
   );
 
-  useActivitySignal(provider, projectId, refresh);
+  useProjectSignal(provider, projectId, ACTIVITY_NEW_SIGNAL, refresh);
+  useProjectSignal(provider, projectId, CREDITS_CHANGED_SIGNAL, refresh);
 }

@@ -26,7 +26,6 @@ import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } f
 import type { ChatAttachedChip, ChatSpaceContext } from '@breatic/shared';
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
-import { noteCreditsChanged } from '@web/data/api/credits';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
 
@@ -451,12 +450,9 @@ function settleTurn(
   // otherwise leave the line up — and it says something about a turn that is
   // over, still there the next time this conversation is opened.
   clearConsolidating(conversationId);
-  const projectId = projectOf.get(conversationId) ?? '';
-  // However it ended, the turn was charged what it spent (inner#1611), so the
-  // project's top bar reads its credits again.
-  if (projectId !== '') noteCreditsChanged(projectId);
   const chat = sessions.get(conversationId);
   if (!chat) return;
+  const projectId = projectOf.get(conversationId) ?? '';
 
   // Whether this turn ever began answering. Not read off the message list:
   // the list only says whether a reply was pushed here, and a turn can have

@@ -165,3 +165,16 @@ export const ActivityNewSignalSchema = z.object({
 });
 
 export type ActivityNewSignal = z.infer<typeof ActivityNewSignalSchema>;
+
+/**
+ * Stateless WS signal broadcast on the project meta doc when a charge on the
+ * project's studio commits (inner#1611) - clients read the credits again.
+ */
+export const CREDITS_CHANGED_SIGNAL = "credits:changed" as const;
+
+export const CreditsChangedSignalSchema = z.object({
+  t: z.literal(CREDITS_CHANGED_SIGNAL),
+  projectId: z.string(),
+});
+
+export type CreditsChangedSignal = z.infer<typeof CreditsChangedSignalSchema>;

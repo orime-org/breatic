@@ -63,7 +63,7 @@ export async function runUsageLookup(
   // The row is written; a retry would write a second one. A charge that
   // fails is logged for reconciliation, the way a turn's own charge is.
   try {
-    await creditLotService.chargeOnceForGeneration(`${data.operationKey}:gen:${data.generationId}`, {
+    const outcome = await creditLotService.chargeOnceForGeneration(`${data.operationKey}:gen:${data.generationId}`, {
       projectId: data.projectId,
       actorUserId: data.actorUserId,
       amount,
@@ -71,6 +71,12 @@ export async function runUsageLookup(
       model: data.model,
       provider: "openrouter",
     });
+    if (outcome?.signalFailure) {
+      logger.error(
+        { err: outcome.signalFailure, generationId: data.generationId, projectId: data.projectId },
+        "credits_signal_failed",
+      );
+    }
   } catch (err) {
     logger.error({ err, generationId: data.generationId, amount }, "agent_usage_lookup_charge_failed");
   }

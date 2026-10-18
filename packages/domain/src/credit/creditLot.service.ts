@@ -35,6 +35,7 @@ import {
   db,
   env,
   getRedis,
+  publishCreditsChanged,
   AppError,
   NotFoundError,
   ForbiddenError,
@@ -127,6 +128,12 @@ export interface ChargeOutcome {
   studioId: string | null;
   /** The lots drawn down, oldest first. */
   lotIds: readonly string[];
+  /**
+   * Why the project's readers could not be told the charge committed
+   * (inner#1611). The charge stands; the caller logs this, and the top bar
+   * shows the old figure until its next read.
+   */
+  signalFailure?: unknown;
 }
 
 /**
@@ -331,7 +338,7 @@ export async function chargeForGeneration(
     };
   }
 
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx): Promise<ChargeOutcome> => {
     // The debt row first, and before any lot. Both writers take it in this
     // order, so two charges on one studio — or a charge and a designation —
     // queue up rather than each holding half of what the other needs. The
@@ -412,6 +419,14 @@ export async function chargeForGeneration(
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
   });
+  // After the commit, so a reader who reads again sees this charge.
+  if (input.projectId === null) return outcome;
+  try {
+    await publishCreditsChanged(input.projectId);
+    return outcome;
+  } catch (err) {
+    return { ...outcome, signalFailure: err };
+  }
 }
 
 /**

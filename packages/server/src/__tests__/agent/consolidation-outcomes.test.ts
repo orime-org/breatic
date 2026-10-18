@@ -383,6 +383,18 @@ describe("a consolidation that works", () => {
     });
   });
 
+  it("logs a charge whose readers could not be told", async () => {
+    chargeOnceForGeneration.mockResolvedValueOnce({
+      billed: true, charged: 400, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
+    } as never);
+    await consolidate();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT }),
+      "credits_signal_failed",
+    );
+  });
+
   it("records the call under its generation id, and hands what it could not price to the lookup", async () => {
     const { mocks } = await import("../helpers/mock-core.js");
     const recordModelCall = vi.fn();

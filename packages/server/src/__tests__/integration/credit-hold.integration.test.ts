@@ -24,7 +24,8 @@ vi.mock("ai", () => ({
 
 import fc from "fast-check";
 import postgres from "postgres";
-import { initCore, loadLocales } from "@breatic/core";
+import { createRedisClient, env, initCore, loadLocales } from "@breatic/core";
+import { creditsChangedChannel } from "@breatic/shared";
 import { creditHoldService, creditLotService } from "@breatic/domain";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import {
@@ -260,6 +261,22 @@ describe("chargeForGeneration with a hold", () => {
     expect(outcome.charged).toBe(70);
     expect(await holdRows(reference)).toEqual([{ status: "released", amount: "50.000000" }]);
     expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 30, held: 0, available: 30 });
+  });
+
+  it("tells the project's readers once the charge has committed", async () => {
+    const fx = await studioWith(100);
+    const subscriber = createRedisClient(env.REDIS_STREAM_URL, { name: "credit-hold-test-sub" });
+    try {
+      const heard = new Promise<string>((resolve, reject) => {
+        subscriber.on("message", (_channel, raw: string) => resolve(raw));
+        setTimeout(() => reject(new Error("no credits:changed within 5s")), 5_000);
+      });
+      await subscriber.subscribe(creditsChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId));
+      await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 10 });
+      expect(JSON.parse(await heard)).toMatchObject({ type: "project-credits:changed", projectId: fx.projectId });
+    } finally {
+      subscriber.disconnect();
+    }
   });
 
   it("keeps the hold when the charge fails", async () => {

@@ -11,7 +11,7 @@ import type { ReactNode } from 'react';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ACTIVITY_NEW_SIGNAL } from '@breatic/shared';
+import { ACTIVITY_NEW_SIGNAL, CREDITS_CHANGED_SIGNAL } from '@breatic/shared';
 
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
@@ -20,20 +20,25 @@ const PROJECT = 'p-1';
 
 /** A meta-doc provider double that hands its listener to the test. */
 function providerDouble(): {
-  provider: { on: (e: string, f: (d: { payload: string }) => void) => void; off: () => void };
+  provider: {
+    on: (e: string, f: (d: { payload: string }) => void) => void;
+    off: (e: string, f: (d: { payload: string }) => void) => void;
+  };
   send: (payload: unknown) => void;
   } {
-  let listener: ((d: { payload: string }) => void) | null = null;
+  const listeners = new Set<(d: { payload: string }) => void>();
   return {
     provider: {
       on: (_event, f) => {
-        listener = f;
+        listeners.add(f);
       },
-      off: () => {
-        listener = null;
+      off: (_event, f) => {
+        listeners.delete(f);
       },
     },
-    send: (payload) => listener?.({ payload: JSON.stringify(payload) }),
+    send: (payload) => {
+      for (const listener of listeners) listener({ payload: JSON.stringify(payload) });
+    },
   };
 }
 
@@ -87,10 +92,22 @@ describe('useProjectCreditsRefresh', () => {
     view.unmount();
   });
 
+  it('reads the figure again when the server says a charge in the project committed', () => {
+    // A chat turn is charged on the server after the reader's own stream has
+    // ended, and a call cut off mid-turn is charged later still.
+    const { provider, send } = providerDouble();
+    const view = mount(provider);
+    send({ t: CREDITS_CHANGED_SIGNAL, projectId: PROJECT });
+    vi.runAllTimers();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', PROJECT, 'credits'] });
+    view.unmount();
+  });
+
   it('ignores signals of other projects and traffic that is not a signal', () => {
     const { provider, send } = providerDouble();
     const view = mount(provider);
     send({ t: ACTIVITY_NEW_SIGNAL, projectId: 'p-2' });
+    send({ t: CREDITS_CHANGED_SIGNAL, projectId: 'p-2' });
     send({ something: 'else' });
     vi.runAllTimers();
     expect(invalidate).not.toHaveBeenCalled();

@@ -104,6 +104,30 @@ export function activityNewChannel(prefix: string, projectId: string): string {
   return `${prefix}:project:${projectId}:activity:new`;
 }
 
+/**
+ * Control event announcing that a charge on a project's studio committed
+ * (inner#1611); collab relays it as the `credits:changed` stateless signal on
+ * the project meta doc, and the top bar reads its credits again. Fire-and-forget
+ * like {@link ActivityNewControlEvent}: a page that misses it reads the figure
+ * on its next load.
+ */
+export interface CreditsChangedControlEvent {
+  type: "project-credits:changed";
+  projectId: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link CreditsChangedControlEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - Project whose studio was charged.
+ * @returns The channel name `{prefix}:project:{projectId}:credits:changed`.
+ */
+export function creditsChangedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:credits:changed`;
+}
+
 /** Why every collab instance closes a project's connections. */
 export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
 
