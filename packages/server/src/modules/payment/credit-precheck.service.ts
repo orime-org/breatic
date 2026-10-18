@@ -89,7 +89,9 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
 
   if (held > 0 && spendable >= required) {
     const unassigned = await creditLotService.getUnassignedCredits(userId);
-    if (unassigned > 0) throw new AppError(402, t("server.credit.unassigned", { available: unassigned }));
+    // Still a hold refusal: the sentence points at the step that certainly
+    // works, and a lane that stores the cause on its node names the hold.
+    if (unassigned > 0) throw new CreditsHeldError(t("server.credit.unassigned", { available: unassigned }));
     // A run charged above its estimate can leave the others' holds larger
     // than the balance; what can be used now is then nothing, not less.
     throw new CreditsHeldError(t("server.credit.held_by_running", { held, available: Math.max(0, available) }));

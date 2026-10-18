@@ -123,10 +123,10 @@ describe("reserveForRun", () => {
   it("points at the account's unassigned credits before the held ones, since holds turn into charges", async () => {
     refuseWith(100, 80);
     getUnassignedCredits.mockResolvedValue(500);
-    expect(await refusal(() => reserveForRun(PROJECT, USER, "t", 60))).toEqual({
-      status: 402,
-      message: 'server.credit.unassigned {"available":500}',
-    });
+    const err = await reserveForRun(PROJECT, USER, "t", 60).catch((e: unknown) => e);
+    // Still a hold refusal, so a lane that stores the cause on its node names it.
+    expect(err).toBeInstanceOf(CreditsHeldError);
+    expect(err).toMatchObject({ statusCode: 402, message: 'server.credit.unassigned {"available":500}' });
   });
 
   it("says nothing is available rather than a negative figure when holds outgrow the balance", async () => {
