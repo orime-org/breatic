@@ -165,8 +165,9 @@ export interface ActivityNewSignal {
 }
 
 /**
- * Stateless WS signal broadcast on the project meta doc when a charge on the
- * project's studio commits (inner#1611) - clients read the credits again.
+ * Stateless WS signal broadcast on the project meta doc when a charge made in
+ * that project commits (inner#1611) - clients read the credits again. Other
+ * projects of the same studio are not signalled.
  */
 export const CREDITS_CHANGED_SIGNAL = "credits:changed" as const;
 

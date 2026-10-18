@@ -249,7 +249,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
     );
   }
 
-  // Four situations, and each one gets its own sentence. Reading them off the
+  // Five situations, and each one gets its own sentence. Reading them off the
   // balance alone cannot tell "nothing was ever assigned here" from "it was
   // all spent" — both are zero, and only one of them is answered by assigning
   // more.

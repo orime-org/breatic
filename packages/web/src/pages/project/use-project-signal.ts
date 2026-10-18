@@ -12,7 +12,7 @@ const COALESCE_MS = 250;
  * Call back when the meta-doc socket carries a project signal.
  *
  * Collab relays `activity:new` whenever a row lands in the project's activity
- * feed and `credits:changed` whenever a charge on its studio commits. A burst
+ * feed and `credits:changed` whenever a charge made in the project commits. A burst
  * is coalesced into one call on a short trailing timer. Other stateless
  * traffic on the socket (space RPC answers) does not parse as the signal and
  * is ignored.

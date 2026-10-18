@@ -105,7 +105,7 @@ export function activityNewChannel(prefix: string, projectId: string): string {
 }
 
 /**
- * Control event announcing that a charge on a project's studio committed
+ * Control event announcing that a charge made in a project committed
  * (inner#1611); collab relays it as the `credits:changed` stateless signal on
  * the project meta doc, and the top bar reads its credits again. Fire-and-forget
  * like {@link ActivityNewControlEvent}: a page that misses it reads the figure

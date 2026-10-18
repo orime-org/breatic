@@ -8,6 +8,8 @@
  *
  *   - `{prefix}:project:{pid}:activity:new` (server, worker) — relay the
  *     activity signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
+ *     credits signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -27,7 +29,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers both channels.
+ * One `psubscribe` on `{prefix}:project:*` covers all three channels.
  *
  * Membership changes do not come through here: `member-change-sync.ts` hears
  * them from the trigger on `project_members`.
@@ -85,6 +87,7 @@ function relayOnMetaDoc(
 /**
  * Decode one raw control-plane pub/sub message and dispatch it:
  * `project-activity:new` relays the activity signal on the meta doc;
+ * `project-credits:changed` relays the credits signal on the meta doc;
  * `project-connections:close` closes this instance's connections to the
  * project. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
@@ -112,7 +115,7 @@ async function handleEvent(
   }
 
   if (event.type === "project-credits:changed") {
-    // A charge committed on the project's studio; members' top bars read
+    // A charge made in this project committed; members' top bars read
     // their credits again.
     relayOnMetaDoc(hocuspocus, event.projectId, { t: CREDITS_CHANGED_SIGNAL, projectId: event.projectId });
     return;

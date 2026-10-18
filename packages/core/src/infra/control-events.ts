@@ -89,7 +89,7 @@ export async function publishActivityNew(projectId: string): Promise<void> {
 }
 
 /**
- * Announce that a charge on a project's studio committed (inner#1611); collab
+ * Announce that a charge made in a project committed (inner#1611); collab
  * relays it to connected members as the `credits:changed` stateless signal.
  * Fire-and-forget like {@link publishActivityNew}.
  * @param projectId - Project whose studio was charged.

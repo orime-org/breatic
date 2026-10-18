@@ -129,8 +129,9 @@ export async function failOpenedTasks(
  * Once a row is open, any failure settles both accounts of the run — the task
  * and its rows — each on its own, so neither settlement takes the other down:
  * a task left `pending` is one no worker picks up and no sweep ends, and a row
- * left `running` counts a run that is not happening. `no_credits` is the one
- * cause the reader can act on; anything else is ours, and the log carries it.
+ * left `running` counts a run that is not happening. `no_credits` and
+ * `credits_held` are the causes the reader can act on; anything else is ours,
+ * and the log carries it.
  * @param opts - The run.
  * @param opts.taskId - The task this run belongs to.
  * @param opts.projectId - Owning project.
