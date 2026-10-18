@@ -9,13 +9,33 @@
  * wrote, goes with the reference; one image keeps the source's shape by itself.
  */
 
-import { LIGHT_COLORS, LIGHT_INTENSITIES, LIGHT_QUALITIES, lightDirectionPhrase } from "@breatic/shared";
+import {
+  LIGHT_ANGLE_GRID,
+  LIGHT_COLORS,
+  LIGHT_INTENSITIES,
+  LIGHT_QUALITIES,
+  lightDirectionPhrase,
+  nearestCameraAngle,
+} from "@breatic/shared";
 
 import type { ModelFamily } from "@worker/providers/shared.js";
 
-/** Said of the reference, named by its place in the images, as Google's examples do. */
-const REFERENCE =
-  "Take the lighting of the second image: its direction, contrast, colour and shadow quality. Take nothing else from it.";
+/**
+ * What the reference lends, named by its place in the images, as Google's
+ * examples do: the direction always, and each setting the reader left on Auto;
+ * a setting chosen by hand overrides it (inner#1304 B3).
+ * @param params - The validated run params.
+ * @returns The sentence.
+ */
+function referenceOf(params: Readonly<Record<string, unknown>>): string {
+  const taken = ["direction"];
+  if (LIGHT_INTENSITIES[String(params.light_intensity)] === undefined) taken.push("contrast");
+  if (LIGHT_COLORS[String(params.light_color)] === undefined) taken.push("colour");
+  if (LIGHT_QUALITIES[String(params.light_quality)] === undefined) taken.push("shadow quality");
+  const set = taken.length < 4 ? " Where `lighting` gives a value, use it instead of the second image's." : "";
+  const list = taken.length === 1 ? taken[0] : `${taken.slice(0, -1).join(", ")} and ${taken[taken.length - 1]}`;
+  return `Take the lighting of the second image: its ${list}. Take nothing else from it.${set}`;
+}
 
 /** What the result keeps of the source. */
 const PRESERVE = ["subject", "face", "pose", "clothing", "background", "composition"];
@@ -30,7 +50,12 @@ const PRESERVE = ["subject", "face", "pose", "clothing", "background", "composit
 function lightingOf(params: Readonly<Record<string, unknown>>, referenced: boolean): Record<string, string> {
   const lighting: Record<string, string> = {};
   if (!referenced) {
-    lighting.direction = lightDirectionPhrase(Number(params.light_azimuth), Number(params.light_elevation));
+    // The server checks the range only; a value between steps reads as its nearest one.
+    const at = nearestCameraAngle(
+      { azimuth: Number(params.light_azimuth), elevation: Number(params.light_elevation), distance: 1 },
+      LIGHT_ANGLE_GRID,
+    );
+    lighting.direction = lightDirectionPhrase(at.azimuth, at.elevation);
   }
   const color = LIGHT_COLORS[String(params.light_color)];
   if (color !== undefined) lighting.color = color.phrase;
@@ -69,7 +94,7 @@ const nanoBananaRelight: ModelFamily = {
     const json = {
       task: "relight",
       ...(Object.keys(lighting).length > 0 && { lighting }),
-      ...(reference !== undefined && { reference: REFERENCE }),
+      ...(reference !== undefined && { reference: referenceOf(params) }),
       ...(note !== "" && { note }),
       preserve: PRESERVE,
     };
