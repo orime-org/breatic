@@ -32,6 +32,7 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: mockWarn, error: mockError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
+  creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   // The billed-then-crashed branch reads this first: a job that was already
   // paid for must not be stamped failed over its result.
   taskService: { getByIdInternal: mockGetTask },

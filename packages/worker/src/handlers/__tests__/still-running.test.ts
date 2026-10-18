@@ -112,6 +112,7 @@ vi.mock("@breatic/domain", async () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {},
+  creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: vi.fn(() => 0),
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: vi.fn() },

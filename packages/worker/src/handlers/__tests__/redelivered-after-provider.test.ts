@@ -60,6 +60,7 @@ vi.mock("@breatic/domain", () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: {},
   creditLotService: {},
+  creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,

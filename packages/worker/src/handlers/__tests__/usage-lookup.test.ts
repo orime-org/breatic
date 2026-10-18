@@ -14,7 +14,8 @@ import type * as DomainModule from "@breatic/domain";
 import type * as CoreModule from "@breatic/core";
 
 const lookupGeneration = vi.hoisted(() => vi.fn());
-const chargeOnceForGeneration = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => null));
+const chargeOnceForGeneration = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<unknown> => null));
+const releaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
@@ -22,6 +23,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     ...actual,
     lookupGeneration: (...args: unknown[]) => lookupGeneration(...args),
     creditLotService: { chargeOnceForGeneration },
+    creditHoldService: { releaseHold },
   };
 });
 
@@ -82,6 +84,62 @@ function jobAt(attemptsMade: number): Job<UsageLookupJob> {
 beforeEach(() => {
   vi.clearAllMocks();
   rows = [];
+});
+
+describe("the credits held for a call awaiting its cost (inner#1611)", () => {
+  const KEY = "turn:c1:4:gen:gen-9";
+
+  it("releases the hold in the charge that bills the call", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+    chargeOnceForGeneration.mockResolvedValueOnce({ billed: true, charged: 3, shortfall: 0, studioId: "s", lotIds: [] });
+
+    await runUsageLookup(jobAt(0), recorderIntoRows);
+
+    expect(chargeOnceForGeneration).toHaveBeenCalledWith(KEY, expect.objectContaining({ releaseHold: KEY }));
+    expect(releaseHold).not.toHaveBeenCalled();
+  });
+
+  it("releases the hold when the key was already billed", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+
+    await runUsageLookup(jobAt(0), recorderIntoRows);
+
+    expect(releaseHold).toHaveBeenCalledWith(KEY);
+  });
+
+  it("releases the hold of a call that is not charged", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+    const job = { data: { ...DATA, charge: false }, attemptsMade: 0, opts: { attempts: 3 } } as unknown as Job<UsageLookupJob>;
+
+    await runUsageLookup(job, recorderIntoRows);
+
+    expect(releaseHold).toHaveBeenCalledWith(KEY);
+  });
+
+  it("releases the hold when the last attempt finds no cost", async () => {
+    lookupGeneration.mockResolvedValue(undefined);
+
+    await runUsageLookup(jobAt(2), recorderIntoRows);
+
+    expect(releaseHold).toHaveBeenCalledWith(KEY);
+  });
+
+  it("releases the hold when the charge fails", async () => {
+    lookupGeneration.mockResolvedValue({ costUsd: 0.03, tokens: TOKENS });
+    chargeOnceForGeneration.mockRejectedValueOnce(new Error("db down"));
+
+    await runUsageLookup(jobAt(0), recorderIntoRows);
+
+    expect(releaseHold).toHaveBeenCalledWith(KEY);
+  });
+
+  it("keeps the hold while the lookup will be asked again", async () => {
+    lookupGeneration.mockResolvedValue(undefined);
+
+    await expect(runUsageLookup(jobAt(0), recorderIntoRows)).rejects.toThrow();
+
+    expect(releaseHold).not.toHaveBeenCalled();
+  });
 });
 
 describe("looking up an OpenRouter call whose cost was not in hand", () => {

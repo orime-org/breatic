@@ -36,6 +36,7 @@ import { NO_CONSENT } from "@breatic/shared";
 import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
+  creditHoldService,
   taskService,
   settleTaskForNode,
 } from "@breatic/domain";
@@ -95,6 +96,13 @@ export async function cleanupFailedJobNodes(
   // primary case this net targets — moves to failed WITHOUT incrementing
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
+
+  // The run is over whatever it was, so what was held for it is free again
+  // (inner#1611). Released before the canvas checks below, which only decide
+  // what the nodes are told. A release that fails leaves the hold to expire.
+  await creditHoldService.releaseHold(job.data.taskId).catch((err: unknown) =>
+    logger.error({ err, taskId: job.data.taskId }, "credit_hold_release_failed"),
+  );
 
   const { projectId, spaceId, targetNodeIds } = job.data;
   if (!projectId) return 0;
