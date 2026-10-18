@@ -336,6 +336,16 @@ export interface StudioLedgerView {
   createdAt: string;
 }
 
+/** A studio's credits as a project's top bar reads them (inner#1611). */
+export interface ProjectCreditsView {
+  /** Purchases less debt; below zero when the studio owes. */
+  spendable: number;
+  /** What running work holds until it is charged. */
+  held: number;
+  /** `spendable - held`: what the next run can take. */
+  available: number;
+}
+
 /** What one studio holds and has spent, for its credits tab. */
 export interface StudioCreditsView {
   /**

@@ -6,6 +6,7 @@ import type {
   CreditLotView,
   CreditOverview,
   CreditPage,
+  ProjectCreditsView,
   StudioCreditsView,
 } from '@breatic/shared';
 
@@ -79,16 +80,6 @@ export async function designateCreditLot(
   );
 }
 
-/** What the studio owning a project has, as its top bar reads it. */
-export interface ProjectCredits {
-  /** Purchases less debt; below zero when the studio owes. */
-  spendable: number;
-  /** What running tasks hold until they are charged (inner#1611). */
-  held: number;
-  /** `spendable - held`: what the next run can take. */
-  available: number;
-}
-
 /**
  * Read what the studio owning a project has.
  *
@@ -97,8 +88,8 @@ export interface ProjectCredits {
  * @param projectId - The project being viewed.
  * @returns What its studio has, holds and has left.
  */
-export async function fetchProjectCredits(projectId: string): Promise<ProjectCredits> {
-  return apiGet<ProjectCredits>(`/projects/${encodeURIComponent(projectId)}/credits`);
+export async function fetchProjectCredits(projectId: string): Promise<ProjectCreditsView> {
+  return apiGet<ProjectCreditsView>(`/projects/${encodeURIComponent(projectId)}/credits`);
 }
 
 /** Who wants to hear that a project's credits may have moved. */

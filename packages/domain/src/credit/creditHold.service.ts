@@ -19,9 +19,11 @@
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
+import { positionFrom } from "@domain/credit/creditLot.service.js";
 import { fromMicroCredits, toMicroCredits } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import type { ProjectCreditsView } from "@breatic/shared";
 
 /** One hold asked for. */
 export interface HoldRequest {
@@ -29,7 +31,7 @@ export interface HoldRequest {
   projectId: string;
   /** Who started the work. */
   actorUserId: string;
-  /** The key of the work: a task id, a turn, one consolidation attempt. Used once. */
+  /** The run's task id. Used once. */
   referenceId: string;
   /** Credits to hold. */
   amount: number;
@@ -50,14 +52,7 @@ export type ReserveOutcome =
     };
 
 /** A studio's credits as an admission sees them. */
-export interface CreditPosition {
-  /** Purchases less debt; below zero when the studio owes. */
-  spendable: number;
-  /** What counted holds add up to. */
-  held: number;
-  /** `spendable - held`: what the next admission can take. */
-  available: number;
-}
+export type CreditPosition = ProjectCreditsView;
 
 /**
  * Take the studio's debt lock and read purchases less debt and the counted
@@ -84,13 +79,9 @@ function expiryFor(ttlMs: number): Date {
 
 /**
  * Admit a piece of work and hold its estimate, or refuse it.
- *
- * A key that already holds is the same request arriving again and is admitted
- * without a second hold. A key that was released or has expired was used by
- * work that has ended; reaching it again is a caller reusing a key.
  * @param request - What to hold, for whom and for how long.
  * @returns Admitted, or the figures the refusal is explained with.
- * @throws {Error} When the key was already used by work that has ended.
+ * @throws {Error} When the key already has a hold, held or released.
  * @throws {NotFoundError} When the project has no live studio.
  */
 export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
@@ -99,11 +90,6 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
   const amount = toMicroCredits(request.amount);
   return db.transaction(async (tx) => {
     const room = await lockedRoom(studioId, tx);
-    const existing = await creditHoldRepo.findHold(request.referenceId, tx);
-    if (existing) {
-      if (existing.active) return { ok: true };
-      throw new Error(`Credit hold ${request.referenceId} is already used`);
-    }
     if (room.spendable - room.held < amount) {
       return {
         ok: false,
@@ -149,13 +135,7 @@ export async function getCreditPosition(studioId: string): Promise<CreditPositio
         creditLotRepo.readDebt(studioId, tx),
         creditHoldRepo.sumHeldForStudio(studioId, tx),
       ]);
-      const spendable = toMicroCredits(lots) - toMicroCredits(debt);
-      const heldMicro = toMicroCredits(held);
-      return {
-        spendable: spendable / 1_000_000,
-        held: heldMicro / 1_000_000,
-        available: (spendable - heldMicro) / 1_000_000,
-      };
+      return positionFrom(lots, debt, held);
     },
     { isolationLevel: "repeatable read" },
   );

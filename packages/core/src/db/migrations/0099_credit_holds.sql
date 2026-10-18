@@ -3,9 +3,8 @@
 -- debt, less every hold still counted here; the charge that settles the work
 -- releases its hold in the same transaction.
 --
--- `reference_id` is the key of the work the hold stands for: a task id, a chat
--- turn, one memory-consolidation attempt, one generation awaiting its cost.
--- A key is used once.
+-- `reference_id` is the task id of the run the hold stands for. A key is used
+-- once.
 --
 -- A hold stops counting at `expires_at` without the row changing, so work that
 -- dies without reaching its release still frees the credits.

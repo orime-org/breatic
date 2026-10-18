@@ -196,25 +196,19 @@ describe("reserveCredits", () => {
     });
   });
 
-  it("returns success for an active hold under the same key without a second row", async () => {
+  it("rejects a key that already has a hold, held or released", async () => {
+    // Every admission's key is a task id minted for that request, so a second
+    // reservation under one is a caller bug the unique index reports.
     const fx = await studioWith(100);
-    const reference = ref("replay");
-    await creditHoldService.reserveCredits(req(fx, reference, 70));
-    expect(await creditHoldService.reserveCredits(req(fx, reference, 70))).toEqual({ ok: true });
-    expect(await holdRows(reference)).toEqual([{ status: "held", amount: "70.000000" }]);
-  });
+    const held = ref("held-again");
+    await creditHoldService.reserveCredits(req(fx, held, 10));
+    await expect(creditHoldService.reserveCredits(req(fx, held, 10))).rejects.toThrow();
 
-  it("throws when a key that was released or has expired is reserved again", async () => {
-    const fx = await studioWith(100);
-    const released = ref("released");
+    const released = ref("released-again");
     await creditHoldService.reserveCredits(req(fx, released, 10));
     await creditHoldService.releaseHold(released);
-    await expect(creditHoldService.reserveCredits(req(fx, released, 10))).rejects.toThrow(/already used/);
-
-    const expired = ref("expired");
-    await creditHoldService.reserveCredits(req(fx, expired, 10));
-    await sql`UPDATE credit_holds SET expires_at = now() - interval '1 second' WHERE reference_id = ${expired}`;
-    await expect(creditHoldService.reserveCredits(req(fx, expired, 10))).rejects.toThrow(/already used/);
+    await expect(creditHoldService.reserveCredits(req(fx, released, 10))).rejects.toThrow();
+    expect(await holdRows(held)).toEqual([{ status: "held", amount: "10.000000" }]);
   });
 
   it("stops counting a hold once it expires", async () => {

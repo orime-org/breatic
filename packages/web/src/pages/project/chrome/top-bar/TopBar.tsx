@@ -21,12 +21,11 @@ import { ThemeToggle } from '@web/features/preferences/ThemeToggle';
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { BellMenu } from '@web/features/notifications/BellMenu';
 import { RoleTag } from '@web/pages/project/chrome/top-bar/RoleTag';
-import type { ProjectCredits } from '@web/data/api/credits';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { Skeleton } from '@web/components/ui/skeleton';
-import type { ProjectRole } from '@breatic/shared';
+import type { ProjectCreditsView, ProjectRole } from '@breatic/shared';
 import type { Member } from '@web/data/api/members';
 
 /** Held still so the bar is not handed a fresh object on every render. */
@@ -56,7 +55,7 @@ export type CreditsReadout =
  * @returns What to show.
  */
 export function toCreditsReadout(query: {
-  data?: ProjectCredits | undefined;
+  data?: ProjectCreditsView | undefined;
   isError: boolean;
 }): CreditsReadout {
   if (query.data) return { status: 'ready', value: query.data.available };

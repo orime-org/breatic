@@ -42,6 +42,7 @@ export type {
   CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,

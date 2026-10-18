@@ -13,12 +13,6 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import { db, creditHolds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
-/** One hold as an admission reads it. */
-export interface HoldRow {
-  /** Whether it still counts: held and not past `expires_at`. */
-  active: boolean;
-}
-
 /** A hold about to be written. */
 export interface NewHold {
   studioId: string;
@@ -50,26 +44,13 @@ export async function sumHeldForStudio(studioId: string, tx?: DbTx): Promise<str
 }
 
 /**
- * Read one hold.
- * @param referenceId - Its key.
- * @param tx - Optional transaction.
- * @returns The hold, or null when the key has none.
- */
-export async function findHold(referenceId: string, tx?: DbTx): Promise<HoldRow | null> {
-  const rows = await (tx ?? db)
-    .select({ active: sql<boolean>`${creditHolds.status} = 'held' AND ${creditHolds.expiresAt} > now()` })
-    .from(creditHolds)
-    .where(eq(creditHolds.referenceId, referenceId));
-  return rows[0] ?? null;
-}
-
-/**
- * Write a hold, unless its key already has one.
+ * Write a hold.
  * @param hold - The hold.
  * @param tx - Optional transaction.
+ * @throws {Error} When its key already has a hold (`credit_holds_reference_id_idx`).
  */
 export async function insertHold(hold: NewHold, tx?: DbTx): Promise<void> {
-  await (tx ?? db).insert(creditHolds).values(hold).onConflictDoNothing({ target: creditHolds.referenceId });
+  await (tx ?? db).insert(creditHolds).values(hold);
 }
 
 /**

@@ -1734,8 +1734,7 @@ export const creditHolds = pgTable(
     actorUserId: uuid("actor_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    // The key of the work held for: a task id, a chat turn, one consolidation
-    // attempt, one generation awaiting its cost. Used once.
+    // The task id of the run held for. Used once.
     referenceId: varchar("reference_id", { length: 255 }).notNull(),
     // Never negative. CHECK in 0099.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
