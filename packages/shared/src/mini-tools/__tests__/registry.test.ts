@@ -25,7 +25,7 @@ import { UPLOAD_STATUS_MAX_KEYS } from "@shared/upload/upload-status.js";
 
 
 const BATCH_ONE = {
-  // The confirmed demo's order: the free and usage-billed edits first, the model tools after.
+  // The confirmed demo's order: quick edit first (inner#1304), then the free and usage-billed edits, the other model tools after.
   image: [
     "image.quickEdit",
     "image.crop",

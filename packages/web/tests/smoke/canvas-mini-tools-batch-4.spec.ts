@@ -8,7 +8,9 @@
  * What the unit suite cannot reach: the Tools submenu as the canvas opens it,
  * the sphere's card drawing the node's own picture, a picture picked from the
  * canvas into a slot reshaping the relight panel, and each tool's pinned model
- * run for real to a new node downstream (tagged out of the default run).
+ * run for real to a new node downstream (@needs-model). Every case loads its
+ * pictures from the internet (@needs-internet), so the whole file is out of
+ * the default run.
  *
  * Needs a running dev stack (`pnpm dev`):
  *

@@ -4,8 +4,9 @@
 /**
  * The words the relight tool's settings are sent to the model in, and the
  * colour each light colour is drawn as on its swatch (inner#1304). Keyed by
- * the catalog values of `nano-banana-2-relight`; `auto` has no entry, since an
- * Auto setting is left out of the prompt.
+ * the catalog values of `nano-banana-2-relight`. `auto` and `custom` have no
+ * entry: an Auto setting is left out of the prompt, and Custom is the colour
+ * picked by hand (see `lightColorOf`).
  *
  * The light sphere names sides as the camera sphere does, from the subject's
  * own side (90 is the subject's right). The model reads a picture, in which a

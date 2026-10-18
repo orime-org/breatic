@@ -82,7 +82,7 @@ export function cameraAngleNames(
 /**
  * The params a control writes, by name.
  * @param control - One of a model's own controls.
- * @returns Its param names: three for a camera pose, one otherwise.
+ * @returns Its param names: three for a camera pose, two for the light sphere, one otherwise.
  */
 export function controlParams(control: ModelControl): string[] {
   if (control.kind === 'cameraAngle') return CAMERA_ANGLE_AXES.map((axis) => control.params[axis]);

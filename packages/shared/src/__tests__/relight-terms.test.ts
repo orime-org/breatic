@@ -36,7 +36,7 @@ describe("lightDirectionPhrase", () => {
 });
 
 describe("light terms", () => {
-  it("gives every colour but Auto a phrase and a swatch", () => {
+  it("gives every preset colour (all but Auto and Custom) a phrase and a swatch", () => {
     expect(Object.keys(LIGHT_COLORS)).toEqual(["white", "warm", "sunset", "cool", "red", "green", "purple"]);
     for (const [value, term] of Object.entries(LIGHT_COLORS)) {
       expect(term.phrase, value).not.toBe("");
