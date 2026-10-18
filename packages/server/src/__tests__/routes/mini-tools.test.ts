@@ -178,7 +178,7 @@ describe("POST /mini-tools", () => {
   });
 
   it("settles the opened rows as no_credits when the balance is short", async () => {
-    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0, available: 0 });
     const res = await post({
       tool: "image.upscale",
       node_ids: [NODE_A],
@@ -191,7 +191,7 @@ describe("POST /mini-tools", () => {
   });
 
   it("settles the opened rows as credits_held when running work holds what the run needs", async () => {
-    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90 });
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90, available: 10 });
     const res = await post({
       tool: "image.upscale",
       node_ids: [NODE_A],
@@ -203,7 +203,7 @@ describe("POST /mini-tools", () => {
   });
 
   it("still settles the rows as credits_held when the caller has unassigned credits to point at", async () => {
-    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90 });
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90, available: 10 });
     mocks.creditLotService.getUnassignedCredits.mockResolvedValueOnce(50);
     await post({
       tool: "image.upscale",

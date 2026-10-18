@@ -19,8 +19,7 @@
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { positionFrom } from "@domain/credit/creditLot.service.js";
-import { fromMicroCredits, toMicroCredits } from "@domain/credit/credit-math.js";
+import { fromMicroCredits, positionFrom, toMicroCredits } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -39,33 +38,20 @@ export interface HoldRequest {
   ttlMs: number;
 }
 
-/** What an admission came to. */
-export type ReserveOutcome =
-  | { ok: true }
-  | {
-      ok: false;
-      studioId: string;
-      /** Purchases less debt, before any hold. */
-      spendable: number;
-      /** What counted holds add up to. */
-      held: number;
-    };
-
-/** A studio's credits as an admission sees them. */
-export type CreditPosition = ProjectCreditsView;
+/** What an admission came to: admitted, or refused with the studio's position. */
+export type ReserveOutcome = { ok: true } | ({ ok: false; studioId: string } & ProjectCreditsView);
 
 /**
- * Take the studio's debt lock and read purchases less debt and the counted
- * holds, in micro-credits.
+ * Take the studio's debt lock and read its position under it.
  * @param studioId - The studio.
  * @param tx - The transaction that takes and keeps the lock.
- * @returns Spendable and counted holds, in micro-credits.
+ * @returns Its balance, counted holds and what is left.
  */
-async function lockedRoom(studioId: string, tx: DbTx): Promise<{ spendable: number; held: number }> {
+async function lockedPosition(studioId: string, tx: DbTx): Promise<ProjectCreditsView> {
   const debt = await creditLotRepo.lockDebt(studioId, tx);
   const lots = await creditLotRepo.sumSpendableForStudio(studioId, tx);
   const held = await creditHoldRepo.sumHeldForStudio(studioId, tx);
-  return { spendable: toMicroCredits(lots) - toMicroCredits(debt), held: toMicroCredits(held) };
+  return positionFrom(lots, debt, held);
 }
 
 /**
@@ -89,15 +75,8 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
   const studioId = await resolveOwnerStudioId(request.projectId);
   const amount = toMicroCredits(request.amount);
   return db.transaction(async (tx) => {
-    const room = await lockedRoom(studioId, tx);
-    if (room.spendable - room.held < amount) {
-      return {
-        ok: false,
-        studioId,
-        spendable: room.spendable / 1_000_000,
-        held: room.held / 1_000_000,
-      };
-    }
+    const position = await lockedPosition(studioId, tx);
+    if (toMicroCredits(position.available) < amount) return { ok: false, studioId, ...position };
     await creditHoldRepo.insertHold(
       {
         studioId,
@@ -127,7 +106,7 @@ export async function releaseHold(referenceId: string): Promise<void> {
  * @param studioId - The studio.
  * @returns The three figures, in credits.
  */
-export async function getCreditPosition(studioId: string): Promise<CreditPosition> {
+export async function getCreditPosition(studioId: string): Promise<ProjectCreditsView> {
   return db.transaction(
     async (tx) => {
       const [lots, debt, held] = await Promise.all([

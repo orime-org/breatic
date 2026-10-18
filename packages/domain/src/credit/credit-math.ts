@@ -17,6 +17,8 @@
  * be tested without one.
  */
 
+import type { ProjectCreditsView } from "@breatic/shared";
+
 /** How many micro-credits make one credit — `numeric(20, 6)`'s scale. */
 const MICRO_PER_CREDIT = 1_000_000;
 
@@ -139,4 +141,29 @@ export function planCharge(
   }
 
   return { allocations, shortfall: owed };
+}
+
+/**
+ * A studio's balance, holds and what is left, from the three sums, so the
+ * admission, its refusal and every screen that shows them compute them the
+ * same way (inner#1611).
+ *
+ * What is left is never below zero unless the studio owes. A run charged
+ * above its estimate can leave the others' holds larger than the balance;
+ * nothing is left then, and a figure below zero would read as debt.
+ * @param lots - What its designated lots have left, as a decimal string.
+ * @param debt - What it owes, as a decimal string.
+ * @param held - What counted holds add up to, as a decimal string.
+ * @returns The three figures, in credits.
+ * @throws {Error} If a sum is not a plain decimal number.
+ */
+export function positionFrom(lots: string, debt: string, held: string): ProjectCreditsView {
+  const spendable = toMicroCredits(lots) - toMicroCredits(debt);
+  const heldMicro = toMicroCredits(held);
+  const available = spendable < 0 ? spendable : Math.max(0, spendable - heldMicro);
+  return {
+    spendable: spendable / MICRO_PER_CREDIT,
+    held: heldMicro / MICRO_PER_CREDIT,
+    available: available / MICRO_PER_CREDIT,
+  };
 }

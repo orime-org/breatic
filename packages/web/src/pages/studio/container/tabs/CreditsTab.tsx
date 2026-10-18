@@ -257,6 +257,10 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
   // left once they are taken off: the figure a run is admitted against.
   const held = head.held ?? 0;
   const available = head.available ?? head.spendable ?? 0;
+  // The part of the balance the holds take. Holds larger than the balance
+  // take all of it, and a studio that owes has none for them to take, so the
+  // rows above the total always add up to it.
+  const heldTaken = Math.max(0, head.spendable ?? 0) - Math.max(0, available);
   const state =
     (head.debt ?? 0) > 0
       ? 'debt'
@@ -325,12 +329,12 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
                 amount={-(head.debt ?? 0)}
               />
             ) : null}
-            {held > 0 ? (
+            {heldTaken > 0 ? (
               <SummaryRow
                 testId='studio-lots-held'
                 label={t('studio.container.credits.lotsHeld')}
                 note={t('studio.container.credits.lotsHeldNote')}
-                amount={-held}
+                amount={-heldTaken}
               />
             ) : null}
             <SummaryRow

@@ -169,6 +169,7 @@ describe("reserveCredits", () => {
       studioId: fx.studioId,
       spendable: 100,
       held: 80,
+      available: 20,
     });
     expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 100, held: 80, available: 20 });
   });
@@ -194,6 +195,23 @@ describe("reserveCredits", () => {
       studioId: fx.studioId,
       spendable: -30,
       held: 0,
+      available: -30,
+    });
+  });
+
+  it("reads nothing available when a charge above its hold leaves the others' holds larger than the balance", async () => {
+    const fx = await studioWith(100);
+    const a = ref("over-a");
+    await creditHoldService.reserveCredits(req(fx, a, 50));
+    await creditHoldService.reserveCredits(req(fx, ref("over-b"), 45));
+    await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 60, releaseHold: a });
+    expect(await creditHoldService.getCreditPosition(fx.studioId)).toEqual({ spendable: 40, held: 45, available: 0 });
+    expect(await creditHoldService.reserveCredits(req(fx, ref("over-c"), 1))).toEqual({
+      ok: false,
+      studioId: fx.studioId,
+      spendable: 40,
+      held: 45,
+      available: 0,
     });
   });
 
@@ -353,7 +371,9 @@ describe("hold invariant", () => {
             }
           }
           const position = await creditHoldService.getCreditPosition(fx.studioId);
-          expect(position.available).toBeCloseTo(position.spendable - position.held, 6);
+          // What is left reads below zero only when the studio owes.
+          const left = position.spendable < 0 ? position.spendable : Math.max(0, position.spendable - position.held);
+          expect(position.available).toBeCloseTo(left, 6);
           if (admitted) expect(position.held).toBeLessThanOrEqual(position.spendable + 1e-6);
         }
       }),

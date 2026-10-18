@@ -337,6 +337,18 @@ describe('CreditsTab', () => {
     expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('4,110');
   });
 
+  it('lists only the part of the balance the holds take, so the rows add up to the total', async () => {
+    // Holds of 45 against a balance of 40 take all 40 of it; a row of -45
+    // above a total of 0 would not add up.
+    fetchStudioCredits.mockResolvedValue(
+      credits({ spendable: 40, held: 45, available: 0, lots: [{ ...credits().lots![0]!, remainingCredits: 40 }] }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByTestId('studio-lots-held')).toHaveTextContent('-40');
+    expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('0');
+  });
+
   it('has no held row while nothing is held', async () => {
     fetchStudioCredits.mockResolvedValue(credits({ held: 0, available: 4910 }));
     renderTab(<CreditsTab slug='acme' />);

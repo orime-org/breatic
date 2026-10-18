@@ -30,6 +30,7 @@ import {
   toMicroCredits,
   fromMicroCredits,
   planCharge,
+  positionFrom,
 } from "@domain/credit/credit-math.js";
 import {
   db,
@@ -50,7 +51,6 @@ import {
 import type {
   CreditLotEntity,
   CreditOverview,
-  ProjectCreditsView,
   RefundRefusal,
   StudioCreditSummary,
 } from "@breatic/shared";
@@ -956,45 +956,13 @@ export async function getSpendableCredits(studioId: string): Promise<number> {
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
       ]);
-      return spendableFrom(lots, debt);
+      return positionFrom(lots, debt, "0").spendable;
     },
     { isolationLevel: "repeatable read" },
   );
 }
 
-/**
- * Subtract a studio's debt from its pool.
- *
- * Both figures have to come from the same instant for the difference to be a
- * number the studio was ever at: a charge that empties the pool and records
- * what it could not cover commits both halves at once, and reading them
- * separately can catch the pool before it and the debt after it.
- * @param lots - The sum of what the studio's lots hold.
- * @param debt - What the studio owes.
- * @returns The difference, in credits.
- */
-function spendableFrom(lots: string, debt: string): number {
-  return (toMicroCredits(lots) - toMicroCredits(debt)) / 1_000_000;
-}
 
-/**
- * A studio's balance, holds and what is left, from the three sums, so every
- * screen that shows them computes them the same way (inner#1611).
- * @param lots - What its designated lots have left, as a decimal string.
- * @param debt - What it owes, as a decimal string.
- * @param held - What counted holds add up to, as a decimal string.
- * @returns The three figures, in credits.
- * @throws {never} Never.
- */
-export function positionFrom(lots: string, debt: string, held: string): ProjectCreditsView {
-  const spendable = toMicroCredits(lots) - toMicroCredits(debt);
-  const heldMicro = toMicroCredits(held);
-  return {
-    spendable: spendable / 1_000_000,
-    held: heldMicro / 1_000_000,
-    available: (spendable - heldMicro) / 1_000_000,
-  };
-}
 
 /** Everything one studio's credits page reads, as of one instant. */
 export interface StudioCreditsSnapshot {

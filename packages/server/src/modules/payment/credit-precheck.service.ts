@@ -20,7 +20,7 @@
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
-import { t } from "@breatic/shared";
+import { t, type ProjectCreditsView } from "@breatic/shared";
 
 /**
  * A run refused because running work holds what it needs, so a lane that
@@ -36,14 +36,8 @@ export class CreditsHeldError extends AppError {
   }
 }
 
-/** The figures a refusal is explained with. */
-interface RefusalFigures {
-  studioId: string;
-  /** Purchases less debt, before holds. */
-  spendable: number;
-  /** Counted holds. */
-  held: number;
-}
+/** The figures a refusal is explained with: the studio and its position. */
+type RefusalFigures = { studioId: string } & ProjectCreditsView;
 
 /**
  * Build the refusal for a run the studio cannot cover.
@@ -79,8 +73,7 @@ interface RefusalFigures {
  * @throws {AppError} 402, for every other cause.
  */
 async function refuse(userId: string, required: number, figures: RefusalFigures): Promise<never> {
-  const { studioId, spendable, held } = figures;
-  const available = spendable - held;
+  const { studioId, spendable, held, available } = figures;
 
   if (spendable < 0) {
     const owed = await creditLotService.getStudioDebt(studioId);
@@ -92,9 +85,7 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
     // Still a hold refusal: the sentence points at the step that certainly
     // works, and a lane that stores the cause on its node names the hold.
     if (unassigned > 0) throw new CreditsHeldError(t("server.credit.unassigned", { available: unassigned }));
-    // A run charged above its estimate can leave the others' holds larger
-    // than the balance; what can be used now is then nothing, not less.
-    throw new CreditsHeldError(t("server.credit.held_by_running", { held, available: Math.max(0, available) }));
+    throw new CreditsHeldError(t("server.credit.held_by_running", { held, available }));
   }
 
   if (available > 0) {
@@ -169,5 +160,5 @@ export async function precheckCredits(
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   const spendable = await creditLotService.getSpendableCredits(studioId);
   if (spendable >= required) return;
-  await refuse(userId, required, { studioId, spendable, held: 0 });
+  await refuse(userId, required, { studioId, spendable, held: 0, available: spendable });
 }

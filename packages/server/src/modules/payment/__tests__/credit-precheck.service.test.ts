@@ -75,7 +75,8 @@ async function refusal(run: () => Promise<void>): Promise<{ status: number; mess
  * @param held - Counted holds.
  */
 function refuseWith(spendable: number, held: number): void {
-  reserveCredits.mockResolvedValue({ ok: false, studioId: STUDIO, spendable, held });
+  const available = spendable < 0 ? spendable : Math.max(0, spendable - held);
+  reserveCredits.mockResolvedValue({ ok: false, studioId: STUDIO, spendable, held, available });
 }
 
 beforeEach(() => {

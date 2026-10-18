@@ -23,6 +23,7 @@ import type {
   CreditLedgerView,
   CreditLotView,
   CreditPage,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioLedgerView,
   StudioLotView,
@@ -197,7 +198,7 @@ export async function listLedger(
  * @returns The studio's spendable, held and available credits.
  * @throws {NotFoundError} When the project has no live studio.
  */
-export async function getProjectCredits(projectId: string): Promise<creditHoldService.CreditPosition> {
+export async function getProjectCredits(projectId: string): Promise<ProjectCreditsView> {
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   return creditHoldService.getCreditPosition(studioId);
 }

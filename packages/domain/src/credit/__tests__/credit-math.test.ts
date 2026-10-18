@@ -19,7 +19,34 @@ import {
   toMicroCredits,
   fromMicroCredits,
   planCharge,
+  positionFrom,
 } from "@domain/credit/credit-math.js";
+
+describe("positionFrom (inner#1611)", () => {
+  it("takes what running work holds off what the studio can spend", () => {
+    expect(positionFrom("100", "0", "80")).toEqual({ spendable: 100, held: 80, available: 20 });
+  });
+
+  it("reads nothing available, not a negative figure, when holds outgrow the balance", () => {
+    // A run charged above its estimate leaves the others' holds larger than
+    // what is left. Below zero is how both screens say the studio owes.
+    expect(positionFrom("40", "0", "45")).toEqual({ spendable: 40, held: 45, available: 0 });
+  });
+
+  it("reads what the studio owes when it owes, holds or not", () => {
+    expect(positionFrom("0", "30", "10")).toEqual({ spendable: -30, held: 10, available: -30 });
+  });
+
+  it("never reads more than the balance, nor less than zero unless the studio owes", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10_000 }), fc.integer({ min: 0, max: 10_000 }), fc.integer({ min: 0, max: 10_000 }), (lots, debt, held) => {
+        const { spendable, available } = positionFrom(String(lots), String(debt), String(held));
+        if (spendable < 0) expect(available).toBe(spendable);
+        else expect(available >= 0 && available <= spendable).toBe(true);
+      }),
+    );
+  });
+});
 
 describe("定点数换算", () => {
   it("把数据库读回来的字符串按六位小数换成整数微积分", () => {
