@@ -12,7 +12,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { addRowAfter, TableMap } from '@tiptap/pm/tables';
+import { addRowAfter, CellSelection, mergeCells, TableMap } from '@tiptap/pm/tables';
 import { TextSelection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
@@ -201,5 +201,41 @@ describe('a table cell holds blocks', () => {
     expect(cells[0].querySelector('[data-content-type="heading"]')?.textContent).toBe('title');
     expect(element!.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
     expect(editor.prosemirrorState.doc.check()).toBeUndefined();
+  });
+
+  it('draws `quoted` on the table and repaints it when it changes', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { ...(table([[[{ type: 'paragraph', content: 'a' }]]]) as object), props: { quoted: true } },
+    ] as never);
+    const frame = document.querySelector<HTMLElement>('[data-node-type="docTable"]');
+    expect(frame?.getAttribute('data-quoted')).toBe('true');
+
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setNodeAttribute(first(editor, 'docTable').pos, 'quoted', false));
+    expect(document.querySelector('[data-node-type="docTable"]')).toBe(frame);
+    expect(frame?.getAttribute('data-quoted')).toBeNull();
+  });
+
+  it('keeps its width when every cell is merged into one (upstream #1993)', () => {
+    const editor = open();
+    const words = (text: string): unknown[] => [{ type: 'paragraph', content: text }];
+    editor.replaceBlocks(editor.document, [
+      table([0, 1, 2].map((r) => [0, 1, 2].map((c) => words(`r${r}c${c}`)))),
+    ] as never);
+    const view = editor.prosemirrorView;
+    const { node, pos } = first(editor, 'docTable');
+    const map = TableMap.get(node);
+    const start = pos + 1;
+    view.dispatch(
+      view.state.tr.setSelection(
+        CellSelection.create(view.state.doc, start + map.map[0]!, start + map.map[map.map.length - 1]!),
+      ),
+    );
+
+    expect(mergeCells(view.state, view.dispatch)).toBe(true);
+
+    expect(TableMap.get(first(editor, 'docTable').node).width).toBe(3);
+    expect(() => editor.prosemirrorState.doc.check()).not.toThrow();
   });
 });
