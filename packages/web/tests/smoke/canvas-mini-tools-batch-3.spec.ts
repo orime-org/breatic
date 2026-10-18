@@ -300,7 +300,21 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   // A text typed in place; Escape leaves the edit and then the selection, and the panel stays.
   await page.getByTestId('mini-tool-mark-text').click();
   await clickAt(layer, [0.6, 0.7]);
-  await page.keyboard.type('look here');
+  await page.keyboard.type('look');
+  // A4: changing the colour or the size while typing restyles the text and
+  // the typing goes on into it.
+  const typed = (): Promise<string | null> =>
+    page.evaluate(() => (document.querySelector('textarea[data-fabric="textarea"]') as HTMLTextAreaElement | null)?.value ?? null);
+  await page.locator('[data-testid^="mini-tool-mark-ink-"][aria-pressed="false"]').first().click();
+  await page.keyboard.type(' here');
+  expect(await typed()).toBe('look here');
+  const thumb = (await page.getByTestId('mini-tool-mark-size-slider').getByRole('slider').boundingBox())!;
+  await page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(thumb.x + thumb.width / 2 + 30, thumb.y + thumb.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await page.keyboard.type('!');
+  expect(await typed()).toBe('look here!');
   await page.keyboard.press('Escape');
   await expect(layer).toHaveAttribute('data-objects', '2');
   await expect(run).toBeVisible();

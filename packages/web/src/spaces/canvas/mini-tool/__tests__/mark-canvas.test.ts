@@ -498,6 +498,23 @@ describe('MarkCanvasController', () => {
     expect(mark().undo).toHaveLength(1);
   });
 
+  // The swatch or slider pressed to restyle takes the focus; the text being
+  // edited takes it back, so typing goes on into the text (§6.2).
+  it.each(['colour', 'size'] as const)('gives the keyboard back to a text being edited after its %s changes', (control) => {
+    document.body.appendChild(controller.canvas.wrapperEl);
+    store.getState().setMarkTool('text');
+    controller.sync();
+    drag([200, 150], [200, 150]);
+    const swatch = document.body.appendChild(document.createElement('button'));
+    swatch.focus();
+    if (control === 'colour') store.getState().setMarkColor(INK[3]);
+    else store.getState().setMarkSize(mark().size + 3);
+    controller.sync();
+    expect(document.activeElement).toBe(editing().hiddenTextarea);
+    swatch.remove();
+    controller.canvas.wrapperEl.remove();
+  });
+
   it('folds a resize into the draft and keeps the object selected', () => {
     store.getState().commitMark([RECT]);
     controller.sync();
