@@ -23,10 +23,10 @@ export interface Vec3 {
 
 /**
  * The lowest and highest elevation a grid holds.
- * @param grid - The grid; the camera's when absent.
+ * @param grid - The grid.
  * @returns Degrees, low then high.
  */
-export function elevationRange(grid: AngleGrid = CAMERA_ANGLE_GRID): [number, number] {
+export function elevationRange(grid: AngleGrid): [number, number] {
   return [grid.elevation[0] ?? 0, grid.elevation[grid.elevation.length - 1] ?? 0];
 }
 
