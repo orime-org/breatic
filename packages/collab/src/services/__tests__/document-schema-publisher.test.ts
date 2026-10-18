@@ -233,6 +233,21 @@ describe("publishing during a rolling release (inner#1619 design 5.6)", () => {
     doc.destroy();
   });
 
+  it("publishes once on load when forced, and answers no later write", () => {
+    const doc = new Y.Doc();
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+    const stop = keepDocumentSchemaPublished(doc, { force: true });
+    expect(readPublished(doc).version).toBe(MY_VERSION);
+
+    // A later-build instance still running writes its own version back; a
+    // forced instance answering it would write against it without end.
+    publishedBySomeoneElse(doc, OTHER_VERSION, "2099-01-01T00:00:00Z");
+
+    expect(readPublished(doc).version).toBe(OTHER_VERSION);
+    stop();
+    doc.destroy();
+  });
+
   it("does not answer its own writes", () => {
     const doc = new Y.Doc();
     let writes = 0;

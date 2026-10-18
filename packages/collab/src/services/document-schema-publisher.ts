@@ -116,7 +116,9 @@ export function publishDocumentSchema(metaDoc: Y.Doc, options: PublishOptions = 
  * old-build instance wrote over during a rolling release would otherwise keep
  * the old version for as long as anyone has the project open. Instances on
  * the same build never answer each other: equal versions and times are left
- * alone, and this instance's own writes are not answered.
+ * alone, and this instance's own writes are not answered. A forced instance
+ * publishes on load only: it writes over any release, so answering a
+ * different build's writes would trade writes with it without end.
  * @param metaDoc - The project's meta document.
  * @param options - Whether to write over a later release.
  * @param onWrite - Told each time this writes, for the hook to log.
@@ -128,6 +130,7 @@ export function keepDocumentSchemaPublished(
   onWrite: () => void = () => undefined,
 ): () => void {
   if (publishDocumentSchema(metaDoc, options)) onWrite();
+  if (options.force) return () => undefined;
   const published = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
   /**
    * Publishes again after someone else's write.
