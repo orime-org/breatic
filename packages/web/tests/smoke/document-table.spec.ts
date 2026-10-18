@@ -474,7 +474,7 @@ test('A9 and A10: selecting cells offers a merge, and a merged cell splits back'
   await smallTable(page);
 
   await selectCells(page, 'a1', 'b1');
-  await expect(page.getByTestId('doc-bubble-block-type')).toBeDisabled();
+  await expect(page.getByTestId('doc-bubble-block-type')).toBeEnabled();
   await page.getByTestId('doc-bubble-tool-mergeCells').click();
   await expect(page.locator(`${EDITOR} tr`).first().locator('td')).toHaveCount(1);
   expect((await grids(page))[0]![0]).toEqual(['a1b1']);

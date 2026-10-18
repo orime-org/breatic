@@ -299,12 +299,6 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
   const reachable = useEditorSnapshot(editor, (e) =>
     open ? canRunBlockType(e) : true,
   );
-  // A cell's line is not a block of its own, so none of the rows reaches it
-  // and the slot steps back as a whole (inner#1126 A9).
-  const inCells = useEditorSnapshot(
-    editor,
-    (e) => cellsUnder(e.prosemirrorState.doc, e.prosemirrorState.selection).length > 0,
-  );
   const CurrentIcon = blockTypeItem(current).Icon;
 
   return (
@@ -312,7 +306,6 @@ export const BlockTypeSlot = React.memo(function BlockTypeSlot({
       id={id}
       label={t('spaces.document.commands.blockType')}
       face={<CurrentIcon className='h-4 w-4' />}
-      appliesHere={!inCells}
       openerProps={{ 'data-block-type': current }}
       contentClassName={ROWS}
       container={container}
