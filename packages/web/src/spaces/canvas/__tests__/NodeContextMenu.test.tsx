@@ -309,6 +309,34 @@ describe('NodeContextMenu', () => {
       ]);
     });
 
+    // inner#1304: quick edit leads the list, a model tool above the edits.
+    it('puts a separator wherever the list turns between edits and model tools', () => {
+      setup({
+        target: 'node',
+        onUpload: () => {},
+        toolsOffered: true,
+        tools: [
+          { id: 'image.quickEdit', labelKey: 'canvas.miniTool.image.quickEdit.label', icon: 'SquarePen' as const, model: true },
+          { id: 'image.crop', labelKey: 'canvas.miniTool.image.crop.label', icon: 'Crop' as const, model: false },
+          { id: 'image.rotate', labelKey: 'canvas.miniTool.image.rotate.label', icon: 'RotateCw' as const, model: false },
+          ...TOOLS,
+        ],
+        onTool: () => {},
+      });
+      fireEvent.keyDown(screen.getByTestId('node-menu-tools'), { key: 'ArrowRight' });
+
+      const rows = [...screen.getByTestId('node-menu-tool-image.crop').parentElement!.children];
+      expect(rows.map((row) => row.getAttribute('data-testid') ?? row.getAttribute('role'))).toEqual([
+        'node-menu-tool-image.quickEdit',
+        'separator',
+        'node-menu-tool-image.crop',
+        'node-menu-tool-image.rotate',
+        'separator',
+        'node-menu-tool-image.upscale',
+        'node-menu-tool-image.remove-bg',
+      ]);
+    });
+
     it('keeps Tools apart from the asset actions', () => {
       setup({
         target: 'node',

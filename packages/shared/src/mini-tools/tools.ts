@@ -61,6 +61,21 @@ const RECT: RectParam = { kind: "rect", key: "rect", aspect: "aspect" };
 
 export const MINI_TOOLS: readonly MiniToolSpec[] = [
   {
+    id: "image.quickEdit",
+    source: "image",
+    run: { kind: "model", model: "nano-banana-2-quick-edit" },
+    labelKey: key("image.quickEdit", "label"),
+    // First in the picture's list, for the reach (user 2026-10-18, inner#1304).
+    guide: "changes the picture as one sentence says, into a new node",
+    icon: "SquarePen",
+    params: [{ key: "resolution", default: "2k" }],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "EDIT" }],
+    sourceParam: "images",
+    sourceMany: true,
+    prompt: { placeholderKey: key("image.quickEdit", "prompt") },
+  },
+  {
     id: "image.crop",
     source: "image",
     run: { kind: "browser" },
@@ -305,20 +320,6 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
       preamble:
         "Redraw the first image in the style of the style references. Keep its subject, faces, pose and composition; take only the style — brushwork, palette, texture and line — and copy no objects from the style references.",
     },
-  },
-  {
-    id: "image.quickEdit",
-    source: "image",
-    run: { kind: "model", model: "nano-banana-2-quick-edit" },
-    labelKey: key("image.quickEdit", "label"),
-    guide: "changes the picture as one sentence says, into a new node",
-    icon: "SquarePen",
-    params: [{ key: "resolution", default: "2k" }],
-    slots: [],
-    outputs: [{ modality: "image", namePrefix: "EDIT" }],
-    sourceParam: "images",
-    sourceMany: true,
-    prompt: { placeholderKey: key("image.quickEdit", "prompt") },
   },
   {
     id: "video.cut",

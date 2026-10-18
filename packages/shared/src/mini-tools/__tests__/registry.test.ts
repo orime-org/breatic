@@ -27,6 +27,7 @@ import { UPLOAD_STATUS_MAX_KEYS } from "@shared/upload/upload-status.js";
 const BATCH_ONE = {
   // The confirmed demo's order: the free and usage-billed edits first, the model tools after.
   image: [
+    "image.quickEdit",
     "image.crop",
     "image.rotate",
     "image.adjust",
@@ -42,7 +43,6 @@ const BATCH_ONE = {
     "image.angle",
     "image.relight",
     "image.restyle",
-    "image.quickEdit",
   ],
   video: [
     "video.cut",
@@ -213,11 +213,13 @@ describe("servedMiniToolsFor", () => {
     credit_multiplier: 1,
   } as never;
 
-  it("lists every source's edits before its model tools, so the menu draws one separator", () => {
+  // inner#1304: quick edit leads the picture's list; after it every source lists its edits before its other model tools.
+  it("lists quick edit first, then every source's edits before its other model tools", () => {
+    expect(MINI_TOOLS.find((tool) => tool.source === "image")?.id).toBe("image.quickEdit");
     for (const source of new Set(MINI_TOOLS.map((tool) => tool.source))) {
-      const model = MINI_TOOLS.filter((tool) => tool.source === source).map(isModelTool);
-      const firstModel = model.indexOf(true);
-      expect(firstModel === -1 ? [] : model.slice(firstModel), source).not.toContain(false);
+      const rest = MINI_TOOLS.filter((tool) => tool.source === source && tool.id !== "image.quickEdit").map(isModelTool);
+      const firstModel = rest.indexOf(true);
+      expect(firstModel === -1 ? [] : rest.slice(firstModel), source).not.toContain(false);
     }
   });
 
@@ -390,7 +392,7 @@ describe("drawing tools", () => {
 
   it("marks a source param as a list only where the pinned model takes a list of images", () => {
     const lists = MINI_TOOLS.filter((tool) => tool.sourceMany).map((tool) => tool.id);
-    expect(lists).toEqual(["image.sketch", "image.angle", "image.relight", "image.restyle", "image.quickEdit"]);
+    expect(lists).toEqual(["image.quickEdit", "image.sketch", "image.angle", "image.relight", "image.restyle"]);
   });
 
   it("names every media param a tool fills, the mask included", () => {
