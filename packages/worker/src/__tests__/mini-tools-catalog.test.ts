@@ -127,7 +127,8 @@ describe("model tools against the catalog", () => {
   it("has a phrase for every light colour, intensity and quality the catalog offers", () => {
     const params = catalog().get("nano-banana-2-relight")!.params ?? {};
     const offered = (key: string): unknown[] => (params[key]?.values ?? []).filter((v) => v !== "auto");
-    expect(offered("light_color")).toEqual(Object.keys(LIGHT_COLORS));
+    expect(offered("light_color")).toEqual([...Object.keys(LIGHT_COLORS), "custom"]);
+    expect(params.light_color_hex).toMatchObject({ type: "text", fill: "tool" });
     expect(offered("light_intensity")).toEqual(Object.keys(LIGHT_INTENSITIES));
     expect(offered("light_quality")).toEqual(Object.keys(LIGHT_QUALITIES));
   });

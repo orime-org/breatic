@@ -226,11 +226,16 @@ models:
         value_labels: {"0": "Front", "45": "Front right", "90": "Right", "135": "Back right", "180": "Back", "225": "Back left", "270": "Left", "315": "Front left"}
         fill: "tool"
       light_color:
-        description: "Colour of the light; auto follows the reference, or the picture"
+        description: "Colour of the light; auto follows the reference, or the picture; custom takes light_color_hex"
         label: "Light colour"
         default: "auto"
-        values: ["auto", "white", "warm", "golden", "sunset", "cool", "red", "green", "purple"]
-        value_labels: {"auto": "Auto", "white": "White", "warm": "Warm", "golden": "Golden", "sunset": "Sunset", "cool": "Cool", "red": "Red", "green": "Green", "purple": "Purple"}
+        values: ["auto", "white", "warm", "sunset", "cool", "red", "green", "purple", "custom"]
+        value_labels: {"auto": "Auto", "white": "White", "warm": "Warm", "sunset": "Sunset", "cool": "Cool", "red": "Red", "green": "Green", "purple": "Purple", "custom": "Custom"}
+        fill: "tool"
+      light_color_hex:
+        description: "The colour picked by hand, as #rrggbb; read only when light_color is custom"
+        label: "Custom light colour"
+        type: "text"
         fill: "tool"
       light_elevation:
         description: "Height of the light, degrees: -30 below, 0 level, 30 above, 60 high, 90 straight overhead"

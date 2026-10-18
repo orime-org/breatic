@@ -11,9 +11,9 @@
 
 import {
   LIGHT_ANGLE_GRID,
-  LIGHT_COLORS,
   LIGHT_INTENSITIES,
   LIGHT_QUALITIES,
+  lightColorOf,
   lightDirectionPhrase,
   nearestCameraAngle,
 } from "@breatic/shared";
@@ -61,7 +61,7 @@ function lightingOf(params: Readonly<Record<string, unknown>>, referenced: boole
     );
     lighting.direction = lightDirectionPhrase(at.azimuth, at.elevation);
   }
-  const color = LIGHT_COLORS[String(params.light_color)];
+  const color = lightColorOf(params.light_color, params.light_color_hex);
   if (color !== undefined) lighting.color = color.phrase;
   const intensity = LIGHT_INTENSITIES[String(params.light_intensity)];
   if (intensity !== undefined) lighting.intensity = intensity;
@@ -76,6 +76,7 @@ const nanoBananaRelight: ModelFamily = {
     "light_azimuth",
     "light_elevation",
     "light_color",
+    "light_color_hex",
     "light_intensity",
     "light_quality",
     "light_reference",

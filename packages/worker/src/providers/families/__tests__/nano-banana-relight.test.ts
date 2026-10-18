@@ -37,6 +37,7 @@ describe("nano-banana-relight family", () => {
       "aspect_ratio",
       "light_azimuth",
       "light_color",
+      "light_color_hex",
       "light_elevation",
       "light_intensity",
       "light_quality",
@@ -116,5 +117,24 @@ describe("nano-banana-relight family", () => {
       }).lighting.direction;
     expect(await at(44, 29)).toBe(lightDirectionPhrase(45, 30));
     expect(await at(270, 89)).toBe("from directly above");
+  });
+
+  // inner#1304: a colour picked by hand is told to the model as its hex code.
+  it("writes a hand-picked colour as its hex code, and takes the colour from the reference no more", async () => {
+    const custom = { ...MANUAL, light_color: "custom", light_color_hex: "#8fc0ff" };
+    const manual = JSON.parse((await relight.prepare("", custom, RUN)).prompt) as { lighting: Record<string, string> };
+    expect(manual.lighting.color).toBe("#8FC0FF");
+    const withReference = { ...custom, light_intensity: "auto", light_quality: "auto", light_reference: REFERENCE };
+    const json = JSON.parse((await relight.prepare("", withReference, RUN)).prompt) as { reference: string };
+    expect(json.reference).not.toMatch(/colour/);
+    expect(json.reference).toMatch(/use it instead/);
+  });
+
+  it("leaves the colour out when Custom holds no well-formed colour", async () => {
+    for (const hex of [undefined, "", "#8fc0f", "red"]) {
+      const custom = { ...MANUAL, light_color: "custom", light_color_hex: hex };
+      const json = JSON.parse((await relight.prepare("", custom, RUN)).prompt) as { lighting: Record<string, string> };
+      expect(json.lighting.color, String(hex)).toBeUndefined();
+    }
   });
 });
