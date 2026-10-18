@@ -86,8 +86,8 @@ async function post(body: Record<string, unknown>): Promise<Response> {
 
 describe("POST /mini-tools", () => {
   beforeEach(() => {
-    mocks.creditLotService.getSpendableCredits.mockReset();
-    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
+    mocks.creditHoldService.reserveCredits.mockReset();
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: true });
     mocks.taskService.create.mockReset();
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mocks.taskService.markFailed.mockReset();
@@ -223,7 +223,7 @@ describe("POST /mini-tools", () => {
   });
 
   it("settles the opened rows as no_credits when the balance is short", async () => {
-    mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0, available: 0 });
     const res = await post({
       tool: "image.upscale",
       node_ids: [NODE_A],
@@ -233,6 +233,30 @@ describe("POST /mini-tools", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ data: { task_id: "task-1", status: "failed" } });
     expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "no_credits");
+  });
+
+  it("settles the opened rows as credits_held when running work holds what the run needs", async () => {
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90, available: 10 });
+    const res = await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
+  });
+
+  it("still settles the rows as credits_held when the caller has unassigned credits to point at", async () => {
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90, available: 10 });
+    mocks.creditLotService.getUnassignedCredits.mockResolvedValueOnce(50);
+    await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
   });
 
   it("refuses a param the tool does not expose, before any row opens", async () => {
@@ -337,7 +361,7 @@ describe("POST /mini-tools", () => {
 
     expect(res.status).toBe(403);
     expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(PID, "user-1", "editor");
-    expect(mocks.creditLotService.getSpendableCredits).not.toHaveBeenCalled();
+    expect(mocks.creditHoldService.reserveCredits).not.toHaveBeenCalled();
     expect(mocks.taskService.create).not.toHaveBeenCalled();
     expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
   });

@@ -10,7 +10,7 @@ import {
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 
 import {
-  ActivityNewSignalSchema,
+  ACTIVITY_NEW_SIGNAL,
   MAX_SPACES_PER_PROJECT,
   t as translate,
   type ProjectActivityEntry,
@@ -39,6 +39,7 @@ import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
+import { useProjectSignal } from '@web/pages/project/use-project-signal';
 import { PreviewImg } from '@web/components/PreviewImg';
 
 /**
@@ -311,43 +312,11 @@ export function ProjectActivityButton({
     refetchOnWindowFocus: false,
   });
 
-  // Live updates: the meta-doc socket broadcasts `activity:new`
-  // whenever a row lands (collab directly; server/worker via the
-  // control-plane relay). React by invalidating — the panel refetches
-  // when open, and the next open fetches fresh anyway.
-  useEffect(() => {
-    if (!provider) return;
-    let debounce: ReturnType<typeof setTimeout> | null = null;
-    /**
-     * Parse a stateless payload and invalidate the feed on a signal.
-     * @param data - The stateless message wrapper.
-     * @param data.payload - Raw stateless string payload.
-     */
-    const onStateless = (data: { payload: string }): void => {
-      try {
-        const parsed = ActivityNewSignalSchema.safeParse(
-          JSON.parse(data.payload),
-        );
-        if (parsed.success && parsed.data.projectId === projectId) {
-          // Coalesce a burst (a bulk op emits many signals) into one
-          // refetch on a short trailing timer.
-          if (debounce) clearTimeout(debounce);
-          debounce = setTimeout(() => {
-            void queryClient.invalidateQueries({
-              queryKey: ['project-activities', projectId],
-            });
-          }, 250);
-        }
-      } catch {
-        // Non-JSON stateless traffic (e.g. space RPC responses) — not ours.
-      }
-    };
-    provider.on('stateless', onStateless);
-    return (): void => {
-      if (debounce) clearTimeout(debounce);
-      provider.off('stateless', onStateless);
-    };
-  }, [provider, projectId, queryClient]);
+  // Live updates: a row landing in the feed invalidates it — the panel
+  // refetches when open, and the next open fetches fresh anyway.
+  useProjectSignal(provider, projectId, ACTIVITY_NEW_SIGNAL, () => {
+    void queryClient.invalidateQueries({ queryKey: ['project-activities', projectId] });
+  });
 
   // Infinite scroll: fetch the next page when the tail sentinel enters
   // the list viewport. Depends only on the primitives that matter (not

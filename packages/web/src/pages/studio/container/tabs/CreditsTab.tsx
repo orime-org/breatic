@@ -71,11 +71,14 @@ const LotRow = React.memo(function LotRow({
 const SummaryRow = React.memo(function SummaryRow({
   testId,
   label,
+  note,
   amount,
   strong = false,
 }: {
   testId: string;
   label: string;
+  /** A smaller line under the label, when the row needs one. */
+  note?: string;
   amount: number;
   strong?: boolean;
 }): React.JSX.Element {
@@ -89,7 +92,10 @@ const SummaryRow = React.memo(function SummaryRow({
         strong && 'font-bold',
       )}
     >
-      <span className='text-sm'>{label}</span>
+      <span>
+        <span className='block text-sm'>{label}</span>
+        {note === undefined ? null : <span className='block text-xs text-muted-foreground'>{note}</span>}
+      </span>
       <span
         className={cn(
           'ml-auto text-right text-sm tabular-nums',
@@ -243,18 +249,27 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
     );
   }
 
-  // Four situations, and each one gets its own sentence. Reading them off the
+  // Five situations, and each one gets its own sentence. Reading them off the
   // balance alone cannot tell "nothing was ever assigned here" from "it was
   // all spent" — both are zero, and only one of them is answered by assigning
   // more.
+  // What running tasks hold until they are charged (inner#1611), and what is
+  // left once they are taken off: the figure a run is admitted against.
+  const available = head.available ?? head.spendable ?? 0;
+  // The part of the balance the holds take. Holds larger than the balance
+  // take all of it, and a studio that owes has none for them to take, so the
+  // rows above the total always add up to it.
+  const heldTaken = Math.max(0, head.spendable ?? 0) - Math.max(0, available);
   const state =
     (head.debt ?? 0) > 0
       ? 'debt'
-      : (head.spendable ?? 0) > 0
+      : available > 0
         ? 'spendable'
-        : (head.lots ?? []).length > 0
-          ? 'depleted'
-          : 'none';
+        : heldTaken > 0
+          ? 'held'
+          : (head.lots ?? []).length > 0
+            ? 'depleted'
+            : 'none';
 
   return (
     <div className='mx-auto flex max-w-3xl flex-col gap-6'>
@@ -267,7 +282,7 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
             data-testid='studio-spendable'
             className='text-3xl font-extrabold leading-[1.1] tracking-[-0.02em] text-foreground'
           >
-            {formatCreditAmount(head.spendable ?? 0)}
+            {formatCreditAmount(available)}
             <small className='ml-1 align-baseline text-sm font-medium text-muted-foreground'>
               {t('studio.container.credits.unit')}
             </small>
@@ -278,7 +293,8 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
         </div>
       </div>
 
-      {state === 'spendable' ? null : (
+      {/* Spendable and held have no next step to offer; held only waits. */}
+      {state === 'spendable' || state === 'held' ? null : (
         <p
           data-testid='studio-credits-unassigned-notice'
           className='rounded-content-sm border border-status-warning-border bg-status-warning-bg px-3 py-2.5 text-sm'
@@ -312,10 +328,18 @@ export function CreditsTab({ slug }: CreditsTabProps): React.JSX.Element {
                 amount={-(head.debt ?? 0)}
               />
             ) : null}
+            {heldTaken > 0 ? (
+              <SummaryRow
+                testId='studio-lots-held'
+                label={t('studio.container.credits.lotsHeld')}
+                note={t('studio.container.credits.lotsHeldNote')}
+                amount={-heldTaken}
+              />
+            ) : null}
             <SummaryRow
               testId='studio-lots-total'
               label={t('studio.container.credits.lotsTotal')}
-              amount={head.spendable ?? 0}
+              amount={available}
               strong
             />
           </ul>

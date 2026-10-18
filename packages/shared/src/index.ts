@@ -114,6 +114,7 @@ export type {
   SpaceType,
   Space,
   ActivityNewControlEvent,
+  CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
@@ -147,6 +148,7 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
   activityNewChannel,
+  creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   SpaceTypeSchema,
@@ -176,6 +178,7 @@ export type {
 export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
+  CREDITS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -183,7 +186,6 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
-  ActivityNewSignalSchema,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
@@ -207,6 +209,7 @@ export type {
   ProjectActivityEntry,
   ProjectActivityPage,
   ActivityNewSignal,
+  CreditsChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -250,6 +253,7 @@ export type {
   CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,

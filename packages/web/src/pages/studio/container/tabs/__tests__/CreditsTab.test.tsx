@@ -326,6 +326,72 @@ describe('CreditsTab', () => {
     expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('-320');
   });
 
+  it('shows what is left after running tasks\' holds, and the hold as its own row before the total (inner#1611)', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: 4910, held: 800, available: 4110 }));
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByTestId('studio-spendable')).toHaveTextContent('4,110');
+    const held = screen.getByTestId('studio-lots-held');
+    expect(held).toHaveTextContent('Held by running tasks');
+    expect(held).toHaveTextContent('-800');
+    expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('4,110');
+  });
+
+  it('lists only the part of the balance the holds take, so the rows add up to the total', async () => {
+    // Holds of 45 against a balance of 40 take all 40 of it; a row of -45
+    // above a total of 0 would not add up.
+    fetchStudioCredits.mockResolvedValue(
+      credits({ spendable: 40, held: 45, available: 0, lots: [{ ...credits().lots![0]!, remainingCredits: 40 }] }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByTestId('studio-lots-held')).toHaveTextContent('-40');
+    expect(screen.getByTestId('studio-lots-total')).toHaveTextContent('0');
+  });
+
+  it('points at assigning more, not at waiting, when holds stand on a balance of nothing', async () => {
+    // Nothing is held out of a zero balance, so nothing will come back: the
+    // run that holds is charged into debt when it succeeds.
+    fetchStudioCredits.mockResolvedValue(
+      credits({ spendable: 0, held: 30, available: 0, lots: [{ ...credits().lots![0]!, remainingCredits: 0 }] }),
+    );
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    expect(document.body).toHaveTextContent('This Studio has spent all of its credits.');
+    expect(screen.getByTestId('studio-credits-unassigned-notice')).toHaveTextContent('Assign more credits from your account credits.');
+    expect(screen.queryByTestId('studio-lots-held')).toBeNull();
+    expect(document.body).not.toHaveTextContent('All credits are held by running tasks');
+  });
+
+  it('has no held row while nothing is held', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ held: 0, available: 4910 }));
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    expect(screen.queryByTestId('studio-lots-held')).toBeNull();
+  });
+
+  it('says the credits are held, not spent, when running tasks hold all of them', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: 80, held: 80, available: 0 }));
+    renderTab(<CreditsTab slug='acme' />);
+
+    await screen.findByTestId('studio-spendable');
+    const sentence = 'All credits are held by running tasks until they finish.';
+    // Said once, under the figure: there is nothing to do but wait, so there
+    // is no notice with a next step.
+    expect(document.body.textContent?.split(sentence)).toHaveLength(2);
+    expect(screen.queryByTestId('studio-credits-unassigned-notice')).toBeNull();
+    expect(document.body).not.toHaveTextContent('This Studio has spent all of its credits.');
+  });
+
+  it('titles the list as the credit packs it lists', async () => {
+    fetchStudioCredits.mockResolvedValue(credits());
+    renderTab(<CreditsTab slug='acme' />);
+
+    expect(await screen.findByText('Credit packs')).toBeInTheDocument();
+  });
+
   it('一笔都没有也不欠账时，这一块才是空态', async () => {
     fetchStudioCredits.mockResolvedValue(
       credits({ spendable: 0, debt: 0, lots: [] }),

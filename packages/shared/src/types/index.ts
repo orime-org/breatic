@@ -42,6 +42,7 @@ export type {
   CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,
@@ -218,6 +219,7 @@ export { SpaceTypeSchema } from "@shared/types/space.js";
 export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
+  CREDITS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -225,13 +227,13 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
-  ActivityNewSignalSchema,
 } from "@shared/types/project-activity.js";
 export type {
   ProjectActivityType,
   ProjectActivityEntry,
   ProjectActivityPage,
   ActivityNewSignal,
+  CreditsChangedSignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -259,11 +261,13 @@ export type {
 
 export {
   activityNewChannel,
+  creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
 } from "@shared/types/redis-events.js";
 export type {
   ActivityNewControlEvent,
+  CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,

@@ -9,6 +9,7 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { randomUUID } from "node:crypto";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
@@ -36,6 +37,7 @@ import {
   getNodeHistoryPageSize,
 } from "@server/config/limits.js";
 import {
+  creditHoldService,
   taskService,
   estimateTaskCredits,
   violatesSourceRequirementForModel,
@@ -54,8 +56,8 @@ import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
-  precheckCredits,
   projectService,
+  reserveForRun,
 } from "@server/modules";
 import {
   createQueue,
@@ -304,91 +306,101 @@ canvas.post(
     );
   }
 
-  // #1580 #7 credit pre-check (user decision 2026-07-03): refuse an
-  // obviously-insufficient balance BEFORE creating the task. Non-locking
-  // (no reservation) — the worker's atomic markCompletedAndBill remains
-  // the billing source of truth; concurrent passes may drive the balance
-  // negative, the accepted trade-off of a soft pre-check. Same shared
-  // helper and 402 shape as the /mini-tools routes.
-  await precheckCredits(
+  // #1580 #7 / inner#1611: the run is admitted by holding its estimate under
+  // the id its task row will carry, BEFORE that row exists, so a refusal
+  // leaves nothing behind. From here until the job is queued, every way out
+  // releases the hold; once queued, the worker charges or releases it.
+  const taskId = randomUUID();
+  await reserveForRun(
     projectId,
     user.id,
+    taskId,
     await estimateTaskCredits(body.model, {
       params: body.params,
       prompt: extractPromptText(body.params.prompt ?? body.params.text),
     }),
   );
 
-  // #89: storage gate, the other soft pre-check. AFTER credits, because
-  // refusing for storage tells the studio's admin about it — and a request
-  // that was going to be refused for credits anyway should not send anyone
-  // mail about storage.
-  await assertStorageAllowance(projectId, "generate");
+  let task: Awaited<ReturnType<typeof taskService.create>>;
+  let job: Awaited<ReturnType<typeof tasksQueue.add>>;
+  try {
+    // #89: storage gate, the other soft pre-check. AFTER credits, because
+    // refusing for storage tells the studio's admin about it — and a request
+    // that was going to be refused for credits anyway should not send anyone
+    // mail about storage.
+    await assertStorageAllowance(projectId, "generate");
 
-  const task = await taskService.create(
-    user.id,
-    projectId,
-    spaceId,
-    body.task_type,
-    mode,
-    body.params,
-    body.model,
-    body.source,
-  );
-
-  // A node carries several tasks at once (#186), so an overwrite claims
-  // nothing: whichever result the user keeps is decided on the node's task
-  // list. The schema's `superRefine` guarantees `target_node_id` is present
-  // when mode is 'overwrite'; the assertion below is defense in depth.
-  if (mode === "overwrite") {
-    if (!targetNodeId) {
-      // Should never reach here; schema validation rejects this case.
-      throw new ValidationError(
-        t("server.error.validation"),
-      );
-    }
-  }
-
-  // One task row per node this run will write to (#186, design §4.2), opened
-  // before anything is queued. The row is the only path this run's result
-  // takes back to its node, so a run that cannot get one is a run that would
-  // bill the user for a result nothing can deliver. An append-mode run names
-  // no node: its result lands on one the browser creates, so there is no
-  // corner to count in yet.
-  await openGenerationTasks({
-    projectId,
-    spaceId,
-    nodeIds: targetNodeId ? [targetNodeId] : [],
-    startedByUserId: user.id,
-    taskId: task.id,
-    // What the list shows for this row. The model names it when there is
-    // one; the rest name what they are.
-    action: "generate",
-    label: body.model ?? body.task_type,
-  });
-
-  // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
-  // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
-  // (v10 multi-doc). The job payload carries spaceId so the worker can
-  // compute the canvas-{spaceId} doc name without reloading the task row.
-  const job = await tasksQueue.add(
-    "execute-task",
-    {
-      taskId: task.id,
-      userId: user.id,
-      // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
-      analyticsConsent: currentConsent(),
+    task = await taskService.create(
+      user.id,
       projectId,
       spaceId,
-      taskType: body.task_type,
-      model: body.model,
-      params: body.params,
-      source: body.source,
-      targetNodeIds: targetNodeId ? [targetNodeId] : [],
+      body.task_type,
       mode,
-    },
-    defaultJobOpts(),
-  );
+      body.params,
+      body.model,
+      body.source,
+      taskId,
+    );
+
+    // A node carries several tasks at once (#186), so an overwrite claims
+    // nothing: whichever result the user keeps is decided on the node's task
+    // list. The schema's `superRefine` guarantees `target_node_id` is present
+    // when mode is 'overwrite'; the assertion below is defense in depth.
+    if (mode === "overwrite") {
+      if (!targetNodeId) {
+        // Should never reach here; schema validation rejects this case.
+        throw new ValidationError(
+          t("server.error.validation"),
+        );
+      }
+    }
+
+    // One task row per node this run will write to (#186, design §4.2), opened
+    // before anything is queued. The row is the only path this run's result
+    // takes back to its node, so a run that cannot get one is a run that would
+    // bill the user for a result nothing can deliver. An append-mode run names
+    // no node: its result lands on one the browser creates, so there is no
+    // corner to count in yet.
+    await openGenerationTasks({
+      projectId,
+      spaceId,
+      nodeIds: targetNodeId ? [targetNodeId] : [],
+      startedByUserId: user.id,
+      taskId: task.id,
+      // What the list shows for this row. The model names it when there is
+      // one; the rest name what they are.
+      action: "generate",
+      label: body.model ?? body.task_type,
+    });
+
+    // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
+    // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
+    // (v10 multi-doc). The job payload carries spaceId so the worker can
+    // compute the canvas-{spaceId} doc name without reloading the task row.
+    job = await tasksQueue.add(
+      "execute-task",
+      {
+        taskId: task.id,
+        userId: user.id,
+        // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
+        analyticsConsent: currentConsent(),
+        projectId,
+        spaceId,
+        taskType: body.task_type,
+        model: body.model,
+        params: body.params,
+        source: body.source,
+        targetNodeIds: targetNodeId ? [targetNodeId] : [],
+        mode,
+      },
+      defaultJobOpts(),
+    );
+  } catch (err) {
+    await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
+      logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
+    );
+    throw err;
+  }
 
   await taskService.setJobId(task.id, job.id ?? "");
 

@@ -152,6 +152,7 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   empty: false,
   internal: false,
   no_credits: false,
+  credits_held: false,
   declined: false,
   media_refused: false,
   tool_failed: false,

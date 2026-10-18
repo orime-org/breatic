@@ -35,6 +35,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
     "what a studio owes (0063): soft-deleting the row is the debt vanishing, and preventing exactly that is the only reason this table exists. What becomes of a debt when its studio is deleted is a business decision — transfer it, write it off — not a hidden row",
   ],
   [
+    "creditHolds",
+    "credits reserved for running work (0099, inner#1611): a hold ends by being released, and `status` records that; soft-deleting a row would release a hold without saying so, and the admission it was counted in could no longer be reconstructed",
+  ],
+  [
     "projectLifecycleOutbox",
     "internal transactional-outbox command queue, not a business entity: appended in a business tx, marked sent_at by the relay, retained as an audit trail",
   ],

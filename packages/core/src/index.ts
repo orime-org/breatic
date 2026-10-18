@@ -143,6 +143,7 @@ export {
 } from "@core/infra/event-stream.js";
 export {
   publishActivityNew,
+  publishCreditsChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
 } from "@core/infra/control-events.js";
