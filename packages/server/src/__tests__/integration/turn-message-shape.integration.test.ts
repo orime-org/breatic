@@ -63,7 +63,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         // the model carries on.
         // The real one, built per turn as the registry builds it: one question
         // a turn is held by the tool itself.
-        ask_user: makeAskUserTool(),
+        ask_user: makeAskUserTool({ mediaUrlAllowed: () => false }),
         always_fails: tool({
           description: "Never succeeds.",
           inputSchema: z.object({}),
@@ -446,34 +446,23 @@ describe("how a turn's ending reads back when the conversation is reopened", () 
 });
 
 describe("how a turn that was steered reads back", () => {
-  it("keeps only the first of two questions asked in one step, and draws nothing for the second", async () => {
+  it("keeps the first of two questionnaires asked in one step waiting, and turns the second away", async () => {
+    const card = (header: string): string =>
+      JSON.stringify({ questions: [{ header, question: `${header}?`, options: [{ label: "A" }, { label: "B" }] }] });
     const parts = await replyReadBack([
-      {
-        type: "tool-call",
-        toolCallId: "tc-q1",
-        toolName: "ask_user",
-        input: JSON.stringify({ question: "Which style?" }),
-      },
-      {
-        type: "tool-call",
-        toolCallId: "tc-q2",
-        toolName: "ask_user",
-        input: JSON.stringify({ question: "How long?" }),
-      },
+      { type: "tool-call", toolCallId: "tc-q1", toolName: "ask_user", input: card("Style") },
+      { type: "tool-call", toolCallId: "tc-q2", toolName: "ask_user", input: card("Length") },
       FINISHED_ASKING_FOR_A_TOOL,
     ]);
 
-    const text = parts
-      .filter((p) => p.type === "text")
-      .map((p) => String(p.text))
-      .join("");
-    expect(text).toContain("Which style?");
-    expect(text).not.toContain("How long?");
+    expect(parts.find((p) => p.toolCallId === "tc-q1")).toMatchObject({ state: "input-available" });
+    expect(parts).toContainEqual({ type: "data-ask-awaiting", data: { toolCallId: "tc-q1" } });
     expect(parts.find((p) => p.toolCallId === "tc-q2")).toMatchObject({
       state: "output-error",
       errorText: TURNED_AWAY,
       failureKind: "turned_away",
     });
+    expect(parts.filter((p) => p.type === "text")).toEqual([]);
   });
 
   it("reads input the SDK refused back as turned away, with no line for the reader", async () => {

@@ -165,7 +165,10 @@
       "attachments_too_many": "附帶的內容太多了。最多 {limit, number} 項，這則有 {actual, number} 項。",
       "current_space_too_long": "目前 Space 的內容太長了。最多 {limit, number} 個字元，現在有 {actual, number} 個。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 個，這則有 {actual, number} 個。",
-      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。"
+      "references_too_many": "引用附件的次數太多。一則訊息最多 {limit, number} 次，這則有 {actual, number} 次。",
+      "ask_not_found": "這段對話裡沒有這張問題卡片。",
+      "ask_already_answered": "這張問題卡片已經回答過了。",
+      "answer_mismatch": "這些答案和卡片上的問題對不上。"
     },
     "mail": {
       "studio_invite": {

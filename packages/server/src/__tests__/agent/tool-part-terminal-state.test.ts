@@ -140,7 +140,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         // 会把这一轮停在那儿等人回答的那一类。用真工具本体:这条用例问的是
         // 「参数被真 schema 拒掉的一次调用会不会把这一轮停在那儿」,自己写一份
         // 形状差不多的 schema 只能证明我写的那份拒了什么。
-        ask_user: makeAskUserTool(),
+        ask_user: makeAskUserTool({ mediaUrlAllowed: () => false }),
       },
     }),
     finalizeTurn: async (opts: { steps: { persist?: () => Promise<void> } }) => {
@@ -170,6 +170,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsk: null }),
   getMessages,
 }));
 // The turn asks the conversation what it is called, so it can say so in the

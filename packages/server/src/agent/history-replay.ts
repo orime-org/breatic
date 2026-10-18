@@ -55,13 +55,15 @@ const sentMessage = z.custom<ModelMessage>((value) => {
   return typeof role === "string" && ROLES.has(role) && (typeof content === "string" || Array.isArray(content));
 });
 
+/**
+ * The open Space a message carried: which one, the hash of its section, and
+ * whether it went in full or as the line saying it was unchanged.
+ */
+const snapshot = z.object({ spaceId: z.string(), key: z.string(), full: z.boolean() });
+
 const userForModel = z.object({
   messages: z.array(sentMessage),
-  /**
-   * The open Space the message carried: which one, the hash of its section,
-   * and whether it went in full or as the line saying it was unchanged.
-   */
-  snapshot: z.object({ spaceId: z.string(), key: z.string(), full: z.boolean() }).optional(),
+  snapshot: snapshot.optional(),
 });
 
 const replyForModel = z.object({
@@ -69,6 +71,8 @@ const replyForModel = z.object({
   prefixHash: z.string(),
   turnTokens: z.number(),
   endTokens: z.number(),
+  /** The open Space a resumed segment's own message carried (inner#1542). */
+  snapshot: snapshot.optional(),
 });
 
 /** What a user row keeps of what was sent. */
@@ -215,10 +219,12 @@ export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): R
 export function lastFullSnapshotKey(rows: readonly ReplayRow[], spaceId: string): string | undefined {
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i];
-    if (row?.role !== "user") continue;
-    const kept = userForModel.safeParse(row.forModel);
-    const snapshot = kept.success ? kept.data.snapshot : undefined;
-    if (snapshot?.full) return snapshot.spaceId === spaceId ? snapshot.key : undefined;
+    if (row === undefined) continue;
+    // A reader's message carries the Space, and so does the message a segment
+    // resumed after a questionnaire opens with.
+    const kept = (row.role === "user" ? userForModel : replyForModel).safeParse(row.forModel);
+    const sent = kept.success ? kept.data.snapshot : undefined;
+    if (sent?.full) return sent.spaceId === spaceId ? sent.key : undefined;
   }
   return undefined;
 }

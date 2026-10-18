@@ -16,7 +16,7 @@
  */
 
 import type { ModelMessage } from "ai";
-import type { ToolResultPart } from "ai";
+import type { JSONValue, ToolResultPart } from "ai";
 
 import { NOTHING_SAID_WHY, stripDsml } from "@breatic/shared";
 import { userTurnForModel } from "@server/agent/user-turn.js";
@@ -38,14 +38,13 @@ type ToolPart = Extract<MessagePart, { type: "tool" }>;
  * @returns True when it reaches the model.
  */
 function reachesTheModel(part: ToolPart): boolean {
-  // A question the model asked is in the reply as words, written there by the
-  // turn from this call's own payload. Sending the call and its result too
-  // would put the same question in the context twice, on this turn and every
-  // one after it, saying nothing the words do not. A question turned away is
-  // the other way round: it is nowhere in the words, and the refusal is how
-  // the model learns it was not asked, so it can ask once the first one is
-  // answered.
-  if (part.toolName === ASK_USER) return part.failure?.kind === "turned_away";
+  // A questionnaire goes back as the call and the reader's answer once it has
+  // one (inner#1542), and not while it still waits: a call without its result
+  // makes the SDK refuse the request. A question turned away goes back as its
+  // refusal, which is how the model learns it was not asked. A question from
+  // before the card is in the reply as words, written there by the turn, so
+  // sending the call too would put it in the context twice.
+  if (part.toolName === ASK_USER) return part.failure?.kind === "turned_away" || isAnswer(part);
   return part.status !== "pending" && part.argumentsIncomplete !== true;
 }
 
@@ -73,6 +72,7 @@ function reachesTheModel(part: ToolPart): boolean {
  * @returns The output in its typed form, saying plainly when the tool failed
  */
 function toolOutput(part: ToolPart): ToolResultPart["output"] {
+  if (part.toolName === ASK_USER && isAnswer(part)) return { type: "json", value: part.output as JSONValue };
   if (part.status === "error") {
     // The field is newer than some of the rows it is read off, and a row
     // written before it existed has none. An empty string reads as a call
@@ -216,4 +216,16 @@ export function toModelMessages(history: readonly MessageData[]): ModelMessage[]
   }
 
   return out;
+}
+
+/**
+ * Whether a questionnaire call ended with the reader's answer, from the card
+ * or as word that they wrote a message instead.
+ * @param part - The `ask_user` part.
+ * @returns True when it holds such an answer.
+ */
+function isAnswer(part: ToolPart): boolean {
+  if (part.status !== "success") return false;
+  const output = part.output as { answers?: unknown; repliedInChat?: unknown } | null | undefined;
+  return Array.isArray(output?.answers) || output?.repliedInChat === true;
 }

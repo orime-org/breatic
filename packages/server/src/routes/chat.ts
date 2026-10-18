@@ -37,7 +37,7 @@ import { SMALLEST_CREDIT } from "@breatic/domain";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
-import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
+import { runWithContext, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
 
@@ -271,11 +271,41 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   assertSayable(body.message, body.attached_chips, body);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
+  // Checked before an answer is taken, so a refused answer leaves the card
+  // waiting.
   await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
 
   // A message in the project's Agent chat is a collaboration action (inner#1442
   // §4.8). Reported alongside the turn; it never rejects.
   void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
+
+  // An answer to a questionnaire resumes the turn that asked (inner#1542).
+  const answer = body.answer;
+  if (answer !== undefined) {
+    const taken = await conversationService.answerAsk(conversation.id, answer);
+    if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
+    if (taken.kind === "mismatch") {
+      logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
+      throw new ValidationError(t("server.chat.answer_mismatch"));
+    }
+    if (taken.kind === "settled") {
+      // The error envelope, plus how the call now stands, so the card that
+      // sent this draws what the store holds.
+      return c.json(
+        {
+          error: { code: 409, message: t("server.chat.ask_already_answered") },
+          call: { status: taken.status, output: taken.output },
+        },
+        409,
+      );
+    }
+    return streamTurn(
+      c,
+      { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
+      (signal) =>
+        new MainAgent().answer(answer.toolCallId, { answers: answer.answers }, taken.turnIndex, signal, body.time_zone, body),
+    );
+  }
 
   return streamTurn(
     c,

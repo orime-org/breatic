@@ -165,7 +165,10 @@
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
-      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
+      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
+      "ask_not_found": "この会話にこの質問カードはありません。",
+      "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {
       "studio_invite": {

@@ -29,13 +29,21 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
     else byTurn.set(one.row.turnIndex, [one]);
   }
 
-  // In turn order: the history is read oldest first.
-  return [...byTurn.entries()].map(([turnIndex, rows]) => ({
-    turnIndex,
-    tokens:
-      rows.find((one) => one.reply !== undefined)?.reply?.turnTokens ??
-      measureMessages(rows.flatMap((one) => one.messages)),
-  }));
+  // In turn order: the history is read oldest first. A turn paused at a
+  // questionnaire has a reply for each segment, and each reply's count is what
+  // its own segment added, so the turn weighs all of them; the reader's
+  // message is inside the first one's count.
+  return [...byTurn.entries()].map(([turnIndex, rows]) => {
+    if (!rows.some((one) => one.reply !== undefined)) {
+      return { turnIndex, tokens: measureMessages(rows.flatMap((one) => one.messages)) };
+    }
+    const tokens = rows.reduce(
+      (sum, one) =>
+        sum + (one.reply?.turnTokens ?? (one.row.role === "assistant" ? measureMessages(one.messages) : 0)),
+      0,
+    );
+    return { turnIndex, tokens };
+  });
 }
 
 /**

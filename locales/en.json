@@ -165,7 +165,10 @@
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
       "current_space_too_long": "The open Space's content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "spaces_too_many": "Too many Spaces are listed. At most {limit, number} may be listed; this message lists {actual, number}.",
-      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}."
+      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}.",
+      "ask_not_found": "This question card is not in this conversation.",
+      "ask_already_answered": "This question card has already been answered.",
+      "answer_mismatch": "These answers do not fit the questions on the card."
     },
     "mail": {
       "studio_invite": {

@@ -477,3 +477,33 @@ describe("a call that was turned away, read back", () => {
     });
   });
 });
+
+describe("a questionnaire waiting for the reader (inner#1542)", () => {
+  it("reads back as the call, followed by the mark naming it as the card the reader is shown", () => {
+    const parts = toUiParts([
+      { type: "tool", toolCallId: "ask-1", toolName: "ask_user", input: { questions: [] }, status: "awaiting" },
+    ]);
+
+    expect(parts).toEqual([
+      { type: "tool-ask_user", toolCallId: "ask-1", input: { questions: [] }, state: "input-available" },
+      { type: "data-ask-awaiting", data: { toolCallId: "ask-1" } },
+    ]);
+  });
+
+  it("reads back as an answered call once the reader has answered", () => {
+    const parts = toUiParts([
+      {
+        type: "tool",
+        toolCallId: "ask-2",
+        toolName: "ask_user",
+        input: { questions: [] },
+        status: "success",
+        output: { repliedInChat: true },
+      },
+    ]);
+
+    expect(parts).toEqual([
+      { type: "tool-ask_user", toolCallId: "ask-2", input: { questions: [] }, state: "output-available", output: { repliedInChat: true } },
+    ]);
+  });
+});
