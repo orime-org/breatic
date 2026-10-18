@@ -77,7 +77,7 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -127,6 +127,8 @@ interface RowReading {
   readonly lone: boolean;
   /** The row is a table, so the strip shows the table entry. */
   readonly table: boolean;
+  /** The row stands in a table cell, so the plus menu greys Table. */
+  readonly inCell: boolean;
 }
 
 /**
@@ -137,7 +139,11 @@ interface RowReading {
  */
 function sameReading(a: RowReading, b: RowReading): boolean {
   return (
-    a.empty === b.empty && a.quoted === b.quoted && a.lone === b.lone && a.table === b.table
+    a.empty === b.empty &&
+    a.quoted === b.quoted &&
+    a.lone === b.lone &&
+    a.table === b.table &&
+    a.inCell === b.inCell
   );
 }
 
@@ -197,6 +203,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
             only.attrs.id === live?.id &&
             (only.type.name !== 'blockContainer' || only.childCount === 1),
           table: live?.type === DOC_TABLE,
+          inCell: live !== undefined && blockInTableCell(current.prosemirrorState.doc, live.id),
         };
       },
       [rowNow],
@@ -389,6 +396,7 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
                 onPick={onFill}
                 onPickMedia={onFillMedia}
                 unreachable={row.quoted ? QUOTE_GREYED : undefined}
+                tableUnreachable={row.inCell}
               />
               {/* The grip menu's delete row, the one command an empty line
                   still needs (A12). Drawn out of reach on the document's only

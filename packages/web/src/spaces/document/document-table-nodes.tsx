@@ -63,6 +63,25 @@ export function isTableCell(node: PMNode): boolean {
   return role === 'cell' || role === 'header_cell';
 }
 
+/**
+ * Whether the block a block id names stands in a table cell.
+ * @param doc - The document.
+ * @param blockId - The block.
+ * @returns True when a cell holds it, nested blocks included.
+ */
+export function blockInTableCell(doc: PMNode, blockId: string): boolean {
+  let inCell = false;
+  doc.descendants((node, pos) => {
+    if (node.attrs['id'] !== blockId) return !inCell;
+    const $pos = doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      if (isTableCell($pos.node(depth))) inCell = true;
+    }
+    return false;
+  });
+  return inCell;
+}
+
 /** A cell's props. */
 interface CellProps {
   readonly backgroundColor?: string;
