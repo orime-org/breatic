@@ -10,6 +10,7 @@ const STORAGE_KEY = STORAGE_KEYS.deferredAppVersions;
 const deferred = new Set<string>();
 const INTERVAL = 180_000;
 const RESUME_DELAY = 30_000;
+const CHECK_TIMEOUT = 10_000;
 
 /**
  * Read only bounded, nonempty release identifiers from untrusted manifests.
@@ -35,19 +36,31 @@ export function currentAppVersion(): string | null {
 
 /**
  * Ask the deployment which release is live, bypassing every cache.
+ *
+ * Ten seconds in all, retries included: `timeoutMs` bounds each delivery, and
+ * a refused request waits on this answer before its caller hears anything.
  * @param signal - Aborts the request.
- * @returns The live release, or null when the answer is missing or not ours.
+ * @returns The live release, or null when the answer is missing, late or not ours.
  */
 export async function fetchLatestAppVersion(signal?: AbortSignal): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CHECK_TIMEOUT);
+  /** Pass the caller's abort on; linked by hand, `AbortSignal.any` is missing before Safari 17.4. */
+  const forward = (): void => { controller.abort(); };
+  if (signal?.aborted) controller.abort();
+  signal?.addEventListener('abort', forward);
   try {
     const response = await httpRequest(new URL('/app-version.json', window.location.origin).href, {
       cache: 'no-store', credentials: 'omit',
-    }, { replaySafe: true, timeoutMs: 10_000, signal });
+    }, { replaySafe: true, timeoutMs: CHECK_TIMEOUT, signal: controller.signal });
     if (!response.ok) return null;
     return readAppVersion(await response.json());
   } catch {
     // Offline, timeout and malformed JSON are deliberately silent.
     return null;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', forward);
   }
 }
 
@@ -98,14 +111,12 @@ export function useAppUpdate(): { version: string | null; autoOpen: boolean; dis
       lastCheck = Date.now();
       const controller = new AbortController();
       pending = controller;
-      const timeout = setTimeout(() => controller.abort(), 10_000);
       try {
         const latest = await fetchLatestAppVersion(controller.signal);
         if (!stopped && !controller.signal.aborted && latest) {
           setVersion(latest !== current ? latest : null);
         }
       } finally {
-        clearTimeout(timeout);
         pending = undefined;
         schedule();
       }

@@ -67,6 +67,21 @@ describe('telling an out-of-date page from a refused request', () => {
     expect(await checkStaleRelease(REQUEST_SHAPE_REASON)).toBe(false);
   });
 
+  it('gives up on a manifest that never answers within ten seconds, retries included', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }));
+      let decided: boolean | undefined;
+      void checkStaleRelease(REQUEST_SHAPE_REASON).then((stale) => { decided = stale; });
+      await vi.advanceTimersByTimeAsync(10_001);
+      expect(decided).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('never decides in a build without a version', async () => {
     vi.stubEnv('PROD', false);
     expect(await checkStaleRelease(REQUEST_SHAPE_REASON)).toBe(false);
