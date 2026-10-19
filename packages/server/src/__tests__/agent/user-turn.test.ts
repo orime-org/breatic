@@ -99,14 +99,14 @@ describe("the Spaces the reader is in (inner#1413)", () => {
     });
 
     expect(turn).toContain(
-      '## Spaces in this project\n\n- "Storyboard" (document) id=s1 — the reader has this one open\n- "Cast" (canvas) id=s2',
+      '## Spaces in this project\n\n- "Storyboard" (document) — the reader has this one open\n- "Cast" (canvas)',
     );
   });
 
   it("marks none as open when the reader turned the open Space off", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 2 });
 
-    expect(turn).toContain('- "Storyboard" (document) id=s1\n- "Cast" (canvas) id=s2');
+    expect(turn).toContain('- "Storyboard" (document)\n- "Cast" (canvas)');
     expect(turn).not.toContain("the reader has this one open");
     expect(turn).not.toContain("## The Space the reader has open");
   });
@@ -114,7 +114,7 @@ describe("the Spaces the reader is in (inner#1413)", () => {
   it("says how many Spaces were left off the list", () => {
     const turn = userTurnForModel({ chips: [], message: "hi", spaces, spaces_total: 5 });
 
-    expect(turn).toContain('- "Cast" (canvas) id=s2\n(3 more not listed)');
+    expect(turn).toContain('- "Cast" (canvas)\n(3 more not listed)');
   });
 
   it("puts the reader's words under their own heading after the Spaces", () => {

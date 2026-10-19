@@ -134,6 +134,30 @@ describe("a message written out", () => {
     expect(text).not.toContain(tail);
   });
 
+  it("writes a record tool's call without what it answered, which is a copy of records found elsewhere", () => {
+    const text = messageText([
+      {
+        type: "tool",
+        toolCallId: "t",
+        toolName: "read_conversation",
+        input: { conversation_id: "c-9" },
+        status: "success",
+        output: "Turn 1 · user: COPIED-FROM-ELSEWHERE",
+      },
+    ]);
+
+    expect(text).toBe("[called read_conversation] c-9");
+  });
+
+  it("marks where a tool's words were cut", () => {
+    const max = getAgentConfig().records_tool_text_max_chars;
+    const text = messageText([
+      { type: "tool", toolCallId: "t", toolName: "web_search", input: { query: "x".repeat(max + 50) }, status: "success" },
+    ]);
+
+    expect(text.split("\n")[0]?.endsWith("…")).toBe(true);
+  });
+
   it("leaves out the thinking and the markers of how the turn ended", () => {
     const text = messageText([
       { type: "reasoning", text: "SECRET-THOUGHT" },

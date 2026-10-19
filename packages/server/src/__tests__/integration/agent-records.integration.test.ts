@@ -295,6 +295,65 @@ describe("searching the user's messages", () => {
     expect((await records.searchMessages(["LIGHTHOUSE"], {})).hits.map((h) => h.turnIndex)).toEqual([2]);
   });
 
+  it("matches only words that reading the message would show", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const max = getAgentConfig().records_tool_text_max_chars;
+    await seedMessage(other, turn.userId, {
+      role: "user",
+      turn: 1,
+      parts: [{ type: "attachment", chip: { id: "a1", type: "image", name: "portrait-ada.png", data_snapshot: {} } }],
+    });
+    await seedMessage(other, turn.userId, {
+      role: "assistant",
+      turn: 2,
+      parts: [
+        {
+          type: "tool",
+          toolCallId: "g",
+          toolName: "get_product_guide",
+          input: { topic: "canvas" },
+          status: "success",
+          output: { guide: "CATALOG-ONLY-WORD appears in the guide" },
+        },
+        {
+          type: "tool",
+          toolCallId: "w",
+          toolName: "web_search",
+          input: { query: "x".repeat(max) + " FAR-PAST-THE-CUT" },
+          status: "success",
+          output: {},
+        },
+        {
+          type: "tool",
+          toolCallId: "r",
+          toolName: "read_conversation",
+          input: { conversation_id: "c-1" },
+          status: "success",
+          output: "Turn 1 · user: ECHOED-WORD",
+        },
+        {
+          type: "tool",
+          toolCallId: "ask",
+          toolName: "ask_user",
+          input: { questions: [{ header: "Mood", question: "Which mood suits it?", options: [{ label: "UNPICKED-OPTION" }, { label: "Warm" }] }] },
+          status: "success",
+          output: { answers: [{ index: 0, selected: ["Warm"] }] },
+        },
+      ],
+    });
+    const records = recordsFor(turn);
+    const turns = async (word: string): Promise<number[]> =>
+      (await records.searchMessages([word], {})).hits.map((h) => h.turnIndex);
+
+    expect(await turns("portrait-ada")).toEqual([1]);
+    expect(await turns("mood suits")).toEqual([2]);
+    expect(await turns("CATALOG-ONLY-WORD")).toEqual([]);
+    expect(await turns("FAR-PAST-THE-CUT")).toEqual([]);
+    expect(await turns("ECHOED-WORD")).toEqual([]);
+    expect(await turns("UNPICKED-OPTION")).toEqual([]);
+  });
+
   it("does not look into the model's thinking", async () => {
     const turn = await newTurn();
     const other = await seedConversation(turn.userId, turn.projectId);
@@ -397,6 +456,8 @@ describe("reading a conversation", () => {
     const read = await recordsFor(turn).readConversation(undefined, {});
 
     expect(read.conversationId).toBe(turn.conversationId);
+    expect(read.current).toBe(true);
+    expect((await recordsFor(turn).readConversation(turn.conversationId, {})).current).toBe(true);
     expect(read.messages.map((m) => [m.turnIndex, m.role])).toEqual([
       [1, "user"],
       [1, "assistant"],
@@ -412,7 +473,7 @@ describe("reading a conversation", () => {
 
     const read = await recordsFor(turn).readConversation(other, { fromTurn: 2, toTurn: 4 });
 
-    expect(read).toMatchObject({ conversationId: other, title: "Old", totalTurns: 6 });
+    expect(read).toMatchObject({ conversationId: other, title: "Old", totalTurns: 6, current: false });
     expect(read.messages.map((m) => m.turnIndex)).toEqual([2, 3, 4]);
   });
 
@@ -549,24 +610,39 @@ async function seedActivity(
 }
 
 describe("the project's activity", () => {
-  it("keeps to the Space named, and says how many there are", async () => {
+  it("keeps to the Spaces this turn's message gives that name, and says how many there are", async () => {
     const turn = await newTurn();
-    const space = crypto.randomUUID();
-    await seedActivity(turn.projectId, turn.userId, { spaceId: space });
-    await seedActivity(turn.projectId, turn.userId, { spaceId: space });
-    await seedActivity(turn.projectId, turn.userId, { spaceId: crypto.randomUUID() });
-    await seedActivity(await seedProject(turn.userId), turn.userId, { spaceId: space });
-    const records = recordsFor(turn);
+    const cover = crypto.randomUUID();
+    const coverToo = crypto.randomUUID();
+    const other = crypto.randomUUID();
+    await seedActivity(turn.projectId, turn.userId, { spaceId: cover });
+    await seedActivity(turn.projectId, turn.userId, { spaceId: coverToo });
+    await seedActivity(turn.projectId, turn.userId, { spaceId: other });
+    await seedActivity(await seedProject(turn.userId), turn.userId, { spaceId: cover });
+    const records = recordsFor({
+      ...turn,
+      spaces: [
+        { id: cover, name: "Cover", kind: "canvas" },
+        { id: coverToo, name: "Cover", kind: "document" },
+        { id: other, name: "Storyboard", kind: "canvas" },
+      ],
+    });
 
-    const inSpace = await records.activity({ spaceId: space });
+    const inCover = await records.activity({ spaceName: "Cover" });
     const all = await records.activity({});
 
-    expect(inSpace.items.map((i) => i.spaceId)).toEqual([space, space]);
-    expect(inSpace.total).toBe(2);
+    expect(new Set(inCover.items.map((i) => i.spaceId))).toEqual(new Set([cover, coverToo]));
+    expect(inCover.total).toBe(2);
     expect(all.total).toBe(3);
   });
 
-  it("pages through every entry once, and reads a cursor it cannot decode as the first page", async () => {
+  it("refuses a Space name this turn's message does not give", async () => {
+    const turn = await newTurn();
+
+    await expect(recordsFor(turn).activity({ spaceName: "Nowhere" })).rejects.toEqual(new RecordsRefused("unknown_space"));
+  });
+
+  it("pages through every entry once", async () => {
     const turn = await newTurn();
     const count = getAgentConfig().records_page_size + 4;
     for (let i = 0; i < count; i++) {
@@ -578,11 +654,20 @@ describe("the project's activity", () => {
       async () => records.activity({}),
       async (cursor) => records.activity({ cursor }),
     );
-    const garbled = await records.activity({ cursor: "not-a-cursor" });
-    const first = await records.activity({});
 
     expect(new Set(items.map((i) => i.id)).size).toBe(count);
-    expect(garbled.items.map((i) => i.id)).toEqual(first.items.map((i) => i.id));
+  });
+});
+
+describe("a cursor that no page gave", () => {
+  it("is refused by every paged read", async () => {
+    const turn = await newTurn();
+    const records = recordsFor(turn);
+    const refused = new RecordsRefused("bad_cursor");
+
+    await expect(records.listConversations("not-a-cursor")).rejects.toEqual(refused);
+    await expect(records.searchMessages(["x"], { cursor: "not-a-cursor" })).rejects.toEqual(refused);
+    await expect(records.activity({ cursor: "not-a-cursor" })).rejects.toEqual(refused);
   });
 });
 

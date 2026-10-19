@@ -42,7 +42,7 @@ function records(over: Partial<ProjectRecords> = {}): ProjectRecords {
   return {
     listConversations: vi.fn().mockResolvedValue({ conversations: [], total: 0, nextCursor: null }),
     searchMessages: vi.fn().mockResolvedValue({ hits: [], total: 0, nextCursor: null }),
-    readConversation: vi.fn().mockResolvedValue({ conversationId: CONVERSATION, title: null, totalTurns: 0, messages: [] }),
+    readConversation: vi.fn().mockResolvedValue({ conversationId: CONVERSATION, title: null, totalTurns: 0, current: true, messages: [] }),
     nodeRecords: vi.fn().mockResolvedValue({ tasks: { rows: [], total: 0 }, versions: { rows: [], total: 0 } }),
     activity: vi.fn().mockResolvedValue({ items: [], total: 0, nextCursor: null }),
     spaceName: vi.fn().mockReturnValue(undefined),
@@ -143,6 +143,21 @@ describe("the record tools", () => {
 
     expect(failure).toMatchObject({ kind: "turned_away" });
     expect(failure?.forModel).toContain(CONVERSATION);
+  });
+});
+
+describe("a cursor the tools did not give", () => {
+  it.each([
+    [SEARCH, { cursor: "garbled" }, "listConversations"],
+    [SEARCH, { query: "poster", cursor: "garbled" }, "searchMessages"],
+    [ACTIVITY, { cursor: "garbled" }, "activity"],
+  ] as const)("%s turns the model away rather than starting over", async (name, input, read) => {
+    const recs = records({ [read]: vi.fn().mockRejectedValue(new RecordsRefused("bad_cursor")) });
+
+    const failure = await failureOf(call(name, input, recs));
+
+    expect(failure).toMatchObject({ kind: "turned_away" });
+    expect(failure?.forModel).toMatch(/cursor/i);
   });
 });
 
@@ -253,11 +268,12 @@ describe("search_conversations with a query", () => {
  * @param total - How many turns the conversation holds.
  * @returns What the read answers.
  */
-function turnsOf(turns: Array<[string, string]>, total = turns.length): ConversationTurns {
+function turnsOf(turns: Array<[string, string]>, total = turns.length, current = true): ConversationTurns {
   return {
     conversationId: CONVERSATION,
     title: "Poster ideas",
     totalTurns: total,
+    current,
     messages: turns.flatMap(([said, answered], i) => [
       { role: "user" as const, turnIndex: i + 1, createdAt: `2026-10-18T09:0${String(i % 10)}:00.000Z`, parts: [{ type: "text" as const, text: said }] },
       { role: "assistant" as const, turnIndex: i + 1, createdAt: `2026-10-18T09:0${String(i % 10)}:30.000Z`, parts: [{ type: "text" as const, text: answered }] },
@@ -275,6 +291,22 @@ describe("read_conversation", () => {
     expect(answer).toContain("Turn 1");
     expect(answer).toContain("user: Make a poster");
     expect(answer).toContain("assistant: Sure.");
+  });
+
+  it("marks the conversation as this one when the server says it is, however it was named", async () => {
+    const named = records({ readConversation: vi.fn().mockResolvedValue(turnsOf([["hi", "hello"]], 1, true)) });
+    const other = records({ readConversation: vi.fn().mockResolvedValue(turnsOf([["hi", "hello"]], 1, false)) });
+
+    expect(await call(READ, { conversation_id: CONVERSATION }, named)).toContain("(this conversation)");
+    expect(await call(READ, {}, other)).not.toContain("(this conversation)");
+  });
+
+  it("takes no turn number past what a turn index can hold", () => {
+    const schema = TOOL_MAP[READ]!().inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean } };
+
+    expect(schema.safeParse({ from_turn: 2147483647 }).success).toBe(true);
+    expect(schema.safeParse({ from_turn: 2147483648 }).success).toBe(false);
+    expect(schema.safeParse({ to_turn: 2147483648 }).success).toBe(false);
   });
 
   it("asks for the turns named", async () => {
@@ -315,6 +347,7 @@ describe("read_conversation", () => {
         conversationId: CONVERSATION,
         title: null,
         totalTurns: 3,
+        current: true,
         messages: [...filler(1), ...filler(2), ...filler(3)],
       }),
     });
@@ -336,6 +369,7 @@ describe("read_conversation", () => {
         conversationId: CONVERSATION,
         title: null,
         totalTurns: 2,
+        current: true,
         messages: [
           ...Array.from({ length: many }, (_, i) => ({
             role: "assistant" as const,
@@ -454,6 +488,17 @@ describe("read_node_history", () => {
     expect(await call(NODE, { node_id: NODE_ID }, recs)).toContain("Hello there, listener");
   });
 
+  it("names the mini-tool a version came from, by the field the history panel reads", async () => {
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({
+        tasks: { rows: [], total: 0 },
+        versions: { rows: [version({ metadata: { model: "x", toolId: "rotate", params: {} } })], total: 1 },
+      }),
+    });
+
+    expect(await call(NODE, { node_id: NODE_ID }, recs)).toContain("mini-tool rotate");
+  });
+
   it("writes why a failed version failed", async () => {
     const recs = records({
       nodeRecords: vi.fn().mockResolvedValue({
@@ -553,12 +598,54 @@ function entry(over: Partial<ProjectActivityEntry>): ProjectActivityEntry {
 }
 
 describe("list_project_activity", () => {
-  it("asks for the Space and page the model named", async () => {
+  it("asks for the Space, by its name, and the page the model named", async () => {
     const recs = records();
 
-    await call(ACTIVITY, { space_id: SPACE, cursor: "C2" }, recs);
+    await call(ACTIVITY, { space: "Cover", cursor: "C2" }, recs);
 
-    expect(recs.activity).toHaveBeenCalledWith({ spaceId: SPACE, cursor: "C2" });
+    expect(recs.activity).toHaveBeenCalledWith({ spaceName: "Cover", cursor: "C2" });
+  });
+
+  it("turns the model away from a Space the message does not name", async () => {
+    const recs = records({ activity: vi.fn().mockRejectedValue(new RecordsRefused("unknown_space")) });
+
+    const failure = await failureOf(call(ACTIVITY, { space: "Nowhere" }, recs));
+
+    expect(failure).toMatchObject({ kind: "turned_away" });
+    expect(failure?.forModel).toContain("Nowhere");
+  });
+
+  it("calls a member who removed themselves one who left, as the panel does", async () => {
+    const recs = records({
+      activity: vi.fn().mockResolvedValue({
+        items: [
+          entry({ id: "left", type: "member:removed", nodeId: null, actorName: "Bob", actorUserId: "u-bob", payload: { targetUserId: "u-bob", previousRole: "editor" } }),
+          entry({ id: "removed", type: "member:removed", nodeId: null, actorName: "Ada", actorUserId: "u-ada", payload: { targetUserId: "u-bob", previousRole: "editor" } }),
+        ],
+        total: 2,
+        nextCursor: null,
+      }),
+    });
+
+    const lines = (await call(ACTIVITY, {}, recs)).split("\n");
+    const bob = lines.find((line) => line.includes("Bob"));
+    const ada = lines.find((line) => line.includes("Ada"));
+
+    expect(bob).toContain("left the project");
+    expect(bob).not.toContain("member:removed");
+    expect(ada).toContain("member:removed");
+  });
+
+  it("names the medium a generation made", async () => {
+    const recs = records({
+      activity: vi.fn().mockResolvedValue({
+        items: [entry({ payload: { source: "task", model: "kling", kind: "video", credits: 40 } })],
+        total: 1,
+        nextCursor: null,
+      }),
+    });
+
+    expect(await call(ACTIVITY, {}, recs)).toMatch(/\bvideo\b/);
   });
 
   it("writes who did what, where, on which node, and what it cost", async () => {

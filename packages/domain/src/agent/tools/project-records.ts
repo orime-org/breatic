@@ -74,6 +74,8 @@ export interface ConversationTurns {
   title: string | null;
   /** The highest turn index the conversation holds, as far as it may be read. */
   totalTurns: number;
+  /** Whether it is the conversation this turn is running in. */
+  current: boolean;
   /** The messages of the turns asked for, in turn and position order. */
   messages: StoredMessage[];
 }
@@ -102,6 +104,7 @@ export interface ProjectRecords {
   /**
    * The user's conversations in this project.
    * @param cursor - Where the previous page stopped.
+   * @throws {RecordsRefused} `bad_cursor` when the cursor is not one a page gave.
    */
   listConversations(cursor?: string): Promise<ConversationListPage>;
   /**
@@ -111,6 +114,7 @@ export interface ProjectRecords {
    * @param opts - Where to search.
    * @param opts.conversationId - One conversation to keep to.
    * @param opts.cursor - Where the previous page stopped.
+   * @throws {RecordsRefused} `bad_cursor` when the cursor is not one a page gave.
    * @throws {RecordsRefused} `unknown_conversation` when the conversation named is not one of the user's here.
    */
   searchMessages(terms: string[], opts: { conversationId?: string; cursor?: string }): Promise<MessageHitPage>;
@@ -138,10 +142,13 @@ export interface ProjectRecords {
   /**
    * The project's activity feed.
    * @param opts - What to read.
-   * @param opts.spaceId - One Space to keep to.
+   * @param opts.spaceName - One Space to keep to, by the name this turn's
+   *   message gives it; every Space of that name counts.
    * @param opts.cursor - Where the previous page stopped.
+   * @throws {RecordsRefused} `bad_cursor` when the cursor is not one a page gave.
+   * @throws {RecordsRefused} `unknown_space` when this turn's message names no Space so.
    */
-  activity(opts: { spaceId?: string; cursor?: string }): Promise<ActivityPage>;
+  activity(opts: { spaceName?: string; cursor?: string }): Promise<ActivityPage>;
   /**
    * The name this turn's message gives a Space.
    * @param spaceId - The Space.
@@ -151,7 +158,7 @@ export interface ProjectRecords {
 }
 
 /** Why a read was refused. */
-export type RecordsRefusalKind = "not_member" | "unknown_conversation";
+export type RecordsRefusalKind = "not_member" | "unknown_conversation" | "unknown_space" | "bad_cursor";
 
 /** A read the server refused, by kind. */
 export class RecordsRefused extends Error {
