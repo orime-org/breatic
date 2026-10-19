@@ -76,7 +76,9 @@ function UpdateNotice({
           {t('project.update.available')}
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent tabIndex={-1} onOpenAutoFocus={focusDialog}>
+      {/* The dialog holds focus only to keep it off Later; the browser's outline
+          on it would cover the border, and the buttons keep their own ring. */}
+      <AlertDialogContent tabIndex={-1} onOpenAutoFocus={focusDialog} className='outline-none'>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('project.update.title')}</AlertDialogTitle>
           <AlertDialogDescription>
