@@ -161,7 +161,7 @@ export async function enqueueAdsConversion(
     click,
     ...(input.value ? { value: input.value } : {}),
   };
-  // Rejected here, where the caller logs it, rather than by the worker after the claim.
+  // Checked before the claim: an invalid job claims no row, and the caller logs the error.
   AdsConversionJobSchema.parse(job);
   if (!(await claimUpload(job))) return false;
   await addJob(job);
