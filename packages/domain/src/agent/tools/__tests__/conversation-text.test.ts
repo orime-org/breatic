@@ -213,3 +213,52 @@ describe("a message written out", () => {
     expect(text).toBe("Visible.");
   });
 });
+
+describe("an ask_user call that is neither a questionnaire nor an old single question", () => {
+  it("writes the questions and the answers, uncut by the tool length, and no call line", () => {
+    const max = getAgentConfig().records_tool_text_max_chars;
+    // Five questions: one more than a card holds, so it is not read as a questionnaire.
+    const questions = [
+      { header: "h", question: `Q-A? ${"x".repeat(max)}`, options: [{ label: "Pick-One" }, { label: "Pick-Two" }] },
+      { header: "h", question: "Q-B?", options: [{ label: "Pick-One" }] },
+      { header: "h", question: "Q-C?", options: [{ label: "Pick-One" }] },
+      { header: "h", question: "Q-D?", options: [{ label: "Pick-One" }] },
+      { header: "h", question: "FIFTH-QUESTION-PAST-THE-TOOL-CAP", options: [{ label: "Pick-One" }] },
+    ];
+    const text = messageText([
+      {
+        type: "tool",
+        toolCallId: "ask-5",
+        toolName: "ask_user",
+        input: { questions },
+        status: "success",
+        output: { answers: [{ index: 0, selected: ["Pick-Two"] }, { index: 4, selected: [], other: "OTHER-WORDS-GIVEN" }] },
+      },
+    ]);
+
+    expect(text).not.toContain("[called ask_user]");
+    expect(text).toContain("Q-B?");
+    expect(text).toContain("FIFTH-QUESTION-PAST-THE-TOOL-CAP");
+    expect(text).toContain("Pick-Two");
+    expect(text).toContain("OTHER-WORDS-GIVEN");
+  });
+
+  it("writes questions missing their required fields, the string options and the answers", () => {
+    const text = messageText([
+      {
+        type: "tool",
+        toolCallId: "ask-bad",
+        toolName: "ask_user",
+        input: { questions: [{ question: "NO-HEADER-QUESTION?" }], options: ["TOP-OPTION-A", "TOP-OPTION-B"] },
+        status: "success",
+        output: { answers: [{ index: 0, selected: ["TOP-OPTION-B"], other: "OWN-WORDS" }] },
+      },
+    ]);
+
+    expect(text).not.toContain("[called ask_user]");
+    expect(text).toContain("NO-HEADER-QUESTION?");
+    expect(text).toContain("TOP-OPTION-A");
+    expect(text).toContain("TOP-OPTION-B");
+    expect(text).toContain("OWN-WORDS");
+  });
+});

@@ -981,3 +981,132 @@ describe("a version's content and prompt", () => {
     expect(answer).toContain(`[${String(contentTail.length)} more characters cut]`);
   });
 });
+
+describe("a next-page line", () => {
+  it("list_project_activity names the Space filter it was read with, quoted, along with the cursor", async () => {
+    const name = "Cover art";
+    const recs = records({
+      activity: vi.fn().mockResolvedValue({ items: [entry({})], total: 208, nextCursor: "activity.OLDER" }),
+    });
+
+    const answer = await call(ACTIVITY, { space: name }, recs);
+    const tail = answer.split("\n").find((line) => line.includes("cursor=activity.OLDER"));
+
+    expect(tail).toBeDefined();
+    expect(tail).toContain("space");
+    expect(tail).toContain(JSON.stringify(name));
+  });
+
+  it("search_conversations names the conversation it was kept to, along with the cursor", async () => {
+    const recs = records({
+      searchMessages: vi.fn().mockResolvedValue({
+        hits: [{ conversationId: CONVERSATION, conversationTitle: null, turnIndex: 1, role: "user", createdAt: "2026-10-16T10:00:00.000Z", body: "poster", current: false }],
+        total: 31,
+        nextCursor: "search.NEXT-HITS",
+      }),
+    });
+
+    const answer = await call(SEARCH, { query: "poster", conversation_id: CONVERSATION }, recs);
+    const tail = answer.split("\n").find((line) => line.includes("cursor=search.NEXT-HITS"));
+
+    expect(tail).toBeDefined();
+    expect(tail).toContain(`conversation_id=${CONVERSATION}`);
+  });
+
+  it.each([
+    ["this conversation", true],
+    ["another conversation", false],
+  ] as const)("read_conversation names the conversation it read, for %s, along with from_turn", async (_which, current) => {
+    const id = current ? CONVERSATION : "55555555-5555-4555-8555-555555555555";
+    const pageMax = getAgentConfig().records_page_max_chars;
+    const half = Math.ceil(pageMax / 2 / CHUNK) + 1;
+    const filler = (turn: number): ConversationTurns["messages"] =>
+      Array.from({ length: half }, (_, i) => ({
+        role: "user" as const,
+        turnIndex: turn,
+        createdAt: "2026-10-18T09:00:00.000Z",
+        parts: [{ type: "text" as const, text: `T${String(turn)}M${String(i)} ` + "y".repeat(CHUNK - 10) }],
+      }));
+    const recs = records({
+      readConversation: vi.fn().mockResolvedValue({
+        conversationId: id,
+        title: null,
+        totalTurns: 2,
+        current,
+        messages: [...filler(1), ...filler(2)],
+      }),
+    });
+
+    const answer = await call(READ, current ? {} : { conversation_id: id }, recs);
+    const tail = answer.split("\n").find((line) => line.includes("from_turn=2"));
+
+    expect(tail).toBeDefined();
+    expect(tail).toContain(`conversation_id=${id}`);
+  });
+});
+
+describe("list_project_activity given a cursor and an empty page", () => {
+  it("says there is no more activity after that cursor, and gives no page head", async () => {
+    const recs = records({ activity: vi.fn().mockResolvedValue({ items: [], total: 0, nextCursor: null }) });
+
+    const answer = await call(ACTIVITY, { cursor: "activity.PREV" }, recs);
+
+    expect(answer).toMatch(/no more .*after this cursor/i);
+    expect(answer).not.toMatch(/this page holds 0/);
+  });
+});
+
+/**
+ * The JSON string a version line writes after a label, read back.
+ * @param line - The version's line.
+ * @param label - The label before it, such as "prompt".
+ * @returns The string the quotes hold, or undefined when there is none.
+ */
+function quotedAfter(line: string, label: string): string | undefined {
+  const found = new RegExp(`${label} ("(?:[^"\\\\]|\\\\.)*")`).exec(line);
+  return found ? (JSON.parse(found[1]!) as string) : undefined;
+}
+
+describe("a version's cut prompt and text", () => {
+  it("quote only the part kept, and say how much was cut outside the quotes", async () => {
+    const promptTail = "PROMPT-TAIL-GONE";
+    const contentTail = "CONTENT-TAIL-GONE-NOW";
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({
+        tasks: { rows: [], total: 0 },
+        versions: {
+          rows: [
+            version({
+              entryType: "generation",
+              content: "c".repeat(versionMax()) + contentTail,
+              metadata: { model: "gpt-text", params: { prompt: "p".repeat(versionMax()) + promptTail } },
+            }),
+          ],
+          total: 1,
+        },
+      }),
+    });
+
+    const line = (await call(NODE, { node_id: NODE_ID }, recs)).split("\n").find((l) => l.includes("gpt-text")) ?? "";
+
+    expect(line).toContain(`" [${String(promptTail.length)} more characters cut]`);
+    expect(line).toContain(`" [${String(contentTail.length)} more characters cut]`);
+    expect(quotedAfter(line, "prompt")).toBe("p".repeat(versionMax()));
+    expect(quotedAfter(line, "content")).toBe("c".repeat(versionMax()));
+  });
+});
+
+describe("a version's content that is one link", () => {
+  it("is cut at the version text cap when it is longer, saying how much was cut", async () => {
+    const tail = "LINK-TAIL-GONE.png";
+    const url = `https://cdn.example/${"a".repeat(versionMax())}${tail}`;
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({ tasks: { rows: [], total: 0 }, versions: { rows: [version({ content: url })], total: 1 } }),
+    });
+
+    const answer = await call(NODE, { node_id: NODE_ID }, recs);
+
+    expect(answer).not.toContain(tail);
+    expect(answer).toMatch(/more characters cut/);
+  });
+});
