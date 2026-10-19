@@ -20,7 +20,7 @@
 
 import { zValidator } from "@hono/zod-validator";
 import { ValidationError } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { REQUEST_SHAPE_PARAMS, t } from "@breatic/shared";
 
 /**
  * `zValidator` is an overloaded function, and TypeScript does not give an
@@ -44,6 +44,18 @@ const STRUCTURAL_ISSUES: ReadonlySet<string> = new Set([
   "invalid_key",
   "invalid_element",
 ]);
+
+/**
+ * Whether one zod issue is about the request's structure.
+ * @param issue - The issue.
+ * @param issue.code - Its zod code.
+ * @param issue.params - A refine's params, when the issue came from one.
+ * @returns True for a structural code, or a refine marked `REQUEST_SHAPE_PARAMS`.
+ */
+function isStructural(issue: { code: string; params?: Record<string, unknown> }): boolean {
+  return STRUCTURAL_ISSUES.has(issue.code)
+    || (issue.code === "custom" && issue.params?.requestShape === REQUEST_SHAPE_PARAMS.requestShape);
+}
 
 /**
  * A request refused because its structure does not fit the route's schema.
@@ -107,7 +119,7 @@ export const validate: typeof zValidator = (
       // Built here, inside the request, so `t()` reads the locale
       // `localeMiddleware` pinned for this caller.
       const message = t("server.error.validation");
-      throw result.error.issues.some((issue) => STRUCTURAL_ISSUES.has(issue.code))
+      throw result.error.issues.some(isStructural)
         ? new RequestShapeError(message)
         : new ValidationError(message);
     }

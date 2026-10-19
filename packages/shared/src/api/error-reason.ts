@@ -13,3 +13,11 @@
  * being read as an out-of-date page.
  */
 export const REQUEST_SHAPE_REASON = "request_shape";
+
+/**
+ * The `params` of a schema refine that checks the request's structure rather
+ * than a value: which fields a kind of thing must carry. zod reports every
+ * refine as a `custom` issue, the same code a value rule produces, so these
+ * say which of them a page built before a release would trip.
+ */
+export const REQUEST_SHAPE_PARAMS = { requestShape: true } as const;
