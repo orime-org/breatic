@@ -192,12 +192,15 @@ records_search_max_terms: 5
 # How many characters a search hit shows on each side of the first match.
 records_snippet_chars: 80
 
-# How long one message read back from a conversation may be, in characters.
-# A longer one is cut, and the reader is told how much was left out.
-records_message_max_chars: 4000
+# How long a node version's prompt, and its content when that is text, may be
+# in characters when read_node_history writes it. A longer one is cut, and the
+# reader is told how much was left out.
+records_version_text_max_chars: 4000
 
 # How long one page of a read conversation may be, in characters. A page stops
-# at a whole turn, and holds at least one turn however long it is.
+# at a whole turn, and holds at least one turn however long it is. Each text
+# part of a message is cut to this length too, saying how much it lost, and a
+# search matches a text part only up to the same length.
 records_page_max_chars: 24000
 
 # How long a version's other parameters may be, written as one line of JSON.

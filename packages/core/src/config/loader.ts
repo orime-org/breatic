@@ -319,9 +319,9 @@ const agentConfigSchema = z.object({
   records_search_max_terms: z.number().int().min(1).max(20).default(5),
   /** How many characters a search hit shows on each side of the first match. */
   records_snippet_chars: z.number().int().min(1).default(80),
-  /** How long one message read back from a conversation may be, in characters, before it is cut. */
-  records_message_max_chars: z.number().int().min(100).default(4000),
-  /** How long one page of a read conversation may be, in characters; a page still holds at least one whole turn. */
+  /** How long a node version's prompt, and its content when that is text, may be in characters before it is cut. */
+  records_version_text_max_chars: z.number().int().min(100).default(4000),
+  /** How long one page of a read conversation may be, in characters; a page still holds at least one whole turn. Each text part is cut to this length, and a search matches a text part only that far. */
   records_page_max_chars: z.number().int().min(1000).default(24000),
   /** How long a version's parameters, written as one line of JSON, may be in characters. */
   records_params_max_chars: z.number().int().min(10).default(400),

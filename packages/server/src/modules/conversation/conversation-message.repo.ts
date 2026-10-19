@@ -546,7 +546,8 @@ function joinedStrings(value: SQL, path: string): SQL {
 
 /**
  * The words of one message part that a search matches: only words reading
- * the message back shows (`messageText` in domain). A text part's text, an
+ * the message back shows (`messageText` in domain). A text part's text cut
+ * to a page, as reading cuts it, an
  * attachment's name, a questionnaire's questions with the options picked and
  * what was written on its Other line (an old single-question card's question
  * and its options), and the strings of any other tool's
@@ -558,9 +559,9 @@ function joinedStrings(value: SQL, path: string): SQL {
  * @returns The expression; null for a part with nothing to match.
  */
 function searchableWords(part: SQL): SQL {
-  const toolTextMax = getAgentConfig().records_tool_text_max_chars;
+  const { records_page_max_chars: textMax, records_tool_text_max_chars: toolTextMax } = getAgentConfig();
   return sql`CASE
-    WHEN ${part}->>'type' = 'text' THEN ${part}->>'text'
+    WHEN ${part}->>'type' = 'text' THEN left(${part}->>'text', ${textMax}::int)
     WHEN ${part}->>'type' = 'attachment' THEN ${part}#>>'{chip,name}'
     WHEN ${part}->>'type' <> 'tool' THEN NULL
     WHEN ${part}->>'toolName' = ${ASK_USER} THEN concat_ws(' ',

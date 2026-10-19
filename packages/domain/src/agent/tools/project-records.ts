@@ -17,6 +17,9 @@ import type { MessagePart, NodeHistoryEntity, ProjectActivityEntry } from "@brea
 
 import type { NodeTaskListRow } from "@domain/node-task/node-task.repo.js";
 
+/** The highest turn index there can be: `turn_index` is a Postgres int4. */
+export const MAX_TURN_INDEX = 2147483647;
+
 /** One of the user's conversations in this project. */
 export interface ConversationSummary {
   id: string;

@@ -18,9 +18,10 @@ import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
-import { messageText } from "@domain/agent/tools/conversation-text.js";
+import { cutText, messageText } from "@domain/agent/tools/conversation-text.js";
 import { clip, isStop, onOneLine, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import {
+  MAX_TURN_INDEX,
   RecordsRefused,
   type ConversationListPage,
   type ConversationTurns,
@@ -104,8 +105,9 @@ function readFailure(err: unknown, signal: AbortSignal | undefined, named: Named
   }
   if (err instanceof RecordsRefused && err.kind === "bad_cursor") {
     return turnedAway(
-      `The cursor ${JSON.stringify(String(named.cursor))} is not one a page of this tool gave. A cursor is the one ` +
-        "the end of the previous page gave, passed back as written; with none, the list starts from the newest.",
+      `The cursor ${JSON.stringify(String(named.cursor))} cannot be used here. A cursor continues only the list it ` +
+        "came from, with the same query, the same conversation and the same Space filter as the call that gave it; " +
+        "pass it back unchanged. Without a cursor, the list starts from the newest.",
     );
   }
   return toolFailed("Reading the records failed on our side. Trying once more may work.", FAILURE_LINES.ourFault, err);
@@ -204,10 +206,14 @@ function conversationList(page: ConversationListPage): string {
  * A page of search hits, for the model.
  * @param page - The page.
  * @param terms - What was searched for.
+ * @param cursor - The cursor the page was read after, if any.
  * @returns The text.
  * @throws {never} Never.
  */
-function hitList(page: MessageHitPage, terms: readonly string[]): string {
+function hitList(page: MessageHitPage, terms: readonly string[], cursor: string | undefined): string {
+  if (cursor !== undefined && page.hits.length === 0) {
+    return `No more messages after this cursor hold every one of ${JSON.stringify(terms.join(" "))}.`;
+  }
   const head =
     `${count(page.total, "message")} hold every one of ${JSON.stringify(terms.join(" "))}; this page holds ` +
     `${String(page.hits.length)}, newest first.`;
@@ -304,20 +310,27 @@ function str(from: Record<string, unknown> | undefined, key: string): string | u
  */
 function versionLine(v: NodeHistoryEntity): string {
   const cfg = getAgentConfig();
+  /**
+   * A prompt or text content as the line writes it: on one line, cut.
+   * @param text - The stored text.
+   * @returns It quoted.
+   * @throws {never} Never.
+   */
+  const asText = (text: string): string => JSON.stringify(cutText(onOneLine(text), cfg.records_version_text_max_chars));
   const meta = v.metadata;
   const params =
     typeof meta["params"] === "object" && meta["params"] !== null ? (meta["params"] as Record<string, unknown>) : undefined;
   const prompt = str(params, "prompt") ?? str(params, "text");
   const rest = params ? Object.fromEntries(Object.entries(params).filter(([k]) => k !== "prompt" && k !== "text")) : {};
   const credits = meta["credits"];
-  const content =
-    v.content === null ? undefined : /^https?:\/\//.test(v.content) ? v.content : JSON.stringify(clip(onOneLine(v.content), cfg.records_message_max_chars));
+  // Only a value that is one link and nothing else is a media URL; anything else is text.
+  const content = v.content === null ? undefined : /^https?:\/\/\S+$/.test(v.content) ? v.content : asText(v.content);
   const parts = [
     `- ${v.entryType}`,
     v.status,
     ...(str(meta, "model") ? [`model ${String(str(meta, "model"))}`] : []),
     ...(str(meta, "toolId") ? [`mini-tool ${String(str(meta, "toolId"))}`] : []),
-    ...(prompt === undefined ? [] : [`prompt ${JSON.stringify(clip(onOneLine(prompt), cfg.records_message_max_chars))}`]),
+    ...(prompt === undefined ? [] : [`prompt ${asText(prompt)}`]),
     ...(Object.keys(rest).length > 0 ? [`params ${clip(JSON.stringify(rest), cfg.records_params_max_chars)}`] : []),
     ...(typeof credits === "number" ? [`${String(credits)} credits`] : []),
     ...(content === undefined ? [] : [`content ${content}`]),
@@ -432,9 +445,8 @@ const readInput = z
       .uuid()
       .optional()
       .describe(`The conversation, by the id ${SEARCH_CONVERSATIONS} gives. Leave it out to read this conversation.`),
-    // A turn index is a Postgres int4.
-    from_turn: z.number().int().min(1).max(2147483647).optional().describe("The first turn to read; the first turn when left out."),
-    to_turn: z.number().int().min(1).max(2147483647).optional().describe("The last turn to read."),
+    from_turn: z.number().int().min(1).max(MAX_TURN_INDEX).optional().describe("The first turn to read; the first turn when left out."),
+    to_turn: z.number().int().min(1).max(MAX_TURN_INDEX).optional().describe("The last turn to read."),
   })
   .strict();
 
@@ -496,7 +508,7 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
       abortSignal,
       { conversationId: conversation_id, cursor },
     );
-    return hitList(page, terms);
+    return hitList(page, terms, cursor);
   },
 });
 

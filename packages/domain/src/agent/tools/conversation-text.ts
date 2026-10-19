@@ -10,12 +10,12 @@
  * those, and leaves out what was never shown as said -- the model's thinking
  * and the markers of how a turn ended. A record tool's call is written
  * without its result, which is a copy of records found elsewhere. Each part
- * is cut on its own: a text part at the message length, saying how much it
+ * is cut on its own: a text part at the page length, saying how much it
  * lost, and a tool's words at the tool length. The search
  * in the server matches only words this writes out: the text parts, the
  * attachments' names, a questionnaire's questions and the answers given (an
  * old single-question card's question and options), and the strings of every
- * other tool's input, cut to the same length.
+ * other tool's input, each cut to the same length as here.
  */
 
 import { getAgentConfig } from "@breatic/core";
@@ -119,13 +119,14 @@ function toolLines(part: ToolPart): string[] {
 }
 
 /**
- * A text part, cut to the configured message length.
- * @param text - The part's text.
- * @returns The text, saying how much this part lost when it was cut.
+ * A text cut to a length, saying how many characters it lost: a text part of
+ * a message, or a version's prompt or text content.
+ * @param text - The text.
+ * @param max - How many characters to keep.
+ * @returns The text, followed by how much was cut when it was longer.
  * @throws {never} Never.
  */
-function cutText(text: string): string {
-  const max = getAgentConfig().records_message_max_chars;
+export function cutText(text: string, max: number): string {
   const length = [...text].length;
   return length <= max ? text : `${clip(text, max)} [${String(length - max)} more characters cut]`;
 }
@@ -142,7 +143,7 @@ export function messageText(parts: MessagePart[]): string {
     .flatMap((part): string[] => {
       switch (part.type) {
         case "text":
-          return [cutText(part.text)];
+          return [cutText(part.text, getAgentConfig().records_page_max_chars)];
         case "attachment":
           return [`[attached: ${part.chip.name}]`];
         case "tool":

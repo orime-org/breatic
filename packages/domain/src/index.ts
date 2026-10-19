@@ -115,7 +115,7 @@ export {
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
-export { RecordsRefused } from "@domain/agent/tools/project-records.js";
+export { MAX_TURN_INDEX, RecordsRefused } from "@domain/agent/tools/project-records.js";
 export type {
   ProjectRecords,
   RecordsRefusalKind,

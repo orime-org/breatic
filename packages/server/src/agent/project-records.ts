@@ -12,6 +12,8 @@
  * comes back is only what the user sees on screen.
  */
 
+import { createHash } from "node:crypto";
+
 import {
   decodeActivityCursor,
   encodeActivityCursor,
@@ -20,7 +22,7 @@ import {
   NotFoundError,
   type ActivityCursor,
 } from "@breatic/core";
-import { nodeHistoryService, nodeTaskService, RecordsRefused, type ProjectRecords } from "@breatic/domain";
+import { MAX_TURN_INDEX, nodeHistoryService, nodeTaskService, RecordsRefused, type ProjectRecords } from "@breatic/domain";
 import type { ChatSpace, ConversationEntity } from "@breatic/shared";
 import { projectService, studioService } from "@server/modules";
 import { countProjectActivities, listProjectActivities } from "@server/modules/activity/projectActivity.service.js";
@@ -36,30 +38,36 @@ const CURSOR_TAG = { conversations: "conv.", search: "search.", activity: "activ
 /** Which list a cursor belongs to. */
 type CursorList = keyof typeof CURSOR_TAG;
 
-/** The highest value a turn index (a Postgres int4) holds. */
-const MAX_TURN = 2147483647;
-
 /**
- * A raw cursor tagged as one list's.
- * @param list - The list that gave it.
- * @param raw - The position, encoded.
- * @returns The cursor.
+ * What a list's cursors start with. A search's carries a short hash of its
+ * terms and conversation, the activity feed's one of its Space filter, so a
+ * cursor passed back with another query or filter is refused rather than read
+ * as a position in a list it never came from.
+ * @param list - The list.
+ * @param scope - The query or filter the list was read with; none for the conversation list.
+ * @returns The prefix.
  * @throws {never} Never.
  */
-function tagged(list: CursorList, raw: string): string {
-  return `${CURSOR_TAG[list]}${raw}`;
+function cursorPrefix(list: CursorList, scope?: unknown): string {
+  if (scope === undefined) return CURSOR_TAG[list];
+  const hash = createHash("sha256").update(JSON.stringify(scope)).digest("hex").slice(0, 12);
+  return `${CURSOR_TAG[list]}${hash}.`;
 }
 
 /**
- * The raw cursor inside one list's cursor.
- * @param list - The list it is passed to.
+ * A cursor read back, or undefined for the first page.
+ * @param prefix - What the list's cursors start with.
  * @param cursor - The cursor the model passed.
- * @returns The raw cursor.
- * @throws {RecordsRefused} `bad_cursor` when it is not that list's.
+ * @returns The raw cursor and the position after which the page starts.
+ * @throws {RecordsRefused} `bad_cursor` when a cursor is given that no page of this list, query or filter gave.
  */
-function untagged(list: CursorList, cursor: string): string {
-  if (!cursor.startsWith(CURSOR_TAG[list])) throw new RecordsRefused("bad_cursor");
-  return cursor.slice(CURSOR_TAG[list].length);
+function readCursor(prefix: string, cursor: string | undefined): { raw: string; after: ActivityCursor } | undefined {
+  if (cursor === undefined) return undefined;
+  if (!cursor.startsWith(prefix)) throw new RecordsRefused("bad_cursor");
+  const raw = cursor.slice(prefix.length);
+  const after = decodeActivityCursor(raw);
+  if (after === null) throw new RecordsRefused("bad_cursor");
+  return { raw, after };
 }
 
 /** What the records are bound to: this turn, as the server holds it. */
@@ -118,24 +126,11 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
    */
   const pageSize = (): number => getAgentConfig().records_page_size;
 
-  /**
-   * A cursor read back, or undefined for the first page.
-   * @param list - The list it is passed to.
-   * @param cursor - The cursor the model passed.
-   * @returns The position after which the page starts.
-   * @throws {RecordsRefused} `bad_cursor` when a cursor is given that no page of this list gave.
-   */
-  const after = (list: CursorList, cursor: string | undefined): ActivityCursor | undefined => {
-    if (cursor === undefined) return undefined;
-    const decoded = decodeActivityCursor(untagged(list, cursor));
-    if (decoded === null) throw new RecordsRefused("bad_cursor");
-    return decoded;
-  };
-
   return {
     async listConversations(cursor) {
       await member();
-      const from = after("conversations", cursor);
+      const prefix = cursorPrefix("conversations");
+      const from = readCursor(prefix, cursor)?.after;
       const [page, total] = await Promise.all([
         conversationRepo.listWithTurnCounts(userId, projectId, {
           limit: pageSize(),
@@ -154,14 +149,15 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
         })),
         total,
         nextCursor:
-          page.hasMore && last ? tagged("conversations", encodeActivityCursor(last.cursorAt, last.conversation.id)) : null,
+          page.hasMore && last ? `${prefix}${encodeActivityCursor(last.cursorAt, last.conversation.id)}` : null,
       };
     },
 
     async searchMessages(terms, opts) {
       await member();
       if (opts.conversationId !== undefined) await own(opts.conversationId);
-      const from = after("search", opts.cursor);
+      const prefix = cursorPrefix("search", { terms, conversationId: opts.conversationId ?? null });
+      const from = readCursor(prefix, opts.cursor)?.after;
       const page = await messageRepo.searchMessages(
         {
           userId,
@@ -177,7 +173,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
       return {
         hits: page.rows.map(({ id: _id, cursorAt: _at, ...hit }) => ({ ...hit, current: hit.conversationId === conversationId })),
         total: page.total,
-        nextCursor: page.hasMore && last ? tagged("search", encodeActivityCursor(last.cursorAt, last.id)) : null,
+        nextCursor: page.hasMore && last ? `${prefix}${encodeActivityCursor(last.cursorAt, last.id)}` : null,
       };
     },
 
@@ -186,7 +182,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
       const conversation = await own(id ?? conversationId);
       const fromTurn = range.fromTurn ?? 1;
       // A page of turns at most, and no further than a turn index holds: the tool cuts it further to what fits.
-      const toTurn = Math.min(range.toTurn ?? MAX_TURN, fromTurn + pageSize() - 1, MAX_TURN);
+      const toTurn = Math.min(range.toTurn ?? MAX_TURN_INDEX, fromTurn + pageSize() - 1);
       const read = await messageRepo.getTurns(conversation.id, {
         fromTurn,
         toTurn,
@@ -225,9 +221,9 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
 
     async activity(opts) {
       await member();
-      // Checked here: the feed's own decoder reads a cursor it cannot decode as the first page.
-      const raw = opts.cursor === undefined ? undefined : untagged("activity", opts.cursor);
-      after("activity", opts.cursor);
+      const prefix = cursorPrefix("activity", opts.spaceName ?? null);
+      // Decoded here: the feed's own decoder reads a cursor it cannot decode as the first page.
+      const raw = readCursor(prefix, opts.cursor)?.raw;
       let only: { spaceIds?: string[] } = {};
       if (opts.spaceName !== undefined) {
         const spaceIds = turn.spaces.filter((space) => space.name === opts.spaceName).map((space) => space.id);
@@ -238,7 +234,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
         listProjectActivities(projectId, raw, undefined, only),
         countProjectActivities(projectId, only),
       ]);
-      return { items: page.items, total, nextCursor: page.nextCursor === null ? null : tagged("activity", page.nextCursor) };
+      return { items: page.items, total, nextCursor: page.nextCursor === null ? null : `${prefix}${page.nextCursor}` };
     },
 
     spaceName(spaceId) {
