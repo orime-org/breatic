@@ -138,7 +138,7 @@ describe("the confirmation wears the layout every product mail wears", () => {
     const mail = await renderPurchaseConfirmation(view(), "UTC");
     const year = new Date().getUTCFullYear();
     expect(mail.to).toBe(view().email);
-    expect(mail.html).toContain("Create Better Together");
+    expect(mail.html).toContain("Collaborate Better");
     expect(mail.html).toContain(`src="${getMailLayout().logoUrl}"`);
     expect(mail.html).toContain(`>${mail.subject.replace(/^Breatic - /, "")}</`);
     expect(mail.html).toContain("This is an automated message; replies are not read.");
