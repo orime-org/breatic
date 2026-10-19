@@ -128,7 +128,7 @@ export function useCheckoutReturn(
         .confirm(sessionId)
         .then((order) => {
           if (order.paid) {
-            reportConversion('credit_purchase', `purchase:${sessionId}`, {
+            reportConversion('credit_purchase', order.transactionId, {
               amountCents: order.amountCents,
               currency: order.currency,
             });

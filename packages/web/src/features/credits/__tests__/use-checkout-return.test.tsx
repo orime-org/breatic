@@ -27,6 +27,9 @@ import { MemoryRouter, useSearchParams } from 'react-router-dom';
 
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 
+const reportConversion = vi.hoisted(() => vi.fn());
+vi.mock('@web/data/analytics', () => ({ reportConversion }));
+
 const confirm = vi.fn();
 const cancel = vi.fn();
 vi.mock('@web/data/api/payment', () => ({
@@ -111,6 +114,22 @@ describe('coming back from a payment', () => {
     await waitFor(() => {
       expect(seen.waiting).toBe(false);
     });
+  });
+
+  it('reports the paid order under the transaction id the server issued', async () => {
+    // A real Checkout Session id is 66 characters; the id must not grow with it.
+    const sessionId = `cs_test_${'a'.repeat(58)}`;
+    confirm.mockResolvedValue({
+      status: 'granted', paid: true, amountCents: 1000, currency: 'usd',
+      transactionId: 'purchase:5b1f0c4e-0000-4000-8000-000000000001',
+    });
+    mountAt(`?credits=1&session_id=${sessionId}`);
+    await waitFor(() => expect(reportConversion).toHaveBeenCalledTimes(1));
+    expect(reportConversion).toHaveBeenCalledWith(
+      'credit_purchase',
+      'purchase:5b1f0c4e-0000-4000-8000-000000000001',
+      { amountCents: 1000, currency: 'usd' },
+    );
   });
 
   it('lands on the purchase history with the overlay open', async () => {
