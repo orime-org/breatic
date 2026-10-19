@@ -24,10 +24,10 @@ describe('the dialog an out-of-date page cannot dismiss', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
-  it('says the page was updated and offers only Update', () => {
+  it('says the page is out of date and offers only Update', () => {
     render(<StaleReleaseDialog />);
     const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveTextContent('This page has been updated');
+    expect(dialog).toHaveTextContent('Page out of date');
     expect(screen.getAllByRole('button')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Update' })).toBeVisible();
   });

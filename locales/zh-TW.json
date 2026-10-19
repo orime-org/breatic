@@ -2480,7 +2480,7 @@
   },
   "app": {
     "staleRelease": {
-      "title": "頁面已更新",
+      "title": "頁面版本已過期",
       "description": "目前頁面是舊版本，這次操作沒有完成。重新整理後即可繼續。",
       "refresh": "更新"
     }

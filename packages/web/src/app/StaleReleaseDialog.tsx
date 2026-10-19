@@ -31,7 +31,10 @@ export function StaleReleaseDialog(): React.JSX.Element | null {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('app.staleRelease.title')}</AlertDialogTitle>
-          <AlertDialogDescription>{t('app.staleRelease.description')}</AlertDialogDescription>
+          {/* Balanced so the closing instruction is not left as one word on a line. */}
+          <AlertDialogDescription className='text-balance'>
+            {t('app.staleRelease.description')}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogAction

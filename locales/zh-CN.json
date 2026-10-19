@@ -2480,7 +2480,7 @@
   },
   "app": {
     "staleRelease": {
-      "title": "页面已更新",
+      "title": "页面版本已过期",
       "description": "当前页面是旧版本，这次操作没有完成。刷新后即可继续。",
       "refresh": "更新"
     }

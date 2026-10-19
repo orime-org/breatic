@@ -2480,7 +2480,7 @@
   },
   "app": {
     "staleRelease": {
-      "title": "This page has been updated",
+      "title": "Page out of date",
       "description": "This page is out of date and the last action did not go through. Refresh to continue.",
       "refresh": "Update"
     }
