@@ -1,66 +1,94 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { RefreshCw } from 'lucide-react';
 import * as React from 'react';
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { useStaleRelease } from '@web/data/deployment/stale-release';
 import { useAppUpdate } from '@web/data/deployment/use-app-update';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
+import { reloadForUpdate } from '@web/stores/reload-for-update';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
-/** Reload through the existing Project beforeunload guard, including its cancel path. */
-function reloadProject(): void {
-  window.location.reload();
-}
-
-/** Neutral, opt-in release notice. Connection errors take precedence over its popover. */
+/**
+ * A new release, offered while this page still works: the dialog opens by
+ * itself once per release, and the top-bar notice stays until the page
+ * reloads. Connection errors take precedence, and the forced dialog of an
+ * out-of-date page replaces it.
+ * @param props - The notice's inputs.
+ * @param props.status - The collaboration connection's state.
+ * @returns The notice, or nothing when there is no release to offer.
+ */
 export const ProjectUpdateNotice = React.memo(function ProjectUpdateNotice({
   status,
 }: { status: ConnectionStatus }): React.JSX.Element | null {
-  const { version, dismiss } = useAppUpdate();
-  if (!version || status === 'disconnected' || status === 'authFailed') return null;
-  return <UpdatePopover key={version} onDismiss={dismiss} />;
+  const { version, autoOpen, dismiss } = useAppUpdate();
+  const stale = useStaleRelease();
+  if (!version || stale || status === 'disconnected' || status === 'authFailed') return null;
+  return <UpdateNotice key={version} autoOpen={autoOpen} onPostpone={dismiss} />;
 });
 
 /**
- * Show front-end work as context, never as a second save or confirmation mechanism.
- * @param root0 - Notice actions.
- * @param root0.onDismiss - Defer this release for the current tab.
- * @returns The release popover.
+ * The top-bar notice and the dialog it opens, for one release.
+ * @param props - The notice's inputs.
+ * @param props.autoOpen - Open the dialog on mount; false for a postponed release.
+ * @param props.onPostpone - Stop opening this release by itself in this tab.
+ * @returns The notice and its dialog.
  */
-function UpdatePopover({ onDismiss }: { onDismiss: () => void }): React.JSX.Element {
+function UpdateNotice({
+  autoOpen,
+  onPostpone,
+}: { autoOpen: boolean; onPostpone: () => void }): React.JSX.Element {
   const t = useTranslation();
   const busy = useSpaceOperationsStore((state) => state.hasAnyOperations());
+  const [open, setOpen] = React.useState(autoOpen);
+  const onOpenChange = React.useCallback((next: boolean): void => {
+    // Closing is Later or Escape; Update keeps the dialog open.
+    if (!next) onPostpone();
+    setOpen(next);
+  }, [onPostpone]);
   return (
-    <Popover>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button variant='chrome-ghost' size='sm' className='shrink-0 gap-1.5'
-              aria-label={t('project.update.available')} data-testid='project-update-trigger'>
-              <RefreshCw className='h-3.5 w-3.5' aria-hidden />
-              <span className='hidden md:inline'>{t('project.update.available')}</span>
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{t('project.update.available')}</TooltipContent>
-      </Tooltip>
-      <PopoverContent align='end' className='max-w-[calc(100vw-32px)]' aria-label={t('project.update.title')}>
-        <p className='text-sm font-medium'>{t('project.update.title')}</p>
-        <p className='mt-2 text-sm text-muted-foreground' role='status'>
-          {t(busy ? 'project.update.busy' : 'project.update.description')}
-        </p>
-        <div className='mt-4 flex justify-end gap-2'>
-          <Button variant='ghost' size='sm' onClick={onDismiss}>{t('project.update.later')}</Button>
-          <Button variant='outline' size='sm' onClick={reloadProject} data-testid='project-update-refresh'>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogTrigger asChild>
+        <Button variant='outline' size='sm' className='shrink-0 gap-1.5' data-testid='project-update-trigger'>
+          <span className='size-1.5 rounded-full bg-status-info' aria-hidden />
+          {t('project.update.available')}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('project.update.title')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t(busy ? 'project.update.busy' : 'project.update.description')}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{t('project.update.later')}</AlertDialogCancel>
+          <AlertDialogAction
+            data-testid='project-update-refresh'
+            onClick={(event) => {
+              // Held open: the leave prompt may be cancelled, and the choice
+              // has to still be in reach when it is.
+              event.preventDefault();
+              reloadForUpdate();
+            }}
+          >
             {t('project.update.refresh')}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

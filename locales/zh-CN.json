@@ -1363,8 +1363,10 @@
       "title": "有新版本可用",
       "description": "新版本已上线，刷新后即可使用。",
       "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
-      "later": "稍后",
-      "refresh": "更新"
+      "later": "稍后更新",
+      "refresh": "更新",
+      "staleTitle": "页面已更新",
+      "staleDescription": "当前页面是旧版本，这次操作没有完成。刷新后即可继续。"
     },
     "archived": {
       "banner": "该 Project 已归档，只能查看",
