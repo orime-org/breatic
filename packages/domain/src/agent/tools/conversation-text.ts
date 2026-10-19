@@ -14,7 +14,9 @@
  * lost, and a tool's words at the tool length. The search
  * in the server matches only words this writes out: the text parts, the
  * attachments' names, a questionnaire's questions and the answers given (an
- * old single-question card's question and options), and the strings of every
+ * old single-question card's question and options; for an `ask_user` input
+ * neither shape fits, every question, option and answer string it holds, as
+ * the search reads them), and the strings of every
  * other tool's input, each cut to the same length as here.
  */
 
@@ -103,6 +105,69 @@ function oldQuestion(input: unknown): { question: string; options: string[] } | 
 }
 
 /**
+ * A value as a list, the way a lax jsonpath step reads it: an array is its
+ * items, anything else one item, nothing no item.
+ * @param value - The value.
+ * @returns The items.
+ * @throws {never} Never.
+ */
+function laxItems(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  return value === undefined ? [] : [value];
+}
+
+/**
+ * A field of every item that is a record.
+ * @param items - The items.
+ * @param key - The field.
+ * @returns The field's values, each read as a lax list.
+ * @throws {never} Never.
+ */
+function fieldOf(items: unknown[], key: string): unknown[] {
+  return items.flatMap((item) =>
+    typeof item === "object" && item !== null && !Array.isArray(item) ? laxItems((item as Record<string, unknown>)[key]) : [],
+  );
+}
+
+/**
+ * The strings among some values.
+ * @param values - The values.
+ * @returns Those that are strings.
+ * @throws {never} Never.
+ */
+function onlyStrings(values: unknown[]): string[] {
+  return values.filter((v): v is string => typeof v === "string");
+}
+
+/**
+ * An `ask_user` call neither reader accepts, written from the fields the
+ * server's search matches for `ask_user` (`searchableWords` in the
+ * conversation message repo), uncut as the search leaves them.
+ * @param part - The call.
+ * @returns Its questions, options and answers, one line each.
+ * @throws {never} Never.
+ */
+function looseAskLines(part: ToolPart): string[] {
+  const input = laxItems(part.input);
+  const questions = [...onlyStrings(fieldOf(fieldOf(input, "questions"), "question")), ...onlyStrings(fieldOf(input, "question"))];
+  const options = onlyStrings(fieldOf(input, "options"));
+  const answers = fieldOf(laxItems(part.output), "answers").flatMap((a): string[] => {
+    const picked = onlyStrings(fieldOf([a], "selected"));
+    const other = onlyStrings(fieldOf([a], "other"));
+    if (picked.length === 0 && other.length === 0) return [];
+    const index = (a as { index?: unknown }).index;
+    const n = typeof index === "number" && Number.isInteger(index) && index >= 0 ? String(index + 1) : "";
+    const words = [...(picked.length > 0 ? [picked.join(", ")] : []), ...other.map((o) => `other: ${o}`)];
+    return [`A${n} ${words.join(" / ")}`];
+  });
+  return [
+    ...questions.map((q, i) => `Q${String(i + 1)} ${q}`),
+    ...(options.length > 0 ? [`options: ${options.join(", ")}`] : []),
+    ...answers,
+  ];
+}
+
+/**
  * One tool call written out.
  * @param part - The call.
  * @returns Its lines.
@@ -113,22 +178,45 @@ function toolLines(part: ToolPart): string[] {
   if (questionnaire) return questionnaireLines(questionnaire.questions, part.output);
   const old = part.toolName === ASK_USER ? oldQuestion(part.input) : null;
   if (old) return [`Q1 ${old.question}`, ...(old.options.length > 0 ? [`options: ${old.options.join(", ")}`] : [])];
+  if (part.toolName === ASK_USER) return looseAskLines(part);
   const called = `[called ${part.toolName}]${wordsOf(part.input)}`;
   if (part.output === undefined || isRecordTool(part.toolName)) return [called];
   return [called, `[${part.toolName} answered]${wordsOf(part.output)}`];
 }
 
 /**
+ * The part of a text kept at a length, and how many characters were cut.
+ * @param text - The text.
+ * @param max - How many characters to keep.
+ * @returns The kept part, and the count cut (0 when it fit).
+ * @throws {never} Never.
+ */
+export function keptText(text: string, max: number): { kept: string; cut: number } {
+  const length = [...text].length;
+  return length <= max ? { kept: text, cut: 0 } : { kept: clip(text, max), cut: length - max };
+}
+
+/**
+ * What follows a cut text, saying how many characters it lost.
+ * @param cut - How many were cut.
+ * @returns The marker with a leading space, or nothing when none were cut.
+ * @throws {never} Never.
+ */
+export function cutMarker(cut: number): string {
+  return cut === 0 ? "" : ` [${String(cut)} more characters cut]`;
+}
+
+/**
  * A text cut to a length, saying how many characters it lost: a text part of
- * a message, or a version's prompt or text content.
+ * a message.
  * @param text - The text.
  * @param max - How many characters to keep.
  * @returns The text, followed by how much was cut when it was longer.
  * @throws {never} Never.
  */
 export function cutText(text: string, max: number): string {
-  const length = [...text].length;
-  return length <= max ? text : `${clip(text, max)} [${String(length - max)} more characters cut]`;
+  const { kept, cut } = keptText(text, max);
+  return `${kept}${cutMarker(cut)}`;
 }
 
 /**

@@ -289,7 +289,6 @@ export const projectActivitiesRepo = {
    * @returns Entries newest-first, each beside the `created_at` text its
    *   cursor is built from. The two are separate values because the entry is
    *   what the route serves and the text is not part of that shape.
-   *   `length === limit` implies more pages may exist.
    */
   async listByProject(
     projectId: string,

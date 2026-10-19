@@ -18,7 +18,7 @@ import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
 import { FAILURE_LINES, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
-import { cutText, messageText } from "@domain/agent/tools/conversation-text.js";
+import { cutMarker, keptText, messageText } from "@domain/agent/tools/conversation-text.js";
 import { clip, isStop, onOneLine, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import {
   MAX_TURN_INDEX,
@@ -207,10 +207,16 @@ function conversationList(page: ConversationListPage): string {
  * @param page - The page.
  * @param terms - What was searched for.
  * @param cursor - The cursor the page was read after, if any.
+ * @param conversationId - The conversation the search was kept to, if any.
  * @returns The text.
  * @throws {never} Never.
  */
-function hitList(page: MessageHitPage, terms: readonly string[], cursor: string | undefined): string {
+function hitList(
+  page: MessageHitPage,
+  terms: readonly string[],
+  cursor: string | undefined,
+  conversationId: string | undefined,
+): string {
   if (cursor !== undefined && page.hits.length === 0) {
     return `No more messages after this cursor hold every one of ${JSON.stringify(terms.join(" "))}.`;
   }
@@ -222,8 +228,9 @@ function hitList(page: MessageHitPage, terms: readonly string[], cursor: string 
       `- conversation ${h.conversationId} ${titled(h.conversationTitle)} · turn ${String(h.turnIndex)} · ` +
       `${h.role} · ${h.createdAt}${h.current ? " (this conversation)" : ""}: ${snippet(h.body, terms)}`,
   );
+  const within = conversationId === undefined ? "" : ` conversation_id=${conversationId}`;
   const tail =
-    page.nextCursor === null ? [] : [`More: call again with the same query and cursor=${page.nextCursor}`];
+    page.nextCursor === null ? [] : [`More: call again with the same query${within} and cursor=${page.nextCursor}`];
   return [head, ...lines, ...tail].join("\n");
 }
 
@@ -258,7 +265,8 @@ function turnPage(read: ConversationTurns): string {
   const lastKept = kept.at(-1)!.index;
   const next = kept.length < turns.length ? turns[kept.length]!.index : lastKept < read.totalTurns ? lastKept + 1 : null;
   const range = `turns ${String(first)}–${String(lastKept)} of ${String(read.totalTurns)}`;
-  const tail = next === null ? `${range}.` : `${range}; call again with from_turn=${String(next)}`;
+  const tail =
+    next === null ? `${range}.` : `${range}; call again with conversation_id=${read.conversationId} from_turn=${String(next)}`;
   return [head, ...kept.map((t) => t.text), tail].join("\n\n");
 }
 
@@ -311,12 +319,17 @@ function str(from: Record<string, unknown> | undefined, key: string): string | u
 function versionLine(v: NodeHistoryEntity): string {
   const cfg = getAgentConfig();
   /**
-   * A prompt or text content as the line writes it: on one line, cut.
+   * A prompt or text content as the line writes it: on one line, the kept
+   * part quoted and how much was cut after the quotes.
    * @param text - The stored text.
-   * @returns It quoted.
+   * @param quoted - Whether to quote the kept part; a link is written bare.
+   * @returns The text as written.
    * @throws {never} Never.
    */
-  const asText = (text: string): string => JSON.stringify(cutText(onOneLine(text), cfg.records_version_text_max_chars));
+  const asText = (text: string, quoted = true): string => {
+    const { kept, cut } = keptText(onOneLine(text), cfg.records_version_text_max_chars);
+    return `${quoted ? JSON.stringify(kept) : kept}${cutMarker(cut)}`;
+  };
   const meta = v.metadata;
   const params =
     typeof meta["params"] === "object" && meta["params"] !== null ? (meta["params"] as Record<string, unknown>) : undefined;
@@ -324,7 +337,7 @@ function versionLine(v: NodeHistoryEntity): string {
   const rest = params ? Object.fromEntries(Object.entries(params).filter(([k]) => k !== "prompt" && k !== "text")) : {};
   const credits = meta["credits"];
   // Only a value that is one link and nothing else is a media URL; anything else is text.
-  const content = v.content === null ? undefined : /^https?:\/\/\S+$/.test(v.content) ? v.content : asText(v.content);
+  const content = v.content === null ? undefined : asText(v.content, !/^https?:\/\/\S+$/.test(v.content));
   const parts = [
     `- ${v.entryType}`,
     v.status,
@@ -508,7 +521,7 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
       abortSignal,
       { conversationId: conversation_id, cursor },
     );
-    return hitList(page, terms, cursor);
+    return hitList(page, terms, cursor, conversation_id);
   },
 });
 
@@ -576,10 +589,15 @@ const listProjectActivity: Tool<z.infer<typeof activityInput>, string, RecordsCo
       spaceName: space,
       cursor,
     });
+    const inSpace = space === undefined ? "" : ` in Space ${JSON.stringify(space)}`;
+    if (cursor !== undefined && page.items.length === 0) {
+      return `No more entries in this project's activity${inSpace} after this cursor.`;
+    }
     const head =
-      `${count(page.total, "entry", "entries")} in this project's activity` +
-      `${space === undefined ? "" : ` in Space ${JSON.stringify(space)}`}; this page holds ${String(page.items.length)}, newest first.`;
-    const tail = page.nextCursor === null ? [] : [`More: call again with cursor=${page.nextCursor}`];
+      `${count(page.total, "entry", "entries")} in this project's activity${inSpace}; ` +
+      `this page holds ${String(page.items.length)}, newest first.`;
+    const filter = space === undefined ? "" : `space=${JSON.stringify(space)} and `;
+    const tail = page.nextCursor === null ? [] : [`More: call again with ${filter}cursor=${page.nextCursor}`];
     return [head, ...page.items.map((e) => activityLine(e, records)), ...tail].join("\n");
   },
 });
