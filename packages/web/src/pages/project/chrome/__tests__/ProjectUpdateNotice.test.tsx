@@ -79,6 +79,24 @@ describe('Project update notice', () => {
     expect(screen.getByRole('alertdialog').textContent).toBe(normal);
   });
 
+  it('puts focus on the dialog itself when it opens by itself, so Later does not look chosen', () => {
+    renderNotice();
+    expect(screen.getByRole('alertdialog')).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Later' })).not.toHaveFocus();
+  });
+
+  it('gives the solid look to whichever choice the text recommends', () => {
+    renderNotice();
+    const later = screen.getByRole('button', { name: 'Later' });
+    const update = screen.getByTestId('project-update-refresh');
+    expect(update).toHaveClass('bg-primary');
+    expect(later).not.toHaveClass('bg-primary');
+    act(() => useSpaceOperationsStore.getState().register('other-space', 'upload'));
+    expect(later).toHaveClass('bg-primary');
+    expect(update).not.toHaveClass('bg-primary');
+    expect(update).toHaveClass('border-border');
+  });
+
   it.each(['disconnected', 'authFailed'] as const)('yields to %s', (status) => {
     const view = renderNotice();
     view.rerender(<TooltipProvider><ProjectUpdateNotice status={status} /></TooltipProvider>);

@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@web/components/ui/alert-dialog';
-import { Button } from '@web/components/ui/button';
+import { Button, buttonVariants } from '@web/components/ui/button';
 import { useStaleRelease } from '@web/data/deployment/stale-release';
 import { useAppUpdate } from '@web/data/deployment/use-app-update';
 import type { ConnectionStatus } from '@web/data/yjs/use-socket';
@@ -54,6 +54,15 @@ function UpdateNotice({
   const t = useTranslation();
   const busy = useSpaceOperationsStore((state) => state.hasAnyOperations());
   const [open, setOpen] = React.useState(autoOpen);
+  /**
+   * Hold focus on the dialog itself: it opens without being asked, and Radix
+   * would otherwise focus Later and draw its ring as if it were the pick.
+   * @param event - Radix's auto-focus event.
+   */
+  const focusDialog = React.useCallback((event: Event): void => {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).focus();
+  }, []);
   const onOpenChange = React.useCallback((next: boolean): void => {
     // Closing is Later or Escape; Update keeps the dialog open.
     if (!next) onPostpone();
@@ -67,7 +76,7 @@ function UpdateNotice({
           {t('project.update.available')}
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent tabIndex={-1} onOpenAutoFocus={focusDialog}>
         <AlertDialogHeader>
           <AlertDialogTitle>{t('project.update.title')}</AlertDialogTitle>
           <AlertDialogDescription>
@@ -75,8 +84,12 @@ function UpdateNotice({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{t('project.update.later')}</AlertDialogCancel>
+          {/* The solid button is the one the text recommends: waiting, while an operation runs. */}
+          <AlertDialogCancel className={busy ? buttonVariants() : undefined}>
+            {t('project.update.later')}
+          </AlertDialogCancel>
           <AlertDialogAction
+            variant={busy ? 'outline' : undefined}
             data-testid='project-update-refresh'
             onClick={(event) => {
               // Held open: the leave prompt may be cancelled, and the choice
