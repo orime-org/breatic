@@ -1364,9 +1364,7 @@
       "description": "Refresh to use the new version.",
       "busy": "An upload or another operation is in progress. Refreshing will interrupt it. We recommend waiting until it finishes.",
       "later": "Later",
-      "refresh": "Update",
-      "staleTitle": "This page has been updated",
-      "staleDescription": "This page is out of date and the last action did not go through. Refresh to continue."
+      "refresh": "Update"
     },
     "archived": {
       "banner": "This project is archived and can only be viewed",
@@ -2478,6 +2476,13 @@
         "title": "Advertising",
         "description": "Measures which ads lead to sign-ups, purchases and other key steps."
       }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "This page has been updated",
+      "description": "This page is out of date and the last action did not go through. Refresh to continue.",
+      "refresh": "Update"
     }
   }
 }

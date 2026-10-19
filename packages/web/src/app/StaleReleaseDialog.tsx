@@ -30,8 +30,8 @@ export function StaleReleaseDialog(): React.JSX.Element | null {
     <AlertDialog open>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{t('project.update.staleTitle')}</AlertDialogTitle>
-          <AlertDialogDescription>{t('project.update.staleDescription')}</AlertDialogDescription>
+          <AlertDialogTitle>{t('app.staleRelease.title')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('app.staleRelease.description')}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogAction
@@ -42,7 +42,7 @@ export function StaleReleaseDialog(): React.JSX.Element | null {
               reloadForUpdate();
             }}
           >
-            {t('project.update.refresh')}
+            {t('app.staleRelease.refresh')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

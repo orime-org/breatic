@@ -183,9 +183,9 @@ export function renderProductGuide(): string {
       `${quoted(t("project.update.later"))}. After ${quoted(t("project.update.later"))}, a ` +
       `${quoted(t("project.update.available"))} button with a blue dot stays on the right and opens it again; the ` +
       "same version does not open by itself a second time in that tab. When something the reader did fails because " +
-      `the page is older than the site, ${quoted(t("project.update.staleTitle"))} opens; it cannot be closed, its ` +
-      `only button is ${quoted(t("project.update.refresh"))}, and it says ` +
-      `${quoted(t("project.update.staleDescription"))}`,
+      `the page is older than the site, ${quoted(t("app.staleRelease.title"))} opens; it cannot be closed, its ` +
+      `only button is ${quoted(t("app.staleRelease.refresh"))}, and it says ` +
+      `${quoted(t("app.staleRelease.description"))}`,
     "",
     "## Spaces",
     "A project holds spaces; the ones open right now are tabs along the top. The first time a project is " +
