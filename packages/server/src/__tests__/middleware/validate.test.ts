@@ -38,7 +38,7 @@ const INVALID_INPUT = {
   ko: "입력값이 유효하지 않습니다",
 } as const;
 
-const bodySchema = z.object({ email: z.email(), age: z.number().int() });
+const bodySchema = z.strictObject({ email: z.email(), age: z.number().int() });
 const querySchema = z.object({ limit: z.coerce.number().int().max(100) });
 const paramSchema = z.object({ id: z.uuid() });
 
@@ -118,7 +118,7 @@ describe("a request whose field fails the schema", () => {
       headers: JSON_HEADERS,
       body: JSON.stringify({ email: "not-an-email", age: 36 }),
     });
-    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
   });
 
   it("never puts zod's report on the wire", async () => {
@@ -145,7 +145,7 @@ describe("a request whose field fails the schema", () => {
         },
         locale,
       );
-      expect(body).toEqual({ error: { code: 422, message: expected, reason: REQUEST_SHAPE_REASON } });
+      expect(body).toEqual({ error: { code: 422, message: expected } });
     }
   });
 
@@ -161,17 +161,53 @@ describe("a request whose field fails the schema", () => {
   });
 });
 
+describe("which schema failures say the request itself is malformed", () => {
+  // A page built before a release sends the old structure: a field missing,
+  // a type changed, a key the route no longer knows. What a user typed only
+  // ever breaks a value's limits, and that must keep reading as such.
+  it.each([
+    ["a missing field", { email: "ada@example.com" }],
+    ["a field of the wrong type", { email: "ada@example.com", age: "36" }],
+    ["a key the route does not know", { email: "ada@example.com", age: 36, extra: true }],
+  ])("marks %s", async (_name, payload) => {
+    const { status, body } = await request("/json", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload),
+    });
+    expect(status).toBe(422);
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
+  });
+
+  it("marks a structural failure even beside a value failure", async () => {
+    const { body } = await request("/json", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ email: "not-an-email" }),
+    });
+    expect(body).toMatchObject({ error: { reason: REQUEST_SHAPE_REASON } });
+  });
+
+  it.each([
+    ["a value past its limit", "/query?limit=999"],
+    ["a value in the wrong format", "/param/not-a-uuid"],
+  ])("leaves %s unmarked", async (_name, path) => {
+    const { body } = await request(path);
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
+  });
+});
+
 describe("every target a route can validate", () => {
   it("rejects a bad query the same way", async () => {
     const { status, body } = await request("/query?limit=999");
     expect(status).toBe(422);
-    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
   });
 
   it("rejects a bad path parameter the same way", async () => {
     const { status, body } = await request("/param/not-a-uuid");
     expect(status).toBe(422);
-    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
   });
 });
 

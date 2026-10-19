@@ -30,10 +30,26 @@ import { t } from "@breatic/shared";
 type ValidatorArgs = Parameters<typeof zValidator>;
 
 /**
- * A request refused because it does not fit the route's schema. The error
- * handler marks it with `REQUEST_SHAPE_REASON`, which a page built before a
- * release reads as "reload"; a `ValidationError` a route throws for a
- * well-formed request stays unmarked.
+ * zod issue codes that say the request's structure is not the route's: a
+ * field missing or of another type, a key or enum value it does not know.
+ * A page built before a release produces these. The rest (`too_big`,
+ * `too_small`, `invalid_format`, `not_multiple_of`, `custom`) judge a value
+ * against its limits, which is what a user's own input breaks.
+ */
+const STRUCTURAL_ISSUES: ReadonlySet<string> = new Set([
+  "invalid_type",
+  "unrecognized_keys",
+  "invalid_union",
+  "invalid_value",
+  "invalid_key",
+  "invalid_element",
+]);
+
+/**
+ * A request refused because its structure does not fit the route's schema.
+ * The error handler marks it with `REQUEST_SHAPE_REASON`, which a page built
+ * before a release reads as "reload"; a refused value, and a
+ * `ValidationError` a route throws for a well-formed request, stay unmarked.
  */
 export class RequestShapeError extends ValidationError {
   /**
@@ -90,7 +106,10 @@ export const validate: typeof zValidator = (
     if (!result.success) {
       // Built here, inside the request, so `t()` reads the locale
       // `localeMiddleware` pinned for this caller.
-      throw new RequestShapeError(t("server.error.validation"));
+      const message = t("server.error.validation");
+      throw result.error.issues.some((issue) => STRUCTURAL_ISSUES.has(issue.code))
+        ? new RequestShapeError(message)
+        : new ValidationError(message);
     }
   });
 };
