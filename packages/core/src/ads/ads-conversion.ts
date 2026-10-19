@@ -22,7 +22,13 @@ import {
   findStaleUploads,
   settleQueuedUpload,
 } from "@core/ads/ads-conversion.repo.js";
-import { ADS_CONVERSIONS, ADS_SWEEP_JOB, type AdsConversionJob, type AdsConversionName } from "@core/ads/ads-types.js";
+import {
+  ADS_CONVERSIONS,
+  ADS_SWEEP_JOB,
+  AdsConversionJobSchema,
+  type AdsConversionJob,
+  type AdsConversionName,
+} from "@core/ads/ads-types.js";
 import { env } from "@core/config/env.js";
 import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
 
@@ -129,6 +135,7 @@ async function addJob(job: AdsConversionJob): Promise<void> {
  * @param browser - The browser behind it as it stood then; defaults to the
  *   request's; null for an event no browser is behind.
  * @returns Whether it was queued.
+ * @throws {ZodError} When the job breaks its schema, such as a transaction id past 64 characters.
  * @throws {unknown} When the database or the queue cannot be reached; callers log and carry on.
  */
 export async function enqueueAdsConversion(
@@ -154,6 +161,8 @@ export async function enqueueAdsConversion(
     click,
     ...(input.value ? { value: input.value } : {}),
   };
+  // Rejected here, where the caller logs it, rather than by the worker after the claim.
+  AdsConversionJobSchema.parse(job);
   if (!(await claimUpload(job))) return false;
   await addJob(job);
   return true;
