@@ -30,6 +30,23 @@ import { t } from "@breatic/shared";
 type ValidatorArgs = Parameters<typeof zValidator>;
 
 /**
+ * A request refused because it does not fit the route's schema. The error
+ * handler marks it with `REQUEST_SHAPE_REASON`, which a page built before a
+ * release reads as "reload"; a `ValidationError` a route throws for a
+ * well-formed request stays unmarked.
+ */
+export class RequestShapeError extends ValidationError {
+  /**
+   * Construct a 422 shape refusal.
+   * @param message - What the caller reads, already translated.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = "RequestShapeError";
+  }
+}
+
+/**
  * Validate a request target against a schema, answering in our envelope.
  *
  * A drop-in for `zValidator(target, schema)` — same inference, so
@@ -73,7 +90,7 @@ export const validate: typeof zValidator = (
     if (!result.success) {
       // Built here, inside the request, so `t()` reads the locale
       // `localeMiddleware` pinned for this caller.
-      throw new ValidationError(t("server.error.validation"));
+      throw new RequestShapeError(t("server.error.validation"));
     }
   });
 };

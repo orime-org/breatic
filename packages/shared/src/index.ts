@@ -373,6 +373,8 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
+export { REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
+
 export {
   addressWithoutQuery,
   errorMonitoringDataCollection,

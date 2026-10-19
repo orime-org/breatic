@@ -24,6 +24,7 @@ import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { z } from "zod";
 import { loadLocales, runWithLocale } from "@breatic/core";
+import { REQUEST_SHAPE_REASON } from "@breatic/shared";
 
 import { validate } from "@server/middleware/validate.js";
 import { errorHandler } from "@server/middleware/error-handler.js";
@@ -117,7 +118,7 @@ describe("a request whose field fails the schema", () => {
       headers: JSON_HEADERS,
       body: JSON.stringify({ email: "not-an-email", age: 36 }),
     });
-    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
   });
 
   it("never puts zod's report on the wire", async () => {
@@ -144,7 +145,7 @@ describe("a request whose field fails the schema", () => {
         },
         locale,
       );
-      expect(body).toEqual({ error: { code: 422, message: expected } });
+      expect(body).toEqual({ error: { code: 422, message: expected, reason: REQUEST_SHAPE_REASON } });
     }
   });
 
@@ -164,13 +165,13 @@ describe("every target a route can validate", () => {
   it("rejects a bad query the same way", async () => {
     const { status, body } = await request("/query?limit=999");
     expect(status).toBe(422);
-    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
   });
 
   it("rejects a bad path parameter the same way", async () => {
     const { status, body } = await request("/param/not-a-uuid");
     expect(status).toBe(422);
-    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
   });
 });
 
@@ -191,7 +192,7 @@ describe("a body that could not be read at all", () => {
       "zh-CN",
     );
     expect(body).toEqual({
-      error: { code: 400, message: INVALID_INPUT["zh-CN"] },
+      error: { code: 400, message: INVALID_INPUT["zh-CN"], reason: REQUEST_SHAPE_REASON },
     });
   });
 
