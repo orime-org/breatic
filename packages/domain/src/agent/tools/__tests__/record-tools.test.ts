@@ -18,6 +18,7 @@ import { getAgentConfig } from "@breatic/core";
 import { toolFailureOf, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 import { TOOL_MAP, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
 import {
+  MAX_TURN_INDEX,
   RecordsRefused,
   type ConversationTurns,
   type NodeTaskRecord,
@@ -32,6 +33,17 @@ const ACTIVITY = "list_project_activity";
 const CONVERSATION = "11111111-1111-4111-8111-111111111111";
 const NODE_ID = "22222222-2222-4222-8222-222222222222";
 const SPACE = "33333333-3333-4333-8333-333333333333";
+
+/** The length of each filler message in the paging cases: under every per-part cap. */
+const CHUNK = 900;
+
+/**
+ * The cap on a version's prompt and text content.
+ * @returns The configured number of characters.
+ */
+function versionMax(): number {
+  return getAgentConfig().records_version_text_max_chars;
+}
 
 /**
  * Records that answer nothing until a case says otherwise.
@@ -161,6 +173,23 @@ describe("a cursor the tools did not give", () => {
   });
 });
 
+describe("a refused cursor", () => {
+  it.each([
+    [SEARCH, { cursor: "garbled" }, "listConversations"],
+    [SEARCH, { query: "poster", cursor: "garbled" }, "searchMessages"],
+    [ACTIVITY, { cursor: "garbled" }, "activity"],
+  ] as const)("%s states the rule: a cursor goes on only with the list, query or filter it came from", async (name, input, read) => {
+    const recs = records({ [read]: vi.fn().mockRejectedValue(new RecordsRefused("bad_cursor")) });
+
+    const said = (await failureOf(call(name, input, recs)))?.forModel ?? "";
+
+    expect(said).toMatch(/same query/i);
+    expect(said).toMatch(/filter/i);
+    expect(said).toMatch(/unchanged|as (it was )?(written|given)/i);
+    expect(said).not.toMatch(/not one a page of this tool gave/);
+  });
+});
+
 describe("search_conversations without a query", () => {
   it("lists the user's conversations here, marking the one this turn is in", async () => {
     const recs = records({
@@ -262,6 +291,17 @@ describe("search_conversations with a query", () => {
   });
 });
 
+describe("search_conversations given a cursor and an empty page", () => {
+  it("says there is nothing more after that cursor, and gives no total", async () => {
+    const recs = records({ searchMessages: vi.fn().mockResolvedValue({ hits: [], total: 0, nextCursor: null }) });
+
+    const answer = await call(SEARCH, { query: "poster", cursor: "search.PREV" }, recs);
+
+    expect(answer).toMatch(/no more messages after this cursor/i);
+    expect(answer).not.toMatch(/\b0 messages hold\b/);
+  });
+});
+
 /**
  * A conversation's turns, one user and one assistant message each.
  * @param turns - The words of each turn, user then assistant.
@@ -304,6 +344,11 @@ describe("read_conversation", () => {
   it("takes no turn number past what a turn index can hold", () => {
     const schema = TOOL_MAP[READ]!().inputSchema as unknown as { safeParse: (v: unknown) => { success: boolean } };
 
+    expect(MAX_TURN_INDEX).toBe(2147483647);
+    expect(schema.safeParse({ from_turn: MAX_TURN_INDEX }).success).toBe(true);
+    expect(schema.safeParse({ to_turn: MAX_TURN_INDEX }).success).toBe(true);
+    expect(schema.safeParse({ from_turn: MAX_TURN_INDEX + 1 }).success).toBe(false);
+    expect(schema.safeParse({ to_turn: MAX_TURN_INDEX + 1 }).success).toBe(false);
     expect(schema.safeParse({ from_turn: 2147483647 }).success).toBe(true);
     expect(schema.safeParse({ from_turn: 2147483648 }).success).toBe(false);
     expect(schema.safeParse({ to_turn: 2147483648 }).success).toBe(false);
@@ -317,8 +362,8 @@ describe("read_conversation", () => {
     expect(recs.readConversation).toHaveBeenCalledWith(CONVERSATION, { fromTurn: 3, toTurn: 7 });
   });
 
-  it("cuts a long message and says how much was cut", async () => {
-    const max = getAgentConfig().records_message_max_chars;
+  it("cuts a message longer than a page and says how much was cut", async () => {
+    const max = getAgentConfig().records_page_max_chars;
     const tail = "END-OF-THE-LONG-MESSAGE";
     const long = "x".repeat(max + 500) + tail;
     const recs = records({ readConversation: vi.fn().mockResolvedValue(turnsOf([[long, "ok"]])) });
@@ -326,21 +371,20 @@ describe("read_conversation", () => {
     const answer = await call(READ, {}, recs);
 
     expect(answer).not.toContain(tail);
-    expect(answer).toContain(String(500 + tail.length));
+    expect(answer).toContain(`[${String(500 + tail.length)} more characters cut]`);
   });
 
   it("stops at a whole turn when the page is full, and says where to go on from", async () => {
     const pageMax = getAgentConfig().records_page_max_chars;
-    const msgMax = getAgentConfig().records_message_max_chars;
     // Each turn holds enough messages to fill more than half a page, so two
     // turns cannot share one.
-    const half = Math.ceil(pageMax / 2 / msgMax) + 1;
+    const half = Math.ceil(pageMax / 2 / CHUNK) + 1;
     const filler = (turn: number): ConversationTurns["messages"] =>
       Array.from({ length: half }, (_, i) => ({
         role: "user" as const,
         turnIndex: turn,
         createdAt: "2026-10-18T09:00:00.000Z",
-        parts: [{ type: "text" as const, text: `T${String(turn)}M${String(i)} ` + "y".repeat(msgMax - 10) }],
+        parts: [{ type: "text" as const, text: `T${String(turn)}M${String(i)} ` + "y".repeat(CHUNK - 10) }],
       }));
     const recs = records({
       readConversation: vi.fn().mockResolvedValue({
@@ -362,8 +406,7 @@ describe("read_conversation", () => {
 
   it("still gives a whole turn that alone is longer than a page", async () => {
     const pageMax = getAgentConfig().records_page_max_chars;
-    const msgMax = getAgentConfig().records_message_max_chars;
-    const many = Math.ceil(pageMax / msgMax) + 2;
+    const many = Math.ceil(pageMax / CHUNK) + 2;
     const recs = records({
       readConversation: vi.fn().mockResolvedValue({
         conversationId: CONVERSATION,
@@ -375,7 +418,7 @@ describe("read_conversation", () => {
             role: "assistant" as const,
             turnIndex: 1,
             createdAt: "2026-10-18T09:00:00.000Z",
-            parts: [{ type: "text" as const, text: `BIG${String(i)} ` + "z".repeat(msgMax - 10) }],
+            parts: [{ type: "text" as const, text: `BIG${String(i)} ` + "z".repeat(CHUNK - 10) }],
           })),
           { role: "user" as const, turnIndex: 2, createdAt: "2026-10-18T09:05:00.000Z", parts: [{ type: "text" as const, text: "SECOND-TURN" }] },
         ],
@@ -737,10 +780,10 @@ function wellFormed(s: string): boolean {
 
 describe("read_conversation cuts each part on its own", () => {
   it("keeps the end of a short text part that follows several long tool calls", async () => {
-    const msgMax = getAgentConfig().records_message_max_chars;
+    const pageMax = getAgentConfig().records_page_max_chars;
     const toolMax = getAgentConfig().records_tool_text_max_chars;
-    // Enough cut tool lines that, together, they already pass the message cap.
-    const calls = Math.ceil(msgMax / toolMax) + 1;
+    // Enough cut tool lines that, together, they already pass a page.
+    const calls = Math.ceil(pageMax / toolMax) + 1;
     const end = "END-OF-THE-FINAL-TEXT";
     const recs = records({
       readConversation: vi.fn().mockResolvedValue({
@@ -775,7 +818,7 @@ describe("read_conversation cuts each part on its own", () => {
   });
 
   it("cuts a long text part after a tool call and counts only what that part lost", async () => {
-    const max = getAgentConfig().records_message_max_chars;
+    const max = getAgentConfig().records_page_max_chars;
     const tail = "END-OF-THE-LONG-MESSAGE";
     const recs = records({
       readConversation: vi.fn().mockResolvedValue({
@@ -861,12 +904,11 @@ describe("the conversation tools' descriptions", () => {
 });
 
 describe("a version's text content", () => {
-  it("is cut at the message cap, not the tool text cap", async () => {
+  it("is cut at the version text cap, not the tool text cap", async () => {
     const toolMax = getAgentConfig().records_tool_text_max_chars;
-    const msgMax = getAgentConfig().records_message_max_chars;
     const end = "VERSION-TEXT-END";
     const text = "t".repeat(toolMax + 200) + end;
-    expect(text.length).toBeLessThan(msgMax);
+    expect(text.length).toBeLessThan(versionMax());
     const recs = records({
       nodeRecords: vi.fn().mockResolvedValue({
         tasks: { rows: [], total: 0 },
@@ -875,5 +917,67 @@ describe("a version's text content", () => {
     });
 
     expect(await call(NODE, { node_id: NODE_ID }, recs)).toContain(text);
+  });
+});
+
+describe("a version's content and prompt", () => {
+  it("writes a text that starts with a link as text: cut, and on the version's one line", async () => {
+    expect(versionMax()).toBeGreaterThan(0);
+    const tail = "TEXT-AFTER-THE-LINK-TAIL";
+    const content = `https://example.com/x\nSECOND-LINE-START ${"s".repeat(versionMax())}${tail}`;
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({
+        tasks: { rows: [], total: 0 },
+        versions: { rows: [version({ entryType: "snapshot", content, metadata: {} })], total: 1 },
+      }),
+    });
+
+    const lines = (await call(NODE, { node_id: NODE_ID }, recs)).split("\n");
+    const line = lines.find((l) => l.includes("https://example.com/x"));
+
+    expect(line).toBeDefined();
+    expect(line).toContain("SECOND-LINE-START");
+    expect(line).toMatch(/more characters cut/);
+    expect(lines.some((l) => l.includes(tail))).toBe(false);
+  });
+
+  it("writes a content that is one link and nothing else as it is", async () => {
+    const url = "https://cdn.example/only-a-link.png";
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({ tasks: { rows: [], total: 0 }, versions: { rows: [version({ content: url })], total: 1 } }),
+    });
+
+    const answer = await call(NODE, { node_id: NODE_ID }, recs);
+
+    expect(answer).toContain(`content ${url}`);
+    expect(answer).not.toMatch(/more characters cut/);
+  });
+
+  it("cuts a prompt and a text content longer than the version text cap, saying how much each lost", async () => {
+    expect(versionMax()).toBeGreaterThan(0);
+    const promptTail = "PROMPT-TAIL-GONE";
+    const contentTail = "CONTENT-TAIL-GONE-NOW";
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({
+        tasks: { rows: [], total: 0 },
+        versions: {
+          rows: [
+            version({
+              entryType: "generation",
+              content: "c".repeat(versionMax()) + contentTail,
+              metadata: { model: "gpt-text", params: { prompt: "p".repeat(versionMax()) + promptTail } },
+            }),
+          ],
+          total: 1,
+        },
+      }),
+    });
+
+    const answer = await call(NODE, { node_id: NODE_ID }, recs);
+
+    expect(answer).not.toContain(promptTail);
+    expect(answer).not.toContain(contentTail);
+    expect(answer).toContain(`[${String(promptTail.length)} more characters cut]`);
+    expect(answer).toContain(`[${String(contentTail.length)} more characters cut]`);
   });
 });

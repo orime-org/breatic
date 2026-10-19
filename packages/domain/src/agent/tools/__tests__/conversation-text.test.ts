@@ -178,6 +178,27 @@ describe("a message written out", () => {
     expect(text.split("\n")[0]?.endsWith("…")).toBe(true);
   });
 
+  it("writes a text part whole when it is shorter than a page", () => {
+    const pageMax = getAgentConfig().records_page_max_chars;
+    // Longer than the old 4000-character message cap, which no longer applies to text.
+    const long = "w".repeat(pageMax - 100);
+
+    expect(messageText([{ type: "text", text: long }])).toBe(long);
+  });
+
+  it("cuts a text part longer than a page and says how many characters that part lost", () => {
+    const pageMax = getAgentConfig().records_page_max_chars;
+    const tail = "TAIL-PAST-THE-PAGE";
+    const lost = 77;
+    const long = "v".repeat(pageMax + lost - tail.length) + tail;
+
+    const text = messageText([{ type: "text", text: long }]);
+
+    expect(text).toContain(`[${String(lost)} more characters cut]`);
+    expect(text).not.toContain(tail);
+    expect(text.startsWith("v".repeat(pageMax))).toBe(true);
+  });
+
   it("leaves out the thinking and the markers of how the turn ended", () => {
     const text = messageText([
       { type: "reasoning", text: "SECRET-THOUGHT" },

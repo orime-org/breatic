@@ -354,6 +354,21 @@ describe("searching the user's messages", () => {
     expect(await turns("UNPICKED-OPTION")).toEqual([]);
   });
 
+  it("matches a text part up to the length reading writes it, and no further", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const pageMax = getAgentConfig().records_page_max_chars;
+    // Past the old 4000-character cap, still within a page: reading shows it.
+    const shown = "SHOWN-PAST-FOUR-THOUSAND";
+    const cut = "CUT-PAST-THE-PAGE";
+    const text = `${"a".repeat(5000)} ${shown} ${"b".repeat(pageMax)} ${cut}`;
+    await seedMessage(other, turn.userId, { role: "user", turn: 1, parts: [said(text)] });
+    const records = recordsFor(turn);
+
+    expect((await records.searchMessages([shown], {})).hits.map((h) => h.turnIndex)).toEqual([1]);
+    expect((await records.searchMessages([cut], {})).hits).toEqual([]);
+  });
+
   it("finds an old single-question card by its question and by an option", async () => {
     const turn = await newTurn();
     const other = await seedConversation(turn.userId, turn.projectId);
@@ -737,6 +752,67 @@ describe("a cursor that no page gave", () => {
     await expect(records.searchMessages(["plum"], { cursor: listCursor! })).rejects.toEqual(refused);
     await expect(records.activity({ cursor: listCursor! })).rejects.toEqual(refused);
     await expect(records.listConversations(searchCursor!)).rejects.toEqual(refused);
+  });
+});
+
+describe("a cursor passed with another query or filter", () => {
+  it("is refused by search when the query or the conversation differs, and pages on with the same ones", async () => {
+    const turn = await newTurn();
+    const size = getAgentConfig().records_page_size;
+    const a = await seedConversation(turn.userId, turn.projectId);
+    const b = await seedConversation(turn.userId, turn.projectId);
+    for (let i = 0; i < size + 1; i++) {
+      await seedMessage(a, turn.userId, { role: "user", turn: i + 1, parts: [said(`damson pie ${String(i)}`)] });
+    }
+    const records = recordsFor(turn);
+    const refused = new RecordsRefused("bad_cursor");
+    const cursor = (await records.searchMessages(["damson"], {})).nextCursor;
+    const inA = (await records.searchMessages(["damson"], { conversationId: a })).nextCursor;
+    expect(cursor).not.toBeNull();
+    expect(inA).not.toBeNull();
+
+    await expect(records.searchMessages(["pie"], { cursor: cursor! })).rejects.toEqual(refused);
+    await expect(records.searchMessages(["damson", "pie"], { cursor: cursor! })).rejects.toEqual(refused);
+    await expect(records.searchMessages(["damson"], { conversationId: a, cursor: cursor! })).rejects.toEqual(refused);
+    await expect(records.searchMessages(["damson"], { conversationId: b, cursor: inA! })).rejects.toEqual(refused);
+    await expect(records.searchMessages(["damson"], { cursor: inA! })).rejects.toEqual(refused);
+    await expect(records.searchMessages(["damson"], { cursor: cursor! })).resolves.toMatchObject({ hits: [expect.anything()] });
+    await expect(records.searchMessages(["damson"], { conversationId: a, cursor: inA! })).resolves.toMatchObject({
+      hits: [expect.anything()],
+    });
+  });
+
+  it("is refused by the activity feed when the Space filter differs, and pages on with the same one", async () => {
+    const turn = await newTurn();
+    const { getActivityFeedPageLimits } = await import("@server/config/limits.js");
+    const size = getActivityFeedPageLimits().default;
+    const cover = crypto.randomUUID();
+    const storyboard = crypto.randomUUID();
+    for (let i = 0; i < size + 1; i++) {
+      await seedActivity(turn.projectId, turn.userId, {
+        spaceId: cover,
+        at: new Date(Date.parse("2026-10-06T00:00:00.000Z") + i * 1000).toISOString(),
+      });
+    }
+    await seedActivity(turn.projectId, turn.userId, { spaceId: storyboard });
+    const records = recordsFor({
+      ...turn,
+      spaces: [
+        { id: cover, name: "Cover", kind: "canvas" },
+        { id: storyboard, name: "Storyboard", kind: "canvas" },
+      ],
+    });
+    const refused = new RecordsRefused("bad_cursor");
+    const inCover = (await records.activity({ spaceName: "Cover" })).nextCursor;
+    const unfiltered = (await records.activity({})).nextCursor;
+    expect(inCover).not.toBeNull();
+    expect(unfiltered).not.toBeNull();
+
+    await expect(records.activity({ cursor: inCover! })).rejects.toEqual(refused);
+    await expect(records.activity({ spaceName: "Storyboard", cursor: inCover! })).rejects.toEqual(refused);
+    await expect(records.activity({ spaceName: "Cover", cursor: unfiltered! })).rejects.toEqual(refused);
+    const next = await records.activity({ spaceName: "Cover", cursor: inCover! });
+    expect(next.items.map((i) => i.spaceId)).toEqual([cover]);
   });
 });
 
