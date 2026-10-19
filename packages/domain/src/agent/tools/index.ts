@@ -21,6 +21,7 @@ import {
   PROPOSE_DOCUMENT_EDIT,
   READ_CONVERSATION,
   READ_NODE_HISTORY,
+  RECORD_TOOL_NAMES,
   SAVE_IMAGE,
   SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
@@ -109,10 +110,7 @@ export const BASELINE_TOOLS: readonly string[] = [
   JUDGE_LIKELIHOOD,
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
-  SEARCH_CONVERSATIONS,
-  READ_CONVERSATION,
-  READ_NODE_HISTORY,
-  LIST_PROJECT_ACTIVITY,
+  ...RECORD_TOOL_NAMES,
 ];
 
 /**
@@ -137,13 +135,10 @@ export {
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
-  LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
-  READ_CONVERSATION,
-  READ_NODE_HISTORY,
+  RECORD_TOOL_NAMES,
   SAVE_IMAGE,
-  SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
 
 /**

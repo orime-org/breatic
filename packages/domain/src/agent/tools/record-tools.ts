@@ -35,6 +35,7 @@ import {
   READ_CONVERSATION,
   READ_NODE_HISTORY,
   SEARCH_CONVERSATIONS,
+  type RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/tool-names.js";
 import { rowDeadline } from "@domain/node-task/node-task.service.js";
 
@@ -65,15 +66,22 @@ const DATA_NOTE =
 const TIME_NOTE =
   "Times are UTC; tell them to the user in their own time zone, which the clock note on each of their messages gives.";
 
+/** What the model named in a call, for the refusals that quote it. */
+interface Named {
+  conversationId?: string;
+  spaceName?: string;
+  cursor?: string;
+}
+
 /**
  * The error a record tool throws when its read did not come back.
  * @param err - What the read threw.
  * @param signal - The turn's signal.
- * @param conversationId - The conversation the model named, if it named one.
+ * @param named - What the model named in the call.
  * @returns The error to throw.
  * @throws {never} Never.
  */
-function readFailure(err: unknown, signal: AbortSignal | undefined, conversationId?: string): Error {
+function readFailure(err: unknown, signal: AbortSignal | undefined, named: Named): Error {
   if (isStop(err, signal)) return stoppedByUser();
   if (err instanceof RecordsRefused && err.kind === "not_member") {
     return toolFailed(
@@ -84,8 +92,20 @@ function readFailure(err: unknown, signal: AbortSignal | undefined, conversation
   }
   if (err instanceof RecordsRefused && err.kind === "unknown_conversation") {
     return turnedAway(
-      `No conversation with id ${String(conversationId)} among this user's live conversations in this project. ` +
+      `No conversation with id ${String(named.conversationId)} among this user's live conversations in this project. ` +
         `${SEARCH_CONVERSATIONS} called without a query lists the ones there are.`,
+    );
+  }
+  if (err instanceof RecordsRefused && err.kind === "unknown_space") {
+    return turnedAway(
+      `No Space named ${JSON.stringify(String(named.spaceName))} in the list of Spaces in the user's message; ` +
+        "a Space is named here exactly as that list writes it.",
+    );
+  }
+  if (err instanceof RecordsRefused && err.kind === "bad_cursor") {
+    return turnedAway(
+      `The cursor ${JSON.stringify(String(named.cursor))} is not one a page of this tool gave. A cursor is the one ` +
+        "the end of the previous page gave, passed back as written; with none, the list starts from the newest.",
     );
   }
   return toolFailed("Reading the records failed on our side. Trying once more may work.", FAILURE_LINES.ourFault, err);
@@ -95,15 +115,15 @@ function readFailure(err: unknown, signal: AbortSignal | undefined, conversation
  * Run one read, turning what it throws into the tool's failure.
  * @param read - The read.
  * @param signal - The turn's signal.
- * @param conversationId - The conversation the model named, if it named one.
+ * @param named - What the model named in the call.
  * @returns What the read answered.
  * @throws {Error} The failure the model reads.
  */
-async function guarded<T>(read: () => Promise<T>, signal: AbortSignal | undefined, conversationId?: string): Promise<T> {
+async function guarded<T>(read: () => Promise<T>, signal: AbortSignal | undefined, named: Named = {}): Promise<T> {
   try {
     return await read();
   } catch (err) {
-    throw readFailure(err, signal, conversationId);
+    throw readFailure(err, signal, named);
   }
 }
 
@@ -203,13 +223,12 @@ function cutMessage(text: string): string {
 /**
  * Whole turns of a conversation, as many as fit one page.
  * @param read - What the read answered.
- * @param current - Whether it is the conversation this turn is in.
  * @returns The text.
  * @throws {never} Never.
  */
-function turnPage(read: ConversationTurns, current: boolean): string {
+function turnPage(read: ConversationTurns): string {
   const pageMax = getAgentConfig().records_page_max_chars;
-  const head = `Conversation ${read.conversationId} ${titled(read.title)}${current ? " (this conversation)" : ""}.`;
+  const head = `Conversation ${read.conversationId} ${titled(read.title)}${read.current ? " (this conversation)" : ""}.`;
   const turns: { index: number; text: string }[] = [];
   for (const m of read.messages) {
     const line = `${m.role}: ${cutMessage(messageText(m.parts))}`;
@@ -296,7 +315,7 @@ function versionLine(v: NodeHistoryEntity): string {
     `- ${v.entryType}`,
     v.status,
     ...(str(meta, "model") ? [`model ${String(str(meta, "model"))}`] : []),
-    ...(str(meta, "toolName") ? [`mini-tool ${String(str(meta, "toolName"))}`] : []),
+    ...(str(meta, "toolId") ? [`mini-tool ${String(str(meta, "toolId"))}`] : []),
     ...(prompt === undefined ? [] : [`prompt ${JSON.stringify(clip(onOneLine(prompt), cfg.records_message_max_chars))}`]),
     ...(Object.keys(rest).length > 0 ? [`params ${clip(JSON.stringify(rest), cfg.records_params_max_chars)}`] : []),
     ...(typeof credits === "number" ? [`${String(credits)} credits`] : []),
@@ -360,6 +379,17 @@ function nodePage(nodeId: string, recs: NodeRecords, offsets: { tasks: number; v
 }
 
 /**
+ * Whether an entry is a member leaving of their own accord: a removal whose
+ * actor removed themselves, as the activity panel tells it.
+ * @param e - The entry.
+ * @returns True for a leave.
+ * @throws {never} Never.
+ */
+function isLeave(e: ProjectActivityEntry): boolean {
+  return e.type === "member:removed" && e.actorUserId !== null && e.payload["targetUserId"] === e.actorUserId;
+}
+
+/**
  * One activity entry, on one line.
  * @param e - The entry.
  * @param records - The turn's records, for a Space the entry does not name.
@@ -374,7 +404,8 @@ function activityLine(e: ProjectActivityEntry, records: ProjectRecords): string 
   const parts = [
     `- ${new Date(e.createdAt).toISOString()}`,
     e.actorName ?? "the system",
-    e.type,
+    isLeave(e) ? "left the project" : e.type,
+    ...(str(p, "kind") ? [String(str(p, "kind"))] : []),
     ...(e.spaceId === null ? [] : [`Space ${e.spaceId}${spaceName === undefined ? "" : ` ${JSON.stringify(onOneLine(spaceName))}`}`]),
     ...(oldName === undefined ? [] : [`renamed from ${JSON.stringify(onOneLine(oldName))}`]),
     ...(e.nodeId === null ? [] : [`node ${e.nodeId}`]),
@@ -411,8 +442,9 @@ const readInput = z
       .uuid()
       .optional()
       .describe(`The conversation, by the id ${SEARCH_CONVERSATIONS} gives. Leave it out to read this conversation.`),
-    from_turn: z.number().int().min(1).optional().describe("The first turn to read; the first turn when left out."),
-    to_turn: z.number().int().min(1).optional().describe("The last turn to read."),
+    // A turn index is a Postgres int4.
+    from_turn: z.number().int().min(1).max(2147483647).optional().describe("The first turn to read; the first turn when left out."),
+    to_turn: z.number().int().min(1).max(2147483647).optional().describe("The last turn to read."),
   })
   .strict();
 
@@ -432,11 +464,15 @@ const nodeInput = z
 
 const activityInput = z
   .object({
-    space_id: z
+    space: z
       .string()
-      .uuid()
+      .min(1)
+      .max(200)
       .optional()
-      .describe("Only this Space's activity, by the id the list of Spaces in the user's message gives."),
+      .describe(
+        "Only this Space's activity, by its name as the list of Spaces in the user's message gives it; " +
+          "every Space of that name counts.",
+      ),
     cursor: z.string().min(1).optional().describe("The cursor the previous page ended with, to read the next one."),
   })
   .strict();
@@ -461,12 +497,12 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
     const { records } = context;
     const terms = (query ?? "").trim().split(/\s+/).filter(Boolean).slice(0, getAgentConfig().records_search_max_terms);
     if (terms.length === 0) {
-      return conversationList(await guarded(() => records.listConversations(cursor), abortSignal));
+      return conversationList(await guarded(() => records.listConversations(cursor), abortSignal, { cursor }));
     }
     const page = await guarded(
       () => records.searchMessages(terms, { conversationId: conversation_id, cursor }),
       abortSignal,
-      conversation_id,
+      { conversationId: conversation_id, cursor },
     );
     return hitList(page, terms);
   },
@@ -488,9 +524,9 @@ const readConversation: Tool<z.infer<typeof readInput>, string, RecordsContext> 
     const read = await guarded(
       () => context.records.readConversation(conversation_id, { fromTurn: from_turn, toTurn: to_turn }),
       abortSignal,
-      conversation_id,
+      { conversationId: conversation_id },
     );
-    return turnPage(read, conversation_id === undefined);
+    return turnPage(read);
   },
 });
 
@@ -522,27 +558,31 @@ const listProjectActivity: Tool<z.infer<typeof activityInput>, string, RecordsCo
     "Read what happened in this project, newest first, as the Project activity panel shows it: uploads, " +
     "generations and their results, Spaces created, renamed, deleted or locked, and members joining, leaving " +
     "or changing role. Each entry says when, who, what, in which Space and on which node, with the model, " +
-    `credits and result of a generation. Give a Space to keep to it, and pass a node id it names to ` +
+    "credits and result of a generation. Give a Space's name, as the list of Spaces in the user's message " +
+    "writes it, to keep to that Space; every Space of that name counts. Pass a node id an entry names to " +
     `${READ_NODE_HISTORY} for that node's whole history. Pages end with a cursor to pass back for the next ` +
     `one. ${DATA_NOTE} ${TIME_NOTE}`,
   inputSchema: activityInput,
   contextSchema: recordsContextSchema,
   metadata: { runningLine: "chat.tool.readingActivity" },
-  execute: async ({ space_id, cursor }, { abortSignal, context }: RecordsOptions): Promise<string> => {
+  execute: async ({ space, cursor }, { abortSignal, context }: RecordsOptions): Promise<string> => {
     const { records } = context;
-    const page = await guarded(() => records.activity({ spaceId: space_id, cursor }), abortSignal);
+    const page = await guarded(() => records.activity({ spaceName: space, cursor }), abortSignal, {
+      spaceName: space,
+      cursor,
+    });
     const head =
       `${count(page.total, "entry", "entries")} in this project's activity` +
-      `${space_id === undefined ? "" : ` in Space ${space_id}`}; this page holds ${String(page.items.length)}, newest first.`;
+      `${space === undefined ? "" : ` in Space ${JSON.stringify(space)}`}; this page holds ${String(page.items.length)}, newest first.`;
     const tail = page.nextCursor === null ? [] : [`More: call again with cursor=${page.nextCursor}`];
     return [head, ...page.items.map((e) => activityLine(e, records)), ...tail].join("\n");
   },
 });
 
-/** The four record tools, by name. */
+/** The four record tools, by name: one for each of `RECORD_TOOL_NAMES`. */
 export const recordTools = {
   [SEARCH_CONVERSATIONS]: searchConversations,
   [READ_CONVERSATION]: readConversation,
   [READ_NODE_HISTORY]: readNodeHistory,
   [LIST_PROJECT_ACTIVITY]: listProjectActivity,
-} as const;
+} as const satisfies Record<(typeof RECORD_TOOL_NAMES)[number], unknown>;

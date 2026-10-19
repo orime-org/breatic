@@ -12,7 +12,7 @@
  */
 
 import { and, or, eq, lt, desc, isNull, inArray, sql, type SQL } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { db, type ActivityCursor } from "@breatic/core";
 import {
   conversations,
   conversationAttachments,
@@ -168,13 +168,6 @@ export async function listConversations(
   };
 }
 
-/** Where a page of conversations continues from, with the time as the text Postgres renders. */
-export interface ConversationTextCursor {
-  /** `updated_at` as text, at the precision the column stores. */
-  updatedAt: string;
-  id: string;
-}
-
 /** One of a user's conversations, with how many turns it holds and where a page after it starts. */
 export interface ConversationWithTurns {
   conversation: ConversationEntity;
@@ -205,20 +198,21 @@ function liveInProject(userId: string, projectId: string): SQL[] {
  * @param projectId - The project.
  * @param opts - The page.
  * @param opts.limit - How many the page holds.
- * @param opts.after - Where the previous page stopped.
+ * @param opts.after - Where the previous page stopped: the last row's
+ *   `updated_at` as text (in the cursor's `createdAt`) and its id.
  * @returns The page, and whether the list goes on past it.
  */
 export async function listWithTurnCounts(
   userId: string,
   projectId: string,
-  opts: { limit: number; after?: ConversationTextCursor },
+  opts: { limit: number; after?: ActivityCursor },
 ): Promise<{ rows: ConversationWithTurns[]; hasMore: boolean }> {
   const { limit, after } = opts;
   const conditions = liveInProject(userId, projectId);
   if (after !== undefined) {
     // The text cursor, not a Date: the column keeps microseconds.
     conditions.push(
-      sql`(${conversations.updatedAt}, ${conversations.id}) < (${after.updatedAt}::timestamptz, ${after.id}::uuid)`,
+      sql`(${conversations.updatedAt}, ${conversations.id}) < (${after.createdAt}::timestamptz, ${after.id}::uuid)`,
     );
   }
   const rows = await db

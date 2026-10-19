@@ -8,16 +8,18 @@
  * answers to a questionnaire live in the `ask_user` call's result, and a
  * proposal's prompts in the call's input. Reading a conversation back carries
  * those, and leaves out what was never shown as said -- the model's thinking
- * and the markers of how a turn ended. The search in the server matches the
- * same strings: the text parts, and every string inside a tool's input and
- * result.
+ * and the markers of how a turn ended. A record tool's call is written
+ * without its result, which is a copy of records found elsewhere. The search
+ * in the server matches only words this writes out: the text parts, the
+ * attachments' names, a questionnaire's questions and the answers given, and
+ * the strings of every other tool's input, cut to the same length.
  */
 
 import { getAgentConfig } from "@breatic/core";
 import { readQuestionnaire, type AskUserResult, type MessagePart } from "@breatic/shared";
 
 import { clip } from "@domain/agent/tools/failure.js";
-import { ASK_USER } from "@domain/agent/tools/tool-names.js";
+import { ASK_USER, RECORD_TOOL_NAMES } from "@domain/agent/tools/tool-names.js";
 
 type ToolPart = Extract<MessagePart, { type: "tool" }>;
 
@@ -37,12 +39,25 @@ function stringsOf(value: unknown): string[] {
 /**
  * A tool's words, cut to the configured length.
  * @param value - Its input or result.
- * @returns The strings joined, with a leading space, or nothing when it holds none.
+ * @returns The strings joined, with a leading space and ending with `…` where
+ *   they were cut, or nothing when it holds none.
  * @throws {never} Never.
  */
 function wordsOf(value: unknown): string {
   const words = stringsOf(value).join(" ");
-  return words === "" ? "" : ` ${clip(words, getAgentConfig().records_tool_text_max_chars)}`;
+  if (words === "") return "";
+  const cut = clip(words, getAgentConfig().records_tool_text_max_chars);
+  return ` ${cut}${cut === words ? "" : "…"}`;
+}
+
+/**
+ * Whether a tool is one of the record tools, whose results copy records kept elsewhere.
+ * @param name - The tool's name.
+ * @returns True for a record tool.
+ * @throws {never} Never.
+ */
+function isRecordTool(name: string): boolean {
+  return (RECORD_TOOL_NAMES as readonly string[]).includes(name);
 }
 
 /**
@@ -80,7 +95,8 @@ function toolLines(part: ToolPart): string[] {
   const questionnaire = part.toolName === ASK_USER ? readQuestionnaire(part.input) : null;
   if (questionnaire) return questionnaireLines(questionnaire.questions, part.output);
   const called = `[called ${part.toolName}]${wordsOf(part.input)}`;
-  return part.output === undefined ? [called] : [called, `[${part.toolName} answered]${wordsOf(part.output)}`];
+  if (part.output === undefined || isRecordTool(part.toolName)) return [called];
+  return [called, `[${part.toolName} answered]${wordsOf(part.output)}`];
 }
 
 /**

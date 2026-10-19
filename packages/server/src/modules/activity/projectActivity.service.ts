@@ -58,14 +58,14 @@ export async function recordProjectActivity(
  * @param rawCursor - Opaque cursor from the previous page, if any.
  * @param rawLimit - Requested page size; clamped to [1, 100], default 50.
  * @param opts - Optional narrowing.
- * @param opts.spaceId - Keep to this Space's entries.
+ * @param opts.spaceIds - Keep to these Spaces' entries.
  * @returns The page items + the next opaque cursor (null at the end).
  */
 export async function listProjectActivities(
   projectId: string,
   rawCursor: string | undefined,
   rawLimit: number | undefined,
-  opts: { spaceId?: string } = {},
+  opts: { spaceIds?: readonly string[] } = {},
 ): Promise<ProjectActivityPage> {
   const pageLimits = getActivityFeedPageLimits();
   const limit = Math.min(
@@ -89,9 +89,9 @@ export async function listProjectActivities(
  * How many entries a project's activity feed holds.
  * @param projectId - Project whose feed to count.
  * @param opts - Optional narrowing.
- * @param opts.spaceId - Count only this Space's entries.
+ * @param opts.spaceIds - Count only these Spaces' entries.
  * @returns The count.
  */
-export async function countProjectActivities(projectId: string, opts: { spaceId?: string } = {}): Promise<number> {
+export async function countProjectActivities(projectId: string, opts: { spaceIds?: readonly string[] } = {}): Promise<number> {
   return projectActivitiesRepo.countByProject(projectId, opts);
 }

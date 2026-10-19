@@ -14,21 +14,15 @@
 
 import type { ChatSpaceContext } from "@breatic/shared";
 import {
-  LIST_PROJECT_ACTIVITY,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
-  READ_CONVERSATION,
-  READ_NODE_HISTORY,
+  RECORD_TOOL_NAMES,
   SAVE_IMAGE,
-  SEARCH_CONVERSATIONS,
   usageContextFor,
   type OpenDocument,
   type ProjectRecords,
   type SaveToStorage,
 } from "@breatic/domain";
-
-/** The tools that read the user's records, each handed the turn's records. */
-const RECORD_TOOLS = [SEARCH_CONVERSATIONS, READ_CONVERSATION, READ_NODE_HISTORY, LIST_PROJECT_ACTIVITY] as const;
 
 type UsageRecorder = Parameters<typeof usageContextFor>[1];
 
@@ -58,7 +52,7 @@ export function turnToolsContext(
   if (context[PROPOSE_DOCUMENT_EDIT]) {
     context[PROPOSE_DOCUMENT_EDIT] = { ...context[PROPOSE_DOCUMENT_EDIT], openDocument: turn.openDocument };
   }
-  for (const name of RECORD_TOOLS) {
+  for (const name of RECORD_TOOL_NAMES) {
     if (context[name]) context[name] = { ...context[name], records: turn.records };
   }
   return context;

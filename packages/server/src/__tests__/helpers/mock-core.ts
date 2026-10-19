@@ -24,10 +24,7 @@ import {
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
-  SEARCH_CONVERSATIONS as REAL_SEARCH_CONVERSATIONS,
-  READ_CONVERSATION as REAL_READ_CONVERSATION,
-  READ_NODE_HISTORY as REAL_READ_NODE_HISTORY,
-  LIST_PROJECT_ACTIVITY as REAL_LIST_PROJECT_ACTIVITY,
+  RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 // Pure rules about an address a caller hands over, which the routes read off
@@ -639,10 +636,7 @@ export const domainMock = () => ({
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
   // Read by the turn when it hands the record tools the turn's records (inner#1469).
-  SEARCH_CONVERSATIONS: REAL_SEARCH_CONVERSATIONS,
-  READ_CONVERSATION: REAL_READ_CONVERSATION,
-  READ_NODE_HISTORY: REAL_READ_NODE_HISTORY,
-  LIST_PROJECT_ACTIVITY: REAL_LIST_PROJECT_ACTIVITY,
+  RECORD_TOOL_NAMES: REAL_RECORD_TOOL_NAMES,
   extFromUrl: REAL_EXT_FROM_URL,
   labelForUrl: REAL_LABEL_FOR_URL,
   readerUrlSchema: REAL_READER_URL_SCHEMA,

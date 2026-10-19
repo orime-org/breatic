@@ -110,10 +110,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
-  SEARCH_CONVERSATIONS,
-  READ_CONVERSATION,
-  READ_NODE_HISTORY,
-  LIST_PROJECT_ACTIVITY,
+  RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";

@@ -26,8 +26,10 @@ import {
   conversationMessages,
   getAgentConfig,
   NotFoundError,
+  type ActivityCursor,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
 
@@ -499,13 +501,6 @@ export async function getMessagesForLlm(
   });
 }
 
-/** Where a page of search hits continues from, with the time as the text Postgres renders. */
-export interface MessageTextCursor {
-  /** `created_at` as text, at the precision the column stores. */
-  createdAt: string;
-  id: string;
-}
-
 /** One message whose readable strings hold every search term (inner#1469). */
 export interface MessageSearchRow {
   id: string;
@@ -517,7 +512,7 @@ export interface MessageSearchRow {
   createdAt: string;
   /** `created_at` as text, at the precision the column stores, for a cursor. */
   cursorAt: string;
-  /** The message's readable strings joined with spaces. */
+  /** The message's searchable words joined with spaces. */
   body: string;
 }
 
@@ -531,32 +526,80 @@ function containsPattern(term: string): string {
 }
 
 /**
+ * Text values as a Postgres `text[]`.
+ * @param values - The values, each a bind parameter.
+ * @returns The array expression.
+ */
+function textArray(values: readonly string[]): SQL {
+  return sql`ARRAY[${sql.join(values.map((v) => sql`${v}`), sql`, `)}]::text[]`;
+}
+
+/**
+ * The strings a jsonpath finds in a value, joined with spaces; null when it finds none.
+ * @param value - The jsonb value.
+ * @param path - The jsonpath.
+ * @returns The expression.
+ */
+function joinedStrings(value: SQL, path: string): SQL {
+  return sql`(SELECT string_agg(v #>> '{}', ' ') FROM jsonb_path_query(${value}, ${path}::jsonpath, '{}', true) AS v)`;
+}
+
+/**
+ * The words of one message part that a search matches: only words reading
+ * the message back shows (`messageText` in domain). A text part's text, an
+ * attachment's name, a questionnaire's questions with the options picked and
+ * what was written on its Other line, and the strings of any other tool's
+ * input, cut as reading cuts them. A record tool's call, its result and every
+ * other tool's result are not matched: the record tools' words are copies of
+ * records found elsewhere, and the other results are catalogues and data the
+ * user never said.
+ * @param part - The part, as a jsonb expression.
+ * @returns The expression; null for a part with nothing to match.
+ */
+function searchableWords(part: SQL): SQL {
+  const toolTextMax = getAgentConfig().records_tool_text_max_chars;
+  return sql`CASE
+    WHEN ${part}->>'type' = 'text' THEN ${part}->>'text'
+    WHEN ${part}->>'type' = 'attachment' THEN ${part}#>>'{chip,name}'
+    WHEN ${part}->>'type' <> 'tool' THEN NULL
+    WHEN ${part}->>'toolName' = ${ASK_USER} THEN concat_ws(' ',
+      ${joinedStrings(part, 'lax $.input.questions[*].question ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.output.answers[*].selected[*] ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.output.answers[*].other ? (@.type() == "string")')})
+    WHEN ${part}->>'toolName' = ANY(${textArray(RECORD_TOOL_NAMES)}) THEN NULL
+    ELSE left(${joinedStrings(sql`${part}->'input'`, 'strict $.** ? (@.type() == "string")')}, ${toolTextMax}::int)
+  END`;
+}
+
+/**
  * The searchable messages: each live message of the user's live
- * conversations in the project, as one row holding its readable strings --
- * the text parts and every string inside a tool's input and result -- and
- * matching every term. The turn now running is left out.
+ * conversations in the project, as one row holding its searchable words in
+ * part order. The turn now running is left out.
  * @param scope - Whose messages, and which to leave out.
  * @param scope.userId - The user.
  * @param scope.projectId - The project.
  * @param scope.currentConversationId - The conversation the turn runs in.
  * @param scope.turnIndex - The turn now running.
  * @param scope.conversationId - One conversation to keep to.
- * @param terms - The terms, each of which must appear.
- * @returns The CTE body and its match condition.
+ * @returns The query, for a CTE.
  */
-function searchable(
-  scope: { userId: string; projectId: string; currentConversationId: string; turnIndex: number; conversationId?: string },
-  terms: readonly string[],
-): { readable: SQL; matches: SQL } {
-  const readable = sql`
+function searchable(scope: {
+  userId: string;
+  projectId: string;
+  currentConversationId: string;
+  turnIndex: number;
+  conversationId?: string;
+}): SQL {
+  return sql`
     SELECT m.id, m.conversation_id, m.turn_index, m.role, m.created_at, c.title,
-           array_to_string(array(
-             SELECT jsonb_path_query(m.parts, 'strict $[*] ? (@.type == "text").text', '{}', true) #>> '{}'
-             UNION ALL
-             SELECT jsonb_path_query(m.parts, 'strict $[*] ? (@.type == "tool").input.** ? (@.type() == "string")', '{}', true) #>> '{}'
-             UNION ALL
-             SELECT jsonb_path_query(m.parts, 'strict $[*] ? (@.type == "tool").output.** ? (@.type() == "string")', '{}', true) #>> '{}'
-           ), ' ') AS body
+           coalesce((
+             SELECT string_agg(w.words, ' ' ORDER BY w.ord)
+             FROM (
+               SELECT p.ord, ${searchableWords(sql`p.part`)} AS words
+               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m.parts) = 'array' THEN m.parts END)
+                    WITH ORDINALITY AS p(part, ord)
+             ) w
+           ), '') AS body
     FROM conversation_messages m
     JOIN conversations c ON c.id = m.conversation_id
     WHERE c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
@@ -564,8 +607,6 @@ function searchable(
       AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
       ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}
   `;
-  const patterns = sql.join(terms.map((term) => sql`${containsPattern(term)}`), sql`, `);
-  return { readable, matches: sql`body ILIKE ALL (ARRAY[${patterns}]::text[])` };
 }
 
 /**
@@ -581,43 +622,44 @@ function searchable(
  * @param page - The page.
  * @param page.limit - How many hits it holds.
  * @param page.after - Where the previous page stopped.
- * @returns The hits, whether there are more, and the total.
+ * @returns The hits, whether there are more, and the total; the total is 0
+ *   when the page is empty, read past the last hit or not.
  */
 export async function searchMessages(
   scope: { userId: string; projectId: string; currentConversationId: string; turnIndex: number; conversationId?: string },
   terms: readonly string[],
-  page: { limit: number; after?: MessageTextCursor },
+  page: { limit: number; after?: ActivityCursor },
 ): Promise<{ rows: MessageSearchRow[]; hasMore: boolean; total: number }> {
-  const { readable, matches } = searchable(scope, terms);
   const keyset =
     page.after === undefined
       ? sql``
-      : sql`AND (created_at, id) < (${page.after.createdAt}::timestamptz, ${page.after.id}::uuid)`;
-  const [rows, counted] = await Promise.all([
-    db.execute<{
-      id: string;
-      conversation_id: string;
-      title: string | null;
-      turn_index: number;
-      role: "user" | "assistant";
-      created_iso: string;
-      cursor_at: string;
-      body: string;
-    }>(sql`
-      WITH readable AS (${readable})
-      SELECT id, conversation_id, title, turn_index, role, body,
-             to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_iso,
-             created_at::text AS cursor_at
+      : sql`WHERE (created_at, id) < (${page.after.createdAt}::timestamptz, ${page.after.id}::uuid)`;
+  const rows = await db.execute<{
+    id: string;
+    conversation_id: string;
+    title: string | null;
+    turn_index: number;
+    role: "user" | "assistant";
+    created_iso: string;
+    cursor_at: string;
+    body: string;
+    total: number;
+  }>(sql`
+    WITH readable AS (${searchable(scope)}),
+    hits AS (
+      -- Counted before the keyset, so every page carries the whole total.
+      SELECT *, count(*) OVER ()::int AS total
       FROM readable
-      WHERE ${matches} ${keyset}
-      ORDER BY created_at DESC, id DESC
-      LIMIT ${page.limit + 1}
-    `),
-    db.execute<{ total: number }>(sql`
-      WITH readable AS (${readable})
-      SELECT count(*)::int AS total FROM readable WHERE ${matches}
-    `),
-  ]);
+      WHERE body ILIKE ALL (${textArray(terms.map(containsPattern))})
+    )
+    SELECT id, conversation_id, title, turn_index, role, body, total,
+           to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_iso,
+           created_at::text AS cursor_at
+    FROM hits
+    ${keyset}
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${page.limit + 1}
+  `);
   const list = [...rows];
   return {
     rows: list.slice(0, page.limit).map((r) => ({
@@ -631,7 +673,7 @@ export async function searchMessages(
       body: r.body,
     })),
     hasMore: list.length > page.limit,
-    total: counted[0]?.total ?? 0,
+    total: list[0]?.total ?? 0,
   };
 }
 

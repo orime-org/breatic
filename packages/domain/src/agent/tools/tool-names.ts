@@ -88,3 +88,6 @@ export const READ_NODE_HISTORY = "read_node_history";
 
 /** Read the project's activity feed. */
 export const LIST_PROJECT_ACTIVITY = "list_project_activity";
+
+/** The four record tools' names, the one list every place that treats them alike reads. */
+export const RECORD_TOOL_NAMES = [SEARCH_CONVERSATIONS, READ_CONVERSATION, READ_NODE_HISTORY, LIST_PROJECT_ACTIVITY] as const;

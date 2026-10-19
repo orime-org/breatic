@@ -6,7 +6,7 @@
  *
  * Bound to the turn's user, project, conversation, turn index and Spaces, all
  * of which come from the server's own state for the turn; the model only
- * names a conversation, node or Space and how far to page. Every read checks
+ * names a conversation, node or Space name and how far to page. Every read checks
  * first that the user is still a member of the project, and a conversation
  * the model names must be the user's own, in this project, and live. What
  * comes back is only what the user sees on screen.
@@ -18,8 +18,9 @@ import {
   ForbiddenError,
   getAgentConfig,
   NotFoundError,
+  type ActivityCursor,
 } from "@breatic/core";
-import { nodeHistoryRepo, nodeTaskService, RecordsRefused, type ProjectRecords } from "@breatic/domain";
+import { nodeHistoryService, nodeTaskService, RecordsRefused, type ProjectRecords } from "@breatic/domain";
 import type { ChatSpace, ConversationEntity } from "@breatic/shared";
 import { projectService, studioService } from "@server/modules";
 import { countProjectActivities, listProjectActivities } from "@server/modules/activity/projectActivity.service.js";
@@ -83,14 +84,16 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
   const pageSize = (): number => getAgentConfig().records_page_size;
 
   /**
-   * A cursor read back, or undefined for the first page (a garbled one too).
+   * A cursor read back, or undefined for the first page.
    * @param cursor - The cursor the model passed.
    * @returns The position after which the page starts.
-   * @throws {never} Never.
+   * @throws {RecordsRefused} `bad_cursor` when a cursor is given that no page gave.
    */
-  const after = (cursor: string | undefined): { at: string; id: string } | undefined => {
-    const decoded = cursor === undefined ? null : decodeActivityCursor(cursor);
-    return decoded === null ? undefined : { at: decoded.createdAt, id: decoded.id };
+  const after = (cursor: string | undefined): ActivityCursor | undefined => {
+    if (cursor === undefined) return undefined;
+    const decoded = decodeActivityCursor(cursor);
+    if (decoded === null) throw new RecordsRefused("bad_cursor");
+    return decoded;
   };
 
   return {
@@ -100,7 +103,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
       const [page, total] = await Promise.all([
         conversationRepo.listWithTurnCounts(userId, projectId, {
           limit: pageSize(),
-          ...(from === undefined ? {} : { after: { updatedAt: from.at, id: from.id } }),
+          ...(from === undefined ? {} : { after: from }),
         }),
         conversationRepo.countInProject(userId, projectId),
       ]);
@@ -131,7 +134,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
           ...(opts.conversationId === undefined ? {} : { conversationId: opts.conversationId }),
         },
         terms,
-        { limit: pageSize(), ...(from === undefined ? {} : { after: { createdAt: from.at, id: from.id } }) },
+        { limit: pageSize(), ...(from === undefined ? {} : { after: from }) },
       );
       const last = page.rows.at(-1);
       return {
@@ -156,6 +159,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
         conversationId: conversation.id,
         title: conversation.title,
         totalTurns: read.totalTurns,
+        current: conversation.id === conversationId,
         messages: read.messages,
       };
     },
@@ -167,7 +171,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
       // Read only: the panel's harvest writes, and this is not the panel.
       const [tasks, versions] = await Promise.all([
         nodeTaskService.listLive({ projectId, nodeId }),
-        nodeHistoryRepo.listByNode(projectId, nodeId, { limit: size, offset: opts.versionsOffset ?? 0 }),
+        nodeHistoryService.listByNode(projectId, nodeId, { limit: size, offset: opts.versionsOffset ?? 0 }),
       ]);
       const page = tasks.slice(tasksOffset, tasksOffset + size);
       const names = await studioService.getPersonalStudioIdentitiesByUserIds([
@@ -184,7 +188,14 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
 
     async activity(opts) {
       await member();
-      const only = opts.spaceId === undefined ? {} : { spaceId: opts.spaceId };
+      // Checked here: the feed's own decoder reads a cursor it cannot decode as the first page.
+      after(opts.cursor);
+      let only: { spaceIds?: string[] } = {};
+      if (opts.spaceName !== undefined) {
+        const spaceIds = turn.spaces.filter((space) => space.name === opts.spaceName).map((space) => space.id);
+        if (spaceIds.length === 0) throw new RecordsRefused("unknown_space");
+        only = { spaceIds };
+      }
       const [page, total] = await Promise.all([
         listProjectActivities(projectId, opts.cursor, undefined, only),
         countProjectActivities(projectId, only),
