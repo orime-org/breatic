@@ -9,10 +9,13 @@
  * proposal's prompts in the call's input. Reading a conversation back carries
  * those, and leaves out what was never shown as said -- the model's thinking
  * and the markers of how a turn ended. A record tool's call is written
- * without its result, which is a copy of records found elsewhere. The search
+ * without its result, which is a copy of records found elsewhere. Each part
+ * is cut on its own: a text part at the message length, saying how much it
+ * lost, and a tool's words at the tool length. The search
  * in the server matches only words this writes out: the text parts, the
- * attachments' names, a questionnaire's questions and the answers given, and
- * the strings of every other tool's input, cut to the same length.
+ * attachments' names, a questionnaire's questions and the answers given (an
+ * old single-question card's question and options), and the strings of every
+ * other tool's input, cut to the same length.
  */
 
 import { getAgentConfig } from "@breatic/core";
@@ -86,6 +89,20 @@ function questionnaireLines(questions: readonly { question: string }[], output: 
 }
 
 /**
+ * An old single-question card's input (`{ question, options }` with string
+ * options), which held no answer.
+ * @param input - The call's stored input.
+ * @returns The question and its options, or null for any other shape.
+ * @throws {never} Never.
+ */
+function oldQuestion(input: unknown): { question: string; options: string[] } | null {
+  if (typeof input !== "object" || input === null) return null;
+  const { question, options } = input as Record<string, unknown>;
+  if (typeof question !== "string") return null;
+  return { question, options: Array.isArray(options) ? options.filter((o): o is string => typeof o === "string") : [] };
+}
+
+/**
  * One tool call written out.
  * @param part - The call.
  * @returns Its lines.
@@ -94,9 +111,23 @@ function questionnaireLines(questions: readonly { question: string }[], output: 
 function toolLines(part: ToolPart): string[] {
   const questionnaire = part.toolName === ASK_USER ? readQuestionnaire(part.input) : null;
   if (questionnaire) return questionnaireLines(questionnaire.questions, part.output);
+  const old = part.toolName === ASK_USER ? oldQuestion(part.input) : null;
+  if (old) return [`Q1 ${old.question}`, ...(old.options.length > 0 ? [`options: ${old.options.join(", ")}`] : [])];
   const called = `[called ${part.toolName}]${wordsOf(part.input)}`;
   if (part.output === undefined || isRecordTool(part.toolName)) return [called];
   return [called, `[${part.toolName} answered]${wordsOf(part.output)}`];
+}
+
+/**
+ * A text part, cut to the configured message length.
+ * @param text - The part's text.
+ * @returns The text, saying how much this part lost when it was cut.
+ * @throws {never} Never.
+ */
+function cutText(text: string): string {
+  const max = getAgentConfig().records_message_max_chars;
+  const length = [...text].length;
+  return length <= max ? text : `${clip(text, max)} [${String(length - max)} more characters cut]`;
 }
 
 /**
@@ -111,7 +142,7 @@ export function messageText(parts: MessagePart[]): string {
     .flatMap((part): string[] => {
       switch (part.type) {
         case "text":
-          return [part.text];
+          return [cutText(part.text)];
         case "attachment":
           return [`[attached: ${part.chip.name}]`];
         case "tool":

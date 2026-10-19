@@ -27,6 +27,41 @@ import { countProjectActivities, listProjectActivities } from "@server/modules/a
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 
+/**
+ * What starts a cursor each list gives, so a cursor passed to another list is
+ * refused rather than read as a position in it.
+ */
+const CURSOR_TAG = { conversations: "conv.", search: "search.", activity: "activity." } as const;
+
+/** Which list a cursor belongs to. */
+type CursorList = keyof typeof CURSOR_TAG;
+
+/** The highest value a turn index (a Postgres int4) holds. */
+const MAX_TURN = 2147483647;
+
+/**
+ * A raw cursor tagged as one list's.
+ * @param list - The list that gave it.
+ * @param raw - The position, encoded.
+ * @returns The cursor.
+ * @throws {never} Never.
+ */
+function tagged(list: CursorList, raw: string): string {
+  return `${CURSOR_TAG[list]}${raw}`;
+}
+
+/**
+ * The raw cursor inside one list's cursor.
+ * @param list - The list it is passed to.
+ * @param cursor - The cursor the model passed.
+ * @returns The raw cursor.
+ * @throws {RecordsRefused} `bad_cursor` when it is not that list's.
+ */
+function untagged(list: CursorList, cursor: string): string {
+  if (!cursor.startsWith(CURSOR_TAG[list])) throw new RecordsRefused("bad_cursor");
+  return cursor.slice(CURSOR_TAG[list].length);
+}
+
 /** What the records are bound to: this turn, as the server holds it. */
 export interface RecordsTurn {
   userId: string;
@@ -85,13 +120,14 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
 
   /**
    * A cursor read back, or undefined for the first page.
+   * @param list - The list it is passed to.
    * @param cursor - The cursor the model passed.
    * @returns The position after which the page starts.
-   * @throws {RecordsRefused} `bad_cursor` when a cursor is given that no page gave.
+   * @throws {RecordsRefused} `bad_cursor` when a cursor is given that no page of this list gave.
    */
-  const after = (cursor: string | undefined): ActivityCursor | undefined => {
+  const after = (list: CursorList, cursor: string | undefined): ActivityCursor | undefined => {
     if (cursor === undefined) return undefined;
-    const decoded = decodeActivityCursor(cursor);
+    const decoded = decodeActivityCursor(untagged(list, cursor));
     if (decoded === null) throw new RecordsRefused("bad_cursor");
     return decoded;
   };
@@ -99,7 +135,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
   return {
     async listConversations(cursor) {
       await member();
-      const from = after(cursor);
+      const from = after("conversations", cursor);
       const [page, total] = await Promise.all([
         conversationRepo.listWithTurnCounts(userId, projectId, {
           limit: pageSize(),
@@ -117,14 +153,15 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
           current: r.conversation.id === conversationId,
         })),
         total,
-        nextCursor: page.hasMore && last ? encodeActivityCursor(last.cursorAt, last.conversation.id) : null,
+        nextCursor:
+          page.hasMore && last ? tagged("conversations", encodeActivityCursor(last.cursorAt, last.conversation.id)) : null,
       };
     },
 
     async searchMessages(terms, opts) {
       await member();
       if (opts.conversationId !== undefined) await own(opts.conversationId);
-      const from = after(opts.cursor);
+      const from = after("search", opts.cursor);
       const page = await messageRepo.searchMessages(
         {
           userId,
@@ -138,9 +175,9 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
       );
       const last = page.rows.at(-1);
       return {
-        hits: page.rows.map(({ id: _id, cursorAt: _at, ...hit }) => hit),
+        hits: page.rows.map(({ id: _id, cursorAt: _at, ...hit }) => ({ ...hit, current: hit.conversationId === conversationId })),
         total: page.total,
-        nextCursor: page.hasMore && last ? encodeActivityCursor(last.cursorAt, last.id) : null,
+        nextCursor: page.hasMore && last ? tagged("search", encodeActivityCursor(last.cursorAt, last.id)) : null,
       };
     },
 
@@ -148,8 +185,8 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
       await member();
       const conversation = await own(id ?? conversationId);
       const fromTurn = range.fromTurn ?? 1;
-      // A page of turns at most: the tool cuts it further to what fits.
-      const toTurn = Math.min(range.toTurn ?? Number.MAX_SAFE_INTEGER, fromTurn + pageSize() - 1);
+      // A page of turns at most, and no further than a turn index holds: the tool cuts it further to what fits.
+      const toTurn = Math.min(range.toTurn ?? MAX_TURN, fromTurn + pageSize() - 1, MAX_TURN);
       const read = await messageRepo.getTurns(conversation.id, {
         fromTurn,
         toTurn,
@@ -189,7 +226,8 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
     async activity(opts) {
       await member();
       // Checked here: the feed's own decoder reads a cursor it cannot decode as the first page.
-      after(opts.cursor);
+      const raw = opts.cursor === undefined ? undefined : untagged("activity", opts.cursor);
+      after("activity", opts.cursor);
       let only: { spaceIds?: string[] } = {};
       if (opts.spaceName !== undefined) {
         const spaceIds = turn.spaces.filter((space) => space.name === opts.spaceName).map((space) => space.id);
@@ -197,10 +235,10 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
         only = { spaceIds };
       }
       const [page, total] = await Promise.all([
-        listProjectActivities(projectId, opts.cursor, undefined, only),
+        listProjectActivities(projectId, raw, undefined, only),
         countProjectActivities(projectId, only),
       ]);
-      return { items: page.items, total, nextCursor: page.nextCursor };
+      return { items: page.items, total, nextCursor: page.nextCursor === null ? null : tagged("activity", page.nextCursor) };
     },
 
     spaceName(spaceId) {

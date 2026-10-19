@@ -548,7 +548,8 @@ function joinedStrings(value: SQL, path: string): SQL {
  * The words of one message part that a search matches: only words reading
  * the message back shows (`messageText` in domain). A text part's text, an
  * attachment's name, a questionnaire's questions with the options picked and
- * what was written on its Other line, and the strings of any other tool's
+ * what was written on its Other line (an old single-question card's question
+ * and its options), and the strings of any other tool's
  * input, cut as reading cuts them. A record tool's call, its result and every
  * other tool's result are not matched: the record tools' words are copies of
  * records found elsewhere, and the other results are catalogues and data the
@@ -564,6 +565,8 @@ function searchableWords(part: SQL): SQL {
     WHEN ${part}->>'type' <> 'tool' THEN NULL
     WHEN ${part}->>'toolName' = ${ASK_USER} THEN concat_ws(' ',
       ${joinedStrings(part, 'lax $.input.questions[*].question ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.input.question ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.input.options[*] ? (@.type() == "string")')},
       ${joinedStrings(part, 'lax $.output.answers[*].selected[*] ? (@.type() == "string")')},
       ${joinedStrings(part, 'lax $.output.answers[*].other ? (@.type() == "string")')})
     WHEN ${part}->>'toolName' = ANY(${textArray(RECORD_TOOL_NAMES)}) THEN NULL

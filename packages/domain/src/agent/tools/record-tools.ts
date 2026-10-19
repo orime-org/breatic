@@ -16,7 +16,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
+import { FAILURE_LINES, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
 import { messageText } from "@domain/agent/tools/conversation-text.js";
 import { clip, isStop, onOneLine, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
@@ -150,6 +150,16 @@ function titled(title: string | null): string {
 }
 
 /**
+ * Whether a UTF-16 code unit is the second half of a surrogate pair.
+ * @param unit - The code unit.
+ * @returns True for a low surrogate.
+ * @throws {never} Never.
+ */
+function isLowSurrogate(unit: number): boolean {
+  return unit >= 0xdc00 && unit <= 0xdfff;
+}
+
+/**
  * The words around the first place any term appears in a body.
  * @param body - What the terms matched.
  * @param terms - The search terms.
@@ -163,8 +173,11 @@ function snippet(body: string, terms: readonly string[]): string {
     .map((term) => ({ at: lower.indexOf(term.toLowerCase()), length: term.length }))
     .filter((hit) => hit.at >= 0)
     .sort((a, b) => a.at - b.at)[0] ?? { at: 0, length: 0 };
-  const start = Math.max(0, found.at - around);
-  const end = Math.min(body.length, found.at + found.length + around);
+  let start = Math.max(0, found.at - around);
+  let end = Math.min(body.length, found.at + found.length + around);
+  // Widened by one where a cut would split a surrogate pair, so no half character is written.
+  if (start > 0 && isLowSurrogate(body.charCodeAt(start))) start -= 1;
+  if (end < body.length && isLowSurrogate(body.charCodeAt(end))) end += 1;
   return onOneLine(`${start > 0 ? "…" : ""}${body.slice(start, end)}${end < body.length ? "…" : ""}`);
 }
 
@@ -201,23 +214,11 @@ function hitList(page: MessageHitPage, terms: readonly string[]): string {
   const lines = page.hits.map(
     (h) =>
       `- conversation ${h.conversationId} ${titled(h.conversationTitle)} · turn ${String(h.turnIndex)} · ` +
-      `${h.role} · ${h.createdAt}: ${snippet(h.body, terms)}`,
+      `${h.role} · ${h.createdAt}${h.current ? " (this conversation)" : ""}: ${snippet(h.body, terms)}`,
   );
   const tail =
     page.nextCursor === null ? [] : [`More: call again with the same query and cursor=${page.nextCursor}`];
   return [head, ...lines, ...tail].join("\n");
-}
-
-/**
- * One message's text, cut to the configured length.
- * @param text - The message's readable text.
- * @returns The text, saying how much was cut when it was.
- * @throws {never} Never.
- */
-function cutMessage(text: string): string {
-  const max = getAgentConfig().records_message_max_chars;
-  const length = [...text].length;
-  return length <= max ? text : `${clip(text, max)} [${String(length - max)} more characters cut]`;
 }
 
 /**
@@ -231,7 +232,7 @@ function turnPage(read: ConversationTurns): string {
   const head = `Conversation ${read.conversationId} ${titled(read.title)}${read.current ? " (this conversation)" : ""}.`;
   const turns: { index: number; text: string }[] = [];
   for (const m of read.messages) {
-    const line = `${m.role}: ${cutMessage(messageText(m.parts))}`;
+    const line = `${m.role}: ${messageText(m.parts)}`;
     const last = turns.at(-1);
     if (last?.index === m.turnIndex) last.text += `\n${line}`;
     else turns.push({ index: m.turnIndex, text: `Turn ${String(m.turnIndex)} · ${m.createdAt}\n${line}` });
@@ -310,7 +311,7 @@ function versionLine(v: NodeHistoryEntity): string {
   const rest = params ? Object.fromEntries(Object.entries(params).filter(([k]) => k !== "prompt" && k !== "text")) : {};
   const credits = meta["credits"];
   const content =
-    v.content === null ? undefined : /^https?:\/\//.test(v.content) ? v.content : JSON.stringify(clip(onOneLine(v.content), cfg.records_tool_text_max_chars));
+    v.content === null ? undefined : /^https?:\/\//.test(v.content) ? v.content : JSON.stringify(clip(onOneLine(v.content), cfg.records_message_max_chars));
   const parts = [
     `- ${v.entryType}`,
     v.status,
@@ -379,17 +380,6 @@ function nodePage(nodeId: string, recs: NodeRecords, offsets: { tasks: number; v
 }
 
 /**
- * Whether an entry is a member leaving of their own accord: a removal whose
- * actor removed themselves, as the activity panel tells it.
- * @param e - The entry.
- * @returns True for a leave.
- * @throws {never} Never.
- */
-function isLeave(e: ProjectActivityEntry): boolean {
-  return e.type === "member:removed" && e.actorUserId !== null && e.payload["targetUserId"] === e.actorUserId;
-}
-
-/**
  * One activity entry, on one line.
  * @param e - The entry.
  * @param records - The turn's records, for a Space the entry does not name.
@@ -404,7 +394,7 @@ function activityLine(e: ProjectActivityEntry, records: ProjectRecords): string 
   const parts = [
     `- ${new Date(e.createdAt).toISOString()}`,
     e.actorName ?? "the system",
-    isLeave(e) ? "left the project" : e.type,
+    isMemberLeave(e) ? "left the project" : e.type,
     ...(str(p, "kind") ? [String(str(p, "kind"))] : []),
     ...(e.spaceId === null ? [] : [`Space ${e.spaceId}${spaceName === undefined ? "" : ` ${JSON.stringify(onOneLine(spaceName))}`}`]),
     ...(oldName === undefined ? [] : [`renamed from ${JSON.stringify(onOneLine(oldName))}`]),
@@ -487,7 +477,9 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
     "turns no longer in your context. Without a query, list the conversations: id, title, last update, turns, " +
     "this one marked. With a query, list the messages holding every word of it, newest first, each with its " +
     "conversation, turn, speaker, time and the words around the match; read the turn whole with " +
-    `${READ_CONVERSATION}. Matching is literal: it finds the words as written, ignoring case, so when nothing ` +
+    `${READ_CONVERSATION}. It matches what was said, what was attached, the questions asked and answered on a ` +
+    "questionnaire, and the words given to tools, not what the tools answered: read the turn to see those. " +
+    "Matching is literal: it finds the words as written, ignoring case, so when nothing " +
     "is found, try other words, a shorter form or the other language the user writes in. The turn now " +
     `running is never found. Pages end with a cursor to pass back for the next one. ${DATA_NOTE} ${TIME_NOTE}`,
   inputSchema: searchInput,
@@ -512,10 +504,11 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
 const readConversation: Tool<z.infer<typeof readInput>, string, RecordsContext> = tool({
   description:
     "Read the turns of one of the user's conversations in this project as they were said: the words, what " +
-    "was attached, the questions asked and the answers given, and the tools called with what they answered. " +
+    "was attached, the questions asked and the answers given, and the tools called with what they answered; " +
+    "the record tools' own calls are given without their answers, which copy records read elsewhere. " +
     "Leave the conversation out to read this one up to the turn before the one now running, including turns " +
     `no longer in your context. Find a conversation and the turn you want with ${SEARCH_CONVERSATIONS}. A long ` +
-    "message is cut and says how much; a page stops at a whole turn and ends saying which turns it held and " +
+    "text is cut and says how much; a page stops at a whole turn and ends saying which turns it held and " +
     `the from_turn to pass back for the next. ${DATA_NOTE} ${TIME_NOTE}`,
   inputSchema: readInput,
   contextSchema: recordsContextSchema,

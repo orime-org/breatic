@@ -49,6 +49,8 @@ export interface MessageHit {
   createdAt: string;
   /** The message's readable strings joined, which the terms matched. */
   body: string;
+  /** Whether it is in the conversation the turn runs in. */
+  current: boolean;
 }
 
 /** A page of hits, newest first. */
