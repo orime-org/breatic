@@ -21,6 +21,7 @@ import { askUserAnswerSchema } from "@shared/agent/ask-user.js";
 import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
+import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -264,10 +265,12 @@ const chatLoadedSpaceSchema = chatSpaceSchema
   .refine((s) => (s.kind === "canvas") === (s.detail !== undefined), {
     message: "a loaded canvas carries detail and nothing else does",
     path: ["detail"],
+    params: REQUEST_SHAPE_PARAMS,
   })
   .refine((s) => (s.kind === "document") === (s.blocks !== undefined), {
     message: "a loaded document carries blocks and nothing else does",
     path: ["blocks"],
+    params: REQUEST_SHAPE_PARAMS,
   });
 
 /**

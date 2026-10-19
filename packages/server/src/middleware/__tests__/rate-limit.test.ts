@@ -23,6 +23,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getRedis: () => ({}),
     checkRateLimit: (...args: unknown[]) => checkRateLimit(...args),
     decideClientIdentity: actual.decideClientIdentity,
+    // validate.ts defines its refusal class on load, so it needs the real base.
+    ValidationError: actual.ValidationError,
     logger,
   };
 });

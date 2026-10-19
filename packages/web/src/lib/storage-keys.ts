@@ -57,6 +57,8 @@ export const STORAGE_KEYS = {
   sessionSeen: 'breatic.sessionSeen',
   /** sessionStorage: app versions this tab chose to defer. See `use-app-update`. */
   deferredAppVersions: 'breatic.deferredAppVersions',
+  /** sessionStorage: what an update reload carries to the next page. See `reload-for-update`. */
+  reloadDrafts: 'breatic.reloadDrafts',
   /**
    * The campaign source of this browser's first and latest visit, kept only
    * while a consent category is accepted; the website writes the same key

@@ -230,3 +230,28 @@ describe('what an attempt that did not go in is told with', () => {
     }
   });
 });
+
+describe('attachments across an update reload', () => {
+  it('saves the ready items of each conversation, and only those', async () => {
+    sessionStorage.clear();
+    vi.resetModules();
+    const fresh = await import('@web/stores/chat-attachments');
+    const { reloadForUpdate } = await import('@web/stores/reload-for-update');
+    const uploading: TrayItem = { id: 'u', name: 'u', type: 'text', status: 'uploading' };
+    fresh.chatAttachments.add('c1', [node('a'), uploading], LIMITS);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    reloadForUpdate();
+    window.dispatchEvent(new Event('pagehide'));
+    const saved = JSON.parse(sessionStorage.getItem('breatic.reloadDrafts') ?? 'null') as {
+      attachments: Record<string, TrayItem[]>;
+    };
+    expect(saved.attachments).toEqual({ c1: [node('a')] });
+  });
+
+  it('starts from what the page before saved', async () => {
+    sessionStorage.setItem('breatic.reloadDrafts', JSON.stringify({ attachments: { c1: [node('a')] } }));
+    vi.resetModules();
+    const fresh = await import('@web/stores/chat-attachments');
+    expect(fresh.chatAttachments.trayOf('c1')).toEqual([node('a')]);
+  });
+});
