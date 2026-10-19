@@ -3,8 +3,10 @@
 
 /**
  * The `error.reason` a refusal carries when the request itself was malformed:
- * its body failed the route's schema, could not be read, or lacked a header
- * the route requires.
+ * its structure failed the route's schema (a field missing or of another
+ * type, an unknown key or enum value, or a refine marked
+ * `REQUEST_SHAPE_PARAMS`; a value outside its limits does not count), its
+ * body could not be read, or it lacked a header the route requires.
  *
  * A page built before a release sends requests in the shape it was built
  * with, so this refusal from a page whose build differs from the live one
