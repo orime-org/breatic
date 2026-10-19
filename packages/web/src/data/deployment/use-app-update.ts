@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { httpRequest } from '@breatic/shared';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useReducer, useState } from 'react';
 
 import { STORAGE_KEYS } from '@web/lib/storage-keys';
 
@@ -24,6 +24,33 @@ export function readAppVersion(value: unknown): string | null {
     : null;
 }
 
+/**
+ * The release this bundle was built as, in a versioned production build.
+ * @returns The build's version, or null where there is nothing to compare.
+ */
+export function currentAppVersion(): string | null {
+  if (!import.meta.env.PROD) return null;
+  return readAppVersion({ version: import.meta.env.VITE_APP_VERSION });
+}
+
+/**
+ * Ask the deployment which release is live, bypassing every cache.
+ * @param signal - Aborts the request.
+ * @returns The live release, or null when the answer is missing or not ours.
+ */
+export async function fetchLatestAppVersion(signal?: AbortSignal): Promise<string | null> {
+  try {
+    const response = await httpRequest(new URL('/app-version.json', window.location.origin).href, {
+      cache: 'no-store', credentials: 'omit',
+    }, { replaySafe: true, timeoutMs: 10_000, signal });
+    if (!response.ok) return null;
+    return readAppVersion(await response.json());
+  } catch {
+    // Offline, timeout and malformed JSON are deliberately silent.
+    return null;
+  }
+}
+
 /** Restore this tab's choices; storage restrictions must not break Project. */
 function restoreDeferred(): void {
   try {
@@ -39,13 +66,18 @@ function restoreDeferred(): void {
 
 /**
  * Observe releases only while Project is mounted, without changing document state.
- * @returns The pending release and a tab-scoped dismissal action.
+ * A postponed release stays reported, so the top bar keeps offering it; only
+ * opening it by itself is what Later turns off.
+ * @returns The live release when it differs from this bundle, whether it should
+ * open by itself, and a tab-scoped postpone action.
  */
-export function useAppUpdate(): { version: string | null; dismiss: () => void } {
+export function useAppUpdate(): { version: string | null; autoOpen: boolean; dismiss: () => void } {
   const [version, setVersion] = useState<string | null>(null);
+  // `deferred` lives outside React; this re-renders after Later changes it.
+  const [, postponed] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
-    const current = readAppVersion({ version: import.meta.env.VITE_APP_VERSION });
-    if (!import.meta.env.PROD || !current) return;
+    const current = currentAppVersion();
+    if (!current) return;
     restoreDeferred();
     let stopped = false;
     let lastCheck = -Infinity;
@@ -68,16 +100,11 @@ export function useAppUpdate(): { version: string | null; dismiss: () => void } 
       pending = controller;
       const timeout = setTimeout(() => controller.abort(), 10_000);
       try {
-        const response = await httpRequest(new URL('/app-version.json', window.location.origin).href, {
-          cache: 'no-store', credentials: 'omit',
-        }, { replaySafe: true, timeoutMs: 10_000, signal: controller.signal });
-        if (!response.ok) return;
-        const latest = readAppVersion(await response.json());
+        const latest = await fetchLatestAppVersion(controller.signal);
         if (!stopped && !controller.signal.aborted && latest) {
-          setVersion(latest !== current && !deferred.has(latest) ? latest : null);
+          setVersion(latest !== current ? latest : null);
         }
-      } catch { /* Offline, timeout and malformed JSON are deliberately silent. */ }
-      finally {
+      } finally {
         clearTimeout(timeout);
         pending = undefined;
         schedule();
@@ -109,7 +136,7 @@ export function useAppUpdate(): { version: string | null; dismiss: () => void } 
     deferred.add(version);
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify([...deferred])); }
     catch { /* Retain the in-memory choice for this tab. */ }
-    setVersion(null);
+    postponed();
   }, [version]);
-  return { version, dismiss };
+  return { version, autoOpen: version !== null && !deferred.has(version), dismiss };
 }

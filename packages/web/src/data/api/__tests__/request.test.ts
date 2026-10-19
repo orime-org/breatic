@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const checkStaleRelease = vi.hoisted(() => vi.fn((_reason: unknown) => Promise.resolve(false)));
+vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
 import { AxiosError } from 'axios';
 
 import { request, apiGet, apiPost, apiPatch, apiDelete } from '@web/data/api/request';
@@ -187,5 +190,51 @@ describe('what a failed answer says about a run-once press', () => {
   it('does not mark a local throw as a network failure', () => {
     const err = new ApiException({ status: 0, message: 'boom' });
     expect(err.network).toBe(false);
+  });
+});
+
+describe('a refusal that may come from an out-of-date page', () => {
+  /**
+   * Post through the real client with an adapter that refuses with `data`.
+   * @param status - The refusal's status.
+   * @param data - The refusal's body.
+   * @returns The pending request, settled with the error it rejects with.
+   */
+  function refuse(status: number, data: unknown): Promise<unknown> {
+    return request
+      .post('/x', {}, {
+        adapter: (config) =>
+          Promise.reject(
+            new AxiosError('failed', 'ERR_BAD_REQUEST', config, null, {
+              status, statusText: '', headers: {}, config, data,
+            }),
+          ),
+      })
+      .catch((err: unknown) => err);
+  }
+
+  beforeEach(() => { checkStaleRelease.mockClear(); });
+
+  it('carries the mark the server set', async () => {
+    const err = await refuse(422, { error: { code: 422, message: 'x', reason: 'request_shape' } });
+    expect((err as ApiException).reason).toBe('request_shape');
+  });
+
+  it('settles only after the build check, so the caller sees a decided page', async () => {
+    let decide = (_stale: boolean): void => {};
+    checkStaleRelease.mockImplementationOnce(() => new Promise<boolean>((r) => { decide = r; }));
+    let settled = false;
+    const pending = refuse(422, { error: { code: 422, message: 'x', reason: 'request_shape' } })
+      .then((err) => { settled = true; return err; });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(checkStaleRelease).toHaveBeenCalledWith('request_shape');
+    expect(settled).toBe(false);
+    decide(true);
+    expect(await pending).toBeInstanceOf(ApiException);
+  });
+
+  it('hands an unmarked refusal to the check as unmarked', async () => {
+    await refuse(422, { error: { code: 422, message: 'Message too long' } });
+    expect(checkStaleRelease).toHaveBeenCalledWith(undefined);
   });
 });
