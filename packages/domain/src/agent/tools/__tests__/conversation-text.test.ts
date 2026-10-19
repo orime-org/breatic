@@ -59,6 +59,26 @@ describe("a message written out", () => {
     expect(text).toBe("[attached: Cover art]");
   });
 
+  it("writes an old single-question card as one question with its options, and no result line", () => {
+    const text = messageText([
+      {
+        type: "tool",
+        toolCallId: "ask-old",
+        toolName: "ask_user",
+        input: { question: "Which ratio?", options: ["16:9", "9:16"] },
+        status: "success",
+        output: { question: "Which ratio?" },
+      },
+    ]);
+
+    expect(text).toContain("Q1 Which ratio?");
+    expect(text.split("Which ratio?")).toHaveLength(2);
+    expect(text).toContain("16:9");
+    expect(text).toContain("9:16");
+    expect(text).not.toContain("[ask_user answered]");
+    expect(text).not.toContain("[called ask_user]");
+  });
+
   it("writes out each question and the answer the user gave to it", () => {
     const text = messageText([
       asked({

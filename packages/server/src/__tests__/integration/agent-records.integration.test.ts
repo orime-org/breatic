@@ -354,6 +354,46 @@ describe("searching the user's messages", () => {
     expect(await turns("UNPICKED-OPTION")).toEqual([]);
   });
 
+  it("finds an old single-question card by its question and by an option", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    await seedMessage(other, turn.userId, {
+      role: "assistant",
+      turn: 3,
+      parts: [
+        {
+          type: "tool",
+          toolCallId: "ask-old",
+          toolName: "ask_user",
+          input: { question: "Which aspect suits the banner?", options: ["Panoramic", "Portrait"] },
+          status: "success",
+          output: { question: "Which aspect suits the banner?" },
+        },
+      ],
+    });
+    const records = recordsFor(turn);
+
+    expect((await records.searchMessages(["aspect suits the banner"], {})).hits.map((h) => h.turnIndex)).toEqual([3]);
+    expect((await records.searchMessages(["Panoramic"], {})).hits.map((h) => h.turnIndex)).toEqual([3]);
+  });
+
+  it("marks the hits in the conversation this turn runs in, and only those", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    await seedMessage(turn.conversationId, turn.userId, { role: "user", turn: 2, parts: [said("apricot here")] });
+    await seedMessage(other, turn.userId, { role: "user", turn: 1, parts: [said("apricot there")] });
+
+    const page = await recordsFor(turn).searchMessages(["apricot"], {});
+
+    expect(page.hits).toHaveLength(2);
+    expect(page.hits).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ conversationId: turn.conversationId, current: true }),
+        expect.objectContaining({ conversationId: other, current: false }),
+      ]),
+    );
+  });
+
   it("does not look into the model's thinking", async () => {
     const turn = await newTurn();
     const other = await seedConversation(turn.userId, turn.projectId);
@@ -475,6 +515,16 @@ describe("reading a conversation", () => {
 
     expect(read).toMatchObject({ conversationId: other, title: "Old", totalTurns: 6, current: false });
     expect(read.messages.map((m) => m.turnIndex)).toEqual([2, 3, 4]);
+  });
+
+  it("reads an empty page from the highest turn a turn index can hold", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    await seedMessage(other, turn.userId, { role: "user", turn: 1, parts: [said("only turn")] });
+    const records = recordsFor(turn);
+
+    await expect(records.readConversation(other, { fromTurn: 2147483647 })).resolves.toMatchObject({ messages: [], totalTurns: 1 });
+    await expect(records.readConversation(undefined, { fromTurn: 2147483647 })).resolves.toMatchObject({ messages: [] });
   });
 
   it("refuses a conversation that is someone else's, in another project, or deleted", async () => {
@@ -668,6 +718,25 @@ describe("a cursor that no page gave", () => {
     await expect(records.listConversations("not-a-cursor")).rejects.toEqual(refused);
     await expect(records.searchMessages(["x"], { cursor: "not-a-cursor" })).rejects.toEqual(refused);
     await expect(records.activity({ cursor: "not-a-cursor" })).rejects.toEqual(refused);
+  });
+
+  it("is refused when it was given by another list", async () => {
+    const turn = await newTurn();
+    const size = getAgentConfig().records_page_size;
+    for (let i = 0; i < size + 1; i++) {
+      const id = await seedConversation(turn.userId, turn.projectId, { title: `plum ${String(i)}` });
+      await seedMessage(id, turn.userId, { role: "user", turn: 1, parts: [said(`plum ${String(i)}`)] });
+    }
+    const records = recordsFor(turn);
+    const refused = new RecordsRefused("bad_cursor");
+    const listCursor = (await records.listConversations()).nextCursor;
+    const searchCursor = (await records.searchMessages(["plum"], {})).nextCursor;
+    expect(listCursor).not.toBeNull();
+    expect(searchCursor).not.toBeNull();
+
+    await expect(records.searchMessages(["plum"], { cursor: listCursor! })).rejects.toEqual(refused);
+    await expect(records.activity({ cursor: listCursor! })).rejects.toEqual(refused);
+    await expect(records.listConversations(searchCursor!)).rejects.toEqual(refused);
   });
 });
 

@@ -724,3 +724,156 @@ describe("list_project_activity", () => {
     expect(answer).toContain("cursor=OLDER");
   });
 });
+
+/**
+ * Whether a string holds no lone surrogate (`String.prototype.isWellFormed`,
+ * which the ES2023 lib does not declare).
+ * @param s - The string.
+ * @returns True when every surrogate is paired.
+ */
+function wellFormed(s: string): boolean {
+  return (s as unknown as { isWellFormed(): boolean }).isWellFormed();
+}
+
+describe("read_conversation cuts each part on its own", () => {
+  it("keeps the end of a short text part that follows several long tool calls", async () => {
+    const msgMax = getAgentConfig().records_message_max_chars;
+    const toolMax = getAgentConfig().records_tool_text_max_chars;
+    // Enough cut tool lines that, together, they already pass the message cap.
+    const calls = Math.ceil(msgMax / toolMax) + 1;
+    const end = "END-OF-THE-FINAL-TEXT";
+    const recs = records({
+      readConversation: vi.fn().mockResolvedValue({
+        conversationId: CONVERSATION,
+        title: null,
+        totalTurns: 1,
+        current: true,
+        messages: [
+          {
+            role: "assistant" as const,
+            turnIndex: 1,
+            createdAt: "2026-10-18T09:00:00.000Z",
+            parts: [
+              ...Array.from({ length: calls }, (_, i) => ({
+                type: "tool" as const,
+                toolCallId: `t${String(i)}`,
+                toolName: "web_search",
+                input: { query: "q".repeat(toolMax * 2) },
+                status: "success" as const,
+              })),
+              { type: "text" as const, text: `Here is the plan. ${end}` },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const answer = await call(READ, {}, recs);
+
+    expect(answer).toContain(end);
+    expect(answer).not.toMatch(/more characters cut/);
+  });
+
+  it("cuts a long text part after a tool call and counts only what that part lost", async () => {
+    const max = getAgentConfig().records_message_max_chars;
+    const tail = "END-OF-THE-LONG-MESSAGE";
+    const recs = records({
+      readConversation: vi.fn().mockResolvedValue({
+        conversationId: CONVERSATION,
+        title: null,
+        totalTurns: 1,
+        current: true,
+        messages: [
+          {
+            role: "assistant" as const,
+            turnIndex: 1,
+            createdAt: "2026-10-18T09:00:00.000Z",
+            parts: [
+              { type: "tool" as const, toolCallId: "t", toolName: "web_search", input: { query: "cafe" }, status: "success" as const },
+              { type: "text" as const, text: "x".repeat(max + 500) + tail },
+            ],
+          },
+        ],
+      }),
+    });
+
+    const answer = await call(READ, {}, recs);
+
+    expect(answer).toContain("[called web_search] cafe");
+    expect(answer).not.toContain(tail);
+    expect(answer).toContain(`[${String(500 + tail.length)} more characters cut]`);
+  });
+});
+
+describe("a search hit's snippet", () => {
+  it.each([
+    ["starts", (around: number) => `${"x".repeat(10)}\u{1F600}${"y".repeat(around - 1)}needle${"z".repeat(10)}`],
+    ["ends", (around: number) => `${"x".repeat(10)}needle${"z".repeat(around - 1)}\u{1F600}${"w".repeat(10)}`],
+  ] as const)("never splits an emoji where the window %s", async (_where, bodyFor) => {
+    const body = bodyFor(getAgentConfig().records_snippet_chars);
+    const recs = records({
+      searchMessages: vi.fn().mockResolvedValue({
+        hits: [{ conversationId: CONVERSATION, conversationTitle: null, turnIndex: 1, role: "user", createdAt: "2026-10-16T10:00:00.000Z", body, current: false }],
+        total: 1,
+        nextCursor: null,
+      }),
+    });
+
+    const answer = await call(SEARCH, { query: "needle" }, recs);
+
+    expect(answer).toContain("needle");
+    expect(wellFormed(answer)).toBe(true);
+  });
+});
+
+describe("search_conversations hits in this conversation", () => {
+  it("are marked as this conversation, and the others are not", async () => {
+    const other = "44444444-4444-4444-8444-444444444444";
+    const recs = records({
+      searchMessages: vi.fn().mockResolvedValue({
+        hits: [
+          { conversationId: CONVERSATION, conversationTitle: "Here", turnIndex: 2, role: "user", createdAt: "2026-10-16T10:00:00.000Z", body: "apricot", current: true },
+          { conversationId: other, conversationTitle: "There", turnIndex: 3, role: "user", createdAt: "2026-10-15T10:00:00.000Z", body: "apricot", current: false },
+        ],
+        total: 2,
+        nextCursor: null,
+      }),
+    });
+
+    const lines = (await call(SEARCH, { query: "apricot" }, recs)).split("\n");
+    const here = lines.find((line) => line.includes(CONVERSATION));
+    const there = lines.find((line) => line.includes(other));
+
+    expect(here).toContain("(this conversation)");
+    expect(there).toBeDefined();
+    expect(there).not.toContain("(this conversation)");
+  });
+});
+
+describe("the conversation tools' descriptions", () => {
+  it("read_conversation says the record tools' own calls come without their answers", () => {
+    expect(TOOL_MAP[READ]!().description).toMatch(/without (their|its) answers?/i);
+  });
+
+  it("search_conversations says what the tools answered is not searched", () => {
+    expect(TOOL_MAP[SEARCH]!().description).toMatch(/not what (the )?tools answered|tool results are not/i);
+  });
+});
+
+describe("a version's text content", () => {
+  it("is cut at the message cap, not the tool text cap", async () => {
+    const toolMax = getAgentConfig().records_tool_text_max_chars;
+    const msgMax = getAgentConfig().records_message_max_chars;
+    const end = "VERSION-TEXT-END";
+    const text = "t".repeat(toolMax + 200) + end;
+    expect(text.length).toBeLessThan(msgMax);
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({
+        tasks: { rows: [], total: 0 },
+        versions: { rows: [version({ entryType: "snapshot", content: text, metadata: {} })], total: 1 },
+      }),
+    });
+
+    expect(await call(NODE, { node_id: NODE_ID }, recs)).toContain(text);
+  });
+});
