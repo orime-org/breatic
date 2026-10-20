@@ -55,8 +55,8 @@ const agentConfigSchema = z.object({
   // provider it lands on as an empty id, and `deepseek/` reaches DeepSeek as
   // an empty id too once that key is set, because a direct route strips the
   // prefix it matched.
-  default_model: z.string().regex(/[^/]$/).default("anthropic/claude-opus-5.5"),
-  consolidation_model: z.string().regex(/[^/]$/).default("anthropic/claude-opus-5.5"),
+  default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
+  consolidation_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
   /**
    * How long a cached prompt prefix lives, for the providers that cache only
    * when asked (Claude). Writes cost 1.25x the input price at 5m and 2x at 1h;

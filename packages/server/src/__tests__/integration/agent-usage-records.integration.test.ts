@@ -192,8 +192,8 @@ async function send(seeded: Awaited<ReturnType<typeof seed>>): Promise<number> {
 
 describe("a chat turn's model calls are recorded and charged at their cost", () => {
   it("prices a direct call to the chat model from the table and charges exactly the row", async () => {
-    // The chat model is Claude Opus 5.5 (config/agent.yaml), reached directly.
-    provider = "anthropic";
+    // The chat model is DeepSeek V4.1 Flash 1017 (config/agent.yaml), reached directly.
+    provider = "deepseek";
     finishMetadata = undefined;
     const seeded = await seed(100_000);
     expect(await send(seeded)).toBe(200);
@@ -204,8 +204,8 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.operation_key).toMatch(new RegExp(`^turn:${seeded.conversationId}:\\d+$`));
     expect(rows[0]).toMatchObject({ feature: "chat_turn", source: "model", cost_source: "price_table", output_tokens: 1_000_000 });
-    // One uncached input token at 4/M plus a million output tokens at 20/M.
-    expect(Number(rows[0]!.cost_usd)).toBeCloseTo(20 + 4 / 1_000_000, 6);
+    // One uncached input token at 0.3/M plus a million output tokens at 1.2/M.
+    expect(Number(rows[0]!.cost_usd)).toBeCloseTo(1.2 + 0.3 / 1_000_000, 6);
 
     const [spent] = await sql<{ total: string }[]>`
       SELECT COALESCE(SUM(amount), 0)::text AS total FROM credit_ledger
