@@ -652,6 +652,23 @@ describe("the Anthropic direct route", () => {
   });
 });
 
+describe("the DeepSeek direct route", () => {
+  it("sends the name DeepSeek serves Flash 1017 under", async () => {
+    keys.current = { DEEPSEEK_API_KEY: "k" };
+    expect((await callWith("deepseek/deepseek-v4.1-flash-1017")).body.model).toBe("deepseek-flash");
+  });
+
+  it("leaves a name DeepSeek serves as it is", async () => {
+    keys.current = { DEEPSEEK_API_KEY: "k" };
+    expect((await callWith("deepseek/deepseek-v4-pro")).body.model).toBe("deepseek-v4-pro");
+  });
+
+  it("passes the pinned id through to OpenRouter unchanged", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await callWith("deepseek/deepseek-v4.1-flash-1017")).body.model).toBe("deepseek/deepseek-v4.1-flash-1017");
+  });
+});
+
 describe("what each route actually sends", () => {
   /**
    * Runs one turn on a route with its key set, and hands back the request.

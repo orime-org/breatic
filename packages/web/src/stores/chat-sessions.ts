@@ -28,6 +28,7 @@ import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /** What starting a conversation's state takes. */
 export interface ChatSessionInit {
@@ -292,8 +293,17 @@ function transportFor(
       const carried = attachedOn(options.messages[options.messages.length - 1]);
       // An answer leaves the box alone: what is in it is not what was sent.
       const isAnswer = answering.has(conversationId);
+      let opened: Awaited<ReturnType<typeof wire.sendMessages>>;
+      try {
+        opened = await wire.sendMessages(options);
+      } catch (refused) {
+        // Decided before the turn settles and says anything, so an
+        // out-of-date page has silenced the panel's toast by then.
+        await checkStaleRelease(envelopeInBody(refused)?.reason);
+        throw refused;
+      }
       return sayWhenItOpens(
-        keepOurNames(await wire.sendMessages(options)),
+        keepOurNames(opened),
         // On every answering frame, because the fold begins after the turn
         // has already opened: the server writes the conversation's name
         // first, every turn, and only then stops to fold. Clearing on the
@@ -345,6 +355,16 @@ function transportFor(
  * @returns The server's own words, or undefined if what answered was not ours.
  */
 function serverSentenceInBody(error: unknown): string | undefined {
+  return envelopeInBody(error)?.message;
+}
+
+/**
+ * Our error envelope, read out of what a refused turn threw.
+ * @param error - Whatever the transport threw; its message is the body.
+ * @returns The envelope's `message` and `reason` that are strings, or
+ * undefined when the body is not our envelope.
+ */
+function envelopeInBody(error: unknown): { message?: string; reason?: string } | undefined {
   const body = error instanceof Error ? error.message : '';
   try {
     const envelope: unknown = JSON.parse(body);
@@ -353,11 +373,13 @@ function serverSentenceInBody(error: unknown): string | undefined {
       envelope !== null &&
       'error' in envelope &&
       typeof envelope.error === 'object' &&
-      envelope.error !== null &&
-      'message' in envelope.error &&
-      typeof envelope.error.message === 'string'
+      envelope.error !== null
     ) {
-      return envelope.error.message;
+      const { message, reason } = envelope.error as { message?: unknown; reason?: unknown };
+      return {
+        message: typeof message === 'string' ? message : undefined,
+        reason: typeof reason === 'string' ? reason : undefined,
+      };
     }
   } catch {
     // Not JSON at all, which is what a gateway or a dropped connection

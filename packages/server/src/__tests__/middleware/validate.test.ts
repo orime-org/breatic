@@ -24,6 +24,7 @@ import { describe, it, expect } from "vitest";
 import { Hono } from "hono";
 import { z } from "zod";
 import { loadLocales, runWithLocale } from "@breatic/core";
+import { REQUEST_SHAPE_REASON, chatMessageSchema } from "@breatic/shared";
 
 import { validate } from "@server/middleware/validate.js";
 import { errorHandler } from "@server/middleware/error-handler.js";
@@ -37,9 +38,11 @@ const INVALID_INPUT = {
   ko: "입력값이 유효하지 않습니다",
 } as const;
 
-const bodySchema = z.object({ email: z.email(), age: z.number().int() });
+const bodySchema = z.strictObject({ email: z.email(), age: z.number().int() });
 const querySchema = z.object({ limit: z.coerce.number().int().max(100) });
 const paramSchema = z.object({ id: z.uuid() });
+/** A value rule written as a refine, the way most of ours are. */
+const refinedSchema = z.object({ kind: z.string() }).refine((v) => v.kind !== "exe", { path: ["kind"] });
 
 /** An app mounting every target shape a route can validate. */
 function buildApp(): Hono {
@@ -60,6 +63,10 @@ function buildApp(): Hono {
   app.get("/param/:id", validate("param", paramSchema), (c) =>
     c.json({ id: c.req.valid("param").id }),
   );
+
+  app.post("/chat", validate("json", chatMessageSchema), (c) => c.json({ ok: true }));
+
+  app.post("/refined", validate("json", refinedSchema), (c) => c.json({ ok: true }));
 
   return app;
 }
@@ -160,6 +167,76 @@ describe("a request whose field fails the schema", () => {
   });
 });
 
+describe("which schema failures say the request itself is malformed", () => {
+  // A page built before a release sends the old structure: a field missing,
+  // a type changed, a key the route no longer knows. What a user typed only
+  // ever breaks a value's limits, and that must keep reading as such.
+  it.each([
+    ["a missing field", { email: "ada@example.com" }],
+    ["a field of the wrong type", { email: "ada@example.com", age: "36" }],
+    ["a key the route does not know", { email: "ada@example.com", age: 36, extra: true }],
+  ])("marks %s", async (_name, payload) => {
+    const { status, body } = await request("/json", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(payload),
+    });
+    expect(status).toBe(422);
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en, reason: REQUEST_SHAPE_REASON } });
+  });
+
+  it("marks a structural failure even beside a value failure", async () => {
+    const { body } = await request("/json", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ email: "not-an-email" }),
+    });
+    expect(body).toMatchObject({ error: { reason: REQUEST_SHAPE_REASON } });
+  });
+
+  it.each([
+    ["a value past its limit", "/query?limit=999"],
+    ["a value in the wrong format", "/param/not-a-uuid"],
+  ])("leaves %s unmarked", async (_name, path) => {
+    const { body } = await request(path);
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
+  });
+});
+
+describe("structure the schema checks with a refine", () => {
+  const ID = "11111111-1111-4111-8111-111111111111";
+  /**
+   * A loaded Space as a page built before `blocks` and `detail` existed sends it.
+   * @param kind - The Space's kind.
+   * @returns The request body.
+   */
+  const oldPage = (kind: "document" | "canvas"): unknown => ({
+    message: "hi",
+    project_id: ID,
+    conversation_id: ID,
+    current_space: { id: "s1", name: "Space", kind, state: "loaded", content: "x", total_chars: 1 },
+  });
+
+  it.each(["document", "canvas"] as const)("marks a loaded %s without its structure", async (kind) => {
+    const { status, body } = await request("/chat", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify(oldPage(kind)),
+    });
+    expect(status).toBe(422);
+    expect(body).toMatchObject({ error: { reason: REQUEST_SHAPE_REASON } });
+  });
+
+  it("leaves a refine about a value unmarked", async () => {
+    const { body } = await request("/refined", {
+      method: "POST",
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ kind: "exe" }),
+    });
+    expect(body).toEqual({ error: { code: 422, message: INVALID_INPUT.en } });
+  });
+});
+
 describe("every target a route can validate", () => {
   it("rejects a bad query the same way", async () => {
     const { status, body } = await request("/query?limit=999");
@@ -191,7 +268,7 @@ describe("a body that could not be read at all", () => {
       "zh-CN",
     );
     expect(body).toEqual({
-      error: { code: 400, message: INVALID_INPUT["zh-CN"] },
+      error: { code: 400, message: INVALID_INPUT["zh-CN"], reason: REQUEST_SHAPE_REASON },
     });
   });
 

@@ -18,6 +18,7 @@ import {
   membershipConfigSchema,
   getMembershipConfig,
   getMembershipLimits,
+  getSubscriptionStaleAfterDays,
 } from "@core/config/membership.js";
 
 /** Every quota field a tier must carry. */
@@ -169,7 +170,24 @@ describe("membershipConfigSchema — default_tier", () => {
   });
 });
 
+describe("membershipConfigSchema — stale_after_days", () => {
+  it("defaults the renewal window to Stripe's fourteen-day retry window", () => {
+    expect(membershipConfigSchema.parse(config()).stale_after_days).toBe(14);
+  });
+
+  it("rejects a window that is not a positive whole number of days", () => {
+    for (const bad of [0, -1, 1.5]) {
+      expect(() => membershipConfigSchema.parse(config({ stale_after_days: bad }))).toThrow();
+    }
+  });
+});
+
 describe("the real config/membership.yaml", () => {
+  it("carries the renewal window, so every service that reads a tier has it", () => {
+    expect(getMembershipConfig().stale_after_days).toBe(14);
+    expect(getSubscriptionStaleAfterDays()).toBe(14);
+  });
+
   it("satisfies the schema", () => {
     // A schema that nothing in the repo actually satisfies would pass every
     // case above and still break the moment a service boots.

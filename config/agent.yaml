@@ -8,12 +8,12 @@ max_tool_iterations: 40
 
 # ── Models ────────────────────────────────────────────────
 # Default model for MainAgent chat.
-default_model: anthropic/claude-opus-5.5
+default_model: deepseek/deepseek-v4.1-flash-1017
 
 # Model used for memory consolidation (summarizing old turns). The same model
 # that writes a conversation reads it back: two would put the summary in one
 # voice and the reply in another, and name two providers on one bill.
-consolidation_model: anthropic/claude-opus-5.5
+consolidation_model: deepseek/deepseek-v4.1-flash-1017
 
 # How long a cached prompt prefix lives (5m or 1h), for the models that cache
 # only when asked (Claude). A write costs 1.25x the input price at 5m and 2x at

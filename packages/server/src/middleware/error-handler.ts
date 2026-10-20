@@ -35,7 +35,8 @@ import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { AppError, TooManyRequestsError } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { t } from "@breatic/shared";
+import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
+import { RequestShapeError } from "@server/middleware/validate.js";
 
 /**
  * Global error handler for the Hono app.
@@ -69,7 +70,13 @@ export const errorHandler: ErrorHandler = (err, c) => {
       );
     }
     return c.json(
-      { error: { code: err.statusCode, message: err.message } },
+      {
+        error: {
+          code: err.statusCode,
+          message: err.message,
+          ...(err instanceof RequestShapeError ? { reason: REQUEST_SHAPE_REASON } : {}),
+        },
+      },
       err.statusCode as 400,
     );
   }
@@ -90,6 +97,8 @@ export const errorHandler: ErrorHandler = (err, c) => {
             err.status >= 500
               ? t("server.error.internal")
               : t("server.error.validation"),
+          // hono could not read the body at all: the request's own shape.
+          ...(err.status === 400 ? { reason: REQUEST_SHAPE_REASON } : {}),
         },
       },
       err.status,

@@ -2515,5 +2515,12 @@
         "description": "Measures which ads lead to sign-ups, purchases and other key steps."
       }
     }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "Page out of date",
+      "description": "This page is out of date and the last action did not go through. Refresh to continue.",
+      "refresh": "Update"
+    }
   }
 }

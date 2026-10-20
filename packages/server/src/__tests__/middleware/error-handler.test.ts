@@ -55,10 +55,12 @@ import {
   AppError,
   NotFoundError,
   TooManyRequestsError,
+  ValidationError,
   loadLocales,
   runWithLocale,
 } from "@breatic/core";
 
+import { REQUEST_SHAPE_REASON } from "@breatic/shared";
 import { errorHandler } from "@server/middleware/error-handler.js";
 
 loadLocales();
@@ -199,6 +201,29 @@ describe("a parse failure the handler must NOT blame on the caller", () => {
     const { body } = await answerFor(syntaxErrorForTruncatedJson(), "zh-CN");
     expect(String(body.error?.message)).not.toContain("JSON");
     expect(JSON.stringify(body)).not.toContain("ZodError");
+  });
+});
+
+describe("which refusals say the request itself was malformed", () => {
+  // A page built before a release keeps sending the shape it was built with;
+  // the client checks for a newer build only when a refusal carries this mark.
+  it("marks a body that could not be read", async () => {
+    const { body } = await answerFor(new HTTPException(400));
+    expect(body.error).toMatchObject({ reason: REQUEST_SHAPE_REASON });
+  });
+
+  it("leaves a business ValidationError unmarked", async () => {
+    // Routes and services throw this for a well-formed request they turn
+    // down (a message too long); reading it as an outdated page would hide
+    // the sentence the user can act on.
+    const { status, body } = await answerFor(new ValidationError("Message too long"));
+    expect(status).toBe(422);
+    expect(body).toEqual({ error: { code: 422, message: "Message too long" } });
+  });
+
+  it("leaves other 4xx HTTPExceptions unmarked", async () => {
+    const { body } = await answerFor(new HTTPException(413));
+    expect(body.error).not.toHaveProperty("reason");
   });
 });
 

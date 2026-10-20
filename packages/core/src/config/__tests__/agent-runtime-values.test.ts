@@ -23,7 +23,7 @@ import { parse } from "yaml";
 import { agentConfigSchemaForTests } from "@core/config/loader.js";
 
 /** The model every chat turn and every consolidation runs on. */
-const MODEL = "anthropic/claude-opus-5.5";
+const MODEL = "deepseek/deepseek-v4.1-flash-1017";
 
 /**
  * The shipped `config/agent.yaml`, parsed.
@@ -47,7 +47,7 @@ function defaults(): Record<string, unknown> {
 }
 
 describe("the model this build talks to", () => {
-  it("is Claude Opus 5.5 in the shipped config", () => {
+  it("is DeepSeek V4.1 Flash 1017 in the shipped config", () => {
     const config = shippedConfig();
     expect(config.default_model).toBe(MODEL);
     // Consolidation summarises old turns. Leaving it on the previous model
@@ -60,6 +60,18 @@ describe("the model this build talks to", () => {
     const parsed = defaults();
     expect(parsed.default_model).toBe(MODEL);
     expect(parsed.consolidation_model).toBe(MODEL);
+  });
+
+  it("has a price, so a deployment that reaches DeepSeek directly still starts", () => {
+    // Through OpenRouter the call reports its own cost; with a DeepSeek key the
+    // startup check (`assertModelsPriced`) refuses to run a model with no price.
+    const path = resolve(import.meta.dirname, "../../../../../config/usage-pricing.yaml");
+    const pricing = parse(readFileSync(path, "utf8")) as { models: Record<string, Record<string, number>> };
+    expect(pricing.models[MODEL]).toEqual({
+      input_cache_hit_per_mtok: 0.006,
+      input_cache_miss_per_mtok: 0.3,
+      output_per_mtok: 1.2,
+    });
   });
 });
 

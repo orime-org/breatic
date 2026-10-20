@@ -168,7 +168,7 @@ ICU placeholders (`{studio}`) and URLs never change. repo-lint `no-translated-pr
 
 **The collab connection state is always visible (`ConnectionBanner`), and loading, error state, banner and toast stay four distinct notification forms.** Each tells the user something different.
 
-**Refresh is the fallback for client/server version drift: show a prompt to reload and keep working; build no auto-refresh or recovery machinery.** The user can always refresh.
+**Client/server version drift is answered by a reload the user presses, never an automatic one: while the page still works, a new release opens a dialog the user can postpone (`ProjectUpdateNotice`); once a request is refused with `error.reason: 'request_shape'` and a newer build is live, `StaleReleaseDialog` offers only Update.** Both reload through `reloadForUpdate`, which carries the Agent draft across.
 
 ## Product guide follows the UI
 **A change to how users operate the canvas, document space, project page or chat panel updates `packages/domain/src/agent/tools/product-guide.ts` in the same PR.** The Agent answers "how do I…" from that guide alone. Check: which sentence in the guide becomes false? Is each quoted name shown on screen as text? Invoke `/product-guide-sync` ([skill](../../.claude/skills/product-guide-sync/SKILL.md)) for what the guide may quote and which tests cover it.

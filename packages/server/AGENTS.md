@@ -46,6 +46,8 @@ Who can reach the port is decided by where it is published. Before changing the 
 
 Check: will a user read this sentence? Then it must come from `t()`.
 
+**A refusal of the request's own structure carries `error.reason: 'request_shape'` (`REQUEST_SHAPE_REASON`), which the web client reads as "this page predates the release"; a refine or `superRefine` that checks structure rather than a value (which fields a kind of thing must carry) passes `params: REQUEST_SHAPE_PARAMS`.** `validate()` marks structural zod codes on its own, but every refine reports `custom`, the code value rules use too. Check: could a user's own input trip this refine? Then it checks a value and stays unmarked.
+
 ## Streaming and chat
 
 ### SSE streams are private and stop on abort

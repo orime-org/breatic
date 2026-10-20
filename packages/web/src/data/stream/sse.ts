@@ -5,6 +5,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
 import { API_BASE_PATH } from '@web/data/api/base-path';
+import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /** The content-type of a stream that opened. Anything else is an answer. */
 const EVENT_STREAM = 'text/event-stream';
@@ -92,11 +93,13 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
   if (contentType?.startsWith(EVENT_STREAM)) return;
 
   let message: string | undefined;
+  let reason: string | undefined;
   try {
     const body = (await response.json()) as
-      | { error?: { message?: string } }
+      | { error?: { message?: string; reason?: string } }
       | undefined;
     message = body?.error?.message;
+    reason = body?.error?.reason;
   } catch {
     // A proxy answering with plain text, or a truncated body — there is
     // nothing of ours to read, so fall through to the generic message.
@@ -106,6 +109,8 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
   // is still not the server's answer about this request -- so the refusal
   // carries whether the sentence in it came out of our envelope, and whoever
   // shows it decides what to do with one that did not.
+  // Decided before the refusal reaches its caller, as `request.ts` does.
+  await checkStaleRelease(reason);
   throw new StreamRefusedError(
     response.status,
     message ?? t('server.error.internal'),

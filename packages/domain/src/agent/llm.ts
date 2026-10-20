@@ -226,7 +226,9 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
       on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
       off: { thinking: { type: "disabled" } },
     },
-    vendorId: asWritten,
+    // Configured ids are written the way OpenRouter names the model
+    // (`deepseek-v4.1-flash-1017`); DeepSeek serves Flash 1017 as `deepseek-flash`.
+    vendorId: (modelId) => (modelId === "deepseek-v4.1-flash-1017" ? "deepseek-flash" : modelId),
     cache: cachesOnItsOwn,
   },
 ] as const;
