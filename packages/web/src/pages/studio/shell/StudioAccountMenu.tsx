@@ -104,6 +104,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [logoutOthersOpen, setLogoutOthersOpen] = React.useState(false);
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
+  const accountButtonRef = React.useRef<HTMLButtonElement>(null);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
 
   // The balance beside the Credits entry, read from the overlay's own query:
@@ -212,6 +213,7 @@ export function StudioAccountMenu(): React.JSX.Element {
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
+            ref={accountButtonRef}
             type='button'
             aria-label={t('studio.topBar.account')}
             variant={null}
@@ -338,7 +340,11 @@ export function StudioAccountMenu(): React.JSX.Element {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <LogoutOthersDialog open={logoutOthersOpen} onOpenChange={setLogoutOthersOpen} />
+      <LogoutOthersDialog
+        open={logoutOthersOpen}
+        onOpenChange={setLogoutOthersOpen}
+        returnFocusTo={accountButtonRef}
+      />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay

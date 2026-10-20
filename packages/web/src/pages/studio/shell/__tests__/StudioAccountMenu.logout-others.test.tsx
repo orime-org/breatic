@@ -128,6 +128,17 @@ describe('StudioAccountMenu — sign out of other devices', () => {
     expect(authApi.logoutOthers).not.toHaveBeenCalled();
   });
 
+  it('hands focus back to the account button when it closes', async () => {
+    // Opened from a menu entry that is gone by then, so without this focus
+    // lands on the page body and a keyboard reader starts over from the top.
+    const user = userEvent.setup();
+    setup();
+    await chooseLogoutOthers(user);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Account' })).toHaveFocus();
+  });
+
   it('waits on the request, then closes and says it is done; this device stays signed in', async () => {
     let answer: () => void = () => {};
     vi.mocked(authApi.logoutOthers).mockReturnValue(new Promise<void>((resolve) => { answer = resolve; }));

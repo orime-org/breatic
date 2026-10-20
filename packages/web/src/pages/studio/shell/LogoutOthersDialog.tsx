@@ -25,6 +25,11 @@ interface LogoutOthersDialogProps {
   open: boolean;
   /** Called when the dialog asks to open or close. */
   onOpenChange: (open: boolean) => void;
+  /**
+   * Where focus goes when it closes. It opens from a menu entry that is gone
+   * by then, so Radix has nothing of its own to return focus to.
+   */
+  returnFocusTo: React.RefObject<HTMLElement | null>;
 }
 
 /**
@@ -35,9 +40,10 @@ interface LogoutOthersDialogProps {
  * @param props - The open state and its setter.
  * @param props.open - Whether the dialog is open.
  * @param props.onOpenChange - Called when the dialog asks to open or close.
+ * @param props.returnFocusTo - Where focus goes when it closes.
  * @returns The dialog.
  */
-export function LogoutOthersDialog({ open, onOpenChange }: LogoutOthersDialogProps): React.JSX.Element {
+export function LogoutOthersDialog({ open, onOpenChange, returnFocusTo }: LogoutOthersDialogProps): React.JSX.Element {
   const t = useTranslation();
   const logoutOthers = useMutation({
     mutationFn: () => authApi.logoutOthers(),
@@ -53,7 +59,13 @@ export function LogoutOthersDialog({ open, onOpenChange }: LogoutOthersDialogPro
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent data-testid='logout-others-dialog'>
+      <AlertDialogContent
+        data-testid='logout-others-dialog'
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          returnFocusTo.current?.focus();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>{t('studio.topBar.logoutOthersTitle')}</AlertDialogTitle>
           <AlertDialogDescription>{t('studio.topBar.logoutOthersBody')}</AlertDialogDescription>
