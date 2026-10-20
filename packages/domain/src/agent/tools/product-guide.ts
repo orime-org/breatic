@@ -1308,7 +1308,10 @@ export function renderProductGuide(): string {
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
-      "covers the work area the same way. It shows when the session ran out, and also when the reader was " +
+      "covers the work area the same way. It shows when the session ran out or was signed out from another " +
+      "device -- the account menu on the studio pages has " +
+      `${quoted(t("studio.topBar.logoutOthers"))}, which signs out every device except the one it is pressed on -- ` +
+      "and also when the reader was " +
       "removed from the project: if signing in again does not let them back in, they were removed, and the " +
       "project's owner can say why. With a document open, " +
       `${quoted(t("spaces.document.refusedNotice"))} also shows for a moment; nothing typed after it is saved, ` +

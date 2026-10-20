@@ -8,7 +8,7 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { isReauthCloseReason } from '@breatic/shared';
+import { COLLAB_REAUTH_REASONS, isReauthCloseReason } from '@breatic/shared';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
 
@@ -95,6 +95,14 @@ export interface DocFacts {
    * stays healthy, which is why nothing else surfaces it.
    */
   authFailure: string | null;
+  /**
+   * Whether collab closed this document because the session it was opened
+   * with ended (signed out elsewhere, a password reset; inner#1548). The
+   * refusals that follow are expected, so they are not reported as failures.
+   * Set by that close, cleared by the next successful handshake; it lives here
+   * so later reconnects, which are refused again, still see it.
+   */
+  sessionEnded: boolean;
 }
 
 interface DocEntry {
@@ -240,7 +248,7 @@ export function acquireDocProvider(
     provider,
     refcount: 1,
     pendingRelease: null,
-    facts: { hasEverSynced: false, authFailure: null },
+    facts: { hasEverSynced: false, authFailure: null, sessionEnded: false },
   };
   docEntries.set(name, entry);
   // The registry watches for these itself rather than letting a consumer report
@@ -257,6 +265,7 @@ export function acquireDocProvider(
   // server has started accepting this document again.
   provider.on('authenticated', () => {
     entry.facts.authFailure = null;
+    entry.facts.sessionEnded = false;
   });
   // Collab closed this one document so the server can answer again with a
   // changed scope (archived, restored, role changed, content replaced). Only
@@ -268,6 +277,7 @@ export function acquireDocProvider(
   // When the socket itself is down there is no open payload, and the socket's
   // reconnect re-opens every attached document anyway.
   provider.on('close', (data: { event?: { reason?: string } } | undefined) => {
+    if (data?.event?.reason === COLLAB_REAUTH_REASONS.sessionEnded) entry.facts.sessionEnded = true;
     const opened = websocketProvider.receivedOnOpenPayload;
     if (!isReauthCloseReason(data?.event?.reason) || opened === undefined) return;
     void provider.onOpen(opened);
@@ -293,7 +303,7 @@ export function readDocFacts(name: string): DocFacts {
   const facts = docEntries.get(name)?.facts;
   return facts
     ? { ...facts }
-    : { hasEverSynced: false, authFailure: null };
+    : { hasEverSynced: false, authFailure: null, sessionEnded: false };
 }
 
 /**
