@@ -29,6 +29,11 @@ const collabConfigSchema = z.object({
   // see `getConnectionTimings`.
   connection_ping_interval_ms: z.number().int().positive().default(30_000),
 
+  // How often every connection's session is read again (inner#1548). Ended
+  // sessions are announced and closed at once; this round catches what the
+  // announcement could not reach, such as a session that simply expired.
+  session_recheck_interval_ms: z.number().int().positive().default(1_800_000),
+
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
 

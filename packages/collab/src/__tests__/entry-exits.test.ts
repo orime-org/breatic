@@ -39,6 +39,19 @@ describe("collab entry exits", () => {
     for (const prefix of calls) expect(["await", "void", "=>"]).toContain(prefix);
   });
 
+  it("hears ended sessions before the port opens, and exits when it cannot", () => {
+    // inner#1548: an announcement published before the subscription is
+    // confirmed is lost, so no client may connect until it is.
+    const start = code.indexOf("await startSessionRevocation(");
+    const failed = code.indexOf('"session_revocation_listen_failed"');
+    const listen = code.indexOf("await server.listen();");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(start);
+    expect(listen).toBeGreaterThan(failed);
+    expect(code.slice(failed, listen)).toMatch(/exitProcess\(1\)/);
+    expect(code).toMatch(/\(\) => sessionRevocation\.stop\(\)/);
+  });
+
   it("flushes its own log before every failure exit", () => {
     const exits = [...code.matchAll(/exitProcess\(1\)/g)].map((m) => m.index);
     for (const at of exits) {
