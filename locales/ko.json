@@ -1372,7 +1372,7 @@
       "title": "새 버전을 사용할 수 있습니다",
       "description": "새로고침하면 새 버전을 사용할 수 있습니다.",
       "busy": "업로드 또는 다른 작업이 진행 중입니다. 새로고침하면 중단되므로 완료될 때까지 기다리는 것이 좋습니다.",
-      "later": "나중에",
+      "later": "나중에 업데이트",
       "refresh": "업데이트"
     },
     "archived": {
@@ -2286,7 +2286,7 @@
       "month": "월간",
       "year": "연간"
     },
-    "saveTwoMonths": "12개월을 10개월 가격에",
+    "saveTwoMonths": "두 달 무료",
     "yearSaving": "연간 결제 시 약 {percent}% 절약",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2485,6 +2485,13 @@
         "title": "광고",
         "description": "어떤 광고가 가입, 구매 등 주요 행동으로 이어졌는지 측정합니다."
       }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "페이지 버전이 오래되었습니다",
+      "description": "이 페이지는 이전 버전이라 이번 작업이 완료되지 않았습니다. 새로고침하면 계속할 수 있습니다.",
+      "refresh": "업데이트"
     }
   }
 }

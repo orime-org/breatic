@@ -82,3 +82,18 @@ tiers:
     studio_members: 9999
     project_members: 9999
     storage_bytes: 109951162777600  # 100 TiB
+
+# How long a stored subscription may sit past its paid period before its tier
+# stops being honoured, in days.
+#
+# A subscription that is really renewing has its period pushed forward by
+# Stripe, so a row still marked live long after its period ended means the
+# event that ended it never reached us. Fourteen days is Stripe's own Smart
+# Retries window: inside it, a subscription behind on payment is one Stripe is
+# still collecting for, and taking the tier away would punish somebody whose
+# card is about to go through.
+#
+# It sits in this file because it decides which tier an account is on, and
+# every service that reads a tier has this file; collab reads it when it sizes
+# a document's editor seats.
+stale_after_days: 14

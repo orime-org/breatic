@@ -41,7 +41,8 @@ export const AdsConversionJobSchema: z.ZodType<AdsConversionJob> = z
     userId: z.string().uuid(),
     browser: BrowserAdsSnapshotSchema.nullable(),
     conversion: z.enum(ADS_CONVERSIONS),
-    transactionId: z.string().min(1),
+    // Google Ads caps a transaction id at 64 characters.
+    transactionId: z.string().min(1).max(64),
     occurredAt: isoTime,
     click: z
       .object({ gclid: z.string().optional(), gbraid: z.string().optional(), wbraid: z.string().optional(), at: isoTime })

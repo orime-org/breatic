@@ -10,6 +10,7 @@ import { getLocale } from '@breatic/shared';
 
 import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
 import { API_BASE_PATH } from '@web/data/api/base-path';
+import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /**
  * Singleton axios instance configured for the breatic API.
@@ -59,9 +60,12 @@ function createClient(): AxiosInstance {
 
   instance.interceptors.response.use(
     (res) => res,
-    (err: unknown) => {
+    async (err: unknown) => {
       const apiErr = normalizeError(err);
-      return Promise.reject(new ApiException(apiErr));
+      // Decided before the caller sees the refusal: an out-of-date page has
+      // silenced toasts by the time any catch would show this one.
+      await checkStaleRelease(apiErr.reason);
+      throw new ApiException(apiErr);
     },
   );
 
@@ -79,7 +83,7 @@ function normalizeError(err: unknown): ApiError {
   if (err instanceof AxiosError) {
     const status = err.response?.status ?? 0;
     const data = err.response?.data as
-      | { error?: { code?: string; message?: string; retryAfterSeconds?: number } }
+      | { error?: { code?: string; message?: string; retryAfterSeconds?: number; reason?: string } }
       | undefined;
     const written = data?.error?.message;
     return {
@@ -89,6 +93,7 @@ function normalizeError(err: unknown): ApiError {
       fromServer: written !== undefined,
       retryAfterSeconds: data?.error?.retryAfterSeconds ?? headerSeconds(err, 'retry-after'),
       idempotencyStatus: idempotencyStatusOf(err),
+      reason: data?.error?.reason,
       network: err.response === undefined,
     };
   }

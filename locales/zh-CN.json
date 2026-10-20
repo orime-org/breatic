@@ -1372,7 +1372,7 @@
       "title": "有新版本可用",
       "description": "新版本已上线，刷新后即可使用。",
       "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
-      "later": "稍后",
+      "later": "稍后更新",
       "refresh": "更新"
     },
     "archived": {
@@ -2286,7 +2286,7 @@
       "month": "月付",
       "year": "年付"
     },
-    "saveTwoMonths": "十二个月，按十个月的价",
+    "saveTwoMonths": "省两个月",
     "yearSaving": "年付约省 {percent}%",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2485,6 +2485,13 @@
         "title": "广告",
         "description": "衡量广告带来的注册、购买等关键步骤。"
       }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "页面版本已过期",
+      "description": "当前页面是旧版本，这次操作没有完成。刷新后即可继续。",
+      "refresh": "更新"
     }
   }
 }

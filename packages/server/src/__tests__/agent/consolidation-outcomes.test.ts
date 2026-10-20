@@ -241,19 +241,18 @@ describe("a consolidation that works", () => {
 
   it("asks the consolidation model for no reasoning the way that model takes it", async () => {
     // Folding a transcript into a summary has no reasoning step in it. The
-    // consolidation model is Claude Opus 5.5, reached through OpenRouter in
-    // this suite, and Opus 5.5 rejects a request that turns thinking off: the
-    // one spelling every Claude model accepts is no reasoning field at all.
+    // consolidation model is DeepSeek V4.1 Flash 1017, reached through
+    // OpenRouter in this suite, where `none` is the documented way to turn
+    // reasoning off.
     await consolidate();
 
     const call = generateTextRetry.mock.calls[0]?.[0] as {
       providerOptions?: Record<string, Record<string, unknown>>;
       temperature?: number;
     };
-    expect(call.providerOptions).toEqual({ openrouter: {} });
-    // Opus 5.5 returns a 400 for any non-default temperature, so the fixed 0
-    // the fold asks for is not sent to it.
-    expect(call.temperature).toBeUndefined();
+    expect(call.providerOptions).toEqual({ openrouter: { reasoning: { effort: "none" } } });
+    // The fixed 0 the fold asks for goes out: unlike Claude, DeepSeek takes it.
+    expect(call.temperature).toBe(0);
   });
 
   it("tells the model the ceiling its answer is read through", async () => {

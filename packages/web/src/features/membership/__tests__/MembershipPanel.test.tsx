@@ -186,7 +186,7 @@ describe('MembershipPanel', () => {
     // `max-height` a flex column leaves its items at `height: auto`, the
     // viewport grows to its content and the dialog clips instead of
     // scrolling. Grid tracks are definite either way.
-    expect(dialog.className).toContain('h-[min(1000px,calc(100vh-80px))]');
+    expect(dialog.className).toContain('max-h-[calc(100vh-80px)]');
     expect(dialog.className).toContain('grid-rows-[auto_minmax(0,1fr)]');
   });
 
@@ -893,7 +893,7 @@ describe('MembershipPanel', () => {
     membershipMock.mockResolvedValue(answer());
     setup();
 
-    await screen.findByTestId('compare-column-pro');
+    await screen.findByTestId('current-tier-name');
     const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
     expect(cells).toHaveLength(6);
     expect(
@@ -935,9 +935,10 @@ describe('MembershipPanel', () => {
     // 这张表就是验收里「各档差别」的全部内容，而它的正确性此前只靠写的人
     // 当时没手滑：把某一行读成另一个字段、或者整列错位，都没有任何断言接得住。
     membershipMock.mockResolvedValue(answer());
-    await screen.findByTestId('compare-column-pro').catch(() => undefined);
     setup();
-    await screen.findByTestId('compare-column-pro');
+    // The loading frame draws the same table with bars for figures, so wait
+    // for what only the answer brings.
+    await screen.findByTestId('current-tier-name');
 
     const expected: Record<string, [string, string, string]> = {
       // Row keys: [base, pro, team]. The monthly-fee row went in #253 — a
@@ -1023,9 +1024,10 @@ describe('MembershipPanel', () => {
     setup();
 
     await screen.findByTestId('current-tier-name');
-    expect(screen.getByTestId('membership-save-line')).toHaveTextContent(
-      'Twelve months for the price of ten',
-    );
+    const saveLine = screen.getByTestId('membership-save-line');
+    expect(saveLine).toHaveTextContent('Two months free');
+    // The website's green for the same line, from the seven-colour palette.
+    expect(saveLine.className).toContain('text-status-success-foreground');
     const page = document.body.textContent ?? '';
     // How a change is prorated, and whether anything is refunded, is not
     // something this page says a word about.
@@ -1047,7 +1049,7 @@ describe('MembershipPanel', () => {
     await screen.findByTestId('tier-price-pro');
     expect(screen.getByTestId('tier-price-pro')).toHaveTextContent('$199.99');
     expect(screen.getByTestId('membership-save-line')).toHaveTextContent(
-      'Twelve months for the price of ten',
+      'Two months free',
     );
 
     await user.click(screen.getByTestId('membership-period-month'));
@@ -1123,9 +1125,6 @@ describe('MembershipPanel', () => {
 });
 
 describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => {
-  /** The class that holds a priced tier's dialog at one height. */
-  const PINNED_PANEL_HEIGHT = 'h-[min(1000px,calc(100vh-80px))]';
-
   /**
    * Opens the panel for an account on `tier`, with the answer never arriving.
    * @param tier - The tier the account was told it is on when it signed in.
@@ -1180,31 +1179,32 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     expect(within(choice).getAllByTestId('tier-card-skeleton')).toHaveLength(4);
   });
 
-  it.each([
-    ['pro', true],
-    ['base', true],
-    ['enterprise', false],
-    ['self_hosted', false],
-  ] as const)(
-    'pins the dialog to the priced-panel height for %s: %s',
-    (tier, pinned) => {
-      // The loaded panel of a priced tier runs to about 1000px, so the loading
-      // frame takes that height (capped by the viewport) too and nothing moves
-      // when the answer lands. The two unpriced tiers are short either way.
+  it.each(['pro', 'base', 'enterprise', 'self_hosted'] as const)(
+    'sizes the dialog to its content for %s, capped by the viewport',
+    (tier) => {
+      // A fixed height left the space under a shorter loaded panel empty, so
+      // the frame follows its content and the loading frame takes the loaded
+      // panel's shape instead.
       openPending(tier);
-      const hasPin = screen.getByRole('dialog').className.includes(
-        PINNED_PANEL_HEIGHT,
-      );
-      expect(hasPin).toBe(pinned);
+      const dialog = screen.getByRole('dialog');
+      expect(dialog.className).toContain('max-h-[calc(100vh-80px)]');
+      expect(dialog.className).not.toMatch(/(^|\s)h-\[/);
     },
   );
 
-  it('keeps the pinned height once the answer arrives', async () => {
-    membershipMock.mockResolvedValue(answer());
-    setup();
+  it('draws the price notes, the comparison table and the contact line while waiting', () => {
+    openPending('pro');
 
-    await screen.findByTestId('current-tier-name');
-    expect(screen.getByRole('dialog').className).toContain(PINNED_PANEL_HEIGHT);
+    // Fixed words appear as words, so these rows are as tall as they will be.
+    expect(screen.getByTestId('membership-no-credits')).toBeInTheDocument();
+    expect(screen.getByTestId('membership-tax-note')).toBeInTheDocument();
+    expect(screen.getByText('Compare tiers')).toBeInTheDocument();
+    for (const [tier, name] of [['base', 'Starter'], ['pro', 'PRO'], ['team', 'Team']]) {
+      expect(screen.getByTestId(`compare-column-${tier}`)).toHaveTextContent(name);
+    }
+    // Every figure is a bar until the answer brings it.
+    expect(screen.getAllByTestId('compare-cell-skeleton')).toHaveLength(18);
+    expect(screen.getByTestId('membership-contact-priced')).toBeInTheDocument();
   });
 
   it.each(['self_hosted', 'enterprise'] as const)(

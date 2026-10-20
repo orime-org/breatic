@@ -23,7 +23,12 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { env, getRedis, logger } from "@breatic/core";
-import { IDEMPOTENCY_RETENTION_SECONDS, t, type IdempotencyScope } from "@breatic/shared";
+import {
+  IDEMPOTENCY_RETENTION_SECONDS,
+  REQUEST_SHAPE_REASON,
+  t,
+  type IdempotencyScope,
+} from "@breatic/shared";
 import { getRunningLeaseMs } from "@server/config/idempotency.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 
@@ -71,6 +76,7 @@ interface RunContext {
  * @param status - The HTTP status.
  * @param messageKey - The locale key of what the caller reads.
  * @param idempotencyStatus - The status header, when this answer has one.
+ * @param reason - `REQUEST_SHAPE_REASON` when the request itself was malformed.
  * @returns The response.
  */
 function refuse(
@@ -78,11 +84,16 @@ function refuse(
   status: 400 | 409 | 422,
   messageKey: string,
   idempotencyStatus?: "in_progress",
+  reason?: typeof REQUEST_SHAPE_REASON,
 ): Response {
   const headers: Record<string, string> = idempotencyStatus
     ? { "Idempotency-Status": idempotencyStatus }
     : {};
-  return c.json({ error: { code: status, message: t(messageKey) } }, status, headers);
+  return c.json(
+    { error: { code: status, message: t(messageKey), ...(reason ? { reason } : {}) } },
+    status,
+    headers,
+  );
 }
 
 /**
@@ -210,7 +221,8 @@ async function finish(
 export function runOnce(scope: IdempotencyScope): MiddlewareHandler<{ Variables: AuthVariables }> {
   return async (c, next) => {
     const key = c.req.header("idempotency-key");
-    if (!key) return refuse(c, 400, "server.idempotency.missing");
+    // Only a page built before this route required a key leaves it out.
+    if (!key) return refuse(c, 400, "server.idempotency.missing", undefined, REQUEST_SHAPE_REASON);
 
     const ctx: RunContext = { userId: c.get("user").id, scope, key };
     const redisKey = `${env.REDIS_KEY_PREFIX}:server:idempotency:${ctx.userId}:${scope}:${key}`;

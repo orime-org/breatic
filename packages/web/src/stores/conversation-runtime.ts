@@ -34,6 +34,7 @@ import { readMishap, tell } from '@web/stores/chat-mishaps';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { forgetAllConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
+import { keepAcrossUpdate } from '@web/stores/reload-for-update';
 
 /**
  * How far along the turn a conversation is running is, if it is running one.
@@ -302,6 +303,53 @@ function currentVisit(projectId: string): AbortController {
   return started;
 }
 
+/** What an update reload carried for conversations; see {@link carriedAcrossUpdate}. */
+interface CarriedConversations {
+  /** The non-empty draft in each conversation's box. */
+  drafts: Record<string, string>;
+  /** The conversation on screen in each project. */
+  current: Record<string, string>;
+}
+
+/**
+ * Keep only the string entries of an untrusted record.
+ * @param value - What storage handed back.
+ * @returns Its string-valued entries.
+ */
+function stringRecord(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  );
+}
+
+/**
+ * Register what an update reload carries for conversations and take back what
+ * the page before carried.
+ * @returns The carried drafts and open conversations; empty when none.
+ */
+function carriedAcrossUpdate(): CarriedConversations {
+  const saved = keepAcrossUpdate('conversations', (): CarriedConversations => {
+    const { draftByConversation, currentByProject } = useStore.getState();
+    return {
+      drafts: Object.fromEntries(Object.entries(draftByConversation).filter(([, text]) => text !== '')),
+      current: currentByProject,
+    };
+  });
+  const record = typeof saved === 'object' && saved !== null ? (saved as Record<string, unknown>) : {};
+  return { drafts: stringRecord(record.drafts), current: stringRecord(record.current) };
+}
+
+const carried = carriedAcrossUpdate();
+
+/**
+ * The conversation each project showed before an update reload, to go back to
+ * once the open lands. Kept apart from `currentByProject`: the open replaces
+ * that with the server's most recently used conversation, and a seeded value
+ * would also make `switchTo` think the conversation were already on screen.
+ */
+const wantedAfterUpdate = new Map(Object.entries(carried.current));
+
 const useStore = create<ConversationRuntimeState>()(() => ({
   conversations: {},
   currentByProject: {},
@@ -311,7 +359,7 @@ const useStore = create<ConversationRuntimeState>()(() => ({
   listLoadingMore: {},
   listLoading: {},
   openFailure: {},
-  draftByConversation: {},
+  draftByConversation: carried.drafts,
   openStatus: {},
   navigatingByProject: {},
   sendingByProject: {},
@@ -439,6 +487,13 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
       // before it, must not replace what the reader chose.
       landed = stillAwaited(projectId, nav);
       if (landed) adoptConversation(projectId, opened.current);
+      const wanted = wantedAfterUpdate.get(projectId);
+      wantedAfterUpdate.delete(projectId);
+      // Back to where the user was before the update reload; their draft is
+      // there. A conversation gone since leaves them on the one just opened.
+      if (landed && wanted !== undefined && wanted !== opened.current.conversation.id) {
+        void switchTo(projectId, wanted);
+      }
       // A page already on its way was asked for from the end of the list this
       // answer is about to settle, and the count is how that page finds out.
       // Both ways out of the setState below bump it, not only the replacing

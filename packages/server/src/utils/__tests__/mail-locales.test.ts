@@ -47,7 +47,7 @@ const SIGNUP_CODE = "048213";
 const NAME = "A<b>&_*`x";
 const ESCAPED = "A&lt;b&gt;&amp;_*`x";
 const LINK = "https://app.test/decision?token=t";
-const SLOGAN = "Create Better Together";
+const SLOGAN = "Collaborate Better";
 const WITH_ACTION = [
   "studioInvite", "projectInvite", "studioTransfer", "projectTransfer",
   "roleUpgrade", "projectJoin", "passwordReset",

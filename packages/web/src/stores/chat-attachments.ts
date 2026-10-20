@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { attachmentSection, t } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import type { ChatAttachedChip } from '@breatic/shared';
+import { keepAcrossUpdate } from '@web/stores/reload-for-update';
 
 /** Where one attached item stands. */
 export type TrayStatus = 'uploading' | 'ready' | 'failed';
@@ -59,7 +60,27 @@ interface TrayState {
   byConversation: Record<string, TrayItem[]>;
 }
 
-const useStore = create<TrayState>(() => ({ byConversation: {} }));
+/**
+ * Register what an update reload carries for attachments and take back what
+ * the page before carried. Only ready items cross: a reload stops an upload.
+ * @returns Each conversation's carried items; empty when none.
+ */
+function carriedAcrossUpdate(): Record<string, TrayItem[]> {
+  const saved = keepAcrossUpdate('attachments', () => {
+    const ready: Record<string, TrayItem[]> = {};
+    for (const [conversationId, items] of Object.entries(useStore.getState().byConversation)) {
+      const kept = items.filter((item) => item.status === 'ready' && item.chip !== undefined);
+      if (kept.length > 0) ready[conversationId] = kept;
+    }
+    return ready;
+  });
+  if (typeof saved !== 'object' || saved === null) return {};
+  return Object.fromEntries(
+    Object.entries(saved).filter((entry): entry is [string, TrayItem[]] => Array.isArray(entry[1])),
+  );
+}
+
+const useStore = create<TrayState>(() => ({ byConversation: carriedAcrossUpdate() }));
 
 /** Nothing attached; one array, so whoever reads it keeps its identity. */
 export const NO_ATTACHMENTS: readonly TrayItem[] = [];
