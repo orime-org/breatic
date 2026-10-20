@@ -155,6 +155,29 @@ export function projectConnectionsCloseChannel(prefix: string, projectId: string
 }
 
 /**
+ * Control event announcing that sessions ended (inner#1548): signed out,
+ * signed out of other devices, or ended by a password reset. Every collab
+ * instance closes the connections opened with them. Carries session ids (a
+ * hash of the token, see core `sessionId`), never the tokens.
+ */
+export interface SessionsRevokedEvent {
+  type: "sessions:revoked";
+  userId: string;
+  sessionIds: string[];
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link SessionsRevokedEvent}. Outside the project
+ * pattern: a session is not scoped to a project.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @returns The channel name `{prefix}:sessions:revoked`.
+ */
+export function sessionsRevokedChannel(prefix: string): string {
+  return `${prefix}:sessions:revoked`;
+}
+
+/**
  * Glob pattern matching every project-scoped control channel the collab process
  * subscribes to. One `psubscribe` instead of one subscription per channel keeps
  * the connection count down.

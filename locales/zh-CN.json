@@ -35,6 +35,7 @@
       "email_taken": "该邮箱已注册",
       "token_expired": "登录已过期，请重新登录",
       "logout_success": "已退出登录",
+      "logout_others_success": "已登出其他设备",
       "not_authenticated": "未登录",
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",

@@ -146,6 +146,7 @@ export {
   publishCreditsChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
+  sessionsRevokedChannelName,
 } from "@core/infra/control-events.js";
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,
@@ -161,7 +162,15 @@ export {
   type ClientIdentityInput,
   type RefusalReason,
 } from "@core/infra/client-identity.js";
-export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
+export {
+  setSession,
+  getSession,
+  sessionId,
+  revokeSession,
+  revokeAllSessions,
+  sessionCookieName,
+  type RevokeOutcome,
+} from "@core/infra/session-store.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────

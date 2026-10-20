@@ -47,10 +47,12 @@ import {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
+  sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
+  type SessionsRevokedEvent,
 } from "@breatic/shared";
 
 /**
@@ -126,4 +128,27 @@ export async function publishProjectConnectionsClose(
   };
   const redis = getStreamRedis();
   await redis.publish(projectConnectionsCloseChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * The channel collab subscribes to for ended sessions, with this deployment's
+ * prefix (the same reason as {@link projectControlChannelPattern}).
+ * @returns The channel name.
+ */
+export function sessionsRevokedChannelName(): string {
+  return sessionsRevokedChannel(env.REDIS_KEY_PREFIX);
+}
+
+/**
+ * Tell every collab instance that these sessions ended (inner#1548), so each
+ * closes the connections opened with them. Called only by the session store's
+ * revoke functions, right after they delete the sessions.
+ * @param userId - Whose sessions they were.
+ * @param sessionIds - The ended sessions' ids (core `sessionId`).
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishSessionsRevoked(userId: string, sessionIds: string[]): Promise<void> {
+  const event: SessionsRevokedEvent = { type: "sessions:revoked", userId, sessionIds, ts: Date.now() };
+  await getStreamRedis().publish(sessionsRevokedChannelName(), JSON.stringify(event));
 }

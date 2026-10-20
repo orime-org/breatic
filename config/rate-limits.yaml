@@ -30,6 +30,9 @@ forgot:         { max: 3,   window_seconds: 3600 }
 reset:          { max: 30,  window_seconds: 300 }
 reset-recovery-ip: { max: 30, window_seconds: 300 }
 reset-recovery: { max: 5,   window_seconds: 3600 }
+# Signing out of other devices (inner#1548), per account: ending sessions is
+# a scan over every session key, and a person needs it a few times at most.
+logout-others: { max: 10,  window_seconds: 300 }
 
 # Studio (post-auth, user-keyed)
 slug-check:     { max: 60,  window_seconds: 60 }

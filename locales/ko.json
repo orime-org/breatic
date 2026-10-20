@@ -32,6 +32,7 @@
       "email_taken": "이미 등록된 이메일입니다",
       "token_expired": "세션이 만료되었습니다. 다시 로그인해 주세요",
       "logout_success": "로그아웃되었습니다",
+      "logout_others_success": "다른 기기에서 로그아웃되었습니다",
       "not_authenticated": "인증되지 않았습니다",
       "google_oauth_unconfigured": "이 서버에서는 Google 로그인을 사용할 수 없습니다",
       "invalid_google_credential": "Google 계정을 확인할 수 없습니다",
