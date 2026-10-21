@@ -289,4 +289,30 @@ describe('collab-socket manager — one report per closed connection', () => {
     providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Connection Timeout' } });
     expect(reportCollabFailure).not.toHaveBeenCalled();
   });
+
+  it('does not report the idle drop of a connection whose every document was refused', () => {
+    // A signed-out session or a removed member: the server refuses every
+    // document, nothing is sent any more, and the provider drops the idle
+    // connection on its own every 30 seconds (inner#1548).
+    acquireDocProvider(META, getDoc(META));
+    acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
+    wsInstances[0]!.emit('open');
+    providerInstances[0]!.emit('authenticationFailed', { reason: 'Session ended' });
+    providerInstances[1]!.emit('authenticationFailed', { reason: 'Session ended' });
+
+    wsInstances[0]!.emit('close', { event: { code: 1005, reason: '' } });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports the drop when any attached document is still accepted', () => {
+    acquireDocProvider(META, getDoc(META));
+    acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
+    wsInstances[0]!.emit('open');
+    providerInstances[1]!.emit('authenticationFailed', { reason: 'Forbidden' });
+
+    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+
+    expect(reportCollabFailure).toHaveBeenCalledOnce();
+  });
 });

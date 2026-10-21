@@ -136,6 +136,10 @@ function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
     sharedSocket.on('close', (data: { event?: { code?: number; reason?: string } } | undefined) => {
       if (!opened) return;
       opened = false;
+      // Every document refused (session ended, member removed): nothing is
+      // sent any more and the provider drops the idle connection every 30 s.
+      // That drop is the expected end state, not a failure.
+      if ([...docEntries.values()].every((e) => e.facts.authFailure !== null)) return;
       reportCollabFailure({
         kind: 'disconnect',
         code: data?.event?.code,
