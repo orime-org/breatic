@@ -212,6 +212,12 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
     expect(slugInput()).toHaveFocus();
+
+    // Editing the slug drops the reason at once, before the typing check runs.
+    await user.clear(slugInput());
+    await user.type(slugInput(), 'good-slug');
+    expect(screen.getByTestId('new-project-slug-hint')).not.toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   it('shows the description line, not an availability line, for a valid slug', async () => {

@@ -261,6 +261,44 @@ describe('ChangeSlugSection — the confirm gate', () => {
     );
   });
 
+  it('sends when the check could not be made, for the server to judge (inner#1652)', async () => {
+    vi.mocked(studiosApi.checkSlugAvailable).mockRejectedValue(new Error('down'));
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugUnverified',
+      ),
+    );
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' }, expect.any(Function));
+  });
+
+  it('waits for a running check and refuses a slug it finds taken (inner#1652)', async () => {
+    let answer!: (value: { available: boolean; reason: 'taken' }) => void;
+    vi.mocked(studiosApi.checkSlugAvailable).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    input.blur();
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    fireEvent.click(confirm);
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+
+    answer({ available: false, reason: 'taken' });
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(onSave).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveAttribute('aria-busy');
+    expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent('studio.container.dialog.slugTaken');
+  });
+
   it('never asks the server whether the studio may keep its own slug', async () => {
     // The dialog opens holding it, and asking gets the truthful answer
     // "taken" — by the very studio doing the asking. Assert the request never
