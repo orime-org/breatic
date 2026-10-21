@@ -14,6 +14,7 @@ import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
 import { FieldError } from '@web/components/FieldError';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 
 /**
  * Password reset — branches on the query string:
@@ -170,7 +171,7 @@ function RecoveryResetForm(): React.JSX.Element {
     const trimmedEmail = email.trim();
     const trimmedCode = recoveryCode.trim();
     const nextErrors: typeof errors = {};
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!looksLikeEmail(trimmedEmail)) {
       nextErrors.email = t('auth.invalidEmail');
     }
     if (!trimmedCode) nextErrors.recoveryCode = t('auth.reset.recoveryCodeRequired');

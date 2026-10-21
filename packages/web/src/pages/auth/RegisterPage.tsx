@@ -17,6 +17,7 @@ import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
 import { SignupCodeStep } from '@web/pages/auth/SignupCodeStep';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 
 /**
  * Email + password registration — step one of the two-step sign-up.
@@ -114,7 +115,7 @@ export default function RegisterPage(): React.JSX.Element {
     setFormError(null);
     const trimmedEmail = email.trim();
     const nextErrors: typeof errors = {};
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!looksLikeEmail(trimmedEmail)) {
       nextErrors.email = t('auth.invalidEmail');
     }
     if (password.length < 8) nextErrors.password = t('auth.passwordTooShort');
