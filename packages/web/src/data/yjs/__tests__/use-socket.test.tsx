@@ -353,6 +353,27 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(reportCollabFailure).not.toHaveBeenCalled();
   });
 
+  it('keeps quiet for a document opened after the session ended', () => {
+    // The session belongs to the tab, not to one document: a Space opened
+    // behind the banner is refused for the same reason and never receives
+    // the close that announced it.
+    vi.mocked(reportCollabFailure).mockClear();
+    renderHook(() => useSocket({ name: 'project-p1/canvas-open-before', doc: new Y.Doc() }), { wrapper: wrapper('u1') });
+    const before = providerInstances.length - 1;
+    act(() => {
+      providerInstances[before]!.emit('close', { event: { code: 4401, reason: 'Session ended' } });
+      providerInstances[before]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    renderHook(() => useSocket({ name: 'project-p1/canvas-open-after', doc: new Y.Doc() }), { wrapper: wrapper('u1') });
+    const after = providerInstances.length - 1;
+    act(() => {
+      providerInstances[after]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
   it('reports refusals again once a handshake has succeeded since', () => {
     vi.mocked(reportCollabFailure).mockClear();
     const doc = new Y.Doc();

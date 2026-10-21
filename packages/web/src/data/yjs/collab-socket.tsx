@@ -96,11 +96,13 @@ export interface DocFacts {
    */
   authFailure: string | null;
   /**
-   * Whether collab closed this document because the session it was opened
-   * with ended (signed out elsewhere, a password reset; inner#1548). The
-   * refusals that follow are expected, so they are not reported as failures.
-   * Set by that close, cleared by the next successful handshake; it lives here
-   * so later reconnects, which are refused again, still see it.
+   * Whether the session this tab connects with has ended (signed out
+   * elsewhere, a password reset; inner#1548). The refusals that follow are
+   * expected, so they are not reported as failures. One cookie serves every
+   * document of the tab, so this is held once for the shared socket: set by a
+   * "Session ended" close on any document, cleared by any successful
+   * handshake. A document opened afterwards, which never gets that close,
+   * reads it too.
    */
   sessionEnded: boolean;
 }
@@ -109,11 +111,12 @@ interface DocEntry {
   provider: HocuspocusProvider;
   refcount: number;
   pendingRelease: ReturnType<typeof setTimeout> | null;
-  facts: DocFacts;
+  facts: Omit<DocFacts, 'sessionEnded'>;
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
 const docEntries = new Map<string, DocEntry>();
+let sessionEnded = false;
 
 /**
  * Get-or-create the shared WebSocket. Lazily created on the first document
@@ -252,7 +255,7 @@ export function acquireDocProvider(
     provider,
     refcount: 1,
     pendingRelease: null,
-    facts: { hasEverSynced: false, authFailure: null, sessionEnded: false },
+    facts: { hasEverSynced: false, authFailure: null },
   };
   docEntries.set(name, entry);
   // The registry watches for these itself rather than letting a consumer report
@@ -269,7 +272,7 @@ export function acquireDocProvider(
   // server has started accepting this document again.
   provider.on('authenticated', () => {
     entry.facts.authFailure = null;
-    entry.facts.sessionEnded = false;
+    sessionEnded = false;
   });
   // Collab closed this one document so the server can answer again with a
   // changed scope (archived, restored, role changed, content replaced). Only
@@ -281,7 +284,7 @@ export function acquireDocProvider(
   // When the socket itself is down there is no open payload, and the socket's
   // reconnect re-opens every attached document anyway.
   provider.on('close', (data: { event?: { reason?: string } } | undefined) => {
-    if (data?.event?.reason === COLLAB_REAUTH_REASONS.sessionEnded) entry.facts.sessionEnded = true;
+    if (data?.event?.reason === COLLAB_REAUTH_REASONS.sessionEnded) sessionEnded = true;
     const opened = websocketProvider.receivedOnOpenPayload;
     if (!isReauthCloseReason(data?.event?.reason) || opened === undefined) return;
     void provider.onOpen(opened);
@@ -304,10 +307,8 @@ export function acquireDocProvider(
  * @returns A snapshot — always a fresh object, so a caller cannot reach back into the registry through it.
  */
 export function readDocFacts(name: string): DocFacts {
-  const facts = docEntries.get(name)?.facts;
-  return facts
-    ? { ...facts }
-    : { hasEverSynced: false, authFailure: null, sessionEnded: false };
+  const facts = docEntries.get(name)?.facts ?? { hasEverSynced: false, authFailure: null };
+  return { ...facts, sessionEnded };
 }
 
 /**
@@ -350,6 +351,7 @@ export function _resetCollabSocketForTests(): void {
     entry.provider.destroy();
   });
   docEntries.clear();
+  sessionEnded = false;
   if (sharedSocket) {
     sharedSocket.destroy();
     sharedSocket = null;
