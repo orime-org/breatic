@@ -12,9 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@web/components/ui/dialog';
+import { FieldError } from '@web/components/FieldError';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
-import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCreatingProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
@@ -22,7 +22,13 @@ import {
   StudioSelectField,
   type StudioOption,
 } from '@web/pages/studio/container/dialogs/StudioSelectField';
-import { ITEM_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
+import {
+  ITEM_SLUG_BOUNDS,
+  itemSlugFromName,
+  validateItemSlug,
+  type SlugCheck,
+  type SlugError,
+} from '@web/pages/studio/container/dialogs/slug-util';
 import { useItemSlugCheck } from '@web/pages/studio/container/dialogs/use-item-slug-check';
 import { SpaceKindPicker } from '@web/spaces/SpaceKindPicker';
 import type { SpaceType } from '@breatic/shared';
@@ -31,7 +37,6 @@ import type { SpaceType } from '@breatic/shared';
 export interface NewItemValues {
   name: string;
   slug: string;
-  description: string;
   /**
    * The first space's type, seeded on create (project only — collections have
    * no spaces). Omitted for `kind='collection'`. Canvas is the only editable
@@ -70,9 +75,10 @@ interface NewItemDialogProps {
 
 /**
  * The new-project / new-collection dialog (spec §3.12) — a shared form (name +
- * slug + optional description) parameterized by kind. Project / collection
- * slugs are not unique, so the slug is checked for shape alone, live as it is
- * typed (`useItemSlugCheck`); Create waits for a name and a slug that passed.
+ * slug) parameterized by kind. Project / collection slugs are not unique, so
+ * the slug is optional: it follows the name until the reader edits it, and is
+ * checked for shape alone (inner#1463). Create is always pressable; a press
+ * that cannot go ahead says why under the field (inner#1652).
  * A submit reports the values and closes once the caller's create succeeds;
  * a rejected create leaves the dialog open with what was typed.
  * @param props the kind, open state and create callback.
@@ -95,7 +101,12 @@ export function NewItemDialog({
   const t = useTranslation();
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
-  const [description, setDescription] = React.useState('');
+  // Whether the reader has typed a slug of their own; until then it follows
+  // the name. Clearing the field hands it back to the name on the next edit.
+  const [slugEdited, setSlugEdited] = React.useState(false);
+  const [nameError, setNameError] = React.useState<string | null>(null);
+  // A slug refused at press, shown before the debounced check catches up.
+  const [slugRefused, setSlugRefused] = React.useState<Exclude<SlugError, null> | null>(null);
   const [spaceType, setSpaceType] = React.useState<SpaceType>('canvas');
   const [studioId, setStudioId] = React.useState(defaultStudioId ?? '');
   const slugCheck = useItemSlugCheck(slug);
@@ -122,7 +133,9 @@ export function NewItemDialog({
   const reset = (): void => {
     setName('');
     setSlug('');
-    setDescription('');
+    setSlugEdited(false);
+    setNameError(null);
+    setSlugRefused(null);
     setSpaceType('canvas');
     setStudioId(defaultStudioId ?? '');
     setPressed(false);
@@ -139,16 +152,54 @@ export function NewItemDialog({
     }
   };
 
-  const canSubmit =
-    !submitting && name.trim() !== '' && slugCheck.state === 'valid';
+  const fallbackSlug = kind;
+  const nameId = `new-${kind}-name`;
+  const slugId = `new-${kind}-slug`;
 
   /**
-   * Report the values once the form can be submitted.
+   * Take a new name, and carry the slug along while the reader has not
+   * written one of their own.
+   * @param next the name as typed.
+   */
+  const changeName = (next: string): void => {
+    setName(next);
+    setNameError(null);
+    if (!slugEdited) {
+      setSlug(next.trim() === '' ? '' : itemSlugFromName(next, fallbackSlug));
+      setSlugRefused(null);
+    }
+  };
+
+  /**
+   * Take a slug the reader typed; an emptied field follows the name again.
+   * @param next the slug as typed.
+   */
+  const changeSlug = (next: string): void => {
+    setSlug(next);
+    setSlugEdited(next !== '');
+    setSlugRefused(null);
+  };
+
+  /**
+   * Check the form on press and either say what is missing or report the values.
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (submitting) return;
+    const trimmedName = name.trim();
+    const typedSlug = slug.trim();
+    const refused = typedSlug === '' ? null : validateItemSlug(typedSlug);
+    setNameError(trimmedName === '' ? t('studio.container.dialog.nameRequired') : null);
+    setSlugRefused(refused);
+    if (trimmedName === '') {
+      document.getElementById(nameId)?.focus();
+      return;
+    }
+    if (refused !== null) {
+      document.getElementById(slugId)?.focus();
+      return;
+    }
     setPressed(true);
     // Awaited whether or not the caller returns a promise, so there is one
     // path out of a press. A caller that reports failure by rejecting leaves
@@ -156,9 +207,8 @@ export function NewItemDialog({
     // is that caller's job, since only it knows what the server answered.
     void Promise.resolve(
       onCreate?.({
-        name: name.trim(),
-        slug: slug.trim(),
-        description: description.trim(),
+        name: trimmedName,
+        slug: typedSlug === '' ? itemSlugFromName(trimmedName, fallbackSlug) : typedSlug,
         // A space type + target studio only apply to a project; collections
         // have neither spaces nor a studio selector, so both are omitted.
         ...(kind === 'project'
@@ -191,9 +241,14 @@ export function NewItemDialog({
     kind === 'project'
       ? t('studio.container.dialog.slugPlaceholder')
       : t('studio.container.dialog.slugPlaceholderCollection');
-  const nameId = `new-${kind}-name`;
-  const slugId = `new-${kind}-slug`;
-  const descId = `new-${kind}-desc`;
+  // The slug line carries the description while the slug is acceptable, and
+  // the reason in red once it is not; an item slug has nothing to look up.
+  const slugLine: SlugCheck =
+    slugRefused !== null
+      ? { state: 'invalid', reason: slugRefused }
+      : slugCheck.state === 'invalid'
+        ? slugCheck
+        : { state: 'empty' };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -204,7 +259,7 @@ export function NewItemDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <DialogBody className='flex flex-col gap-4'>
             {showStudioSelect ? (
               <StudioSelectField
@@ -223,11 +278,15 @@ export function NewItemDialog({
                 id={nameId}
                 autoComplete='off'
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => changeName(event.target.value)}
                 placeholder={namePlaceholder}
                 disabled={submitting}
-                required
+                aria-invalid={nameError !== null}
+                aria-describedby={nameError !== null ? `${nameId}-error` : undefined}
               />
+              {nameError !== null ? (
+                <FieldError id={`${nameId}-error`}>{nameError}</FieldError>
+              ) : null}
             </div>
             {kind === 'project' ? (
               <SpaceKindPicker
@@ -238,26 +297,15 @@ export function NewItemDialog({
             ) : null}
             <SlugField
               id={slugId}
-              label={t('studio.container.dialog.slugLabel')}
+              label={t('studio.container.dialog.slugLabelOptional')}
               placeholder={slugPlaceholder}
               value={slug}
-              onChange={setSlug}
-              check={slugCheck}
+              onChange={changeSlug}
+              check={slugLine}
               bounds={ITEM_SLUG_BOUNDS}
               helper={slugHelper}
               disabled={submitting}
             />
-            <div className='flex flex-col gap-1.5'>
-              <Label htmlFor={descId}>
-                {t('studio.container.dialog.descriptionLabel')}
-              </Label>
-              <Textarea
-                id={descId}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                disabled={submitting}
-              />
-            </div>
           </DialogBody>
           <DialogFooter>
             <Button
@@ -267,11 +315,7 @@ export function NewItemDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button
-              type='submit'
-              disabled={!canSubmit}
-              loading={submitting}
-            >
+            <Button type='submit' loading={submitting}>
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>

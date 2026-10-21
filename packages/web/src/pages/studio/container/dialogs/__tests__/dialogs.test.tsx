@@ -33,13 +33,21 @@ vi.mock('@web/pages/studio/container/dialogs/use-create-studio');
 type User = ReturnType<typeof userEvent.setup>;
 
 /**
- * Type a slug and wait until the live check has called it available.
+ * Replace whatever the slug field holds with a value of the reader's own.
  * @param user - The user-event session.
  * @param value - The slug to type.
  */
-async function typeValidSlug(user: User, value: string): Promise<void> {
-  await user.type(screen.getByLabelText('Slug'), value);
-  await screen.findByText('Slug is available');
+async function typeSlug(user: User, value: string): Promise<void> {
+  await user.clear(slugInput());
+  await user.type(slugInput(), value);
+}
+
+/**
+ * The slug input, whose label reads "Slug (optional)" in the item dialog.
+ * @returns The input.
+ */
+function slugInput(): HTMLElement {
+  return screen.getByLabelText(/^Slug/);
 }
 
 describe('NewItemDialog (spec §3.12)', () => {
@@ -47,7 +55,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
     expect(screen.getByText('New project')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Slug')).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug (optional)')).toBeInTheDocument();
   });
 
   it('shows the space-type picker for a project but not for a collection', () => {
@@ -64,48 +72,28 @@ describe('NewItemDialog (spec §3.12)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('describes the slug, with its length, while the slug is empty', () => {
+  it('describes the slug, with its length and that it follows the name', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent('6–50 characters');
+    const line = screen.getByTestId('new-project-slug-hint');
+    expect(line).toHaveTextContent('6–50 characters');
+    expect(line).toHaveTextContent('it follows the name');
   });
 
   it('uses collection placeholders in the collection dialog', () => {
     render(<NewItemDialog kind='collection' open onOpenChange={() => {}} />);
     expect(screen.getByLabelText('Name')).toHaveAttribute('placeholder', 'My collection');
-    expect(screen.getByLabelText('Slug')).toHaveAttribute('placeholder', 'my-collection');
+    expect(slugInput()).toHaveAttribute('placeholder', 'my-collection');
   });
 
-  it('checks the slug as it is typed and holds Create while it is malformed', async () => {
-    const user = userEvent.setup();
-    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    await user.type(screen.getByLabelText('Name'), 'My Project');
-    await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
-    expect(await screen.findByText(/Start with a lowercase letter/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-  });
-
-  it('reports valid values and closes on submit', async () => {
+  it('has no description field and sends none (inner#1463)', async () => {
     const onCreate = vi.fn();
-    const onOpenChange = vi.fn();
     const user = userEvent.setup();
-    render(
-      <NewItemDialog
-        kind='collection'
-        open
-        onOpenChange={onOpenChange}
-        onCreate={onCreate}
-      />,
-    );
+    render(<NewItemDialog kind='collection' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    expect(screen.queryByLabelText(/Description/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Name'), 'Moodboard');
-    await typeValidSlug(user, 'mood-board');
     await user.click(screen.getByRole('button', { name: 'Create' }));
-    // An exact match, so a visibility field creeping back in fails here.
-    expect(onCreate).toHaveBeenCalledWith({
-      name: 'Moodboard',
-      slug: 'mood-board',
-      description: '',
-    });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    // An exact match, so a visibility or description field creeping back in fails here.
+    expect(onCreate).toHaveBeenCalledWith({ name: 'Moodboard', slug: 'moodboard' });
   });
 
   it('reports a project without any visibility field', async () => {
@@ -115,43 +103,129 @@ describe('NewItemDialog (spec §3.12)', () => {
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, 'fresh-proj');
+    await typeSlug(user, 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
       name: 'Fresh',
       slug: 'fresh-proj',
-      description: '',
       spaceType: 'canvas',
     });
   });
 
-  it('disables Create until a name is entered and renders an outline Cancel (project-dialog parity)', async () => {
-    const user = userEvent.setup();
-    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    expect(
-      screen.getByRole('button', { name: 'Cancel' }).className,
-    ).toContain('border-border');
-    await user.type(screen.getByLabelText('Name'), 'My Project');
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    await typeValidSlug(user, 'my-project');
-    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
-  });
-
-  it('submits the trimmed slug it checked', async () => {
+  it('submits the trimmed slug the reader typed', async () => {
     const onCreate = vi.fn();
     const user = userEvent.setup();
     render(
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, '  fresh-proj  ');
+    await typeSlug(user, '  fresh-proj  ');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({ slug: 'fresh-proj' }),
     );
   });
 
+  it('leaves the browser out of it: no native required check on the form', () => {
+    const { container } = render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
+    const form = (document.body.querySelector('form') ?? container.querySelector('form'))!;
+    expect(form).toHaveAttribute('novalidate');
+    expect(screen.getByLabelText('Name')).not.toHaveAttribute('required');
+  });
+});
+
+describe('NewItemDialog — reasons on press and an optional slug (inner#1652, inner#1463)', () => {
+  it('keeps Create pressable and says a name is needed under the name field', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).not.toBeDisabled();
+    expect(create).not.toHaveAttribute('aria-disabled');
+
+    await user.click(create);
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name')).toHaveFocus();
+    expect(screen.getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
+
+    await user.type(screen.getByLabelText('Name'), 'A');
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
+  it('fills the slug from the name as it is typed', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    expect(slugInput()).toHaveValue('spring-campaign');
+  });
+
+  it('stops following the name once the reader edits the slug', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring');
+    await typeSlug(user, 'my-own-slug');
+    await user.type(screen.getByLabelText('Name'), ' Campaign');
+    expect(slugInput()).toHaveValue('my-own-slug');
+  });
+
+  it('keeps a cleared slug empty until the name changes again', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    await user.clear(slugInput());
+    expect(slugInput()).toHaveValue('');
+    await user.type(screen.getByLabelText('Name'), 's');
+    expect(slugInput()).toHaveValue('spring-campaigns');
+  });
+
+  it.each([
+    ['project', '我的项目', 'project'],
+    ['collection', '我的素材', 'collection'],
+  ] as const)('gives a %s with no Latin letters in its name the fallback slug', async (kind, name, slug) => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind={kind} open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), name);
+    expect(slugInput()).toHaveValue(slug);
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ slug }));
+  });
+
+  it('makes a slug from the name when the slug is left empty at press', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    await user.clear(slugInput());
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ slug: 'spring-campaign' }));
+  });
+
+  it('refuses a malformed slug pressed before the typing check settles, and says why', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.clear(slugInput());
+    await user.type(slugInput(), 'Bad_Slug{Enter}');
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).toHaveFocus();
+  });
+
+  it('shows the description line, not an availability line, for a valid slug', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const line = screen.getByTestId('new-project-slug-hint');
+    expect(line).toHaveTextContent('it follows the name');
+    expect(line).not.toHaveTextContent(/available|Checking/);
+  });
+});
+
+describe('NewItemDialog — submitting (#255)', () => {
   // inner#1490: a create is held outside the dialog, so a dialog opened while
   // one is out — from either entry, with any studio picked — shows Create busy.
   it('shows Create busy while a project create is out', () => {
@@ -184,7 +258,6 @@ describe('NewItemDialog (spec §3.12)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     // The label stays, so the button is still addressable by its name — which
@@ -222,7 +295,6 @@ describe('NewItemDialog (spec §3.12)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await act(async () => {
