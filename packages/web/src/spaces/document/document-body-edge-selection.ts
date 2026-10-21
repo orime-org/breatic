@@ -213,7 +213,7 @@ class BodyEdgeSelectionClass extends Selection {
    * @param content - What goes in its place.
    */
   override replace(tr: Transaction, content?: Slice): void {
-    if (!replaceHeld(this, tr, content)) super.replace(tr, content);
+    if (!replaceHeld(this, tr, content, bodyEdgeBetween)) super.replace(tr, content);
   }
 
   /**
@@ -222,7 +222,7 @@ class BodyEdgeSelectionClass extends Selection {
    * @param node - The node.
    */
   override replaceWith(tr: Transaction, node: Node): void {
-    if (!replaceHeld(this, tr, node)) super.replaceWith(tr, node);
+    if (!replaceHeld(this, tr, node, bodyEdgeBetween)) super.replaceWith(tr, node);
   }
 
   /**

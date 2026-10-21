@@ -14,8 +14,10 @@
  * - selected cells copy as a table of those cells, their blocks kept, and a
  *   cut then empties them;
  * - words in one cell copy as the cell's blocks, without the table;
- * - a selection that holds a table copies as BlockNote copies it, with the
- *   plain text the Agent reads (`blocksMarkdown`).
+ * - a selection that takes a table whole copies that table whole
+ *   (`heldRange`), from the table's edge;
+ * - any other selection that holds a table copies as BlockNote copies it,
+ *   with the plain text the Agent reads (`blocksMarkdown`).
  *
  * Every other selection is BlockNote's.
  */

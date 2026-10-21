@@ -13,17 +13,19 @@
  * a range set apart from them turns a drag into a caret. So the selection
  * keeps its ends on the table's first or last words (`TableSpanSelection`),
  * and what has to act on the whole table reads `heldRange`: the decoration
- * drawing every cell selected, copying (`document-table-copy.ts`), a drag's
- * content (`transformCopied`) and deleting.
+ * drawing every cell selected, copying (`document-table-copy.ts`) and a
+ * drag's content (`transformCopied`).
  *
- * Deleting goes through `takeAwayHeldTables`: a `TableSpanSelection`'s own
- * replace deletes each table as a node and the part outside as text, so the
- * line the selection ends in stays, as it does in the body; a selection to an
- * edge of the body deletes `heldRange`. Inputs that delete the range by
- * position call it first: Backspace, Delete and Enter
- * (`document-table-keys.ts`), paste (`document-table-paste.ts`, ahead of the
- * table plugin's paste into cells), a typed key, an input method's
- * composition and the browser's own deletes (`beforeinput`).
+ * Deleting is the selection's own replace, `replaceHeld`, shared by
+ * `TableSpanSelection` and the body-edge selection: each table it takes
+ * becomes an empty line, and the selection then goes as the body's own does.
+ * Cut, a drag's move and Enter (`document-enter.ts`) reach it through
+ * `tr.deleteSelection()`. Inputs that would delete the range by position call
+ * it first through `takeAwayHeldTables`: Backspace, Delete, the word and line
+ * deletes, Shift+Enter (`document-table-keys.ts`), paste
+ * (`document-table-paste.ts`, ahead of the table plugin's paste into cells),
+ * a typed key, an input method's composition and the browser's own deletes
+ * (`beforeinput`).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -41,7 +43,7 @@ import {
 import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import { bodyEdgeAt } from '@web/spaces/document/document-body-edge-pos';
+import { bodyEdgeAt, bodyEdgePos } from '@web/spaces/document/document-body-edge-pos';
 import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /** The class every cell of a table in such a selection carries. */
@@ -101,68 +103,59 @@ export function heldRange(selection: Selection): { from: number; to: number } | 
   };
 }
 
-/**
- * Deletes a selection that takes tables whole: each table as a node, the
- * blocks between it and the selection's end outside it whole, and the words
- * of the line that end is on up to it, so that line stays, as it does in the
- * body. An end on an edge of the body takes everything to that edge.
- * @param tr - The transaction.
- * @param start - The selection's end towards the start.
- * @param end - The selection's end towards the end.
- * @param tables - The tables it takes.
- * @returns The caret it leaves.
- */
-function deleteHeld(tr: Transaction, start: number, end: number, tables: HeldTables): Selection {
-  const doc = tr.doc;
-  const steps = tr.steps.length;
-  const before = tables.from;
-  const after = tables.to;
-  let caretAt: number;
-  if (before !== null && after !== null) {
-    tr.deleteRange(before.pos, endOf(after));
-    caretAt = before.pos;
-  } else if (before !== null) {
-    const $end = doc.resolve(end);
-    if ($end.parent.isTextblock) {
-      const line = $end.start();
-      if (line < end) tr.delete(line, end);
-      tr.deleteRange(before.pos, $end.before());
-      caretAt = line;
-    } else {
-      tr.deleteRange(before.pos, end);
-      caretAt = before.pos;
-    }
-  } else {
-    const $start = doc.resolve(start);
-    tr.deleteRange($start.parent.isTextblock ? $start.after() : start, endOf(after!));
-    if ($start.parent.isTextblock && start < $start.end()) tr.delete(start, $start.end());
-    caretAt = start;
-  }
-  const caret = Selection.near(tr.doc.resolve(tr.mapping.slice(steps).map(caretAt)), before !== null && after !== null ? -1 : 1);
-  tr.setSelection(caret);
-  return caret;
-}
+/** Builds a selection of one kind between two positions. */
+export type Rebuild = (doc: PMNode, anchor: number, head: number) => Selection;
 
 /**
  * Replaces a selection that takes tables whole, the tables whole: what a
  * selection's own `replace` and `replaceWith` do for a selection leaving a
- * table and for one to an edge of the body.
+ * table and for one to an edge of the body. Each table it takes becomes an
+ * empty line, its end in the table moves onto that line, and the selection
+ * then goes the way the body's own does: the lines at its ends join, the
+ * blocks between go, and an end on an edge of the body takes everything to
+ * that edge.
  * @param selection - The selection.
  * @param tr - The transaction.
  * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
+ * @param rebuild - Builds a selection of the same kind on the changed document.
  * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
  */
-export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined): boolean {
+export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild): boolean {
   const tables = heldTables(selection);
   if (tables === null) return false;
-  const caret = deleteHeld(tr, Math.min(selection.anchor, selection.head), Math.max(selection.anchor, selection.head), tables);
-  if (content instanceof Slice) {
-    if (content.size > 0) caret.replace(tr, content);
-  } else if (content !== undefined) {
-    caret.replaceWith(tr, content);
-  }
+  const doc = tr.doc;
+  const held = [tables.from, tables.to]
+    .filter((table, at, all): table is TableAt => table !== null && all.findIndex((other) => other?.pos === table.pos) === at)
+    .sort((a, b) => b.pos - a.pos);
+  const steps = tr.steps.length;
+  for (const table of held) tr.replaceWith(table.pos, endOf(table), doc.type.schema.nodes['blockContainer']!.createAndFill()!);
+  const mapping = tr.mapping.slice(steps);
+  /**
+   * Where an end of the selection lands on the changed document.
+   * @param pos - The end.
+   * @returns The position.
+   */
+  const place = (pos: number): number => {
+    const edge = bodyEdgeAt(doc, pos);
+    if (edge !== null) return bodyEdgePos(tr.doc, edge);
+    const table = held.find((t) => pos > t.pos && pos < endOf(t));
+    // Inside the line that took the table's place: its block, then its words.
+    return table === undefined ? mapping.map(pos) : mapping.map(table.pos, -1) + 2;
+  };
+  const rest = rebuild(tr.doc, place(selection.anchor), place(selection.head));
+  if (content === undefined || content instanceof Slice) rest.replace(tr, content);
+  else rest.replaceWith(tr, content);
   return true;
 }
+
+/**
+ * A text selection between two positions.
+ * @param doc - The document.
+ * @param anchor - The anchor.
+ * @param head - The head.
+ * @returns The selection.
+ */
+const textBetween: Rebuild = (doc, anchor, head) => TextSelection.between(doc.resolve(anchor), doc.resolve(head));
 
 /** A selection leaving a table, its ends on the table's first or last words. */
 export class TableSpanSelection extends TextSelection {
@@ -172,7 +165,7 @@ export class TableSpanSelection extends TextSelection {
    * @param content - What goes in its place.
    */
   override replace(tr: Transaction, content?: Slice): void {
-    if (!replaceHeld(this, tr, content)) super.replace(tr, content);
+    if (!replaceHeld(this, tr, content, textBetween)) super.replace(tr, content);
   }
 
   /**
@@ -181,7 +174,7 @@ export class TableSpanSelection extends TextSelection {
    * @param node - The node.
    */
   override replaceWith(tr: Transaction, node: PMNode): void {
-    if (!replaceHeld(this, tr, node)) super.replaceWith(tr, node);
+    if (!replaceHeld(this, tr, node, textBetween)) super.replaceWith(tr, node);
   }
 }
 

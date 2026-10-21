@@ -36,7 +36,7 @@ import {
 } from '@tiptap/pm/tables';
 import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
-import { tableAtLeavingHead, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { heldTables, tableAtLeavingHead, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { bodyEdgeBetween, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
 
 /** The parts of the editor these bindings use. */
@@ -77,7 +77,8 @@ function listItemAt($head: ResolvedPos): { list: boolean; nested: boolean } {
 function tabForward(editor: KeysEditor): boolean {
   const view = editor.prosemirrorView;
   if (inLegacyCell(view.state.selection.$head)) return true;
-  if (!isInTable(view.state)) return false;
+  // A selection taking a table whole moves it as a block: the body's Tab.
+  if (!isInTable(view.state) || heldTables(view.state.selection) !== null) return false;
   if (listItemAt(view.state.selection.$head).list && editor.canNestBlock()) {
     editor.nestBlock();
     return true;
@@ -99,7 +100,8 @@ function tabForward(editor: KeysEditor): boolean {
 function tabBack(editor: KeysEditor): boolean {
   const view = editor.prosemirrorView;
   if (inLegacyCell(view.state.selection.$head)) return true;
-  if (!isInTable(view.state)) return false;
+  // A selection taking a table whole moves it as a block: the body's Tab.
+  if (!isInTable(view.state) || heldTables(view.state.selection) !== null) return false;
   const item = listItemAt(view.state.selection.$head);
   if (item.list && item.nested) {
     editor.unnestBlock();
@@ -305,9 +307,12 @@ function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
     : dir === 'up' ? spanned.pos : spanned.pos + spanned.node.nodeSize;
   if (edge === undefined) return false;
   // The nearest words past the table, or the body's edge when only blocks
-  // without words are there, as Shift and an arrow reach elsewhere.
+  // without words are there, as Shift and an arrow reach elsewhere. A table
+  // the body starts or ends with has its edge inside it: the selection
+  // already holds all there is that way.
   const past = textOrEdge(doc, edge, dir === 'up' ? -1 : 1);
-  if (past === edge) return spanned !== null;
+  const within = spanned !== null && past > spanned.pos && past < spanned.pos + spanned.node.nodeSize;
+  if (past === edge || within) return spanned !== null;
   view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(doc, selection.anchor, past)).scrollIntoView());
   return true;
 }
@@ -322,14 +327,11 @@ export const documentTableKeysExtension = createExtension(() => ({
   keyboardShortcuts: {
     Tab: ({ editor }: { editor: KeysEditor }) => tabForward(editor),
     'Shift-Tab': ({ editor }: { editor: KeysEditor }) => tabBack(editor),
-    // Over a selection holding a whole table, Enter takes it away through its
-    // own replace first and then breaks the line at the caret it leaves: the
-    // body's Enter deletes the range by position and splits where the
-    // selection started.
-    Enter: ({ editor }: { editor: KeysEditor }) => {
-      takeAwayHeldTables(editor.prosemirrorView);
-      return breakLine(editor.prosemirrorView);
-    },
+    // Enter over a selection holding a whole table is `document-enter`'s,
+    // which takes it away first. Shift+Enter takes it away through its own
+    // replace and then breaks the line at the caret it leaves: the body's
+    // deletes the range by position and breaks where the selection started.
+    Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => {
       takeAwayHeldTables(editor.prosemirrorView);
       return breakLine(editor.prosemirrorView);

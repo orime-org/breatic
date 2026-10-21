@@ -261,7 +261,9 @@ describe('deleting or typing over a selection leaving a table', () => {
 
     press(editor, 'Backspace');
 
-    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:end']);
+    // Each table gives way to an empty line, and the two join, as two empty
+    // lines selected across do in the body.
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:end']);
   });
 
   it('takes a table that opens the body away whole, though it does not start with words', () => {
@@ -503,6 +505,106 @@ describe('a selection from a cell to an edge of the body', () => {
 
     expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
     expect(blocks(editor)[0]).toBe('paragraph:lead');
+  });
+});
+
+describe('what is left where a held table stood, as the body leaves it', () => {
+  it('puts a key typed over a selection from one table to another on a line of its own', () => {
+    const { editor } = openWith([
+      { type: 'heading', content: 'Title' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+      { type: 'paragraph', content: 'mid' },
+      tableBlock({ rows: [{ cells: ['c1', 'd1'] }] }),
+      { type: 'paragraph', content: 'end' },
+    ]);
+    select(editor, at(editor, 'a1', 1), at(editor, 'd1', 1));
+
+    type(editor, 'Z');
+
+    expect(blocks(editor)).toEqual(['heading:Title', 'paragraph:Z', 'paragraph:end']);
+  });
+
+  it('puts a key typed over a selection from a cell to the end of the body on a line of its own', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'divider' }]);
+    selectToEdge(editor, at(editor, 'a2', 1), 'end');
+
+    type(editor, 'X');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:X']);
+  });
+
+  it('leaves what the body leaves for a selection from an empty line into a nested line, the list item above gone', () => {
+    const nested = { type: 'bulletListItem', content: 'Aitem', children: [{ type: 'bulletListItem', content: 'Bchild' }] };
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), nested]);
+    select(editor, at(editor, 'b2', 1), at(editor, 'Bchild', 3));
+    press(editor, 'Backspace');
+    const body = openWith([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }, nested]).editor;
+    const line = at(body, 'lead', 4) + 4;
+    select(body, line, at(body, 'Bchild', 3));
+    press(body, 'Backspace');
+
+    expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
+    expect(editor.prosemirrorView.state.doc.textContent).toBe('leadild');
+  });
+
+  it('leaves no empty line under a list item whose nested table is taken away', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'bulletListItem', content: 'Item', children: [tableBlock(WORDS)] },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'tail', 2));
+
+    press(editor, 'Backspace');
+
+    expect(editor.prosemirrorView.state.doc.textContent).toBe('leadItemil');
+    let empty = 0;
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.isTextblock && node.content.size === 0) empty += 1;
+      return true;
+    });
+    expect(empty).toBe(0);
+  });
+});
+
+describe('keys over a held table', () => {
+  it('opens the lines Enter opens as the body does, the table taken away first', () => {
+    const quotedLead = { type: 'paragraph', props: { quoted: true }, content: 'lead' };
+    // The table's first cell quoted: Enter must not judge the quote from it.
+    const quotedCell = { rows: [{ cells: [{ blocks: [{ type: 'paragraph', props: { quoted: true }, content: 'a1' }] } as never, 'b1'] }] };
+    const { editor } = openWith([quotedLead, tableBlock(quotedCell), { type: 'paragraph', content: 'below' }]);
+    select(editor, at(editor, 'lead', 2), at(editor, 'b1', 1));
+    press(editor, 'Enter');
+    const body = openWith([quotedLead, { type: 'paragraph' }, { type: 'paragraph', content: 'below' }]).editor;
+    select(body, at(body, 'lead', 2), at(body, 'lead', 4) + 4);
+    press(body, 'Enter');
+
+    expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
+  });
+
+  it('leaves the selection as it is with Shift and an arrow when the table closes the body', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+    const before = editor.prosemirrorView.state.selection;
+
+    press(editor, 'ArrowDown', true);
+
+    const after = editor.prosemirrorView.state.selection;
+    expect([after.anchor, after.head]).toEqual([before.anchor, before.head]);
+  });
+
+  it('adds no row with Tab', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+    press(editor, 'Tab');
+
+    let rows = 0;
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'docTableRow') rows += 1;
+      return true;
+    });
+    expect(rows).toBe(2);
   });
 });
 

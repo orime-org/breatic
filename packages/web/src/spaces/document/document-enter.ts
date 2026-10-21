@@ -39,6 +39,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import {
   QUOTED,
@@ -308,11 +309,13 @@ export const documentEnterExtension = createExtension(() => {
         ) {
           return false;
         }
-        // A range reaching past an end of the body goes as any range does;
-        // what is left is a caret in text, which takes the ordinary Enter
-        // below. Left to the library, the split is placed at the range's
-        // start, which can be the edge, outside any line (#124, A6).
-        if (editor.prosemirrorState.selection instanceof BodyEdgeSelection) {
+        // A range reaching past an end of the body, or one taking a table
+        // whole (inner#1619 T14), goes as any range does; what is left is a
+        // caret in text, which takes the ordinary Enter below, the quote of
+        // the line it is on included. Left to the library, the split is placed
+        // at the range's start, which can be the edge, outside any line
+        // (#124, A6), or in the table it took away.
+        if (editor.prosemirrorState.selection instanceof BodyEdgeSelection || heldTables(editor.prosemirrorState.selection) !== null) {
           editor.transact((tr) => tr.deleteSelection());
         }
         const { selection } = editor.prosemirrorState;
