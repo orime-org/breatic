@@ -52,7 +52,6 @@ import type { HandleEditor } from '@web/spaces/document/document-handle-commands
 import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   cellAt,
-  cellPosOf,
   deleteColumnAt,
   deleteRowAt,
   headerOn,
@@ -69,8 +68,6 @@ import {
 import {
   cellButtonBox,
   columnHandleCentre,
-  COLUMN_HANDLE_NUDGE,
-  ROW_HANDLE_NUDGE,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
 import { tableLineOf } from '@web/spaces/document/document-strip-alignment';
@@ -319,9 +316,8 @@ export function DocumentTableHandle({
       const view = editor.prosemirrorView;
       if (view === undefined) return;
       if (next) {
-        if (state?.rowIndex === undefined || state.colIndex === undefined) return;
-        const pos = cellPosOf(view.state.doc, state.block.id, state.rowIndex, state.colIndex);
-        if (pos === null) return;
+        const pos = state?.cellPos;
+        if (pos === undefined) return;
         setTableTarget(view, pos, row ? 'row' : 'column');
         handles.freezeHandles();
         hideOtherElements(true);
@@ -350,11 +346,7 @@ export function DocumentTableHandle({
         ? IN_PLACE
         : framePlaceOf(editor.prosemirrorView, state.block.id, row, state.referencePosCell, buttonCell);
     if (place.hidden) return { visibility: 'hidden' };
-    // Centred on its line: the row handle on the table's left line, the
-    // column handle on its top line.
-    const across = place.shift + (row ? ROW_HANDLE_NUDGE : 0);
-    const up = row ? 0 : COLUMN_HANDLE_NUDGE;
-    return { transform: `translate(${String(across)}px, ${String(up)}px)` };
+    return { transform: `translateX(${String(place.shift)}px)` };
   }, [editor, row, state, buttonCell]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
@@ -389,11 +381,8 @@ export function DocumentTableHandle({
           draggable
           onDragStart={(event) => {
             const view = editor.prosemirrorView;
-            const pos =
-              view === undefined || state.rowIndex === undefined || state.colIndex === undefined
-                ? null
-                : cellPosOf(view.state.doc, state.block.id, state.rowIndex, state.colIndex);
-            if (view === undefined || pos === null || !startTableDrag(view, orientation, pos)) {
+            const pos = state.cellPos;
+            if (view === undefined || pos === undefined || !startTableDrag(view, orientation, pos)) {
               event.preventDefault();
               return;
             }

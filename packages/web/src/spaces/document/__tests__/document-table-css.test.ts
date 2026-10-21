@@ -74,21 +74,19 @@ describe('a table in the body', () => {
 
   it('paints a selected cell behind its words, the way selected text is painted', () => {
     // The library's tint is a layer over the whole cell at z-index 2; the
-    // cell's line of words goes above it, so they keep their own colour. Only
-    // the line: the column-resize line is also a child of the cell, and it is
+    // cell's blocks go above it, so they keep their own colour. Only the
+    // blocks: the column-resize line is also a child of the cell, and it is
     // drawn by being absolutely placed.
     expect(() => ruleBody('.doc-body .selectedCell > *')).toThrow();
-    const body = ruleBody('.doc-body .selectedCell > p');
+    const body = ruleBody('.doc-body .selectedCell > .bn-block-outer');
     expect(body).toContain('position: relative');
     expect(body).toContain('z-index: 3');
-    // A cell that holds blocks raises its blocks the same way.
-    expect(selectorEndingIn('.selectedCell > .bn-block-outer')).toBe(selectorEndingIn('.selectedCell > p'));
   });
 
   it('paints the cells a row or column menu acts on the way selected cells are painted (A6)', () => {
     // One rule for both, so the two can never look different.
     expect(selectorEndingIn('.doc-table-target::after')).toBe(selectorEndingIn('.doc-body .selectedCell::after'));
-    expect(selectorEndingIn('.doc-table-target > p')).toBe(selectorEndingIn('.selectedCell > p'));
+    expect(selectorEndingIn('.doc-table-target > .bn-block-outer')).toBe(selectorEndingIn('.selectedCell > .bn-block-outer'));
     // The library draws the layer for `.selectedCell` only, so the shared
     // rule draws it whole.
     const layer = ruleBody('.doc-table-target::after');
@@ -105,7 +103,7 @@ describe('a table in the body', () => {
 
   it('paints the cells of a table a selection runs out of the way selected cells are painted (inner#1619 T14)', () => {
     expect(selectorEndingIn(`.doc-body .${IN_SELECTION}::after`)).toBe(selectorEndingIn('.doc-body .selectedCell::after'));
-    expect(selectorEndingIn(`.${IN_SELECTION} > p`)).toBe(selectorEndingIn('.selectedCell > p'));
+    expect(selectorEndingIn(`.${IN_SELECTION} > .bn-block-outer`)).toBe(selectorEndingIn('.selectedCell > .bn-block-outer'));
     expect(selectorEndingIn(`:not([data-body-holds]) .${IN_SELECTION}::after`)).toBe(
       selectorEndingIn(':not([data-body-holds]) .selectedCell::after'),
     );
@@ -126,8 +124,6 @@ describe('a table in the body', () => {
     // A wide table's scrollbar lies along the bottom of its frame; the room
     // keeps it under the last row rather than over it. The row and column
     // handles are drawn in the library's portal, centred on the table's lines.
-    const paddings = declarationsOf('[data-content-type=\'table\'] .tableWrapper', 'padding');
-    expect(paddings.map(({ value }) => value)).toEqual(['0 0 0.5rem 0']);
     expect(declarationsOf('[data-node-type=\'docTable\'] .tableWrapper', 'padding').map(({ value }) => value)).toEqual([
       '0 0 0.5rem 0',
     ]);

@@ -29,8 +29,6 @@ export interface TableHandlesState {
   readonly colIndex: number | undefined;
   /** The hovered cell's box, read when the handles were last placed. */
   readonly referencePosCell: DOMRect | undefined;
-  /** The table body's box. */
-  readonly referencePosTable: DOMRect;
   /** The position before the hovered cell. */
   readonly cellPos: number | undefined;
 }
@@ -155,7 +153,6 @@ class TableHoverView {
       rowIndex,
       colIndex,
       referencePosCell: cell.getBoundingClientRect(),
-      referencePosTable: body.getBoundingClientRect(),
       cellPos: posBefore(this.view, cell),
     };
     this.emit(this.state);
@@ -184,7 +181,6 @@ class TableHoverView {
       rowIndex: cell === undefined ? undefined : rowIndex,
       colIndex: cell === undefined ? undefined : colIndex,
       referencePosCell: cell?.getBoundingClientRect(),
-      referencePosTable: body.getBoundingClientRect(),
       cellPos: cell === undefined ? undefined : posBefore(this.view, cell),
     };
     this.emit(this.state);

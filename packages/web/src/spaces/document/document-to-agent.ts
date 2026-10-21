@@ -78,15 +78,14 @@ function selectedWords(view: EditorView): string {
  * @returns The Markdown, without the exporter's closing newline.
  */
 function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
-  const { externalHTML, markdown } = selectedFragmentToHTML(view, editor);
   const { $from, $to } = view.state.selection;
   const insideOneBlock =
     $from.parent.isTextblock && $from.sameParent($to) && $from.parent.type.spec.code !== true;
-  if (insideOneBlock) return cleanHTMLToMarkdown(`<p>${externalHTML}</p>`).trimEnd();
+  if (insideOneBlock) return cleanHTMLToMarkdown(`<p>${selectedFragmentToHTML(view, editor).externalHTML}</p>`).trimEnd();
   // Selected cells, or a range through a table: the plain text copy writes,
   // where BlockNote's export empties or flattens the cells.
   const clipped = tableClipped(editor as never, view);
-  return (clipped === null ? markdown : clipped.plain).trimEnd();
+  return (clipped?.plain ?? selectedFragmentToHTML(view, editor).markdown).trimEnd();
 }
 
 /**

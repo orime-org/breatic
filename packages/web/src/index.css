@@ -2033,7 +2033,6 @@ body {
     border-right: 1px solid var(--color-border);
     background: linear-gradient(to left, var(--overflow-shade), transparent);
   }
-  .doc-body [data-content-type='table'] .tableWrapper,
   .doc-body [data-node-type='docTable'] .tableWrapper {
     overflow: visible;
     padding: 0 0 0.5rem 0;
@@ -2117,13 +2116,10 @@ body {
   }
 
   /* The tint above is a layer over the whole cell, at z-index 2; the cell's
-     blocks (a stored table's one line of words) go above it, so a selected
-     cell reads like selected text: the colour behind the words, the words in
-     their own colour. The blocks only: the column-resize line is a child of
-     the cell as well, drawn by being absolutely placed. */
-  .doc-body .selectedCell > p,
-  .doc-body .doc-table-target > p,
-  .doc-body .doc-table-in-selection > p,
+     blocks go above it, so a selected cell reads like selected text: the
+     colour behind the words, the words in their own colour. The blocks only:
+     the column-resize line is a child of the cell as well, drawn by being
+     absolutely placed. */
   .doc-body .selectedCell > .bn-block-outer,
   .doc-body .doc-table-target > .bn-block-outer,
   .doc-body .doc-table-in-selection > .bn-block-outer {

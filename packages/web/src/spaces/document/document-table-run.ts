@@ -46,7 +46,7 @@ import {
   type Alignment,
 } from '@web/spaces/document/document-align-run';
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
-import { DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;
@@ -401,39 +401,6 @@ export function alignCellsAt(editor: TableEditor, cellPos: number, scope: CellSc
  */
 export function cellsAlignFace(doc: PMNode, cellPos: number, scope: CellScope): AlignFace {
   return alignFaceOf(blocksInCells(doc, cellsOfScope(doc, cellPos, scope)));
-}
-
-/**
- * The position before a cell, from the table block's id and the cell's place
- * among the nodes — the indices the library's handles report.
- * @param doc - The document.
- * @param blockId - The table block's id.
- * @param rowIndex - The row's index among the table's rows.
- * @param cellIndex - The cell's index among that row's cells.
- * @returns The position, or null when no such cell is there.
- */
-export function cellPosOf(
-  doc: PMNode,
-  blockId: string,
-  rowIndex: number,
-  cellIndex: number,
-): number | null {
-  let found: number | null = null;
-  doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.type.name !== DOC_TABLE || node.attrs['id'] !== blockId) return true;
-    if (rowIndex >= node.childCount) return false;
-    const row = node.child(rowIndex);
-    if (cellIndex >= row.childCount) return false;
-    // The table and the row each open one level.
-    let at = pos + 1;
-    for (let r = 0; r < rowIndex; r += 1) at += node.child(r).nodeSize;
-    at += 1;
-    for (let c = 0; c < cellIndex; c += 1) at += row.child(c).nodeSize;
-    found = at;
-    return false;
-  });
-  return found;
 }
 
 /**

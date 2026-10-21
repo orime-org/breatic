@@ -23,6 +23,7 @@ import {
   type TableHandlesState,
 } from '@web/spaces/document/document-table-handles';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { HANDLE_THICKNESS } from '@web/spaces/document/document-table-control-place';
 import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
 
 /** The row and column references the handles are placed by. */
@@ -113,7 +114,8 @@ export function DocumentTableHandlesController({ editor }: { editor: HandleEdito
       useFloatingOptions: {
         open: shown,
         placement: which === 'row' ? 'left' : 'top',
-        middleware: [offset(which === 'row' ? -10 : -12)],
+        // Half the handle's 12px thickness back over the line: centred on it.
+        middleware: [offset(-HANDLE_THICKNESS / 2)],
         whileElementsMounted,
       },
       focusManagerProps: { disabled: true },

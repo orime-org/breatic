@@ -76,8 +76,29 @@ function openOver(rowIndex: number, colIndex: number): Editor {
     tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
   ] as never);
   side.editor = editor;
-  side.state = { show: true, block: editor.document[1], rowIndex, colIndex };
+  side.state = { show: true, block: editor.document[1], rowIndex, colIndex, cellPos: cellPosAt(editor, rowIndex, colIndex) };
   return editor;
+}
+
+/**
+ * The position before a cell of the table, as the hover state reports it.
+ * @param editor - The editor.
+ * @param rowIndex - The cell's row.
+ * @param colIndex - The cell's place in its row.
+ * @returns The position.
+ */
+function cellPosAt(editor: Editor, rowIndex: number, colIndex: number): number {
+  let at = -1;
+  editor.prosemirrorState.doc.descendants((node, pos) => {
+    if (at >= 0 || node.type.name !== 'docTable') return at < 0;
+    let rowPos = pos + 1;
+    for (let r = 0; r < rowIndex; r += 1) rowPos += node.child(r).nodeSize;
+    let cellPos = rowPos + 1;
+    for (let c = 0; c < colIndex; c += 1) cellPos += node.child(rowIndex).child(c).nodeSize;
+    at = cellPos;
+    return false;
+  });
+  return at;
 }
 
 /**
