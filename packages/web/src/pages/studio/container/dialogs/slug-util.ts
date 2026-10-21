@@ -120,9 +120,9 @@ export function itemSlugFromName(name: string, fallback: string): string {
     .replace(/^[^a-z]+/, '')
     .replace(/-+$/, '');
   if (slug.length > ITEM_SLUG_BOUNDS.max) {
-    slug = slug.slice(0, ITEM_SLUG_BOUNDS.max);
-    const cut = slug.lastIndexOf('-');
-    slug = (cut >= ITEM_SLUG_BOUNDS.min ? slug.slice(0, cut) : slug).replace(/-+$/, '');
+    // One character past the limit, so a word ending exactly at it is kept.
+    const cut = slug.slice(0, ITEM_SLUG_BOUNDS.max + 1).lastIndexOf('-');
+    slug = cut >= ITEM_SLUG_BOUNDS.min ? slug.slice(0, cut) : slug.slice(0, ITEM_SLUG_BOUNDS.max);
   }
   return slug.length < ITEM_SLUG_BOUNDS.min ? fallback : slug;
 }

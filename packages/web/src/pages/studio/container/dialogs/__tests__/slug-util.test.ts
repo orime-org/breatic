@@ -95,6 +95,41 @@ describe('itemSlugFromName (inner#1463)', () => {
     expect(slug.endsWith('-')).toBe(false);
   });
 
+  it('cuts at the last hyphen when the limit falls inside a word', () => {
+    const name = 'alpha beta gamma delta epsilon zeta eta theta iotas kappa';
+    expect(itemSlugFromName(name, 'project')).toBe('alpha-beta-gamma-delta-epsilon-zeta-eta-theta');
+  });
+
+  it('keeps a word that ends exactly at the limit', () => {
+    const name = 'alpha beta gamma delta epsilon zeta eta theta iota kappa';
+    expect(itemSlugFromName(name, 'project')).toBe('alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota');
+  });
+
+  it('cuts a single word longer than the limit at the limit', () => {
+    expect(itemSlugFromName('a'.repeat(70), 'project')).toBe('a'.repeat(ITEM_SLUG_BOUNDS.max));
+  });
+
+  it('keeps whole words of a Latin name, cutting only at a word end', () => {
+    const word = fc.stringMatching(/^[a-z][a-z0-9]{0,11}$/);
+    fc.assert(
+      fc.property(fc.array(word, { minLength: 1, maxLength: 12 }), (words) => {
+        const full = words.join('-');
+        const slug = itemSlugFromName(words.join(' '), 'project');
+        if (full.length < ITEM_SLUG_BOUNDS.min) {
+          expect(slug).toBe('project');
+        } else if (full.length <= ITEM_SLUG_BOUNDS.max) {
+          expect(slug).toBe(full);
+        } else {
+          const lastBreak = full.slice(0, ITEM_SLUG_BOUNDS.max + 1).lastIndexOf('-');
+          expect(slug).toBe(
+            lastBreak >= ITEM_SLUG_BOUNDS.min ? full.slice(0, lastBreak) : full.slice(0, ITEM_SLUG_BOUNDS.max),
+          );
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+
   it('always produces a slug the create endpoint accepts', () => {
     fc.assert(
       fc.property(fc.string({ unit: 'binary', maxLength: 120 }), (name) => {
