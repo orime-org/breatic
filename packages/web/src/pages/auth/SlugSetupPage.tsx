@@ -62,7 +62,6 @@ export default function SlugSetupPage(): React.JSX.Element {
    * hint line why not. Runs again once a check it waited on settles.
    */
   async function attempt(): Promise<void> {
-    if (submitting) return;
     setFormError(null);
     const trimmed = slug.trim();
     setSlugError(trimmed === '' ? t('studio.container.dialog.slugRequired') : null);

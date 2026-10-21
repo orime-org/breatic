@@ -89,7 +89,6 @@ export function InviteMemberDialog({
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    if (pending) return;
     const trimmed = email.trim();
     const reason =
       trimmed === ''

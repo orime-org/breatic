@@ -73,7 +73,6 @@ export function RenameProjectDialog({
   const submit = React.useCallback(
     (event: React.FormEvent<HTMLFormElement>): void => {
       event.preventDefault();
-      if (pending) return;
       if (next.length === 0) {
         setNameError(required);
         inputRef.current?.focus();
@@ -86,7 +85,7 @@ export function RenameProjectDialog({
       }
       onRename(next, { onSuccess: () => onOpenChange(false) });
     },
-    [currentName, next, onOpenChange, onRename, pending, required],
+    [currentName, next, onOpenChange, onRename, required],
   );
 
   return (

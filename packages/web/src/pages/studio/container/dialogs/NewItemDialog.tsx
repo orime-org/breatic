@@ -186,7 +186,6 @@ export function NewItemDialog({
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    if (submitting) return;
     const trimmedName = name.trim();
     const typedSlug = slug.trim();
     const refused = typedSlug === '' ? null : validateItemSlug(typedSlug);

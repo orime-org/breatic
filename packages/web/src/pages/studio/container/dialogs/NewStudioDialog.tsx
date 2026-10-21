@@ -116,7 +116,6 @@ export function NewStudioDialog({
    * settles.
    */
   const attempt = (): void => {
-    if (createStudio.isPending) return;
     setFormError(null);
     const trimmedName = name.trim();
     const trimmedSlug = slug.trim();
