@@ -696,7 +696,7 @@ export function renderProductGuide(): string {
       "the poses the model makes: eight sides (front, the subject's own right, back, the subject's own left and the " +
       "four between) at four heights from a low angle to a high angle, and three distances from a close-up to a wide " +
       "shot. The pose's name (in English in every interface language: Front, Eye level, Medium shot and so on) shows " +
-      "above the view and on the settings pill, three sliders under the view follow it, " +
+      "above the view and on the settings pill, three sliders beside the view follow it, " +
       `and ${quoted(t("canvas.generatePanel.cameraAngle.reset"))} puts it back to the front, at eye level, at a ` +
       "medium shot. The sliders still work when the view cannot load, which it then says in place of the view: " +
       `${quoted(t("canvas.generatePanel.cameraAngle.loadFailed"))}`,
@@ -898,7 +898,27 @@ export function renderProductGuide(): string {
       "becomes 2048, 4096 or 8192); a size no larger than the picture, or past what the model makes, is greyed out, " +
       `and when none can be used pressing the arrow says ${quoted(t("canvas.miniTool.panel.noUsableTier"))} Below the ` +
       `sizes, ${quoted(t("canvas.generatePanel.param.creativity"))} runs from staying close to the picture to adding ` +
-      "detail of its own. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
+      "detail of its own. " +
+      `${quoted(t("canvas.miniTool.image.angle.label"))} shows the same ${quoted(t("canvas.generatePanel.cameraAngle.title"))} ` +
+      "sphere and sliders as the generation panel, with the picture on the card in the middle. " +
+      `${quoted(t("canvas.miniTool.image.relight.label"))} opens a wider panel in two columns: on the left a ` +
+      `${quoted(t("canvas.miniTool.relight.lightTitle"))} sphere, whose dot is the light, glowing in the colour chosen, with ` +
+      `${quoted(t("canvas.generatePanel.param.light_azimuth"))} and ${quoted(t("canvas.generatePanel.param.light_elevation"))} ` +
+      `sliders; on the right a ${quoted(t("canvas.miniTool.relight.referenceTitle"))} box for a picture whose light to copy, ` +
+      `then ${quoted(t("canvas.generatePanel.param.light_color"))} as a row of colour dots named on hover, the last of ` +
+      "which opens a colour picker for any colour, " +
+      `${quoted(t("canvas.generatePanel.param.light_intensity"))}, ${quoted(t("canvas.generatePanel.param.light_quality"))} ` +
+      `and ${quoted(t("canvas.generatePanel.param.resolution"))}. With a reference picked, it shows large on the left in ` +
+      `place of the sphere, the ${quoted(t("canvas.miniTool.relight.lightTitle"))} heading keeps its name with ` +
+      `${quoted(t("canvas.miniTool.relight.sourceFromReference"))} beside it, and the ` +
+      "light comes from it; colour, intensity and quality left on Auto follow it too, and " +
+      `setting one overrides it. ${quoted(t("canvas.miniTool.image.restyle.label"))} needs one to three pictures under ` +
+      `${quoted(t("canvas.miniTool.image.restyle.slotTitle"))}, picked from the canvas, and has ` +
+      `${quoted(t("canvas.generatePanel.param.resolution"))} and ` +
+      `${quoted(t("canvas.generatePanel.param.quality"))}. ${quoted(t("canvas.miniTool.image.quickEdit.label"))} has ` +
+      `only a box for what to change, which must be filled, and ${quoted(t("canvas.generatePanel.param.resolution"))}; ` +
+      "the picture itself stays as it was. On these three other tools a box at the bottom takes anything to add and " +
+      "can be left empty. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
       "grid split are free, the video tools that work on the file are billed by how long they run, and the others show an " +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +

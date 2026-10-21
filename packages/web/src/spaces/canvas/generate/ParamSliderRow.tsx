@@ -209,8 +209,8 @@ export function ParamSliderRow({
         // either end of the range is pinned to that end instead, so it lines
         // up with the track's edge rather than hanging half past it; the
         // negative margin pulls a pinned word's own padding back off the edge.
-        // The space below keeps the words nearer their own track than the next row's name.
-        <div className='relative -mx-1 mb-2 mt-1.5 h-6'>
+        // Each word sits at the top of its 24px box, close under the track.
+        <div className='relative -mx-1 mt-1.5 h-6'>
           {stops.map((stop) => {
             const edge = stop.value === min ? 'start' : stop.value === max ? 'end' : undefined;
             const left = ((stop.value - min) / (max - min)) * 100;
@@ -231,7 +231,7 @@ export function ParamSliderRow({
                   // an undersized one: at 16px the two 24px circles were 20.3px
                   // apart, so a click meant for a label dragged the value instead.
                   // The text keeps its own size — only the box around it grows.
-                  'absolute top-0 h-6 whitespace-nowrap px-1 text-2xs',
+                  'absolute top-0 h-6 items-start whitespace-nowrap px-1 text-2xs',
                   edge === undefined && '-translate-x-1/2',
                   atStop(shown, stop.value)
                     ? 'text-foreground'

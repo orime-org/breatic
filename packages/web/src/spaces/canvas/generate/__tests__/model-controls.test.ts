@@ -378,6 +378,78 @@ describe('controlsForKeys', () => {
   });
 });
 
+// inner#1304: a mini-tool draws a pose as one sphere, and a param the registry marks as swatches as colours.
+describe('controlsForKeys for the batch-four tools', () => {
+  it('draws the camera pose of a model that declares one as one sphere', () => {
+    const qwen = { ...model(CAMERA_SPECS), camera_angle: CAMERA_PARAMS } as ModelEntry;
+    expect(controlsForKeys(qwen, ['horizontal_angle', 'vertical_angle', 'distance'])).toEqual([
+      { kind: 'cameraAngle', name: 'camera_angle', params: CAMERA_PARAMS },
+    ]);
+  });
+
+  it('draws the params the registry marks as a light sphere as one, and swatches as colours', () => {
+    const relight = model({
+      light_azimuth: { description: '', default: 315, min: 0, max: 315, step: 45, fill: 'tool', label: 'Light direction' },
+      light_elevation: { description: '', default: 30, min: -30, max: 90, step: 30, fill: 'tool', label: 'Light height' },
+      light_color: {
+        description: '',
+        default: 'auto',
+        values: ['auto', 'warm'],
+        value_labels: { auto: 'Auto', warm: 'Warm' },
+        fill: 'tool',
+        label: 'Colour',
+      },
+    });
+    const controls = controlsForKeys(relight, ['light_azimuth', 'light_elevation', 'light_color'], {
+      light_azimuth: 'lightAngle',
+      light_elevation: 'lightAngle',
+      light_color: 'swatches',
+    });
+    expect(controls).toEqual([
+      { kind: 'lightAngle', name: 'light_angle', params: { azimuth: 'light_azimuth', elevation: 'light_elevation' } },
+      {
+        kind: 'swatches',
+        name: 'light_color',
+        options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'warm', label: 'Warm' },
+        ],
+      },
+    ]);
+  });
+});
+
+// inner#1304: a colour picked by hand is the swatch row's last cell.
+describe('controlsForKeys with a custom colour', () => {
+  it('joins the param marked swatchCustom to the swatches it follows', () => {
+    const relight = model({
+      light_color: {
+        description: '',
+        default: 'auto',
+        values: ['auto', 'warm', 'custom'],
+        value_labels: { auto: 'Auto', warm: 'Warm', custom: 'Custom' },
+        fill: 'tool',
+        label: 'Colour',
+      },
+      light_color_hex: { description: '', default: null, type: 'text', fill: 'tool', label: 'Custom colour' },
+    });
+    expect(
+      controlsForKeys(relight, ['light_color', 'light_color_hex'], { light_color: 'swatches', light_color_hex: 'swatchCustom' }),
+    ).toEqual([
+      {
+        kind: 'swatches',
+        name: 'light_color',
+        options: [
+          { value: 'auto', label: 'Auto' },
+          { value: 'warm', label: 'Warm' },
+          { value: 'custom', label: 'Custom' },
+        ],
+        custom: 'light_color_hex',
+      },
+    ]);
+  });
+});
+
 describe('every param a model tool shows is named in every locale', () => {
   const keys = [...new Set(MINI_TOOLS.flatMap((tool) => toolParamKeys(tool)))];
   it.each(['en', 'zh-CN', 'zh-TW', 'ja', 'ko'])('%s', (lang) => {

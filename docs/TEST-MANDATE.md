@@ -129,7 +129,7 @@ STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
 
 **两档都禁 `test.describe.configure({ mode: 'serial' })`**(`breatic/no-serial-tests`)。一条红让同组后面的用例整批不执行——2026-09-19 实测一轮 54 条未执行,其中 44 条出自一个文件。
 
-**超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。
+**超时只有一个数:project 的那个**(`playwright.config.ts`,两档都是 180s)。playwright 的 `test.setTimeout` 是**赋值**不是取大(`playwright/lib/common/index.js:2413`),所以一句写在文件顶上的 `test.setTimeout(90_000)` 把 180 秒降成了 90 秒,而它旁边的注释多半写着「抬高」。判定题:**我要写的这个数,比 project 的大吗?** 不大就别写;大才写,并在同一行说清哪一步要花这么久。另有一层单步上限 `actionTimeout`(15s,同一个文件的顶层 `use` 里):点击、填写这类操作一步卡住就在 15 秒内报错,不会一直等到整条用例超时;`expect` 的等待不受它管,各自写自己的 `timeout`。
 
 **一台机器上一次只跑一轮。** 一轮里的几个 worker 按槽位分账号，两轮之间没有：setup 开局会把每个槽位上一轮留下的 Project 归档(`tests/helpers/project.ts` 的 `archiveOlderRuns`),而它分不出「上一轮扔下的」和「另一轮正在用的」。smoke 和 visual 同时开两个进程，后起的那个会把先起的那个正在用的 Project 归档掉，先起的那一轮从此只能读、写不进去。
 

@@ -61,6 +61,21 @@ const RECT: RectParam = { kind: "rect", key: "rect", aspect: "aspect" };
 
 export const MINI_TOOLS: readonly MiniToolSpec[] = [
   {
+    id: "image.quickEdit",
+    source: "image",
+    run: { kind: "model", model: "nano-banana-2-quick-edit" },
+    labelKey: key("image.quickEdit", "label"),
+    // First in the picture's list, for the reach (user 2026-10-18, inner#1304).
+    guide: "changes the picture as one sentence says, into a new node",
+    icon: "SquarePen",
+    params: [{ key: "resolution", default: "2k" }],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "EDIT" }],
+    sourceParam: "images",
+    sourceMany: true,
+    prompt: { placeholderKey: key("image.quickEdit", "prompt") },
+  },
+  {
     id: "image.crop",
     source: "image",
     run: { kind: "browser" },
@@ -243,6 +258,70 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     prompt: {
       placeholderKey: key("image.expand", "prompt"),
       defaultText: "Extend the picture naturally past its edges, matching its content, style and lighting.",
+    },
+  },
+  {
+    id: "image.angle",
+    source: "image",
+    run: { kind: "model", model: "qwen-image-edit-multiple-angles" },
+    labelKey: key("image.angle", "label"),
+    guide: "moves the camera around the subject: a turn, a tilt and a distance",
+    icon: "Rotate3d",
+    params: [{ key: "horizontal_angle" }, { key: "vertical_angle" }, { key: "distance" }],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "ANGLE" }],
+    sourceParam: "images",
+    sourceMany: true,
+    prompt: { placeholderKey: key("image.angle", "prompt"), defaultText: "" },
+  },
+  {
+    id: "image.relight",
+    source: "image",
+    run: { kind: "model", model: "nano-banana-2-relight" },
+    labelKey: key("image.relight", "label"),
+    guide:
+      "changes the light on the picture: where it comes from, its colour and strength, or the light in a picture you pick",
+    icon: "Lightbulb",
+    params: [
+      { key: "light_azimuth", display: "lightAngle" },
+      { key: "light_elevation", display: "lightAngle" },
+      { key: "light_color", display: "swatches" },
+      { key: "light_color_hex", display: "swatchCustom" },
+      { key: "light_intensity" },
+      { key: "light_quality" },
+      { key: "resolution", default: "2k" },
+    ],
+    slots: [slot("image.relight", "light_reference", "light_reference", "image")],
+    outputs: [{ modality: "image", namePrefix: "RELIGHT" }],
+    sourceParam: "images",
+    sourceMany: true,
+    prompt: { placeholderKey: key("image.relight", "prompt"), defaultText: "" },
+    sourceAspectParam: "aspect_ratio",
+    panel: {
+      columns: { left: ["light_azimuth", "light_elevation"] },
+      whenSlotFilled: { slot: "light_reference", hide: ["light_azimuth", "light_elevation"] },
+    },
+  },
+  {
+    id: "image.restyle",
+    source: "image",
+    run: { kind: "model", model: "gpt-image-2.5-sunburst-edit" },
+    labelKey: key("image.restyle", "label"),
+    guide: "redraws the picture in the style of up to three pictures you pick",
+    icon: "Palette",
+    params: [{ key: "resolution", default: "2k" }, { key: "quality" }],
+    slots: [
+      { ...slot("image.restyle", "style", "style_images", "image", true), required: true, titleKey: key("image.restyle", "slotTitle") },
+    ],
+    outputs: [{ modality: "image", namePrefix: "RESTYLE" }],
+    sourceParam: "images",
+    sourceMany: true,
+    prompt: {
+      placeholderKey: key("image.restyle", "prompt"),
+      defaultText: "",
+      // The style pictures once lent the result their objects (inner#1304 §4.2), so this always goes.
+      preamble:
+        "Redraw the first image in the style of the style references. Keep its subject, faces, pose and composition; take only the style — brushwork, palette, texture and line — and copy no objects from the style references.",
     },
   },
   {

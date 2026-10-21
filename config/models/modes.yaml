@@ -68,6 +68,17 @@ image:
       description: >
         Edit an image by following rough strokes drawn on it, as a text
         prompt describes.
+    relight:
+      label: Relighting
+      description: >
+        Change the light on an image, from set directions, colours and
+        strengths or from the light in a reference image, leaving its
+        subject, background and composition unchanged.
+    quick_edit:
+      label: Quick Edit
+      description: >
+        Change an image as one sentence describes, keeping the original
+        and putting the result in a new node.
 
 video:
   modes:

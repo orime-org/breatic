@@ -12,7 +12,7 @@
  * Imported only by the sphere, so it travels in the sphere's own chunk.
  */
 
-import { CAMERA_ANGLE_GRID } from '@breatic/shared';
+import { CAMERA_ANGLE_GRID, type AngleGrid } from '@breatic/shared';
 
 /** A point or direction in the scene. */
 export interface Vec3 {
@@ -21,14 +21,14 @@ export interface Vec3 {
   z: number;
 }
 
-/** The lowest and highest elevation the grid holds, in degrees. */
-export const ELEVATION_RANGE = [
-  CAMERA_ANGLE_GRID.elevation[0],
-  CAMERA_ANGLE_GRID.elevation[CAMERA_ANGLE_GRID.elevation.length - 1],
-] as const;
-
-/** The azimuths the grid holds, in degrees, one tick each on the ring. */
-export const AZIMUTH_STEPS: readonly number[] = CAMERA_ANGLE_GRID.azimuth;
+/**
+ * The lowest and highest elevation a grid holds.
+ * @param grid - The grid.
+ * @returns Degrees, low then high.
+ */
+export function elevationRange(grid: AngleGrid): [number, number] {
+  return [grid.elevation[0] ?? 0, grid.elevation[grid.elevation.length - 1] ?? 0];
+}
 
 /** How far the camera sits from the card at each distance step. */
 const RADII = [1.0, 1.35, 1.75] as const;
@@ -64,12 +64,18 @@ export function cameraOffset(azimuth: number, elevation: number, radius: number)
  * The pose of a camera at an offset from the card's centre.
  * @param offset - Where it sits.
  * @param radius - The sphere it sits on.
+ * @param grid - The grid whose heights the elevation is held to; the camera's when absent.
  * @returns Its azimuth in [0, 360) and its elevation held inside the grid's range.
  */
-export function angleFromOffset(offset: Vec3, radius: number): { azimuth: number; elevation: number } {
+export function angleFromOffset(
+  offset: Vec3,
+  radius: number,
+  grid: AngleGrid = CAMERA_ANGLE_GRID,
+): { azimuth: number; elevation: number } {
+  const range = elevationRange(grid);
   const azimuth = ((Math.atan2(-offset.x, offset.z) * 180) / Math.PI + 360) % 360;
   const sine = Math.max(-1, Math.min(1, offset.y / radius));
-  const elevation = Math.max(ELEVATION_RANGE[0], Math.min(ELEVATION_RANGE[1], (Math.asin(sine) * 180) / Math.PI));
+  const elevation = Math.max(range[0], Math.min(range[1], (Math.asin(sine) * 180) / Math.PI));
   return { azimuth, elevation };
 }
 
