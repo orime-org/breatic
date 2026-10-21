@@ -34,9 +34,10 @@ interface RenameProjectDialogProps {
 }
 
 /**
- * The card menu's rename dialog: one name field, Save and Cancel. Save stays
- * off while the field is blank or unchanged. The dialog waits for the rename
- * and closes once the rename is in and the lists showing the name have
+ * The card menu's rename dialog: one name field, Save and Cancel. Save is
+ * always pressable (inner#1652): a blank name says so under the field, and an
+ * unchanged name closes the dialog with nothing sent. The dialog waits for the
+ * rename and closes once the rename is in and the lists showing the name have
  * refreshed; a failure toasts and leaves the dialog open.
  * @param props - Open state, the current name and the rename callback.
  * @param props.open - Whether the dialog is shown.

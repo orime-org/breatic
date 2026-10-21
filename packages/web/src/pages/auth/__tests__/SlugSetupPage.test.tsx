@@ -75,8 +75,8 @@ function setup(strict = false): ReturnType<typeof render> & { refresh: () => voi
 describe('SlugSetupPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default to `valid` so the form is interactive (submit enabled);
-    // individual tests override via `setAvailability`.
+    // Default to `valid` so a press goes through; individual tests override
+    // via `setAvailability`.
     setAvailability({ state: 'valid' });
     // A signed-in but not-yet-onboarded user (the state that reaches
     // this page): personalStudio is null until setup-studio runs.
@@ -88,7 +88,7 @@ describe('SlugSetupPage', () => {
     });
   });
 
-  it('renders the slug form with an enabled submit and the available line when available', () => {
+  it('renders the slug form with its submit and the available line when available', () => {
     setup();
     expect(screen.getByLabelText('Slug')).toBeInTheDocument();
     // When the live check reports `valid`, the helper line shows the
@@ -96,10 +96,7 @@ describe('SlugSetupPage', () => {
     expect(screen.getByText('Slug is available')).toHaveClass(
       'text-status-success-foreground',
     );
-    const submit = screen.getByRole('button', { name: 'Continue' });
-    expect(submit).toBeInTheDocument();
-    // The check is `valid`, so submit is enabled.
-    expect(submit).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
   });
 
   it('shows the default URL helper line when the input is empty', () => {
