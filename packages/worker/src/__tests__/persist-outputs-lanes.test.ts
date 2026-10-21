@@ -91,6 +91,20 @@ beforeEach(() => {
   mockWarn.mockReset();
 });
 
+// inner#1305 §7.4: a model that declares what it returns is stored as that,
+// key and served type alike; the rest keep the task type's.
+describe("persistOutputs — the type a declared output is stored as", () => {
+  it("names a link's key and type after the model's declared output", async () => {
+    await persistOutputs([{ url: PROVIDER_URL }], {}, { ...baseOpts, taskType: "audio", outputType: "audio/wav" });
+    expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({ ext: ".wav", contentType: "audio/wav" });
+  });
+
+  it("keeps the task type's when the model declares nothing", async () => {
+    await persistOutputs([{ url: PROVIDER_URL }], {}, { ...baseOpts, taskType: "audio" });
+    expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({ ext: ".mp3", contentType: "audio/mpeg" });
+  });
+});
+
 describe("persistOutputs — the lane an output takes", () => {
   it("sends bytes it is holding, and pins what came back", async () => {
     const out = await persistOutputs([bufferOutput()], {}, baseOpts);

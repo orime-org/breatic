@@ -89,6 +89,15 @@ const VOCALS = {
   takes_prompt: false,
   params: { audio: { fill: "tool", accepts: "audio" } },
 };
+const ENHANCE = {
+  name: "veed-clean-audio",
+  takes_prompt: false,
+  params: {
+    audio: { fill: "tool", accepts: "audio", max_total_duration: 1800, max_bytes: 536_870_912 },
+    strength: { fill: "tool", min: 0, max: 1, step: 0.05, default: 0.85 },
+  },
+};
+const OUR_AUDIO = "https://assets.example.com/a/abc.m4a";
 
 /**
  * Post one mini-tool request.
@@ -120,10 +129,78 @@ describe("POST /mini-tools", () => {
     vi.mocked(modelCatalog.getModelCatalog).mockReturnValue({
       image: [CRYSTAL, GENFILL, SEEDREAM, RELIGHT, RESTYLE, QUICK_EDIT],
       video: [],
-      audio: [VOCALS],
+      audio: [VOCALS, ENHANCE],
       tts: [],
       three_d: [],
     } as never);
+    vi.mocked(assetRepo.findKindByStorageKey).mockReset().mockResolvedValue("video");
+    vi.mocked(assetRepo.findLiveByStorageKey).mockReset().mockResolvedValue(null);
+  });
+
+  // inner#1305: a container tool reads the medium it declares.
+  it("runs an audio edit on a source our bucket files as audio", async () => {
+    vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValue("audio");
+    const res = await post({
+      tool: "audio.denoise",
+      node_ids: [NODE_A],
+      source: { url: OUR_AUDIO, duration: 8 },
+      params: { intensity: 50 },
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("refuses an audio edit on a video and a video edit on audio", async () => {
+    vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValueOnce("video");
+    const onVideo = await post({
+      tool: "audio.denoise",
+      node_ids: [NODE_A],
+      source: { url: OUR_AUDIO, duration: 8 },
+      params: { intensity: 50 },
+    });
+    vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValueOnce("audio");
+    const onAudio = await post({
+      tool: "video.cut",
+      node_ids: [NODE_A],
+      source: { url: OURS, duration: 8 },
+      params: { range: { start: 0, end: 2 } },
+    });
+    expect(onVideo.status).toBe(400);
+    expect(onAudio.status).toBe(400);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+  });
+
+  // inner#1305 §7.2: the model's own ceilings, held against what the ledger
+  // measured rather than what the request claims.
+  it("refuses an enhance source the ledger measured past the model's length or size", async () => {
+    for (const measured of [
+      { durationSeconds: 1801, sizeBytes: 1_000 },
+      { durationSeconds: 60, sizeBytes: 536_870_913 },
+    ]) {
+      vi.mocked(assetRepo.findLiveByStorageKey).mockResolvedValueOnce(measured as never);
+      const res = await post({
+        tool: "audio.enhance",
+        node_ids: [NODE_A],
+        source: { url: OUR_AUDIO, duration: 10 },
+        params: { strength: 0.85 },
+      });
+      expect(res.status, JSON.stringify(measured)).toBe(400);
+    }
+    expect(vi.mocked(assetRepo.findLiveByStorageKey)).toHaveBeenCalledWith("a/abc.m4a");
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+  });
+
+  it("runs enhance within the ceilings, or when the ledger has not measured the source", async () => {
+    for (const measured of [{ durationSeconds: 1800, sizeBytes: 536_870_912 }, null]) {
+      vi.mocked(assetRepo.findLiveByStorageKey).mockResolvedValueOnce(measured as never);
+      const res = await post({
+        tool: "audio.enhance",
+        node_ids: [NODE_A],
+        source: { url: OUR_AUDIO, duration: 10 },
+        params: { strength: 0.85 },
+      });
+      expect(res.status, JSON.stringify(measured)).toBe(201);
+    }
+    expect(mocks.taskService.create.mock.calls[0]?.[6]).toBe("veed-clean-audio");
   });
 
   it("opens a mini_tool row on the new node and queues the run on the pinned model", async () => {
