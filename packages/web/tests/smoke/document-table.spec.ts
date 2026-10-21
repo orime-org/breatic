@@ -158,8 +158,9 @@ async function hoverTable(p: Page): Promise<void> {
   await p.mouse.move(5, 5);
   const row = await p.locator(`${EDITOR} tr`).first().boundingBox();
   if (row === null) throw new Error('no table row');
-  // Clear of the row handle, which stands on the table's left line.
-  await p.mouse.move(row.x - 20, row.y + row.height / 2, { steps: 3 });
+  // Past the strips of the first column's blocks, which stand within 40px of
+  // the table's left line, on the table's own strip.
+  await p.mouse.move(row.x - 52, row.y + row.height / 2, { steps: 3 });
   await expect(p.getByTestId('doc-block-table-handle')).toBeVisible();
 }
 
@@ -557,7 +558,7 @@ test('A11: after switching to another Space and back, the cell button follows th
   expect(button!.y + button!.height).toBeLessThanOrEqual(a1!.y + a1!.height);
 });
 
-test('T13: a block\'s handle stands outside its cell\'s left line, and in the first column the row handle makes way for it', async () => {
+test('T13: a block\'s handle stands outside its cell\'s left line; the first column has the table icon, the block\'s handle and the row handle left to right', async () => {
   await openFreshDocument(page);
   await smallTable(page);
 
@@ -570,14 +571,85 @@ test('T13: a block\'s handle stands outside its cell\'s left line, and in the fi
   // The cell keeps no room for the handle: its words start at the usual 10px.
   expect(words!.x - b1!.x).toBeLessThan(14);
 
-  // The first column, on a row of one line: the two handles on the table's
-  // left line, the row handle below the block's.
+  // The first column, on a row of one line (user 2026-10-21): the block's
+  // handle where every other block's stands, 12px out from the table's left
+  // line; the row handle centred on that line and on its row; the table icon
+  // past the block's handle.
   const first = await (await hoverWordsInCell(page, 'a1')).boundingBox();
   const row = await page.getByTestId('doc-table-row-handle').boundingBox();
   const table = await page.locator(`${EDITOR} table`).first().boundingBox();
-  expect(Math.abs(first!.x + first!.width / 2 - table!.x)).toBeLessThan(2);
+  const a1 = await cell(page, 'a1').boundingBox();
+  expect(Math.abs(first!.x + first!.width - (table!.x - 12))).toBeLessThan(2);
   expect(Math.abs(row!.x + row!.width / 2 - table!.x)).toBeLessThan(2);
-  expect(row!.y).toBeGreaterThanOrEqual(first!.y + first!.height);
+  expect(Math.abs(row!.y + row!.height / 2 - (a1!.y + a1!.height / 2))).toBeLessThan(2);
+  await hoverTable(page);
+  const icon = await page.getByTestId('doc-block-table-handle').boundingBox();
+  expect(Math.abs(icon!.x + icon!.width - (table!.x - 40))).toBeLessThan(2);
+});
+
+test('T13: from the right of a first-column cell, the pointer reaches the block\'s handle and the row handle without either changing', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  const a1 = await cell(page, 'a1').boundingBox();
+  const from = { x: a1!.x + a1!.width - 10, y: a1!.y + a1!.height - 6 };
+
+  await page.mouse.move(from.x, from.y);
+  const strip = page.getByTestId('doc-block-handle');
+  await expect(strip).toBeVisible();
+  const before = await strip.boundingBox();
+  await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2, { steps: 12 });
+  expect(await strip.boundingBox()).toEqual(before);
+  const under = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[data-testid="doc-block-handle"]') !== null, [before!.x + 12, before!.y + 12]);
+  expect(under).toBe(true);
+
+  await page.mouse.move(from.x, from.y);
+  const handle = page.getByTestId('doc-table-row-handle');
+  const row = await handle.boundingBox();
+  await page.mouse.move(row!.x + row!.width / 2, row!.y + row!.height / 2, { steps: 12 });
+  expect(await handle.boundingBox()).toEqual(row);
+});
+
+test('T13: on a table scrolled sideways, the handle of a block in the cell cut by the frame stands outside the frame\'s left line', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 9);
+  await fill(page, ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
+  await page.locator(TOP).first().click();
+  const frame = page.locator(`${EDITOR} [data-radix-scroll-area-viewport]`).first();
+  // c3 cut by the frame's left line, its words still in view.
+  await frame.evaluate((viewport) => {
+    const c3 = [...viewport.querySelectorAll('td')].find((td) => td.textContent === 'c3')!;
+    viewport.scrollLeft = c3.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft + 6;
+  });
+  const box = await frame.boundingBox();
+  expect((await cell(page, 'c3').boundingBox())!.x).toBeLessThan(box!.x);
+
+  const strip = await (await hoverWordsInCell(page, 'c3')).boundingBox();
+  expect(Math.abs(strip!.x + strip!.width - (box!.x - 12))).toBeLessThan(2);
+});
+
+test('T13: a block\'s handle in a middle column keeps its block while the pointer rests on it and someone edits elsewhere', async ({ browser }) => {
+  const spaceId = await openFreshDocument(page);
+  await smallTable(page);
+  const other = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+  try {
+    await other.goto(page.url());
+    await other.getByTestId(`space-tab-name-${spaceId}`).click();
+    await expect(other.locator(`${EDITOR} table`)).toHaveCount(1, { timeout: 20_000 });
+
+    const strip = await hoverWordsInCell(page, 'b1');
+    const box = await strip.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2, { steps: 4 });
+    const named = await page.locator('[data-row-id]').first().getAttribute('data-row-id');
+
+    await clickAndSettle(other, cell(other, 'b2'));
+    await other.keyboard.press('End');
+    await other.keyboard.type('!');
+    await expect.poll(() => grids(page)).toEqual([[['a1', 'b1'], ['a2', 'b2!']]]);
+
+    await expect(page.locator('[data-row-id]').first()).toHaveAttribute('data-row-id', named!);
+  } finally {
+    await other.close();
+  }
 });
 
 test('A6: the row and column handles sit centred on the table\'s lines, the table icon clear of the first row handle', async () => {

@@ -32,7 +32,7 @@ const CELL = new DOMRect(100, 100, 120, 40);
  * {@link CELL}.
  * @returns The editor, and the ids of the table and the first cell's block.
  */
-function open(): { editor: Editor; tableId: string; cellBlockId: string } {
+function open(): { editor: Editor; tableId: string; cellBlockId: string; nextBlockId: string } {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const host = document.createElement('div');
   document.body.appendChild(host);
@@ -44,9 +44,11 @@ function open(): { editor: Editor; tableId: string; cellBlockId: string } {
   ] as never);
   const table = editor.document[1] as unknown as { id: string; children: { children: { children: { id: string }[] }[] }[] };
   const cellBlockId = table.children[0]!.children[0]!.children[0]!.id;
+  const nextBlockId = table.children[0]!.children[1]!.children[0]!.id;
   const td = editor.prosemirrorView.dom.querySelector('td')!;
   td.getBoundingClientRect = () => CELL;
-  return { editor, tableId: table.id, cellBlockId };
+  editor.prosemirrorView.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(100, 100, 240, 40);
+  return { editor, tableId: table.id, cellBlockId, nextBlockId };
 }
 
 /**
@@ -72,10 +74,17 @@ describe('the side menu at a table', () => {
     expect(hover(editor, 150, 120, cellBlockId)).toBe(cellBlockId);
   });
 
-  it('stands for the table when the pointer is left of the cell, in the gutter', () => {
+  it('stands for the first-column block at the pointer\'s height in the gutter within 40px of the table (user 2026-10-21)', () => {
+    const { editor, cellBlockId, tableId } = open();
+
+    expect(hover(editor, 62, 120, tableId)).toBe(cellBlockId);
+    expect(hover(editor, 80, 120, cellBlockId)).toBe(cellBlockId);
+  });
+
+  it('stands for the table further out in the gutter', () => {
     const { editor, tableId, cellBlockId } = open();
 
-    expect(hover(editor, 80, 120, cellBlockId)).toBe(tableId);
+    expect(hover(editor, 50, 120, cellBlockId)).toBe(tableId);
   });
 
   it('stands for the table when the pointer is right of the table', () => {
@@ -98,6 +107,22 @@ describe('the side menu at a table', () => {
     expect(sideMenu.store.state?.block.id).toBe(cellBlockId);
   });
 
+  it('keeps the block it was on while the pointer rests on the menu, when a change elsewhere names another', () => {
+    const { editor, cellBlockId, nextBlockId } = open();
+    const sideMenu = editor.getExtension(SideMenuExtension)!;
+    sideMenu.store.setState({ show: true, referencePos: new DOMRect(), block: editor.getBlock(cellBlockId) as never });
+    const strip = document.createElement('div');
+    strip.setAttribute('data-row-id', cellBlockId);
+    document.body.appendChild(strip);
+    strip.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 250, clientY: 120 }));
+
+    // The library's refresh after a remote edit reads the point beside the
+    // menu, which lies in the next cell.
+    sideMenu.store.setState({ show: true, referencePos: new DOMRect(), block: editor.getBlock(nextBlockId) as never });
+
+    expect(sideMenu.store.state?.block.id).toBe(cellBlockId);
+  });
+
   it('leaves a block outside any table as it is', () => {
     const { editor } = open();
     const above = (editor.document[0] as unknown as { id: string }).id;
@@ -115,9 +140,9 @@ describe('the side menu in a cell', () => {
     expect(hover(editor, 210, 135, tableId)).toBe(cellBlockId);
   });
 
-  it('leaves the table when the pointer is in no cell', () => {
+  it('leaves the table when the pointer is in no cell, out past the first column\'s strips', () => {
     const { editor, tableId } = open();
 
-    expect(hover(editor, 80, 120, tableId)).toBe(tableId);
+    expect(hover(editor, 50, 120, tableId)).toBe(tableId);
   });
 });

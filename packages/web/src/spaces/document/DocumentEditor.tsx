@@ -285,8 +285,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           The top and bottom breathing room does not: it belongs to the
           editable surface itself, or the strip of it below the last block
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
-          The right gutter is also where the whole-document entry stands, which
-          is what sizes both of them (`--doc-body-gutter`). */}
+          The right gutter is where the whole-document entry stands, which
+          sizes it (`--doc-body-gutter`); the left one is where a table's own
+          strip stands, past its first column's (`--doc-body-gutter-start`). */}
       {/* One scroller over both columns, so the scrollbar sits at the far
           right of the Space rather than between the text and the panel, and a
           wheel anywhere in here moves both sides together. */}
@@ -316,7 +317,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             )}
             <div
               {...{ [BODY_BLANK]: '' }}
-              className='flex min-w-0 flex-1 flex-col px-[var(--doc-body-gutter)]'
+              className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)] pl-[var(--doc-body-gutter-start)]'
             >
               <DocumentMenuEntry
                 commentsOpen={railOpen}

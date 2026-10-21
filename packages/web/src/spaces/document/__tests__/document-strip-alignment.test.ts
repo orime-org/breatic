@@ -17,8 +17,10 @@ import type { MiddlewareState } from '@floating-ui/react';
 
 import {
   firstLineOf,
+  STRIP_OUTSET,
   stripPlacement,
   stripOffsetFromRowTop,
+  TABLE_STRIP_OUTSET,
 } from '@web/spaces/document/document-strip-alignment';
 import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 
@@ -169,14 +171,19 @@ describe('the first line of a media block (inner#1127)', () => {
  * Places the strip of a block in a cell.
  * @param cellLeft - The cell's left line.
  * @param tableLeft - The table body's left line.
+ * @param frameLeft - The left edge of the table's scroll frame.
  * @returns What the placement hands back.
  */
-async function placeInCell(cellLeft: number, tableLeft: number): Promise<{ x?: number }> {
+async function placeInCell(cellLeft: number, tableLeft: number, frameLeft = tableLeft): Promise<{ x?: number }> {
   const body = document.createElement('div');
   const root = document.createElement('div');
   body.appendChild(root);
   root.getBoundingClientRect = (): DOMRect => ({ left: 300 }) as DOMRect;
+  const frame = document.createElement('div');
+  frame.setAttribute('data-radix-scroll-area-viewport', '');
+  frame.getBoundingClientRect = (): DOMRect => ({ left: frameLeft }) as DOMRect;
   const tbody = document.createElement('tbody');
+  frame.appendChild(tbody);
   tbody.getBoundingClientRect = (): DOMRect => ({ left: tableLeft }) as DOMRect;
   const tr = document.createElement('tr');
   const cell = document.createElement('td');
@@ -201,8 +208,28 @@ describe('a block in a table cell has its strip outside the cell\'s left line (i
     expect(await placeInCell(600, 400)).toEqual({ x: 600 - COLUMN_RESIZE_ZONE - 1 - STRIP });
   });
 
-  it('centres the strip on the table\'s left line in the first column', async () => {
-    expect(await placeInCell(400, 400)).toEqual({ x: 400 - STRIP / 2 });
+  it('puts the strip where every other block\'s goes in the first column, 12px out from the table\'s left line (user 2026-10-21)', async () => {
+    expect(await placeInCell(400, 400)).toEqual({ x: 400 - STRIP_OUTSET - STRIP });
+  });
+
+  it('takes a cell scrolled partly out of the frame for the first column, its strip outside the frame', async () => {
+    expect(await placeInCell(350, 250, 400)).toEqual({ x: 400 - STRIP_OUTSET - STRIP });
+  });
+});
+
+describe('a table\'s own strip stands out past a first-column block\'s (inner#1619 T13)', () => {
+  it('moves the table\'s carrier one strip and a gap further out than other blocks\'', async () => {
+    const body = document.createElement('div');
+    const root = document.createElement('div');
+    body.appendChild(root);
+    root.getBoundingClientRect = (): DOMRect => ({ left: 400 }) as DOMRect;
+    const table = document.createElement('div');
+    table.setAttribute('data-node-type', 'docTable');
+    const [edge] = stripPlacement(() => body).useFloatingOptions.middleware;
+    const reference = { getBoundingClientRect: (): DOMRect => ({ left: 400 }) as DOMRect, contextElement: table };
+    const state = { x: 376, rects: { reference: { x: 100 }, floating: { width: STRIP } }, elements: { reference } } as unknown as MiddlewareState;
+
+    expect(await edge.fn(state)).toEqual({ x: 400 - TABLE_STRIP_OUTSET - STRIP });
   });
 });
 

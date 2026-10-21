@@ -125,35 +125,3 @@ export function columnHandleCentre(visible: Box, lineY: number, button: Box | nu
   }
   return null;
 }
-
-/** The row handle's height (`DocumentTableHandle`). */
-const ROW_HANDLE_HEIGHT = 24;
-
-/** The room the row handle keeps from a block handle on its line. */
-const HANDLE_STACK_GAP = 4;
-
-/**
- * How far the row handle moves up or down to clear the handle of a block in
- * the first column, which stands on the same line (inner#1619 T13). The block
- * handle keeps its place on the block's first line; the row handle, centred
- * on its row, moves only when the two would touch, to whichever side of the
- * block handle leaves it nearer the row's middle, below when both are as near.
- * @param row - The row's top and bottom.
- * @param row.top - The row's top.
- * @param row.bottom - The row's bottom.
- * @param strip - The block handle's top and bottom, or null when none stands on the line.
- * @returns The vertical shift, zero when nothing is in the way.
- */
-export function rowHandleShift(
-  row: { readonly top: number; readonly bottom: number },
-  strip: { readonly top: number; readonly bottom: number } | null,
-): number {
-  const middle = (row.top + row.bottom) / 2;
-  const half = ROW_HANDLE_HEIGHT / 2;
-  if (strip === null || middle + half <= strip.top - HANDLE_STACK_GAP || middle - half >= strip.bottom + HANDLE_STACK_GAP) {
-    return 0;
-  }
-  const below = strip.bottom + HANDLE_STACK_GAP + half;
-  const above = strip.top - HANDLE_STACK_GAP - half;
-  return (Math.abs(below - middle) <= Math.abs(above - middle) ? below : above) - middle;
-}

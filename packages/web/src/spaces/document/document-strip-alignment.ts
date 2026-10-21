@@ -47,7 +47,7 @@ import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
 import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
-import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
+import { COLUMN_RESIZE_ZONE, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * How far the strip stands out from the body's left edge, the same on every
@@ -60,6 +60,43 @@ export const STRIP_OUTSET = 12;
 
 /** The strip's width: one 24px handle (`STRIP_BUTTON` in `DocumentBlockHandle`). */
 export const STRIP_SIZE = 24;
+
+/**
+ * How far a table's own strip stands out from the table's left line: past
+ * the strip of a block in its first column, which stands where every other
+ * block's does, by a 4px gap (inner#1619 T13, user 2026-10-21). The gutter
+ * this side of it belongs to the first column's blocks
+ * (`document-table-side-menu.ts`).
+ */
+export const TABLE_STRIP_OUTSET = STRIP_OUTSET + STRIP_SIZE + 4;
+
+/** The selector of a table's horizontal scroll frame. */
+const TABLE_FRAME = '[data-radix-scroll-area-viewport]';
+
+/**
+ * A table's left line as it is drawn: the table body's left edge, or the
+ * scroll frame's when the table is scrolled sideways past it.
+ * @param inTable - The table's body, an element in it, or the table's element.
+ * @returns The line's x, or undefined when there is no table body.
+ */
+export function tableLineOf(inTable: Element): number | undefined {
+  const body = inTable.closest('tbody') ?? inTable.querySelector('tbody');
+  if (body === null) return undefined;
+  const frame = body.closest(TABLE_FRAME);
+  const left = body.getBoundingClientRect().left;
+  return frame === null ? left : Math.max(left, frame.getBoundingClientRect().left);
+}
+
+/**
+ * Whether a cell's left line is drawn on the table's left line: the first
+ * column, or a cell scrolled partly out of the frame.
+ * @param cell - The cell.
+ * @returns True when it is.
+ */
+export function standsOnTableLine(cell: Element): boolean {
+  const line = tableLineOf(cell);
+  return line !== undefined && cell.getBoundingClientRect().left < line + 1;
+}
 
 /**
  * The carrier's placement: the library's left-start against the row, with its
@@ -93,19 +130,21 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             const rowLeft = elements.reference.getBoundingClientRect().left;
             // A block in a table cell, whatever its nesting there: the strip
             // stands outside the cell's left line (inner#1619 T13), in the
-            // cell to the left clear of the line's column-resize zone, or
-            // centred on the table's left line in the first column, where the
-            // row handle stands on the same line.
+            // cell to the left clear of the line's column-resize zone, or in
+            // the first column where every other block's strip stands, out
+            // from the table's left line. The table's own strip stands
+            // further out than that.
             const anchor = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
             const cell = anchor?.closest('td, th');
             if (cell != null) {
-              const line = cell.getBoundingClientRect().left;
-              const tableLine = cell.closest('tbody')?.getBoundingClientRect().left;
-              const firstColumn = tableLine !== undefined && Math.abs(line - tableLine) < 1;
-              const left = firstColumn ? line - rects.floating.width / 2 : line - COLUMN_RESIZE_ZONE - 1 - rects.floating.width;
-              return { x: x + left - (rowLeft - rects.floating.width) };
+              const width = rects.floating.width;
+              const left = standsOnTableLine(cell)
+                ? tableLineOf(cell)! - STRIP_OUTSET - width
+                : cell.getBoundingClientRect().left - COLUMN_RESIZE_ZONE - 1 - width;
+              return { x: x + left - (rowLeft - width) };
             }
-            return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };
+            const outset = anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true ? TABLE_STRIP_OUTSET : STRIP_OUTSET;
+            return { x: x + root.getBoundingClientRect().left - rowLeft - outset };
           },
         },
       ],

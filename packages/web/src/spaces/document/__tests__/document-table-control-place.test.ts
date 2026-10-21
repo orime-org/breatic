@@ -12,7 +12,6 @@ import { describe, expect, it } from 'vitest';
 import {
   cellButtonBox,
   columnHandleCentre,
-  rowHandleShift,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
 import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
@@ -97,30 +96,5 @@ describe('the column handle', () => {
     const visible = box(100, 40, 145, 75);
     const below = cellButtonBox(box(100, 75, 145, 110));
     expect(columnHandleCentre(visible, line, below)).toBe(122.5);
-  });
-});
-
-describe('the row handle beside a first-column block handle (inner#1619 T13)', () => {
-  it('stays centred when no block handle stands on its line', () => {
-    expect(rowHandleShift({ top: 0, bottom: 34 }, null)).toBe(0);
-  });
-
-  it('stays centred when the block handle is clear of it', () => {
-    expect(rowHandleShift({ top: 0, bottom: 200 }, { top: 150, bottom: 174 })).toBe(0);
-  });
-
-  it('goes below the block handle when that is nearer the row\'s middle', () => {
-    // Centred at 50 it would cover 38–62; below the handle (20–44) it is centred at 60.
-    expect(rowHandleShift({ top: 0, bottom: 100 }, { top: 20, bottom: 44 })).toBe(10);
-  });
-
-  it('goes above the block handle when that is nearer the row\'s middle', () => {
-    // Above the handle (60–84) it is centred at 44.
-    expect(rowHandleShift({ top: 0, bottom: 100 }, { top: 60, bottom: 84 })).toBe(-6);
-  });
-
-  it('goes below when both sides are as near, as on a row of one line', () => {
-    // Row 0–34 centred at 17; handle 5–29: below centred at 45, above at -11.
-    expect(rowHandleShift({ top: 0, bottom: 34 }, { top: 5, bottom: 29 })).toBe(28);
   });
 });

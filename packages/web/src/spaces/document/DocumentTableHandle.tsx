@@ -17,7 +17,6 @@
  * bubble bar serves a selection, the way the block handle steps aside for it.
  */
 
-import { SideMenuExtension } from '@blocknote/core/extensions';
 import {
   useBlockNoteEditor,
   useExtension,
@@ -72,11 +71,9 @@ import {
   columnHandleCentre,
   COLUMN_HANDLE_NUDGE,
   ROW_HANDLE_NUDGE,
-  rowHandleShift,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
-import { firstLineOf, STRIP_SIZE } from '@web/spaces/document/document-strip-alignment';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { tableLineOf } from '@web/spaces/document/document-strip-alignment';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
@@ -159,7 +156,7 @@ function framePlaceOf(
   const frame = table?.closest('[data-radix-scroll-area-viewport]');
   if (view === undefined || !table || !frame) return IN_PLACE;
   const box = frame.getBoundingClientRect();
-  if (row) return { shift: Math.max(0, box.left - table.getBoundingClientRect().left), hidden: false };
+  if (row) return { shift: tableLineOf(table)! - table.getBoundingClientRect().left, hidden: false };
   if (cell === undefined) return IN_PLACE;
   const visible = {
     left: Math.max(cell.left, box.left),
@@ -169,35 +166,6 @@ function framePlaceOf(
   };
   const x = columnHandleCentre(visible, table.getBoundingClientRect().top, cellButtonIn(view, table, box, buttonCell));
   return x === null ? { shift: 0, hidden: true } : { shift: x - (cell.left + cell.width / 2), hidden: false };
-}
-
-/**
- * Where the handle of a block in the table's first column stands, the one on
- * the row handle's line (inner#1619 T13): centred on the block's first line,
- * as the strip is (`document-strip-alignment.ts`).
- * @param view - The editor view.
- * @param tableId - The table block's id.
- * @param blockId - The block the side menu stands for, if it shows one.
- * @returns The handle's top and bottom, or null when it is not on that line.
- */
-function firstColumnStripOf(
-  view: EditorView | undefined,
-  tableId: string,
-  blockId: string | undefined,
-): { top: number; bottom: number } | null {
-  if (view === undefined || blockId === undefined) return null;
-  const container = view.dom.querySelector(`[data-node-type="blockContainer"][data-id="${CSS.escape(blockId)}"]`);
-  const cell = container?.closest('td, th');
-  const body = cell?.closest('tbody');
-  if (!container || !cell || !body) return null;
-  if (cell.closest(`[data-node-type="${DOC_TABLE}"]`)?.getAttribute('data-id') !== tableId) return null;
-  if (Math.abs(cell.getBoundingClientRect().left - body.getBoundingClientRect().left) >= 1) return null;
-  const content = container.querySelector('.bn-block-content');
-  const line = content === null ? undefined : firstLineOf(content);
-  const middle = line === undefined || line.height <= 0
-    ? container.getBoundingClientRect().top + STRIP_SIZE / 2
-    : line.top + line.height / 2;
-  return { top: middle - STRIP_SIZE / 2, bottom: middle + STRIP_SIZE / 2 };
 }
 
 /** The handle menu's own reading of its target cell. */
@@ -376,10 +344,6 @@ export function DocumentTableHandle({
   // hides them on a scroll. The cell the cell button stands on, as the button
   // says.
   const buttonCell = useDocumentBars(editor).cellButtonCell;
-  // The block the side menu stands for: in the first column its handle shares
-  // the row handle's line, and the row handle makes way for it.
-  const sideMenu = useExtensionState(SideMenuExtension);
-  const sideBlock = sideMenu?.show === true ? sideMenu.block.id : undefined;
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     const place =
       state === undefined
@@ -389,14 +353,9 @@ export function DocumentTableHandle({
     // Centred on its line: the row handle on the table's left line, the
     // column handle on its top line.
     const across = place.shift + (row ? ROW_HANDLE_NUDGE : 0);
-    const up =
-      !row
-        ? COLUMN_HANDLE_NUDGE
-        : state?.referencePosCell === undefined
-          ? 0
-          : rowHandleShift(state.referencePosCell, firstColumnStripOf(editor.prosemirrorView, state.block.id, sideBlock));
+    const up = row ? 0 : COLUMN_HANDLE_NUDGE;
     return { transform: `translate(${String(across)}px, ${String(up)}px)` };
-  }, [editor, row, state, buttonCell, sideBlock]);
+  }, [editor, row, state, buttonCell]);
 
   if (state === undefined || (holdsSelection && !open)) return null;
   const index = row ? state.rowIndex : state.colIndex;

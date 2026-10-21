@@ -58,7 +58,7 @@ import { documentTableHandlesExtension } from '@web/spaces/document/document-tab
 import { documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
 import { documentTableSideMenuExtension } from '@web/spaces/document/document-table-side-menu';
 import { documentTableLeaveSelectionExtension } from '@web/spaces/document/document-table-leave-selection';
-import { STRIP_OUTSET, STRIP_SIZE } from '@web/spaces/document/document-strip-alignment';
+import { STRIP_SIZE, TABLE_STRIP_OUTSET } from '@web/spaces/document/document-strip-alignment';
 import { documentTableDragExtension, holdDropLineInTableDrags } from '@web/spaces/document/document-table-drag';
 import { documentPasteHandler } from '@web/spaces/document/document-table-paste';
 import { documentQuoteInputExtension } from '@web/spaces/document/document-quote-input';
@@ -240,10 +240,10 @@ export function buildDocumentEditor(
     // drawn.
     dropCursor: { color: false, width: 2, hooks: { computeDropPosition: holdDropLineInTableDrags(fileDropPosition) } },
     // The gutter left of the body counts as the row beside it, as far out as
-    // the strip stands: a table's own handle is reached there, level with the
-    // table, since over its cells the strip belongs to their blocks
-    // (inner#1619 design 5.3).
-    sideMenu: { hoverMargin: STRIP_OUTSET + STRIP_SIZE },
+    // a strip stands, a table's own being the furthest: it is reached there,
+    // level with the table and past its first column's strips, since over its
+    // cells the strip belongs to their blocks (inner#1619 design 5.3).
+    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE },
     pasteHandler:
       options.onFiles === undefined
         ? documentPasteHandler
