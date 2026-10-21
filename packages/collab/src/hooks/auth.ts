@@ -53,6 +53,7 @@ import {
   getSession,
   projectAuthService,
   sessionCookieName,
+  sessionId,
 } from "@breatic/core";
 import type { SeatClaim } from "@collab/services/connection-registry.js";
 import { parseDocName } from "@breatic/shared";
@@ -117,6 +118,12 @@ export interface AuthContext {
    * would leave that person with a read-only tab and nothing in its place.
    */
   handedOverFrom: string | null;
+  /**
+   * The session this connection was opened with: the token, to read it again,
+   * and its id (core `sessionId`), to match announcements of ended sessions
+   * (inner#1548). Held in this process's memory only.
+   */
+  session: { token: string; id: string };
 }
 
 /**
@@ -525,6 +532,7 @@ export function createAuthHook({
       return {
         user: { id: userId, role },
         handedOverFrom,
+        session: { token, id: sessionId(token) },
       };
     } catch (err) {
       // The walks above log + throw on auth-policy rejections

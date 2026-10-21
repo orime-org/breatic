@@ -8,8 +8,10 @@
  * Default TTL: 30 days.
  */
 
+import { createHash } from "node:crypto";
 import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
+import { publishSessionsRevoked } from "@core/infra/control-events.js";
 
 /**
  * Name of the httpOnly session cookie, namespaced per deployment.
@@ -67,25 +69,80 @@ export async function getSession(redis: Redis, token: string): Promise<string | 
   return redis.get(sessionKey(token));
 }
 
-/**
- * Delete a single session token.
- * @param redis - connected ioredis instance (session DB)
- * @param token - the session token to delete
- */
-export async function deleteSession(redis: Redis, token: string): Promise<void> {
-  await redis.del(sessionKey(token));
+/** What ending sessions did besides deleting them. */
+export interface RevokeOutcome {
+  /**
+   * Why the announcement to collab failed, when it did. The sessions are
+   * deleted either way, so REST refuses them at once; collab finds the
+   * connections on its next recheck. The caller logs it.
+   */
+  signalFailure?: unknown;
 }
 
 /**
- * Delete all sessions for a user (logout everywhere).
- * @param redis - connected ioredis instance (session DB)
- * @param userId - the user whose sessions are all revoked
+ * The id a session goes by outside this store: the SHA-256 of its token, so
+ * what travels between processes cannot be used to sign in.
+ * @param token - The session token.
+ * @returns Its lowercase hex digest.
  */
-export async function deleteAllSessions(redis: Redis, userId: string): Promise<void> {
-  const pattern = `${env.ENV}:session:*`;
+export function sessionId(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Announce ended sessions, reporting a failure instead of throwing: the
+ * deletion it follows has already happened and must not be undone by it.
+ * @param userId - Whose sessions they were.
+ * @param tokens - The ended sessions' tokens.
+ * @returns The outcome to hand back to the caller.
+ */
+async function announce(userId: string, tokens: string[]): Promise<RevokeOutcome> {
+  if (tokens.length === 0) return {};
+  try {
+    await publishSessionsRevoked(userId, tokens.map(sessionId));
+    return {};
+  } catch (err) {
+    return { signalFailure: err };
+  }
+}
+
+/**
+ * End one session: delete it and tell collab, which closes the connections
+ * opened with it. A session that is already gone announces nothing.
+ * @param redis - connected ioredis instance (session DB)
+ * @param token - the session token to end
+ * @returns Whether announcing it failed.
+ * @throws {Error} When Redis cannot delete it.
+ */
+export async function revokeSession(redis: Redis, token: string): Promise<RevokeOutcome> {
+  const key = sessionKey(token);
+  const results = await redis.multi().get(key).del(key).exec();
+  const [err, userId] = results?.[0] ?? [];
+  if (err) throw err;
+  if (typeof userId !== "string") return {};
+  return announce(userId, [token]);
+}
+
+/**
+ * End every session of one person, except the one to keep, and tell collab.
+ * @param redis - connected ioredis instance (session DB)
+ * @param userId - the person whose sessions end
+ * @param options - Which session survives.
+ * @param options.keep - The token of the session to keep (the caller's own, for "sign out of other devices").
+ * @returns Whether announcing them failed.
+ * @throws {Error} When Redis cannot be scanned or written.
+ */
+export async function revokeAllSessions(
+  redis: Redis,
+  userId: string,
+  options: { keep?: string } = {},
+): Promise<RevokeOutcome> {
+  const prefix = `${env.ENV}:session:`;
+  const kept = options.keep === undefined ? null : sessionKey(options.keep);
+  const ended: string[] = [];
   let cursor = "0";
   do {
-    const [nextCursor, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+    const [nextCursor, keys] = await redis.scan(cursor, "MATCH", `${prefix}*`, "COUNT", 100);
     cursor = nextCursor;
     if (keys.length > 0) {
       const pipeline = redis.pipeline();
@@ -95,10 +152,14 @@ export async function deleteAllSessions(redis: Redis, userId: string): Promise<v
       if (values) {
         for (let i = 0; i < keys.length; i++) {
           const [err, val] = values[i] ?? [];
-          if (!err && val === userId) toDelete.push(keys[i]!);
+          if (!err && val === userId && keys[i] !== kept) toDelete.push(keys[i]!);
         }
       }
-      if (toDelete.length > 0) await redis.del(...toDelete);
+      if (toDelete.length > 0) {
+        await redis.del(...toDelete);
+        ended.push(...toDelete.map((key) => key.slice(prefix.length)));
+      }
     }
   } while (cursor !== "0");
+  return announce(userId, ended);
 }

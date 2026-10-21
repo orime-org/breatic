@@ -42,6 +42,13 @@ max_debounce: 10000
 # allowed to drift apart.
 connection_ping_interval_ms: 30000
 
+# ── Session recheck ───────────────────────────────
+# How often every open connection's session is read again (inner#1548).
+# Signing out, signing out of other devices and password resets close the
+# connections at once; this catches the rest, such as a session that expired.
+# 30 minutes, the periodic re-validation OWASP's WebSocket cheat sheet cites.
+session_recheck_interval_ms: 1800000
+
 # ── Document Size Limit ───────────────────────────
 # Max Yjs document size in bytes (0 = unlimited).
 # Rejects new updates that would push the document over this limit.

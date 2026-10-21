@@ -315,6 +315,80 @@ describe('useSocket — attach a doc to the shared socket via the manager', () =
     expect(reopened.result.current.writeAccess).toBe('denied');
   });
 
+  it('does not report the refusal that follows its session being ended', () => {
+    // inner#1548: collab closes a document whose session was signed out
+    // elsewhere; the re-sent token is then refused. That is the system working,
+    // not a failure, and one password reset would otherwise raise an error per
+    // open document.
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/canvas-ended';
+    const { result } = renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Session ended' } });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(result.current.status).toBe('authFailed');
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('keeps quiet about that refusal across later reconnects', () => {
+    // The refused tab stays open behind its banner; every socket reconnect
+    // (a collab release, a network blip, a laptop waking) re-sends the token
+    // and is refused again.
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/canvas-ended-reconnect';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Session ended' } });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+      providerInstances[0]!.emit('close', { event: { code: 1006 } });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('keeps quiet for a document opened after the session ended', () => {
+    // The session belongs to the tab, not to one document: a Space opened
+    // behind the banner is refused for the same reason and never receives
+    // the close that announced it.
+    vi.mocked(reportCollabFailure).mockClear();
+    renderHook(() => useSocket({ name: 'project-p1/canvas-open-before', doc: new Y.Doc() }), { wrapper: wrapper('u1') });
+    const before = providerInstances.length - 1;
+    act(() => {
+      providerInstances[before]!.emit('close', { event: { code: 4401, reason: 'Session ended' } });
+      providerInstances[before]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    renderHook(() => useSocket({ name: 'project-p1/canvas-open-after', doc: new Y.Doc() }), { wrapper: wrapper('u1') });
+    const after = providerInstances.length - 1;
+    act(() => {
+      providerInstances[after]!.emit('authenticationFailed', { reason: 'Invalid or expired session token' });
+    });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports refusals again once a handshake has succeeded since', () => {
+    vi.mocked(reportCollabFailure).mockClear();
+    const doc = new Y.Doc();
+    const name = 'project-p1/canvas-ended-then-back';
+    renderHook(() => useSocket({ name, doc }), { wrapper: wrapper('u1') });
+
+    act(() => {
+      providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Session ended' } });
+      providerInstances[0]!.emit('authenticated', { scope: 'read-write' });
+      providerInstances[0]!.emit('authenticationFailed', { reason: 'Forbidden' });
+    });
+
+    expect(reportCollabFailure).toHaveBeenCalledWith(expect.objectContaining({ kind: 'auth', reason: 'Forbidden' }));
+  });
+
   it('lets a later successful handshake clear an earlier refusal', () => {
     // A refusal is NOT monotonic, unlike "the content has arrived". The Space
     // is restored, the member is re-added, an infra blip passes — and the next

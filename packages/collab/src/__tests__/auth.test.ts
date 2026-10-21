@@ -41,6 +41,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 import type * as CoreModule from "@breatic/core";
 import type { Redis } from "@breatic/core";
 import * as Y from "yjs";
@@ -69,6 +70,7 @@ const {
 //   - sessionCookieName(): the per-deployment cookie name
 vi.mock("@breatic/core", async (importOriginal) => ({
   listedContentDocNames: (await importOriginal<typeof CoreModule>()).listedContentDocNames,
+  sessionId: (await importOriginal<typeof CoreModule>()).sessionId,
   env: { ALLOWED_ORIGINS: "https://app.example.com" },
   getSession: getSessionMock,
   projectAuthService: { loadProjectRole: loadProjectRoleMock },
@@ -378,6 +380,7 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({
       user: { id: "user-1", role: "owner" },
       handedOverFrom: null,
+      session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     expect(connectionConfig.readOnly).toBe(false);
   });
@@ -417,6 +420,7 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({
       user: { id: "user-1", role: "editor" },
       handedOverFrom: null,
+      session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     expect(connectionConfig.readOnly).toBe(true);
     // The meta doc never triggers the space-exists read.
@@ -1041,6 +1045,7 @@ describe("createAuthHook", () => {
     expect(ctx).toEqual({
       user: { id: "user-1", role: "viewer" },
       handedOverFrom: null,
+      session: { token: "tok", id: createHash("sha256").update("tok").digest("hex") },
     });
     // SECURITY INVARIANT (root-caused 2026-06-18). The hook MUST mutate
     // connectionConfig.readOnly: Hocuspocus reads THIS when constructing

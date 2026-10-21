@@ -265,11 +265,13 @@ export {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
+  sessionsRevokedChannel,
 } from "@shared/types/redis-events.js";
 export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
+  SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,

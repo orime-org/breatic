@@ -33,8 +33,9 @@ import {
 import {
   setSession,
   getSession,
-  deleteSession,
-  deleteAllSessions,
+  revokeSession,
+  revokeAllSessions,
+  type RevokeOutcome,
 } from "@breatic/core";
 import {
   ConflictError,
@@ -318,21 +319,25 @@ export async function getUserByToken(
 }
 
 /**
- * Invalidate a single session.
+ * End a single session; collab closes the connections opened with it.
  * @param token - The session token to revoke
+ * @returns Whether telling collab failed; the caller logs it.
+ * @throws {Error} When Redis cannot delete the session.
  */
-export async function logout(token: string): Promise<void> {
-  const redis = getRedis();
-  await deleteSession(redis, token);
+export async function logout(token: string): Promise<RevokeOutcome> {
+  return revokeSession(getRedis(), token);
 }
 
 /**
- * Invalidate all sessions for a user (logout everywhere).
- * @param userId - The ID of the user whose sessions should be revoked
+ * End every session of a user except the one making the request ("sign out of
+ * other devices"); collab closes the connections opened with them.
+ * @param userId - Whose sessions end.
+ * @param currentToken - The caller's own session, which stays.
+ * @returns Whether telling collab failed; the caller logs it.
+ * @throws {Error} When Redis cannot be scanned or written.
  */
-export async function logoutAll(userId: string): Promise<void> {
-  const redis = getRedis();
-  await deleteAllSessions(redis, userId);
+export async function logoutOthers(userId: string, currentToken: string): Promise<RevokeOutcome> {
+  return revokeAllSessions(getRedis(), userId, { keep: currentToken });
 }
 
 const RESET_TOKEN_TTL = 3600;
@@ -390,9 +395,10 @@ export async function forgotPassword(
  * Verify reset token and update password.
  * @param token - One-time reset token from the email link
  * @param newPassword - New plaintext password to hash and store
+ * @returns Whether telling collab about the ended sessions failed; the caller logs it.
  * @throws {UnauthorizedError} if token is invalid or expired
  */
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
+export async function resetPassword(token: string, newPassword: string): Promise<RevokeOutcome> {
   const redis = getRedis();
   const key = `${env.ENV}:password-reset:${token}`;
   const userId = await redis.get(key);
@@ -408,10 +414,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
   await redis.del(key);
 
   // Invalidate all existing sessions (security: force re-login)
-  await deleteAllSessions(redis, userId);
-
-  // Caller logs `password_reset_completed` audit line (userId
-  // returned via the calling route's request context).
+  return revokeAllSessions(redis, userId);
 }
 
 /**
@@ -429,13 +432,14 @@ export async function resetPassword(token: string, newPassword: string): Promise
  *   5. markRecoveryCodeUsed (used_at = now)
  *   6. Generate + store a fresh recovery code (rotate-on-use -
  *      old one cannot reset again, new one shown to user)
- *   7. deleteAllSessions (force re-login on all devices)
+ *   7. revokeAllSessions (force re-login on all devices)
  *   8. Return the new plaintext code (shown once - frontend MUST
  *      re-prompt user to save it)
  * @param email - Email address the reset is requested for
  * @param code - Plaintext recovery code the user supplied
  * @param newPassword - New plaintext password to hash and store
- * @returns `{ newRecoveryCode }` - fresh plaintext code to display
+ * @returns `{ newRecoveryCode, userId }` - fresh plaintext code to display -
+ *   plus `signalFailure` when telling collab about the ended sessions failed
  * @throws {UnauthorizedError} on any failure (uniform error to
  *   prevent oracle attacks on email vs. code)
  */
@@ -443,7 +447,7 @@ export async function resetPasswordWithRecoveryCode(
   email: string,
   code: string,
   newPassword: string,
-): Promise<{ newRecoveryCode: string; userId: string }> {
+): Promise<{ newRecoveryCode: string; userId: string } & RevokeOutcome> {
   const user = await userRepo.getUserByEmail(email);
   if (!user) {
     throw new UnauthorizedError(t("server.auth.invalid_recovery_code"));
@@ -472,9 +476,8 @@ export async function resetPasswordWithRecoveryCode(
   await userRepo.setRecoveryCode(user.id, newHash);
 
   // 4. Force re-login (security: all existing tokens revoked).
-  const redis = getRedis();
-  await deleteAllSessions(redis, user.id);
+  const outcome = await revokeAllSessions(getRedis(), user.id);
 
   // Caller logs `password_reset_via_recovery_code` audit line.
-  return { newRecoveryCode, userId: user.id };
+  return { newRecoveryCode, userId: user.id, ...outcome };
 }
