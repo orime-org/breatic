@@ -40,9 +40,15 @@ describe("getMiniToolsConfig", () => {
     const bare = structuredClone(config) as Record<string, unknown>;
     delete bare.waveform_max_seconds;
     delete bare.waveform_max_bytes;
+    delete bare.waveform_peaks_retry_ms;
+    delete bare.waveform_peaks_retry_max_ms;
     const parsed = miniToolsConfigSchema.parse(bare);
-    expect(parsed.waveform_max_seconds).toBe(3600);
+    // 600 s of 48 kHz stereo peaks at about 650 MB in Chromium (inner#1305 §4.4).
+    expect(parsed.waveform_max_seconds).toBe(600);
     expect(parsed.waveform_max_bytes).toBe(200_000_000);
+    // How often, and for how long, an open cut band reads peaks not yet written.
+    expect(parsed.waveform_peaks_retry_ms).toBe(5000);
+    expect(parsed.waveform_peaks_retry_max_ms).toBe(600_000);
   });
 
   // How long a run may take is the node task budget; an operation carries no

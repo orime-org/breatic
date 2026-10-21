@@ -65,7 +65,7 @@ export const AudioDynamicsControl = React.memo(function AudioDynamicsControl({
     [held, onChange],
   );
   const onPreset = React.useCallback(
-    (preset: string) => {
+    (preset: string | number) => {
       if (preset !== 'custom') onChange(dynamicsValueOfPreset(preset as DynamicsPreset));
     },
     [onChange],

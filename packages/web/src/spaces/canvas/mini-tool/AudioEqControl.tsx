@@ -118,7 +118,7 @@ export const AudioEqControl = React.memo(function AudioEqControl({
     [held.gains, onChange],
   );
   const onPreset = React.useCallback(
-    (preset: string) => {
+    (preset: string | number) => {
       if (preset !== 'custom') onChange(eqValueOfPreset(preset as EqPreset));
     },
     [onChange],

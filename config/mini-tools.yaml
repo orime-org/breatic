@@ -83,7 +83,13 @@ ops:
     container_class: "MiniToolContainerStd1"
     precheck_seconds: 300
 
-# The audio cut band draws the source's waveform only under both: the length
-# bounds the memory the browser's decode holds, the size what it downloads.
-waveform_max_seconds: 3600
+# The audio cut band draws the source's waveform from the peaks file beside it
+# (inner#1305 §4.4). An audio without one yet is decoded in the browser only
+# under both of these: the length bounds the memory the decode holds (600 s of
+# 48 kHz stereo peaks at about 650 MB in Chromium), the size what it downloads.
+waveform_max_seconds: 600
 waveform_max_bytes: 200000000
+# A band over those, open before its peaks are written, reads them again this
+# often for this long.
+waveform_peaks_retry_ms: 5000
+waveform_peaks_retry_max_ms: 600000

@@ -34,7 +34,6 @@ import { Slider } from '@web/components/ui/slider';
 import { Switch } from '@web/components/ui/switch';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
-import { getCachedWaveformLimits } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { corsUrl } from '@web/lib/cors-url';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
@@ -45,9 +44,8 @@ import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamContro
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
 import { AudioDynamicsControl } from '@web/spaces/canvas/mini-tool/AudioDynamicsControl';
+import { AudioBandWaveform } from '@web/spaces/canvas/mini-tool/AudioBandWaveform';
 import { AudioEqControl } from '@web/spaces/canvas/mini-tool/AudioEqControl';
-import { AudioWaveform } from '@web/spaces/canvas/mini-tool/AudioWaveform';
-import { waveformDrawable } from '@web/spaces/canvas/mini-tool/audio-waveform';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
@@ -750,8 +748,8 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome-sm bg-muted'>
             {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
               <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
-            ) : spec.source === 'audio' && source.url !== undefined && waveformDrawable(source, getCachedWaveformLimits()) ? (
-              <AudioWaveform src={source.url} />
+            ) : spec.source === 'audio' && source.url !== undefined ? (
+              <AudioBandWaveform url={source.url} duration={source.duration} sizeBytes={source.sizeBytes} />
             ) : null}
             <div data-part='before' className='absolute inset-y-0 left-0 bg-background/70' style={{ width: `${from}%` }} />
             <div data-part='after' className='absolute inset-y-0 right-0 bg-background/70' style={{ left: `${to}%` }} />

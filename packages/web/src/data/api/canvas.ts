@@ -37,10 +37,17 @@ export interface CanvasLimits {
    * judged there instead of here.
    */
   understandMaxBytes: number;
-  /** The longest audio the cut band decodes to draw a waveform, in seconds (inner#1305). */
+  /**
+   * The longest audio the cut band decodes in the browser to draw a waveform
+   * while its peaks file is missing, in seconds (inner#1305 §4.4).
+   */
   waveformMaxSeconds: number;
-  /** The largest audio file the cut band downloads to draw a waveform, in bytes. */
+  /** The largest audio file the cut band downloads to decode, in bytes. */
   waveformMaxBytes: number;
+  /** How often an open cut band reads peaks not yet written, in ms. */
+  waveformPeaksRetryMs: number;
+  /** How long an open cut band keeps reading peaks not yet written, in ms. */
+  waveformPeaksRetryMaxMs: number;
 }
 
 /**
@@ -112,8 +119,23 @@ export function getCachedUnderstandMaxBytes(): number | null {
  * knobs have not loaded; the band stays plain until they have.
  * @returns The ceilings, or null before the first fetch.
  */
-export function getCachedWaveformLimits(): { maxSeconds: number; maxBytes: number } | null {
-  return limitsCache ? { maxSeconds: limitsCache.waveformMaxSeconds, maxBytes: limitsCache.waveformMaxBytes } : null;
+export function getCachedWaveformLimits(): WaveformLimits | null {
+  return limitsCache
+    ? {
+      maxSeconds: limitsCache.waveformMaxSeconds,
+      maxBytes: limitsCache.waveformMaxBytes,
+      peaksRetryMs: limitsCache.waveformPeaksRetryMs,
+      peaksRetryMaxMs: limitsCache.waveformPeaksRetryMaxMs,
+    }
+    : null;
+}
+
+/** The cut band's waveform ceilings and how it reads peaks not yet written. */
+export interface WaveformLimits {
+  maxSeconds: number;
+  maxBytes: number;
+  peaksRetryMs: number;
+  peaksRetryMaxMs: number;
 }
 
 export const canvasApi = {

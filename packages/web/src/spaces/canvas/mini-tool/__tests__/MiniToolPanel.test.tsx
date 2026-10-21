@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { ADJUST_RANGES, defaultAdjustValue, setLocale, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 
 import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
@@ -15,12 +15,25 @@ vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
     return <div data-testid='fake-sphere' />;
   },
 }));
+const waveform = vi.hoisted(() => ({
+  limits: { maxSeconds: 600, maxBytes: 200_000_000, peaksRetryMs: 5000, peaksRetryMaxMs: 600_000 } as Record<string, number> | null,
+  peaks: { kind: 'missing' } as { kind: string; peaks?: number[] },
+  retry: undefined as unknown,
+}));
 vi.mock('@web/data/api/canvas', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  getCachedWaveformLimits: () => ({ maxSeconds: 3600, maxBytes: 200_000_000 }),
+  getCachedWaveformLimits: () => waveform.limits,
+}));
+vi.mock('@web/spaces/canvas/mini-tool/use-audio-peaks', () => ({
+  useAudioPeaks: (_url: string, retry: unknown) => {
+    waveform.retry = retry;
+    return waveform.peaks;
+  },
 }));
 vi.mock('@web/spaces/canvas/mini-tool/AudioWaveform', () => ({
-  AudioWaveform: () => <div data-testid='mini-tool-waveform' />,
+  AudioWaveform: ({ peaks }: { peaks?: number[] }) => (
+    <div data-testid='mini-tool-waveform' data-from={peaks === undefined ? 'decode' : 'peaks'} />
+  ),
 }));
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
@@ -661,19 +674,58 @@ describe('the batch-five panels', () => {
     expect(screen.getByTestId('mini-tool-param-cents-value')).toHaveTextContent('-20');
   });
 
-  it('draws the audio\'s waveform on the cut band within the ceilings', () => {
-    mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source: AUDIO });
-    const band = screen.getByTestId('mini-tool-range-band');
-    expect(within(band).getByTestId('mini-tool-waveform')).toBeInTheDocument();
-    expect(band.querySelector('[data-testid="mini-tool-filmstrip"]')).toBeNull();
-  });
+  describe('the cut band of an audio source (inner#1305 §4.4)', () => {
+    const LONG = { ...AUDIO, duration: 3600, sizeBytes: 144_000_000 };
+    const cut = (source: typeof AUDIO): void => {
+      mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source });
+    };
+    const drawn = (): HTMLElement | null =>
+      within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform');
 
-  it('leaves the cut band plain for audio past the ceilings or of unknown size', () => {
-    mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source: { ...AUDIO, sizeBytes: 300_000_000 } });
-    expect(within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform')).toBeNull();
-    cleanupAll();
-    mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source: { ...AUDIO, sizeBytes: undefined } });
-    expect(within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform')).toBeNull();
-    expect(screen.getByTestId('mini-tool-range')).toBeInTheDocument();
+    beforeEach(() => {
+      waveform.limits = { maxSeconds: 600, maxBytes: 200_000_000, peaksRetryMs: 5000, peaksRetryMaxMs: 600_000 };
+      waveform.peaks = { kind: 'missing' };
+    });
+
+    it('draws from the peaks file at any length, without decoding', () => {
+      waveform.peaks = { kind: 'ready', peaks: [1, 2, 3] };
+      cut(LONG);
+      expect(drawn()).toHaveAttribute('data-from', 'peaks');
+      expect(screen.getByTestId('mini-tool-range-band').querySelector('[data-testid="mini-tool-filmstrip"]')).toBeNull();
+    });
+
+    it('decodes in the browser while peaks are missing and the source is within the ceilings', () => {
+      cut(AUDIO);
+      expect(drawn()).toHaveAttribute('data-from', 'decode');
+      // Within the ceilings the decode draws it, so there is nothing to read again for.
+      expect(waveform.retry).toBeNull();
+    });
+
+    it('stays plain past the ceilings while peaks are missing, and reads them again on the served interval', () => {
+      cut(LONG);
+      expect(drawn()).toBeNull();
+      expect(waveform.retry).toEqual({ everyMs: 5000, forMs: 600_000 });
+      expect(screen.getByTestId('mini-tool-range')).toBeInTheDocument();
+    });
+
+    it('stays plain while the peaks load, for a file that is not a peaks file, and before the ceilings load', () => {
+      waveform.peaks = { kind: 'loading' };
+      cut(AUDIO);
+      expect(drawn()).toBeNull();
+      cleanupAll();
+      waveform.peaks = { kind: 'invalid' };
+      cut(AUDIO);
+      expect(drawn()).toBeNull();
+      cleanupAll();
+      waveform.peaks = { kind: 'missing' };
+      waveform.limits = null;
+      cut(AUDIO);
+      expect(drawn()).toBeNull();
+    });
+
+    it('decodes nothing for a source of unknown size', () => {
+      cut({ ...AUDIO, sizeBytes: undefined } as unknown as typeof AUDIO);
+      expect(drawn()).toBeNull();
+    });
   });
 });

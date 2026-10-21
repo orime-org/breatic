@@ -42,8 +42,11 @@ export const miniToolsConfigSchema = z
     ),
     // The audio cut band decodes the source in the browser to draw its
     // waveform: the length bounds what the tab holds, the size what it downloads.
-    waveform_max_seconds: z.number().positive().default(3600),
+    waveform_max_seconds: z.number().positive().default(600),
     waveform_max_bytes: z.number().int().positive().default(200_000_000),
+    // How often, and for how long, an open cut band reads peaks not yet written.
+    waveform_peaks_retry_ms: z.number().int().positive().default(5000),
+    waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
   })
   .superRefine((config, ctx) => {
     for (const [op, spec] of Object.entries(config.ops)) {

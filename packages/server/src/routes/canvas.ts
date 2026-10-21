@@ -119,6 +119,8 @@ canvas.get("/limits", (c) => {
       understandMaxBytes: getUnderstandConfig().max_media_bytes,
       waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
+      waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
+      waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
     },
   });
 });

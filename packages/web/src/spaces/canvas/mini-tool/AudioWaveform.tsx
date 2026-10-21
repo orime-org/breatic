@@ -4,6 +4,8 @@
 import * as React from 'react';
 import WaveSurfer from 'wavesurfer.js';
 
+import { AUDIO_PEAK_MAX } from '@breatic/shared';
+
 import { corsUrl } from '@web/lib/cors-url';
 
 /** The rate the waveform is decoded at: enough for a 36px band, a fraction of the memory. */
@@ -11,18 +13,29 @@ const DECODE_RATE = 3000;
 
 interface AudioWaveformProps {
   src: string;
+  /** The source's peaks file values; when given, the file is not loaded at all. */
+  peaks?: readonly number[] | undefined;
+  /** The source's length in seconds, which drawing from peaks needs. */
+  duration?: number | undefined;
 }
 
 /**
  * An audio source's waveform, filling its box, for the cut band (inner#1305
- * §4.4). Drawn by wavesurfer.js from the file decoded at a low rate; it does
- * not play. Until the file has decoded, and if it cannot be, the box shows
+ * §4.4). Drawn by wavesurfer.js from the peaks file beside the audio when one
+ * is given, which loads no audio; otherwise from the file decoded at a low
+ * rate. It does not play. Until it has drawn, and if it cannot, the box shows
  * nothing and the band under it stays plain.
  * @param root0 - Props.
  * @param root0.src - The audio URL.
+ * @param root0.peaks - The peaks file's values, when there is one.
+ * @param root0.duration - The audio's length, which drawing from peaks needs.
  * @returns The waveform's box.
  */
-export const AudioWaveform = React.memo(function AudioWaveform({ src }: AudioWaveformProps): React.JSX.Element {
+export const AudioWaveform = React.memo(function AudioWaveform({
+  src,
+  peaks,
+  duration,
+}: AudioWaveformProps): React.JSX.Element {
   const boxRef = React.useRef<HTMLDivElement>(null);
   const [failed, setFailed] = React.useState(false);
 
@@ -31,11 +44,16 @@ export const AudioWaveform = React.memo(function AudioWaveform({ src }: AudioWav
     if (box === null) return;
     setFailed(false);
     const color = getComputedStyle(box).color;
+    // Without peaks the file is decoded. The node's own player fetched it
+    // without CORS; a fresh CORS fetch keeps that cached response from being
+    // handed to this one.
+    const source =
+      peaks !== undefined && duration !== undefined
+        ? { peaks: [Float32Array.from(peaks, (value) => value / AUDIO_PEAK_MAX)], duration }
+        : { url: corsUrl(src) };
     const surfer = WaveSurfer.create({
       container: box,
-      // The node's own player fetched this file without CORS; a fresh CORS fetch
-      // keeps that cached response from being handed to this one.
-      url: corsUrl(src),
+      ...source,
       height: 'auto',
       waveColor: color,
       progressColor: color,
@@ -51,13 +69,14 @@ export const AudioWaveform = React.memo(function AudioWaveform({ src }: AudioWav
       offError();
       surfer.destroy();
     };
-  }, [src]);
+  }, [src, peaks, duration]);
 
   return (
     <div
       ref={boxRef}
       data-testid='mini-tool-waveform'
       data-state={failed ? 'failed' : 'drawn'}
+      data-from={peaks !== undefined && duration !== undefined ? 'peaks' : 'decode'}
       className={failed ? 'hidden' : 'absolute inset-0 text-muted-foreground'}
     />
   );
