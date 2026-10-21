@@ -18,6 +18,7 @@ import {
   slugFieldShowsConflict,
   useSlugAvailability,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wait-for-slug-check';
 
 /**
  * Onboarding step two: pick a slug, which the server uses to create the
@@ -31,7 +32,9 @@ import {
  * indicator the create-team-studio dialog uses, so both behave identically.
  * Uniqueness is ultimately the server's authority: a slug shown available can
  * still lose a race and return 409 on submit; the page then re-asks, and the
- * refreshed answer turns the field's own hint line to "taken".
+ * refreshed answer turns the field's own hint line to "taken". Continue stays
+ * pressable (inner#1652): a press with no usable slug says why on the hint
+ * line, and one that beats the live check waits for it.
  *
  * On success the new personal studio is written into the current-user store
  * (lifting the onboarding gate), then the page navigates to `/studio`. This
@@ -49,20 +52,28 @@ export default function SlugSetupPage(): React.JSX.Element {
   const [slug, setSlug] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [slugError, setSlugError] = React.useState<string | null>(null);
 
   const availability = useSlugAvailability(slug);
-  const canSubmit = availability.state === 'valid' && !submitting;
 
   /**
    * Create the personal studio from the chosen slug, mirror it into the store
-   * (lifting the onboarding gate), then navigate into the app.
-   * @param e - the form submit event, prevented so the page does not reload.
+   * (lifting the onboarding gate), then navigate into the app; or say on the
+   * hint line why not. Runs again once a check it waited on settles.
    */
-  async function handleSubmit(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    if (!canSubmit) return;
+  async function attempt(): Promise<void> {
+    if (submitting) return;
     setFormError(null);
     const trimmed = slug.trim();
+    setSlugError(trimmed === '' ? t('studio.container.dialog.slugRequired') : null);
+    if (trimmed === '' || availability.state === 'invalid') {
+      document.getElementById('onboarding-slug')?.focus();
+      return;
+    }
+    if (availability.state === 'checking') {
+      wait.start();
+      return;
+    }
     setSubmitting(true);
     try {
       const { personalStudio } = await authApi.setupStudio({ slug: trimmed });
@@ -83,6 +94,18 @@ export default function SlugSetupPage(): React.JSX.Element {
       setSubmitting(false);
     }
   }
+  const wait = useWaitForSlugCheck(availability, slug, true, () => {
+    void attempt();
+  });
+
+  /**
+   * Press of Continue.
+   * @param e - the form submit event, prevented so the page does not reload.
+   */
+  function handleSubmit(e: React.FormEvent): void {
+    e.preventDefault();
+    void attempt();
+  }
 
   return (
     <AuthCardShell
@@ -95,9 +118,13 @@ export default function SlugSetupPage(): React.JSX.Element {
           label={t('auth.onboarding.slugLabel')}
           placeholder={t('auth.onboarding.slugPlaceholder')}
           value={slug}
-          onChange={setSlug}
+          onChange={(next) => {
+            setSlug(next);
+            setSlugError(null);
+          }}
           disabled={submitting}
           check={availability}
+          error={slugError}
           bounds={STUDIO_SLUG_BOUNDS}
           helper={t('auth.onboarding.helper', STUDIO_SLUG_BOUNDS)}
         />
@@ -108,7 +135,7 @@ export default function SlugSetupPage(): React.JSX.Element {
           </FieldError>
         ) : null}
 
-        <Button type='submit' size='form' disabled={!canSubmit} loading={submitting} className='mt-2'>
+        <Button type='submit' size='form' loading={submitting || wait.waiting} className='mt-2'>
           {submitting
             ? t('auth.onboarding.submitting')
             : t('auth.onboarding.submit')}
