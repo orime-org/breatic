@@ -128,6 +128,7 @@ export function InviteMemberDialog({
                 ref={emailRef}
                 type='email'
                 value={email}
+                disabled={pending}
                 onChange={(event) => {
                   setEmail(event.target.value);
                   setEmailError(null);
@@ -150,6 +151,7 @@ export function InviteMemberDialog({
               </Label>
               <Select
                 value={role}
+                disabled={pending}
                 onValueChange={(next) =>
                   setRole(next as GrantableStudioRole)
                 }

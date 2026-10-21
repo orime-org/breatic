@@ -97,6 +97,20 @@ describe('InviteMemberDialog', () => {
     expect(onInvite).not.toHaveBeenCalled();
   });
 
+  it('holds the email and role while the invite is out (inner#1652)', () => {
+    render(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={vi.fn()}
+        pending
+        error={null}
+      />,
+    );
+    expect(screen.getByLabelText('Email')).toBeDisabled();
+    expect(screen.getByLabelText('Role')).toBeDisabled();
+  });
+
   it('leaves the browser out of it: no native email check (inner#1652)', () => {
     render(
       <InviteMemberDialog
