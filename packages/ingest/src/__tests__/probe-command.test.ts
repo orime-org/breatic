@@ -17,6 +17,7 @@ import {
   coverArgs,
   previewArgs,
   readProbeOutput,
+  peaksArgs,
 } from "@ingest/probe-command.js";
 
 const URL_FOR_KEY = "http://r2.local/video/2026-09-10/1_clip.mp4";
@@ -105,6 +106,37 @@ describe("what ffmpeg is asked for the cover", () => {
     const args = coverArgs(URL_FOR_KEY);
 
     expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe("http,tcp");
+  });
+});
+
+// inner#1305 §4.4: one mono 8 kHz float stream on stdout, cut off by any read
+// error rather than ending early as if the object were shorter.
+describe("what ffmpeg is asked for the peaks", () => {
+  it("writes the audio alone as mono 8 kHz floats to stdout", () => {
+    const args = peaksArgs("http://media.local/object");
+    expect(args.slice(args.indexOf("-i"))).toEqual([
+      "-i",
+      "http://media.local/object",
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "8000",
+      "-f",
+      "f32le",
+      "pipe:1",
+    ]);
+  });
+
+  it("stops on the first read or decode error", () => {
+    expect(peaksArgs("http://media.local/object")).toContain("-xerror");
+  });
+
+  it("carries the same protocol whitelist", () => {
+    const args = peaksArgs("http://media.local/object");
+    expect(args[args.indexOf("-protocol_whitelist") + 1]).toBe(
+      probeArgs("http://media.local/object")[probeArgs("http://media.local/object").indexOf("-protocol_whitelist") + 1],
+    );
   });
 });
 

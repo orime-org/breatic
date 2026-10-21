@@ -11,6 +11,8 @@
  * decide what to run.
  */
 
+import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
+
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
@@ -129,6 +131,39 @@ export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[
  */
 const COVER_SCALE =
   "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease";
+
+/** What a peaks file is stored as. */
+export const PEAKS_CONTENT_TYPE = "application/json";
+
+/**
+ * The one ffmpeg call that reads an audio object's peaks (inner#1305 §4.4).
+ *
+ * The sound alone, mixed to mono at the peaks' rate, as 32-bit floats on
+ * stdout for the reader to fold into stretches as they arrive. `-xerror`
+ * stops it at the first read or decode error: without it, an object whose
+ * stream breaks off ends as if it were shorter and exits 0.
+ * @param objectUrl - Where the container reads the object.
+ * @returns The argument list, without the program name.
+ */
+export function peaksArgs(objectUrl: string): string[] {
+  return [
+    "-v",
+    "error",
+    "-xerror",
+    "-protocol_whitelist",
+    protocolsFor("object"),
+    "-i",
+    objectUrl,
+    "-vn",
+    "-ac",
+    "1",
+    "-ar",
+    String(AUDIO_PEAK_RATE),
+    "-f",
+    "f32le",
+    "pipe:1",
+  ];
+}
 
 /** What vips writes a preview as. */
 export const PREVIEW_CONTENT_TYPE = "image/webp";

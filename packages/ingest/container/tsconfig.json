@@ -26,12 +26,14 @@
     "../src/media-metadata.ts",
     "../src/png-size.ts",
     "../src/preview-step.ts",
+    "../src/peaks-step.ts",
     "../src/upright-run.ts",
     "../src/object-url.ts",
     "../src/jobs/op-args.ts",
     "../../shared/src/adjust-value.ts",
     "../../shared/src/audio-eq.ts",
     "../../shared/src/audio-dynamics.ts",
+    "../../shared/src/audio-peaks.ts",
     "../../shared/src/mini-tools/types.ts",
     "__tests__/*.ts"
   ]

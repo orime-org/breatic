@@ -23,12 +23,13 @@ WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
-# The mini-tool runs build their colour, equaliser and compressor filters from
-# these files of shared (src/jobs/op-args.ts), resolved through tsconfig's
-# @shared/* path.
+# The mini-tool runs build their colour, equaliser and compressor filters, and
+# the probe reads audio peaks, from these files of shared (src/jobs/op-args.ts,
+# container/stream-peaks.ts), resolved through tsconfig's @shared/* path.
 COPY packages/shared/src/adjust-value.ts /shared/src/adjust-value.ts
 COPY packages/shared/src/audio-eq.ts /shared/src/audio-eq.ts
 COPY packages/shared/src/audio-dynamics.ts /shared/src/audio-dynamics.ts
+COPY packages/shared/src/audio-peaks.ts /shared/src/audio-peaks.ts
 COPY scripts/release.mjs ./scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown

@@ -24,6 +24,7 @@ import {
   canonicalMediaType,
   isUploadableMediaType,
   hasCoverFrame,
+  peaksKeyFor,
   previewKeyFor,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
@@ -50,9 +51,11 @@ import {
   type ProbeReport,
 } from "@ingest/media-metadata.js";
 import { typeCorrectedByReport } from "@ingest/stored-media.js";
+import { peaksSampleCount } from "@ingest/peaks-step.js";
 import { pngSize } from "@ingest/png-size.js";
 import {
   COVER_CONTENT_TYPE,
+  PEAKS_CONTENT_TYPE,
   PREVIEW_CONTENT_TYPE,
 } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
@@ -637,6 +640,21 @@ async function storePreview(
   return stored !== null;
 }
 
+/**
+ * Store an audio object's peaks beside it (inner#1305 §4.4).
+ * @param env - The Worker's bindings.
+ * @param audioKey - The key of the audio they were read from.
+ * @param bytes - The peaks file.
+ * @returns Whether they landed.
+ */
+async function storePeaks(env: Env, audioKey: string, bytes: Uint8Array): Promise<boolean> {
+  const peaksKey = peaksKeyFor(audioKey);
+  const stored = await env.BUCKET.put(peaksKey, bytes, {
+    httpMetadata: { contentType: PEAKS_CONTENT_TYPE },
+  }).catch(noted("ingest_peaks_store_failed", { peaksKey }));
+  return stored !== null;
+}
+
 /** What one finish answers about the media it stored. */
 interface MediaAnswer {
   media: MediaMetadata;
@@ -1019,6 +1037,8 @@ interface MediaReadBody {
   /** When the job asking runs out, in epoch ms (inner#1367). */
   deadlineAt?: unknown;
   wantPreview?: unknown;
+  /** Whether to read an audio object's peaks when none stand (inner#1305). */
+  wantPeaks?: unknown;
 }
 
 /**
@@ -1060,25 +1080,56 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   if (stored === null) return new Response("Not found", { status: 404 });
 
   const askedForPreview = body?.wantPreview === true;
-  // A preview standing there is left as it is; the numbers are read either way.
+  const askedForPeaks = body?.wantPeaks === true;
+  // A preview or peaks standing there are left as they are; the numbers are
+  // read either way.
   const standing =
     askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
+  const peaksStanding =
+    askedForPeaks && (await env.BUCKET.head(peaksKeyFor(storageKey))) !== null;
   const read = await readMediaAtEdge(env, {
     storageKey,
     contentType,
     wantCover: false,
     wantPreview: askedForPreview && !standing,
+    wantPeaks: askedForPeaks && !peaksStanding,
     deadlineAt,
   });
   const numbers = mediaNumbersFor(
     typeCorrectedByReport(contentType, read.report),
     read.report,
   );
-  if (!askedForPreview) return Response.json(numbers);
   return Response.json({
     ...numbers,
-    preview: await previewOutcome(env, storageKey, standing, read),
+    ...(askedForPreview && { preview: await previewOutcome(env, storageKey, standing, read) }),
+    ...(askedForPeaks && { peaks: await peaksOutcome(env, storageKey, peaksStanding, read) }),
   });
+}
+
+/**
+ * Settle the peaks a read was asked for (inner#1305 §4.4).
+ * @param env - The Worker's bindings.
+ * @param storageKey - The audio object they were read from.
+ * @param standing - Whether they already stood.
+ * @param read - What the container answered.
+ * @param read.answered - Whether a container answered at all.
+ * @param read.report - What ffprobe found.
+ * @param read.peaks - The peaks it read, when it read them.
+ * @returns What became of them: `none` only for an object with no sound and
+ *   length to read, `failed` for audio that came back without peaks.
+ */
+async function peaksOutcome(
+  env: Env,
+  storageKey: string,
+  standing: boolean,
+  read: { answered: boolean; report: ProbeReport; peaks: Uint8Array | null },
+): Promise<PreviewOutcome> {
+  if (standing) return "existing";
+  if (!read.answered) return "failed";
+  if (read.peaks === null) {
+    return peaksSampleCount({ wantPeaks: true, report: read.report }) === null ? "none" : "failed";
+  }
+  return (await storePeaks(env, storageKey, read.peaks)) ? "generated" : "failed";
 }
 
 /**
