@@ -189,7 +189,6 @@ describe("what the announcement cannot reach", () => {
     const open = held(user, token);
     await instance([open], 200);
 
-    publishedAt = Date.now();
     await dropKey(token);
 
     await until(() => open.closedWith !== null, 2_000);
@@ -216,7 +215,6 @@ describe("what the announcement cannot reach", () => {
       .filter((line) => line.includes(` name=${name} `) && /flags=\S*P/.test(line))
       .map((line) => /id=(\d+)/.exec(line)![1]!);
     expect(ids).toHaveLength(1);
-    publishedAt = Date.now();
     await killer.client("KILL", "ID", ids[0]!);
 
     await until(() => open.closedWith !== null, 5_000);
