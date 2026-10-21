@@ -97,7 +97,13 @@ export function blockForPointer(body: HTMLElement, blockId: string, pointer: Poi
   const isTable = block.matches(`[data-node-type="${DOC_TABLE}"]`);
   const table = isTable ? block : block.closest('td, th')?.closest(`[data-node-type="${DOC_TABLE}"]`);
   if (table === null || table === undefined) return undefined;
-  const cell = [...table.querySelectorAll('td, th')].find((c) => contains(c.getBoundingClientRect(), pointer));
+  // Left of the table's drawn line the gutter is the first column's and the
+  // table's: a cell scrolled out behind the frame keeps its box there.
+  const line = tableLineOf(table);
+  const cell =
+    line !== undefined && pointer.x < line
+      ? undefined
+      : [...table.querySelectorAll('td, th')].find((c) => contains(c.getBoundingClientRect(), pointer));
   // In its own cell, a block is BlockNote's own reading of the pointer.
   if (!isTable && cell?.contains(block) === true) return undefined;
   const id =

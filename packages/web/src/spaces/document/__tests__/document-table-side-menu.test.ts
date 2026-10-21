@@ -131,6 +131,36 @@ describe('the side menu at a table', () => {
   });
 });
 
+describe('the side menu beside a table scrolled sideways (inner#1619 T13)', () => {
+  /**
+   * Scrolls the table's two cells left behind its frame: a1 out of view, b1 cut
+   * by the frame's left line at 100.
+   * @param editor - The editor.
+   */
+  function scrolled(editor: Editor): void {
+    const view = editor.prosemirrorView;
+    const [a1, b1] = [...view.dom.querySelectorAll('td')];
+    a1!.getBoundingClientRect = () => new DOMRect(-50, 100, 120, 40);
+    b1!.getBoundingClientRect = () => new DOMRect(70, 100, 120, 40);
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(-50, 100, 240, 40);
+    view.dom.querySelector('[data-radix-scroll-area-viewport]')!.getBoundingClientRect = () => new DOMRect(100, 90, 300, 60);
+  }
+
+  it('stands for the first visible column\'s block within 40px of the frame\'s left line', () => {
+    const { editor, tableId, nextBlockId } = open();
+    scrolled(editor);
+
+    expect(hover(editor, 65, 120, tableId)).toBe(nextBlockId);
+  });
+
+  it('stands for the table further out, past a cell scrolled out of view', () => {
+    const { editor, tableId } = open();
+    scrolled(editor);
+
+    expect(hover(editor, 50, 120, tableId)).toBe(tableId);
+  });
+});
+
 describe('the side menu in a cell', () => {
   it('stands for the block in the cell when the pointer is in the cell but on no block, as in its padding', () => {
     const { editor, tableId, cellBlockId } = open();
