@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { getAgentConfig } from "@breatic/core";
-import type { MessagePart } from "@breatic/shared";
+import { readQuestionnaire, type MessagePart } from "@breatic/shared";
 import { messageText } from "@domain/agent/tools/conversation-text.js";
 
 const QUESTIONS = {
@@ -260,5 +260,67 @@ describe("an ask_user call that is neither a questionnaire nor an old single que
     expect(text).toContain("TOP-OPTION-A");
     expect(text).toContain("TOP-OPTION-B");
     expect(text).toContain("OWN-WORDS");
+  });
+});
+
+describe("an ask_user call that failed", () => {
+  /**
+   * A failed call of a tool.
+   * @param toolName - The tool.
+   * @param input - What the model sent.
+   * @returns The part.
+   */
+  const failed = (toolName: string, input: Record<string, unknown>): MessagePart => ({
+    type: "tool",
+    toolCallId: "ask-err",
+    toolName,
+    input,
+    status: "error",
+  });
+
+  it("is written like any other tool call when its input is no questionnaire, cut at the tool length", () => {
+    const max = getAgentConfig().records_tool_text_max_chars;
+    const input = { questions: [{ question: "x".repeat(max) + "TAIL-PAST-THE-TOOL-CAP" }] };
+    expect(readQuestionnaire(input)).toBeNull();
+
+    const text = messageText([failed("ask_user", input)]);
+
+    expect(text).toBe(`[called ask_user] ${"x".repeat(max)}…`);
+    expect(text).toBe(messageText([failed("web_search", input)]).replace("[called web_search]", "[called ask_user]"));
+    expect(text).not.toMatch(/^(Q1 |options:|A1 )/m);
+  });
+
+  it("writes every string its input holds, however deep, as the other tools' calls do", () => {
+    const input = { questions: [[{ header: "NESTED-HEADER", question: "NESTED-QUESTION" }]], note: "TOP-NOTE" };
+    expect(readQuestionnaire(input)).toBeNull();
+
+    const text = messageText([failed("ask_user", input)]);
+
+    expect(text).toBe("[called ask_user] NESTED-HEADER NESTED-QUESTION TOP-NOTE");
+    expect(text).not.toMatch(/^(Q1 |options:|A1 )/m);
+  });
+
+  it("is still written as a questionnaire when its input is one", () => {
+    const text = messageText([failed("ask_user", QUESTIONS)]);
+
+    expect(text).toBe("Q1 Which ratio?\nQ2 Any mood in mind?\nQ3 Bright or dim?");
+    expect(text).not.toContain("[called ask_user]");
+  });
+});
+
+describe("an old single-question card", () => {
+  it("reads as its question then its options, exactly", () => {
+    const text = messageText([
+      {
+        type: "tool",
+        toolCallId: "ask-old",
+        toolName: "ask_user",
+        input: { question: "Which ratio?", options: ["16:9", "9:16"] },
+        status: "success",
+        output: { question: "Which ratio?" },
+      },
+    ]);
+
+    expect(text).toBe("Q1 Which ratio?\noptions: 16:9, 9:16");
   });
 });

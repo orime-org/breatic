@@ -435,6 +435,44 @@ describe("read_conversation", () => {
 });
 
 /**
+ * Three turns, each filling more than half a page, so a page holds only the first.
+ * @returns What the read answers.
+ */
+function threeFullTurns(): ConversationTurns {
+  const pageMax = getAgentConfig().records_page_max_chars;
+  const half = Math.ceil(pageMax / 2 / CHUNK) + 1;
+  const filler = (turn: number): ConversationTurns["messages"] =>
+    Array.from({ length: half }, (_, i) => ({
+      role: "user" as const,
+      turnIndex: turn,
+      createdAt: "2026-10-18T09:00:00.000Z",
+      parts: [{ type: "text" as const, text: `T${String(turn)}M${String(i)} ` + "y".repeat(CHUNK - 10) }],
+    }));
+  return { conversationId: CONVERSATION, title: null, totalTurns: 3, current: true, messages: [...filler(1), ...filler(2), ...filler(3)] };
+}
+
+describe("read_conversation given a last turn", () => {
+  it("passes the last turn on in the next-page line while the next page is still within it", async () => {
+    const recs = records({ readConversation: vi.fn().mockResolvedValue(threeFullTurns()) });
+
+    const answer = await call(READ, { conversation_id: CONVERSATION, from_turn: 1, to_turn: 3 }, recs);
+    const tail = answer.split("\n").at(-1) ?? "";
+
+    expect(tail).toContain(`conversation_id=${CONVERSATION}`);
+    expect(tail).toContain("from_turn=2");
+    expect(tail).toContain("to_turn=3");
+  });
+
+  it("writes the next-page line as before when no last turn was given", async () => {
+    const recs = records({ readConversation: vi.fn().mockResolvedValue(threeFullTurns()) });
+
+    const answer = await call(READ, { conversation_id: CONVERSATION, from_turn: 1 }, recs);
+
+    expect(answer.split("\n").at(-1)).toBe(`turns 1–1 of 3; call again with conversation_id=${CONVERSATION} from_turn=2`);
+  });
+});
+
+/**
  * A task on the node.
  * @param over - What differs from a finished generation.
  * @returns The task.

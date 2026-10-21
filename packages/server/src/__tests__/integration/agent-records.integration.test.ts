@@ -18,7 +18,7 @@ import crypto from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
 import { initCore, getAgentConfig, loadLocales } from "@breatic/core";
-import { RecordsRefused, type ProjectRecords } from "@breatic/domain";
+import { RecordsRefused, TOOL_MAP, type ProjectRecords } from "@breatic/domain";
 import type { ChatSpace } from "@breatic/shared";
 
 try {
@@ -390,6 +390,84 @@ describe("searching the user's messages", () => {
 
     expect((await records.searchMessages(["aspect suits the banner"], {})).hits.map((h) => h.turnIndex)).toEqual([3]);
     expect((await records.searchMessages(["Panoramic"], {})).hits.map((h) => h.turnIndex)).toEqual([3]);
+  });
+
+  it("finds a failed ask_user call that is no questionnaire by any string of its input, as other tools' calls", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    await seedMessage(other, turn.userId, {
+      role: "assistant",
+      turn: 1,
+      parts: [
+        {
+          type: "tool",
+          toolCallId: "ask-err",
+          toolName: "ask_user",
+          input: { questions: [[{ header: "HEADER-ONLY-WORD", question: "Nested?" }]] },
+          status: "error",
+        },
+      ],
+    });
+
+    expect((await recordsFor(turn).searchMessages(["HEADER-ONLY-WORD"], {})).hits.map((h) => h.turnIndex)).toEqual([1]);
+  });
+
+  it("does not match a failed ask_user call past the tool length", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const max = getAgentConfig().records_tool_text_max_chars;
+    await seedMessage(other, turn.userId, {
+      role: "assistant",
+      turn: 1,
+      parts: [
+        {
+          type: "tool",
+          toolCallId: "ask-err",
+          toolName: "ask_user",
+          input: { questions: [{ question: "x".repeat(max) + " FAR-PAST-THE-ASK-CUT" }] },
+          status: "error",
+        },
+      ],
+    });
+
+    expect((await recordsFor(turn).searchMessages(["FAR-PAST-THE-ASK-CUT"], {})).hits).toEqual([]);
+  });
+
+  it("matches a failed ask_user call by exactly the words reading it shows", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const max = getAgentConfig().records_tool_text_max_chars;
+    await seedMessage(other, turn.userId, {
+      role: "assistant",
+      turn: 1,
+      parts: [
+        {
+          type: "tool",
+          toolCallId: "ask-err",
+          toolName: "ask_user",
+          input: {
+            questions: [
+              [{ header: "HEADER-ONLY-WORD", question: "NESTED-QUESTION-WORD" }],
+              { question: "z".repeat(max) + " PAST-CUT-WORD" },
+            ],
+          },
+          status: "error",
+        },
+      ],
+    });
+    const records = recordsFor(turn);
+    const read = TOOL_MAP.read_conversation!();
+    const shown = (await read.execute!({ conversation_id: other }, {
+      toolCallId: "t1",
+      messages: [],
+      context: { records },
+    } as never)) as string;
+    const words = ["HEADER-ONLY-WORD", "NESTED-QUESTION-WORD", "PAST-CUT-WORD"];
+    const found: string[] = [];
+    for (const w of words) if ((await records.searchMessages([w], {})).hits.length > 0) found.push(w);
+
+    expect(words.filter((w) => shown.includes(w))).toEqual(["HEADER-ONLY-WORD", "NESTED-QUESTION-WORD"]);
+    expect(found).toEqual(words.filter((w) => shown.includes(w)));
   });
 
   it("marks the hits in the conversation this turn runs in, and only those", async () => {
