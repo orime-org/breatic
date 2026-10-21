@@ -511,25 +511,6 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     expect(screen.getByText('Slug is available')).toBeInTheDocument();
   });
 
-  it('shows taken and keeps Create disabled for a taken slug', async () => {
-    setAvailability({ state: 'invalid', reason: 'taken' });
-    const user = userEvent.setup();
-    renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
-    await user.type(screen.getByLabelText('Name'), 'Acme');
-    expect(screen.getByText(/in use/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-  });
-
-  it('disables Create until a name is entered AND the slug is available', async () => {
-    setAvailability({ state: 'valid' });
-    const user = userEvent.setup();
-    renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
-    // Available slug but no name yet → still disabled.
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    await user.type(screen.getByLabelText('Name'), 'Nova');
-    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
-  });
-
   it('submits the name + slug (no type) when the slug is available', async () => {
     setAvailability({ state: 'valid' });
     const user = userEvent.setup();
@@ -544,5 +525,165 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
         onError: expect.any(Function),
       }),
     );
+  });
+});
+
+describe('NewStudioDialog — reasons on press and waiting for the check (inner#1652)', () => {
+  const mutate = vi.fn();
+
+  beforeEach(() => {
+    mutate.mockReset();
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'empty' });
+  });
+
+  /**
+   * Render the dialog in a query client with an open flag the test can change.
+   * @returns The rerender, taking the next open flag.
+   */
+  function renderOpen(): (open: boolean) => void {
+    const client = new QueryClient();
+    const onOpenChange = vi.fn();
+    const tree = (open: boolean): ReactElement => (
+      <QueryClientProvider client={client}>
+        <NewStudioDialog open={open} onOpenChange={onOpenChange} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(true));
+    return (open) => rerender(tree(open));
+  }
+
+  it('keeps Create pressable and names every missing field, focusing the first', async () => {
+    const user = userEvent.setup();
+    renderOpen();
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).not.toBeDisabled();
+    await user.click(create);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    expect(screen.getByTestId('new-studio-slug-hint')).toHaveTextContent('Enter a slug.');
+    expect(screen.getByLabelText('Name')).toHaveFocus();
+
+    await user.type(screen.getByLabelText('Name'), 'N');
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('Slug'), 'n');
+    expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a slug.');
+  });
+
+  it('focuses the slug when it is the field in the way', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'invalid', reason: 'taken' });
+    const user = userEvent.setup();
+    renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Acme');
+    await user.type(screen.getByLabelText('Slug'), 'acme-studio');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText(/in use/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+  });
+
+  it('waits for a running check, then creates with what is on screen', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Create' })).toHaveAttribute('aria-busy', 'true');
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab' }, expect.anything());
+  });
+
+  it('reports the answer instead of creating when the check comes back taken', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'invalid', reason: 'taken' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Create' })).not.toHaveAttribute('aria-busy');
+  });
+
+  it('does not create when the slug is edited during the wait', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await user.type(screen.getByLabelText('Slug'), 's');
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('does not create when the dialog closes during the wait', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    setOpen(false);
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('checks the name again when the wait ends', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await user.clear(screen.getByLabelText('Name'));
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+  });
+
+  it('sends a slug the check could not reach, for the server to judge', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'unverified' });
+    const user = userEvent.setup();
+    renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab' }, expect.anything());
+  });
+
+  it('ignores a press while the create is out', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate,
+      isPending: true,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    renderOpen();
+    // The fields are locked while pending, so the press arrives on an empty form.
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
+  it('leaves the browser out of it: no native required check', () => {
+    renderOpen();
+    expect(screen.getByTestId('new-studio-dialog').querySelector('form')).toHaveAttribute('novalidate');
+    expect(screen.getByLabelText('Name')).not.toHaveAttribute('required');
   });
 });

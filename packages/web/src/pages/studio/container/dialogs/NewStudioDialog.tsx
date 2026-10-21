@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { FieldError } from '@web/components/FieldError';
 import { Button } from '@web/components/ui/button';
 import {
   Dialog,
@@ -25,6 +26,7 @@ import {
   useSlugAvailability,
   useSlugFieldShown,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wait-for-slug-check';
 
 interface NewStudioDialogProps {
   open: boolean;
@@ -35,8 +37,9 @@ interface NewStudioDialogProps {
  * The create-team-studio dialog (rail segment ③ / spec §3.12). Two independent
  * hand-typed fields — display name + globally-unique slug (option C) — with the
  * slug checked live (debounced) via `useSlugAvailability`: the SlugField shows
- * checking / available / format / length / reserved / taken as you type. Submit
- * is gated on a non-empty name + a `valid` slug. On submit `useCreateStudio`
+ * checking / available / format / length / reserved / taken as you type. Create
+ * stays pressable (inner#1652): a press names every field in the way under it,
+ * and one that beats the slug check waits for it. On submit `useCreateStudio`
  * creates the studio, refreshes the rail list and navigates into it; a server
  * error (taken slug lost a race, per-user limit, rate limit) surfaces inline.
  * The personal/team type radio and the synchronous `takenSlugs` set the old stub
@@ -55,6 +58,8 @@ export function NewStudioDialog({
   const [name, setName] = React.useState('');
   const [slug, setSlug] = React.useState('');
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [nameError, setNameError] = React.useState<string | null>(null);
+  const [slugError, setSlugError] = React.useState<string | null>(null);
   const availability = useSlugAvailability(slug);
   const createStudio = useCreateStudio();
   const queryClient = useQueryClient();
@@ -65,6 +70,8 @@ export function NewStudioDialog({
     setName('');
     setSlug('');
     setFormError(null);
+    setNameError(null);
+    setSlugError(null);
   };
 
   /**
@@ -77,11 +84,6 @@ export function NewStudioDialog({
       reset();
     }
   };
-
-  const canSubmit =
-    name.trim() !== '' &&
-    availability.state === 'valid' &&
-    !createStudio.isPending;
 
   /**
    * Put a refused create where the reader will look for it: a slug taken in
@@ -109,24 +111,46 @@ export function NewStudioDialog({
   };
 
   /**
-   * Create the studio once the slug is `valid` and a name is given.
+   * Create the studio from what is on screen, or say under each field what is
+   * in the way and focus the first. Runs again once a check it waited on
+   * settles.
+   */
+  const attempt = (): void => {
+    if (createStudio.isPending) return;
+    setFormError(null);
+    const trimmedName = name.trim();
+    const trimmedSlug = slug.trim();
+    const nameBad = trimmedName === '';
+    setNameError(nameBad ? t('studio.container.dialog.nameRequired') : null);
+    setSlugError(trimmedSlug === '' ? t('studio.container.dialog.slugRequired') : null);
+    const slugBad = trimmedSlug === '' || availability.state === 'invalid';
+    if (nameBad || slugBad) {
+      document.getElementById(nameBad ? 'new-studio-name' : 'new-studio-slug')?.focus();
+      return;
+    }
+    if (availability.state === 'checking') {
+      wait.start();
+      return;
+    }
+    createStudio.mutate(
+      { name: trimmedName, slug: trimmedSlug },
+      {
+        onSuccess: () => handleOpenChange(false),
+        onError: (err) => {
+          void reportCreateError(err, trimmedSlug);
+        },
+      },
+    );
+  };
+  const wait = useWaitForSlugCheck(availability, slug, open, attempt);
+
+  /**
+   * Press of Create.
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
-    setFormError(null);
-    if (!canSubmit) {
-      return;
-    }
-    createStudio.mutate(
-      { name: name.trim(), slug: slug.trim() },
-      {
-        onSuccess: () => handleOpenChange(false),
-        onError: (err) => {
-          void reportCreateError(err, slug.trim());
-        },
-      },
-    );
+    attempt();
   };
 
   return (
@@ -135,7 +159,7 @@ export function NewStudioDialog({
         <DialogHeader>
           <DialogTitle>{t('studio.container.dialog.newStudioTitle')}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <DialogBody className='flex flex-col gap-4'>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor='new-studio-name'>
@@ -146,19 +170,30 @@ export function NewStudioDialog({
                 autoComplete='off'
                 placeholder={t('studio.container.dialog.namePlaceholderStudio')}
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setNameError(null);
+                }}
                 disabled={createStudio.isPending}
-                required
+                aria-invalid={nameError !== null}
+                aria-describedby={nameError !== null ? 'new-studio-name-error' : undefined}
               />
+              {nameError !== null ? (
+                <FieldError id='new-studio-name-error'>{nameError}</FieldError>
+              ) : null}
             </div>
             <SlugField
               id='new-studio-slug'
               label={t('studio.container.dialog.slugLabel')}
               placeholder={t('studio.container.dialog.slugPlaceholderStudio')}
               value={slug}
-              onChange={setSlug}
+              onChange={(next) => {
+                setSlug(next);
+                setSlugError(null);
+              }}
               disabled={createStudio.isPending}
               check={availability}
+              error={slugError}
               bounds={STUDIO_SLUG_BOUNDS}
               helper={t('studio.container.dialog.slugHelperStudio', STUDIO_SLUG_BOUNDS)}
             />
@@ -176,7 +211,7 @@ export function NewStudioDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button type='submit' disabled={!canSubmit} loading={createStudio.isPending}>
+            <Button type='submit' loading={createStudio.isPending || wait.waiting}>
               {t('studio.container.dialog.create')}
             </Button>
           </DialogFooter>
