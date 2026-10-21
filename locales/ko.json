@@ -790,7 +790,13 @@
         "motion_prompt": "동작 설명",
         "append_duration": "늘릴 길이",
         "ambience": "주변음",
-        "double_output": "두 가지 생성"
+        "double_output": "두 가지 생성",
+        "light_azimuth": "조명 방향",
+        "light_elevation": "조명 높이",
+        "light_color": "조명 색",
+        "light_color_hex": "사용자 지정 조명 색",
+        "light_intensity": "강도",
+        "light_quality": "조명 질감"
       },
       "paramField": {
         "speaker": "이름",
@@ -1028,6 +1034,29 @@
         },
         "mark": {
           "label": "마크업"
+        },
+        "angle": {
+          "label": "멀티 앵글",
+          "prompt": "덧붙일 내용이 있으면 입력하세요(예: 배경은 선명하게)"
+        },
+        "relight": {
+          "label": "조명 변경",
+          "prompt": "조명에 덧붙일 내용이 있으면 입력하세요(예: 촛불, 뒤에 네온사인)",
+          "slot": {
+            "light_reference": "조명을 가져올 이미지를 고르세요"
+          }
+        },
+        "restyle": {
+          "label": "스타일 변환",
+          "prompt": "덧붙일 내용이 있으면 입력하세요(예: 색을 더 부드럽게)",
+          "slotTitle": "스타일 이미지",
+          "slot": {
+            "style": "스타일을 가져올 이미지를 최대 3개 고르세요"
+          }
+        },
+        "quickEdit": {
+          "label": "빠른 편집",
+          "prompt": "바꿀 내용을 입력하세요(예: 비 오는 밤으로, 셔츠를 검은 재킷으로)"
         }
       },
       "video": {
@@ -1202,6 +1231,15 @@
         "picked": "{picked} / {total}개 선택",
         "pickAll": "모두 선택",
         "pickNone": "모두 선택 해제"
+      },
+      "relight": {
+        "lightTitle": "광원",
+        "referenceTitle": "조명 참고 이미지",
+        "optional": "선택",
+        "followsReference": "이 이미지의 조명을 따릅니다",
+        "referenceNote": "조명은 이 이미지에서 가져옵니다. 오른쪽의 색상, 강도, 질감이 이를 덮어씁니다.",
+        "fromReference": "참고 이미지 따름",
+        "sourceFromReference": "참고 이미지를 따름"
       }
     },
     "template": {

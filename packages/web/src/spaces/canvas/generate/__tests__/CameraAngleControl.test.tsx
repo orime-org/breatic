@@ -89,6 +89,12 @@ afterEach(() => {
 });
 
 describe('CameraAngleControl', () => {
+  it('lays the camera sphere beside its sliders, with no light on it', async () => {
+    await draw();
+    expect(screen.getByTestId('generate-camera-angle-control')).toHaveAttribute('data-layout', 'beside');
+    expect(sphere.last?.tint).toBeUndefined();
+  });
+
   it('names the stored pose and draws the sphere on it', async () => {
     await draw({ horizontal_angle: 90, vertical_angle: 30, distance: 2 });
     expect(screen.getByTestId('generate-camera-angle-pose')).toHaveTextContent('Right · Elevated · Wide shot');

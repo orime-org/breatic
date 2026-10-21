@@ -50,6 +50,22 @@ describe('RatioResolutionPicker on a camera-angle model', () => {
     expect(screen.getByTestId('generate-ratio-trigger')).toHaveTextContent('Right · Elevated · Wide shot');
   });
 
+  it('opens wide enough for the sphere beside its sliders', async () => {
+    render(
+      <RatioResolutionPicker
+        mode='i2i'
+        model={QWEN}
+        value={{ horizontal_angle: 0, vertical_angle: 0, distance: 1 }}
+        onChange={() => {}}
+        subjectImageUrl={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('generate-ratio-trigger'));
+    await screen.findByTestId('fake-sphere');
+    expect(screen.getByTestId('generate-camera-angle-control')).toHaveAttribute('data-layout', 'beside');
+    expect(screen.getByRole('dialog').className).toContain('w-[min(560px,92vw)]');
+  });
+
   it('hands the sphere the picture it is given for the card', async () => {
     render(
       <RatioResolutionPicker

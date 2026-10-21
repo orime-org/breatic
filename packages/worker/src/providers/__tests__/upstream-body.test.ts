@@ -51,6 +51,11 @@ const DIALOGUE: FullModelEntry = {
 };
 
 describe("upstreamBody", () => {
+  // inner#1304: the multi-angle tool's note may stay empty; the endpoint then gets no prompt field.
+  it("sends no prompt field when the prompt is empty", () => {
+    expect(upstreamBody(REF, { images: ["https://a/i.png"] }, "")).not.toHaveProperty("prompt");
+  });
+
   it("sends each param under the name the model declares upstream", () => {
     expect(
       upstreamBody(REF, { images: ["https://a/i.png"], duration: 8, output_format: "png" }, "a pan"),
