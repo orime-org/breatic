@@ -139,6 +139,11 @@ export interface FullModelEntry {
    * answer at its own size (inner#1303); absent when none was measured.
    */
   max_output_side?: number;
+  /**
+   * The media type this model returns, when not its modality's usual one
+   * (inner#1305); the worker stores the result under it.
+   */
+  output_type?: string;
   /** The camera commands this model reads out of its prompt. */
   camera_commands?: DeclaredCameraCommand[];
   /** The three params that together set one camera pose (inner#830). */
@@ -344,6 +349,7 @@ function projectModelEntry(
     max_input_chars: m.max_input_chars,
     // The longest side the expand tool may grow a picture to (inner#1303).
     max_output_side: m.max_output_side,
+    output_type: m.output_type,
     camera_commands: shipCameraCommands(m.camera_commands),
     camera_angle: shipCameraAngle(m.camera_angle),
     icon: m.icon,

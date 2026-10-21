@@ -82,6 +82,8 @@ const declarationSchema = z.object({
   max_items: z.number().int().positive().optional(),
   // The longest the picked clips may run together, in seconds (inner#888).
   max_total_duration: z.number().positive().optional(),
+  // The largest file the model takes, in bytes (inner#1305).
+  max_bytes: z.number().int().positive().optional(),
   // The fewest entries a run takes; the panel keeps adding rows up to it.
   min_items: z.number().int().positive().optional(),
   // Another param this one stands in for: when this one is sent, that one is
@@ -123,6 +125,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "type",
   "max_items",
   "max_total_duration",
+  "max_bytes",
   "min_items",
   "replaces",
   "description",

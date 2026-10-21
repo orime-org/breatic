@@ -51,3 +51,39 @@ ops:
   hdr:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 900
+  # inner#1305: the audio operations, each one ffmpeg run or one pipe through sox.
+  denoise:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  normalize:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  audio_speed:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  audio_cut:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  eq:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  compress:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  pan:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  reverb:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  voice:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+  pitch:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+
+# The audio cut band draws the source's waveform only under both: the length
+# bounds the memory the browser's decode holds, the size what it downloads.
+waveform_max_seconds: 3600
+waveform_max_bytes: 200000000

@@ -63,7 +63,9 @@ describe("veed-clean-audio", () => {
 
 describe("what enhancing costs", () => {
   const at = async (seconds: number): Promise<number | undefined> =>
-    (await estimateModelCredits("veed-clean-audio", { params: { audio: "a" }, durations: { audio: [seconds] } }))?.credits;
+    // As the mini-tool sends it (shared `miniToolEstimateInput`): the source named as one.
+    (await estimateModelCredits("veed-clean-audio", { params: { audio: "a" }, durations: { audio: [seconds] }, sources: ["audio"] }))
+      ?.credits;
 
   // $0.014 for every started minute, at least one and at most thirty.
   it("charges per started minute, from one minute up to thirty", async () => {
