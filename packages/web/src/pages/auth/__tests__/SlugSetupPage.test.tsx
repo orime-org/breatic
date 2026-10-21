@@ -119,11 +119,11 @@ describe('SlugSetupPage', () => {
     await user.click(submit);
     expect(authApi.setupStudio).not.toHaveBeenCalled();
     const hint = screen.getByTestId('onboarding-slug-hint');
-    expect(hint).toHaveTextContent('Enter a slug.');
+    expect(hint).toHaveTextContent('Enter a Slug.');
     expect(hint).toHaveClass('text-status-error-foreground');
     expect(screen.getByLabelText('Slug')).toHaveFocus();
     await user.type(screen.getByLabelText('Slug'), 'm');
-    expect(hint).not.toHaveTextContent('Enter a slug.');
+    expect(hint).not.toHaveTextContent('Enter a Slug.');
   });
 
   // INVARIANT (design §7 #8): StrictMode double-mount must not fire a

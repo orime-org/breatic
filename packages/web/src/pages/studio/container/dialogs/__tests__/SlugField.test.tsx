@@ -26,8 +26,8 @@ function hint(): HTMLElement {
 
 describe('SlugField hint line', () => {
   it('shows a reason given at submit in red over whatever the check says (inner#1652)', () => {
-    render(<SlugField {...BASE} check={{ state: 'empty' }} error='Enter a slug.' />);
-    expect(hint()).toHaveTextContent('Enter a slug.');
+    render(<SlugField {...BASE} check={{ state: 'empty' }} error='Enter a Slug.' />);
+    expect(hint()).toHaveTextContent('Enter a Slug.');
     expect(hint()).toHaveClass('text-status-error-foreground');
     expect(screen.getByLabelText('Slug')).toHaveAttribute('aria-invalid', 'true');
   });

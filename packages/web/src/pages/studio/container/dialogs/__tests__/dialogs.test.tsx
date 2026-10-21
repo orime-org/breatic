@@ -570,13 +570,13 @@ describe('NewStudioDialog — reasons on press and waiting for the check (inner#
     await user.click(create);
     expect(mutate).not.toHaveBeenCalled();
     expect(screen.getByText('Enter a name.')).toBeInTheDocument();
-    expect(screen.getByTestId('new-studio-slug-hint')).toHaveTextContent('Enter a slug.');
+    expect(screen.getByTestId('new-studio-slug-hint')).toHaveTextContent('Enter a Slug.');
     expect(screen.getByLabelText('Name')).toHaveFocus();
 
     await user.type(screen.getByLabelText('Name'), 'N');
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Slug'), 'n');
-    expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a slug.');
+    expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a Slug.');
   });
 
   it('focuses the slug when it is the field in the way', async () => {

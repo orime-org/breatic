@@ -2062,7 +2062,7 @@
         "slugPlaceholderCollection": "Generated from the name if left empty",
         "slugHelperStudio": "Part of this Studio's web address (/studio/…). {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only.",
         "nameRequired": "Enter a name.",
-        "slugRequired": "Enter a slug.",
+        "slugRequired": "Enter a Slug.",
         "emailRequired": "Enter an email address.",
         "slugUnverified": "Couldn't check right now. The server decides when you submit.",
         "slugLabelOptional": "Slug (optional)"
