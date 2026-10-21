@@ -111,7 +111,7 @@ export function RenameProjectDialog({
               aria-describedby={nameError !== null ? 'rename-project-name-error' : undefined}
             />
             {nameError !== null ? (
-              <FieldError id='rename-project-name-error'>{nameError}</FieldError>
+              <FieldError id='rename-project-name-error' className='text-xs'>{nameError}</FieldError>
             ) : null}
           </DialogBody>
           <DialogFooter>

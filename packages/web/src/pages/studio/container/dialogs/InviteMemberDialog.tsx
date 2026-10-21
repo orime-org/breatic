@@ -136,7 +136,7 @@ export function InviteMemberDialog({
                 autoComplete='off'
               />
               {emailError !== null ? (
-                <FieldError id={`${emailId}-error`}>{emailError}</FieldError>
+                <FieldError id={`${emailId}-error`} className='text-xs'>{emailError}</FieldError>
               ) : null}
             </div>
             <div className='flex flex-col gap-1.5'>

@@ -179,7 +179,7 @@ export function NewStudioDialog({
                 aria-describedby={nameError !== null ? 'new-studio-name-error' : undefined}
               />
               {nameError !== null ? (
-                <FieldError id='new-studio-name-error'>{nameError}</FieldError>
+                <FieldError id='new-studio-name-error' className='text-xs'>{nameError}</FieldError>
               ) : null}
             </div>
             <SlugField

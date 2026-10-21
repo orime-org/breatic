@@ -118,7 +118,7 @@ export function BasicInfoSection({
           data-testid='settings-name'
         />
         {nameError !== null ? (
-          <FieldError id='studio-name-error'>{nameError}</FieldError>
+          <FieldError id='studio-name-error' className='text-xs'>{nameError}</FieldError>
         ) : null}
       </div>
 

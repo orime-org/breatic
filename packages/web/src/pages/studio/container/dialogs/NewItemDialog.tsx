@@ -285,7 +285,7 @@ export function NewItemDialog({
                 aria-describedby={nameError !== null ? `${nameId}-error` : undefined}
               />
               {nameError !== null ? (
-                <FieldError id={`${nameId}-error`}>{nameError}</FieldError>
+                <FieldError id={`${nameId}-error`} className='text-xs'>{nameError}</FieldError>
               ) : null}
             </div>
             {kind === 'project' ? (
