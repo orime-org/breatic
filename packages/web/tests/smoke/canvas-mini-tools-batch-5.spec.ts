@@ -35,8 +35,15 @@ import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 /** The fixtures with people in them. */
 const FIXTURES = resolve(__dirname, '../fixtures/mini-tools');
 
-/** Where the seeded node's file is served from, by this spec. */
-const SERVED = 'https://smoke-audio.test/speech.mp3';
+/**
+ * Where the seeded node's file is served from, by this spec: shaped like a
+ * stored key, as every audio node's address is, so the band looks for the
+ * peaks file beside it (inner#1305 §4.4).
+ */
+const SERVED = 'https://smoke-audio.test/audio/2026-10-21/1792580000000_18f58aed-b802-4243-a8ea-02d377de9679.mp3';
+
+/** What the spec answers for the peaks file beside the audio, and what was asked of it. */
+const served = { peaks: null as string | null, decodes: 0 };
 
 /** The audio tools in the order the Tools submenu lists them. */
 const AUDIO_TOOLS = [
@@ -100,13 +107,20 @@ test.describe('panels', () => {
   test.beforeEach(async ({ browser }) => {
     page = await browser.newPage({ viewport: { width: 1680, height: 1000 } });
     const speech = readFileSync(join(FIXTURES, 'speech.mp3'));
-    await page.route('https://smoke-audio.test/**', (route) =>
-      route.fulfill({
-        status: 200,
-        body: speech,
-        headers: { 'content-type': 'audio/mpeg', 'access-control-allow-origin': '*' },
-      }),
-    );
+    served.peaks = null;
+    served.decodes = 0;
+    await page.route('https://smoke-audio.test/**', (route) => {
+      const url = route.request().url();
+      const cors = { 'access-control-allow-origin': '*' };
+      if (url.endsWith('.peaks.json')) {
+        return served.peaks === null
+          ? route.fulfill({ status: 404, body: 'Not found', headers: cors })
+          : route.fulfill({ status: 200, body: served.peaks, headers: { ...cors, 'content-type': 'application/json' } });
+      }
+      // The band's own decode reads over a fresh CORS fetch; the node's player does not.
+      if (url.includes('cors=1')) served.decodes += 1;
+      return route.fulfill({ status: 200, body: speech, headers: { ...cors, 'content-type': 'audio/mpeg' } });
+    });
     await openSmokeProject(page);
     projectId = smokeProjectId();
     spaceId = await createSpace(page, 'canvas', `mini-tools-batch-5-${Date.now()}`);
@@ -157,7 +171,7 @@ test.describe('panels', () => {
     await expect(keep).toHaveAttribute('aria-checked', 'false');
   });
 
-  test('cut draws the waveform from the file, and a source past the ceiling keeps the band plain', async () => {
+  test('cut decodes the file while it has no peaks, and a source past the ceiling keeps the band plain', async () => {
     const id = await seedAudio();
     await openTool(page, id, 'audio.cut');
     const band = page.getByTestId('mini-tool-range-band');
@@ -173,13 +187,40 @@ test.describe('panels', () => {
       )
       .toBeGreaterThan(0);
     await expect(band.getByTestId('mini-tool-waveform')).toHaveAttribute('data-state', 'drawn');
+    await expect(band.getByTestId('mini-tool-waveform')).toHaveAttribute('data-from', 'decode');
     await page.keyboard.press('Escape');
 
-    // Longer than the hour the band decodes.
+    // Longer than the ten minutes the band decodes.
     const long = await seedAudio({ duration: 4000, size: 98_304 });
     await openTool(page, long, 'audio.cut');
     await expect(page.getByTestId('mini-tool-range-band')).toBeVisible();
     await expect(page.getByTestId('mini-tool-waveform')).toHaveCount(0);
+  });
+
+  test('cut draws an hour-long source from its peaks file without decoding the audio', async () => {
+    served.peaks = JSON.stringify({ version: 1, peaks: Array.from({ length: 1000 }, (_, i) => (i * 7) % 256) });
+    const long = await seedAudio({ duration: 3600, size: 144_000_000 });
+    await openTool(page, long, 'audio.cut');
+    const waveform = page.getByTestId('mini-tool-range-band').getByTestId('mini-tool-waveform');
+    await expect(waveform).toHaveAttribute('data-from', 'peaks', { timeout: 15_000 });
+    await expect
+      .poll(() =>
+        waveform.evaluate((box) => box.firstElementChild?.shadowRoot?.querySelector('canvas')?.width ?? 0),
+      )
+      .toBeGreaterThan(0);
+    expect(served.decodes).toBe(0);
+  });
+
+  test('cut turns a plain band into the waveform once the peaks of a just-made source are written', async () => {
+    const long = await seedAudio({ duration: 3600, size: 144_000_000 });
+    await openTool(page, long, 'audio.cut');
+    await expect(page.getByTestId('mini-tool-range-band')).toBeVisible();
+    await expect(page.getByTestId('mini-tool-waveform')).toHaveCount(0);
+
+    // Written while the band is open: the band reads again every 5 s.
+    served.peaks = JSON.stringify({ version: 1, peaks: [10, 200, 90] });
+    await expect(page.getByTestId('mini-tool-waveform')).toHaveAttribute('data-from', 'peaks', { timeout: 15_000 });
+    expect(served.decodes).toBe(0);
   });
 
   test('the equalizer fills its bands from a preset and turns Custom when one band moves', async () => {
@@ -486,5 +527,24 @@ test.describe('real runs', () => {
     // A mono source stays mono, its tail added.
     expect(read('audio.reverb').channels).toBe(1);
     expect(read('audio.reverb').duration).toBeGreaterThan(6.144);
+
+    // inner#1305 §4.4: every audio row an upload or a run wrote gets a peaks
+    // file beside it, read after it registered.
+    const peaksOf = async (url: string): Promise<unknown> => {
+      const answer = await fetch(`${url}.peaks.json`);
+      return answer.ok ? ((await answer.json()) as unknown) : null;
+    };
+    for (const url of [
+      nodes.get(sources.get('speech.mp3')!)!,
+      nodes.get(sources.get('music.wav')!)!,
+      nodes.get(results.get('audio.speed')!)!,
+      nodes.get(results.get('audio.enhance')!)!,
+    ]) {
+      await expect.poll(() => peaksOf(url), { timeout: 5 * 60_000, intervals: [5_000] }).toMatchObject({ version: 1 });
+      const file = (await peaksOf(url)) as { peaks: number[] };
+      expect(file.peaks.length, url).toBeGreaterThan(0);
+      expect(file.peaks.length, url).toBeLessThanOrEqual(1000);
+      expect(Math.max(...file.peaks), url).toBeGreaterThan(0);
+    }
   });
 });
