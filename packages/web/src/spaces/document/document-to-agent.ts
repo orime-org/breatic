@@ -22,7 +22,7 @@ import type { ToolDef, ToolEditor } from '@web/spaces/document/document-tool-but
 import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { tableClipped } from '@web/spaces/document/document-table-copy';
+import { tableClippedBlocks } from '@web/spaces/document/document-table-copy';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -84,8 +84,8 @@ function selectionMarkdown(editor: ToolEditor, view: EditorView): string {
   if (insideOneBlock) return cleanHTMLToMarkdown(`<p>${selectedFragmentToHTML(view, editor).externalHTML}</p>`).trimEnd();
   // Selected cells, or a range through a table: the plain text copy writes,
   // where BlockNote's export empties or flattens the cells.
-  const clipped = tableClipped(editor as never, view);
-  return (clipped?.plain ?? selectedFragmentToHTML(view, editor).markdown).trimEnd();
+  const picked = tableClippedBlocks(view);
+  return (picked === null ? selectedFragmentToHTML(view, editor).markdown : blocksMarkdown(editor, picked.blocks)).trimEnd();
 }
 
 /**

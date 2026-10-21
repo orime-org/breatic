@@ -35,6 +35,7 @@ import { DocumentMediaPicker } from '@web/spaces/document/DocumentMediaPicker';
 import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { useDocumentBars } from '@web/spaces/document/document-bars';
+import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment';
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
@@ -75,6 +76,9 @@ const LANDED_MARK_FADE = {
   '--tw-animation-delay': `${String(LANDED_MARK_MS - LANDED_FADE_MS)}ms`,
   '--tw-animation-duration': `${String(LANDED_FADE_MS)}ms`,
 } as React.CSSProperties;
+
+/** The body's left gutter, where the strips stand. */
+const GUTTER_START: React.CSSProperties = { paddingLeft: BODY_GUTTER_START };
 
 /** Where the mark around a landed block is drawn, in the viewport's coordinates. */
 interface LandedBox {
@@ -287,7 +291,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           answers no clicks (see `index.css`, `.doc-body-editor .ProseMirror`).
           The right gutter is where the whole-document entry stands, which
           sizes it (`--doc-body-gutter`); the left one is where a table's own
-          strip stands, past its first column's (`--doc-body-gutter-start`). */}
+          strip stands, past its first column's (`BODY_GUTTER_START`). */}
       {/* One scroller over both columns, so the scrollbar sits at the far
           right of the Space rather than between the text and the panel, and a
           wheel anywhere in here moves both sides together. */}
@@ -317,7 +321,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
             )}
             <div
               {...{ [BODY_BLANK]: '' }}
-              className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)] pl-[var(--doc-body-gutter-start)]'
+              className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'
+              style={GUTTER_START}
             >
               <DocumentMenuEntry
                 commentsOpen={railOpen}

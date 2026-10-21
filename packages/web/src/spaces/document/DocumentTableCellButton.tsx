@@ -19,6 +19,7 @@ import {
   useFloating,
   type Middleware,
 } from '@floating-ui/react';
+import { useExtension, useExtensionState } from '@blocknote/react';
 import type { EditorState } from '@tiptap/pm/state';
 import { ChevronDown, TableCellsSplit } from 'lucide-react';
 import * as React from 'react';
@@ -44,7 +45,6 @@ import { cellButtonBox } from '@web/spaces/document/document-table-control-place
 import { documentTableHandlesExtension, TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 import { isMerged, splitCellAt } from '@web/spaces/document/document-table-run';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
-import { setCellButtonCell } from '@web/spaces/document/document-bars';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { viewOf } from '@web/spaces/document/document-editor-view';
@@ -95,12 +95,8 @@ export function DocumentTableCellButton({
 }: DocumentTableCellButtonProps): React.JSX.Element | null {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const handles = editor.getExtension(documentTableHandlesExtension);
-  const subscribeHover = React.useCallback(
-    (listener: () => void) => handles?.store.subscribe(listener) ?? ((): void => undefined),
-    [handles],
-  );
-  const hovered = React.useSyncExternalStore(subscribeHover, () => handles?.store.state);
+  const handles = useExtension(documentTableHandlesExtension, { editor: editor as never });
+  const hovered = useExtensionState(documentTableHandlesExtension, { editor: editor as never });
   const hoveredCell = hovered?.show === true ? (hovered.cellPos ?? null) : null;
   const holdsSelection = useHoldsSelection(editor);
   // While the menu is open the button stays on the cell it was opened on,
@@ -110,13 +106,6 @@ export function DocumentTableCellButton({
     (current: { prosemirrorState: EditorState }) => tableTargetOf(current.prosemirrorState),
   );
   const cellPos = open ? heldCell : holdsSelection ? null : hoveredCell;
-  // Where the button stands, for the column handle that makes room for it.
-  React.useEffect(() => {
-    setCellButtonCell(editor, cellPos);
-    return () => {
-      setCellButtonCell(editor, null);
-    };
-  }, [editor, cellPos]);
   const merged = useEditorSnapshot(
     editor as never,
     (current: { prosemirrorState: EditorState }) =>
@@ -157,10 +146,10 @@ export function DocumentTableCellButton({
       if (next) {
         if (hoveredCell === null) return;
         setTableTarget(view, hoveredCell);
-        handles?.freezeHandles();
+        handles.freezeHandles();
       } else {
         setTableTarget(view, null);
-        handles?.unfreezeHandles();
+        handles.unfreezeHandles();
       }
       setOpen(next);
     },

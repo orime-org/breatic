@@ -43,7 +43,8 @@ import {
   DOC_TABLE_CELL,
   DOC_TABLE_HEADER,
   DOC_TABLE_ROW,
-  isTableCell,
+  cellDepthOf,
+  tableAround,
 } from '@web/spaces/document/document-table-nodes';
 
 /** A row as the editor's block calls hand it back. */
@@ -79,17 +80,16 @@ interface Placement {
  * @param blockId - The block.
  * @returns The innermost cell's id and the table's id; null where there is none.
  */
-function tableAround(doc: PMNode, blockId: string): { cell: string | null; table: string | null } {
-  const around = { cell: null as string | null, table: null as string | null };
+function cellAndTableOf(doc: PMNode, blockId: string): { cell: string | null; table: string | null } {
   const row = rowById(doc, blockId);
-  if (row === undefined) return around;
+  if (row === undefined) return { cell: null, table: null };
   const $row = doc.resolve(row.from);
-  for (let depth = $row.depth; depth > 0 && around.table === null; depth -= 1) {
-    const node = $row.node(depth);
-    if (around.cell === null && isTableCell(node)) around.cell = String(node.attrs['id']);
-    if (node.type.name === DOC_TABLE) around.table = String(node.attrs['id']);
-  }
-  return around;
+  const cell = cellDepthOf($row);
+  const table = tableAround($row);
+  return {
+    cell: cell < 0 ? null : String($row.node(cell).attrs['id']),
+    table: table === null ? null : String(table.node.attrs['id']),
+  };
 }
 
 /**
@@ -102,7 +102,7 @@ function tableAround(doc: PMNode, blockId: string): { cell: string | null; table
  */
 function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] {
   const doc = editor.prosemirrorView.state.doc;
-  const around = blocks.map((block) => tableAround(doc, block.id));
+  const around = blocks.map((block) => cellAndTableOf(doc, block.id));
   const firstCell = around[0]?.cell ?? null;
   const oneCell =
     firstCell !== null &&

@@ -81,35 +81,38 @@ function internalHTML(view: EditorView, slice: Slice): string {
 }
 
 /**
+ * The blocks a copy of the selection carries where it is not BlockNote's to
+ * write, and the slice ProseMirror pastes back from them.
+ */
+export interface ClippedBlocks {
+  readonly blocks: never[];
+  /** The slice for the internal HTML, or null where the selection's own export writes it. */
+  readonly slice: Slice | null;
+}
+
+/**
  * Selected cells, as a table of those cells.
- * @param editor - The editor.
  * @param view - The editor view.
  * @param selection - The cell selection.
- * @returns What goes on the clipboard.
+ * @returns The blocks and the slice.
  */
-function cellsClipped(editor: CopyEditor, view: EditorView, selection: CellSelection): Clipped {
+function cellsBlocks(view: EditorView, selection: CellSelection): ClippedBlocks {
   const slice = selection.content();
   const first = slice.content.firstChild;
   // prosemirror-tables hands the whole table when every cell is selected, and
   // its rows otherwise.
   const table =
     first?.type.name === DOC_TABLE ? first : view.state.schema.nodes[DOC_TABLE]!.create(null, slice.content);
-  const block = nodeToBlock(table, view.state.doc) as never;
-  return {
-    internal: internalHTML(view, slice),
-    external: editor.blocksToHTMLLossy([block]),
-    plain: blocksMarkdown(editor, [block]),
-  };
+  return { blocks: [nodeToBlock(table, view.state.doc) as never], slice };
 }
 
 /**
  * Words in one cell, as the cell's blocks.
- * @param editor - The editor.
  * @param view - The editor view.
  * @param depth - The cell's depth.
- * @returns What goes on the clipboard.
+ * @returns The blocks and the slice.
  */
-function inCellClipped(editor: CopyEditor, view: EditorView, depth: number): Clipped {
+function inCellBlocks(view: EditorView, depth: number): ClippedBlocks {
   const { selection } = view.state;
   // A selection's content carries every node from the document down to the
   // ends; the levels down to the cell are the table around the words, and
@@ -121,12 +124,23 @@ function inCellClipped(editor: CopyEditor, view: EditorView, depth: number): Cli
     content = content.firstChild?.content ?? Fragment.empty;
   }
   const slice = new Slice(content, Math.max(0, whole.openStart - depth), Math.max(0, whole.openEnd - depth));
-  const blocks = fragmentToBlocks(content as never) as never[];
-  return {
-    internal: internalHTML(view, slice),
-    external: editor.blocksToHTMLLossy(blocks),
-    plain: blocksMarkdown(editor, blocks),
-  };
+  return { blocks: fragmentToBlocks(content as never) as never[], slice };
+}
+
+/**
+ * The blocks a copy of the selection carries, where it is not BlockNote's to
+ * write: selected cells, words in one cell, or a range holding a table.
+ * @param view - The editor view.
+ * @returns The blocks, or null to leave the copy to BlockNote.
+ */
+export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
+  const { selection } = view.state;
+  if (selection.empty) return null;
+  if (selection instanceof CellSelection) return cellsBlocks(view, selection);
+  const depth = oneCellDepth(selection);
+  if (depth > 0) return inCellBlocks(view, depth);
+  if (!holdsTable(selection)) return null;
+  return { blocks: fragmentToBlocks(selection.content().content as never) as never[], slice: null };
 }
 
 /**
@@ -137,15 +151,14 @@ function inCellClipped(editor: CopyEditor, view: EditorView, depth: number): Cli
  * @returns The clipboard, or null to leave the copy to BlockNote.
  */
 export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | null {
-  const { selection } = view.state;
-  if (selection.empty) return null;
-  if (selection instanceof CellSelection) return cellsClipped(editor, view, selection);
-  const depth = oneCellDepth(selection);
-  if (depth > 0) return inCellClipped(editor, view, depth);
-  if (!holdsTable(selection)) return null;
-  const { clipboardHTML, externalHTML } = selectedFragmentToHTML(view, editor);
-  const blocks = fragmentToBlocks(selection.content().content as never) as never[];
-  return { internal: clipboardHTML, external: externalHTML, plain: blocksMarkdown(editor, blocks) };
+  const picked = tableClippedBlocks(view);
+  if (picked === null) return null;
+  const plain = blocksMarkdown(editor, picked.blocks);
+  if (picked.slice === null) {
+    const { clipboardHTML, externalHTML } = selectedFragmentToHTML(view, editor);
+    return { internal: clipboardHTML, external: externalHTML, plain };
+  }
+  return { internal: internalHTML(view, picked.slice), external: editor.blocksToHTMLLossy(picked.blocks), plain };
 }
 
 /**

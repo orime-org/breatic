@@ -7,9 +7,10 @@
  *
  * BlockNote's Markdown export flattens every cell of a `<table>` to its words
  * (`htmlToMarkdown.ts:79-80` calls `serializeTable`). A table whose every cell
- * holds one paragraph is written as a GFM pipe table, its first row the
- * header. A table whose cells hold other blocks is written as its HTML on one
- * line: a Markdown HTML block ends at the first empty line
+ * holds one paragraph, with no cell spanning and header cells exactly in the
+ * first row, is written as a GFM pipe table, which always reads its first row
+ * as the header. Any other table is written as its HTML on one line, which
+ * keeps header cells and spans: a Markdown HTML block ends at the first empty line
  * (`markdownToHtml.ts:1071-1085`), so every line break in it, a code block's
  * included, is written as `&#10;`, which reads back as the same break.
  * Every other block is BlockNote's own export.

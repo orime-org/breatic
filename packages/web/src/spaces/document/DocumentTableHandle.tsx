@@ -9,9 +9,9 @@
  * over; everything else is here. A handle's menu acts on the cell the menu
  * was opened on, held in `document-table-target.ts` and mapped through every
  * change while the menu is open, so an edit someone else makes above the
- * table cannot point a command at another row. The library's own table
- * position is written on pointer moves only and goes stale under such an edit,
- * so no command reads it.
+ * table cannot point a command at another row. The hover state's cell
+ * (`cellPos`) is read once, when a menu opens or a drag starts; from then on
+ * the held target is what the commands act on.
  *
  * Neither is on screen while the reader holds a selection: the
  * bubble bar serves a selection, the way the block handle steps aside for it.
@@ -74,7 +74,6 @@ import { tableLineOf } from '@web/spaces/document/document-strip-alignment';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { startTableDrag } from '@web/spaces/document/document-table-drag';
 import { setDragPreview, tableLinePreviewContent } from '@web/spaces/document/document-drag-preview';
-import { useDocumentBars } from '@web/spaces/document/document-bars';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { documentTableHandlesExtension, TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
@@ -337,9 +336,9 @@ export function DocumentTableHandle({
   useCloseWhenTargetGone(editor, open, close);
 
   // Read against the frame whenever the controller places the handles; it
-  // hides them on a scroll. The cell the cell button stands on, as the button
-  // says.
-  const buttonCell = useDocumentBars(editor).cellButtonCell;
+  // hides them on a scroll. The cell the cell button stands on: the hovered
+  // one, while no selection is held (`DocumentTableCellButton`).
+  const buttonCell = state?.show === true && !holdsSelection ? (state.cellPos ?? null) : null;
   const placeStyle = React.useMemo<React.CSSProperties | undefined>(() => {
     const place =
       state === undefined

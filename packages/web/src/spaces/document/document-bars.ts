@@ -34,11 +34,9 @@ export interface DocumentBars {
   readonly linkToolbarUp: boolean;
   /** Whether the selection bubble bar is up, standing aside for a panel of its own included. */
   readonly bubbleBarUp: boolean;
-  /** The position before the cell the cell button is on, or null while it is not up. */
-  readonly cellButtonCell: number | null;
 }
 
-const NONE: DocumentBars = { hoveredMedia: null, linkToolbarUp: false, bubbleBarUp: false, cellButtonCell: null };
+const NONE: DocumentBars = { hoveredMedia: null, linkToolbarUp: false, bubbleBarUp: false };
 
 /** Keyed by editor, so an editor that is dropped takes its state with it. */
 const store = keyedStore<object, DocumentBars>(
@@ -46,8 +44,7 @@ const store = keyedStore<object, DocumentBars>(
   (a, b) =>
     a.hoveredMedia === b.hoveredMedia &&
     a.linkToolbarUp === b.linkToolbarUp &&
-    a.bubbleBarUp === b.bubbleBarUp &&
-    a.cellButtonCell === b.cellButtonCell,
+    a.bubbleBarUp === b.bubbleBarUp,
 );
 
 /**
@@ -90,15 +87,6 @@ export function setLinkToolbarUp(editor: object, up: boolean): void {
  */
 export function setBubbleBarUp(editor: object, up: boolean): void {
   store.set(editor, { ...store.get(editor), bubbleBarUp: up });
-}
-
-/**
- * Records the cell the cell button is on, or that it is not up.
- * @param editor - The editor.
- * @param cell - The position before the cell, or null.
- */
-export function setCellButtonCell(editor: object, cell: number | null): void {
-  store.set(editor, { ...store.get(editor), cellButtonCell: cell });
 }
 
 /**

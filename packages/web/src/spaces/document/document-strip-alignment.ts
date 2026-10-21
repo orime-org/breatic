@@ -4,7 +4,8 @@
 /**
  * Where the strip sits against the row it points at: vertically on the row's
  * first line (A2), horizontally `STRIP_OUTSET` out from the body's left edge
- * (#1097 A13, inner#1126, see `stripPlacement`).
+ * (#1097 A13, inner#1126), a block in a table cell beside its cell and a
+ * table further out (inner#1619 T13, see `stripPlacement`).
  *
  * The strip is centred on the row's FIRST VISIBLE LINE, not on the row: a
  * heading is taller than the strip and a wrapped paragraph is several lines
@@ -70,6 +71,13 @@ export const STRIP_SIZE = 24;
  */
 export const TABLE_STRIP_OUTSET = STRIP_OUTSET + STRIP_SIZE + 4;
 
+/**
+ * The body's left gutter: as far out as a table's own strip reaches, and 8px
+ * more to the viewport edge, the gap the whole-document entry keeps from the
+ * page on the right (`--doc-entry-clearance`).
+ */
+export const BODY_GUTTER_START = TABLE_STRIP_OUTSET + STRIP_SIZE + 8;
+
 /** The selector of a table's horizontal scroll frame. */
 const TABLE_FRAME = '[data-radix-scroll-area-viewport]';
 
@@ -103,7 +111,10 @@ export function standsOnTableLine(cell: Element): boolean {
  * table of per-type offsets replaced by one sideways move.
  *
  * The move puts the carrier `STRIP_OUTSET` out from the body's left edge
- * whatever the row's nesting (#1097 A13, user 2026-10-01): the reference is the row's own
+ * whatever the row's nesting (#1097 A13, user 2026-10-01), a table's
+ * `TABLE_STRIP_OUTSET` out, and a block in a table cell outside its cell's
+ * left line, or out from the table's left line in the first column
+ * (inner#1619 T13). For a row outside a table the reference is the row's own
  * container, which a nested row has indented with it. The body's edge is the
  * root block group, the element the library itself takes the side menu's x
  * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip

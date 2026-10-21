@@ -107,7 +107,7 @@ describe('the link toolbar the caret raises and the body’s focus', () => {
 });
 
 describe('the cell button as a layer of the body', () => {
-  it('is a layer of the body, and goes with the pointer, the cell it sat on no longer published (inner#1619 T13)', async () => {
+  it('is a layer of the body, and goes with the pointer (inner#1619 T13)', async () => {
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     const editor = openSharedBody('<p>lead</p>');
     act(() => {
@@ -125,7 +125,6 @@ describe('the cell button as a layer of the body', () => {
     });
     const button = await screen.findByTestId('doc-table-cell-button');
     expect(button.closest(`[${BODY_LAYER}]`)).not.toBeNull();
-    expect(documentBarsOf(editor).cellButtonCell).not.toBeNull();
 
     act(() => {
       document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 900, clientY: 900 }));
@@ -134,6 +133,5 @@ describe('the cell button as a layer of the body', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('doc-table-cell-button')).toBeNull();
     });
-    expect(documentBarsOf(editor).cellButtonCell).toBeNull();
   });
 });
