@@ -68,12 +68,21 @@ function attrSet(node: ProseMirrorNode, key: string): boolean {
  * @returns True when it does.
  */
 function lossyBlock(node: ProseMirrorNode): boolean {
-  let lossy = false;
+  /**
+   * Whether one node holds something Markdown drops.
+   * @param child - The node.
+   * @returns True when it does.
+   */
+  const drops = (child: ProseMirrorNode): boolean =>
+    STAND_INS.has(child.type.name) ||
+    Object.keys(child.attrs).some((key) => !CARRIED_ATTRS.has(key) && attrSet(child, key)) ||
+    child.marks.some((mark: Mark) => !CARRIED_MARKS.has(mark.type.name));
+  // The node itself too: a table is a top-level node of its own, its colour
+  // and quote on it (inner#1619).
+  let lossy = drops(node);
   node.descendants((child) => {
     if (lossy) return false;
-    const attrDropped = Object.keys(child.attrs).some((key) => !CARRIED_ATTRS.has(key) && attrSet(child, key));
-    const markDropped = child.marks.some((mark: Mark) => !CARRIED_MARKS.has(mark.type.name));
-    lossy = STAND_INS.has(child.type.name) || attrDropped || markDropped;
+    lossy = drops(child);
     return !lossy;
   });
   return lossy;

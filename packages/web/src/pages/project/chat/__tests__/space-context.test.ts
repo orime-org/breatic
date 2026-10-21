@@ -437,6 +437,21 @@ describe('an open document', () => {
     expect(readBlocks().map((b) => b.lossy)).toEqual([true, true]);
   });
 
+  it('marks a coloured table, whose colour its Markdown does not carry', async () => {
+    const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |');
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    const view = editor.prosemirrorView!;
+    let tableAt = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (tableAt < 0 && node.type.name === 'docTable') tableAt = pos;
+      return tableAt < 0;
+    });
+    const table = view.state.doc.nodeAt(tableAt)!;
+    view.dispatch(view.state.tr.setNodeMarkup(tableAt, undefined, { ...table.attrs, textColor: 'red' }));
+
+    expect(readBlocks().map((b) => b.lossy)).toEqual([true, false]);
+  });
+
   it('leaves a table with merged cells unmarked: its Markdown is an HTML table, which keeps the spans', async () => {
     const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |');
     const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
