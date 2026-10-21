@@ -261,12 +261,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Start the control-plane subscriber (activity, project connection closes).
-  // Same Redis instance as the streams (DB2); it .duplicate()s the connection
-  // for its dedicated subscriber. The client uses the core factory so it
-  // inherits the production-safety knobs (keepAlive,
-  // commandTimeout: undefined for the subscribe path's blocking
-  // semantics, READONLY-aware reconnect, error log tagging).
+  // The control-plane client (DB2, the same Redis instance as the streams).
+  // Two consumers each .duplicate() it for a dedicated subscriber: ended
+  // sessions, below, before the port opens; project control sync (activity,
+  // credits, project connection closes), after it. The client uses the core
+  // factory so it inherits the production-safety knobs (keepAlive,
+  // commandTimeout: undefined for the subscribe path's blocking semantics,
+  // READONLY-aware reconnect, error log tagging).
   const controlRedis = createRedisClient(REDIS_STREAM_URL, {
     name: "collab-project-control",
     lazyConnect: false,
@@ -281,9 +282,9 @@ async function main(): Promise<void> {
       "redis_error",
     );
   });
-  // Ended sessions (inner#1548). Subscribed before the WebSocket port opens:
-  // an announcement published before the subscription is confirmed is lost,
-  // and a connection made in that gap would keep a session that ended.
+  // Ended sessions (inner#1548). Subscribed before the WebSocket port opens,
+  // so a failed first SUBSCRIBE ends startup with no client connected, like
+  // the member-change listener above.
   let sessionRevocation: SessionRevocation;
   try {
     sessionRevocation = await startSessionRevocation(hocuspocus, {

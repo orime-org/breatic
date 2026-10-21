@@ -318,7 +318,7 @@ export function StudioAccountMenu(): React.JSX.Element {
               {creditsFigure(overview, t)}
             </DropdownMenuTrailing>
           </DropdownMenuItem>
-          {/* Where this browser's and this account's sign-ins are managed. */}
+          {/* This browser's cookie consent, and the account's other sign-ins. */}
           <DropdownMenuSeparator />
           {COOKIE_SETTINGS_AVAILABLE ? (
             <DropdownMenuItem onSelect={openCookieSettings}>

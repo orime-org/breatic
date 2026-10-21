@@ -40,8 +40,8 @@ describe("collab entry exits", () => {
   });
 
   it("hears ended sessions before the port opens, and exits when it cannot", () => {
-    // inner#1548: an announcement published before the subscription is
-    // confirmed is lost, so no client may connect until it is.
+    // inner#1548: startup exits before any client connects when the first
+    // SUBSCRIBE fails.
     const start = code.indexOf("await startSessionRevocation(");
     const failed = code.indexOf('"session_revocation_listen_failed"');
     const listen = code.indexOf("await server.listen();");
