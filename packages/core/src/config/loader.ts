@@ -325,7 +325,7 @@ const agentConfigSchema = z.object({
   records_page_max_chars: z.number().int().min(1000).default(24000),
   /** How long a version's parameters, written as one line of JSON, may be in characters. */
   records_params_max_chars: z.number().int().min(10).default(400),
-  /** How long the words of one tool call's input, or of its result, may be in characters when a message is read back; a search matches a tool's input cut to the same length, never its result. */
+  /** How long the words of one tool call's input, or of its result, may be in characters when a message is read back; a search matches a tool's input cut to the same length, never its result. A questionnaire (an ask_user call that did not fail) is written and matched whole, its answers included. */
   records_tool_text_max_chars: z.number().int().min(10).default(600),
 }).superRefine((config, ctx) => {
   // A consolidation runs when the request is over the budget and takes turns

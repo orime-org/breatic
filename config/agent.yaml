@@ -208,7 +208,8 @@ records_params_max_chars: 400
 
 # How long the words of one tool call's input, or of its result, may be, in
 # characters, when a message is read back; a search matches a tool's input cut
-# to the same length, and never its result.
+# to the same length, and never its result. A questionnaire (an ask_user call
+# that did not fail) is written and matched whole, its answers included.
 records_tool_text_max_chars: 600
 
 # ── Thinking ──────────────────────────────────────────────

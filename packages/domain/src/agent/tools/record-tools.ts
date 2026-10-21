@@ -449,6 +449,7 @@ const searchInput = z
       .optional()
       .describe(
         "The words to look for. Split on spaces; a message matches when it holds every word, ignoring case. " +
+          "Past a limit the later words are left out, and the answer names the words searched. " +
           "Leave it out to list the conversations instead.",
       ),
     conversation_id: z.string().uuid().optional().describe("Search only this conversation, by the id the list gives."),
@@ -508,7 +509,8 @@ const searchConversations: Tool<z.infer<typeof searchInput>, string, RecordsCont
     "this one marked. With a query, list the messages holding every word of it, newest first, each with its " +
     "conversation, turn, speaker, time and the words around the match; read the turn whole with " +
     `${READ_CONVERSATION}. It matches what was said, what was attached, the questions asked and answered on a ` +
-    "questionnaire, and the words given to tools, not what the tools answered: read the turn to see those. " +
+    "questionnaire, and the words given to other tools (not to these record tools), not what the tools answered: " +
+    "read the turn to see those. " +
     "Matching is literal: it finds the words as written, ignoring case, so when nothing " +
     "is found, try other words, a shorter form or the other language the user writes in. The turn now " +
     `running is never found. Pages end with a cursor to pass back for the next one. ${DATA_NOTE} ${TIME_NOTE}`,

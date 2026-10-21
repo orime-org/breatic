@@ -9,7 +9,7 @@
  * and tasks of a canvas node, and the project's activity feed. The server
  * builds one of these per turn, bound to the turn's user, project,
  * conversation, turn index and Spaces; the model only ever names a
- * conversation, node or Space id and how far to page. Each read checks that
+ * conversation or node id, a Space by its name, and how far to page. Each read checks that
  * the user is still a member of the project before it reads anything.
  */
 

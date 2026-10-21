@@ -11,7 +11,8 @@
  * and the markers of how a turn ended. A record tool's call is written
  * without its result, which is a copy of records found elsewhere. Each part
  * is cut on its own: a text part at the page length, saying how much it
- * lost, and a tool's words at the tool length. The search
+ * lost, and any other tool's words at the tool length; a questionnaire's
+ * questions and answers are written whole. The search
  * in the server matches only words this writes out: the text parts, the
  * attachments' names, a questionnaire's questions and the answers given (for
  * an `ask_user` input that is no questionnaire, an old single-question card's
