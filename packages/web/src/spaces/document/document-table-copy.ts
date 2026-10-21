@@ -33,6 +33,7 @@ import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
+import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as copying reads it. */
@@ -139,6 +140,12 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
   if (selection instanceof CellSelection) return cellsBlocks(view, selection);
   const depth = oneCellDepth(selection);
   if (depth > 0) return inCellBlocks(view, depth);
+  // A selection leaving a table carries the whole table (inner#1619 T14).
+  const held = heldRange(selection);
+  if (held !== null) {
+    const slice = view.state.doc.slice(held.from, held.to);
+    return { blocks: fragmentToBlocks(slice.content as never) as never[], slice };
+  }
   if (!holdsTable(selection)) return null;
   return { blocks: fragmentToBlocks(selection.content().content as never) as never[], slice: null };
 }

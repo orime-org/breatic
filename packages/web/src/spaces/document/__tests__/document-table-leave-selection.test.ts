@@ -304,13 +304,15 @@ describe('deleting or typing over a selection leaving a table', () => {
     expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:X', 'paragraph:next']);
   });
 
-  it('puts pasted lines where the selection was, with no line added', () => {
+  it('puts pasted lines where the selection was, as at the start of a line in the body', () => {
     const { editor } = open();
     select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
 
     editor.prosemirrorView.pasteHTML('<p>X1</p><p>X2</p>');
 
-    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:X1', 'paragraph:X2low']);
+    // Pasting lines at the start of a line leaves an empty line before them
+    // in the body too.
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:X1', 'paragraph:X2low']);
   });
 
   it('takes the table away whole when a table from another app is pasted over a selection ending in it', () => {
@@ -340,6 +342,21 @@ describe('deleting or typing over a selection leaving a table', () => {
     press(editor, 'Enter');
 
     expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:ow', 'paragraph:next']);
+  });
+
+  it.each([
+    ['Option+Backspace', { key: 'Backspace', altKey: true }],
+    ['Ctrl+H', { key: 'h', ctrlKey: true }],
+    ['Mod+Delete (Ctrl outside macOS)', { key: 'Delete', ctrlKey: true }],
+  ] as const)('takes the table away whole with %s, the word and line deletes', (_name, init) => {
+    const { editor } = open();
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+    const view = editor.prosemirrorView;
+
+    const event = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true });
+    view.someProp('handleKeyDown', (f) => f(view, event));
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:low']);
   });
 
   it('takes the table away whole when the browser deletes a word or a line over it', () => {
@@ -381,6 +398,21 @@ describe('copying a selection leaving a table', () => {
     const clipped = tableClipped(editor as never, editor.prosemirrorView);
 
     expect(clipped?.external).toContain('<hr');
+  });
+
+  it('drags the whole table, the blocks at its edges that are not words included', () => {
+    const { editor } = open({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', { blocks: [{ type: 'paragraph', content: 'b2' }, { type: 'divider' }] } as never] }] });
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+    const view = editor.prosemirrorView;
+
+    const { slice } = view.serializeForClipboard(view.state.selection.content());
+
+    const types: string[] = [];
+    slice.content.descendants((node) => {
+      types.push(node.type.name);
+      return true;
+    });
+    expect(types).toContain('divider');
   });
 });
 

@@ -4,39 +4,36 @@
 /**
  * A selection with one end in a table and the other outside it takes the whole
  * table (inner#1619 T14), as Lexical (`$fixRangeSelectionForSelectedTable`) and
- * CKEditor 5 (its selection post-fixer) do: they move the selection to the
- * table's outside, so everything that reads the selection's range reads the
- * whole table.
+ * CKEditor 5 (its selection post-fixer) do: everything acting on such a
+ * selection acts on the whole table.
  *
- * A ProseMirror text selection has to end in text, so the two are kept apart
- * here: a `TableSpanSelection` shows its ends on the table's first or last
- * words, and its range (`ranges`, so `from`, `to` and `content()`) runs over
- * the table node: from the position before it, to the position after its last
- * row, inside it, which BlockNote reads as the table (`getNearestBlockPos`;
- * the position after the table is the next block's). Copying, dragging and
- * anything that deletes the range as it is take the table whole. Its own replace deletes the table as a node
- * and the part outside as text, so the line the selection ends in stays, as
- * it does in the body.
+ * A ProseMirror selection's range has to stay where its ends are: the view
+ * reads it back from the page while the pointer drags (prosemirror-view
+ * `selectionFromDOM`, and our body-edge pointer from the selection's ends), and
+ * a range set apart from them turns a drag into a caret. So the selection
+ * keeps its ends on the table's first or last words (`TableSpanSelection`),
+ * and what has to act on the whole table reads `heldRange`: the decoration
+ * drawing every cell selected, copying (`document-table-copy.ts`), a drag's
+ * content (`transformCopied`) and deleting.
  *
- * Inputs that would bypass that replace take the selection away through it
- * first (`takeAwayHeldTables`): Backspace, Delete and Enter
- * (`document-table-keys.ts`, ahead of the body's own, which delete the range
- * by position), paste (`document-table-paste.ts`, ahead of the table plugin's
- * paste into cells), a typed key, an input method's composition and the
- * browser's own deletes (`beforeinput`). A selection to an edge of the body
- * whose words end is in a table widens the same way
- * (`document-body-edge-selection.ts`).
+ * Deleting goes through `takeAwayHeldTables`: a `TableSpanSelection`'s own
+ * replace deletes each table as a node and the part outside as text, so the
+ * line the selection ends in stays, as it does in the body; a selection to an
+ * edge of the body deletes `heldRange`. Inputs that delete the range by
+ * position call it first: Backspace, Delete and Enter
+ * (`document-table-keys.ts`), paste (`document-table-paste.ts`, ahead of the
+ * table plugin's paste into cells), a typed key, an input method's
+ * composition and the browser's own deletes (`beforeinput`).
  */
 
 import { createExtension } from '@blocknote/core';
-import type { Node as PMNode, ResolvedPos, Slice } from '@tiptap/pm/model';
+import type { Node as PMNode, Slice } from '@tiptap/pm/model';
 import {
   AllSelection,
   NodeSelection,
   Plugin,
   PluginKey,
   Selection,
-  SelectionRange,
   TextSelection,
   type EditorState,
   type Transaction,
@@ -44,6 +41,7 @@ import {
 import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
+import { bodyEdgeAt } from '@web/spaces/document/document-body-edge-selection';
 import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /** The class every cell of a table in such a selection carries. */
@@ -56,28 +54,6 @@ export const IN_SELECTION = 'doc-table-in-selection';
  */
 function endOf(table: TableAt): number {
   return table.pos + table.node.nodeSize;
-}
-
-/**
- * The range a selection between two positions covers, widened over the
- * tables either of them stands in (inner#1619 T14).
- * @param doc - The document.
- * @param from - The position towards the start.
- * @param to - The position towards the end.
- * @param tables - The table around each, when it is in one.
- * @param tables.from - Around `from`.
- * @param tables.to - Around `to`.
- * @returns The range.
- */
-export function rangeOverTables(
-  doc: PMNode,
-  from: number,
-  to: number,
-  tables: { readonly from: TableAt | null; readonly to: TableAt | null },
-): SelectionRange {
-  const start = tables.from === null ? from : Math.min(from, tables.from.pos);
-  const end = tables.to === null ? to : Math.max(to, endOf(tables.to) - 1);
-  return new SelectionRange(doc.resolve(start), doc.resolve(end));
 }
 
 /**
@@ -95,20 +71,8 @@ function tablesAt(selection: Selection): { from: TableAt | null; to: TableAt | n
   return from !== null && to !== null && from.pos === to.pos ? null : { from, to };
 }
 
-/** A selection leaving a table: its range runs to the table node's edges. */
+/** A selection leaving a table, its ends on the table's first or last words. */
 export class TableSpanSelection extends TextSelection {
-  /**
-   * Builds the selection, its range widened to the tables at its ends.
-   * @param $anchor - The anchor, in text.
-   * @param $head - The head, in text.
-   */
-  constructor($anchor: ResolvedPos, $head: ResolvedPos = $anchor) {
-    super($anchor, $head);
-    const { from, to } = this.textRange();
-    const tables = tablesAt(this) ?? { from: null, to: null };
-    (this as unknown as { ranges: SelectionRange[] }).ranges = [rangeOverTables($anchor.doc, from, to, tables)];
-  }
-
   /**
    * Replaces the selection, the tables at its ends whole.
    * @param tr - The transaction.
@@ -129,21 +93,13 @@ export class TableSpanSelection extends TextSelection {
   }
 
   /**
-   * The selection's ends in text, in document order.
-   * @returns The two positions.
-   */
-  private textRange(): { from: number; to: number } {
-    return { from: Math.min(this.anchor, this.head), to: Math.max(this.anchor, this.head) };
-  }
-
-  /**
    * Deletes the tables at the selection's ends as nodes and the part outside
    * them as text, and puts the caret where the end outside a table was.
    * @param tr - The transaction.
    * @returns The caret.
    */
   private takeAway(tr: Transaction): Selection {
-    const { from, to } = this.textRange();
+    const { from, to } = this;
     const tables = tablesAt(this);
     const before = tables?.from ?? null;
     const after = tables?.to ?? null;
@@ -197,13 +153,10 @@ export function wholeTableSelection(state: EditorState): TableSpanSelection | nu
   const { selection, doc } = state;
   const tables = tablesAt(selection);
   if (tables === null) return null;
-  const forward = selection.anchor <= selection.head;
-  const start = Math.min(selection.anchor, selection.head);
-  const end = Math.max(selection.anchor, selection.head);
-  const from = tables.from === null ? start : edgeOf(doc, tables.from, -1);
-  const to = tables.to === null ? end : edgeOf(doc, tables.to, 1);
-  if (selection instanceof TableSpanSelection && from === start && to === end) return null;
-  const [anchor, head] = forward ? [from, to] : [to, from];
+  const from = tables.from === null ? selection.from : edgeOf(doc, tables.from, -1);
+  const to = tables.to === null ? selection.to : edgeOf(doc, tables.to, 1);
+  if (selection instanceof TableSpanSelection && from === selection.from && to === selection.to) return null;
+  const [anchor, head] = selection.anchor <= selection.head ? [from, to] : [to, from];
   return new TableSpanSelection(doc.resolve(anchor), doc.resolve(head));
 }
 
@@ -217,31 +170,51 @@ export function tableAtLeavingHead(state: EditorState): TableAt | null {
 }
 
 /**
- * Whether a selection takes a whole table because one of its ends is in it:
- * its range holds the table one end stands in. Selections of cells, of a node
- * and of everything are their own.
+ * What a selection with one end in a table and the other outside it acts on:
+ * its range widened over each table one of its ends stands in. An end on an
+ * edge of the body stands outside every table's content. Selections of cells,
+ * of a node and of everything are their own.
  * @param selection - The selection.
- * @returns True when it does.
+ * @returns The range, or null when no end leaves a table.
  */
-export function holdsWholeTable(selection: Selection): boolean {
+export function heldRange(selection: Selection): { from: number; to: number } | null {
   if (selection.empty || selection instanceof CellSelection || selection instanceof NodeSelection || selection instanceof AllSelection) {
-    return false;
+    return null;
   }
-  return [selection.$anchor, selection.$head].some(($end) => {
-    const table = tableAround($end);
-    return table !== null && table.pos >= selection.from && endOf(table) - 1 <= selection.to;
-  });
+  const doc = selection.$anchor.doc;
+  /**
+   * The table an end stands in.
+   * @param pos - The end.
+   * @returns The table, or null.
+   */
+  const around = (pos: number): TableAt | null => (bodyEdgeAt(doc, pos) === null ? tableAround(doc.resolve(pos)) : null);
+  const start = Math.min(selection.anchor, selection.head);
+  const end = Math.max(selection.anchor, selection.head);
+  const first = around(start);
+  const last = around(end);
+  if (first === null && last === null) return null;
+  if (first !== null && last !== null && first.pos === last.pos) return null;
+  const tables = [first, last].filter((table): table is TableAt => table !== null);
+  return { from: Math.min(start, ...tables.map((t) => t.pos)), to: Math.max(end, ...tables.map(endOf)) };
 }
 
 /**
- * Takes away a selection that holds a whole table, through the selection's
- * own replace.
+ * Takes away a selection with one end in a table and the other outside it,
+ * the table whole.
  * @param view - The editor view.
  * @returns Whether there was one to take away.
  */
 export function takeAwayHeldTables(view: EditorView): boolean {
-  if (!holdsWholeTable(view.state.selection)) return false;
-  view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+  const { selection } = view.state;
+  if (selection instanceof TableSpanSelection) {
+    view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+    return true;
+  }
+  const range = heldRange(selection);
+  if (range === null) return false;
+  const tr = view.state.tr.deleteRange(range.from, range.to);
+  tr.setSelection(Selection.near(tr.doc.resolve(tr.mapping.map(range.from, -1)), -1));
+  view.dispatch(tr.scrollIntoView());
   return true;
 }
 
@@ -251,10 +224,10 @@ export function takeAwayHeldTables(view: EditorView): boolean {
  * @returns The decorations.
  */
 function cellsInSelection(state: EditorState): DecorationSet {
-  const { selection, doc } = state;
-  if (!holdsWholeTable(selection)) return DecorationSet.empty;
+  const range = heldRange(state.selection);
+  if (range === null) return DecorationSet.empty;
   const decorations: Decoration[] = [];
-  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+  state.doc.nodesBetween(range.from, range.to, (node, pos) => {
     if (node.type.name !== DOC_TABLE) return true;
     node.descendants((child, at) => {
       if (!isTableCell(child)) return true;
@@ -264,7 +237,7 @@ function cellsInSelection(state: EditorState): DecorationSet {
     });
     return false;
   });
-  return DecorationSet.create(doc, decorations);
+  return DecorationSet.create(state.doc, decorations);
 }
 
 /**
@@ -284,9 +257,16 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
       props: {
         decorations: cellsInSelection,
         handleTextInput: (view, _from, _to, text) => {
-          if (!holdsWholeTable(view.state.selection)) return false;
+          if (!(view.state.selection instanceof TableSpanSelection) && !takeAwayHeldTables(view)) return false;
           view.dispatch(view.state.tr.insertText(text).scrollIntoView());
           return true;
+        },
+        // A drag of such a selection carries the whole table, which the drop
+        // takes away (`tr.deleteSelection()`, the selection's own replace).
+        transformCopied: (slice, view) => {
+          const range = heldRange(view.state.selection);
+          if (range === null || !slice.eq(view.state.selection.content())) return slice;
+          return view.state.doc.slice(range.from, range.to);
         },
         handleDOMEvents: {
           compositionstart: (view) => {

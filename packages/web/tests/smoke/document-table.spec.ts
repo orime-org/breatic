@@ -1062,3 +1062,24 @@ test('T14: a mouse drag from a cell to below the table takes the whole table, an
   await expect(page.locator(`${EDITOR} [data-node-type='docTable']`)).toHaveCount(0);
   await expect(page.locator(TOP).first()).toHaveText('lead');
 });
+
+for (const key of ['Alt+Backspace', 'Enter']) {
+  test(`T14: ${key} over a mouse drag from a cell to below the table takes the whole table away`, async () => {
+    await openFreshDocument(page);
+    await smallTable(page);
+    await clickAndSettle(page, page.locator(TOP).nth(2));
+    await page.keyboard.type('below words');
+    const from = await page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^b1$/ }).boundingBox();
+    const to = await page.locator(TOP).nth(2).boundingBox();
+
+    await page.mouse.move(from!.x + 6, from!.y + from!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to!.x + 20, to!.y + to!.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.locator(`${EDITOR} td.doc-table-in-selection`)).toHaveCount(4);
+    await page.keyboard.press(key);
+
+    await expect(page.locator(`${EDITOR} [data-node-type='docTable']`)).toHaveCount(0);
+    await expect(page.locator(TOP).first()).toHaveText('lead');
+  });
+}

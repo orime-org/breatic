@@ -360,6 +360,21 @@ export const documentTableKeysExtension = createExtension(() => ({
       takeAwayHeldTables(editor.prosemirrorView) || deleteWholeTable(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
       takeAwayHeldTables(editor.prosemirrorView) || deleteWholeTable(editor) || deleteAtEdge(editor.prosemirrorView),
+    // The word and line deletes the body binds (Tiptap `keymap.ts:73-91`,
+    // macOS ones included) delete the range by position as well.
+    ...Object.fromEntries(
+      [
+        'Mod-Backspace',
+        'Shift-Backspace',
+        'Mod-Delete',
+        'Ctrl-h',
+        'Alt-Backspace',
+        'Ctrl-d',
+        'Ctrl-Alt-Backspace',
+        'Alt-Delete',
+        'Alt-d',
+      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayHeldTables(editor.prosemirrorView)]),
+    ),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>
