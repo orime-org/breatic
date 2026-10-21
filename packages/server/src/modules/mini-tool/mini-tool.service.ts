@@ -20,6 +20,7 @@ import {
 import {
   paramValueAllowed,
   t,
+  type ModelEntry,
 } from "@breatic/shared";
 import {
   catalogEntryOf,
@@ -43,17 +44,62 @@ export interface PreparedRun {
 }
 
 /**
- * The run as the estimate reads it. An empty prompt on a tool that has its own
- * is sent as that one.
+ * The prompt a run is sent: an empty one on a tool that has its own is sent as
+ * that one, and a tool's preamble goes before whatever the reader wrote.
+ * @param spec - The tool.
+ * @param typed - What the reader wrote.
+ * @returns The prompt.
+ */
+function promptOf(spec: MiniToolSpec, typed: string): string {
+  const empty = typed.trim() === "";
+  const preamble = spec.prompt?.preamble;
+  if (preamble !== undefined) return empty ? preamble : `${preamble} Also: ${typed.trim()}`;
+  return empty && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed;
+}
+
+/**
+ * The catalog ratio nearest a size, by how far apart the two shapes are on a
+ * log scale, so 2:1 and 1:2 are as far from 1:1 as each other.
+ * @param values - The param's values; `a:b` ones are candidates.
+ * @param width - The source's width.
+ * @param height - The source's height.
+ * @returns The nearest ratio, or `auto` when none is a ratio.
+ */
+function nearestRatio(values: readonly unknown[], width: number, height: number): string {
+  const shape = Math.log(width / height);
+  let best = "auto";
+  let gap = Infinity;
+  for (const value of values) {
+    const match = typeof value === "string" ? /^(\d+):(\d+)$/.exec(value) : null;
+    if (match === null) continue;
+    const d = Math.abs(Math.log(Number(match[1]) / Number(match[2])) - shape);
+    if (d < gap) {
+      gap = d;
+      best = value as string;
+    }
+  }
+  return best;
+}
+
+/**
+ * The run as the estimate reads it, with the ratio a tool takes from its
+ * source written in when the request says the source's size.
  * @param spec - The tool.
  * @param body - The validated request.
+ * @param entry - The pinned model's catalog entry.
  * @returns The snapshot.
  */
-function snapshotOf(spec: MiniToolSpec, body: MiniToolRequest): MiniToolSnapshot {
-  const typed = body.prompt ?? "";
+function snapshotOf(spec: MiniToolSpec, body: MiniToolRequest, entry: ModelEntry): MiniToolSnapshot {
+  const params: Record<string, unknown> = { ...body.params };
+  const aspect = spec.sourceAspectParam;
+  if (aspect !== undefined) {
+    const { width, height } = body.source;
+    params[aspect] =
+      width !== undefined && height !== undefined ? nearestRatio(entry.params[aspect]?.values ?? [], width, height) : "auto";
+  }
   return {
-    params: body.params,
-    prompt: typed.trim() === "" && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed,
+    params,
+    prompt: promptOf(spec, body.prompt ?? ""),
     source: {
       url: body.source.url,
       ...(body.source.duration !== undefined && { duration: body.source.duration }),
@@ -82,7 +128,7 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
       throw new AppError(400, t("server.mini_tool.invalidParam", { name }));
     }
   }
-  const snapshot = snapshotOf(spec, body);
+  const snapshot = snapshotOf(spec, body, entry);
   const input = miniToolEstimateInput(spec, snapshot);
   const params: Record<string, unknown> = { ...input.params };
   if (spec.prompt) params.prompt = snapshot.prompt;

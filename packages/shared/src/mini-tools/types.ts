@@ -60,7 +60,11 @@ export type MiniToolIcon =
   | "Timer"
   | "Highlighter"
   | "Expand"
-  | "Grid3x3";
+  | "Grid3x3"
+  | "Rotate3d"
+  | "Lightbulb"
+  | "Palette"
+  | "SquarePen";
 
 /**
  * One choice of an enum param. It reads as its `label` when it has one — the
@@ -160,6 +164,18 @@ export interface MiniToolModelParam {
    * tier's label, and the run is sent the megapixels it comes to on the source.
    */
   readonly sizeTiers?: readonly SizeTier[];
+  /**
+   * The tool's own starting value, over the catalog's default, which the
+   * generation panel keeps for the same model. One of the catalog's values.
+   */
+  readonly default?: string | number;
+  /**
+   * How the panel draws the param, when not by its declaration: `swatches` a
+   * row of colours; `swatchCustom` the colour picked by hand, drawn as the
+   * last cell of that row; `lightAngle` the light sphere, which takes the two
+   * params so marked, the azimuth first.
+   */
+  readonly display?: "swatches" | "swatchCustom" | "lightAngle";
 }
 
 /** A second piece of media the tool reads, picked from the canvas. */
@@ -172,6 +188,10 @@ export interface MiniToolSlot {
   readonly many: boolean;
   /** The pick banner's text. */
   readonly bannerKey: string;
+  /** Present when the tool needs the slot filled, though its param is optional in the catalog. */
+  readonly required?: true;
+  /** The name shown above the slot's tiles, when the tiles alone do not say what they are for. */
+  readonly titleKey?: string;
 }
 
 /** One result node the tool produces. */
@@ -227,9 +247,25 @@ interface MiniToolBase {
   /**
    * Present on a model tool whose pinned model takes a prompt. `defaultText`,
    * when given, is sent in place of an empty prompt, so the reader may leave
-   * it empty.
+   * it empty. `preamble`, when given, is always sent, with what the reader
+   * wrote after it.
    */
-  readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string };
+  readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string; readonly preamble?: string };
+  /**
+   * A catalog param the server fills with the aspect ratio nearest the
+   * source's size, read off the request; the reader never sets it.
+   */
+  readonly sourceAspectParam?: string;
+  /**
+   * How the panel lays the tool out, when not as one column: `columns.left`
+   * names the params drawn in a left column, the rest going on the right;
+   * `whenSlotFilled` hides params while a slot holds a pick, which then shows
+   * large in the left column. Hidden params are not sent.
+   */
+  readonly panel?: {
+    readonly columns?: { readonly left: readonly string[] };
+    readonly whenSlotFilled?: { readonly slot: string; readonly hide: readonly string[] };
+  };
 }
 
 /**

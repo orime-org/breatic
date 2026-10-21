@@ -782,7 +782,13 @@
         "motion_prompt": "动作描述",
         "append_duration": "延长时长",
         "ambience": "环境音",
-        "double_output": "生成两版"
+        "double_output": "生成两版",
+        "light_azimuth": "光源方向",
+        "light_elevation": "光源高度",
+        "light_color": "光的颜色",
+        "light_color_hex": "自定义光色",
+        "light_intensity": "强度",
+        "light_quality": "光质"
       },
       "paramField": {
         "speaker": "名字",
@@ -1020,6 +1026,29 @@
         },
         "mark": {
           "label": "备注"
+        },
+        "angle": {
+          "label": "多角度",
+          "prompt": "想补充的可以写在这里，比如：背景保持清晰"
+        },
+        "relight": {
+          "label": "重新打光",
+          "prompt": "想补充光照的可以写在这里，比如：烛光、身后有霓虹灯牌",
+          "slot": {
+            "light_reference": "选一张图，照它的光照来打光"
+          }
+        },
+        "restyle": {
+          "label": "风格化",
+          "prompt": "想补充的可以写在这里，比如：颜色柔和一些",
+          "slotTitle": "风格图",
+          "slot": {
+            "style": "选最多三张图，照它们的风格来画"
+          }
+        },
+        "quickEdit": {
+          "label": "快速编辑",
+          "prompt": "写下要改什么，比如：改成下雨的夜晚、把衬衫换成黑夹克"
         }
       },
       "video": {
@@ -1194,6 +1223,15 @@
         "picked": "已选 {picked} / {total}",
         "pickAll": "全选",
         "pickNone": "全不选"
+      },
+      "relight": {
+        "lightTitle": "光源",
+        "referenceTitle": "光照参考图",
+        "optional": "可选",
+        "followsReference": "光照跟随这张图",
+        "referenceNote": "光照取自这张图。右侧的颜色、强度、光质会覆盖它。",
+        "fromReference": "跟随参考图",
+        "sourceFromReference": "跟随参考图"
       }
     },
     "template": {

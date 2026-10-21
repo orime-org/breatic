@@ -121,6 +121,17 @@ describe('MiniToolPanelContainer', () => {
     );
   });
 
+  // inner#1304: pressing Run leaves picking, as pressing generate does.
+  it('ends a pick still under way when Run is pressed, and runs', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    render(tree(source('a.png'), onRun));
+    act(() => canvasSessions.of('').getState().startMiniToolSlotPick('src', 'style', 3));
+    expect(canvasSessions.of('').getState().pickSession).not.toBeNull();
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledTimes(1);
+    expect(canvasSessions.of('').getState().pickSession).toBeNull();
+  });
+
   it('shows a press under way while the draft says it is exporting', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     act(() => canvasSessions.of('').getState().setMiniToolExporting(true, canvasSessions.of('').getState().panelSession));

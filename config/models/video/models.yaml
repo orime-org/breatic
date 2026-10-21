@@ -85,6 +85,7 @@ models:
         description: "Output resolution"
         default: "720p"
         values: ["360p", "720p", "1080p", "4k"]
+        value_labels: {"4k": "4K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -233,6 +234,7 @@ models:
         description: "Output resolution"
         default: "720p"
         values: ["480p", "720p", "1080p", "4k"]
+        value_labels: {"4k": "4K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -314,6 +316,7 @@ models:
         description: "Output resolution"
         default: "768p"
         values: ["768p", "2k"]
+        value_labels: {"2k": "2K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -447,6 +450,7 @@ models:
         description: "Output resolution"
         default: "720p"
         values: ["360p", "720p", "1080p", "4k"]
+        value_labels: {"4k": "4K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -502,6 +506,7 @@ models:
         description: "Output resolution"
         default: "768p"
         values: ["768p", "2k"]
+        value_labels: {"2k": "2K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -629,6 +634,7 @@ models:
         description: "Output resolution"
         default: "720p"
         values: ["480p", "720p", "1080p", "4k"]
+        value_labels: {"4k": "4K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -879,6 +885,7 @@ models:
         description: "Output resolution"
         default: "768p"
         values: ["768p", "2k"]
+        value_labels: {"2k": "2K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -961,6 +968,7 @@ models:
         description: "Output resolution"
         default: "720p"
         values: ["360p", "720p", "1080p", "4k"]
+        value_labels: {"4k": "4K"}
         fill: "panel"
       shots:
         description: "Shots, each with its own prompt, written into the prompt in order"
@@ -1227,6 +1235,7 @@ models:
         description: "Output resolution"
         default: "720p"
         values: ["480p", "720p", "1080p", "4k"]
+        value_labels: {"4k": "4K"}
         fill: "tool"
       video:
         description: "Source video"
@@ -1612,6 +1621,7 @@ models:
         description: "Output resolution"
         default: "1080p"
         values: ["720p", "1080p", "2k", "4k"]
+        value_labels: {"2k": "2K", "4k": "4K"}
         fill: "tool"
       video:
         description: "Source video"

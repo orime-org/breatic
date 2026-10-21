@@ -14,10 +14,12 @@ import {
   exportsBeforeRun,
   miniToolRefusal,
   promptRequired,
+  readsShownSize,
   rectForAspect,
   resolvedParams,
   setRectSide,
   slotLengthCap,
+  slotOptional,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 
 /**
@@ -406,5 +408,68 @@ describe('crop rectangle', () => {
 
   it('never goes under one pixel', () => {
     expect(setRectSide({ x: 0, y: 0, w: 500, h: 500 }, 'w', 0, null, source).w).toBe(1);
+  });
+});
+
+// inner#1304: what the batch-four tools add to the panel's rules.
+describe('batch-four tools', () => {
+  const nb = entry(
+    {
+      images: { description: '', default: null, type: 'list', max_items: 1, accepts: 'image', fill: 'tool' },
+      light_reference: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true },
+      light_azimuth: { description: '', default: 315, min: 0, max: 315, step: 45, fill: 'tool', label: 'Light direction' },
+      light_elevation: { description: '', default: 30, min: -30, max: 90, step: 30, fill: 'tool', label: 'Light height' },
+      light_color: { description: '', default: 'auto', values: ['auto', 'warm'], fill: 'tool', label: 'Colour' },
+      resolution: { description: '', default: '1k', values: ['0.5k', '1k', '2k', '4k'], fill: 'tool' },
+    },
+    true,
+  );
+  const gpt = entry(
+    { style_images: { description: '', default: null, type: 'list', max_items: 3, accepts: 'image', fill: 'canvas', optional: true } },
+    true,
+  );
+
+  it('runs on the tool\'s own default over the model\'s', () => {
+    expect(resolvedParams(tool('image.relight'), nb, {}).resolution).toBe('2k');
+    expect(resolvedParams(tool('image.relight'), nb, { resolution: '4k' }).resolution).toBe('4k');
+  });
+
+  it('sends no hidden setting once the slot that hides it is filled', () => {
+    const draft = { light_azimuth: 90, light_elevation: 0 };
+    const empty = resolvedParams(tool('image.relight'), nb, draft, {}, [], {});
+    expect(empty).toMatchObject({ light_azimuth: 90, light_elevation: 0 });
+    const filled = resolvedParams(tool('image.relight'), nb, draft, {}, [], {
+      light_reference: { url: 'https://cdn.example.com/ref.png' },
+    });
+    expect(filled).not.toHaveProperty('light_azimuth');
+    expect(filled).not.toHaveProperty('light_elevation');
+    expect(filled.light_color).toBe('auto');
+  });
+
+  it('holds a slot the tool requires even where the model lets it stay empty', () => {
+    const style = tool('image.restyle').slots[0]!;
+    const reference = tool('image.relight').slots[0]!;
+    expect(slotOptional(style, gpt)).toBe(false);
+    expect(slotOptional(reference, nb)).toBe(true);
+    const base = { entry: gpt, prompt: '', slots: {}, sourceShown: true, exporting: false };
+    expect(miniToolRefusal({ ...base, spec: tool('image.restyle') })).toBe('slotMissing');
+    expect(
+      miniToolRefusal({ ...base, spec: tool('image.restyle'), slots: { style: [{ url: 'https://cdn.example.com/s.png' }] } }),
+    ).toBeNull();
+  });
+
+  it('runs relight and multi-angle with no prompt, and holds quick edit until one is written', () => {
+    const base = { entry: nb, prompt: '', slots: {}, sourceShown: true, exporting: false };
+    expect(miniToolRefusal({ ...base, spec: tool('image.relight') })).toBeNull();
+    expect(miniToolRefusal({ ...base, spec: tool('image.angle') })).toBeNull();
+    expect(miniToolRefusal({ ...base, spec: tool('image.quickEdit') })).toBe('promptMissing');
+    expect(miniToolRefusal({ ...base, spec: tool('image.quickEdit'), prompt: 'make it night' })).toBeNull();
+  });
+
+  it('reads the shown picture for a tool whose ratio the server takes from the source', () => {
+    expect(readsShownSize(tool('image.relight'))).toBe(true);
+    expect(readsShownSize(tool('image.quickEdit'))).toBe(false);
+    expect(readsShownSize(tool('image.upscale'))).toBe(true);
+    expect(readsShownSize(tool('image.remove-bg'))).toBe(false);
   });
 });

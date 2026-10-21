@@ -1,9 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { ADJUST_RANGES, defaultAdjustValue, setLocale } from '@breatic/shared';
+import { ADJUST_RANGES, defaultAdjustValue, setLocale, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+
+import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
+
+const sphere = vi.hoisted(() => ({ last: null as CameraAngleSphereProps | null }));
+
+vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
+  default: (props: CameraAngleSphereProps) => {
+    sphere.last = props;
+    return <div data-testid='fake-sphere' />;
+  },
+}));
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -368,3 +379,163 @@ describe('MiniToolPanel grid tile picking', () => {
   });
 });
 
+
+// inner#1304: the batch-four panels.
+describe('the batch-four panels', () => {
+  const SOURCE = 'https://resource.test/image/a.png';
+  const REFERENCE = 'https://resource.test/image/ref.png';
+  const RESOLUTION: ParamDescriptor = { description: '', default: '1k', values: ['1k', '2k'], fill: 'tool' };
+
+  /**
+   * A pinned model declaring the given params.
+   * @param params - Its params.
+   * @returns The entry.
+   */
+  function pinned(params: Record<string, ParamDescriptor>): ModelEntry {
+    return { name: 'm', takes_prompt: true, params } as unknown as ModelEntry;
+  }
+
+  const relightEntry = pinned({
+    light_reference: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true },
+    light_azimuth: { description: '', default: 315, min: 0, max: 315, step: 45, fill: 'tool', value_labels: { 315: 'Front left' } },
+    light_elevation: { description: '', default: 30, min: -30, max: 90, step: 30, fill: 'tool', value_labels: { 30: 'Above' } },
+    resolution: RESOLUTION,
+  });
+  const relightControls = [
+    { kind: 'lightAngle', name: 'light_angle', params: { azimuth: 'light_azimuth', elevation: 'light_elevation' } },
+    { kind: 'choice', name: 'resolution', options: [{ value: '1k', label: '1K' }, { value: '2k', label: '2K' }] },
+  ] as MiniToolPanelProps['modelControls'];
+
+  /**
+   * Mount the relight panel.
+   * @param slots - The draft slots.
+   * @returns The props.
+   */
+  function mountRelight(slots: MiniToolPanelProps['slots'] = {}): MiniToolPanelProps {
+    return mount({
+      spec: tool('image.relight'),
+      modelEntry: relightEntry,
+      modelControls: relightControls,
+      params: { light_azimuth: 315, light_elevation: 30, resolution: '2k' },
+      source: { width: 768, height: 1152, url: SOURCE },
+      slots,
+      creditText: '10.5',
+    });
+  }
+
+  it('puts the light in the left column and the rest on the right, the note last across both', async () => {
+    mountRelight();
+    await screen.findByTestId('fake-sphere');
+    const left = screen.getByTestId('mini-tool-column-left');
+    const right = screen.getByTestId('mini-tool-column-right');
+    expect(within(left).getByTestId('generate-camera-angle')).toBeInTheDocument();
+    expect(within(right).getByTestId('mini-tool-slot-image.relight-light_reference')).toBeInTheDocument();
+    expect(within(right).getByTestId('generate-param-resolution-option-2k')).toBeInTheDocument();
+    const prompt = screen.getByTestId('mini-tool-prompt');
+    expect(left.contains(prompt) || right.contains(prompt)).toBe(false);
+    expect(right.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('puts the source on the light sphere card', async () => {
+    mountRelight();
+    await screen.findByTestId('fake-sphere');
+    expect(sphere.last?.subjectUrl).toBe(`${SOURCE}?cors=1`);
+  });
+
+  it('shows the reference in place of the light sphere once one is picked', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).queryByTestId('generate-camera-angle')).toBeNull();
+    expect(within(left).getByTestId('mini-tool-reference-preview')).toHaveAttribute('src', expect.stringContaining('ref.png'));
+  });
+
+  it('marks the style slot required where the model lets it stay empty', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true } }),
+      params: {},
+    });
+    expect(screen.getByTestId('mini-tool-slot-image.restyle-style')).toHaveAccessibleName('Image (required)');
+  });
+
+  it('puts the multi-angle source on the camera sphere card', async () => {
+    const qwen = {
+      ...pinned({}),
+      camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+    } as ModelEntry;
+    mount({
+      spec: tool('image.angle'),
+      modelEntry: qwen,
+      modelControls: [{ kind: 'cameraAngle', name: 'camera_angle', params: qwen.camera_angle! }],
+      params: { horizontal_angle: 0, vertical_angle: 0, distance: 1 },
+      source: { width: 768, height: 1152, url: SOURCE },
+    });
+    await screen.findByTestId('fake-sphere');
+    expect(sphere.last?.subjectUrl).toBe(`${SOURCE}?cors=1`);
+  });
+
+  // inner#1304 visual review.
+  it('clears the reference from its slot alone, never from the large picture', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).getByTestId('mini-tool-reference-preview')).toBeInTheDocument();
+    expect(within(left).queryByRole('button')).toBeNull();
+    expect(screen.getByTestId('mini-tool-slot-image.relight-light_reference-clear')).toBeInTheDocument();
+  });
+
+  it('names the restyle slot above its tiles', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true, max_items: 3 } }),
+      params: {},
+    });
+    expect(screen.getByText('Style pictures')).toBeInTheDocument();
+  });
+
+  it('keeps the light heading over the reference, saying the light follows it', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).getByText('Light source')).toBeInTheDocument();
+    expect(within(left).getByText('Follows the reference')).toBeInTheDocument();
+  });
+
+  it('says a slot is required only while it holds nothing', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true, max_items: 3 } }),
+      params: {},
+      slots: { style: [{ url: REFERENCE }] },
+      slotCaps: { style: 3 },
+    });
+    expect(screen.getByTestId('mini-tool-slot-image.restyle-style')).toHaveAccessibleName('Image');
+  });
+
+  it('takes the wide panel for the camera sphere, laid beside its sliders', async () => {
+    const qwen = {
+      ...pinned({}),
+      camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+    } as ModelEntry;
+    mount({
+      spec: tool('image.angle'),
+      modelEntry: qwen,
+      modelControls: [{ kind: 'cameraAngle', name: 'camera_angle', params: qwen.camera_angle! }],
+      params: { horizontal_angle: 0, vertical_angle: 0, distance: 1 },
+      source: { width: 768, height: 1152, url: SOURCE },
+    });
+    await screen.findByTestId('fake-sphere');
+    expect(screen.getByTestId('generate-camera-angle-control')).toHaveAttribute('data-layout', 'beside');
+    expect(screen.getByTestId('mini-tool-panel').className).toContain('w-[min(560px,92vw)]');
+  });
+
+  it('keeps a prompt that holds Run back before the params', () => {
+    mount({
+      spec: tool('image.quickEdit'),
+      modelEntry: pinned({ resolution: RESOLUTION }),
+      modelControls: [{ kind: 'choice', name: 'resolution', options: [{ value: '2k', label: '2K' }] }],
+      params: { resolution: '2k' },
+    });
+    const prompt = screen.getByTestId('mini-tool-prompt');
+    const param = screen.getByTestId('generate-param-resolution-option-2k');
+    expect(prompt.compareDocumentPosition(param) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

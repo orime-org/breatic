@@ -17,8 +17,10 @@
 
 import {
   CAMERA_ANGLE_AXES,
+  CAMERA_ANGLE_GRID,
   appliesInMode,
   nearestCameraAngle,
+  type AngleGrid,
   type CameraAngle,
   type CameraAngleParams,
   type ItemField,
@@ -26,6 +28,7 @@ import {
   type ParamDescriptor,
 } from '@breatic/shared';
 
+import type { AngleParams } from '@web/spaces/canvas/generate/angle-spheres';
 import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import type { SliderStop } from '@web/spaces/canvas/generate/ParamSliderRow';
 
@@ -41,38 +44,50 @@ export type ModelControl =
   | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[] }
   | { kind: 'text'; name: string }
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
-  | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams };
+  | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams }
+  | { kind: 'lightAngle'; name: 'light_angle'; params: AngleParams }
+  | {
+      kind: 'swatches';
+      name: string;
+      options: ParamOption[];
+      /** The param a colour picked by hand is written to, as the last cell. */
+      custom?: string;
+    };
+
+/** How a mini-tool's registry asks a param to be drawn (inner#1304). */
+export type ParamDisplay = 'swatches' | 'swatchCustom' | 'lightAngle';
 
 /**
- * How a camera pose reads, azimuth then elevation then distance, each step
- * named by its param's `value_labels` (inner#830).
+ * How a pose on a sphere reads, azimuth then elevation then distance, each step
+ * named by its param's `value_labels` (inner#830); a light has no distance.
  * @param specs - The model's params.
- * @param params - The three param names.
+ * @param params - The pose's param names.
  * @param pose - The pose; read at the nearest step of the grid.
- * @returns The three names.
+ * @param grid - The sphere's grid; the camera's when absent.
+ * @returns One name per axis the params name.
  */
 export function cameraAngleNames(
   specs: Readonly<Record<string, Pick<ParamDescriptor, 'value_labels'>>>,
-  params: CameraAngleParams,
+  params: AngleParams,
   pose: CameraAngle,
-): [string, string, string] {
-  const at = nearestCameraAngle(pose);
-  return [
-    optionLabel(specs[params.azimuth] ?? {}, at.azimuth),
-    optionLabel(specs[params.elevation] ?? {}, at.elevation),
-    optionLabel(specs[params.distance] ?? {}, at.distance),
-  ];
+  grid: AngleGrid = CAMERA_ANGLE_GRID,
+): string[] {
+  const at = nearestCameraAngle(pose, grid);
+  return CAMERA_ANGLE_AXES.flatMap((axis) => {
+    const name = params[axis];
+    return name === undefined ? [] : [optionLabel(specs[name] ?? {}, at[axis])];
+  });
 }
 
 /**
  * The params a control writes, by name.
  * @param control - One of a model's own controls.
- * @returns Its param names: three for a camera pose, one otherwise.
+ * @returns Its param names: three for a camera pose, two for the light sphere, one otherwise.
  */
-function controlParams(control: ModelControl): string[] {
-  return control.kind === 'cameraAngle'
-    ? CAMERA_ANGLE_AXES.map((axis) => control.params[axis])
-    : [control.name];
+export function controlParams(control: ModelControl): string[] {
+  if (control.kind === 'cameraAngle') return CAMERA_ANGLE_AXES.map((axis) => control.params[axis]);
+  if (control.kind === 'lightAngle') return [control.params.azimuth, control.params.elevation];
+  return [control.name];
 }
 
 /**
@@ -173,17 +188,46 @@ export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
  * the params the tool lists, in that order, each read from the model's own
  * declaration. A param only a mini-tool fills (`tool`) or one the generation
  * panel also fills (`panel`) is drawn; any other is left to the request.
+ * The model's camera pose and the params the registry marks as the light
+ * sphere are each one sphere, drawn where the first of its params is listed;
+ * a param marked as swatches is a row of colours, whose last cell writes the
+ * param marked as swatchCustom.
  * @param model - The pinned model.
  * @param keys - The params the tool lists.
+ * @param display - How the registry asks a listed param to be drawn.
  * @returns One control per drawable listed param.
  */
-export function controlsForKeys(model: ModelEntry, keys: readonly string[]): ModelControl[] {
+export function controlsForKeys(
+  model: ModelEntry,
+  keys: readonly string[],
+  display: Readonly<Record<string, ParamDisplay>> = {},
+): ModelControl[] {
   const controls: ModelControl[] = [];
+  const pose = model.camera_angle;
+  const inPose = new Set(pose ? CAMERA_ANGLE_AXES.map((axis) => pose[axis]) : []);
+  const light = keys.filter((key) => display[key] === 'lightAngle');
+  const custom = keys.find((key) => display[key] === 'swatchCustom');
   for (const name of keys) {
     const spec = model.params[name];
     if (spec === undefined || (spec.fill !== 'tool' && spec.fill !== 'panel')) continue;
+    if (pose && inPose.has(name)) {
+      if (!controls.some((c) => c.kind === 'cameraAngle')) controls.push({ kind: 'cameraAngle', name: 'camera_angle', params: pose });
+      continue;
+    }
+    if (display[name] === 'lightAngle') {
+      const [azimuth, elevation] = light;
+      if (name === azimuth && elevation !== undefined) {
+        controls.push({ kind: 'lightAngle', name: 'light_angle', params: { azimuth, elevation } });
+      }
+      continue;
+    }
+    if (name === custom) continue;
     const control = controlFor(name, spec);
-    if (control) controls.push(control);
+    if (control?.kind === 'choice' && display[name] === 'swatches') {
+      controls.push({ kind: 'swatches', name, options: control.options, ...(custom !== undefined && { custom }) });
+    } else if (control) {
+      controls.push(control);
+    }
   }
   return controls;
 }

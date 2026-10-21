@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { cn } from '@web/lib/utils';
 
 /** One selectable option: what gets reported, and what the user reads. */
 export interface ParamOption {
@@ -28,6 +29,11 @@ interface ParamOptionGroupProps {
   testIdPrefix: string;
   /** Extra classes on the section wrapper (spacing between stacked groups). */
   className?: string;
+  /**
+   * Whether every option takes the same width, as in a mini-tool panel's
+   * columns (inner#1304); a row that cannot hold every label wraps.
+   */
+  even?: boolean;
 }
 
 /**
@@ -80,6 +86,7 @@ export const PARAM_OPTION_CLASS =
  * @param root0.onSelect - Called with the picked value.
  * @param root0.testIdPrefix - `data-testid` stem for the options.
  * @param root0.className - Extra classes on the wrapper.
+ * @param root0.even - Whether every option takes the same width.
  * @returns The option group, or null when there is nothing to offer.
  */
 export function ParamOptionGroup({
@@ -89,6 +96,7 @@ export function ParamOptionGroup({
   onSelect,
   testIdPrefix,
   className,
+  even = false,
 }: ParamOptionGroupProps): React.JSX.Element | null {
   if (options.length === 0) return null;
   return (
@@ -111,7 +119,7 @@ export function ParamOptionGroup({
             aria-current={value === option.value}
             disabled={option.disabled}
             onClick={() => onSelect(option.value)}
-            className={PARAM_OPTION_CLASS}
+            className={cn(PARAM_OPTION_CLASS, even && 'basis-0 min-w-fit px-1')}
           >
             {option.label}
           </Button>

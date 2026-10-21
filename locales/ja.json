@@ -782,7 +782,13 @@
         "motion_prompt": "動きの説明",
         "append_duration": "延長する長さ",
         "ambience": "環境音",
-        "double_output": "2 パターン生成"
+        "double_output": "2 パターン生成",
+        "light_azimuth": "光の方向",
+        "light_elevation": "光の高さ",
+        "light_color": "光の色",
+        "light_color_hex": "カスタムの光の色",
+        "light_intensity": "強さ",
+        "light_quality": "光の質"
       },
       "paramField": {
         "speaker": "名前",
@@ -1020,6 +1026,29 @@
         },
         "mark": {
           "label": "マークアップ"
+        },
+        "angle": {
+          "label": "マルチアングル",
+          "prompt": "補足があれば入力（例：背景はくっきりのまま）"
+        },
+        "relight": {
+          "label": "ライティング変更",
+          "prompt": "光について補足があれば入力（例：ろうそくの光、背後にネオンサイン）",
+          "slot": {
+            "light_reference": "光を写したい画像を選択"
+          }
+        },
+        "restyle": {
+          "label": "スタイル変換",
+          "prompt": "補足があれば入力（例：色を柔らかめに）",
+          "slotTitle": "スタイル画像",
+          "slot": {
+            "style": "スタイルを使う画像を最大 3 枚選択"
+          }
+        },
+        "quickEdit": {
+          "label": "クイック編集",
+          "prompt": "変えたい内容を入力（例：雨の夜にする、シャツを黒いジャケットに替える）"
         }
       },
       "video": {
@@ -1194,6 +1223,15 @@
         "picked": "{picked} / {total} 件を選択",
         "pickAll": "すべて選択",
         "pickNone": "選択をすべて解除"
+      },
+      "relight": {
+        "lightTitle": "光源",
+        "referenceTitle": "ライティング参考画像",
+        "optional": "任意",
+        "followsReference": "この画像の光に合わせます",
+        "referenceNote": "光はこの画像から取ります。右側の色・強さ・質で上書きできます。",
+        "fromReference": "参考画像に合わせる",
+        "sourceFromReference": "参考画像に合わせる"
       }
     },
     "template": {

@@ -50,7 +50,7 @@ export interface NodeMenuTool {
   id: string;
   labelKey: string;
   icon: MiniToolIcon;
-  /** Runs on a model and spends credits; these follow a separator, after the edits. */
+  /** Runs on a model and spends credits; a separator stands wherever the list turns between these and the edits. */
   model: boolean;
 }
 
@@ -371,7 +371,7 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                     const Icon = MINI_TOOL_ICONS[tool.icon];
                     return (
                       <React.Fragment key={tool.id}>
-                        {tool.model && index > 0 && !tools[index - 1]!.model ? <DropdownMenuSeparator /> : null}
+                        {index > 0 && tool.model !== tools[index - 1].model ? <DropdownMenuSeparator /> : null}
                         <DropdownMenuItem
                           data-testid={`node-menu-tool-${tool.id}`}
                           onSelect={() => onTool?.(tool.id)}
