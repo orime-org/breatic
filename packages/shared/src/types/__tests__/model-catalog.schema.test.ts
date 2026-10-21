@@ -72,7 +72,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       catalog([
         entry("clean", {
           output_type: "audio/wav",
-          params: { audio: { description: "", accepts: "audio", max_total_duration: 1800, max_bytes: 536_870_912 } },
+          params: { audio: { description: "", default: null, accepts: "audio", max_total_duration: 1800, max_bytes: 536_870_912 } },
         }),
         entry("plain", { output_type: 7 }),
       ]),

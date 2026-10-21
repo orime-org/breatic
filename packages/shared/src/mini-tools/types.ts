@@ -14,7 +14,26 @@
 export type MiniToolMedium = "image" | "video" | "audio";
 
 /** The ffmpeg operations the mini-tool container runs. */
-export const CONTAINER_OPS = ["crop", "speed", "cut", "adjust", "audio_denoise", "stabilize", "hdr"] as const;
+export const CONTAINER_OPS = [
+  "crop",
+  "speed",
+  "cut",
+  "adjust",
+  "audio_denoise",
+  "stabilize",
+  "hdr",
+  // inner#1305: the operations on an audio source, each writing audio.
+  "denoise",
+  "normalize",
+  "audio_speed",
+  "audio_cut",
+  "eq",
+  "compress",
+  "pan",
+  "reverb",
+  "voice",
+  "pitch",
+] as const;
 
 /** One of {@link CONTAINER_OPS}. */
 export type ContainerOp = (typeof CONTAINER_OPS)[number];
@@ -64,7 +83,15 @@ export type MiniToolIcon =
   | "Rotate3d"
   | "Lightbulb"
   | "Palette"
-  | "SquarePen";
+  | "SquarePen"
+  | "Volume2"
+  | "SlidersVertical"
+  | "Shrink"
+  | "MoveHorizontal"
+  | "Waves"
+  | "Mic"
+  | "Music2"
+  | "Sparkles";
 
 /**
  * One choice of an enum param. It reads as its `label` when it has one — the
@@ -85,6 +112,30 @@ export interface NumberParam {
   readonly max: number;
   readonly step: number;
   readonly unit?: string;
+  /**
+   * How the value reads beside the slider, when not as the number and its
+   * unit: `signed` with a plus on positives; `balance` as Center, L n or R n.
+   */
+  readonly format?: "signed" | "balance";
+}
+
+/** A switch. */
+export interface ToggleParam {
+  readonly kind: "toggle";
+  readonly key: string;
+  readonly default: boolean;
+}
+
+/** The audio equaliser's ten bands and the preset they came from (shared `audio-eq.ts`). */
+export interface EqParam {
+  readonly kind: "eq";
+  readonly key: string;
+}
+
+/** The audio compressor's settings and the preset they came from (shared `audio-dynamics.ts`). */
+export interface DynamicsParam {
+  readonly kind: "dynamics";
+  readonly key: string;
 }
 
 /** A row of choices. */
@@ -147,7 +198,10 @@ export type MiniToolParam =
   | AdjustParam
   | OrientParam
   | ListParam
-  | CellsParam;
+  | CellsParam
+  | ToggleParam
+  | EqParam
+  | DynamicsParam;
 
 /** One output size a megapixel param offers: the source's long edge scaled to `longEdge`. */
 export interface SizeTier {
@@ -173,9 +227,10 @@ export interface MiniToolModelParam {
    * How the panel draws the param, when not by its declaration: `swatches` a
    * row of colours; `swatchCustom` the colour picked by hand, drawn as the
    * last cell of that row; `lightAngle` the light sphere, which takes the two
-   * params so marked, the azimuth first.
+   * params so marked, the azimuth first; `percent` a 0–1 range read as a
+   * whole percentage.
    */
-  readonly display?: "swatches" | "swatchCustom" | "lightAngle";
+  readonly display?: "swatches" | "swatchCustom" | "lightAngle" | "percent";
 }
 
 /** A second piece of media the tool reads, picked from the canvas. */

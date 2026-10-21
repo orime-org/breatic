@@ -413,6 +413,25 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustRange, AdjustTerms, AdjustValue } from "@shared/adjust-value.js";
+export {
+  EQ_BANDS_HZ,
+  EQ_GAIN_RANGE,
+  EQ_PRESETS,
+  EQ_PRESET_LABELS,
+  buildEqFilter,
+  defaultEqValue,
+  eqValueOfPreset,
+} from "@shared/audio-eq.js";
+export type { EqPreset, EqValue } from "@shared/audio-eq.js";
+export {
+  DYNAMICS_PRESETS,
+  DYNAMICS_PRESET_LABELS,
+  DYNAMICS_RANGES,
+  buildCompressorFilter,
+  defaultDynamicsValue,
+  dynamicsValueOfPreset,
+} from "@shared/audio-dynamics.js";
+export type { DynamicsField, DynamicsPreset, DynamicsSettings, DynamicsValue } from "@shared/audio-dynamics.js";
 
 
 // The confirmation email names the instant the window closes, in the buyer's
