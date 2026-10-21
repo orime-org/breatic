@@ -17,6 +17,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import {
   initCore,
   createRedisClient,
+  env,
   getRedis,
   getSession,
   setSession,
@@ -67,19 +68,26 @@ function held(userId: string, token: string): Held {
 /**
  * Start one instance's revocation service over the given connections.
  * @param connections - What this instance holds.
+ * @param recheckIntervalMs - How often it re-reads every session.
+ * @param connectionName - The Redis client name its connections carry.
  * @returns Once its subscription is confirmed.
  */
-async function instance(connections: Held[]): Promise<void> {
+async function instance(connections: Held[], recheckIntervalMs = 3_600_000, connectionName?: string): Promise<void> {
   const hocuspocus = {
     documents: new Map([["project-p/canvas-c", { connections: new Map(connections.map((c) => [c, {}])) }]]),
   } as unknown as Hocuspocus;
-  const source = createRedisClient(process.env.REDIS_STREAM_URL!, { name: "revocation-test", lazyConnect: false, commandTimeout: undefined });
+  const source = createRedisClient(process.env.REDIS_STREAM_URL!, {
+    name: "revocation-test",
+    lazyConnect: false,
+    commandTimeout: undefined,
+    connectionName,
+  });
   clients.push(source);
   started.push(
     await startSessionRevocation(hocuspocus, {
       source,
       readSession: (token) => getSession(getRedis(), token),
-      recheckIntervalMs: 3_600_000,
+      recheckIntervalMs,
     }),
   );
 }
@@ -165,5 +173,53 @@ describe("ending sessions across two collab instances", () => {
     expect(onA[1]!.closedWith).toEqual(ENDED);
     expect(onB[1]!.closedWith).toEqual(ENDED);
     expect(onA[2]!.closedWith).toBeNull();
+  });
+});
+
+describe("what the announcement cannot reach", () => {
+  // Deleting the key directly announces nothing, like a session that expired
+  // or an announcement published while the subscriber was disconnected.
+  const dropKey = async (token: string): Promise<void> => {
+    await getRedis().del(`${env.ENV}:session:${token}`);
+  };
+
+  it("the timer closes a connection whose session is gone", async () => {
+    const user = crypto.randomUUID();
+    const token = await session(user);
+    const open = held(user, token);
+    await instance([open], 200);
+
+    publishedAt = Date.now();
+    await dropKey(token);
+
+    await until(() => open.closedWith !== null, 2_000);
+    expect(open.closedWith).toEqual(ENDED);
+  });
+
+  it("a reconnected subscriber re-reads and closes what ended while it was away", async () => {
+    const user = crypto.randomUUID();
+    const token = await session(user);
+    const open = held(user, token);
+    const name = `revocation-reconnect-${crypto.randomUUID()}`;
+    await instance([open], 3_600_000, name);
+
+    await dropKey(token);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(open.closedWith).toBeNull();
+
+    // Kill the subscriber's connection (the pub/sub one carries flag P).
+    const killer = createRedisClient(process.env.REDIS_STREAM_URL!, { name: "revocation-killer", lazyConnect: false });
+    clients.push(killer);
+    const list = (await killer.client("LIST")) as string;
+    const ids = list
+      .split("\n")
+      .filter((line) => line.includes(` name=${name} `) && /flags=\S*P/.test(line))
+      .map((line) => /id=(\d+)/.exec(line)![1]!);
+    expect(ids).toHaveLength(1);
+    publishedAt = Date.now();
+    await killer.client("KILL", "ID", ids[0]!);
+
+    await until(() => open.closedWith !== null, 5_000);
+    expect(open.closedWith).toEqual(ENDED);
   });
 });
