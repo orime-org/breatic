@@ -37,7 +37,10 @@ export type SlugCheck =
   | { state: 'empty' }
   | { state: 'checking' }
   | { state: 'invalid'; reason: Exclude<SlugError, null> }
-  | { state: 'valid' };
+  | { state: 'valid' }
+  // The availability check itself failed; submitting is left to the server,
+  // whose unique index decides anyway.
+  | { state: 'unverified' };
 
 interface SlugBounds {
   min: number;

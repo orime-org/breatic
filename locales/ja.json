@@ -2045,9 +2045,8 @@
         "namePlaceholder": "マイ Project",
         "slugLabel": "Slug",
         "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project のURLの一部です。ブラウザのアドレスに表示されます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
-        "slugHelperCollection": "Collection のURLの一部です。ブラウザのアドレスに表示されます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
-        "descriptionLabel": "説明(任意)",
+        "slugHelperProject": "Project のURLの一部です。変更しなければ名前から作られます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
+        "slugHelperCollection": "Collection のURLの一部です。変更しなければ名前から作られます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
         "create": "作成",
         "cancel": "キャンセル",
         "slugFormat": "小文字で始め、小文字・数字・ハイフンのみ使えます。ハイフンは連続や末尾には使えません。",
@@ -2061,7 +2060,12 @@
         "namePlaceholderCollection": "マイ Collection",
         "slugPlaceholderStudio": "my-studio",
         "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "この Studio のウェブアドレスの一部です（/studio/…）。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。"
+        "slugHelperStudio": "この Studio のウェブアドレスの一部です（/studio/…）。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
+        "nameRequired": "名前を入力してください。",
+        "slugRequired": "Slug を入力してください。",
+        "emailRequired": "メールアドレスを入力してください。",
+        "slugUnverified": "今は確認できません。送信時にもう一度確認します。",
+        "slugLabelOptional": "Slug(任意)"
       },
       "toolbar": {
         "sortLabel": "並び替え",

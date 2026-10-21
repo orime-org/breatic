@@ -114,6 +114,9 @@ export function useSlugAvailability(
   if (isOwn) {
     return { state: 'valid' };
   }
+  if (query.isError && !query.isFetching) {
+    return { state: 'unverified' };
+  }
   if (query.isFetching || query.data === undefined) {
     return { state: 'checking' };
   }

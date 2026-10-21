@@ -2045,9 +2045,8 @@
         "namePlaceholder": "我的 Project",
         "slugLabel": "Slug",
         "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project 網址的一部分，會出現在瀏覽器網址列。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
-        "slugHelperCollection": "Collection 網址的一部分，會出現在瀏覽器網址列。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
-        "descriptionLabel": "簡介(選填)",
+        "slugHelperProject": "Project 網址的一部分，不修改就依名稱產生。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
+        "slugHelperCollection": "Collection 網址的一部分，不修改就依名稱產生。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
         "create": "建立",
         "cancel": "取消",
         "slugFormat": "要以小寫字母開頭，只能使用小寫字母、數字和連字號，連字號不能連用或放在結尾。",
@@ -2061,7 +2060,12 @@
         "namePlaceholderCollection": "我的 Collection",
         "slugPlaceholderStudio": "my-studio",
         "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "Studio 網址的一部分（/studio/…）。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。"
+        "slugHelperStudio": "Studio 網址的一部分（/studio/…）。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號。",
+        "nameRequired": "請填寫名稱。",
+        "slugRequired": "請填寫 Slug。",
+        "emailRequired": "請填寫電子郵件。",
+        "slugUnverified": "暫時無法檢查，送出時會再檢查一次。",
+        "slugLabelOptional": "Slug（選填）"
       },
       "toolbar": {
         "sortLabel": "排序",
