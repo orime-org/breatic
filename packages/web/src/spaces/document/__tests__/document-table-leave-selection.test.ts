@@ -359,6 +359,35 @@ describe('deleting or typing over a selection leaving a table', () => {
     expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:low']);
   });
 
+  it('takes a divider between the table and the selection\'s end away with it, below the table', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'divider' }, { type: 'paragraph', content: 'below' }]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+
+    press(editor, 'Backspace');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:low']);
+  });
+
+  it('takes a divider between the selection\'s start and the table away with it, above the table', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, { type: 'divider' }, tableBlock(WORDS), { type: 'paragraph', content: 'below' }]);
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+    type(editor, 'X');
+
+    expect(blocks(editor)).toEqual(['paragraph:leX', 'paragraph:below']);
+  });
+
+  it('leaves the table when a paste brings nothing to paste', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { types: [], files: [], items: [], getData: () => '' } });
+
+    editor.prosemirrorView.dom.dispatchEvent(event);
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'docTable', 'paragraph:below']);
+  });
+
   it('takes the table away whole when the browser deletes a word or a line over it', () => {
     const { editor } = open();
     select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
@@ -387,6 +416,93 @@ describe('deleting or typing over a selection leaving a table', () => {
     type(editor, 'X');
 
     expect(blocks(editor)).toEqual(['paragraph:leX', 'paragraph:below']);
+  });
+});
+
+/**
+ * Dispatches a cut, the way the browser hands one to the body.
+ * @param editor - The editor.
+ * @returns What went on the clipboard.
+ */
+function cut(editor: Editor): Record<string, string> {
+  const data: Record<string, string> = {};
+  const event = new Event('cut', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      setData: (format: string, value: string) => {
+        data[format] = value;
+      },
+      clearData: () => undefined,
+      getData: (format: string) => data[format] ?? '',
+    },
+  });
+  editor.prosemirrorView.dom.dispatchEvent(event);
+  return data;
+}
+
+/**
+ * Selects from some words to an edge of the body.
+ * @param editor - The editor.
+ * @param anchor - Where it starts.
+ * @param edge - Which edge.
+ */
+function selectToEdge(editor: Editor, anchor: number, edge: 'start' | 'end'): void {
+  const view = editor.prosemirrorView;
+  view.dispatch(view.state.tr.setSelection(extendToBodyEdge(view.state.doc, anchor, edge)));
+}
+
+describe('a selection from a cell to an edge of the body', () => {
+  /** A line, a table and an empty last line. */
+  const tableThenEmpty = (): unknown[] => [{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'paragraph' }];
+
+  it('takes the table away whole when cut, the whole table on the clipboard', () => {
+    const { editor } = openWith(tableThenEmpty());
+    selectToEdge(editor, at(editor, 'a2', 1), 'end');
+
+    const clipboard = cut(editor);
+
+    expect(clipboard['text/html']).toContain('<table');
+    expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
+  });
+
+  it('takes the table away whole with Enter', () => {
+    const { editor } = openWith(tableThenEmpty());
+    selectToEdge(editor, at(editor, 'a2', 1), 'end');
+
+    press(editor, 'Enter');
+
+    expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
+  });
+
+  it('takes the table away whole when a drag of it moves it', () => {
+    const { editor } = openWith(tableThenEmpty());
+    selectToEdge(editor, at(editor, 'a2', 1), 'end');
+    const view = editor.prosemirrorView;
+
+    // What prosemirror-view's drop does with the source of a move.
+    view.dispatch(view.state.tr.deleteSelection());
+
+    expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
+  });
+
+  it('takes a table that opens the body away whole when typing over a selection from below to the start', () => {
+    const { editor } = openWith([tableBlock(WORDS), { type: 'paragraph', content: 'below' }]);
+    selectToEdge(editor, at(editor, 'below', 2), 'start');
+    expect([...editor.prosemirrorView.dom.querySelectorAll('td')].every((cell) => cell.classList.contains('doc-table-in-selection'))).toBe(true);
+
+    type(editor, 'X');
+
+    expect(blocks(editor)).toEqual(['paragraph:Xlow']);
+  });
+
+  it('takes a table that closes the body away whole from a cell to the end', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    selectToEdge(editor, at(editor, 'a2', 1), 'end');
+
+    press(editor, 'Backspace');
+
+    expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
+    expect(blocks(editor)[0]).toBe('paragraph:lead');
   });
 });
 
@@ -450,6 +566,16 @@ describe('Shift and an arrow at a table\'s edge', () => {
     const { selection } = editor.prosemirrorView.state;
     expect(selection).not.toBeInstanceOf(CellSelection);
     expect([selection.anchor, selection.head]).toEqual([at(editor, 'lead', 2), at(editor, 'lead', 4)]);
+  });
+
+  it('runs the selection over the table to the end of the body when only a divider is past it', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'divider' }]);
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+    press(editor, 'ArrowDown', true);
+
+    const { selection, doc } = editor.prosemirrorView.state;
+    expect(selection.head).toBe(doc.content.size - 2);
   });
 
   it('leaves Shift and an arrow on an inner row to the table', () => {

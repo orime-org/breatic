@@ -19,42 +19,19 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import type { Node, ResolvedPos } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
+import type { Node, ResolvedPos, Slice } from '@tiptap/pm/model';
+import { AllSelection, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { Mappable } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
-/** Which end of the body. */
-export type BodyEdge = 'start' | 'end';
+import { bodyEdgeAt, bodyEdgePos, type BodyEdge } from '@web/spaces/document/document-body-edge-pos';
+import { replaceHeld } from '@web/spaces/document/document-table-leave-selection';
+
+export { bodyEdgeAt, bodyEdgePos, type BodyEdge };
 
 /** Which end of the selection sits on the edge. */
 type EdgeSide = 'anchor' | 'head';
-
-/**
- * The position of an edge of the body.
- * @param doc - The document.
- * @param edge - Which edge.
- * @returns `2`, inside the first root block before its content, for the
- *   start; `size - 2`, inside the last root block after all of it, for the
- *   end. No text position is either: text sits one level deeper, inside a
- *   block's content node.
- */
-export function bodyEdgePos(doc: Node, edge: BodyEdge): number {
-  return edge === 'start' ? 2 : doc.content.size - 2;
-}
-
-/**
- * Which edge a position is, if it is one.
- * @param doc - The document.
- * @param pos - The position.
- * @returns The edge, or null for any other position.
- */
-export function bodyEdgeAt(doc: Node, pos: number): BodyEdge | null {
-  if (pos === bodyEdgePos(doc, 'start')) return 'start';
-  if (pos === bodyEdgePos(doc, 'end')) return 'end';
-  return null;
-}
 
 /**
  * The position of the content node of the block at one end of the body: the
@@ -227,6 +204,25 @@ class BodyEdgeSelectionClass extends Selection {
     const headEdge = bodyEdgeAt(doc, this.head);
     if (headEdge !== null) return { side: 'head', edge: headEdge, other: this.anchor };
     return { side: 'anchor', edge: bodyEdgeAt(doc, this.anchor)!, other: this.head };
+  }
+
+  /**
+   * Replaces the selection, a table its end in text stands in whole
+   * (inner#1619 T14): cutting, Enter and a drag's move delete it this way.
+   * @param tr - The transaction.
+   * @param content - What goes in its place.
+   */
+  override replace(tr: Transaction, content?: Slice): void {
+    if (!replaceHeld(this, tr, content)) super.replace(tr, content);
+  }
+
+  /**
+   * Replaces the selection with a node, a table its end in text stands in whole.
+   * @param tr - The transaction.
+   * @param node - The node.
+   */
+  override replaceWith(tr: Transaction, node: Node): void {
+    if (!replaceHeld(this, tr, node)) super.replaceWith(tr, node);
   }
 
   /**

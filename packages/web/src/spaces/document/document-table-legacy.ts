@@ -22,6 +22,7 @@
 
 import { createBlockSpecFromTiptapNode } from '@blocknote/core';
 import { Node } from '@tiptap/core';
+import type { ResolvedPos } from '@tiptap/pm/model';
 
 /** The `data-quoted` attribute every block's `quoted` prop renders as. */
 const QUOTED_ATTRIBUTE = 'data-quoted';
@@ -47,8 +48,20 @@ const CELL_ATTRIBUTES = {
   colwidth: { default: null },
 };
 
+/** The line a stored table's cell holds. */
+export const LEGACY_CELL_LINE = 'tableParagraph';
+
+/**
+ * Whether a position is in the line of a stored table's cell.
+ * @param $pos - The position.
+ * @returns True there.
+ */
+export function inLegacyCell($pos: ResolvedPos): boolean {
+  return $pos.parent.type.name === LEGACY_CELL_LINE;
+}
+
 const LegacyTableParagraph = Node.create({
-  name: 'tableParagraph',
+  name: LEGACY_CELL_LINE,
   group: 'tableContent',
   content: 'inline*',
   parseHTML: () => [],

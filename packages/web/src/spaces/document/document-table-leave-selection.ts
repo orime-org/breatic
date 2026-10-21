@@ -27,7 +27,7 @@
  */
 
 import { createExtension } from '@blocknote/core';
-import type { Node as PMNode, Slice } from '@tiptap/pm/model';
+import { Slice, type Node as PMNode } from '@tiptap/pm/model';
 import {
   AllSelection,
   NodeSelection,
@@ -41,11 +41,19 @@ import {
 import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
-import { bodyEdgeAt } from '@web/spaces/document/document-body-edge-selection';
+import { bodyEdgeAt } from '@web/spaces/document/document-body-edge-pos';
 import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /** The class every cell of a table in such a selection carries. */
 export const IN_SELECTION = 'doc-table-in-selection';
+
+/** The tables a selection takes whole: the one around each of its ends, if any. */
+export interface HeldTables {
+  /** Around the end towards the start. */
+  readonly from: TableAt | null;
+  /** Around the end towards the end. */
+  readonly to: TableAt | null;
+}
 
 /**
  * The position after a table.
@@ -57,18 +65,103 @@ function endOf(table: TableAt): number {
 }
 
 /**
- * The tables around a text selection's two ends, when it leaves a table: one
- * end in a table and the other outside it or in another table.
+ * The tables a selection takes whole: one end in a table and the other
+ * outside it, in another table, or on an edge of the body (which can lie in
+ * a table the body starts or ends with). Selections of cells, of a node and
+ * of everything are their own.
  * @param selection - The selection.
- * @returns The table around the end towards the start and the one around the end towards the end, or null when it does not leave a table.
+ * @returns The tables, or null when no end leaves a table.
  */
-function tablesAt(selection: Selection): { from: TableAt | null; to: TableAt | null } | null {
-  if (!(selection instanceof TextSelection) || selection.empty) return null;
-  const [$a, $b] = selection.anchor <= selection.head ? [selection.$anchor, selection.$head] : [selection.$head, selection.$anchor];
-  const from = tableAround($a);
-  const to = tableAround($b);
+export function heldTables(selection: Selection): HeldTables | null {
+  if (selection.empty || selection instanceof CellSelection || selection instanceof NodeSelection || selection instanceof AllSelection) {
+    return null;
+  }
+  const doc = selection.$anchor.doc;
+  const start = Math.min(selection.anchor, selection.head);
+  const end = Math.max(selection.anchor, selection.head);
+  const from = tableAround(doc.resolve(start));
+  const to = tableAround(doc.resolve(end));
   if (from === null && to === null) return null;
-  return from !== null && to !== null && from.pos === to.pos ? null : { from, to };
+  const onEdge = bodyEdgeAt(doc, start) !== null || bodyEdgeAt(doc, end) !== null;
+  return from !== null && to !== null && from.pos === to.pos && !onEdge ? null : { from, to };
+}
+
+/**
+ * What a selection that takes tables whole acts on: its range widened over
+ * those tables.
+ * @param selection - The selection.
+ * @returns The range, or null when it takes no table whole.
+ */
+export function heldRange(selection: Selection): { from: number; to: number } | null {
+  const tables = heldTables(selection);
+  if (tables === null) return null;
+  return {
+    from: tables.from?.pos ?? Math.min(selection.anchor, selection.head),
+    to: tables.to === null ? Math.max(selection.anchor, selection.head) : endOf(tables.to),
+  };
+}
+
+/**
+ * Deletes a selection that takes tables whole: each table as a node, the
+ * blocks between it and the selection's end outside it whole, and the words
+ * of the line that end is on up to it, so that line stays, as it does in the
+ * body. An end on an edge of the body takes everything to that edge.
+ * @param tr - The transaction.
+ * @param start - The selection's end towards the start.
+ * @param end - The selection's end towards the end.
+ * @param tables - The tables it takes.
+ * @returns The caret it leaves.
+ */
+function deleteHeld(tr: Transaction, start: number, end: number, tables: HeldTables): Selection {
+  const doc = tr.doc;
+  const steps = tr.steps.length;
+  const before = tables.from;
+  const after = tables.to;
+  let caretAt: number;
+  if (before !== null && after !== null) {
+    tr.deleteRange(before.pos, endOf(after));
+    caretAt = before.pos;
+  } else if (before !== null) {
+    const $end = doc.resolve(end);
+    if ($end.parent.isTextblock) {
+      const line = $end.start();
+      if (line < end) tr.delete(line, end);
+      tr.deleteRange(before.pos, $end.before());
+      caretAt = line;
+    } else {
+      tr.deleteRange(before.pos, end);
+      caretAt = before.pos;
+    }
+  } else {
+    const $start = doc.resolve(start);
+    tr.deleteRange($start.parent.isTextblock ? $start.after() : start, endOf(after!));
+    if ($start.parent.isTextblock && start < $start.end()) tr.delete(start, $start.end());
+    caretAt = start;
+  }
+  const caret = Selection.near(tr.doc.resolve(tr.mapping.slice(steps).map(caretAt)), before !== null && after !== null ? -1 : 1);
+  tr.setSelection(caret);
+  return caret;
+}
+
+/**
+ * Replaces a selection that takes tables whole, the tables whole: what a
+ * selection's own `replace` and `replaceWith` do for a selection leaving a
+ * table and for one to an edge of the body.
+ * @param selection - The selection.
+ * @param tr - The transaction.
+ * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
+ * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
+ */
+export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined): boolean {
+  const tables = heldTables(selection);
+  if (tables === null) return false;
+  const caret = deleteHeld(tr, Math.min(selection.anchor, selection.head), Math.max(selection.anchor, selection.head), tables);
+  if (content instanceof Slice) {
+    if (content.size > 0) caret.replace(tr, content);
+  } else if (content !== undefined) {
+    caret.replaceWith(tr, content);
+  }
+  return true;
 }
 
 /** A selection leaving a table, its ends on the table's first or last words. */
@@ -79,8 +172,7 @@ export class TableSpanSelection extends TextSelection {
    * @param content - What goes in its place.
    */
   override replace(tr: Transaction, content?: Slice): void {
-    const caret = this.takeAway(tr);
-    if (content !== undefined && content.size > 0) caret.replace(tr, content);
+    if (!replaceHeld(this, tr, content)) super.replace(tr, content);
   }
 
   /**
@@ -89,42 +181,7 @@ export class TableSpanSelection extends TextSelection {
    * @param node - The node.
    */
   override replaceWith(tr: Transaction, node: PMNode): void {
-    this.takeAway(tr).replaceWith(tr, node);
-  }
-
-  /**
-   * Deletes the tables at the selection's ends as nodes and the part outside
-   * them as text, and puts the caret where the end outside a table was.
-   * @param tr - The transaction.
-   * @returns The caret.
-   */
-  private takeAway(tr: Transaction): Selection {
-    const { from, to } = this;
-    const tables = tablesAt(this);
-    const before = tables?.from ?? null;
-    const after = tables?.to ?? null;
-    const doc = tr.doc;
-    const start = tr.steps.length;
-    let caretAt: number;
-    if (before !== null && after !== null) {
-      tr.deleteRange(before.pos, endOf(after));
-      caretAt = before.pos;
-    } else if (before !== null) {
-      // The words after the table up to the selection's end, then the table.
-      const words = Selection.findFrom(doc.resolve(endOf(before)), 1, true)!.from;
-      if (words < to) tr.delete(words, to);
-      tr.deleteRange(before.pos, endOf(before));
-      caretAt = words;
-    } else {
-      // The table, then the words before it from the selection's start.
-      const words = Selection.findFrom(doc.resolve(after!.pos), -1, true)!.to;
-      tr.deleteRange(after!.pos, endOf(after!));
-      if (from < words) tr.delete(from, words);
-      caretAt = from;
-    }
-    const caret = Selection.near(tr.doc.resolve(tr.mapping.slice(start).map(caretAt)), before !== null && after !== null ? -1 : 1);
-    tr.setSelection(caret);
-    return caret;
+    if (!replaceHeld(this, tr, node)) super.replaceWith(tr, node);
   }
 }
 
@@ -145,13 +202,13 @@ function edgeOf(doc: PMNode, table: TableAt, dir: -1 | 1): number {
 }
 
 /**
- * The selection a selection leaving a table becomes.
+ * The selection a text selection leaving a table becomes.
  * @param state - The editor state.
  * @returns The selection taking the whole table, or null when it is already so or does not leave a table.
  */
 export function wholeTableSelection(state: EditorState): TableSpanSelection | null {
   const { selection, doc } = state;
-  const tables = tablesAt(selection);
+  const tables = selection instanceof TextSelection ? heldTables(selection) : null;
   if (tables === null) return null;
   const from = tables.from === null ? selection.from : edgeOf(doc, tables.from, -1);
   const to = tables.to === null ? selection.to : edgeOf(doc, tables.to, 1);
@@ -161,60 +218,23 @@ export function wholeTableSelection(state: EditorState): TableSpanSelection | nu
 }
 
 /**
- * The table around the selection's moving end, when the selection leaves a table.
+ * The table around the selection's moving end, when the selection takes it whole.
  * @param state - The editor state.
  * @returns The table, or null.
  */
 export function tableAtLeavingHead(state: EditorState): TableAt | null {
-  return tablesAt(state.selection) === null ? null : tableAround(state.selection.$head);
+  return heldTables(state.selection) === null ? null : tableAround(state.selection.$head);
 }
 
 /**
- * What a selection with one end in a table and the other outside it acts on:
- * its range widened over each table one of its ends stands in. An end on an
- * edge of the body stands outside every table's content. Selections of cells,
- * of a node and of everything are their own.
- * @param selection - The selection.
- * @returns The range, or null when no end leaves a table.
- */
-export function heldRange(selection: Selection): { from: number; to: number } | null {
-  if (selection.empty || selection instanceof CellSelection || selection instanceof NodeSelection || selection instanceof AllSelection) {
-    return null;
-  }
-  const doc = selection.$anchor.doc;
-  /**
-   * The table an end stands in.
-   * @param pos - The end.
-   * @returns The table, or null.
-   */
-  const around = (pos: number): TableAt | null => (bodyEdgeAt(doc, pos) === null ? tableAround(doc.resolve(pos)) : null);
-  const start = Math.min(selection.anchor, selection.head);
-  const end = Math.max(selection.anchor, selection.head);
-  const first = around(start);
-  const last = around(end);
-  if (first === null && last === null) return null;
-  if (first !== null && last !== null && first.pos === last.pos) return null;
-  const tables = [first, last].filter((table): table is TableAt => table !== null);
-  return { from: Math.min(start, ...tables.map((t) => t.pos)), to: Math.max(end, ...tables.map(endOf)) };
-}
-
-/**
- * Takes away a selection with one end in a table and the other outside it,
- * the table whole.
+ * Takes away a selection that takes tables whole, through the selection's own
+ * replace.
  * @param view - The editor view.
  * @returns Whether there was one to take away.
  */
 export function takeAwayHeldTables(view: EditorView): boolean {
-  const { selection } = view.state;
-  if (selection instanceof TableSpanSelection) {
-    view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
-    return true;
-  }
-  const range = heldRange(selection);
-  if (range === null) return false;
-  const tr = view.state.tr.deleteRange(range.from, range.to);
-  tr.setSelection(Selection.near(tr.doc.resolve(tr.mapping.map(range.from, -1)), -1));
-  view.dispatch(tr.scrollIntoView());
+  if (heldTables(view.state.selection) === null) return false;
+  view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
   return true;
 }
 
@@ -257,8 +277,8 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
       props: {
         decorations: cellsInSelection,
         handleTextInput: (view, _from, _to, text) => {
-          if (!(view.state.selection instanceof TableSpanSelection) && !takeAwayHeldTables(view)) return false;
-          view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+          if (heldTables(view.state.selection) === null) return false;
+          view.dispatch(view.state.tr.deleteSelection().insertText(text).scrollIntoView());
           return true;
         },
         // A drag of such a selection carries the whole table, which the drop

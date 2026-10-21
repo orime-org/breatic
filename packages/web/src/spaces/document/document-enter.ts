@@ -39,7 +39,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
-import { inLegacyCell } from '@web/spaces/document/document-table-keys';
+import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import {
   QUOTED,
   splitCarryingQuote,

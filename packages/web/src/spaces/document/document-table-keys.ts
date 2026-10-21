@@ -35,7 +35,9 @@ import {
   isInTable,
 } from '@tiptap/pm/tables';
 import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { tableAtLeavingHead, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { bodyEdgeBetween, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -48,20 +50,8 @@ interface KeysEditor {
   unnestBlock: BlockNoteEditor<never, never, never>['unnestBlock'];
 }
 
-/** The line a stored table's cell holds (`document-table-legacy.ts`). */
-const LEGACY_CELL_LINE = 'tableParagraph';
-
 /** The list item types Tab nests before it moves between cells. */
 const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem']);
-
-/**
- * Whether a position is in the line of a stored table's cell.
- * @param $pos - The position.
- * @returns True there.
- */
-export function inLegacyCell($pos: ResolvedPos): boolean {
-  return $pos.parent.type.name === LEGACY_CELL_LINE;
-}
 
 /**
  * Whether the caret's block is a list item, and whether it is nested under
@@ -70,14 +60,12 @@ export function inLegacyCell($pos: ResolvedPos): boolean {
  * @returns Whether it is a list item, and whether it is nested.
  */
 function listItemAt($head: ResolvedPos): { list: boolean; nested: boolean } {
-  for (let depth = $head.depth; depth > 0; depth -= 1) {
-    if ($head.node(depth).type.name !== 'blockContainer') continue;
-    return {
-      list: LIST_ITEMS.has($head.node(depth).firstChild?.type.name ?? ''),
-      nested: $head.node(depth - 1).type.name === 'blockGroup',
-    };
-  }
-  return { list: false, nested: false };
+  const depth = containerDepth($head);
+  if (depth < 0) return { list: false, nested: false };
+  return {
+    list: LIST_ITEMS.has($head.node(depth).firstChild?.type.name ?? ''),
+    nested: $head.node(depth - 1).type.name === 'blockGroup',
+  };
 }
 
 /**
@@ -150,7 +138,6 @@ function containerDepth($pos: ResolvedPos): number {
   return -1;
 }
 
-
 /**
  * Backspace at the start of a block where the body's own would reach across
  * a cell's or a table's edge (design 5.3):
@@ -208,19 +195,6 @@ function deleteAtEdge(view: EditorView): boolean {
   // Outside a cell, what a selection can stand on next is in a cell only when
   // a table starts right after the block.
   return next !== null && cellDepthOf(next.$head) > 0;
-}
-
-/**
- * Enter or Shift+Enter over a selection holding a whole table: the selection
- * goes through its own replace first, and the body's Enter then breaks the
- * line at the caret it leaves. The body's Enter deletes the range by position
- * and splits at the position the selection started from.
- * @param view - The editor view.
- * @returns Whether the key was claimed: never, the body's Enter follows.
- */
-function clearSpanForBreak(view: EditorView): boolean {
-  takeAwayHeldTables(view);
-  return false;
 }
 
 /**
@@ -324,19 +298,17 @@ function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
   if (!(selection instanceof TextSelection)) return false;
   // A selection already holding a whole table moves its end in the table
   // over the whole table either way (inner#1619 design 5.3), never back into
-  // a cell selection.
+  // a cell selection; any other only on its way out of a first or last row.
   const spanned = tableAtLeavingHead(view.state);
-  if (spanned !== null) {
-    const edge = dir === 'up' ? spanned.pos : spanned.pos + spanned.node.nodeSize;
-    const over = Selection.findFrom(doc.resolve(edge), dir === 'up' ? -1 : 1, true);
-    if (over !== null) view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, over.head)).scrollIntoView());
-    return true;
-  }
-  const exit = tableExit(view, selection.$head, dir);
-  if (exit === null) return false;
-  const past = Selection.findFrom(doc.resolve(exit.edge), dir === 'up' ? -1 : 1, true);
-  if (past === null) return false;
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, past.head)).scrollIntoView());
+  const edge = spanned === null
+    ? tableExit(view, selection.$head, dir)?.edge
+    : dir === 'up' ? spanned.pos : spanned.pos + spanned.node.nodeSize;
+  if (edge === undefined) return false;
+  // The nearest words past the table, or the body's edge when only blocks
+  // without words are there, as Shift and an arrow reach elsewhere.
+  const past = textOrEdge(doc, edge, dir === 'up' ? -1 : 1);
+  if (past === edge) return spanned !== null;
+  view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(doc, selection.anchor, past)).scrollIntoView());
   return true;
 }
 
@@ -350,10 +322,18 @@ export const documentTableKeysExtension = createExtension(() => ({
   keyboardShortcuts: {
     Tab: ({ editor }: { editor: KeysEditor }) => tabForward(editor),
     'Shift-Tab': ({ editor }: { editor: KeysEditor }) => tabBack(editor),
-    Enter: ({ editor }: { editor: KeysEditor }) =>
-      clearSpanForBreak(editor.prosemirrorView) || breakLine(editor.prosemirrorView),
-    'Shift-Enter': ({ editor }: { editor: KeysEditor }) =>
-      clearSpanForBreak(editor.prosemirrorView) || breakLine(editor.prosemirrorView),
+    // Over a selection holding a whole table, Enter takes it away through its
+    // own replace first and then breaks the line at the caret it leaves: the
+    // body's Enter deletes the range by position and splits where the
+    // selection started.
+    Enter: ({ editor }: { editor: KeysEditor }) => {
+      takeAwayHeldTables(editor.prosemirrorView);
+      return breakLine(editor.prosemirrorView);
+    },
+    'Shift-Enter': ({ editor }: { editor: KeysEditor }) => {
+      takeAwayHeldTables(editor.prosemirrorView);
+      return breakLine(editor.prosemirrorView);
+    },
     // Over a selection holding a whole table, through the selection's own
     // replace (inner#1619 T14): the body's deletes the range by position.
     Backspace: ({ editor }: { editor: KeysEditor }) =>
