@@ -3,7 +3,11 @@
 
 /**
  * Places a table's row and column handles (inner#1126 A6) on the cell the
- * pointer is over, for the table whose cells hold blocks (inner#1619).
+ * pointer is over, for the table whose cells hold blocks (inner#1619), and the
+ * table's own strip beside it whenever the table is hovered, together with
+ * them and with the strip of a block in a cell (inner#1619 T13, user
+ * 2026-10-21). The table's strip is the body's strip (`BlockStrip`), placed
+ * as the side menu places it; the side menu itself leaves tables to it.
  *
  * The placement is BlockNote's own `TableHandlesController`, its row and
  * column handles alone (the cell button is drawn on its own, rows and columns
@@ -12,19 +16,23 @@
  * hidden on a scroll unless a menu or a drag holds them.
  */
 
-import { GenericPopover, type FloatingUIOptions, type GenericPopoverReference } from '@blocknote/react';
+import { SideMenuExtension } from '@blocknote/core/extensions';
+import { BlockPopover, GenericPopover, type FloatingUIOptions, type GenericPopoverReference } from '@blocknote/react';
 import { useExtension, useExtensionState } from '@blocknote/react';
 import { autoUpdate, offset, type ReferenceElement } from '@floating-ui/react';
 import * as React from 'react';
 
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
+import { stripPlacement } from '@web/spaces/document/document-strip-alignment';
 import {
   documentTableHandlesExtension,
+  TABLE_CONTROL,
   type TableHandlesState,
 } from '@web/spaces/document/document-table-handles';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 import { HANDLE_THICKNESS } from '@web/spaces/document/document-table-control-place';
 import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
+import { BlockStrip, type StripHold } from '@web/spaces/document/DocumentBlockHandle';
 
 /** The row and column references the handles are placed by. */
 interface References {
@@ -73,9 +81,10 @@ function referencesOf(editor: HandleEditor, state: TableHandlesState | undefined
  */
 export function DocumentTableHandlesController({ editor }: { editor: HandleEditor }): React.JSX.Element | null {
   const handles = useExtension(documentTableHandlesExtension);
+  const sideMenu = useExtension(SideMenuExtension);
   const state = useExtensionState(documentTableHandlesExtension) as TableHandlesState | undefined;
-  // While one handle's menu is open the other one is put away.
-  const [only, setOnly] = React.useState<'row' | 'column' | undefined>();
+  // While one handle's menu is open or its drag runs the others are put away.
+  const [only, setOnly] = React.useState<'row' | 'column' | 'table' | undefined>();
   const references = React.useMemo(() => referencesOf(editor, state), [editor, state]);
 
   // Hides the handles on a scroll of anything around the table, so they never
@@ -102,6 +111,7 @@ export function DocumentTableHandlesController({ editor }: { editor: HandleEdito
   const open = {
     row: state?.show === true && state.rowIndex !== undefined && (only === undefined || only === 'row'),
     column: state?.show === true && state.colIndex !== undefined && (only === undefined || only === 'column'),
+    table: state?.show === true && (only === undefined || only === 'table'),
   };
   const options = React.useMemo<Record<'row' | 'column', FloatingUIOptions>>(() => {
     /**
@@ -124,12 +134,53 @@ export function DocumentTableHandlesController({ editor }: { editor: HandleEdito
     return { row: of('row', open.row), column: of('column', open.column) };
   }, [open.row, open.column, whileElementsMounted]);
 
+  const placement = React.useMemo(() => stripPlacement(() => editor.domElement ?? undefined), [editor]);
+  const tableOptions = React.useMemo<FloatingUIOptions>(
+    () => ({
+      useFloatingOptions: {
+        ...placement.useFloatingOptions,
+        open: open.table,
+        placement: 'left-start',
+        whileElementsMounted,
+      },
+      focusManagerProps: { disabled: true },
+      // The side menu's own layer.
+      elementProps: { style: { zIndex: 20 } },
+    }),
+    [placement, open.table, whileElementsMounted],
+  );
+  // The side menu is held too, as it is for its own strip: a frozen side
+  // menu is what keeps BlockNote's drop handling on the row in flight
+  // (`SideMenu.ts` ends a drag on a move with no button held unless frozen).
+  const tableHold = React.useMemo<StripHold>(
+    () => ({
+      freeze: () => {
+        handles.freezeHandles();
+        sideMenu.freezeMenu();
+        setOnly('table');
+      },
+      unfreeze: () => {
+        handles.unfreezeHandles();
+        sideMenu.unfreezeMenu();
+        setOnly(undefined);
+      },
+    }),
+    [handles, sideMenu],
+  );
+  const tableId = state?.block.id;
+  const table = React.useMemo(() => (tableId === undefined ? undefined : { id: tableId, type: DOC_TABLE }), [tableId]);
+
   const hideRowOthers = React.useCallback((hide: boolean) => setOnly(hide ? 'row' : undefined), []);
   const hideColumnOthers = React.useCallback((hide: boolean) => setOnly(hide ? 'column' : undefined), []);
 
   if (state === undefined) return null;
   return (
     <>
+      <BlockPopover blockId={open.table ? table?.id : undefined} {...tableOptions}>
+        <div {...{ [TABLE_CONTROL]: '' }}>
+          <BlockStrip block={table} hold={tableHold} />
+        </div>
+      </BlockPopover>
       <GenericPopover reference={references.row} {...options.row}>
         {open.row ? (
           <DocumentTableHandle orientation='row' hideOtherElements={hideRowOthers} />

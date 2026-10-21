@@ -142,6 +142,22 @@ describe('the cell the pointer is over', () => {
     expect(hovered(editor)).toMatchObject({ show: true, rowIndex: 0, colIndex: 0 });
   });
 
+  it('comes back over the still copy a closing control leaves, read off the pointer\'s place', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(200, 100, 240, 80);
+    view.dom.querySelector('[data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(200, 96, 600, 88);
+    pointAt(editor, 'a1');
+    document.body.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 900, clientY: 900 }));
+    const copy = document.createElement('div');
+    copy.setAttribute(TABLE_CONTROL, '');
+    document.body.appendChild(copy);
+
+    copy.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 120 }));
+
+    expect(hovered(editor)).toMatchObject({ show: true, block: { id: tableId(editor) }, rowIndex: undefined });
+  });
+
   it('names the position before the cell, and follows it through an edit above', () => {
     const editor = open();
     pointAt(editor, 'b2');
@@ -163,6 +179,29 @@ describe('the cell the pointer is over', () => {
     editor.insertBlocks([{ type: 'paragraph', content: 'more' }] as never, editor.document[0]!, 'after');
 
     expect(hovered(editor)).toBe(hidden);
+  });
+
+  it('names the table, and no row or column, with the pointer in the gutter beside it (user 2026-10-21)', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(200, 100, 240, 80);
+    view.dom.querySelector('[data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(200, 96, 600, 88);
+
+    view.dom.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 120 }));
+
+    expect(hovered(editor)).toMatchObject({ show: true, block: { id: tableId(editor) }, rowIndex: undefined, colIndex: undefined });
+  });
+
+  it('is gone with the pointer in the gutter beside no table', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(200, 100, 240, 80);
+    view.dom.querySelector('[data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(200, 96, 600, 88);
+    pointAt(editor, 'a1');
+
+    view.dom.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 300 }));
+
+    expect(hovered(editor)?.show).toBe(false);
   });
 
   it('is gone while a press in a cell drags a selection', () => {

@@ -147,17 +147,43 @@ function sameReading(a: RowReading, b: RowReading): boolean {
   );
 }
 
+/** Keeps a strip on its block while its menu is open or its drag runs. */
+export interface StripHold {
+  /** Holds it. */
+  readonly freeze: () => void;
+  /** Lets it follow the pointer again. */
+  readonly unfreeze: () => void;
+}
+
 /**
- * The strip, for the block the side menu currently points at.
+ * The strip, for the block the side menu currently points at. A table's
+ * strip is its own, shown whenever the table is hovered
+ * (`DocumentTableHandlesController`, inner#1619 T13).
  * @returns The handle, or null while there is no row to serve.
  */
 export function DocumentBlockHandle(): React.JSX.Element | null {
-  const t = useTranslation();
-  const editor = useBlockNoteEditor();
   const sideMenu = useExtension(SideMenuExtension);
   const block = useExtensionState(SideMenuExtension, {
     selector: (state) => state?.block,
   }) as PressedBlock | undefined;
+  const hold = React.useMemo<StripHold>(
+    () => ({ freeze: () => sideMenu.freezeMenu(), unfreeze: () => sideMenu.unfreezeMenu() }),
+    [sideMenu],
+  );
+  if (block?.type === DOC_TABLE) return null;
+  return <BlockStrip block={block} hold={hold} />;
+}
+
+/**
+ * The strip for one block.
+ * @param props - The block and what holds the strip on it.
+ * @param props.block - The block, undefined while there is none.
+ * @param props.hold - Holds the strip on its block.
+ * @returns The handle, or null while there is no row to serve.
+ */
+export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; hold: StripHold }): React.JSX.Element | null {
+  const t = useTranslation();
+  const editor = useBlockNoteEditor();
   const [menuOpen, setMenuOpen] = React.useState(false);
   // Which menu the strip opened, fixed when it opens: picking an entry can
   // turn the line from empty to not (or back) while the menu is still on
@@ -224,12 +250,12 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
     (open: boolean) => {
       setMenuOpen(open);
       if (open) {
-        sideMenu.freezeMenu();
+        hold.freeze();
       } else {
-        sideMenu.unfreezeMenu();
+        hold.unfreeze();
       }
     },
-    [sideMenu],
+    [hold],
   );
 
   // Held rather than written inline: the menu hands it to the memoised colour
@@ -342,13 +368,13 @@ export function DocumentBlockHandle(): React.JSX.Element | null {
               // first scroll, and a drag whose source left the page sends its
               // `dragend` nowhere the document hears (inner#1350 §5.2); frozen,
               // it stays put while the rows scroll, so it is hidden as well.
-              sideMenu.freezeMenu();
+              hold.freeze();
               source.hideAfterStart();
             }}
             onDragEnd={() => {
               setDragActive(false);
               source.show();
-              sideMenu.unfreezeMenu();
+              hold.unfreeze();
               endDrag.current?.();
               endDrag.current = null;
             }}

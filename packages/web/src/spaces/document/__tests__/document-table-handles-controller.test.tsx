@@ -5,11 +5,12 @@
  * inner#1619 design 5.4 (A6): the row and column handles come up over the
  * layout table's hovered cell and go when the pointer leaves the table,
  * placed by the body's own controller rather than BlockNote's, which reads
- * only its built-in table.
+ * only its built-in table. The table's own strip comes up whenever the table
+ * is hovered, with them or alone (T13, user 2026-10-21).
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BlockNoteContext } from '@blocknote/react';
 import * as Y from 'yjs';
 
@@ -82,6 +83,57 @@ describe('the row and column handles over a table', () => {
     pointAt(editor, 'lead');
 
     // The popover fades out from a still copy of what it showed, then goes.
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+      expect(screen.queryByTestId('doc-table-col-handle')).toBeNull();
+    });
+  });
+});
+
+describe('the table\'s own strip (T13, user 2026-10-21)', () => {
+  it('comes up over a cell, together with the row and column handles', () => {
+    const editor = open();
+
+    pointAt(editor, 'b1');
+
+    expect(screen.getByTestId('doc-block-table-handle')).toBeTruthy();
+    expect(screen.getByTestId('doc-table-row-handle')).toBeTruthy();
+    expect(screen.getByTestId('doc-table-col-handle')).toBeTruthy();
+  });
+
+  it('comes up alone with the pointer in the gutter beside the table', () => {
+    const editor = open();
+    const view = editor.prosemirrorView;
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(200, 100, 240, 80);
+    view.dom.querySelector('[data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(200, 96, 600, 88);
+
+    act(() => {
+      view.dom.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 120 }));
+    });
+
+    expect(screen.getByTestId('doc-block-table-handle')).toBeTruthy();
+    expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
+    expect(screen.queryByTestId('doc-table-col-handle')).toBeNull();
+  });
+
+  it('goes when the pointer leaves the table', async () => {
+    const editor = open();
+    pointAt(editor, 'b1');
+
+    pointAt(editor, 'lead');
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('doc-block-table-handle')).toBeNull();
+    });
+  });
+
+  it('puts the row and column handles away while its menu is open', async () => {
+    const editor = open();
+    pointAt(editor, 'b1');
+
+    fireEvent.click(screen.getByTestId('doc-block-table-handle'));
+
+    expect(screen.getByTestId('doc-block-row-delete')).toBeTruthy();
     await waitFor(() => {
       expect(screen.queryByTestId('doc-table-row-handle')).toBeNull();
       expect(screen.queryByTestId('doc-table-col-handle')).toBeNull();

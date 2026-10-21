@@ -1194,9 +1194,9 @@ export function renderProductGuide(): string {
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
       "dots. Videos and audio play in place. Someone who can only view the document " +
       "sees and plays them without the icons.",
-    "- A table shows a table icon left of its first row instead of the six dots, with the pointer beside " +
-      "the table at its height, well out to its left; over a cell, or just left of the first column, the dots " +
-      "of the block under the pointer show just outside that cell's left edge instead, and the table icon " +
+    "- A table shows a table icon left of its first row instead of the six dots, whenever the pointer is " +
+      "over the table or beside it at its height. Over a cell, or just left of the first column, the dots " +
+      "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +
       "stands further out than those dots. Drag the table icon to move the " +
       `whole table; click it for a menu with ${quoted(t("spaces.document.blockHandle.insertBelow"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ${quoted(t("spaces.document.blockHandle.indent"))}, ` +

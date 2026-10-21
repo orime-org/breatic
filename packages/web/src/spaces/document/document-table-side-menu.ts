@@ -10,8 +10,9 @@
  * gutter within `TABLE_STRIP_OUTSET` of the table's left line, where the
  * strips of the first column's blocks stand, it is the first-column block at
  * the pointer's height. Anywhere else at the table's height — further out in
- * the gutter, the room right of the table — the menu is the table's: its
- * icon, its menu, its drag. BlockNote 0.56 goes down from wherever it lands
+ * the gutter, the room right of the table — the menu names the table and
+ * draws nothing: the table's own strip shows whenever the table is hovered
+ * (`DocumentTableHandlesController`, user 2026-10-21). BlockNote 0.56 goes down from wherever it lands
  * to the deepest block at the pointer's height (`sideMenuHover.ts`
  * `probeBlockAtHeight`, `blockGeometry.ts` `getNestedBlockAtCursor`), so from
  * the gutter it reaches a block in the first cell of that row, and from a

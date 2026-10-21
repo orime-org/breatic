@@ -10,7 +10,11 @@
  * is the same contract — the state its handles read, `freezeHandles` while a
  * handle's menu is open or its drag runs — read off the layout table's DOM:
  * the frame (`[data-node-type="docTable"]`), its `<tbody>`, a `<td>` or
- * `<th>` and its row. A press in a cell that turns into a drag selection
+ * `<th>` and its row. At a table's height off its cells — the gutter out to
+ * where the table's own strip stands, a cell's padding, the room right of the
+ * table — the state names the table and no cell: the table's strip shows
+ * whenever the table is hovered, as a body block's does (inner#1619 T13, user
+ * 2026-10-21), and the row and column handles only over a cell. A press in a cell that turns into a drag selection
  * takes the handles away until the button comes up, so they stay out of the
  * reader's way.
  */
@@ -19,6 +23,8 @@ import { createExtension, createStore, type BlockNoteEditor } from '@blocknote/c
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
+import { STRIP_SIZE, TABLE_STRIP_OUTSET, tableLineOf } from '@web/spaces/document/document-strip-alignment';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The cell the handles stand on, and the boxes they are placed by. */
@@ -121,19 +127,22 @@ class TableHoverView {
     if (this.frozen || this.press === 'selecting') return;
     const target = event.target;
     if (!(target instanceof Element)) return;
-    if (!this.view.dom.contains(target)) {
-      if (target.closest(`[${TABLE_CONTROL}]`) === null) this.hide();
-      return;
-    }
-    const cell = target.closest('td, th');
-    const frame = cell?.closest(FRAME);
-    const body = frame?.querySelector('tbody');
+    // A control keeps the handles it belongs to. A control while none are up
+    // is the still copy a closing popover fades out with, standing where the
+    // table's strip stood: the table is read off the pointer's place there.
+    const onControl = target.closest(`[${TABLE_CONTROL}]`) !== null;
+    if (onControl && this.state?.show === true) return;
+    // The gutter is the scroller's padding, outside the editable element, and
+    // a block's strip stands in it on the way to the table's.
+    const inBody =
+      onControl ||
+      this.view.dom.contains(target) ||
+      target.closest('[data-row-id]') !== null ||
+      target.closest(SCROLL_VIEWPORT)?.contains(this.view.dom) === true;
+    const cell = inBody && !onControl ? target.closest('td, th') : null;
+    const frame = cell === null ? (inBody ? this.tableAt(event) : null) : cell.closest(FRAME);
     const id = frame?.getAttribute('data-id');
-    if (cell === null || cell === undefined || body === null || body === undefined || id === null || id === undefined) {
-      this.hide();
-      return;
-    }
-    if (!this.editor.isEditable) {
+    if (frame === null || frame === undefined || id === null || id === undefined || !this.editor.isEditable) {
       this.hide();
       return;
     }
@@ -142,8 +151,8 @@ class TableHoverView {
       this.hide();
       return;
     }
-    const rowIndex = indexOf(cell.parentElement!);
-    const colIndex = indexOf(cell);
+    const rowIndex = cell === null ? undefined : indexOf(cell.parentElement!);
+    const colIndex = cell === null ? undefined : indexOf(cell);
     if (this.state?.show === true && this.state.block.id === id && this.state.rowIndex === rowIndex && this.state.colIndex === colIndex) {
       return;
     }
@@ -152,11 +161,29 @@ class TableHoverView {
       block: { id },
       rowIndex,
       colIndex,
-      referencePosCell: cell.getBoundingClientRect(),
-      cellPos: posBefore(this.view, cell),
+      referencePosCell: cell?.getBoundingClientRect(),
+      cellPos: cell === null ? undefined : posBefore(this.view, cell),
     };
     this.emit(this.state);
   };
+
+  /**
+   * The table at the pointer's height, off its cells: from where the table's
+   * own strip stands out to the frame's right edge, the body's.
+   * @param event - The move.
+   * @returns The table's frame, or null when no table is there.
+   */
+  private tableAt(event: MouseEvent): Element | null {
+    for (const frame of this.view.dom.querySelectorAll(FRAME)) {
+      const body = frame.querySelector('tbody');
+      const line = tableLineOf(frame);
+      if (body === null || line === undefined) continue;
+      const box = body.getBoundingClientRect();
+      if (event.clientY < box.top || event.clientY > box.bottom) continue;
+      if (event.clientX >= line - TABLE_STRIP_OUTSET - STRIP_SIZE && event.clientX <= frame.getBoundingClientRect().right) return frame;
+    }
+    return null;
+  }
 
   /** Follows the table through a change: gone, shrunk, or moved. */
   update(): void {

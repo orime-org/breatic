@@ -582,9 +582,15 @@ test('T13: a block\'s handle stands outside its cell\'s left line; the first col
   expect(Math.abs(first!.x + first!.width - (table!.x - 12))).toBeLessThan(2);
   expect(Math.abs(row!.x + row!.width / 2 - table!.x)).toBeLessThan(2);
   expect(Math.abs(row!.y + row!.height / 2 - (a1!.y + a1!.height / 2))).toBeLessThan(2);
-  await hoverTable(page);
-  const icon = await page.getByTestId('doc-block-table-handle').boundingBox();
+  // The table icon is up with them while the table is hovered (user
+  // 2026-10-21), and stays up on the way to it across the other two.
+  const entry = page.getByTestId('doc-block-table-handle');
+  await expect(entry).toBeVisible();
+  const icon = await entry.boundingBox();
   expect(Math.abs(icon!.x + icon!.width - (table!.x - 40))).toBeLessThan(2);
+  await page.mouse.move(icon!.x + icon!.width / 2, icon!.y + icon!.height / 2, { steps: 16 });
+  await expect(entry).toBeVisible();
+  expect(await entry.boundingBox()).toEqual(icon);
 });
 
 test('T13: from the right of a first-column cell, the pointer reaches the block\'s handle and the row handle without either changing', async () => {
