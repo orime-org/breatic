@@ -5,7 +5,8 @@
  * Shared rate-limit middleware (auth, studio and post-auth routes).
  *
  * A route is limited by one or more quotas, each keyed by a dimension:
- * `'ip'` — the client address (pre-auth routes); `'ip+email'` — that address
+ * `'ip'` — the client address (pre-auth routes, and signing out of other
+ * devices); `'ip+email'` — that address
  * paired with the validated email, so people behind one egress address do not
  * use up each other's attempts (inner#1478); `'user'` — the authenticated
  * user; `{ userAndParam }` — that user plus one route param, one bucket per

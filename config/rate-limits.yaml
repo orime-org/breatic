@@ -4,8 +4,8 @@
 #   window_seconds = window length in seconds
 # The key DIMENSION (IP, or IP plus email, for pre-auth endpoints; the
 # connection address for the internal API; user id, or user id plus one route
-# param, for post-auth) is fixed in code per action for security; only the
-# counts live here.
+# param, for post-auth, which signing out of other devices pairs with IP) is
+# fixed in code per action for security; only the counts live here.
 #
 # Every action a route throttles MUST have an entry. A missing one is read
 # when that route is first requested, and the request answers 500 — the
@@ -30,9 +30,10 @@ forgot:         { max: 3,   window_seconds: 3600 }
 reset:          { max: 30,  window_seconds: 300 }
 reset-recovery-ip: { max: 30, window_seconds: 300 }
 reset-recovery: { max: 5,   window_seconds: 3600 }
-# Signing out of other devices (inner#1548), per address and per account:
-# ending sessions is a scan over every session key, and a person needs it a
-# few times at most.
+
+# Auth (post-auth). Signing out of other devices (inner#1548), per address and
+# per account: ending sessions is a scan over every session key, and a person
+# needs it a few times at most.
 logout-others-ip: { max: 30, window_seconds: 300 }
 logout-others: { max: 10,  window_seconds: 300 }
 

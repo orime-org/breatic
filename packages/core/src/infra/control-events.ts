@@ -4,11 +4,14 @@
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Three fire-and-forget notification paths:
+ * Four fire-and-forget notification paths:
  *
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
  *                           it on the meta doc. Per project.
+ *   - `credits:changed`   — server or worker publishes after a charge made
+ *                           in the project commits; every collab instance
+ *                           relays it on the meta doc. Per project.
  *   - `connections:close` — collab's lifecycle consumer publishes after
  *                           a duplicate / archive / restore; every collab
  *                           instance closes its connections to the
@@ -31,8 +34,9 @@
  *   - Notification-only. A missed `activity:new` is made up by the next
  *     reconnect, which re-queries PG; a missed
  *     `connections:close` leaves that instance's connections on the role
- *     they had until they next reconnect; a missed `sessions:revoked` is
- *     made up by collab's session recheck.
+ *     they had until they next reconnect; a missed `credits:changed` is
+ *     made up the next time a screen showing the balance reads it; a missed
+ *     `sessions:revoked` is made up by collab's session recheck.
  *   - No replay / consumer-group semantics needed.
  *
  * Why DB2 (REDIS_STREAM_URL):
