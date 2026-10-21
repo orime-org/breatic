@@ -5,6 +5,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { Slider } from '@web/components/ui/slider';
+import { useSliderGesture } from '@web/spaces/canvas/generate/use-slider-gesture';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -57,14 +58,8 @@ interface ParamSliderRowProps {
 }
 
 /**
- * One numeric param as a slider, written to the document once per gesture.
- *
- * A drag crosses every step between where it starts and where it ends, and
- * Radix reports each one. Each report written straight through is one canvas
- * undo entry — that stack holds 50 and merges nothing by time — so a single
- * drag across `volume` (100 positions on minimax-speech-2.8-hd) could push out
- * everything the user could still undo. `onValueCommit` fires once when a gesture ends and once per key
- * press, which is the granularity a person would name as one change.
+ * One numeric param as a slider, written to the document once per gesture
+ * ({@link useSliderGesture}).
  * @param root0 - Props.
  * @param root0.name - The param name.
  * @param root0.label - The param's name as the reader reads it.
@@ -102,72 +97,8 @@ export function ParamSliderRow({
   className,
   disabled,
 }: ParamSliderRowProps): React.JSX.Element {
-  // Where the thumb sits until the gesture ends. Held apart from `value` so
-  // the control follows the pointer while the document does not.
-  const [dragged, setDragged] = React.useState<number | null>(null);
-  const shown = dragged ?? draft ?? value;
-
-  // A key the browser is repeating, and the step the last repeat reached.
-  const repeatingRef = React.useRef(false);
-  const repeatedToRef = React.useRef<number | null>(null);
-
-  const onValueChange = React.useCallback(
-    ([next]: number[]) => {
-      setDragged(next);
-      if (next !== undefined) onDraft?.(next);
-    },
-    [onDraft],
-  );
-
-  const onValueCommit = React.useCallback(
-    ([next]: number[]) => {
-      // Radix commits on every repeat of a held key. The press is the
-      // decision and the repeats are it continuing, so they wait for the
-      // release rather than each becoming its own undo entry.
-      if (repeatingRef.current) {
-        repeatedToRef.current = next;
-        return;
-      }
-      setDragged(null);
-      onChange({ [name]: next });
-    },
-    [onChange, name],
-  );
-
-  // Every gesture, by key or by pointer, ends here: the row's draft and the
-  // one it handed out go together. Radix reports a keyboard commit BEFORE it
-  // reports the change, so a draft cleared inside the commit is written
-  // straight back, and a drag released where it began commits nothing; a
-  // draft left set shows this client's number over whatever is stored.
-  const endDraft = React.useCallback((): void => {
-    setDragged(null);
-    onDraftEnd?.();
-  }, [onDraftEnd]);
-
-  const endKeyGesture = React.useCallback((): void => {
-    repeatingRef.current = false;
-    const reached = repeatedToRef.current;
-    repeatedToRef.current = null;
-    // The held key's value is written before the draft ends, so whoever
-    // shows the draft ends it on a value that is already the node's.
-    if (reached !== null) onChange({ [name]: reached });
-    endDraft();
-  }, [onChange, name, endDraft]);
-
-  // Four ways a key gesture ends, and every one of them has to write. Keyup
-  // alone leaves the flag set when the release lands on another window, and
-  // a set flag holds back every commit after it — the pointer's included, so
-  // the thumb would move under drags the node never hears about.
-  const onKeyDown = React.useCallback(
-    (event: React.KeyboardEvent): void => {
-      if (event.repeat) {
-        repeatingRef.current = true;
-        return;
-      }
-      endKeyGesture();
-    },
-    [endKeyGesture],
-  );
+  const onCommit = React.useCallback((next: number) => onChange({ [name]: next }), [onChange, name]);
+  const { shown, handlers } = useSliderGesture({ value, draft, onDraft, onDraftEnd, onCommit });
 
   return (
     <div className={className}>
@@ -194,15 +125,7 @@ export function ParamSliderRow({
         // Radix reports a value already rounded to the step's decimal count
         // (`roundValue(…, getDecimalCount(step))` in its own snapping), so the
         // float error of repeated addition never reaches here.
-        onValueChange={onValueChange}
-        onValueCommit={onValueCommit}
-        onKeyDown={onKeyDown}
-        onKeyUp={endKeyGesture}
-        onBlur={endKeyGesture}
-        onPointerDown={endKeyGesture}
-        // Radix commits a moved value in its own pointerup; capture is let go
-        // after that, so the draft ends once the commit (if any) is in.
-        onLostPointerCapture={endDraft}
+        {...handlers}
       />
       {stops && (
         // Under the track, each word centred on the value it names. A word at

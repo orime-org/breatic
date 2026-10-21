@@ -583,6 +583,28 @@ describe('the batch-five panels', () => {
       expect(props.onParams).toHaveBeenLastCalledWith({ eq: { preset: 'custom', gains: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] } });
     });
 
+    it('shows the stored gain once a key press on a band is over', () => {
+      const props: MiniToolPanelProps = {
+        ...mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO }),
+      };
+      cleanupAll();
+      const view = render(
+        <TooltipProvider>
+          <MiniToolPanel {...props} />
+        </TooltipProvider>,
+      );
+      const thumb = screen.getByTestId('mini-tool-eq-band-9-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowDown' });
+      fireEvent.keyUp(thumb, { key: 'ArrowDown' });
+      // A preset pressed after the key: the band reads the preset's gain.
+      view.rerender(
+        <TooltipProvider>
+          <MiniToolPanel {...props} params={{ eq: { preset: 'bass_boost', gains: [6, 6, 4, 2, 0, 0, 0, 0, 0, 0] } }} />
+        </TooltipProvider>,
+      );
+      expect(screen.getByTestId('mini-tool-eq-band-9-value')).toHaveTextContent('0');
+    });
+
     it('signs each band\'s gain', () => {
       mount({ spec: tool('audio.eq'), params: { eq: { preset: 'voice', gains: [-6, -4, -2, 0, 0, 2, 3, 3, 1, 0] } }, source: AUDIO });
       expect(screen.getByTestId('mini-tool-eq-band-0-value')).toHaveTextContent('-6');

@@ -49,7 +49,7 @@ export const AudioDynamicsControl = React.memo(function AudioDynamicsControl({
   onChange,
 }: AudioDynamicsControlProps): React.JSX.Element {
   const t = useTranslation();
-  const held = value ?? dynamicsValueOfPreset('medium');
+  const held = React.useMemo(() => value ?? dynamicsValueOfPreset('medium'), [value]);
   const presets = React.useMemo(
     () => [
       ...(Object.keys(DYNAMICS_PRESETS) as DynamicsPreset[]).map((preset) => ({
@@ -64,15 +64,19 @@ export const AudioDynamicsControl = React.memo(function AudioDynamicsControl({
     (partial: Record<string, number>) => onChange({ ...held, ...partial, preset: 'custom' }),
     [held, onChange],
   );
+  const onPreset = React.useCallback(
+    (preset: string) => {
+      if (preset !== 'custom') onChange(dynamicsValueOfPreset(preset as DynamicsPreset));
+    },
+    [onChange],
+  );
   return (
     <div className='flex flex-col gap-2.5'>
       <ParamOptionGroup
         label={label}
         options={presets}
         value={held.preset}
-        onSelect={(preset) => {
-          if (preset !== 'custom') onChange(dynamicsValueOfPreset(preset as DynamicsPreset));
-        }}
+        onSelect={onPreset}
         testIdPrefix='mini-tool-dynamics-preset'
         even
       />
