@@ -12,7 +12,7 @@ import { Label } from '@web/components/ui/label';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 
 /**
  * Forgot-password entry. It offers the one way back in that works on this

@@ -18,7 +18,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 
 /**
  * Email + password login.

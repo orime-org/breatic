@@ -11,7 +11,7 @@ import { applyPersonalStudio, useCurrentUserStore } from '@web/stores/current-us
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
 import { STUDIO_SLUG_BOUNDS } from '@web/pages/studio/container/dialogs/slug-util';
 import {

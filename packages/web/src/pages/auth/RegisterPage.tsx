@@ -15,7 +15,7 @@ import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 import { SignupCodeStep } from '@web/pages/auth/SignupCodeStep';
 
 /**

@@ -13,7 +13,7 @@ import { PasswordInput } from '@web/components/ui/password-input';
 import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 
 /**
  * Password reset — branches on the query string:

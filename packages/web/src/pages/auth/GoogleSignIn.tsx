@@ -7,7 +7,7 @@ import { ErrorBoundary, type Scope, type FallbackRender } from '@sentry/react';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { getLocale } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 
 interface GoogleSignInProps {
   clientId: string;
