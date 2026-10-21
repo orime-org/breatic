@@ -35,6 +35,7 @@ import {
   isInTable,
 } from '@tiptap/pm/tables';
 import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { TableSpanSelection, tableAtLeavingHead } from '@web/spaces/document/document-table-leave-selection';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -210,6 +211,20 @@ function deleteAtEdge(view: EditorView): boolean {
 }
 
 /**
+ * Backspace or Delete over a selection holding a whole table (inner#1619
+ * T14) deletes it through the selection's own replace, which takes the table
+ * away whole. The body's Backspace deletes the selection's range as it is
+ * (Tiptap `deleteSelection`), which cuts the table.
+ * @param view - The editor view.
+ * @returns Whether the key was claimed.
+ */
+function deleteSpan(view: EditorView): boolean {
+  if (!(view.state.selection instanceof TableSpanSelection)) return false;
+  view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+  return true;
+}
+
+/**
  * Takes a whole empty table away when every cell of it is selected, for
  * either key a reader deletes with. Anything else is the table plugin's:
  * `deleteCellSelection` empties the selected cells.
@@ -308,6 +323,16 @@ function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
 function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
   const { selection, doc } = view.state;
   if (!(selection instanceof TextSelection)) return false;
+  // A selection already holding a whole table moves its end in the table
+  // over the whole table either way (inner#1619 design 5.3), never back into
+  // a cell selection.
+  const spanned = tableAtLeavingHead(view.state);
+  if (spanned !== null) {
+    const edge = dir === 'up' ? spanned.pos : spanned.pos + spanned.node.nodeSize;
+    const over = Selection.findFrom(doc.resolve(edge), dir === 'up' ? -1 : 1, true);
+    if (over !== null) view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, over.head)).scrollIntoView());
+    return true;
+  }
   const exit = tableExit(view, selection.$head, dir);
   if (exit === null) return false;
   const past = Selection.findFrom(doc.resolve(exit.edge), dir === 'up' ? -1 : 1, true);
@@ -329,9 +354,9 @@ export const documentTableKeysExtension = createExtension(() => ({
     Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     Backspace: ({ editor }: { editor: KeysEditor }) =>
-      deleteWholeTable(editor) || backspaceAtEdge(editor.prosemirrorView),
+      deleteSpan(editor.prosemirrorView) || deleteWholeTable(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
-      deleteWholeTable(editor) || deleteAtEdge(editor.prosemirrorView),
+      deleteSpan(editor.prosemirrorView) || deleteWholeTable(editor) || deleteAtEdge(editor.prosemirrorView),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>

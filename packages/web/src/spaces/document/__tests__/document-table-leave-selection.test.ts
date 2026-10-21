@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
+import { CellSelection } from '@tiptap/pm/tables';
 
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
@@ -35,6 +36,15 @@ const WORDS: TableInput = { rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'
  * @returns The editor and its undo manager.
  */
 function open(table: TableInput = WORDS): { editor: Editor; manager: Y.UndoManager } {
+  return openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(table), { type: 'paragraph', content: 'below' }]);
+}
+
+/**
+ * A mounted editor holding some blocks, with an undo manager.
+ * @param content - The blocks.
+ * @returns The editor and its undo manager.
+ */
+function openWith(content: unknown[]): { editor: Editor; manager: Y.UndoManager } {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const { manager, extension } = createDocumentUndo(doc);
@@ -43,11 +53,7 @@ function open(table: TableInput = WORDS): { editor: Editor; manager: Y.UndoManag
   document.body.appendChild(host);
   editor.mount(host);
   mounted.push(editor);
-  editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'lead' },
-    tableBlock(table),
-    { type: 'paragraph', content: 'below' },
-  ] as never);
+  editor.replaceBlocks(editor.document, content as never);
   manager.stopCapturing();
   editor.prosemirrorView.focus();
   return { editor, manager };
@@ -162,14 +168,14 @@ describe('a selection leaving a table', () => {
     expect([a, h]).not.toEqual([at(editor, 'a1', 0), at(editor, 'b2', 2)]);
   });
 
-  it('reaches the line before the table when the table does not start with words', () => {
+  it('stays in the table when the table does not start with words', () => {
     const { editor } = open({
       rows: [{ cells: [{ blocks: [{ type: 'divider' }, { type: 'paragraph', content: 'a1' }] } as never, 'b1'] }],
     });
 
     select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
 
-    expect(editor.prosemirrorView.state.selection.from).toBe(at(editor, 'lead', 4));
+    expect(editor.prosemirrorView.state.selection.from).toBe(at(editor, 'a1', 0));
   });
 
   it('draws every cell of the table as selected', () => {
@@ -231,6 +237,56 @@ describe('deleting or typing over a selection leaving a table', () => {
     expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:low']);
   });
 
+  it('takes the table away whole when something is pasted over it, the paste in its place', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+
+    editor.prosemirrorView.pasteText('PASTED');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:PASTEDlow']);
+  });
+
+  it('takes both tables away whole when it runs from one table into another', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock(WORDS),
+      { type: 'paragraph', content: 'mid' },
+      tableBlock({ rows: [{ cells: ['c1', 'd1'] }] }),
+      { type: 'paragraph', content: 'end' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'c1', 1));
+
+    press(editor, 'Backspace');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:end']);
+  });
+
+  it('takes a table that opens the body away whole, though it does not start with words', () => {
+    const { editor } = openWith([
+      tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'divider' }, { type: 'paragraph', content: 'a1' }] } as never, 'b1'] }] }),
+      { type: 'paragraph', content: 'below' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+
+    press(editor, 'Backspace');
+
+    expect(blocks(editor)).toEqual(['paragraph:low']);
+  });
+
+  it('leaves a block above the table that the selection does not reach', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      { type: 'divider' },
+      tableBlock({ rows: [{ cells: [{ blocks: [{ type: 'divider' }, { type: 'paragraph', content: 'a1' }] } as never, 'b1'] }] }),
+      { type: 'paragraph', content: 'below' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+
+    press(editor, 'Backspace');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'divider', 'paragraph:low']);
+  });
+
   it('takes the table away whole when typing over a selection from above into it', () => {
     const { editor } = open();
     select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
@@ -264,6 +320,17 @@ describe('Shift and an arrow at a table\'s edge', () => {
     const { anchor, head } = editor.prosemirrorView.state.selection;
     expect(anchor).toBe(at(editor, 'b2', 2));
     expect(head).toBe(at(editor, 'lead', 4));
+  });
+
+  it('takes the selection back over the whole table with Shift and the opposite arrow', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+    press(editor, 'ArrowUp', true);
+
+    const { selection } = editor.prosemirrorView.state;
+    expect(selection).not.toBeInstanceOf(CellSelection);
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'lead', 2), at(editor, 'lead', 4)]);
   });
 
   it('leaves Shift and an arrow on an inner row to the table', () => {
