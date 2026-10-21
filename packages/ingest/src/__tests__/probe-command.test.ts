@@ -396,3 +396,26 @@ describe("what the colour tags read as", () => {
     expect(read.streams[1]).not.toHaveProperty("colorTransfer");
   });
 });
+
+// The audio operations resample and judge Nyquist off the source (inner#1305 §7.1).
+describe("what the audio fields read as", () => {
+  it("asks for the sample rate and channel count and carries them as numbers", () => {
+    const entries = probeArgs(URL_FOR_KEY)[probeArgs(URL_FOR_KEY).indexOf("-show_entries") + 1];
+    expect(entries).toContain("sample_rate,channels");
+
+    const read = readProbeOutput(
+      JSON.stringify({
+        streams: [
+          { index: 0, codec_type: "audio", sample_rate: "44100", channels: 2 },
+          { index: 1, codec_type: "video" },
+          { index: 2, codec_type: "audio", sample_rate: "not a rate" },
+        ],
+        format: {},
+      }),
+    );
+    expect(read.streams[0]).toMatchObject({ sampleRate: 44100, channels: 2 });
+    expect(read.streams[1]).not.toHaveProperty("sampleRate");
+    expect(read.streams[1]).not.toHaveProperty("channels");
+    expect(read.streams[2]).not.toHaveProperty("sampleRate");
+  });
+});

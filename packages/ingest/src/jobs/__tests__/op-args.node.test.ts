@@ -239,8 +239,8 @@ describe("HDR colour", () => {
 });
 
 describe("outputRefusal", () => {
-  it("fails an output with no picture", () => {
-    expect(outputRefusal({ streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 1 })).toBe("tool_failed");
-    expect(outputRefusal(videoProbe())).toBeNull();
+  it("fails a video output with no picture", () => {
+    expect(outputRefusal({ streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 1 }, "video")).toBe("tool_failed");
+    expect(outputRefusal(videoProbe(), "video")).toBeNull();
   });
 });
