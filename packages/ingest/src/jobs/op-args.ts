@@ -15,7 +15,7 @@ import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js"
 // this file has none.
 import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
-import { buildEqFilter } from "@shared/audio-eq.js";
+import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
 import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
@@ -383,6 +383,13 @@ function sampleRateOf(source: ProbeReport): number | null {
 }
 
 /**
+ * Float samples for a chain: a filter that negotiates 16-bit samples (the
+ * equaliser does) clips a gain past full scale itself, before the limiter at
+ * the end of the chain can hold it, and AAC then overshoots the clipped wave.
+ */
+const FLOAT = "aformat=sample_fmts=fltp";
+
+/**
  * One run from the source to the output, through a filter when one is given.
  * @param input - The local source.
  * @param output - The file to write.
@@ -394,7 +401,7 @@ function audioRun(input: string, output: string, filter: string | null, before: 
   return {
     kind: "run",
     program: "ffmpeg",
-    args: [...QUIET, ...before, ...SOURCE, "-i", input, "-vn", ...(filter === null ? [] : ["-af", filter]), ...AUDIO_OUT, output],
+    args: [...QUIET, ...before, ...SOURCE, "-i", input, "-vn", ...(filter === null ? [] : ["-af", `${FLOAT},${filter}`]), ...AUDIO_OUT, output],
   };
 }
 
@@ -535,7 +542,7 @@ function reverbSteps(params: Record<string, unknown>, input: string, output: str
           program: "ffmpeg",
           args: [
             ...QUIET, ...SOURCE, "-i", input, "-f", "wav", "-i", "-",
-            "-filter_complex", `[1]volume=${level}dB[w];[0][w]amix=inputs=2:normalize=0:duration=longest`,
+            "-filter_complex", `[1]volume=${level}dB[w];[0][w]amix=inputs=2:normalize=0:duration=longest,${PEAK_LIMITER}`,
             "-vn", ...AUDIO_OUT, output,
           ],
         },
@@ -575,7 +582,7 @@ function audioSteps(op: AudioOp, params: Record<string, unknown>, input: string,
     case "eq":
       return [audioRun(input, output, buildEqFilter((params.eq as { gains: number[] }).gains, rate))];
     case "compress":
-      return [audioRun(input, output, buildCompressorFilter(params.dynamics as DynamicsValue))];
+      return [audioRun(input, output, `${buildCompressorFilter(params.dynamics as DynamicsValue)},${PEAK_LIMITER}`)];
     case "pan": {
       const width = (numberOf(params, "width") / 100).toFixed(2);
       const balance = (numberOf(params, "pan") / 100).toFixed(2);
@@ -583,7 +590,7 @@ function audioSteps(op: AudioOp, params: Record<string, unknown>, input: string,
         audioRun(
           input,
           output,
-          `aformat=channel_layouts=stereo,extrastereo=m=${width}:c=0,stereotools=balance_out=${balance},alimiter=limit=0.89:level=disabled`,
+          `aformat=channel_layouts=stereo,extrastereo=m=${width}:c=0,stereotools=balance_out=${balance},${PEAK_LIMITER}`,
         ),
       ];
     }
@@ -597,7 +604,7 @@ function audioSteps(op: AudioOp, params: Record<string, unknown>, input: string,
           input,
           output,
           `highpass=f=80,equalizer=f=3000:t=q:w=1:g=${(6 * strength).toFixed(2)},deesser=i=${(0.5 * strength).toFixed(2)}` +
-            `,acompressor=threshold=0.1:ratio=${(1 + 2 * strength).toFixed(2)}:attack=10:release=150`,
+            `,acompressor=threshold=0.1:ratio=${(1 + 2 * strength).toFixed(2)}:attack=10:release=150,${PEAK_LIMITER}`,
         ),
       ];
     }

@@ -418,6 +418,7 @@ export {
   EQ_GAIN_RANGE,
   EQ_PRESETS,
   EQ_PRESET_LABELS,
+  PEAK_LIMITER,
   buildEqFilter,
   defaultEqValue,
   eqValueOfPreset,

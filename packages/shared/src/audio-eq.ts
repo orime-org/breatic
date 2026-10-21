@@ -57,12 +57,20 @@ export function eqValueOfPreset(preset: EqPreset): EqValue {
 /** The curve the panel opens on. */
 export const defaultEqValue: EqValue = eqValueOfPreset("flat");
 
+/**
+ * The ceiling every audio chain that can raise the level ends with: peaks held
+ * 2 dB under full scale, the level below them untouched. AAC raises a peak by
+ * about 1 dB as it encodes, so a -1 dBFS ceiling decoded above full scale
+ * (measured on a widened -1 dBFS stereo source, inner#1305).
+ */
+export const PEAK_LIMITER = "alimiter=limit=0.794:level=disabled";
+
 /** The rate assumed for a source whose probe read none. */
 const ASSUMED_RATE = 48000;
 
 /**
- * The filter chain: one peaking band per gain that moves, then a limiter that
- * holds peaks under 0.89 without touching the level below them.
+ * The filter chain: one peaking band per gain that moves, then
+ * {@link PEAK_LIMITER}.
  * @param gains - One gain per band, from 31 Hz up.
  * @param sampleRate - The source's rate, null when its probe read none.
  * @returns The `-af` chain.
@@ -73,5 +81,5 @@ export function buildEqFilter(gains: readonly number[], sampleRate: number | nul
     const gain = gains[index] ?? 0;
     return gain === 0 || hz >= nyquist ? [] : [`equalizer=f=${hz}:t=o:w=1:g=${gain}`];
   });
-  return [...bands, "alimiter=limit=0.89:level=disabled"].join(",");
+  return [...bands, PEAK_LIMITER].join(",");
 }

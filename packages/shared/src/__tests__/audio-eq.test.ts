@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PEAK_LIMITER,
   EQ_BANDS_HZ,
   EQ_GAIN_RANGE,
   EQ_PRESETS,
@@ -12,7 +13,15 @@ import {
   eqValueOfPreset,
 } from "@shared/audio-eq.js";
 
-const LIMITER = "alimiter=limit=0.89:level=disabled";
+const LIMITER = PEAK_LIMITER;
+
+// inner#1305: AAC raises a peak by about 1 dB when it encodes, so the ceiling
+// sits 2 dB under full scale; measured, a -1 dBFS ceiling decoded at +0.08 dBFS.
+describe("PEAK_LIMITER", () => {
+  it("holds peaks 2 dB under full scale without touching the level below them", () => {
+    expect(PEAK_LIMITER).toBe("alimiter=limit=0.794:level=disabled");
+  });
+});
 
 describe("audio EQ terms", () => {
   it("has ten octave bands from 31 Hz to 16 kHz", () => {

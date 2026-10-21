@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
-import { buildCompressorFilter, buildEqFilter, defaultDynamicsValue } from "@breatic/shared";
+import { PEAK_LIMITER, buildCompressorFilter, buildEqFilter, defaultDynamicsValue } from "@breatic/shared";
 
 import {
   inputRefusal,
@@ -28,6 +28,9 @@ const OUT = "/tmp/job/out.m4a";
 const WORK = "/tmp/job";
 const FIXTURES = join(__dirname, "fixtures");
 const AAC_OUT = ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", OUT];
+// Every chain runs in float, so a gain past full scale reaches the limiter
+// rather than being clipped by a filter that negotiated 16-bit samples.
+const FLOAT = "aformat=sample_fmts=fltp";
 
 /** A probe of one audio stream; a null rate is one ffprobe did not read. */
 function audioProbe(sampleRate: number | null = 44100, channels = 2): ProbeReport {
@@ -108,7 +111,7 @@ describe("audio outputs", () => {
 describe("denoise, cut, EQ, compressor", () => {
   it("denoises with the video tool's mapping", () => {
     expect(after(onlyRun(opSteps("denoise", { intensity: 50 }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
-      "afftdn=nf=-60.00:nr=19.50",
+      `${FLOAT},afftdn=nf=-60.00:nr=19.50`,
     );
   });
 
@@ -122,28 +125,28 @@ describe("denoise, cut, EQ, compressor", () => {
   it("equalises with the shared filter at the source's rate", () => {
     const gains = [0, 0, 0, 0, 0, 0, 0, 0, 3, 6];
     const run = onlyRun(opSteps("eq", { eq: { preset: "custom", gains } }, IN, OUT, WORK, audioProbe(16000)));
-    expect(after(run, "-af")).toBe(buildEqFilter(gains, 16000));
+    expect(after(run, "-af")).toBe(`${FLOAT},${buildEqFilter(gains, 16000)}`);
   });
 
   it("compresses with the shared filter", () => {
     const run = onlyRun(opSteps("compress", { dynamics: defaultDynamicsValue }, IN, OUT, WORK, audioProbe()));
-    expect(after(run, "-af")).toBe(buildCompressorFilter(defaultDynamicsValue));
+    expect(after(run, "-af")).toBe(`${FLOAT},${buildCompressorFilter(defaultDynamicsValue)},${PEAK_LIMITER}`);
   });
 });
 
 describe("speed", () => {
   it("keeps the pitch with atempo, chained past its range", () => {
     expect(after(onlyRun(opSteps("audio_speed", { rate: 1.5, keepPitch: true }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
-      "atempo=1.500000",
+      `${FLOAT},atempo=1.500000`,
     );
     expect(after(onlyRun(opSteps("audio_speed", { rate: 0.25, keepPitch: true }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
-      "atempo=0.500000,atempo=0.500000",
+      `${FLOAT},atempo=0.500000,atempo=0.500000`,
     );
   });
 
   it("lets the pitch follow the speed by resampling, rounded to whole samples", () => {
     expect(after(onlyRun(opSteps("audio_speed", { rate: 0.75, keepPitch: false }, IN, OUT, WORK, audioProbe(11025))), "-af")).toBe(
-      "asetrate=8269,aresample=11025",
+      `${FLOAT},asetrate=8269,aresample=11025`,
     );
   });
 
@@ -155,7 +158,7 @@ describe("speed", () => {
 describe("pan", () => {
   it("widens without clipping, places the balance, then limits peaks", () => {
     expect(after(onlyRun(opSteps("pan", { pan: -50, width: 200 }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
-      "aformat=channel_layouts=stereo,extrastereo=m=2.00:c=0,stereotools=balance_out=-0.50,alimiter=limit=0.89:level=disabled",
+      `${FLOAT},aformat=channel_layouts=stereo,extrastereo=m=2.00:c=0,stereotools=balance_out=-0.50,${PEAK_LIMITER}`,
     );
   });
 
@@ -167,7 +170,7 @@ describe("pan", () => {
 describe("voice enhance", () => {
   it("scales the presence boost, de-essing and compression with the strength", () => {
     expect(after(onlyRun(opSteps("voice", { intensity: 50 }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
-      "highpass=f=80,equalizer=f=3000:t=q:w=1:g=3.00,deesser=i=0.25,acompressor=threshold=0.1:ratio=2.00:attack=10:release=150",
+      `${FLOAT},highpass=f=80,equalizer=f=3000:t=q:w=1:g=3.00,deesser=i=0.25,acompressor=threshold=0.1:ratio=2.00:attack=10:release=150,${PEAK_LIMITER}`,
     );
   });
 
@@ -207,7 +210,7 @@ describe("normalize", () => {
     if (step?.kind !== "measure") throw new Error("expected a measure step");
     const run = onlyRun(step.then(measured));
     expect(after(run, "-af")).toBe(
-      "loudnorm=I=-14:TP=-1:LRA=11:measured_I=-27.15:measured_TP=-23.01:measured_LRA=0.00:measured_thresh=-37.15:offset=-0.02:linear=true,aresample=192000",
+      `${FLOAT},loudnorm=I=-14:TP=-1:LRA=11:measured_I=-27.15:measured_TP=-23.01:measured_LRA=0.00:measured_thresh=-37.15:offset=-0.02:linear=true,aresample=192000`,
     );
     expect(run).not.toContain("-ar");
   });
@@ -215,7 +218,7 @@ describe("normalize", () => {
   it("only resamples a silent source", () => {
     const [step] = opSteps("normalize", { target: "-16" }, IN, OUT, WORK, audioProbe(48000));
     if (step?.kind !== "measure") throw new Error("expected a measure step");
-    expect(after(onlyRun(step.then(silent)), "-af")).toBe("aresample=48000");
+    expect(after(onlyRun(step.then(silent)), "-af")).toBe(`${FLOAT},aresample=48000`);
   });
 
   it("leaves the rate alone when the probe did not read one", () => {
@@ -275,7 +278,7 @@ describe("reverb", () => {
     expect(mix?.program).toBe("ffmpeg");
     expect(mix!.args.filter((arg) => arg === "-i")).toHaveLength(2);
     expect(after(mix!.args, "-filter_complex")).toBe(
-      "[1]volume=0.00dB[w];[0][w]amix=inputs=2:normalize=0:duration=longest",
+      `[1]volume=0.00dB[w];[0][w]amix=inputs=2:normalize=0:duration=longest,${PEAK_LIMITER}`,
     );
     expect(mix!.args.slice(-AAC_OUT.length)).toEqual(AAC_OUT);
   });
