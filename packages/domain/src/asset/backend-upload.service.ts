@@ -43,6 +43,7 @@ import { extFromUrl } from "@domain/asset/source-url.js";
 import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
 import {
   applyIngestReport,
+  INGEST_SIDE_EFFECT_EVENTS,
   type IngestReportOutcome,
   type IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
@@ -109,15 +110,22 @@ function landed(outcome: IngestReportOutcome, what: string): StoredAsset {
     durationSeconds: outcome.durationSeconds,
     mimeType: outcome.mimeType,
     sizeBytes: outcome.sizeBytes,
-    ...(outcome.countsPublishFailed === true && { countsPublishFailed: true }),
-    ...(outcome.reclaimQueueFailed === true && { reclaimQueueFailed: true }),
-    ...(outcome.activityAppendFailed === true && {
-      activityAppendFailed: true,
-    }),
-    ...(outcome.coverRegisterFailed === true && {
-      coverRegisterFailed: true,
-    }),
+    ...sideEffectsOf(outcome),
   };
+}
+
+/**
+ * Every side-effect flag registration raised, read off the list that names
+ * them all, so a flag added there reaches the backend callers that log it.
+ * @param outcome - What registration answered.
+ * @returns The flags that are set.
+ */
+function sideEffectsOf(outcome: IngestSideEffects): IngestSideEffects {
+  const raised: IngestSideEffects = {};
+  for (const flag of Object.keys(INGEST_SIDE_EFFECT_EVENTS) as (keyof IngestSideEffects)[]) {
+    if (outcome[flag] === true) raised[flag] = true;
+  }
+  return raised;
 }
 
 /** What every backend upload has to say about itself. */

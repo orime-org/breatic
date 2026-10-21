@@ -20,6 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as sharedModule from "@breatic/shared";
+import type * as IngestReportModule from "@domain/asset/ingest-report.service.js";
 
 const issueUploadGrant = vi.fn();
 const signUploadTicket = vi.fn();
@@ -70,7 +71,10 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
   fetchUrlToIngest,
 }));
 vi.mock("@domain/asset/upload-grant.service.js", () => ({ issueUploadGrant }));
-vi.mock("@domain/asset/ingest-report.service.js", () => ({ applyIngestReport }));
+vi.mock("@domain/asset/ingest-report.service.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  applyIngestReport,
+}));
 
 const { uploadBytesToStorage, transferUrlToStorage, transferReaderUrlToStorage, ReaderUrlTransferError } =
   await import("@domain/asset/backend-upload.service.js");
@@ -286,6 +290,30 @@ describe("what a backend lane hands back", () => {
       height: 1080,
       durationSeconds: 12.5,
     });
+  });
+
+  // Each flag is the only account of what went wrong beside the row; the
+  // worker and the agent log what this hands back, so none may be dropped.
+  it("carries every side-effect flag registration raised", async () => {
+    const { INGEST_SIDE_EFFECT_EVENTS } = await vi.importActual<typeof IngestReportModule>(
+      "@domain/asset/ingest-report.service.js",
+    );
+    const flags = Object.fromEntries(Object.keys(INGEST_SIDE_EFFECT_EVENTS).map((flag) => [flag, true]));
+    expect(flags).toHaveProperty("peaksQueueFailed", true);
+    applyIngestReport.mockResolvedValue({
+      status: "registered",
+      assetId: "a1",
+      fileUrl: "https://our-bucket/k.mp3",
+      kind: "audio",
+      coverUrl: null,
+      width: null,
+      height: null,
+      durationSeconds: 61,
+      ...flags,
+    });
+
+    expect(await uploadBytesToStorage(new Blob(["x"]), CTX)).toMatchObject(flags);
+    expect(await transferUrlToStorage("https://provider.example/out.mp3", CTX)).toMatchObject(flags);
   });
 
   it("says there are none when the row has none", async () => {

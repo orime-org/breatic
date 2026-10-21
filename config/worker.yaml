@@ -24,6 +24,9 @@ concurrency:
     upload-finish: 50
     url-ingest: 50
     media-read: 50
+    # Each reads a whole audio object on one of the few media containers that
+    # live uploads also wait on, so few run at once (inner#1305 §4.4).
+    audio-peaks: 2
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
