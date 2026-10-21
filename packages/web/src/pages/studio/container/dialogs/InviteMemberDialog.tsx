@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { FieldError } from '@web/components/FieldError';
 import { Button } from '@web/components/ui/button';
 import {
   Dialog,
@@ -23,13 +24,14 @@ import {
 } from '@web/components/ui/select';
 import type { GrantableStudioRole } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 
 interface InviteMemberDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Called with a valid email + role on submit; the parent runs the mutation. */
   onInvite: (values: { email: string; role: GrantableStudioRole }) => void;
-  /** Whether the invite mutation is in flight (disables the submit button). */
+  /** Whether the invite mutation is in flight (spins the submit button). */
   pending: boolean;
   /**
    * A server-side error from the last invite attempt, shown inline (e.g. "email
@@ -63,6 +65,8 @@ export function InviteMemberDialog({
   const t = useTranslation();
   const [email, setEmail] = React.useState('');
   const [role, setRole] = React.useState<GrantableStudioRole>('guest');
+  const [emailError, setEmailError] = React.useState<string | null>(null);
+  const emailRef = React.useRef<HTMLInputElement>(null);
 
   // Reset the form whenever the dialog opens, so a re-open starts clean (the
   // parent owns the server error, which it clears on open).
@@ -70,17 +74,28 @@ export function InviteMemberDialog({
     if (open) {
       setEmail('');
       setRole('guest');
+      setEmailError(null);
     }
   }, [open]);
 
   /**
-   * Validate the form and report the values on a successful submit.
+   * Validate the form and report the values on a successful submit; a refused
+   * press says why under the email field (inner#1652).
    * @param event the form submit event.
    */
   const submit = (event: React.FormEvent): void => {
     event.preventDefault();
+    if (pending) return;
     const trimmed = email.trim();
-    if (trimmed === '') {
+    const reason =
+      trimmed === ''
+        ? t('studio.container.dialog.emailRequired')
+        : looksLikeEmail(trimmed)
+          ? null
+          : t('auth.invalidEmail');
+    if (reason !== null) {
+      setEmailError(reason);
+      emailRef.current?.focus();
       return;
     }
     onInvite({ email: trimmed, role });
@@ -98,7 +113,7 @@ export function InviteMemberDialog({
         <DialogHeader>
           <DialogTitle>{t('studio.container.members.inviteTitle')}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <DialogBody className='flex flex-col gap-4'>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={emailId}>
@@ -106,15 +121,23 @@ export function InviteMemberDialog({
               </Label>
               <Input
                 id={emailId}
+                ref={emailRef}
                 type='email'
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setEmailError(null);
+                }}
                 placeholder={t(
                   'studio.container.members.inviteEmailPlaceholder',
                 )}
-                required
+                aria-invalid={emailError !== null}
+                aria-describedby={emailError !== null ? `${emailId}-error` : undefined}
                 autoComplete='off'
               />
+              {emailError !== null ? (
+                <FieldError id={`${emailId}-error`}>{emailError}</FieldError>
+              ) : null}
             </div>
             <div className='flex flex-col gap-1.5'>
               <Label htmlFor={roleId}>
@@ -157,7 +180,7 @@ export function InviteMemberDialog({
             >
               {t('studio.container.dialog.cancel')}
             </Button>
-            <Button type='submit' disabled={pending || email.trim() === ''} loading={pending}>
+            <Button type='submit' loading={pending}>
               {t('studio.container.members.inviteSubmit')}
             </Button>
           </DialogFooter>
