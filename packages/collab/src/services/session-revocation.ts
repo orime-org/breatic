@@ -62,8 +62,8 @@ function sessionConnections(hocuspocus: Hocuspocus): Array<{ connection: Closabl
   const found: Array<{ connection: ClosableConnection; ctx: AuthContext }> = [];
   for (const doc of hocuspocus.documents?.values() ?? []) {
     for (const [connection] of doc.connections) {
-      const ctx = (connection as unknown as ClosableConnection).context as AuthContext | undefined;
-      if (ctx?.session) found.push({ connection: connection, ctx });
+      const ctx = connection.context as AuthContext | undefined;
+      if (ctx?.session) found.push({ connection, ctx });
     }
   }
   return found;
