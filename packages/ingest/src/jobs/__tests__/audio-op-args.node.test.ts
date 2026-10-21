@@ -29,8 +29,8 @@ const WORK = "/tmp/job";
 const FIXTURES = join(__dirname, "fixtures");
 const AAC_OUT = ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", OUT];
 
-/** A probe of one audio stream. */
-function audioProbe(sampleRate: number | undefined = 44100, channels = 2): ProbeReport {
+/** A probe of one audio stream; a null rate is one ffprobe did not read. */
+function audioProbe(sampleRate: number | null = 44100, channels = 2): ProbeReport {
   return {
     streams: [
       {
@@ -40,7 +40,7 @@ function audioProbe(sampleRate: number | undefined = 44100, channels = 2): Probe
         width: null,
         height: null,
         attachedPic: false,
-        ...(sampleRate === undefined ? {} : { sampleRate }),
+        ...(sampleRate === null ? {} : { sampleRate }),
         channels,
       },
     ],
@@ -148,7 +148,7 @@ describe("speed", () => {
   });
 
   it("cannot let the pitch follow without knowing the source's rate", () => {
-    expect(() => opSteps("audio_speed", { rate: 2, keepPitch: false }, IN, OUT, WORK, audioProbe(undefined))).toThrow();
+    expect(() => opSteps("audio_speed", { rate: 2, keepPitch: false }, IN, OUT, WORK, audioProbe(null))).toThrow();
   });
 });
 
@@ -219,7 +219,7 @@ describe("normalize", () => {
   });
 
   it("leaves the rate alone when the probe did not read one", () => {
-    const [step] = opSteps("normalize", { target: "-16" }, IN, OUT, WORK, audioProbe(undefined));
+    const [step] = opSteps("normalize", { target: "-16" }, IN, OUT, WORK, audioProbe(null));
     if (step?.kind !== "measure") throw new Error("expected a measure step");
     expect(after(onlyRun(step.then(measured)), "-af")).not.toContain("aresample");
     expect(after(onlyRun(step.then(silent)), "-af")).toBeUndefined();

@@ -64,7 +64,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -184,6 +184,22 @@ interface RawStream {
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
+  sample_rate?: string;
+  channels?: number;
+}
+
+/**
+ * The sample rate and channel count an audio stream names, as numbers; a
+ * field ffprobe could not read is left off.
+ * @param raw - The stream as ffprobe wrote it.
+ * @returns The fields it carries.
+ */
+function audioFieldsOf(raw: RawStream): { sampleRate?: number; channels?: number } {
+  const rate = numberOrNull(raw.sample_rate);
+  return {
+    ...(rate === null || rate <= 0 ? {} : { sampleRate: rate }),
+    ...(typeof raw.channels === "number" && raw.channels > 0 ? { channels: raw.channels } : {}),
+  };
 }
 
 /**
@@ -273,6 +289,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
+    ...audioFieldsOf(raw),
   }));
   return {
     streams,

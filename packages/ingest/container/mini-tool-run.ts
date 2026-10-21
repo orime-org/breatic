@@ -22,10 +22,12 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
-import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
+import { inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
+
+import { runSteps } from "./run-steps.js";
 
 /** What the Durable Object sends to `/run`. */
 export interface RunBody {
@@ -131,15 +133,13 @@ export async function runJob(job: RunBody): Promise<void> {
       throw new Error(`source refused: ${refused}`);
     }
     for (const output of job.outputs) {
-      const file = join(dir, "out.mp4");
+      const file = join(dir, outputFileName(job.op));
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
-      for (const args of opRuns(job.op, job.params, input, file, dir, source)) {
-        await runTool("ffmpeg", args);
-      }
+      await runSteps(opSteps(job.op, job.params, input, file, dir, source));
       const probed = await runTool("ffprobe", probeArgs(file, "own-file")).catch(() => null);
       const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
-      const empty = outputRefusal(report);
+      const empty = outputRefusal(report, mediumOf(job.op));
       if (empty !== null) {
         reason = empty;
         throw new Error(`output refused: ${empty}`);

@@ -14,6 +14,8 @@ import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js"
 // file: the container's bundle is built without shared's dependencies, and
 // this file has none.
 import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.js";
+import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
+import { buildEqFilter } from "@shared/audio-eq.js";
 import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
@@ -157,8 +159,47 @@ function audioOut(source: ProbeReport): string[] {
   return audio === undefined || MP4_AUDIO.has(audio.codecName ?? "") ? ["-c:a", "copy"] : AAC;
 }
 
+/** An operation on an audio source that writes audio (inner#1305). */
+type AudioOp = "denoise" | "normalize" | "audio_speed" | "audio_cut" | "eq" | "compress" | "pan" | "reverb" | "voice" | "pitch";
+
+/** An operation on a video source that writes video. */
+export type VideoOp = Exclude<ContainerOp, AudioOp>;
+
+/** The operations whose source is an audio file and whose result is one (inner#1305). */
+const AUDIO_OPS: ReadonlySet<ContainerOp> = new Set<AudioOp>([
+  "denoise",
+  "normalize",
+  "audio_speed",
+  "audio_cut",
+  "eq",
+  "compress",
+  "pan",
+  "reverb",
+  "voice",
+  "pitch",
+]);
+
 /** The operations that work on the source's sound. */
-const ON_SOUND: ReadonlySet<ContainerOp> = new Set(["audio_denoise"]);
+const ON_SOUND: ReadonlySet<ContainerOp> = new Set(["audio_denoise", ...AUDIO_OPS]);
+
+/**
+ * What an operation writes.
+ * @param op - The operation.
+ * @returns `audio` for the audio operations, `video` for the rest.
+ */
+export function mediumOf(op: ContainerOp): "audio" | "video" {
+  return AUDIO_OPS.has(op) ? "audio" : "video";
+}
+
+/**
+ * The name of the file an operation writes; its extension picks the muxer,
+ * and `.m4a` is the one that brands the file as audio.
+ * @param op - The operation.
+ * @returns The file name.
+ */
+export function outputFileName(op: ContainerOp): string {
+  return mediumOf(op) === "audio" ? "out.m4a" : "out.mp4";
+}
 
 /**
  * Why a source cannot go through an operation, read off its probe before any
@@ -173,12 +214,15 @@ export function inputRefusal(op: ContainerOp, probe: ProbeReport): ContainerFail
 }
 
 /**
- * Why a finished output cannot be filed: every operation keeps the picture,
- * so one without a video stream (a cut inside a sound-only tail) failed.
+ * Why a finished output cannot be filed: a video operation keeps the picture,
+ * so one without a video stream (a cut inside a sound-only tail) failed; an
+ * audio operation's output must carry sound.
  * @param probe - The output's probe.
+ * @param medium - What the operation writes.
  * @returns The failure to report, or null when the output will do.
  */
-export function outputRefusal(probe: ProbeReport): ContainerFailure | null {
+export function outputRefusal(probe: ProbeReport, medium: "audio" | "video"): ContainerFailure | null {
+  if (medium === "audio") return probe.streams.some((stream) => stream.codecType === "audio") ? null : "tool_failed";
   return realVideoStream(probe) === undefined ? "tool_failed" : null;
 }
 
@@ -194,7 +238,7 @@ export function outputRefusal(probe: ProbeReport): ContainerFailure | null {
  * @throws {Error} When a param the operation needs is missing.
  */
 export function opRuns(
-  op: ContainerOp,
+  op: VideoOp,
   params: Record<string, unknown>,
   input: string,
   output: string,
@@ -248,16 +292,8 @@ export function opRuns(
     }
     case "adjust":
       return [[...head, "-vf", `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`, ...H264, ...audioOut(source), ...FASTSTART, output]];
-    case "audio_denoise": {
-      // One slider onto afftdn: the noise floor from -80 dB to -40 dB and the
-      // reduction from 3 dB to 36 dB as the slider goes from 0 to 100.
-      const intensity = numberOf(params, "intensity");
-      const nf = -80 + (intensity / 100) * 40;
-      const nr = 3 + (intensity / 100) * 33;
-      return [
-        [...head, ...videoOut(source), "-af", `afftdn=nf=${nf.toFixed(2)}:nr=${nr.toFixed(2)}`, ...AAC, ...FASTSTART, output],
-      ];
-    }
+    case "audio_denoise":
+      return [[...head, ...videoOut(source), "-af", denoiseFilter(numberOf(params, "intensity")), ...AAC, ...FASTSTART, output]];
     case "stabilize": {
       const transforms = `${workDir}/transforms.trf`;
       return [
@@ -303,4 +339,305 @@ export function opRuns(
       ];
     }
   }
+}
+
+/**
+ * One slider onto afftdn, the same for a video's sound and an audio file: the
+ * noise floor from -80 dB to -40 dB and the reduction from 3 dB to 36 dB as
+ * the slider goes from 0 to 100.
+ * @param intensity - The slider.
+ * @returns The filter.
+ */
+function denoiseFilter(intensity: number): string {
+  const nf = -80 + (intensity / 100) * 40;
+  const nr = 3 + (intensity / 100) * 33;
+  return `afftdn=nf=${nf.toFixed(2)}:nr=${nr.toFixed(2)}`;
+}
+
+/** One program and its arguments. */
+export interface Command {
+  readonly program: "ffmpeg" | "sox";
+  readonly args: string[];
+}
+
+/**
+ * One step of an operation, run after the one before it finishes: a single
+ * command; commands joined stdout to stdin with no file between them; or a
+ * measuring run whose stderr decides the steps after it.
+ */
+export type RunStep =
+  | ({ readonly kind: "run" } & Command)
+  | { readonly kind: "pipe"; readonly commands: Command[] }
+  | ({ readonly kind: "measure"; readonly then: (stderr: string) => RunStep[] } & Command);
+
+/** AAC into an .m4a a player can start before it has the whole file. */
+const AUDIO_OUT = ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"];
+
+/**
+ * The source's audio stream's sample rate.
+ * @param source - The source's probe.
+ * @returns Hertz, or null when the probe read none.
+ */
+function sampleRateOf(source: ProbeReport): number | null {
+  return source.streams.find((stream) => stream.codecType === "audio")?.sampleRate ?? null;
+}
+
+/**
+ * One run from the source to the output, through a filter when one is given.
+ * @param input - The local source.
+ * @param output - The file to write.
+ * @param filter - The `-af` chain, or null to re-encode untouched.
+ * @param before - Options before the input, such as a cut's range.
+ * @returns The step.
+ */
+function audioRun(input: string, output: string, filter: string | null, before: string[] = []): RunStep {
+  return {
+    kind: "run",
+    program: "ffmpeg",
+    args: [...QUIET, ...before, ...SOURCE, "-i", input, "-vn", ...(filter === null ? [] : ["-af", filter]), ...AUDIO_OUT, output],
+  };
+}
+
+/**
+ * The source decoded to WAV on stdout, for sox to read.
+ * @param input - The local source.
+ * @returns The command.
+ */
+function decodeToPipe(input: string): Command {
+  return { program: "ffmpeg", args: [...QUIET, ...SOURCE, "-i", input, "-vn", "-f", "wav", "-"] };
+}
+
+/** What loudnorm's first pass measured, as it printed it. */
+export interface LoudnormMeasure {
+  inputI: string;
+  inputTp: string;
+  inputLra: string;
+  inputThresh: string;
+  targetOffset: string;
+}
+
+/**
+ * The measurement loudnorm printed last on stderr.
+ * @param stderr - The first pass's stderr, at info level.
+ * @returns The measurement, or null when none can be read.
+ */
+export function readLoudnormMeasure(stderr: string): LoudnormMeasure | null {
+  const start = stderr.lastIndexOf("{");
+  const end = stderr.lastIndexOf("}");
+  if (start < 0 || end < start) return null;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(stderr.slice(start, end + 1)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const fields = ["input_i", "input_tp", "input_lra", "input_thresh", "target_offset"] as const;
+  if (!fields.every((field) => typeof parsed[field] === "string")) return null;
+  return {
+    inputI: parsed.input_i as string,
+    inputTp: parsed.input_tp as string,
+    inputLra: parsed.input_lra as string,
+    inputThresh: parsed.input_thresh as string,
+    targetOffset: parsed.target_offset as string,
+  };
+}
+
+/**
+ * Loudness in two passes: measure, then apply the measurement linearly, and
+ * resample back by filter, which lets the encoder fall back from a rate AAC
+ * does not take (loudnorm works at 192 kHz).
+ * @param target - The integrated loudness, in LUFS.
+ * @param input - The local source.
+ * @param output - The file to write.
+ * @param rate - The source's rate, null when unknown.
+ * @returns The measuring step.
+ */
+function normalizeSteps(target: string, input: string, output: string, rate: number | null): RunStep[] {
+  const goal = `loudnorm=I=${target}:TP=-1:LRA=11`;
+  const resample = rate === null ? [] : [`aresample=${rate}`];
+  return [
+    {
+      kind: "measure",
+      program: "ffmpeg",
+      args: ["-hide_banner", "-loglevel", "info", "-y", ...SOURCE, "-i", input, "-vn", "-af", `${goal}:print_format=json`, "-f", "null", "-"],
+      then: (stderr) => {
+        const measured = readLoudnormMeasure(stderr);
+        if (measured === null) throw new Error("loudnorm printed no measurement");
+        // A silent source measures -inf; there is nothing to bring up.
+        const silent = measured.inputI === "-inf" || measured.inputTp === "-inf";
+        const applied = silent
+          ? resample
+          : [
+              `${goal}:measured_I=${measured.inputI}:measured_TP=${measured.inputTp}:measured_LRA=${measured.inputLra}` +
+                `:measured_thresh=${measured.inputThresh}:offset=${measured.targetOffset}:linear=true`,
+              ...resample,
+            ];
+        return [audioRun(input, output, applied.length === 0 ? null : applied.join(","))];
+      },
+    },
+  ];
+}
+
+/** A reverb room in sox's terms, from Audacity's factory presets of the same name. */
+interface Room {
+  reverberance: number;
+  damping: number;
+  size: number;
+  stereo: number;
+  preDelay: number;
+  wetGain: number;
+}
+
+// audacity/audacity src/effects/builtin_collection/reverb/reverbeffect.cpp,
+// FactoryPresets, room-size rows; the dry gain is ours (always the source).
+const ROOMS: Readonly<Record<string, Room>> = {
+  small_room: { reverberance: 50, damping: 50, size: 30, stereo: 100, preDelay: 10, wetGain: -1 },
+  medium_room: { reverberance: 40, damping: 50, size: 75, stereo: 70, preDelay: 10, wetGain: -1 },
+  large_room: { reverberance: 40, damping: 50, size: 85, stereo: 90, preDelay: 10, wetGain: 0 },
+  church_hall: { reverberance: 60, damping: 50, size: 90, stereo: 100, preDelay: 32, wetGain: 0 },
+  cathedral: { reverberance: 90, damping: 50, size: 90, stereo: 100, preDelay: 16, wetGain: 0 },
+  bathroom: { reverberance: 80, damping: 0, size: 16, stereo: 100, preDelay: 8, wetGain: -6 },
+};
+
+/**
+ * The room the source is played in: sox writes the wet sound with a tail,
+ * and ffmpeg adds it to the untouched source at the amount's level.
+ * @param params - The room and the amount.
+ * @param input - The local source.
+ * @param output - The file to write.
+ * @returns The steps.
+ * @throws {Error} When the room is not one of the six.
+ */
+function reverbSteps(params: Record<string, unknown>, input: string, output: string): RunStep[] {
+  const amount = numberOf(params, "amount");
+  if (amount === 0) return [audioRun(input, output, null)];
+  const room = ROOMS[String(params.room)];
+  if (room === undefined) throw new Error("room is not one of the presets");
+  const wet = Math.min(10, Math.max(-10, room.wetGain));
+  const tail = room.reverberance <= 50 ? 2 : 4;
+  const level = (20 * Math.log10(amount / 50)).toFixed(2);
+  return [
+    {
+      kind: "pipe",
+      commands: [
+        decodeToPipe(input),
+        {
+          program: "sox",
+          args: [
+            "-t", "wav", "-", "-t", "wav", "-",
+            "pad", "0", String(tail),
+            "reverb", "-w",
+            String(room.reverberance), String(room.damping), String(room.size),
+            String(room.stereo), String(room.preDelay), String(wet),
+          ],
+        },
+        {
+          program: "ffmpeg",
+          args: [
+            ...QUIET, ...SOURCE, "-i", input, "-f", "wav", "-i", "-",
+            "-filter_complex", `[1]volume=${level}dB[w];[0][w]amix=inputs=2:normalize=0:duration=longest`,
+            "-vn", ...AUDIO_OUT, output,
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * The steps one operation on an audio source makes, the last writing `output`.
+ * @param op - The operation.
+ * @param params - Its params, as the request schema validated them.
+ * @param input - The local copy of the source.
+ * @param output - The file the last step writes.
+ * @param source - The source's probe.
+ * @returns The steps.
+ * @throws {Error} When a param the operation needs is missing, or the speed
+ *   must let the pitch follow and the source's rate is not known.
+ */
+function audioSteps(op: AudioOp, params: Record<string, unknown>, input: string, output: string, source: ProbeReport): RunStep[] {
+  const rate = sampleRateOf(source);
+  switch (op) {
+    case "denoise":
+      return [audioRun(input, output, denoiseFilter(numberOf(params, "intensity")))];
+    case "normalize":
+      return normalizeSteps(String(params.target), input, output, rate);
+    case "audio_speed": {
+      const speed = numberOf(params, "rate");
+      if (params.keepPitch !== false) return [audioRun(input, output, atempoChain(speed))];
+      if (rate === null) throw new Error("the source's sample rate is unknown");
+      return [audioRun(input, output, `asetrate=${Math.round(rate * speed)},aresample=${rate}`)];
+    }
+    case "audio_cut": {
+      const range = params.range as { start: number; end: number };
+      return [audioRun(input, output, null, ["-ss", range.start.toFixed(3), "-to", range.end.toFixed(3)])];
+    }
+    case "eq":
+      return [audioRun(input, output, buildEqFilter((params.eq as { gains: number[] }).gains, rate))];
+    case "compress":
+      return [audioRun(input, output, buildCompressorFilter(params.dynamics as DynamicsValue))];
+    case "pan": {
+      const width = (numberOf(params, "width") / 100).toFixed(2);
+      const balance = (numberOf(params, "pan") / 100).toFixed(2);
+      return [
+        audioRun(
+          input,
+          output,
+          `aformat=channel_layouts=stereo,extrastereo=m=${width}:c=0,stereotools=balance_out=${balance},alimiter=limit=0.89:level=disabled`,
+        ),
+      ];
+    }
+    case "reverb":
+      return reverbSteps(params, input, output);
+    case "voice": {
+      const strength = numberOf(params, "intensity") / 100;
+      if (strength === 0) return [audioRun(input, output, null)];
+      return [
+        audioRun(
+          input,
+          output,
+          `highpass=f=80,equalizer=f=3000:t=q:w=1:g=${(6 * strength).toFixed(2)},deesser=i=${(0.5 * strength).toFixed(2)}` +
+            `,acompressor=threshold=0.1:ratio=${(1 + 2 * strength).toFixed(2)}:attack=10:release=150`,
+        ),
+      ];
+    }
+    case "pitch": {
+      const cents = 100 * numberOf(params, "semitones") + numberOf(params, "cents");
+      if (cents === 0) return [audioRun(input, output, null)];
+      return [
+        {
+          kind: "pipe",
+          commands: [
+            decodeToPipe(input),
+            { program: "sox", args: ["-t", "wav", "-", "-t", "wav", "-", "pitch", String(cents)] },
+            { program: "ffmpeg", args: [...QUIET, "-f", "wav", "-i", "-", ...AUDIO_OUT, output] },
+          ],
+        },
+      ];
+    }
+  }
+}
+
+/**
+ * The steps one operation makes, the last writing `output`: an audio
+ * operation's own, or a video operation's runs one after another.
+ * @param op - The operation.
+ * @param params - Its params, as the request schema validated them.
+ * @param input - The local copy of the source.
+ * @param output - The file the last step writes.
+ * @param workDir - A directory the runs may write between them.
+ * @param source - The source's probe.
+ * @returns The steps.
+ * @throws {Error} When a param the operation needs is missing.
+ */
+export function opSteps(
+  op: ContainerOp,
+  params: Record<string, unknown>,
+  input: string,
+  output: string,
+  workDir: string,
+  source: ProbeReport,
+): RunStep[] {
+  if (AUDIO_OPS.has(op)) return audioSteps(op as AudioOp, params, input, output, source);
+  return opRuns(op as VideoOp, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
 }
