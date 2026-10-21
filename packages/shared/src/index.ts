@@ -432,6 +432,7 @@ export {
   dynamicsValueOfPreset,
 } from "@shared/audio-dynamics.js";
 export type { DynamicsField, DynamicsPreset, DynamicsSettings, DynamicsValue } from "@shared/audio-dynamics.js";
+export { formatBytes } from "@shared/format-bytes.js";
 
 
 // The confirmation email names the instant the window closes, in the buyer's

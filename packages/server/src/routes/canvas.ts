@@ -62,6 +62,7 @@ import {
 import {
   createQueue,
   defaultJobOpts,
+  getMiniToolsConfig,
   getNodeTaskConfig,
   getStorageConfig,
 } from "@breatic/core";
@@ -116,6 +117,8 @@ canvas.get("/limits", (c) => {
       referencePoolCap: getCanvasReferencePoolCap(),
       nodeHistoryPageSize: getNodeHistoryPageSize(),
       understandMaxBytes: getUnderstandConfig().max_media_bytes,
+      waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
+      waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
     },
   });
 });
