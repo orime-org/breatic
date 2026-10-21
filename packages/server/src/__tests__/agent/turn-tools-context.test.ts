@@ -12,11 +12,21 @@ import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-conte
 
 const usage = { recordServiceCall: () => undefined, recordModelCall: () => undefined } as never;
 const saveToStorage = async () => ({ url: "u", mimeType: "image/png", width: 1, height: 1 });
-const tools = { web_search: {}, save_image: {}, propose_canvas_action: {}, propose_document_edit: {} };
+const tools = {
+  web_search: {},
+  save_image: {},
+  propose_canvas_action: {},
+  propose_document_edit: {},
+  search_conversations: {},
+  read_conversation: {},
+  read_node_history: {},
+  list_project_activity: {},
+};
+const records = { spaceName: () => undefined } as never;
 
 describe("turnToolsContext", () => {
   const openDocument = { spaceId: "d1", spaceName: "Storyboard", blocks: [] };
-  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument });
+  const context = turnToolsContext(tools, usage, { saveToStorage, studioId: "s1", openDocument, records });
 
   it("keeps the usage recorder on every tool", () => {
     for (const name of Object.keys(tools)) expect(context[name]).toMatchObject({ usage });
@@ -32,6 +42,12 @@ describe("turnToolsContext", () => {
 
   it("hands the document proposal the open document", () => {
     expect(context.propose_document_edit).toMatchObject({ usage, openDocument });
+  });
+
+  it("hands the four record tools the turn's records", () => {
+    for (const name of ["search_conversations", "read_conversation", "read_node_history", "list_project_activity"]) {
+      expect(context[name]).toEqual({ usage, records });
+    }
   });
 
   it("gives other tools nothing more", () => {

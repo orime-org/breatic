@@ -366,6 +366,7 @@
         "tooSlow": "ファイルのダウンロードが遅く、完了しませんでした",
         "storageFull": "Studio のストレージがいっぱいです",
         "noPermission": "この Project の編集権限がありません",
+        "notMember": "この Project のメンバーではなくなりました",
         "tooFrequent": "直前に取得したリンクが多すぎます。1 分ほど待ってから再試行してください",
         "declined": "サービスがこの内容の処理を拒否しました",
         "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
@@ -383,6 +384,10 @@
       "readingGuide": "製品の使い方を確認中",
       "understanding": "メディアを確認中",
       "judging": "検討中",
+      "searchingConversations": "会話を検索中",
+      "readingConversation": "会話を確認中",
+      "readingNodeHistory": "ノードの履歴を確認中",
+      "readingActivity": "Project アクティビティを確認中",
       "running": "{tool} を実行中",
       "step": {
         "webSearch": "「{query}」の検索",
@@ -395,6 +400,10 @@
         "listModels": "利用できるモデルの確認",
         "canvasCapabilities": "Canvas でできることの確認",
         "productGuide": "使い方の確認",
+        "searchConversations": "会話の検索",
+        "readConversation": "会話の確認",
+        "readNodeHistory": "ノードの履歴の確認",
+        "readActivity": "Project アクティビティの確認",
         "other": "{tool} の実行"
       }
     },

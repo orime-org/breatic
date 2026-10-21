@@ -24,6 +24,7 @@ import {
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
+  RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 // Pure rules about an address a caller hands over, which the routes read off
@@ -634,6 +635,8 @@ export const domainMock = () => ({
   PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
+  // Read by the turn when it hands the record tools the turn's records (inner#1469).
+  RECORD_TOOL_NAMES: REAL_RECORD_TOOL_NAMES,
   extFromUrl: REAL_EXT_FROM_URL,
   labelForUrl: REAL_LABEL_FOR_URL,
   readerUrlSchema: REAL_READER_URL_SCHEMA,

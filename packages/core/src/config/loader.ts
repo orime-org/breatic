@@ -313,6 +313,20 @@ const agentConfigSchema = z.object({
   usage_lookup_attempts: z.number().int().min(1).max(20).default(6),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
+  /** How many rows one page of a record tool holds: conversations, hits, tasks, versions (inner#1469). */
+  records_page_size: z.number().int().min(1).max(100).default(20),
+  /** How many words of a conversation search are matched; the rest are left out. */
+  records_search_max_terms: z.number().int().min(1).max(20).default(5),
+  /** How many characters a search hit shows on each side of the first match. */
+  records_snippet_chars: z.number().int().min(1).default(80),
+  /** How long a node version's prompt and its content (text, or a value that is one link and nothing else) may be in characters before it is cut. */
+  records_version_text_max_chars: z.number().int().min(100).default(4000),
+  /** How long one page of a read conversation may be, in characters; a page still holds at least one whole turn. Each text part is cut to this length, and a search matches a text part only that far. */
+  records_page_max_chars: z.number().int().min(1000).default(24000),
+  /** How long a version's parameters, written as one line of JSON, may be in characters. */
+  records_params_max_chars: z.number().int().min(10).default(400),
+  /** How long the words of one tool call's input, or of its result, may be in characters when a message is read back; a search matches a tool's input cut to the same length, never its result. A questionnaire (an ask_user call that did not fail) is written and matched whole, its answers included. */
+  records_tool_text_max_chars: z.number().int().min(10).default(600),
 }).superRefine((config, ctx) => {
   // A consolidation runs when the request is over the budget and takes turns
   // until what remains is at or under the keep line. Put the keep line at or

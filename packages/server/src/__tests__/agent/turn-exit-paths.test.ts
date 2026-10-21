@@ -224,9 +224,13 @@ describe("what a plain chat turn hands the model", () => {
       "get_canvas_capabilities",
       "get_product_guide",
       "list_generation_models",
+      "list_project_activity",
       "propose_canvas_action",
       "propose_document_edit",
+      "read_conversation",
+      "read_node_history",
       "save_image",
+      "search_conversations",
       "search_images",
       "web_search",
     ]);

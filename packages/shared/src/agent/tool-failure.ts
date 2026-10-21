@@ -52,6 +52,8 @@ export const FAILURE_LINES = {
   storageFull: "chat.tool.failure.storageFull",
   /** The reader cannot add material to this project. */
   noPermission: "chat.tool.failure.noPermission",
+  /** The reader is no longer a member of this project. */
+  notMember: "chat.tool.failure.notMember",
   /** Too many of these in a short time. */
   tooFrequent: "chat.tool.failure.tooFrequent",
   /** The service would not handle this content. */

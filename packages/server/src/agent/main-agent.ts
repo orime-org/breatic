@@ -24,6 +24,7 @@ import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
 import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
+import { projectRecordsFor } from "@server/agent/project-records.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
@@ -593,7 +594,8 @@ export class MainAgent {
         // The paying tools record their calls on this turn's recorder, the
         // save stores for this project and reader, the canvas proposal check
         // reads material for this studio, and the document proposal checks
-        // against the document the reader has open. Cast because the tool set arrives as
+        // against the document the reader has open, and the record tools read
+        // this user's records in this project. Cast because the tool set arrives as
         // a plain record, whose context type the SDK reads as absent; each
         // tool's `contextSchema` is what checks this at run time, before its
         // `execute`.
@@ -601,6 +603,13 @@ export class MainAgent {
           saveToStorage: saveToStorageFor({ projectId, userId }),
           studioId,
           openDocument,
+          records: projectRecordsFor({
+            userId,
+            projectId,
+            conversationId,
+            turnIndex,
+            spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
+          }),
         }) as never,
         stopWhen: stepCountIs(agentCfg.max_tool_iterations),
         // Per call, which is the only unit there is: the `stopWhen` above

@@ -19,15 +19,17 @@
  * progress rather than hand out a number, and they do filter.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lt, gt, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, gt, gte, max, sql, type SQL } from "drizzle-orm";
 import {
   db,
   conversations,
   conversationMessages,
   getAgentConfig,
   NotFoundError,
+  type ActivityCursor,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
+import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
 
@@ -497,6 +499,252 @@ export async function getMessagesForLlm(
     const { thinking: _th, ...rest } = toMessageData(row);
     return { ...rest, forModel: row.forModel };
   });
+}
+
+/** One message whose readable strings hold every search term (inner#1469). */
+export interface MessageSearchRow {
+  id: string;
+  conversationId: string;
+  conversationTitle: string | null;
+  turnIndex: number;
+  role: "user" | "assistant";
+  /** ISO instant, UTC. */
+  createdAt: string;
+  /** `created_at` as text, at the precision the column stores, for a cursor. */
+  cursorAt: string;
+  /** The message's searchable words joined with spaces. */
+  body: string;
+}
+
+/**
+ * A search term as an `ILIKE` pattern that matches it anywhere, literally.
+ * @param term - The term.
+ * @returns The pattern, with `\`, `%` and `_` escaped.
+ */
+function containsPattern(term: string): string {
+  return `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+}
+
+/**
+ * Text values as a Postgres `text[]`.
+ * @param values - The values, each a bind parameter.
+ * @returns The array expression.
+ */
+function textArray(values: readonly string[]): SQL {
+  return sql`ARRAY[${sql.join(values.map((v) => sql`${v}`), sql`, `)}]::text[]`;
+}
+
+/**
+ * The strings a jsonpath finds in a value, joined with spaces; null when it finds none.
+ * @param value - The jsonb value.
+ * @param path - The jsonpath.
+ * @returns The expression.
+ */
+function joinedStrings(value: SQL, path: string): SQL {
+  return sql`(SELECT string_agg(v #>> '{}', ' ') FROM jsonb_path_query(${value}, ${path}::jsonpath, '{}', true) AS v)`;
+}
+
+/**
+ * The words of one message part that a search matches: only words reading
+ * the message back shows (`messageText` in domain). A text part's text cut
+ * to a page, as reading cuts it, an
+ * attachment's name, a questionnaire's questions with the options picked and
+ * what was written on its Other line (an old single-question card's question
+ * and its options), and the strings of any other tool's
+ * input, cut as reading cuts them. An `ask_user` call whose status is
+ * `error` drew no card and is matched like any other tool's call; one with
+ * no status is still read as `ask_user`. A record tool's call, its result and every
+ * other tool's result are not matched: the record tools' words are copies of
+ * records found elsewhere, and the other results are catalogues and data the
+ * user never said.
+ * @param part - The part, as a jsonb expression.
+ * @returns The expression; null for a part with nothing to match.
+ */
+function searchableWords(part: SQL): SQL {
+  const { records_page_max_chars: textMax, records_tool_text_max_chars: toolTextMax } = getAgentConfig();
+  return sql`CASE
+    WHEN ${part}->>'type' = 'text' THEN left(${part}->>'text', ${textMax}::int)
+    WHEN ${part}->>'type' = 'attachment' THEN ${part}#>>'{chip,name}'
+    WHEN ${part}->>'type' <> 'tool' THEN NULL
+    WHEN ${part}->>'toolName' = ${ASK_USER} AND ${part}->>'status' IS DISTINCT FROM 'error' THEN concat_ws(' ',
+      ${joinedStrings(part, 'lax $.input.questions[*].question ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.input.question ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.input.options[*] ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.output.answers[*].selected[*] ? (@.type() == "string")')},
+      ${joinedStrings(part, 'lax $.output.answers[*].other ? (@.type() == "string")')})
+    WHEN ${part}->>'toolName' = ANY(${textArray(RECORD_TOOL_NAMES)}) THEN NULL
+    ELSE left(${joinedStrings(sql`${part}->'input'`, 'strict $.** ? (@.type() == "string")')}, ${toolTextMax}::int)
+  END`;
+}
+
+/**
+ * The searchable messages: each live message of the user's live
+ * conversations in the project, as one row holding its searchable words in
+ * part order. The turn now running is left out.
+ * @param scope - Whose messages, and which to leave out.
+ * @param scope.userId - The user.
+ * @param scope.projectId - The project.
+ * @param scope.currentConversationId - The conversation the turn runs in.
+ * @param scope.turnIndex - The turn now running.
+ * @param scope.conversationId - One conversation to keep to.
+ * @returns The query, for a CTE.
+ */
+function searchable(scope: {
+  userId: string;
+  projectId: string;
+  currentConversationId: string;
+  turnIndex: number;
+  conversationId?: string;
+}): SQL {
+  return sql`
+    SELECT m.id, m.conversation_id, m.turn_index, m.role, m.created_at, c.title,
+           coalesce((
+             SELECT string_agg(w.words, ' ' ORDER BY w.ord)
+             FROM (
+               SELECT p.ord, ${searchableWords(sql`p.part`)} AS words
+               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m.parts) = 'array' THEN m.parts END)
+                    WITH ORDINALITY AS p(part, ord)
+             ) w
+           ), '') AS body
+    FROM conversation_messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
+      AND c.deleted_at IS NULL AND m.deleted_at IS NULL
+      AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
+      ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}
+  `;
+}
+
+/**
+ * One page of the user's messages that hold every term, newest first, with
+ * how many there are in all (inner#1469).
+ * @param scope - Whose messages, and which to leave out.
+ * @param scope.userId - The user.
+ * @param scope.projectId - The project.
+ * @param scope.currentConversationId - The conversation the turn runs in.
+ * @param scope.turnIndex - The turn now running, left out with every later one.
+ * @param scope.conversationId - One conversation to keep to.
+ * @param terms - The terms, each matched as a substring, ignoring case; at least one.
+ * @param page - The page.
+ * @param page.limit - How many hits it holds.
+ * @param page.after - Where the previous page stopped.
+ * @returns The hits, whether there are more, and the total; the total is 0
+ *   when the page is empty, read past the last hit or not.
+ */
+export async function searchMessages(
+  scope: { userId: string; projectId: string; currentConversationId: string; turnIndex: number; conversationId?: string },
+  terms: readonly string[],
+  page: { limit: number; after?: ActivityCursor },
+): Promise<{ rows: MessageSearchRow[]; hasMore: boolean; total: number }> {
+  const keyset =
+    page.after === undefined
+      ? sql``
+      : sql`WHERE (created_at, id) < (${page.after.createdAt}::timestamptz, ${page.after.id}::uuid)`;
+  const rows = await db.execute<{
+    id: string;
+    conversation_id: string;
+    title: string | null;
+    turn_index: number;
+    role: "user" | "assistant";
+    created_iso: string;
+    cursor_at: string;
+    body: string;
+    total: number;
+  }>(sql`
+    WITH readable AS (${searchable(scope)}),
+    hits AS (
+      -- Counted before the keyset, so every page carries the whole total.
+      SELECT *, count(*) OVER ()::int AS total
+      FROM readable
+      WHERE body ILIKE ALL (${textArray(terms.map(containsPattern))})
+    )
+    SELECT id, conversation_id, title, turn_index, role, body, total,
+           to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_iso,
+           created_at::text AS cursor_at
+    FROM hits
+    ${keyset}
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${page.limit + 1}
+  `);
+  const list = [...rows];
+  return {
+    rows: list.slice(0, page.limit).map((r) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      conversationTitle: r.title,
+      turnIndex: r.turn_index,
+      role: r.role,
+      createdAt: r.created_iso,
+      cursorAt: r.cursor_at,
+      body: r.body,
+    })),
+    hasMore: list.length > page.limit,
+    total: list[0]?.total ?? 0,
+  };
+}
+
+/** A stored message as the record tools read it back. */
+export interface TurnMessage {
+  role: "user" | "assistant";
+  turnIndex: number;
+  /** ISO instant the message was written. */
+  createdAt: string;
+  parts: MessagePart[];
+}
+
+/**
+ * The live messages of a live conversation over a range of turns, in turn and
+ * position order, and the highest turn there is to read (inner#1469).
+ * @param id - The conversation.
+ * @param range - Which turns.
+ * @param range.fromTurn - The first turn wanted.
+ * @param range.toTurn - The last turn wanted.
+ * @param range.beforeTurn - Leave out this turn and every later one.
+ * @returns The messages, and the highest turn index readable at all; 0 when there is none.
+ */
+export async function getTurns(
+  id: string,
+  range: { fromTurn?: number; toTurn?: number; beforeTurn?: number },
+): Promise<{ messages: TurnMessage[]; totalTurns: number }> {
+  const live = [
+    eq(conversationMessages.conversationId, id),
+    isNull(conversationMessages.deletedAt),
+    isNull(conversations.deletedAt),
+    ...(range.beforeTurn === undefined ? [] : [lt(conversationMessages.turnIndex, range.beforeTurn)]),
+  ];
+  const [rows, highest] = await Promise.all([
+    db
+      .select({
+        role: conversationMessages.role,
+        turnIndex: conversationMessages.turnIndex,
+        parts: conversationMessages.parts,
+        createdAt: conversationMessages.createdAt,
+      })
+      .from(conversationMessages)
+      .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+      .where(
+        and(
+          ...live,
+          ...(range.fromTurn === undefined ? [] : [gte(conversationMessages.turnIndex, range.fromTurn)]),
+          ...(range.toTurn === undefined ? [] : [lte(conversationMessages.turnIndex, range.toTurn)]),
+        ),
+      )
+      .orderBy(asc(conversationMessages.turnIndex), asc(conversationMessages.seq)),
+    db
+      .select({ turns: max(conversationMessages.turnIndex) })
+      .from(conversationMessages)
+      .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+      .where(and(...live)),
+  ]);
+  return {
+    messages: rows.map((r) => ({
+      role: r.role as TurnMessage["role"],
+      turnIndex: r.turnIndex,
+      createdAt: r.createdAt.toISOString(),
+      parts: r.parts ?? [],
+    })),
+    totalTurns: highest[0]?.turns ?? 0,
+  };
 }
 
 /**

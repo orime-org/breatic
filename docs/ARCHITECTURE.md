@@ -207,7 +207,7 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 Agent 里没有选模板的控件,它按读者的需求自己调用。**提示词里留着的标记不检查、不拦生成**:点模板时弹一条提醒,提议落到画布时只要有画提示词框的节点带标记也弹同一条(`canvas.generatePanel.editMarks`),读者不改也照常发出去。
 
-### Agent tools (11)
+### Agent tools (15)
 
 **一个工具的用途、时机和用法只写在它自己的 `description` 和字段的 `.describe()` 里**(MANDATORY)。系统提示词(`packages/server/src/agent/context.ts`)只放对所有工具都成立的规则 —— 调用工具而不是把调用写出来、读报错并照它说的做、拿不到的要说出来。工具可以从注册表里拆掉,说明跟着它一起走;规定在 `packages/domain/AGENTS.md#tool-guidance-lives-in-the-tool-definition`,守卫是 `packages/server/src/__tests__/agent/system-prompt.test.ts`(遍历 `TOOL_MAP`,提示词里出现任何一个工具名即红)和 `packages/domain/src/agent/tools/__tests__/tools-say-their-own-use.test.ts`。
 
@@ -258,6 +258,8 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 **能力答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `storyboard` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十三条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
 **目录里那两句原样引述的散文,由目录自己证伪**。答复里其余每样都是投影出来的,只有模式的 `description` 和模型的 `guide` 是整句引过去的,而读者正是靠这两句挑模式挑模型。守卫 `packages/domain/src/model-catalog/__tests__/guides-name-what-the-model-takes.test.ts` 按节点 × 模式走遍答得出的每个模型,四条可证伪判据:点名了一个这条目没声明的槽位、卖了一个这个模式没控件的能力、说了一段跟它自己 `duration` 矛盾的秒数、自称最贵最便宜最慢最快而同模式的数字不认。**只查可证伪的** —— 「画质最好」不可证伪,而一条会判红它的规则会判红目录里五分之四的内容。判据同时写在每个模型 yaml(四个模态各一份 `models.yaml`,加 3D 的两份)和 `modes.yaml` 的表头上,连同强制它的那个测试的名字和它走到哪为止。
+
+**记录工具四个(`search_conversations` / `read_conversation` / `read_node_history` / `list_project_activity`)—— 答的是「这个用户在这个项目里已经有过什么」**。前两个读用户自己在这个项目里没删的会话和消息,后两个读节点的生成历史、节点任务和项目动态,都只读。答的是这个项目而不是眼前这个 Space,所以在 `BASELINE_TOOLS` 里,开着什么 Space 都给。工具不接触数据库:每一轮由 server 的 `projectRecordsFor`(`packages/server/src/agent/project-records.ts`)把绑定了这个用户和这个项目的 `ProjectRecords` 经 `turnToolsContext` 交给它们,每次读之前再查一次成员资格(viewer 起可读),不是成员、会话或 Space 认不出、游标对不上,都以 `RecordsRefused` 的原因交回模型。**搜索是子串匹配**(`conversation-message.repo.ts` 的 `searchMessages`,`ILIKE ALL`,每个词都要出现,最多 `records_search_max_terms` 个),**只匹配读出来看得到的那些字**:文字部分、附件名、问卷的题目和答案、其他工具调用的入参(截到 `records_tool_text_max_chars`);记录工具自己的调用、其他工具的结果不参与(问卷的答案存在 `ask_user` 的结果里,照样参与),状态为 error 的 `ask_user` 当时没画成卡片,按普通工具调用读和搜。一条消息读出来的文字由 `conversation-text.ts` 写出,每个文字部分截到 `records_page_max_chars`;`record-tools.ts` 按整轮装页,装到 `records_page_max_chars` 为止,一轮比一页长也整轮给出;版本的提示词和内容截到 `records_version_text_max_chars`,其余参数截到 `records_params_max_chars`。文字部分和版本的提示词、内容在截断处写明少了多少字,工具的入参和结果截断处以 `…` 结尾;翻页提示写全下一次要带的参数,游标绑定在产生它的那次查询上。这几个上限都在 `config/agent.yaml` 的 `records_*`。
 
 **`web_search` 的两个旋钮走 `config/agent.yaml`**:`web_search_timeout_ms`(10 秒,上界 import 传输层导出的 `MAX_TIMER_MS`、不在配置层重写那个数字,管**一条腿**不管整次搜索 —— 三次投递各一次、最后那次之后的正文读再一次,整次的上界是它的四倍加退避)· `web_search_max_tokens`(8192,一次搜索要回多少正文)。后者两端(1024 / 32768)都是服务方自己的边界,写进 schema 是为了让越界在配置加载时就失败、不必等到每次调用都被拒。
 

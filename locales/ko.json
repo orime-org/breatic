@@ -366,6 +366,7 @@
         "tooSlow": "파일 다운로드가 너무 느려 완료되지 않았습니다",
         "storageFull": "Studio 저장 공간이 가득 찼습니다",
         "noPermission": "이 Project의 편집 권한이 없습니다",
+        "notMember": "더 이상 이 Project의 멤버가 아닙니다",
         "tooFrequent": "방금 가져온 링크가 너무 많습니다. 1분 후 다시 시도하세요",
         "declined": "서비스가 이 내용의 처리를 거부했습니다",
         "ourFault": "서버에 문제가 발생했습니다. 다시 시도하세요"
@@ -383,6 +384,10 @@
       "readingGuide": "제품 사용법 확인 중",
       "understanding": "미디어 확인 중",
       "judging": "가늠하는 중",
+      "searchingConversations": "대화 검색 중",
+      "readingConversation": "대화 확인 중",
+      "readingNodeHistory": "노드 기록 확인 중",
+      "readingActivity": "Project 활동 확인 중",
       "running": "{tool} 실행 중",
       "step": {
         "webSearch": "“{query}” 검색",
@@ -395,6 +400,10 @@
         "listModels": "사용 가능한 모델 확인",
         "canvasCapabilities": "Canvas 기능 확인",
         "productGuide": "사용법 확인",
+        "searchConversations": "대화 검색",
+        "readConversation": "대화 확인",
+        "readNodeHistory": "노드 기록 확인",
+        "readActivity": "Project 활동 확인",
         "other": "{tool} 실행"
       }
     },

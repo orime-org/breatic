@@ -40,13 +40,14 @@ const REASONS = [
   "tooSlow",
   "storageFull",
   "noPermission",
+  "notMember",
   "tooFrequent",
   "declined",
   "ourFault",
 ];
 
 describe("the reasons a reader is shown", () => {
-  it("are the fifteen causes, each its own key, beside the line for a stop", () => {
+  it("are the sixteen causes, each its own key, beside the line for a stop", () => {
     const { stopped, ...reasons } = FAILURE_LINES;
     expect(Object.keys(reasons).sort()).toEqual([...REASONS].sort());
     expect(Object.values(reasons)).toEqual(Object.keys(reasons).map((key) => `chat.tool.failure.${key}`));

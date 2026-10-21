@@ -227,6 +227,7 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
+  isMemberLeave,
 } from "@shared/types/project-activity.js";
 export type {
   ProjectActivityType,

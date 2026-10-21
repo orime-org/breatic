@@ -142,6 +142,18 @@ export const ProjectActivityEntrySchema = z.object({
 export type ProjectActivityEntry = z.infer<typeof ProjectActivityEntrySchema>;
 
 /**
+ * Whether a feed entry is a member leaving of their own accord: a removal
+ * whose actor removed themselves. The activity panel and the Agent's activity
+ * tool both tell a leave this way (inner#1469).
+ * @param entry - The feed entry.
+ * @returns True for a leave.
+ * @throws {never} Never.
+ */
+export function isMemberLeave(entry: ProjectActivityEntry): boolean {
+  return entry.type === "member:removed" && entry.actorUserId !== null && entry.payload["targetUserId"] === entry.actorUserId;
+}
+
+/**
  * Keyset cursor - opaque to clients, encodes (createdAt, id) of the
  * last row of the previous page.
  */
