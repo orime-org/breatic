@@ -19,6 +19,7 @@ import {
   useSlugAvailability,
   useSlugFieldShown,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
+import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wait-for-slug-check';
 import { DANGER_BUTTON } from '@web/pages/studio/container/tabs/settings/danger-button';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
 import type { UpdateStudioInput } from '@breatic/shared';
@@ -26,7 +27,7 @@ import type { UpdateStudioInput } from '@breatic/shared';
 interface ChangeSlugSectionProps {
   studio: StudioDetail;
   /**
-   * Whether ANY settings save is in flight — this holds Confirm back.
+   * Whether ANY settings save is in flight — a press of Confirm does nothing.
    *
    * The name, the description and the slug are one mutation, and firing a
    * second one replaces the first on its observer without stopping the request
@@ -41,7 +42,8 @@ interface ChangeSlugSectionProps {
    * running, and a name save must not make this button claim to be renaming.
    * It drives both the spinner and the button's label. Getting it wrong costs
    * an inaccurate button and nothing else, which is why the question that has
-   * to be inferred drives what the button says rather than the gate.
+   * to be inferred drives what the button says rather than whether a press
+   * goes out.
    */
   renaming: boolean;
   onSave: (patch: UpdateStudioInput, slugFieldShown?: () => boolean) => void;
@@ -87,14 +89,11 @@ export function ChangeSlugSection({
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
   const [slug, setSlug] = React.useState(studio.slug);
+  const [slugError, setSlugError] = React.useState<string | null>(null);
 
   const availability = useSlugAvailability(slug, { ownSlug: studio.slug });
   const next = slug.trim();
   const changed = next !== studio.slug;
-  // Written as "only when valid", never as "unless invalid": an emptied
-  // field reports neither, it reports `empty`, and a gate phrased the other way
-  // walks the user through a destructive confirmation the server then refuses.
-  const canConfirm = changed && availability.state === 'valid' && !saving;
   // The sentence in the header names both ends of the move. Until there is a
   // destination it stays a placeholder: on open both ends hold the same slug,
   // and "the address changes from X to X" is not a thing to greet someone
@@ -119,11 +118,35 @@ export function ChangeSlugSection({
       // Both directions: an abandoned draft must not be waiting when the
       // dialog is opened again.
       setSlug(studio.slug);
+      setSlugError(null);
     },
     [studio.slug],
   );
 
-  const confirm = React.useCallback((): void => {
+  /**
+   * Send the new slug, or say on the slug line why not (inner#1652). Runs
+   * again once a check it waited on settles.
+   */
+  const attempt = (): void => {
+    if (saving) return;
+    // Nothing to change: confirming it is already done.
+    if (!changed) {
+      onOpenChange(false);
+      return;
+    }
+    setSlugError(next === '' ? t('studio.container.dialog.slugRequired') : null);
+    if (availability.state === 'checking') {
+      wait.start();
+      return;
+    }
+    // Only when valid (or unverifiable), never merely "not invalid": an
+    // emptied field reports neither, it reports `empty`, and a check phrased
+    // the other way walks the user into a destructive change the server then
+    // refuses.
+    if (availability.state !== 'valid' && availability.state !== 'unverified') {
+      document.getElementById('danger-slug')?.focus();
+      return;
+    }
     // Deliberately does not close. On success this whole tab unmounts, because
     // the address it is standing on has just been released; the only state in
     // which the dialog is still here afterwards is a failed one, and closing
@@ -136,7 +159,8 @@ export function ChangeSlugSection({
     // area. A future change that keeps the old data on screen during that
     // switch would leave this dialog standing open over a successful rename.
     onSave({ slug: next }, () => fieldShows(next));
-  }, [next, onSave, fieldShows]);
+  };
+  const wait = useWaitForSlugCheck(availability, slug, open, attempt);
 
   return (
     <>
@@ -171,11 +195,15 @@ export function ChangeSlugSection({
               id='danger-slug'
               label={t('studio.container.settings.slug')}
               value={slug}
-              onChange={setSlug}
+              onChange={(value) => {
+                setSlug(value);
+                setSlugError(null);
+              }}
               disabled={saving}
               // The hook answers `valid` for the studio's own slug; here
               // that is no news, so the field goes back to its description.
               check={changed ? availability : { state: 'empty' }}
+              error={slugError}
               bounds={STUDIO_SLUG_BOUNDS}
               helper={t('studio.container.dialog.slugHelperStudio', STUDIO_SLUG_BOUNDS)}
             />
@@ -201,9 +229,8 @@ export function ChangeSlugSection({
               </Button>
               <Button
                 size='sm'
-                disabled={!canConfirm}
-                loading={renaming}
-                onClick={confirm}
+                loading={renaming || wait.waiting}
+                onClick={attempt}
                 data-testid='settings-slug-confirm'
               >
                 {renaming

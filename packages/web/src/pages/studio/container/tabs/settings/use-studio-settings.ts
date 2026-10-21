@@ -62,12 +62,12 @@ export interface StudioSettingsActions {
   /**
    * The in-flight edit is a SLUG change specifically.
    *
-   * The rename dialog draws a spinner off this one, and holds its Confirm
-   * button back off `saving`. Keeping them apart matters in both directions: a
-   * spinner is a claim about what is running, so the broad flag would have the
-   * rename button claim to be renaming during a name save; and the gate has to
-   * be the broad one, or a rename fires while another patch is still out and
-   * two ride the single mutation at once.
+   * The rename dialog draws a spinner off this one, and ignores a press of its
+   * Confirm button off `saving`. Keeping them apart matters in both directions:
+   * a spinner is a claim about what is running, so the broad flag would have
+   * the rename button claim to be renaming during a name save; and the guard
+   * has to be the broad one, or a rename fires while another patch is still
+   * out and two ride the single mutation at once.
    */
   renaming: boolean;
   uploadingAvatar: boolean;

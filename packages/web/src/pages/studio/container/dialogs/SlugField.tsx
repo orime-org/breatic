@@ -23,8 +23,8 @@ interface SlugFieldProps {
   /**
    * Greys the input out while an edit could not be submitted anyway — the
    * rename dialog sets it while ANY settings save is in flight, which is the
-   * same condition that holds its Confirm button back. Typing into a field
-   * whose Confirm is unreachable only looks like it will work.
+   * same condition under which a press of its Confirm does nothing. Typing
+   * into a field whose Confirm cannot go out only looks like it will work.
    */
   disabled?: boolean;
   /**
