@@ -98,8 +98,8 @@ describe('prosemirror-tables narrowing a text selection (patched)', () => {
     select(editor, textPos(editor, 'above') + 2, textPos(editor, 'b1'));
     const { selection } = editor.prosemirrorState;
     expect(selection.from).toBe(textPos(editor, 'above') + 2);
-    expect(selection.$to.parent.textContent).toBe(lastCellWords(editor));
-    expect(selection.$to.parentOffset).toBe(selection.$to.parent.content.size);
+    expect(selection.$head.parent.textContent).toBe(lastCellWords(editor));
+    expect(selection.$head.parentOffset).toBe(selection.$head.parent.content.size);
   });
 
   it('still narrows one from a cell to the start of another cell of the same table', () => {

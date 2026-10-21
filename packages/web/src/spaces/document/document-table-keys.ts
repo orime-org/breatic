@@ -35,7 +35,7 @@ import {
   isInTable,
 } from '@tiptap/pm/tables';
 import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
-import { TableSpanSelection, tableAtLeavingHead } from '@web/spaces/document/document-table-leave-selection';
+import { tableAtLeavingHead, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -211,17 +211,16 @@ function deleteAtEdge(view: EditorView): boolean {
 }
 
 /**
- * Backspace or Delete over a selection holding a whole table (inner#1619
- * T14) deletes it through the selection's own replace, which takes the table
- * away whole. The body's Backspace deletes the selection's range as it is
- * (Tiptap `deleteSelection`), which cuts the table.
+ * Enter or Shift+Enter over a selection holding a whole table: the selection
+ * goes through its own replace first, and the body's Enter then breaks the
+ * line at the caret it leaves. The body's Enter deletes the range by position
+ * and splits at the position the selection started from.
  * @param view - The editor view.
- * @returns Whether the key was claimed.
+ * @returns Whether the key was claimed: never, the body's Enter follows.
  */
-function deleteSpan(view: EditorView): boolean {
-  if (!(view.state.selection instanceof TableSpanSelection)) return false;
-  view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
-  return true;
+function clearSpanForBreak(view: EditorView): boolean {
+  takeAwayHeldTables(view);
+  return false;
 }
 
 /**
@@ -351,12 +350,16 @@ export const documentTableKeysExtension = createExtension(() => ({
   keyboardShortcuts: {
     Tab: ({ editor }: { editor: KeysEditor }) => tabForward(editor),
     'Shift-Tab': ({ editor }: { editor: KeysEditor }) => tabBack(editor),
-    Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
-    'Shift-Enter': ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
+    Enter: ({ editor }: { editor: KeysEditor }) =>
+      clearSpanForBreak(editor.prosemirrorView) || breakLine(editor.prosemirrorView),
+    'Shift-Enter': ({ editor }: { editor: KeysEditor }) =>
+      clearSpanForBreak(editor.prosemirrorView) || breakLine(editor.prosemirrorView),
+    // Over a selection holding a whole table, through the selection's own
+    // replace (inner#1619 T14): the body's deletes the range by position.
     Backspace: ({ editor }: { editor: KeysEditor }) =>
-      deleteSpan(editor.prosemirrorView) || deleteWholeTable(editor) || backspaceAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || deleteWholeTable(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
-      deleteSpan(editor.prosemirrorView) || deleteWholeTable(editor) || deleteAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || deleteWholeTable(editor) || deleteAtEdge(editor.prosemirrorView),
     ArrowLeft: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, -1) || leaveEdgeTable(editor, 'left'),
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>

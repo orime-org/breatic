@@ -21,6 +21,8 @@
 
 import type { BlockNoteEditorOptions } from '@blocknote/core';
 
+import { takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
+
 /** BlockNote's paste hook, as this editor's options take it. */
 type PasteHandler = NonNullable<BlockNoteEditorOptions<never, never, never>['pasteHandler']>;
 
@@ -79,10 +81,15 @@ export function evenPastedTables(html: string): string {
  * The clipboard is the event's, and BlockNote's handler reads it from there.
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
+ * @param context.editor - The editor.
  * @param context.defaultPasteHandler - BlockNote's own paste.
  * @returns Whether the paste was handled.
  */
-export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
+export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
+  // A selection holding a whole table goes first, through its own replace
+  // (inner#1619 T14): pasted cells over an end in a table would otherwise go
+  // into that table's cells (prosemirror-tables `handlePaste`).
+  takeAwayHeldTables(editor.prosemirrorView);
   const data = event.clipboardData;
   const html = data?.getData('text/html') ?? '';
   const even = evenPastedTables(html);

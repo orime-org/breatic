@@ -91,6 +91,24 @@ export function cellDepthOf($pos: ResolvedPos): number {
   return -1;
 }
 
+/** A table and the position before it. */
+export interface TableAt {
+  readonly pos: number;
+  readonly node: PMNode;
+}
+
+/**
+ * The table around a position; tables do not nest.
+ * @param $pos - The position.
+ * @returns The table, or null outside any.
+ */
+export function tableAround($pos: ResolvedPos): TableAt | null {
+  for (let depth = 1; depth <= $pos.depth; depth += 1) {
+    if ($pos.node(depth).type.name === DOC_TABLE) return { pos: $pos.before(depth), node: $pos.node(depth) };
+  }
+  return null;
+}
+
 /**
  * Whether the block a block id names stands in a table cell.
  * @param doc - The document.

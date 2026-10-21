@@ -20,10 +20,13 @@
 
 import { createExtension } from '@blocknote/core';
 import type { Node, ResolvedPos } from '@tiptap/pm/model';
-import { AllSelection, NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
+import { AllSelection, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type SelectionRange } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { Mappable } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
+
+import { rangeOverTables } from '@web/spaces/document/document-table-leave-selection';
+import { tableAround } from '@web/spaces/document/document-table-nodes';
 
 /** Which end of the body. */
 export type BodyEdge = 'start' | 'end';
@@ -168,6 +171,21 @@ function textNear(doc: Node, pos: number, edge: BodyEdge): number {
 }
 
 /**
+ * The range a body-edge selection covers: from one end to the other, widened
+ * to take whole the table its end in text stands in (inner#1619 T14), the way
+ * a text selection leaving a table is (`document-table-leave-selection.ts`).
+ * The end on the edge is outside any table's content.
+ * @param $anchor - The anchor.
+ * @param $head - The head.
+ * @returns The range.
+ */
+function edgeRange($anchor: ResolvedPos, $head: ResolvedPos): SelectionRange {
+  const doc = $anchor.doc;
+  const table = tableAround(bodyEdgeAt(doc, $head.pos) === null ? $head : $anchor);
+  return rangeOverTables(doc, Math.min($anchor.pos, $head.pos), Math.max($anchor.pos, $head.pos), { from: table, to: table });
+}
+
+/**
  * A range from a position to an edge of the body.
  */
 class BodyEdgeSelectionClass extends Selection {
@@ -177,7 +195,7 @@ class BodyEdgeSelectionClass extends Selection {
    * @param $head - The head.
    */
   private constructor($anchor: ResolvedPos, $head: ResolvedPos) {
-    super($anchor, $head);
+    super($anchor, $head, [edgeRange($anchor, $head)]);
   }
 
   /**

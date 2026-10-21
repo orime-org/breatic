@@ -15,6 +15,8 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { extendToBodyEdge } from '@web/spaces/document/document-body-edge-selection';
+import { tableClipped } from '@web/spaces/document/document-table-copy';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -175,7 +177,8 @@ describe('a selection leaving a table', () => {
 
     select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
 
-    expect(editor.prosemirrorView.state.selection.from).toBe(at(editor, 'a1', 0));
+    const { anchor, head } = editor.prosemirrorView.state.selection;
+    expect(Math.min(anchor, head)).toBe(at(editor, 'a1', 0));
   });
 
   it('draws every cell of the table as selected', () => {
@@ -287,6 +290,79 @@ describe('deleting or typing over a selection leaving a table', () => {
     expect(blocks(editor)).toEqual(['paragraph:lead', 'divider', 'paragraph:low']);
   });
 
+  it('leaves the line a selection ends at the end of, the typed key on it, the next line untouched', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock(WORDS),
+      { type: 'paragraph', content: 'below' },
+      { type: 'paragraph', content: 'next' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 5));
+
+    type(editor, 'X');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:X', 'paragraph:next']);
+  });
+
+  it('puts pasted lines where the selection was, with no line added', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+
+    editor.prosemirrorView.pasteHTML('<p>X1</p><p>X2</p>');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:X1', 'paragraph:X2low']);
+  });
+
+  it('takes the table away whole when a table from another app is pasted over a selection ending in it', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+    const view = editor.prosemirrorView;
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    const data: Record<string, string> = { 'text/html': '<table><tr><td>P1</td><td>P2</td></tr></table>' };
+    Object.defineProperty(event, 'clipboardData', {
+      value: { types: Object.keys(data), files: [], items: [], getData: (format: string) => data[format] ?? '' },
+    });
+
+    view.dom.dispatchEvent(event);
+
+    expect(view.state.doc.textContent).toBe('leP1P2below');
+  });
+
+  it('takes the table away whole with Enter, the line split where the selection was', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock(WORDS),
+      { type: 'paragraph', content: 'below' },
+      { type: 'paragraph', content: 'next' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 3));
+
+    press(editor, 'Enter');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:ow', 'paragraph:next']);
+  });
+
+  it('takes the table away whole when the browser deletes a word or a line over it', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+
+    editor.prosemirrorView.dom.dispatchEvent(new InputEvent('beforeinput', { inputType: 'deleteWordBackward', bubbles: true, cancelable: true }));
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:low']);
+  });
+
+  it('takes the table away whole from a selection run from a cell to the end of the body', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'paragraph' }]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(extendToBodyEdge(view.state.doc, at(editor, 'a2', 1), 'end')));
+    expect([...view.dom.querySelectorAll('td, th')].every((cell) => cell.classList.contains('doc-table-in-selection'))).toBe(true);
+
+    press(editor, 'Backspace');
+
+    expect(blocks(editor).filter((b) => b === 'docTable')).toEqual([]);
+    expect(blocks(editor)[0]).toBe('paragraph:lead');
+  });
+
   it('takes the table away whole when typing over a selection from above into it', () => {
     const { editor } = open();
     select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
@@ -294,6 +370,17 @@ describe('deleting or typing over a selection leaving a table', () => {
     type(editor, 'X');
 
     expect(blocks(editor)).toEqual(['paragraph:leX', 'paragraph:below']);
+  });
+});
+
+describe('copying a selection leaving a table', () => {
+  it('carries the blocks at the table\'s edges that are not words', () => {
+    const { editor } = open({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', { blocks: [{ type: 'paragraph', content: 'b2' }, { type: 'divider' }] } as never] }] });
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+    const clipped = tableClipped(editor as never, editor.prosemirrorView);
+
+    expect(clipped?.external).toContain('<hr');
   });
 });
 
