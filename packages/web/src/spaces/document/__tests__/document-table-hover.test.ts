@@ -63,11 +63,20 @@ function hovered(editor: Editor): TableHandlesState | undefined {
  * @param editor - The editor.
  * @param words - The words.
  */
-function pointAt(editor: Editor, words: string): void {
-  const element = [...editor.prosemirrorView.dom.querySelectorAll('*')].find(
+function pointAt(editor: Editor, words: string, buttons = 0): void {
+  wordsOf(editor, words).dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 10, buttons }));
+}
+
+/**
+ * The element holding some words.
+ * @param editor - The editor.
+ * @param words - The words.
+ * @returns The element.
+ */
+function wordsOf(editor: Editor, words: string): Element {
+  return [...editor.prosemirrorView.dom.querySelectorAll('*')].find(
     (el) => el.childElementCount === 0 && el.textContent === words,
   )!;
-  element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 10, clientY: 10 }));
 }
 
 /**
@@ -154,6 +163,26 @@ describe('the cell the pointer is over', () => {
     editor.insertBlocks([{ type: 'paragraph', content: 'more' }] as never, editor.document[0]!, 'after');
 
     expect(hovered(editor)).toBe(hidden);
+  });
+
+  it('is gone while a press in a cell drags a selection', () => {
+    const editor = open();
+    pointAt(editor, 'a1');
+    wordsOf(editor, 'a1').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, buttons: 1 }));
+
+    pointAt(editor, 'b2', 1);
+
+    expect(hovered(editor)?.show).toBe(false);
+  });
+
+  it('comes back on the next move after a drag the browser ended without a release', () => {
+    const editor = open();
+    wordsOf(editor, 'a1').dispatchEvent(new MouseEvent('mousedown', { bubbles: true, buttons: 1 }));
+    wordsOf(editor, 'a1').dispatchEvent(new Event('dragend', { bubbles: true }));
+
+    pointAt(editor, 'b2');
+
+    expect(hovered(editor)).toMatchObject({ show: true, rowIndex: 1, colIndex: 1 });
   });
 
   it('stays on its cell while frozen', () => {

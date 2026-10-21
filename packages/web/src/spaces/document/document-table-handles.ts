@@ -117,6 +117,9 @@ class TableHoverView {
    * @param event - The move.
    */
   private readonly onMove = (event: MouseEvent): void => {
+    // A press the browser ended without a release, a native drag and drop,
+    // is over once no button is held.
+    if (event.buttons === 0) this.press = 'up';
     if (this.frozen || this.press === 'selecting') return;
     const target = event.target;
     if (!(target instanceof Element)) return;
