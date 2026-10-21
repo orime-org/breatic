@@ -300,11 +300,16 @@ describe("an ask_user call that failed", () => {
     expect(text).not.toMatch(/^(Q1 |options:|A1 )/m);
   });
 
-  it("is still written as a questionnaire when its input is one", () => {
+  it("is written as a plain tool call even when its input is a questionnaire, which no card was drawn for", () => {
+    expect(readQuestionnaire(QUESTIONS)).not.toBeNull();
+
     const text = messageText([failed("ask_user", QUESTIONS)]);
 
-    expect(text).toBe("Q1 Which ratio?\nQ2 Any mood in mind?\nQ3 Bright or dim?");
-    expect(text).not.toContain("[called ask_user]");
+    expect(text).toBe(messageText([failed("web_search", QUESTIONS)]).replace("[called web_search]", "[called ask_user]"));
+    expect(text).toBe(
+      "[called ask_user] Ratio Which ratio? 16:9 9:16 Mood Any mood in mind? Warm Cool Light Bright or dim? Bright Dim",
+    );
+    expect(text).not.toMatch(/^(Q\d |options:|A\d )/m);
   });
 });
 

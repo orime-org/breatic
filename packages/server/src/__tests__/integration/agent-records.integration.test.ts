@@ -19,7 +19,7 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { initCore, getAgentConfig, loadLocales } from "@breatic/core";
 import { RecordsRefused, TOOL_MAP, type ProjectRecords } from "@breatic/domain";
-import type { ChatSpace } from "@breatic/shared";
+import { readQuestionnaire, type ChatSpace } from "@breatic/shared";
 
 try {
   initCore(process.env);
@@ -468,6 +468,41 @@ describe("searching the user's messages", () => {
 
     expect(words.filter((w) => shown.includes(w))).toEqual(["HEADER-ONLY-WORD", "NESTED-QUESTION-WORD"]);
     expect(found).toEqual(words.filter((w) => shown.includes(w)));
+  });
+
+  it("matches a failed questionnaire as a plain tool call, by exactly the words reading it shows", async () => {
+    const turn = await newTurn();
+    const other = await seedConversation(turn.userId, turn.projectId);
+    const max = getAgentConfig().records_tool_text_max_chars;
+    // Three full questions run the input's strings past the tool length before the fourth.
+    const full = (n: number): Record<string, unknown> => ({
+      header: n === 1 ? "EARLYHEAD" : `H${String(n)}`,
+      question: `${"q".repeat(199)}?`,
+      options: [{ label: "o".repeat(60) }, { label: "p".repeat(60) }],
+    });
+    const input = {
+      questions: [full(1), full(2), full(3), { header: "H4", question: "LATE-QUESTION-WORD?", options: [{ label: "Yes" }] }],
+    };
+    expect(readQuestionnaire(input)).not.toBeNull();
+    expect(3 * (199 + 1 + 120)).toBeGreaterThan(max);
+    await seedMessage(other, turn.userId, {
+      role: "assistant",
+      turn: 1,
+      parts: [{ type: "tool", toolCallId: "ask-err", toolName: "ask_user", input, status: "error" }],
+    });
+    const records = recordsFor(turn);
+    const shown = (await TOOL_MAP.read_conversation!().execute!({ conversation_id: other }, {
+      toolCallId: "t1",
+      messages: [],
+      context: { records },
+    } as never)) as string;
+    const words = ["EARLYHEAD", "LATE-QUESTION-WORD"];
+    const found: string[] = [];
+    for (const w of words) if ((await records.searchMessages([w], {})).hits.length > 0) found.push(w);
+
+    expect(shown).toContain("[called ask_user]");
+    expect(words.filter((w) => shown.includes(w))).toEqual(["EARLYHEAD"]);
+    expect(found).toEqual(["EARLYHEAD"]);
   });
 
   it("marks the hits in the conversation this turn runs in, and only those", async () => {
