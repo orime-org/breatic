@@ -34,7 +34,7 @@ describe('SlugField hint line', () => {
 
   it('says a check that could not run is left to submit, in a muted line', () => {
     render(<SlugField {...BASE} value='my-studio' check={{ state: 'unverified' }} />);
-    expect(hint()).toHaveTextContent('Couldn\'t check right now. It is checked again when you submit.');
+    expect(hint()).toHaveTextContent('Couldn\'t check right now. The server decides when you submit.');
     expect(hint()).toHaveClass('text-muted-foreground');
   });
 

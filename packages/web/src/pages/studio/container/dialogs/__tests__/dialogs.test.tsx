@@ -72,17 +72,17 @@ describe('NewItemDialog (spec §3.12)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('describes the slug, with its length and that it follows the name', () => {
+  it('describes the slug, with its length and that an empty one comes from the name', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
     const line = screen.getByTestId('new-project-slug-hint');
     expect(line).toHaveTextContent('6–50 characters');
-    expect(line).toHaveTextContent('it follows the name');
+    expect(line).toHaveTextContent('Left empty, it is generated from the name.');
   });
 
   it('uses collection placeholders in the collection dialog', () => {
     render(<NewItemDialog kind='collection' open onOpenChange={() => {}} />);
     expect(screen.getByLabelText('Name')).toHaveAttribute('placeholder', 'My collection');
-    expect(slugInput()).toHaveAttribute('placeholder', 'my-collection');
+    expect(slugInput()).toHaveAttribute('placeholder', 'Generated from the name if left empty');
   });
 
   it('has no description field and sends none (inner#1463)', async () => {
@@ -220,7 +220,7 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
     await new Promise((resolve) => setTimeout(resolve, 350));
     const line = screen.getByTestId('new-project-slug-hint');
-    expect(line).toHaveTextContent('it follows the name');
+    expect(line).toHaveTextContent('Left empty, it is generated from the name.');
     expect(line).not.toHaveTextContent(/available|Checking/);
   });
 });
