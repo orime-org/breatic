@@ -1107,6 +1107,16 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
 }
 
 /**
+ * Whether a read found no stream at all: what ffprobe answers when it could
+ * not read the object, which says nothing about what the object holds.
+ * @param report - What the container answered.
+ * @returns True for an empty report.
+ */
+function foundNothing(report: ProbeReport): boolean {
+  return report.streams.length === 0;
+}
+
+/**
  * Settle the peaks a read was asked for (inner#1305 §4.4).
  * @param env - The Worker's bindings.
  * @param storageKey - The audio object they were read from.
@@ -1115,8 +1125,9 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
  * @param read.answered - Whether a container answered at all.
  * @param read.report - What ffprobe found.
  * @param read.peaks - The peaks it read, when it read them.
- * @returns What became of them: `none` only for an object with no sound and
- *   length to read, `failed` for audio that came back without peaks.
+ * @returns What became of them: `none` only for an object read as having no
+ *   sound and length, `failed` for audio that came back without peaks and for
+ *   a read that found nothing, so the job tries again.
  */
 async function peaksOutcome(
   env: Env,
@@ -1127,7 +1138,9 @@ async function peaksOutcome(
   if (standing) return "existing";
   if (!read.answered) return "failed";
   if (read.peaks === null) {
-    return peaksSampleCount({ wantPeaks: true, report: read.report }) === null ? "none" : "failed";
+    return foundNothing(read.report) || peaksSampleCount({ wantPeaks: true, report: read.report }) !== null
+      ? "failed"
+      : "none";
   }
   return (await storePeaks(env, storageKey, read.peaks)) ? "generated" : "failed";
 }
@@ -1141,8 +1154,9 @@ async function peaksOutcome(
  * @param read.answered - Whether a container answered at all.
  * @param read.report - What ffprobe found.
  * @param read.preview - The preview it cut, when it cut one.
- * @returns What became of it: `none` only for a picture with no frame to cut
- *   from, `failed` for one that had a frame and came back without a preview.
+ * @returns What became of it: `none` only for a picture read as having no
+ *   frame to cut from, `failed` for one that had a frame and came back without
+ *   a preview and for a read that found nothing.
  */
 async function previewOutcome(
   env: Env,
@@ -1152,7 +1166,9 @@ async function previewOutcome(
 ): Promise<PreviewOutcome> {
   if (standing) return "existing";
   if (!read.answered) return "failed";
-  if (read.preview === null) return hasPreviewableFrame(read.report) ? "failed" : "none";
+  if (read.preview === null) {
+    return foundNothing(read.report) || hasPreviewableFrame(read.report) ? "failed" : "none";
+  }
   return (await storePreview(env, storageKey, read.preview)) ? "generated" : "failed";
 }
 

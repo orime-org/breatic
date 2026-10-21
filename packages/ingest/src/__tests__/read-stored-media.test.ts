@@ -294,6 +294,21 @@ describe("a read that asks for a preview", () => {
 
     expect(await response.json()).toMatchObject({ preview: "failed" });
   });
+
+  // A read that found no stream at all says nothing about the picture, so the
+  // backfill lists it to run again rather than as a picture with no frame.
+  it("answers failed when the read came back with nothing found", async () => {
+    const storageKey = await storedPicture();
+    const run = containerAnswering({ durationSeconds: null, streams: [] }, null, null);
+
+    const response = await read(
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT, wantPreview: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ preview: "failed" });
+  });
 });
 
 // The audio-peaks job and the peaks backfill ask for peaks here (inner#1305
@@ -369,6 +384,21 @@ describe("a read that asks for peaks", () => {
 
     expect(await response.json()).toMatchObject({ peaks: "failed" });
     expect(await env.BUCKET.head(peaksKeyFor(storageKey))).toBeNull();
+  });
+
+  // A read that came back empty says nothing about the audio: the ledger
+  // filed it as audio, so the job is told to try again.
+  it("answers failed when an audio object's read came back with nothing found", async () => {
+    const storageKey = await storedSong();
+    const run = containerAnswering({ durationSeconds: null, streams: [] }, null, null, PEAKS_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "audio/mpeg", deadlineAt: DEADLINE_AT, wantPeaks: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ peaks: "failed" });
   });
 
   it("answers none for an object with no sound to read", async () => {
