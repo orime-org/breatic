@@ -152,6 +152,34 @@ describe('MembersTab — invite flow', () => {
     // Dialog stays open so the admin can correct the email.
     expect(screen.getByTestId('invite-member-dialog')).toBeInTheDocument();
   });
+
+  it('drops the server error once the email it was about is edited (inner#1652)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(studiosApi.inviteMember).mockRejectedValueOnce(
+      new ApiException({
+        status: 404,
+        code: 'NOT_FOUND',
+        message: 'That email is not registered.',
+      }),
+    );
+    renderTab(
+      <MembersTab slug='acme' members={[ADMIN]} studioRole='admin' studioType='team' pendingInvitations={[]} />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Invite member' }));
+    const dialog = await screen.findByTestId('invite-member-dialog');
+    const email = within(dialog).getByLabelText('Email');
+    await user.type(email, 'ghost@x.example');
+    await user.click(within(dialog).getByRole('button', { name: 'Send invite' }));
+    await within(dialog).findByTestId('invite-member-error');
+
+    await user.clear(email);
+    await user.type(email, 'bob');
+    expect(within(dialog).queryByTestId('invite-member-error')).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Send invite' }));
+    expect(within(dialog).getByText('Please enter a valid email address.')).toBeInTheDocument();
+    expect(within(dialog).queryByTestId('invite-member-error')).not.toBeInTheDocument();
+    expect(studiosApi.inviteMember).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('MembersTab — change role', () => {

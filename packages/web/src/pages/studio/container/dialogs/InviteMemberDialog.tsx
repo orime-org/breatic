@@ -38,6 +38,8 @@ interface InviteMemberDialogProps {
    * not registered" / "already a member"). `null` clears the inline error.
    */
   error: string | null;
+  /** Called when the email is edited, so the parent can drop an error about the old one. */
+  onEmailEdit?: () => void;
 }
 
 /**
@@ -53,6 +55,7 @@ interface InviteMemberDialogProps {
  * @param props.onInvite called with the entered email + role on a valid submit.
  * @param props.pending whether the invite mutation is in flight.
  * @param props.error a server-side error to show inline, or `null`.
+ * @param props.onEmailEdit called when the email is edited (optional).
  * @returns the invite-member dialog.
  */
 export function InviteMemberDialog({
@@ -61,6 +64,7 @@ export function InviteMemberDialog({
   onInvite,
   pending,
   error,
+  onEmailEdit,
 }: InviteMemberDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [email, setEmail] = React.useState('');
@@ -127,6 +131,7 @@ export function InviteMemberDialog({
                 onChange={(event) => {
                   setEmail(event.target.value);
                   setEmailError(null);
+                  onEmailEdit?.();
                 }}
                 placeholder={t(
                   'studio.container.members.inviteEmailPlaceholder',
