@@ -551,7 +551,9 @@ function joinedStrings(value: SQL, path: string): SQL {
  * attachment's name, a questionnaire's questions with the options picked and
  * what was written on its Other line (an old single-question card's question
  * and its options), and the strings of any other tool's
- * input, cut as reading cuts them. A record tool's call, its result and every
+ * input, cut as reading cuts them. An `ask_user` call whose status is
+ * `error` drew no card and is matched like any other tool's call; one with
+ * no status is still read as `ask_user`. A record tool's call, its result and every
  * other tool's result are not matched: the record tools' words are copies of
  * records found elsewhere, and the other results are catalogues and data the
  * user never said.
@@ -564,7 +566,7 @@ function searchableWords(part: SQL): SQL {
     WHEN ${part}->>'type' = 'text' THEN left(${part}->>'text', ${textMax}::int)
     WHEN ${part}->>'type' = 'attachment' THEN ${part}#>>'{chip,name}'
     WHEN ${part}->>'type' <> 'tool' THEN NULL
-    WHEN ${part}->>'toolName' = ${ASK_USER} THEN concat_ws(' ',
+    WHEN ${part}->>'toolName' = ${ASK_USER} AND ${part}->>'status' IS DISTINCT FROM 'error' THEN concat_ws(' ',
       ${joinedStrings(part, 'lax $.input.questions[*].question ? (@.type() == "string")')},
       ${joinedStrings(part, 'lax $.input.question ? (@.type() == "string")')},
       ${joinedStrings(part, 'lax $.input.options[*] ? (@.type() == "string")')},

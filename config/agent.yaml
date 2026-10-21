@@ -192,9 +192,9 @@ records_search_max_terms: 5
 # How many characters a search hit shows on each side of the first match.
 records_snippet_chars: 80
 
-# How long a node version's prompt, and its content when that is text, may be
-# in characters when read_node_history writes it. A longer one is cut, and the
-# reader is told how much was left out.
+# How long a node version's prompt and its content (text, or a value that is
+# one link and nothing else) may be in characters when read_node_history
+# writes it. A longer one is cut, and the reader is told how much was left out.
 records_version_text_max_chars: 4000
 
 # How long one page of a read conversation may be, in characters. A page stops

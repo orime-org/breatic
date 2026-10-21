@@ -13,11 +13,12 @@
  * is cut on its own: a text part at the page length, saying how much it
  * lost, and a tool's words at the tool length. The search
  * in the server matches only words this writes out: the text parts, the
- * attachments' names, a questionnaire's questions and the answers given (an
- * old single-question card's question and options; for an `ask_user` input
- * neither shape fits, every question, option and answer string it holds, as
- * the search reads them), and the strings of every
- * other tool's input, each cut to the same length as here.
+ * attachments' names, a questionnaire's questions and the answers given (for
+ * an `ask_user` input that is no questionnaire, an old single-question card's
+ * among them, every question, option and answer string it holds, as the
+ * search reads them), and the strings of every other tool's input, each cut
+ * to the same length as here. An `ask_user` call that failed drew no card, so
+ * it is written like any other tool's call.
  */
 
 import { getAgentConfig } from "@breatic/core";
@@ -91,20 +92,6 @@ function questionnaireLines(questions: readonly { question: string }[], output: 
 }
 
 /**
- * An old single-question card's input (`{ question, options }` with string
- * options), which held no answer.
- * @param input - The call's stored input.
- * @returns The question and its options, or null for any other shape.
- * @throws {never} Never.
- */
-function oldQuestion(input: unknown): { question: string; options: string[] } | null {
-  if (typeof input !== "object" || input === null) return null;
-  const { question, options } = input as Record<string, unknown>;
-  if (typeof question !== "string") return null;
-  return { question, options: Array.isArray(options) ? options.filter((o): o is string => typeof o === "string") : [] };
-}
-
-/**
  * A value as a list, the way a lax jsonpath step reads it: an array is its
  * items, anything else one item, nothing no item.
  * @param value - The value.
@@ -140,9 +127,10 @@ function onlyStrings(values: unknown[]): string[] {
 }
 
 /**
- * An `ask_user` call neither reader accepts, written from the fields the
- * server's search matches for `ask_user` (`searchableWords` in the
- * conversation message repo), uncut as the search leaves them.
+ * An `ask_user` call whose input is no questionnaire (an old single-question
+ * card's among them), written from the fields the server's search matches
+ * for `ask_user` (`searchableWords` in the conversation message repo), uncut
+ * as the search leaves them.
  * @param part - The call.
  * @returns Its questions, options and answers, one line each.
  * @throws {never} Never.
@@ -174,11 +162,10 @@ function looseAskLines(part: ToolPart): string[] {
  * @throws {never} Never.
  */
 function toolLines(part: ToolPart): string[] {
-  const questionnaire = part.toolName === ASK_USER ? readQuestionnaire(part.input) : null;
-  if (questionnaire) return questionnaireLines(questionnaire.questions, part.output);
-  const old = part.toolName === ASK_USER ? oldQuestion(part.input) : null;
-  if (old) return [`Q1 ${old.question}`, ...(old.options.length > 0 ? [`options: ${old.options.join(", ")}`] : [])];
-  if (part.toolName === ASK_USER) return looseAskLines(part);
+  if (part.toolName === ASK_USER && part.status !== "error") {
+    const questionnaire = readQuestionnaire(part.input);
+    return questionnaire ? questionnaireLines(questionnaire.questions, part.output) : looseAskLines(part);
+  }
   const called = `[called ${part.toolName}]${wordsOf(part.input)}`;
   if (part.output === undefined || isRecordTool(part.toolName)) return [called];
   return [called, `[${part.toolName} answered]${wordsOf(part.output)}`];

@@ -237,10 +237,12 @@ function hitList(
 /**
  * Whole turns of a conversation, as many as fit one page.
  * @param read - What the read answered.
+ * @param toTurn - The last turn the call asked for, passed on in the
+ *   next-page line while the next page starts within it.
  * @returns The text.
  * @throws {never} Never.
  */
-function turnPage(read: ConversationTurns): string {
+function turnPage(read: ConversationTurns, toTurn?: number): string {
   const pageMax = getAgentConfig().records_page_max_chars;
   const head = `Conversation ${read.conversationId} ${titled(read.title)}${read.current ? " (this conversation)" : ""}.`;
   const turns: { index: number; text: string }[] = [];
@@ -265,8 +267,11 @@ function turnPage(read: ConversationTurns): string {
   const lastKept = kept.at(-1)!.index;
   const next = kept.length < turns.length ? turns[kept.length]!.index : lastKept < read.totalTurns ? lastKept + 1 : null;
   const range = `turns ${String(first)}–${String(lastKept)} of ${String(read.totalTurns)}`;
+  const until = toTurn !== undefined && next !== null && next <= toTurn ? ` to_turn=${String(toTurn)}` : "";
   const tail =
-    next === null ? `${range}.` : `${range}; call again with conversation_id=${read.conversationId} from_turn=${String(next)}`;
+    next === null
+      ? `${range}.`
+      : `${range}; call again with conversation_id=${read.conversationId} from_turn=${String(next)}${until}`;
   return [head, ...kept.map((t) => t.text), tail].join("\n\n");
 }
 
@@ -544,7 +549,7 @@ const readConversation: Tool<z.infer<typeof readInput>, string, RecordsContext> 
       abortSignal,
       { conversationId: conversation_id },
     );
-    return turnPage(read);
+    return turnPage(read, to_turn);
   },
 });
 
