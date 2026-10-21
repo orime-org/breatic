@@ -37,7 +37,7 @@ describe('RenameProjectDialog (inner#1652)', () => {
     expect(save).not.toBeDisabled();
     await user.click(save);
     expect(onRename).not.toHaveBeenCalled();
-    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a name.')).toHaveClass('text-xs');
     expect(name).toHaveFocus();
     await user.type(name, 'S');
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();

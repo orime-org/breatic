@@ -145,7 +145,7 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
 
     await user.click(create);
     expect(onCreate).not.toHaveBeenCalled();
-    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a name.')).toHaveClass('text-xs');
     expect(screen.getByLabelText('Name')).toHaveFocus();
     expect(screen.getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
 
@@ -158,6 +158,8 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
     await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
     expect(slugInput()).toHaveValue('spring-campaign');
+    await user.clear(screen.getByLabelText('Name'));
+    expect(slugInput()).toHaveValue('');
   });
 
   it('stops following the name once the reader edits the slug', async () => {
@@ -208,7 +210,8 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
     await user.type(screen.getByLabelText('Name'), 'Fresh');
     await user.clear(slugInput());
-    await user.type(slugInput(), 'Bad_Slug{Enter}');
+    await user.type(slugInput(), 'Bad_Slug');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
     expect(slugInput()).toHaveFocus();
@@ -228,6 +231,16 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     const line = screen.getByTestId('new-project-slug-hint');
     expect(line).toHaveTextContent('Left empty, it is generated from the name.');
     expect(line).not.toHaveTextContent(/available|Checking/);
+  });
+
+  it('says why a typed slug is refused once the typing check settles, before any press', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring');
+    await typeSlug(user, 'Bad_Slug');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).toHaveAttribute('aria-invalid', 'true');
   });
 });
 
@@ -569,7 +582,7 @@ describe('NewStudioDialog — reasons on press and waiting for the check (inner#
     expect(create).not.toBeDisabled();
     await user.click(create);
     expect(mutate).not.toHaveBeenCalled();
-    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    expect(screen.getByText('Enter a name.')).toHaveClass('text-xs');
     expect(screen.getByTestId('new-studio-slug-hint')).toHaveTextContent('Enter a Slug.');
     expect(screen.getByLabelText('Name')).toHaveFocus();
 

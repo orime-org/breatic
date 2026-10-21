@@ -87,7 +87,7 @@ describe('BasicInfoSection — the submit gate', () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(
       screen.getByText('studio.container.dialog.nameRequired'),
-    ).toBeInTheDocument();
+    ).toHaveClass('text-xs');
     expect(name).toHaveFocus();
     expect(name).toHaveAttribute('aria-invalid', 'true');
 

@@ -45,7 +45,7 @@ describe('InviteMemberDialog', () => {
     expect(submit).not.toBeDisabled();
     await user.click(submit);
     expect(onInvite).not.toHaveBeenCalled();
-    expect(screen.getByText('Enter an email address.')).toBeInTheDocument();
+    expect(screen.getByText('Enter an email address.')).toHaveClass('text-xs');
     const email = screen.getByLabelText('Email');
     expect(email).toHaveFocus();
     expect(email).toHaveAttribute('aria-invalid', 'true');

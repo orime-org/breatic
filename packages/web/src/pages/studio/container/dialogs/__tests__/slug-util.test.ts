@@ -105,6 +105,10 @@ describe('itemSlugFromName (inner#1463)', () => {
     expect(itemSlugFromName(name, 'project')).toBe('alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota');
   });
 
+  it('cuts at the limit when the only hyphen comes too early to leave a full slug', () => {
+    expect(itemSlugFromName(`Go ${'x'.repeat(60)}`, 'project')).toBe(`go-${'x'.repeat(47)}`);
+  });
+
   it('cuts a single word longer than the limit at the limit', () => {
     expect(itemSlugFromName('a'.repeat(70), 'project')).toBe('a'.repeat(ITEM_SLUG_BOUNDS.max));
   });
