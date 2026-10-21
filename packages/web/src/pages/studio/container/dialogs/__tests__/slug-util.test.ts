@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 
 import {
   ITEM_SLUG_BOUNDS,
   STUDIO_SLUG_BOUNDS,
+  itemSlugFromName,
   validateItemSlug,
   validateSlugShape,
   validateStudioSlug,
@@ -63,5 +65,43 @@ describe('validateItemSlug (not unique — shape only)', () => {
 
   it('rejects a malformed slug', () => {
     expect(validateItemSlug('Bad_Slug')).toBe('format');
+  });
+});
+
+describe('itemSlugFromName (inner#1463)', () => {
+  it.each([
+    ['Spring Campaign 2026', 'spring-campaign-2026'],
+    ['Café déjà vu', 'cafe-deja-vu'],
+    ['  My   App!!  ', 'my-app'],
+    ['2026 launch plan', 'launch-plan'],
+    ['我的项目', 'project'],
+    ['プロジェクト', 'project'],
+    ['🎨🚀', 'project'],
+    ['AI 短片', 'project'],
+    ['', 'project'],
+  ])('turns %j into %j', (name, expected) => {
+    expect(itemSlugFromName(name, 'project')).toBe(expected);
+  });
+
+  it('uses the given fallback word', () => {
+    expect(itemSlugFromName('资产集', 'collection')).toBe('collection');
+  });
+
+  it('cuts a long result at a hyphen within the length limit', () => {
+    const name = 'the quick brown fox jumps over the lazy dog again and again';
+    const slug = itemSlugFromName(name, 'project');
+    expect(slug.length).toBeLessThanOrEqual(ITEM_SLUG_BOUNDS.max);
+    expect(name.toLowerCase().replace(/ /g, '-').startsWith(slug)).toBe(true);
+    expect(slug.endsWith('-')).toBe(false);
+  });
+
+  it('always produces a slug the create endpoint accepts', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary', maxLength: 120 }), (name) => {
+        expect(validateItemSlug(itemSlugFromName(name, 'project'))).toBeNull();
+        expect(validateItemSlug(itemSlugFromName(name, 'collection'))).toBeNull();
+      }),
+      { numRuns: 500 },
+    );
   });
 });

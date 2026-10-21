@@ -98,3 +98,28 @@ export function validateStudioSlug(
 export function validateItemSlug(value: string): SlugError {
   return validateSlugShape(value, ITEM_SLUG_BOUNDS);
 }
+
+/**
+ * A project or collection slug made from its name, for when the reader leaves
+ * the slug empty (inner#1463). Only Latin letters and digits carry over, with
+ * accents dropped; the item's id is what finds it, so a name with none of
+ * those (all Chinese, emoji) gets the plain fallback word.
+ * @param name - The item's name as typed.
+ * @param fallback - The word used when the name yields too little: `project` or `collection`.
+ * @returns A slug that passes {@link validateItemSlug}.
+ */
+export function itemSlugFromName(name: string, fallback: string): string {
+  let slug = name
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[^a-z]+/, '')
+    .replace(/-+$/, '');
+  if (slug.length > ITEM_SLUG_BOUNDS.max) {
+    slug = slug.slice(0, ITEM_SLUG_BOUNDS.max);
+    const cut = slug.lastIndexOf('-');
+    slug = (cut >= ITEM_SLUG_BOUNDS.min ? slug.slice(0, cut) : slug).replace(/-+$/, '');
+  }
+  return slug.length < ITEM_SLUG_BOUNDS.min ? fallback : slug;
+}
