@@ -17,7 +17,7 @@
  *      deleted ids are published, the kept one and other people's stay.
  *   3. A failed publish still deletes and reports the failure to the caller.
  *   4. `POST /auth/logout-others` keeps the caller's session and ends the rest;
- *      it needs a session and is rate limited per account.
+ *      it needs a session and is rate limited per account and per address.
  *   5. Sign out and both password resets publish what they delete.
  */
 
@@ -54,7 +54,7 @@ import {
 import type { SessionsRevokedEvent } from "@breatic/shared";
 import { hashRecoveryCode } from "@server/modules/auth/recovery-code.service.js";
 import type { Hono } from "hono";
-import { withPeer } from "../helpers/peer.js";
+import { PROXY_PEER, withPeer } from "../helpers/peer.js";
 
 try {
   initCore(process.env);
@@ -65,6 +65,7 @@ loadLocales();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
+let createApp: () => Hono;
 let subscriber: Redis;
 let heard: SessionsRevokedEvent[] = [];
 let seq = 0;
@@ -75,7 +76,7 @@ beforeAll(async () => {
     prepare: false,
     connection: { application_name: "session-revocation-test" },
   });
-  const { createApp } = await import("@server/app.js");
+  ({ createApp } = await import("@server/app.js"));
   app = withPeer(createApp());
   subscriber = getStreamRedis().duplicate();
   subscriber.on("message", (_channel: string, message: string) => {
@@ -274,6 +275,28 @@ describe("POST /auth/logout-others", () => {
     }
     expect(statuses.slice(0, 10).every((status) => status === 200)).toBe(true);
     expect(statuses[10]).toBe(429);
+  });
+
+  it("is limited per address across accounts", async () => {
+    // Each call scans every session key, so many accounts behind one address
+    // must not multiply the scans.
+    const hex = (): string => crypto.randomBytes(2).toString("hex");
+    const ip = `2001:db8:${hex()}:${hex()}::1`;
+    const statuses: number[] = [];
+    for (let n = 0; n < 4; n += 1) {
+      const { userId } = await account();
+      const current = await session(userId);
+      for (let i = 0; i < (n < 3 ? 10 : 1); i += 1) {
+        const res = await createApp().request(
+          "/api/v1/auth/logout-others",
+          { method: "POST", headers: { Cookie: cookie(current), "x-real-ip": ip } },
+          PROXY_PEER,
+        );
+        statuses.push(res.status);
+      }
+    }
+    expect(statuses.slice(0, 30).every((status) => status === 200)).toBe(true);
+    expect(statuses[30]).toBe(429);
   });
 });
 

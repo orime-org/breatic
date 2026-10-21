@@ -413,17 +413,22 @@ auth.post("/logout", requireAuth, async (c) => {
  * Calling it again only ends what was opened since, so a repeated press is
  * harmless.
  * @returns `200` with `{ message }`; `401` without a session; `429` past
- *   `logout-others` in `config/rate-limits.yaml`
+ *   `logout-others-ip` or `logout-others` in `config/rate-limits.yaml`
  */
-auth.post("/logout-others", requireAuth, rateLimitFor("logout-others", "user"), async (c) => {
-  const user = c.get("user");
-  const token = readSessionCookie(c);
-  if (!token) throw new UnauthorizedError(t("server.auth.not_authenticated"));
-  const { signalFailure } = await authService.logoutOthers(user.id, token);
-  logRevocationSignalFailure(signalFailure, user.id);
-  logger.info({ userId: user.id }, "logged_out_other_sessions");
-  return c.json({ message: t("server.auth.logout_others_success") });
-});
+auth.post(
+  "/logout-others",
+  requireAuth,
+  rateLimitForAll([{ action: "logout-others-ip" }, { action: "logout-others", keyBy: "user" }]),
+  async (c) => {
+    const user = c.get("user");
+    const token = readSessionCookie(c);
+    if (!token) throw new UnauthorizedError(t("server.auth.not_authenticated"));
+    const { signalFailure } = await authService.logoutOthers(user.id, token);
+    logRevocationSignalFailure(signalFailure, user.id);
+    logger.info({ userId: user.id }, "logged_out_other_sessions");
+    return c.json({ message: t("server.auth.logout_others_success") });
+  },
+);
 
 /**
  * Log that ended sessions were not announced to collab. The sessions are gone
