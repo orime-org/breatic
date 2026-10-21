@@ -466,6 +466,8 @@ export type PreviewOutcome = (typeof PREVIEW_OUTCOMES)[number];
 export interface StoredMediaRead extends MediaNumbers {
   /** Present when a preview was asked for and the answer named a known one. */
   preview?: PreviewOutcome;
+  /** Present when peaks were asked for; they take the same outcomes as a preview. */
+  peaks?: PreviewOutcome;
 }
 
 const previewOutcome = z
@@ -490,6 +492,7 @@ const previewOutcome = z
  *   whether there is anything for the container to read.
  * @param about.deadlineAt - When the job asking runs out, in epoch ms.
  * @param about.wantPreview - Whether to cut a preview when none stands.
+ * @param about.wantPeaks - Whether to read the peaks of an audio object when none stand.
  * @returns The three numbers, each unusable one as none, and what became of
  *   the preview when one was asked for.
  * @throws {UploadHttpError} When the Worker refuses.
@@ -505,6 +508,7 @@ export async function readStoredMediaAtIngest(
     contentType: string;
     deadlineAt: number;
     wantPreview?: boolean;
+    wantPeaks?: boolean;
   },
 ): Promise<StoredMediaRead> {
   const answered = await askWorker<unknown>(
@@ -520,10 +524,14 @@ export async function readStoredMediaAtIngest(
     { replaySafe: true, bound: untilDeadline(about.deadlineAt) },
   );
   const numbers = mediaNumbers.parse(answered ?? {});
-  const preview = previewOutcome.parse(
-    (answered as { preview?: unknown } | null)?.preview,
-  );
-  return preview === undefined ? numbers : { ...numbers, preview };
+  const outcomes = answered as { preview?: unknown; peaks?: unknown } | null;
+  const preview = previewOutcome.parse(outcomes?.preview);
+  const peaks = previewOutcome.parse(outcomes?.peaks);
+  return {
+    ...numbers,
+    ...(preview !== undefined && { preview }),
+    ...(peaks !== undefined && { peaks }),
+  };
 }
 
 /**

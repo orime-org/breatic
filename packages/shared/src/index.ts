@@ -809,6 +809,15 @@ export {
   originalUrlFor,
   isStoredObjectUrl,
 } from "@shared/upload/preview.js";
+// Where a stored audio's peaks live and what they hold (inner#1305).
+export { AUDIO_PEAK_COUNT, AUDIO_PEAK_MAX } from "@shared/audio-peaks.js";
+export {
+  PEAKS_SUFFIX,
+  audioPeaksSchema,
+  peaksKeyFor,
+  peaksUrlFor,
+  type AudioPeaks,
+} from "@shared/upload/peaks.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and
 // whether we take it.
