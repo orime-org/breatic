@@ -222,7 +222,7 @@ describe('SettingsTab — Save waits for the studio to show the saved values (in
     expect(save).toHaveAttribute('aria-busy', 'true');
     landRefetch!();
     await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
-    expect(save).toBeDisabled();
+    expect(screen.getByTestId('settings-name')).toHaveValue('Acme Inc');
   });
 
   it('stops waiting once the studio shows the new name, even while an unrelated read is still refetching', async () => {

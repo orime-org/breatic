@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 
+import { FieldError } from '@web/components/FieldError';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
@@ -42,7 +43,8 @@ interface BasicInfoSectionProps {
  * @param props - The studio, the viewer's permission and the save wiring.
  * @param props.studio - The studio being edited.
  * @param props.canEdit - Whether the fields are editable.
- * @param props.saving - Whether any save is in flight; the fields hold still.
+ * @param props.saving - Whether any save is in flight; the fields hold still
+ *   and a press of Save does nothing.
  * @param props.savingDetails - Whether this section's own save is in flight;
  *   only that one spins Save.
  * @param props.onSave - Called with the changed fields only.
@@ -58,6 +60,8 @@ export function BasicInfoSection({
   const t = useTranslation();
   const [name, setName] = React.useState(studio.name);
   const [bio, setBio] = React.useState(studio.bio ?? '');
+  const [nameError, setNameError] = React.useState<string | null>(null);
+  const nameRef = React.useRef<HTMLInputElement>(null);
 
   // A save (or someone else's edit arriving) re-seeds the fields.
   React.useEffect(() => {
@@ -72,14 +76,21 @@ export function BasicInfoSection({
     return next;
   }, [bio, name, studio.bio, studio.name]);
 
-  const dirty = Object.keys(patch).length > 0;
-  // The name has no availability check to lean on, so its emptiness is tested
-  // here or nowhere: a blank one would otherwise reach the server and come
-  // back as a validation error the form could have refused itself.
-  const nameBlocked = patch.name !== undefined && patch.name === '';
-  const canSubmit = canEdit && dirty && !saving && !nameBlocked;
+  const required = t('studio.container.dialog.nameRequired');
 
-  const submit = React.useCallback((): void => onSave(patch), [onSave, patch]);
+  // Save stays pressable (inner#1652). The name has no availability check to
+  // lean on, so its emptiness is tested here or nowhere: a blank one would
+  // otherwise reach the server and come back as a validation error.
+  const submit = React.useCallback((): void => {
+    if (saving) return;
+    if (patch.name === '') {
+      setNameError(required);
+      nameRef.current?.focus();
+      return;
+    }
+    if (Object.keys(patch).length === 0) return;
+    onSave(patch);
+  }, [onSave, patch, required, saving]);
 
   return (
     <section className='flex flex-col gap-4'>
@@ -94,12 +105,21 @@ export function BasicInfoSection({
         <Input
           autoComplete='off'
           id='studio-name'
+          ref={nameRef}
           value={name}
           maxLength={NAME_MAX}
           disabled={!canEdit || saving}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNameError(null);
+          }}
+          aria-invalid={nameError !== null}
+          aria-describedby={nameError !== null ? 'studio-name-error' : undefined}
           data-testid='settings-name'
         />
+        {nameError !== null ? (
+          <FieldError id='studio-name-error'>{nameError}</FieldError>
+        ) : null}
       </div>
 
       <div className='flex flex-col gap-1.5'>
@@ -127,7 +147,6 @@ export function BasicInfoSection({
         <div className='flex justify-end'>
           <Button
             size='form'
-            disabled={!canSubmit}
             loading={savingDetails}
             onClick={submit}
             data-testid='settings-save'

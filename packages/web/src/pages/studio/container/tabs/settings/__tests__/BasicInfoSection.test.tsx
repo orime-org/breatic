@@ -13,7 +13,7 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 
 import { BasicInfoSection } from '@web/pages/studio/container/tabs/settings/BasicInfoSection';
 import type { StudioDetail } from '@web/pages/studio/container/container-types';
@@ -64,29 +64,58 @@ describe('BasicInfoSection — the submit gate', () => {
     );
   });
 
-  it('stays disabled while nothing has changed', () => {
-    renderSection();
-    expect(screen.getByTestId('settings-save')).toBeDisabled();
+  it('keeps Save pressable and sends nothing when nothing has changed (inner#1652)', () => {
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const save = screen.getByTestId('settings-save');
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText('studio.container.dialog.nameRequired'),
+    ).not.toBeInTheDocument();
   });
 
-  it('enables once a field actually changes', async () => {
-    renderSection();
+  it('says a name is needed when it is emptied, and focuses it (inner#1652)', () => {
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const name = screen.getByTestId('settings-name');
+    fireEvent.change(name, { target: { value: '   ' } });
+    const save = screen.getByTestId('settings-save');
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('studio.container.dialog.nameRequired'),
+    ).toBeInTheDocument();
+    expect(name).toHaveFocus();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+
+    fireEvent.change(name, { target: { value: 'A' } });
+    expect(
+      screen.queryByText('studio.container.dialog.nameRequired'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('ignores a press while any settings save is out (inner#1652)', () => {
+    const onSave = vi.fn();
+    const tree = (saving: boolean): React.JSX.Element => (
+      <BasicInfoSection
+        studio={STUDIO}
+        canEdit
+        saving={saving}
+        savingDetails={false}
+        onSave={onSave}
+      />
+    );
+    const { rerender } = render(tree(false));
     fireEvent.change(screen.getByTestId('settings-name'), {
       target: { value: 'Acme Inc' },
     });
-    await waitFor(() =>
-      expect(screen.getByTestId('settings-save')).toBeEnabled(),
-    );
-  });
-
-  it('refuses an emptied Name', async () => {
-    renderSection();
-    fireEvent.change(screen.getByTestId('settings-name'), {
-      target: { value: '   ' },
-    });
-    await waitFor(() =>
-      expect(screen.getByTestId('settings-save')).toBeDisabled(),
-    );
+    // A slug change is out: Save does not spin, but a press does nothing.
+    rerender(tree(true));
+    fireEvent.click(screen.getByTestId('settings-save'));
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('sends only what changed, and saves without a confirmation', () => {
