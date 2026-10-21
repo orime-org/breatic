@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@web/components/ui/dialog';
+import { FieldError } from '@web/components/FieldError';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { PROJECT_NAME_MAX_CHARS } from '@breatic/shared';
@@ -54,22 +55,37 @@ export function RenameProjectDialog({
 }: RenameProjectDialogProps): React.JSX.Element {
   const t = useTranslation();
   const [name, setName] = React.useState(currentName);
+  const [nameError, setNameError] = React.useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
   // Every opening starts from the name as it is now, not from what was typed
   // and abandoned last time.
   React.useEffect(() => {
-    if (open) setName(currentName);
+    if (open) {
+      setName(currentName);
+      setNameError(null);
+    }
   }, [open, currentName]);
 
   const next = name.trim();
-  const canSave = next.length > 0 && next !== currentName;
+  const required = t('studio.container.dialog.nameRequired');
 
   const submit = React.useCallback(
     (event: React.FormEvent<HTMLFormElement>): void => {
       event.preventDefault();
-      if (!canSave) return;
+      if (pending) return;
+      if (next.length === 0) {
+        setNameError(required);
+        inputRef.current?.focus();
+        return;
+      }
+      // Nothing changed: saving is already done.
+      if (next === currentName) {
+        onOpenChange(false);
+        return;
+      }
       onRename(next, { onSuccess: () => onOpenChange(false) });
     },
-    [canSave, next, onOpenChange, onRename],
+    [currentName, next, onOpenChange, onRename, pending, required],
   );
 
   return (
@@ -78,7 +94,7 @@ export function RenameProjectDialog({
         <DialogHeader>
           <DialogTitle>{t('studio.container.card.renameTitle')}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} noValidate>
           <DialogBody className='flex flex-col gap-1.5'>
             <Label htmlFor='rename-project-name'>{t('studio.container.card.renameLabel')}</Label>
             <Input
@@ -86,15 +102,23 @@ export function RenameProjectDialog({
               autoComplete='off'
               value={name}
               maxLength={PROJECT_NAME_MAX_CHARS}
-              onChange={(event) => setName(event.target.value)}
-              required
+              ref={inputRef}
+              onChange={(event) => {
+                setName(event.target.value);
+                setNameError(null);
+              }}
+              aria-invalid={nameError !== null}
+              aria-describedby={nameError !== null ? 'rename-project-name-error' : undefined}
             />
+            {nameError !== null ? (
+              <FieldError id='rename-project-name-error'>{nameError}</FieldError>
+            ) : null}
           </DialogBody>
           <DialogFooter>
             <Button type='button' variant='outline' onClick={() => onOpenChange(false)}>
               {t('studio.container.card.cancel')}
             </Button>
-            <Button type='submit' disabled={!canSave} loading={pending}>
+            <Button type='submit' loading={pending}>
               {t('studio.container.card.save')}
             </Button>
           </DialogFooter>
