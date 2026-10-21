@@ -72,9 +72,25 @@ function cells(blocks: readonly Seen[]): string[][][] {
   return table.children.map((row) => row.children.map((cell) => cell.children.flatMap((block) => lines(block, 0))));
 }
 
+/**
+ * Each cell of the first table as its type and spans.
+ * @param blocks - The blocks.
+ * @returns Per row, per cell, `type colspan×rowspan`.
+ */
+function layout(blocks: readonly Seen[]): string[][] {
+  const table = blocks.find((block) => block.type === 'docTable');
+  if (table === undefined) throw new Error('no table');
+  return table.children.map((row) =>
+    row.children.map((cell) => {
+      const props = (cell as Seen & { props?: Record<string, unknown> }).props ?? {};
+      return `${cell.type} ${String(props['colspan'] ?? 1)}x${String(props['rowspan'] ?? 1)}`;
+    }),
+  );
+}
+
 describe('a table as Markdown', () => {
   it('is a pipe table when every cell holds one paragraph, its first row the header', () => {
-    const editor = open([tableBlock({ rows: [{ cells: ['Shot', 'Size'] }, { cells: ['1', 'Wide | far'] }] })]);
+    const editor = open([tableBlock({ rows: [{ cells: ['Shot', 'Size'] }, { cells: ['1', 'Wide | far'] }], headerRows: 1 })]);
 
     expect(blocksMarkdown(editor, editor.document as never)).toBe(
       '| Shot | Size |\n| --- | --- |\n| 1 | Wide \\| far |',
@@ -83,7 +99,7 @@ describe('a table as Markdown', () => {
 
   it('keeps the styles of a cell in a pipe table', () => {
     const editor = open([
-      tableBlock({ rows: [{ cells: ['a', 'b'] }] }),
+      tableBlock({ rows: [{ cells: ['a', 'b'] }], headerRows: 1 }),
     ]);
     editor.updateBlock((editor.document[0] as unknown as Seen & { children: { children: { children: { id: string }[] }[] }[] }).children[0]!.children[0]!.children[0]!.id, {
       content: [{ type: 'text', text: 'a', styles: { bold: true } }],
@@ -146,7 +162,7 @@ describe('a table as Markdown', () => {
   });
 
   it('reads a pipe table back into the same cells', () => {
-    const editor = open([tableBlock({ rows: [{ cells: ['Shot', 'Size'] }, { cells: ['1', 'Wide'] }] })]);
+    const editor = open([tableBlock({ rows: [{ cells: ['Shot', 'Size'] }, { cells: ['1', 'Wide'] }], headerRows: 1 })]);
 
     const again = editor.tryParseMarkdownToBlocks(blocksMarkdown(editor, editor.document as never)) as unknown as Seen[];
 
@@ -154,6 +170,19 @@ describe('a table as Markdown', () => {
       [['paragraph:Shot'], ['paragraph:Size']],
       [['paragraph:1'], ['paragraph:Wide']],
     ]);
+  });
+
+  it.each([
+    ['no header', { rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] }],
+    ['a header column', { rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }], headerCols: 1 }],
+    ['a header row and a header column', { rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }], headerRows: 1, headerCols: 1 }],
+    ['merged cells', { rows: [{ cells: [{ content: 'ab', props: { colspan: 2 } }] }, { cells: ['c', 'd'] }], headerRows: 1 }],
+  ] as const)('reads a table with %s back with the same headers and spans', (_name, input) => {
+    const editor = open([tableBlock(input as never)]);
+
+    const again = editor.tryParseMarkdownToBlocks(blocksMarkdown(editor, editor.document as never)) as unknown as Seen[];
+
+    expect(layout(again)).toEqual(layout(editor.document as unknown as Seen[]));
   });
 
   it('writes the blocks around a table as the editor does', () => {
@@ -170,7 +199,7 @@ describe('a table as Markdown', () => {
 
 describe('tables the Markdown carries whole (inner#1619 T10)', () => {
   it('keeps a line break in a cell as <br> alone', () => {
-    const editor = open([tableBlock({ rows: [{ cells: ['h1', 'h2'] }, { cells: ['a', 'c'] }] })]);
+    const editor = open([tableBlock({ rows: [{ cells: ['h1', 'h2'] }, { cells: ['a', 'c'] }], headerRows: 1 })]);
     let at = -1;
     editor.prosemirrorState.doc.descendants((node, pos) => {
       if (at < 0 && node.isText && node.text === 'a') at = pos + 1;

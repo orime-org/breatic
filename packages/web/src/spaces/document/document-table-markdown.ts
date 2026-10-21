@@ -29,47 +29,25 @@ interface BlockLike {
   readonly children?: readonly BlockLike[];
 }
 
-/** A table's cell on the grid: the cell where it starts, null where a span covers it. */
-type GridCell = BlockLike | null;
-
 /**
- * The table laid out on its grid, spans placed the way a browser places them.
+ * Whether a pipe table carries all of a table: every cell holds one
+ * paragraph and nothing under it, no cell spans, and the headers are the
+ * first row exactly, which a pipe table always reads as its header (GFM).
  * @param table - The table block.
- * @returns One array per row, one entry per column.
+ * @returns True when it does.
  */
-function gridOf(table: BlockLike): GridCell[][] {
-  const rows = table.children ?? [];
-  const grid: GridCell[][] = rows.map(() => []);
-  const taken = rows.map(() => new Set<number>());
-  rows.forEach((row, r) => {
-    let column = 0;
-    for (const cell of row.children ?? []) {
-      while (taken[r]!.has(column)) column += 1;
-      const across = Math.max(1, Number(cell.props?.['colspan'] ?? 1));
-      const down = Math.max(1, Number(cell.props?.['rowspan'] ?? 1));
-      for (let dr = 0; dr < down && r + dr < rows.length; dr += 1) {
-        for (let dc = 0; dc < across; dc += 1) {
-          taken[r + dr]!.add(column + dc);
-          grid[r + dr]![column + dc] = dr === 0 && dc === 0 ? cell : null;
-        }
-      }
-      column += across;
-    }
-  });
-  const width = Math.max(0, ...grid.map((row) => row.length));
-  return grid.map((row) => Array.from({ length: width }, (_, c) => row[c] ?? null));
-}
-
-/**
- * Whether every cell of a table holds one paragraph and nothing under it.
- * @param table - The table block.
- * @returns True when a pipe table carries all of it.
- */
-function onlyParagraphs(table: BlockLike): boolean {
-  return (table.children ?? []).every((row) =>
+function pipeCarries(table: BlockLike): boolean {
+  return (table.children ?? []).every((row, r) =>
     (row.children ?? []).every((cell) => {
       const blocks = cell.children ?? [];
-      return blocks.length === 1 && blocks[0]!.type === 'paragraph' && (blocks[0]!.children ?? []).length === 0;
+      return (
+        blocks.length === 1 &&
+        blocks[0]!.type === 'paragraph' &&
+        (blocks[0]!.children ?? []).length === 0 &&
+        Number(cell.props?.['colspan'] ?? 1) === 1 &&
+        Number(cell.props?.['rowspan'] ?? 1) === 1 &&
+        (cell.type === DOC_TABLE_HEADER) === (r === 0)
+      );
     }),
   );
 }
@@ -81,20 +59,19 @@ function onlyParagraphs(table: BlockLike): boolean {
  * @returns The table's lines.
  */
 function pipeTable(editor: MarkdownEditor, table: BlockLike): string {
-  const lines = gridOf(table).map((row) => {
-    const texts = row.map((cell) =>
-      cell === null
-        ? ''
-        : editor
-          .blocksToMarkdownLossy((cell.children ?? []) as never)
-          .trim()
-          .replace(/\|/g, '\\|')
-          // A hard break is written as a backslash before the newline.
-          .replace(/\\?\n/g, '<br>'),
+  const rows = table.children ?? [];
+  const lines = rows.map((row) => {
+    const texts = (row.children ?? []).map((cell) =>
+      editor
+        .blocksToMarkdownLossy((cell.children ?? []) as never)
+        .trim()
+        .replace(/\|/g, '\\|')
+        // A hard break is written as a backslash before the newline.
+        .replace(/\\?\n/g, '<br>'),
     );
     return `| ${texts.join(' | ')} |`;
   });
-  const width = gridOf(table)[0]?.length ?? 0;
+  const width = rows[0]?.children?.length ?? 0;
   lines.splice(1, 0, `| ${Array.from({ length: width }, () => '---').join(' | ')} |`);
   return lines.join('\n');
 }
@@ -128,7 +105,7 @@ function htmlTable(editor: MarkdownEditor, table: BlockLike): string {
  * @returns The Markdown.
  */
 function tableMarkdown(editor: MarkdownEditor, table: BlockLike): string {
-  return onlyParagraphs(table) ? pipeTable(editor, table) : htmlTable(editor, table);
+  return pipeCarries(table) ? pipeTable(editor, table) : htmlTable(editor, table);
 }
 
 /**

@@ -135,6 +135,7 @@ describe('a stored table in a document not converted yet', () => {
       markdown = blocksMarkdown(editor, editor.document as never);
     }).not.toThrow();
     expect(markdown).toContain('old a');
-    expect(markdown).toContain('| new a | new b |');
+    expect(markdown).toContain('new a');
+    expect(markdown).toContain('new b');
   });
 });
