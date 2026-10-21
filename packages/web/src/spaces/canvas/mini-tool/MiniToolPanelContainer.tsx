@@ -20,6 +20,7 @@ import {
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
@@ -37,6 +38,7 @@ import {
   resolvedParams,
   sizeTierChoices,
   slotLengthCap,
+  sourceLimitOf,
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
@@ -218,6 +220,7 @@ function OpenMiniToolPanel({
       height: crops ? measured?.height : (dataHeight ?? shown?.height),
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
       url: content === '' ? undefined : content,
+      sizeBytes: view !== undefined && 'sizeBytes' in view ? view.sizeBytes : undefined,
     }),
     [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
@@ -376,6 +379,15 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
       return;
     }
+    if (refusal === 'sourceTooLong' || refusal === 'sourceTooLarge') {
+      const limit = sourceLimitOf(spec, entry, source)?.limit ?? 0;
+      toast.warning(
+        refusal === 'sourceTooLong'
+          ? t('canvas.miniTool.panel.sourceTooLong', { minutes: Math.round(limit / 60) })
+          : t('canvas.miniTool.panel.sourceTooLarge', { size: formatBytes(limit) }),
+      );
+      return;
+    }
     if (refusal !== null) return;
     // What the reader made on the node is copied out now, so a later change
     // to the draft does not reach this run.
@@ -401,7 +413,7 @@ function OpenMiniToolPanel({
     // Pressing Run leaves picking, as pressing generate does (inner#1304).
     if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source.width, source.height, sessionStore, endPick, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

@@ -240,7 +240,9 @@
     "mini_tool": {
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
-      "foreignSource": "이 파일은 처리할 수 없습니다."
+      "foreignSource": "이 파일은 처리할 수 없습니다.",
+      "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
+      "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",
@@ -787,7 +789,8 @@
         "light_color": "조명 색",
         "light_color_hex": "사용자 지정 조명 색",
         "light_intensity": "강도",
-        "light_quality": "조명 질감"
+        "light_quality": "조명 질감",
+        "strength": "강도"
       },
       "paramField": {
         "speaker": "이름",
@@ -970,7 +973,7 @@
         "declined": "모델이 이 요청을 거부했습니다.",
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
-        "no_audio_track": "이 동영상에는 오디오 트랙이 없습니다."
+        "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}"
       },
       "kind": {
         "upload": "업로드",
@@ -1112,6 +1115,40 @@
         "extend": {
           "label": "연장",
           "prompt": "이어질 소리를 설명하세요"
+        },
+        "denoise": {
+          "label": "노이즈 제거"
+        },
+        "normalize": {
+          "label": "라우드니스 정규화",
+          "note": "피크 상한 −1 dBTP"
+        },
+        "speed": {
+          "label": "속도"
+        },
+        "cut": {
+          "label": "자르기"
+        },
+        "eq": {
+          "label": "이퀄라이저"
+        },
+        "compress": {
+          "label": "컴프레서"
+        },
+        "pan": {
+          "label": "스테레오"
+        },
+        "reverb": {
+          "label": "리버브"
+        },
+        "voice": {
+          "label": "음성 강화"
+        },
+        "pitch": {
+          "label": "피치 변경"
+        },
+        "enhance": {
+          "label": "음성 보정"
         }
       },
       "param": {
@@ -1150,6 +1187,36 @@
         },
         "cols": {
           "label": "열 수"
+        },
+        "target": {
+          "label": "목표 라우드니스"
+        },
+        "keepPitch": {
+          "label": "피치 유지"
+        },
+        "eq": {
+          "label": "프리셋"
+        },
+        "dynamics": {
+          "label": "프리셋"
+        },
+        "pan": {
+          "label": "좌우"
+        },
+        "width": {
+          "label": "폭"
+        },
+        "room": {
+          "label": "공간"
+        },
+        "amount": {
+          "label": "리버브 양"
+        },
+        "semitones": {
+          "label": "반음"
+        },
+        "cents": {
+          "label": "센트"
         }
       },
       "panel": {
@@ -1172,7 +1239,9 @@
         "reset": "초기화",
         "imageTooLarge": "이 이미지는 너무 커서 이 기기에서 색 보정할 수 없습니다.",
         "sourceTooLargeToExpand": "이 이미지는 이미 확장할 수 있는 최대 크기입니다.",
-        "ratioTooLarge": "확장할 수 있는 최대 크기를 넘습니다"
+        "ratioTooLarge": "확장할 수 있는 최대 크기를 넘습니다",
+        "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
+        "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다."
       },
       "adjust": {
         "exposure": "노출",
@@ -1231,6 +1300,13 @@
         "referenceNote": "조명은 이 이미지에서 가져옵니다. 오른쪽의 색상, 강도, 질감이 이를 덮어씁니다.",
         "fromReference": "참고 이미지 따름",
         "sourceFromReference": "참고 이미지를 따름"
+      },
+      "dynamics": {
+        "threshold": "스레숄드",
+        "ratio": "비율",
+        "attack": "어택",
+        "release": "릴리스",
+        "makeup": "메이크업 게인"
       }
     },
     "template": {

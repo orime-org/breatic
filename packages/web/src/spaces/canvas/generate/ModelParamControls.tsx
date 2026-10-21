@@ -49,6 +49,16 @@ interface ModelParamControlsProps {
 }
 
 /**
+ * A 0–1 value as a whole percentage; rounded, so 0.55 reads 55% and not the
+ * float it multiplies out to.
+ * @param value - The value.
+ * @returns The percentage.
+ */
+function asPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+/**
  * The controls only this model has, drawn in a params popover after the ones
  * the panel shares (#2156, design §12). Each is named from the locales by its
  * param name; which shape each takes comes from its declaration.
@@ -176,7 +186,7 @@ function ModelControlRow({ control, label, shown, customShown, onChange, autoNot
           step={control.step}
           stops={control.stops}
           value={typeof shown === 'number' ? shown : undefined}
-          format={String}
+          format={control.display === 'percent' ? asPercent : String}
           onChange={onChange}
           testIdPrefix='generate-param'
           className={undefined}

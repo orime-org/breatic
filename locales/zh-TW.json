@@ -240,7 +240,9 @@
     "mini_tool": {
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
-      "foreignSource": "這個檔案無法處理。"
+      "foreignSource": "這個檔案無法處理。",
+      "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
+      "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
@@ -787,7 +789,8 @@
         "light_color": "光的顏色",
         "light_color_hex": "自訂光色",
         "light_intensity": "強度",
-        "light_quality": "光質"
+        "light_quality": "光質",
+        "strength": "強度"
       },
       "paramField": {
         "speaker": "名字",
@@ -970,7 +973,7 @@
         "declined": "模型拒絕了這次請求。",
         "media_refused": "模型不接受這個檔案。",
         "tool_failed": "工具沒能處理這個檔案。",
-        "no_audio_track": "這個影片沒有音軌。"
+        "no_audio_track": "{kind, select, audio {這段音訊讀不出聲音。} other {這個影片沒有音軌。}}"
       },
       "kind": {
         "upload": "上傳",
@@ -1112,6 +1115,40 @@
         "extend": {
           "label": "延長",
           "prompt": "描述要接上的聲音"
+        },
+        "denoise": {
+          "label": "降噪"
+        },
+        "normalize": {
+          "label": "響度標準化",
+          "note": "峰值上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "變速"
+        },
+        "cut": {
+          "label": "剪切"
+        },
+        "eq": {
+          "label": "等化"
+        },
+        "compress": {
+          "label": "壓縮"
+        },
+        "pan": {
+          "label": "聲像"
+        },
+        "reverb": {
+          "label": "殘響"
+        },
+        "voice": {
+          "label": "人聲增強"
+        },
+        "pitch": {
+          "label": "變調"
+        },
+        "enhance": {
+          "label": "增強"
         }
       },
       "param": {
@@ -1150,6 +1187,36 @@
         },
         "cols": {
           "label": "欄數"
+        },
+        "target": {
+          "label": "目標響度"
+        },
+        "keepPitch": {
+          "label": "保持音調"
+        },
+        "eq": {
+          "label": "預設"
+        },
+        "dynamics": {
+          "label": "預設"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "寬度"
+        },
+        "room": {
+          "label": "空間"
+        },
+        "amount": {
+          "label": "殘響量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "音分"
         }
       },
       "panel": {
@@ -1172,7 +1239,9 @@
         "reset": "重設",
         "imageTooLarge": "這張圖片太大，這台裝置上無法調色。",
         "sourceTooLargeToExpand": "這張圖片已經到外擴能做的最大尺寸。",
-        "ratioTooLarge": "超出外擴能做的最大尺寸"
+        "ratioTooLarge": "超出外擴能做的最大尺寸",
+        "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
+        "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1231,6 +1300,13 @@
         "referenceNote": "光照取自這張圖。右側的顏色、強度、光質會覆蓋它。",
         "fromReference": "跟隨參考圖",
         "sourceFromReference": "跟隨參考圖"
+      },
+      "dynamics": {
+        "threshold": "閾值",
+        "ratio": "比率",
+        "attack": "啟動",
+        "release": "釋放",
+        "makeup": "補償增益"
       }
     },
     "template": {

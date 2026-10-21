@@ -473,7 +473,7 @@ describe('an enhance source past the model\'s ceilings', () => {
    */
   function audio(duration: number, size: number): CanvasNodeView[] {
     return [
-      { id: 'src', type: 'audio', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.m4a', duration, size } },
+      { id: 'src', type: 'audio', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.m4a', duration, sizeBytes: size } },
     ] as unknown as CanvasNodeView[];
   }
 

@@ -566,7 +566,7 @@ describe('the batch-five panels', () => {
       mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
       expect(screen.getAllByTestId(/^mini-tool-eq-band-\d+-slider$/)).toHaveLength(10);
       expect(screen.getByTestId('mini-tool-eq-band-9-label')).toHaveTextContent('16k');
-      expect(screen.getByTestId('mini-tool-eq-preset-flat')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('mini-tool-eq-preset-flat')).toHaveAttribute('aria-current', 'true');
       expect(screen.queryByTestId('mini-tool-eq-preset-custom')).toBeNull();
     });
 
@@ -619,7 +619,7 @@ describe('the batch-five panels', () => {
 
     it('shows Custom selected once the settings match no preset', () => {
       mount({ spec: tool('audio.compress'), params: { dynamics: { ...medium, preset: 'custom', ratio: 5 } }, source: AUDIO });
-      expect(screen.getByTestId('mini-tool-dynamics-preset-custom')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('mini-tool-dynamics-preset-custom')).toHaveAttribute('aria-current', 'true');
     });
   });
 

@@ -240,7 +240,9 @@
     "mini_tool": {
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
-      "foreignSource": "このファイルは処理できません。"
+      "foreignSource": "このファイルは処理できません。",
+      "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
+      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -787,7 +789,8 @@
         "light_color": "光の色",
         "light_color_hex": "カスタムの光の色",
         "light_intensity": "強さ",
-        "light_quality": "光の質"
+        "light_quality": "光の質",
+        "strength": "強さ"
       },
       "paramField": {
         "speaker": "名前",
@@ -970,7 +973,7 @@
         "declined": "モデルがこのリクエストを拒否しました。",
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
-        "no_audio_track": "この動画には音声トラックがありません。"
+        "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}"
       },
       "kind": {
         "upload": "アップロード",
@@ -1112,6 +1115,40 @@
         "extend": {
           "label": "延長",
           "prompt": "続ける音を説明"
+        },
+        "denoise": {
+          "label": "ノイズ除去"
+        },
+        "normalize": {
+          "label": "ラウドネス正規化",
+          "note": "ピーク上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "速度"
+        },
+        "cut": {
+          "label": "カット"
+        },
+        "eq": {
+          "label": "イコライザー"
+        },
+        "compress": {
+          "label": "コンプレッサー"
+        },
+        "pan": {
+          "label": "ステレオ"
+        },
+        "reverb": {
+          "label": "リバーブ"
+        },
+        "voice": {
+          "label": "声の強調"
+        },
+        "pitch": {
+          "label": "ピッチ変更"
+        },
+        "enhance": {
+          "label": "音声補正"
         }
       },
       "param": {
@@ -1150,6 +1187,36 @@
         },
         "cols": {
           "label": "列数"
+        },
+        "target": {
+          "label": "目標ラウドネス"
+        },
+        "keepPitch": {
+          "label": "ピッチを保つ"
+        },
+        "eq": {
+          "label": "プリセット"
+        },
+        "dynamics": {
+          "label": "プリセット"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "広がり"
+        },
+        "room": {
+          "label": "空間"
+        },
+        "amount": {
+          "label": "リバーブ量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "セント"
         }
       },
       "panel": {
@@ -1172,7 +1239,9 @@
         "reset": "リセット",
         "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。",
         "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。",
-        "ratioTooLarge": "拡張できる最大サイズを超えます"
+        "ratioTooLarge": "拡張できる最大サイズを超えます",
+        "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
+        "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
       },
       "adjust": {
         "exposure": "露出",
@@ -1231,6 +1300,13 @@
         "referenceNote": "光はこの画像から取ります。右側の色・強さ・質で上書きできます。",
         "fromReference": "参考画像に合わせる",
         "sourceFromReference": "参考画像に合わせる"
+      },
+      "dynamics": {
+        "threshold": "スレッショルド",
+        "ratio": "レシオ",
+        "attack": "アタック",
+        "release": "リリース",
+        "makeup": "メイクアップゲイン"
       }
     },
     "template": {

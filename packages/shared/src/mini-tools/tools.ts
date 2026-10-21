@@ -552,6 +552,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     outputs: [{ modality: "audio", namePrefix: "LOUDNESS" }],
     sourceParam: "audio",
     sourceMany: false,
+    noteKey: key("audio.normalize", "note"),
   },
   {
     id: "audio.speed",

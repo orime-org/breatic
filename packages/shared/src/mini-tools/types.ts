@@ -306,6 +306,8 @@ interface MiniToolBase {
    * wrote after it.
    */
   readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string; readonly preamble?: string };
+  /** A line the panel shows under the controls, saying what the tool fixes for the reader. */
+  readonly noteKey?: string;
   /**
    * A catalog param the server fills with the aspect ratio nearest the
    * source's size, read off the request; the reader never sets it.

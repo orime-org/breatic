@@ -240,7 +240,9 @@
     "mini_tool": {
       "unavailable": "这个工具暂时不可用。",
       "invalidParam": "“{name}”的值这个工具不支持。",
-      "foreignSource": "这个文件无法处理。"
+      "foreignSource": "这个文件无法处理。",
+      "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
+      "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",
@@ -787,7 +789,8 @@
         "light_color": "光的颜色",
         "light_color_hex": "自定义光色",
         "light_intensity": "强度",
-        "light_quality": "光质"
+        "light_quality": "光质",
+        "strength": "强度"
       },
       "paramField": {
         "speaker": "名字",
@@ -970,7 +973,7 @@
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。",
-        "no_audio_track": "这个视频没有音轨。"
+        "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}"
       },
       "kind": {
         "upload": "上传",
@@ -1112,6 +1115,40 @@
         "extend": {
           "label": "延长",
           "prompt": "描述要接上的声音"
+        },
+        "denoise": {
+          "label": "降噪"
+        },
+        "normalize": {
+          "label": "响度标准化",
+          "note": "峰值上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "变速"
+        },
+        "cut": {
+          "label": "剪切"
+        },
+        "eq": {
+          "label": "均衡"
+        },
+        "compress": {
+          "label": "压缩"
+        },
+        "pan": {
+          "label": "声像"
+        },
+        "reverb": {
+          "label": "混响"
+        },
+        "voice": {
+          "label": "人声增强"
+        },
+        "pitch": {
+          "label": "变调"
+        },
+        "enhance": {
+          "label": "增强"
         }
       },
       "param": {
@@ -1150,6 +1187,36 @@
         },
         "cols": {
           "label": "列数"
+        },
+        "target": {
+          "label": "目标响度"
+        },
+        "keepPitch": {
+          "label": "保持音调"
+        },
+        "eq": {
+          "label": "预设"
+        },
+        "dynamics": {
+          "label": "预设"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "宽度"
+        },
+        "room": {
+          "label": "空间"
+        },
+        "amount": {
+          "label": "混响量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "音分"
         }
       },
       "panel": {
@@ -1172,7 +1239,9 @@
         "reset": "重置",
         "imageTooLarge": "这张图片太大，这台设备上无法调色。",
         "sourceTooLargeToExpand": "这张图片已经到外扩能做的最大尺寸。",
-        "ratioTooLarge": "超出外扩能做的最大尺寸"
+        "ratioTooLarge": "超出外扩能做的最大尺寸",
+        "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
+        "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1231,6 +1300,13 @@
         "referenceNote": "光照取自这张图。右侧的颜色、强度、光质会覆盖它。",
         "fromReference": "跟随参考图",
         "sourceFromReference": "跟随参考图"
+      },
+      "dynamics": {
+        "threshold": "阈值",
+        "ratio": "比率",
+        "attack": "启动",
+        "release": "释放",
+        "makeup": "补偿增益"
       }
     },
     "template": {

@@ -79,6 +79,8 @@ beforeEach(() => {
     referencePoolCap: 50,
     nodeHistoryPageSize: 2,
     understandMaxBytes: 20_971_520,
+    waveformMaxSeconds: 3600,
+    waveformMaxBytes: 200_000_000,
   });
 });
 

@@ -37,6 +37,10 @@ export interface CanvasLimits {
    * judged there instead of here.
    */
   understandMaxBytes: number;
+  /** The longest audio the cut band decodes to draw a waveform, in seconds (inner#1305). */
+  waveformMaxSeconds: number;
+  /** The largest audio file the cut band downloads to draw a waveform, in bytes. */
+  waveformMaxBytes: number;
 }
 
 /**
@@ -101,6 +105,15 @@ export function getCachedReferencePoolCap(): number | null {
  */
 export function getCachedUnderstandMaxBytes(): number | null {
   return limitsCache ? limitsCache.understandMaxBytes : null;
+}
+
+/**
+ * Sync accessor for the cut band's waveform ceilings, or `null` while the
+ * knobs have not loaded; the band stays plain until they have.
+ * @returns The ceilings, or null before the first fetch.
+ */
+export function getCachedWaveformLimits(): { maxSeconds: number; maxBytes: number } | null {
+  return limitsCache ? { maxSeconds: limitsCache.waveformMaxSeconds, maxBytes: limitsCache.waveformMaxBytes } : null;
 }
 
 export const canvasApi = {
