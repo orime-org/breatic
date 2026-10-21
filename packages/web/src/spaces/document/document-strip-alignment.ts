@@ -48,6 +48,7 @@ import type { Middleware } from '@floating-ui/react';
 import * as React from 'react';
 
 import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
+import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
 import { COLUMN_RESIZE_ZONE, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
@@ -78,8 +79,6 @@ export const TABLE_STRIP_OUTSET = STRIP_OUTSET + STRIP_SIZE + 4;
  */
 export const BODY_GUTTER_START = TABLE_STRIP_OUTSET + STRIP_SIZE + 8;
 
-/** The selector of a table's horizontal scroll frame. */
-const TABLE_FRAME = '[data-radix-scroll-area-viewport]';
 
 /**
  * A table's left line as it is drawn: the table body's left edge, or the
@@ -90,7 +89,7 @@ const TABLE_FRAME = '[data-radix-scroll-area-viewport]';
 export function tableLineOf(inTable: Element): number | undefined {
   const body = inTable.closest('tbody') ?? inTable.querySelector('tbody');
   if (body === null) return undefined;
-  const frame = body.closest(TABLE_FRAME);
+  const frame = body.closest(SCROLL_VIEWPORT);
   const left = body.getBoundingClientRect().left;
   return frame === null ? left : Math.max(left, frame.getBoundingClientRect().left);
 }

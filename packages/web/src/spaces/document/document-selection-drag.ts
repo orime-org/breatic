@@ -43,8 +43,6 @@ import { holdsBlocks } from '@web/spaces/document/document-table-nodes';
 /** A drag this module draws the preview of. */
 export type SelectionDragKind = 'caption' | 'selection';
 
-/** BlockNote's group of blocks. */
-
 /**
  * Which drag a dragstart in the body is, of the two this module draws.
  * @param view - The editor view.
@@ -65,7 +63,6 @@ export function selectionDragKind(
   const end = selection instanceof NodeSelection ? selection.to - 1 : selection.to;
   return pressAt >= selection.from && pressAt <= end ? 'selection' : null;
 }
-
 
 /**
  * The positions of the blocks a range touches: those of the block group (or
