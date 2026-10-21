@@ -1783,7 +1783,7 @@
       "signOut": "ログアウト",
       "logoutOthers": "他のデバイスからログアウト",
       "logoutOthersTitle": "他のデバイスからログアウトしますか？",
-      "logoutOthersBody": "このデバイスはログインしたままです。他のデバイスはすべてログアウトされ、そこで開いている Canvas と Document は切断されます。",
+      "logoutOthersBody": "このデバイスはログインしたままです。他のデバイスはすべてログアウトされ、そこで開いている Canvas と Document はすぐに切断されます。",
       "logoutOthersDone": "他のデバイスからログアウトしました",
       "logoutOthersFailed": "他のデバイスからログアウトできませんでした。もう一度お試しください。",
       "credits": "クレジット",

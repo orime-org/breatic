@@ -1783,7 +1783,7 @@
       "signOut": "Sign out",
       "logoutOthers": "Sign out of other devices",
       "logoutOthersTitle": "Sign out of other devices?",
-      "logoutOthersBody": "You will stay signed in here. Every other device is signed out, and canvases and documents open there disconnect.",
+      "logoutOthersBody": "You will stay signed in here. Every other device is signed out, and canvases and documents open there disconnect right away.",
       "logoutOthersDone": "Signed out of your other devices",
       "logoutOthersFailed": "Could not sign out of other devices. Try again.",
       "credits": "Credits",
