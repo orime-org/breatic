@@ -19,9 +19,12 @@
  *   4. `POST /auth/logout-others` keeps the caller's session and ends the rest;
  *      it needs a session and is rate limited per account and per address.
  *   5. Sign out and both password resets publish what they delete.
+ *   6. When the publish fails, every route that ends sessions still answers
+ *      and logs it; collab's periodic recheck closes the connections later.
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
+import type * as BreaticCore from "@breatic/core";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -33,6 +36,17 @@ vi.mock("ai", () => ({
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
 }));
+
+const logError = vi.hoisted(() => vi.fn());
+
+vi.mock("@breatic/core", async (io) => {
+  const actual = await io<typeof BreaticCore>();
+  // `error` is recorded instead of written; every other level goes to the real logger.
+  const logger = new Proxy(actual.logger, {
+    get: (target, prop) => (prop === "error" ? logError : Reflect.get(target, prop)),
+  });
+  return { ...actual, logger };
+});
 
 import crypto from "node:crypto";
 import postgres from "postgres";
@@ -342,5 +356,60 @@ describe("the other ways a session ends", () => {
     expect(res.status).toBe(200);
     const [event] = await hear(1);
     expect([...event!.sessionIds].sort()).toEqual(tokens.map(sessionId).sort());
+  });
+});
+
+describe("when the announcement cannot be published", () => {
+  const routes: [string, () => Promise<{ path: string; init: RequestInit }>][] = [
+    ["sign out", async () => {
+      const { userId } = await account();
+      return { path: "/api/v1/auth/logout", init: { method: "POST", headers: { Cookie: cookie(await session(userId)) } } };
+    }],
+    ["sign out of other devices", async () => {
+      const { userId } = await account();
+      const current = await session(userId);
+      await session(userId);
+      return { path: "/api/v1/auth/logout-others", init: { method: "POST", headers: { Cookie: cookie(current) } } };
+    }],
+    ["an email reset", async () => {
+      const { userId } = await account();
+      await session(userId);
+      const resetToken = crypto.randomBytes(16).toString("hex");
+      await getRedis().set(`${env.ENV}:password-reset:${resetToken}`, userId, "EX", 600);
+      return {
+        path: "/api/v1/auth/reset-password",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: resetToken, password: "a-new-password-1" }),
+        },
+      };
+    }],
+    ["a recovery-code reset", async () => {
+      const { userId, email } = await account();
+      await session(userId);
+      const code = "RECOVERY-CODE-1548";
+      await sql`UPDATE users SET recovery_code_hash = ${await hashRecoveryCode(code)} WHERE id = ${userId}`;
+      return {
+        path: "/api/v1/auth/reset-password-with-recovery-code",
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, recoveryCode: code, newPassword: "a-new-password-1" }),
+        },
+      };
+    }],
+  ];
+
+  it.each(routes)("%s still answers and logs it", async (_name, build) => {
+    const { path, init } = await build();
+    const failure = new Error("publish refused");
+    vi.spyOn(getStreamRedis(), "publish").mockRejectedValueOnce(failure);
+    logError.mockClear();
+
+    const res = await app.request(path, init);
+
+    expect(res.status).toBe(200);
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ err: failure }), "session_revocation_signal_failed");
   });
 });
