@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
+import { MAX_TIMER_MS } from "@breatic/shared";
 
 // NOTE: no `port` here. The WebSocket port moved to the core env schema
 // (`COLLAB_PORT`) alongside the other service ports — this file is behaviour
@@ -32,7 +33,8 @@ const collabConfigSchema = z.object({
   // How often every connection's session is read again (inner#1548). Ended
   // sessions are announced and closed at once; this round catches what the
   // announcement could not reach, such as a session that simply expired.
-  session_recheck_interval_ms: z.number().int().positive().default(1_800_000),
+  // Bounded by MAX_TIMER_MS: a timer turns a longer delay into 1 ms.
+  session_recheck_interval_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(1_800_000),
 
   // Document size limit
   max_document_bytes: z.number().int().min(0).default(10_485_760), // 10 MB
