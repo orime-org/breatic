@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { ADJUST_RANGES, defaultAdjustValue, setLocale, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 
@@ -14,6 +14,13 @@ vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
     sphere.last = props;
     return <div data-testid='fake-sphere' />;
   },
+}));
+vi.mock('@web/data/api/canvas', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getCachedWaveformLimits: () => ({ maxSeconds: 3600, maxBytes: 200_000_000 }),
+}));
+vi.mock('@web/spaces/canvas/mini-tool/AudioWaveform', () => ({
+  AudioWaveform: () => <div data-testid='mini-tool-waveform' />,
 }));
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
@@ -537,5 +544,114 @@ describe('the batch-four panels', () => {
     const prompt = screen.getByTestId('mini-tool-prompt');
     const param = screen.getByTestId('generate-param-resolution-option-2k');
     expect(prompt.compareDocumentPosition(param) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+// inner#1305: the batch-five audio panels.
+describe('the batch-five panels', () => {
+  const AUDIO = { duration: 95.2, url: 'https://cdn/a.m4a', sizeBytes: 4_000_000 };
+
+  it('keeps the pitch on a switch, and writes it when flipped', () => {
+    const props = mount({ spec: tool('audio.speed'), params: { rate: 1, keepPitch: true }, source: AUDIO });
+    const toggle = screen.getByTestId('mini-tool-param-keepPitch-switch');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    expect(props.onParams).toHaveBeenLastCalledWith({ keepPitch: false });
+  });
+
+  describe('the equaliser', () => {
+    const flat = { preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+
+    it('draws ten bands under the presets, with no Custom until one is moved', () => {
+      mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      expect(screen.getAllByTestId(/^mini-tool-eq-band-\d+-slider$/)).toHaveLength(10);
+      expect(screen.getByTestId('mini-tool-eq-band-9-label')).toHaveTextContent('16k');
+      expect(screen.getByTestId('mini-tool-eq-preset-flat')).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.queryByTestId('mini-tool-eq-preset-custom')).toBeNull();
+    });
+
+    it('fills every band from a pressed preset', () => {
+      const props = mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      fireEvent.click(screen.getByTestId('mini-tool-eq-preset-bass_boost'));
+      expect(props.onParams).toHaveBeenLastCalledWith({ eq: { preset: 'bass_boost', gains: [6, 6, 4, 2, 0, 0, 0, 0, 0, 0] } });
+    });
+
+    it('turns to Custom when a band moves', () => {
+      const props = mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      const thumb = screen.getByTestId('mini-tool-eq-band-0-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowUp' });
+      expect(props.onParams).toHaveBeenLastCalledWith({ eq: { preset: 'custom', gains: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] } });
+    });
+
+    it('signs each band\'s gain', () => {
+      mount({ spec: tool('audio.eq'), params: { eq: { preset: 'voice', gains: [-6, -4, -2, 0, 0, 2, 3, 3, 1, 0] } }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-eq-band-0-value')).toHaveTextContent('-6');
+      expect(screen.getByTestId('mini-tool-eq-band-6-value')).toHaveTextContent('+3');
+      expect(screen.getByTestId('mini-tool-eq-band-3-value')).toHaveTextContent('0');
+    });
+  });
+
+  describe('the compressor', () => {
+    const medium = { preset: 'medium', threshold: -24, ratio: 3, attack: 10, release: 200, makeup: 4 };
+
+    it('offers three presets and five sliders, with Custom only once one is moved', () => {
+      mount({ spec: tool('audio.compress'), params: { dynamics: medium }, source: AUDIO });
+      for (const preset of ['light', 'medium', 'heavy']) {
+        expect(screen.getByTestId(`mini-tool-dynamics-preset-${preset}`)).toBeInTheDocument();
+      }
+      expect(screen.queryByTestId('mini-tool-dynamics-preset-custom')).toBeNull();
+      for (const field of ['threshold', 'ratio', 'attack', 'release', 'makeup']) {
+        expect(screen.getByTestId(`mini-tool-dynamics-${field}-slider`)).toBeInTheDocument();
+      }
+      expect(screen.getByTestId('mini-tool-dynamics-ratio-value')).toHaveTextContent('3:1');
+    });
+
+    it('fills the sliders from a pressed preset and turns to Custom when one moves', () => {
+      const props = mount({ spec: tool('audio.compress'), params: { dynamics: medium }, source: AUDIO });
+      fireEvent.click(screen.getByTestId('mini-tool-dynamics-preset-heavy'));
+      expect(props.onParams).toHaveBeenLastCalledWith({
+        dynamics: { preset: 'heavy', threshold: -30, ratio: 6, attack: 5, release: 150, makeup: 6 },
+      });
+      const thumb = screen.getByTestId('mini-tool-dynamics-threshold-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+      expect(props.onParams).toHaveBeenLastCalledWith({ dynamics: { ...medium, preset: 'custom', threshold: -23 } });
+    });
+
+    it('shows Custom selected once the settings match no preset', () => {
+      mount({ spec: tool('audio.compress'), params: { dynamics: { ...medium, preset: 'custom', ratio: 5 } }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-dynamics-preset-custom')).toHaveAttribute('aria-pressed', 'true');
+    });
+  });
+
+  it('reads pan as a balance and pitch as signed numbers', () => {
+    mount({ spec: tool('audio.pan'), params: { pan: -30, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-value')).toHaveTextContent('L 30');
+    expect(screen.getByTestId('mini-tool-param-width-value')).toHaveTextContent('100%');
+    cleanupAll();
+    mount({ spec: tool('audio.pan'), params: { pan: 0, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-value')).toHaveTextContent('Center');
+    cleanupAll();
+    mount({ spec: tool('audio.pan'), params: { pan: 30, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-value')).toHaveTextContent('R 30');
+    cleanupAll();
+    mount({ spec: tool('audio.pitch'), params: { semitones: 3, cents: -20 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-semitones-value')).toHaveTextContent('+3');
+    expect(screen.getByTestId('mini-tool-param-cents-value')).toHaveTextContent('-20');
+  });
+
+  it('draws the audio\'s waveform on the cut band within the ceilings', () => {
+    mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source: AUDIO });
+    const band = screen.getByTestId('mini-tool-range-band');
+    expect(within(band).getByTestId('mini-tool-waveform')).toBeInTheDocument();
+    expect(band.querySelector('[data-testid="mini-tool-filmstrip"]')).toBeNull();
+  });
+
+  it('leaves the cut band plain for audio past the ceilings or of unknown size', () => {
+    mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source: { ...AUDIO, sizeBytes: 300_000_000 } });
+    expect(within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform')).toBeNull();
+    cleanupAll();
+    mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source: { ...AUDIO, sizeBytes: undefined } });
+    expect(within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform')).toBeNull();
+    expect(screen.getByTestId('mini-tool-range')).toBeInTheDocument();
   });
 });
