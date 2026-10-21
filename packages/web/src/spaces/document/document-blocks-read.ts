@@ -29,10 +29,10 @@ export interface ReadBlock {
 
 /**
  * Block attributes Markdown writes out; any other one set off its default is
- * lost by a Markdown rewrite. A merged cell's span is lost too: the export
- * splits it into the cell and empty cells beside it.
+ * lost by a Markdown rewrite. A merged cell's spans are written: a table with
+ * one is written as an HTML table (`document-table-markdown.ts`).
  */
-const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption']);
+const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan']);
 
 /** Marks Markdown writes out. */
 const CARRIED_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link']);

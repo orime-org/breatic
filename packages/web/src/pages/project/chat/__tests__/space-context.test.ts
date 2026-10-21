@@ -437,7 +437,7 @@ describe('an open document', () => {
     expect(readBlocks().map((b) => b.lossy)).toEqual([true, true]);
   });
 
-  it('marks a table with merged cells, which Markdown splits apart', async () => {
+  it('leaves a table with merged cells unmarked: its Markdown is an HTML table, which keeps the spans', async () => {
     const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |');
     const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
     const view = editor.prosemirrorView!;
@@ -449,7 +449,7 @@ describe('an open document', () => {
     const cell = view.state.doc.nodeAt(cellAt)!;
     view.dispatch(view.state.tr.setNodeMarkup(cellAt, undefined, { ...cell.attrs, colspan: 2 }));
 
-    expect(readBlocks().map((b) => b.lossy)).toEqual([true, false]);
+    expect(readBlocks().map((b) => b.lossy)).toEqual([false, false]);
   });
 
   it('leaves out blocks that hold nothing', async () => {
