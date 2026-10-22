@@ -359,6 +359,13 @@ describe('MiniToolPanel', () => {
     expect(part('kept').style.width).toBe('50%');
   });
 
+  // A time is rounded to the tenth before it is split, so 59.97 s reads as the
+  // next minute and never as `00:60.0`.
+  it('reads a cut end that rounds up to the next minute as that minute', () => {
+    mount({ spec: tool('video.cut'), params: {}, source: { width: 1280, height: 720, duration: 179.97 } });
+    expect(screen.getByText('00:00.0 – 03:00.0')).toBeInTheDocument();
+  });
+
   // The cut's band is a filmstrip of the source, so the reader sees what each moment shows.
   it('lays the source out as a filmstrip on the cut band', () => {
     mount({
