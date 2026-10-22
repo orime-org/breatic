@@ -48,7 +48,7 @@ import {
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
-import { catalogEntryOf, isModelTool, miniToolById } from "@breatic/shared/mini-tools";
+import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -670,8 +670,7 @@ async function runTaskBody(
       projectId,
       taskId,
       deadlineAt,
-      // A model that declares what it returns is stored as that (inner#1305).
-      outputType: model === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), model)?.output_type,
+      outputType: declaredOutputType(model, toolId),
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -1391,6 +1390,21 @@ const OUTPUT_CONTENT_TYPES: Record<string, string> = {
   tts: "audio/mpeg",
   three_d: "model/gltf-binary",
 };
+
+/**
+ * The type a run's model declares it returns, which its result is stored as
+ * (inner#1305 §7.4). A mini-tool's job carries no model, so a model tool's is
+ * the one the registry pins it to.
+ * @param model - The job's model.
+ * @param toolId - The job's mini-tool, when it runs one.
+ * @returns The declared type, or undefined when the model declares none or
+ *   the run has no model.
+ */
+export function declaredOutputType(model: string | undefined, toolId: string | undefined): string | undefined {
+  const spec = toolId === undefined ? undefined : miniToolById(toolId);
+  const runModel = model ?? (spec === undefined ? undefined : modelOf(spec));
+  return runModel === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), runModel)?.output_type;
+}
 
 /**
  * The extension a result is stored under when its model declares the type it
