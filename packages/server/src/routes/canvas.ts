@@ -92,7 +92,8 @@ const urlIngestQueue = createQueue("url-ingest");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
- * `config/limits.yaml` (#1782).
+ * `config/limits.yaml` (#1782), `config/understand.yaml` and
+ * `config/mini-tools.yaml`.
  *
  * `referencePoolCap`: max entries in one node's reference pool (incoming
  * reference edges + focus crops combined) — enforced by the frontend at
@@ -108,6 +109,12 @@ const urlIngestQueue = createQueue("url-ingest");
  * number has to reach it — and it comes from the same file the run itself
  * reads, which is what keeps the two from drifting into a refusal the browser
  * allows and the run rejects.
+ *
+ * `waveformMaxSeconds` / `waveformMaxBytes`: the longest and largest audio the
+ * cut band decodes in the browser while its peaks file is missing; past either
+ * the band stays plain. `waveformPeaksRetryMs` / `waveformPeaksRetryMaxMs`: how
+ * often, and for how long, an open band re-reads a missing peaks file
+ * (inner#1305).
  * @param c - Hono context (auth required, no params)
  * @returns `200` with the canvas knobs the frontend reads.
  */
