@@ -10,7 +10,7 @@ import type { StudioLedgerView, StudioLotView } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { fetchStudioCredits } from '@web/data/api/credits';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { formatCreditAmount, formatCreditColumnAmount } from '@web/lib/format-credit-amount';
 import { formatLocalDay } from '@web/lib/format-day';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
@@ -46,7 +46,7 @@ const LotRow = React.memo(function LotRow({
       </span>
       <span className='ml-auto text-right tabular-nums'>
         <span className='block text-sm font-semibold'>
-          {formatCreditAmount(lot.remainingCredits)}
+          {formatCreditColumnAmount(lot.remainingCredits)}
         </span>
         <span className='block text-xs text-muted-foreground'>
           {t('studio.container.credits.lotPurchased', {
@@ -102,7 +102,7 @@ const SummaryRow = React.memo(function SummaryRow({
           strong ? 'font-bold' : 'font-semibold',
         )}
       >
-        {formatCreditAmount(amount)}
+        {formatCreditColumnAmount(amount)}
       </span>
     </li>
   );
@@ -162,7 +162,7 @@ const LedgerRow = React.memo(function LedgerRow({
         </>
       )}
       <td className='py-1.5 text-right tabular-nums'>
-        {formatCreditAmount(entry.charged)}
+        {formatCreditColumnAmount(entry.charged)}
         {note === null ? null : (
           <span
             data-testid='studio-ledger-note'

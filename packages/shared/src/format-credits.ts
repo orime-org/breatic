@@ -12,9 +12,11 @@ import { ceilToCreditCent } from "@shared/credit-cent.js";
  * proposal card and the agent's own quotes.
  * @param value - The amount, in credits.
  * @param locale - The locale to write it in.
+ * @param minimumFractionDigits - Decimals always written; a column of
+ *   amounts passes 2 so its decimal points line up.
  * @returns The amount as text.
  */
-export function formatCredits(value: number, locale: string): string {
+export function formatCredits(value: number, locale: string, minimumFractionDigits = 0): string {
   const settled = Math.sign(value) * ceilToCreditCent(Math.abs(value));
-  return settled.toLocaleString(locale, { maximumFractionDigits: 2 });
+  return settled.toLocaleString(locale, { minimumFractionDigits, maximumFractionDigits: 2 });
 }

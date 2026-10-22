@@ -275,6 +275,19 @@ describe('CreditsTab', () => {
 
     expect(reachEnd).not.toBeNull();
   });
+  it('writes every amount in the right-hand column to two decimals so the points line up (inner#1666)', async () => {
+    fetchStudioCredits.mockResolvedValue(credits());
+    renderTab(<CreditsTab slug='acme' />);
+
+    const lot = await screen.findByTestId('studio-lot-lot-1');
+    expect(within(lot).getByText('3,120.00')).toBeInTheDocument();
+    expect(within(screen.getByTestId('studio-ledger-e1')).getByText('-42.50')).toBeInTheDocument();
+    expect(within(screen.getByTestId('studio-lots-total')).getByText('4,910.00')).toBeInTheDocument();
+    // A single figure has no column to line up with: at most two decimals.
+    expect(lot).not.toHaveTextContent('4,550.00');
+    expect(screen.getByTestId('studio-spendable')).not.toHaveTextContent('4,910.00');
+  });
+
   it('每一笔充值都写着谁买的', async () => {
     fetchStudioCredits.mockResolvedValue(credits());
     renderTab(<CreditsTab slug='acme' />);

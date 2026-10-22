@@ -30,6 +30,14 @@ describe("formatCredits", () => {
     expect(formatCredits(-0.004, "en-US")).toBe("-0.01");
   });
 
+  it("writes a fixed number of decimals when a column asks for it, so the points line up (inner#1666)", () => {
+    expect(formatCredits(6.3, "en-US", 2)).toBe("6.30");
+    expect(formatCredits(-0.1, "en-US", 2)).toBe("-0.10");
+    expect(formatCredits(7, "en-US", 2)).toBe("7.00");
+    expect(formatCredits(3.451, "en-US", 2)).toBe("3.46");
+    expect(formatCredits(1234.5, "de-DE", 2)).toBe("1.234,50");
+  });
+
   it("groups digits the way the locale does", () => {
     expect(formatCredits(1234.5, "en-US")).toBe("1,234.5");
     expect(formatCredits(1234.5, "de-DE")).toBe("1.234,5");
