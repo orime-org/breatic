@@ -484,7 +484,7 @@ export type CreditLotLifecycle =
   | "refunded";
 
 /**
- * The six things that can appear in the credit ledger.
+ * The eight things that can appear in the credit ledger.
  *
  * The last two are the debt a charge could not cover and a designation
  * paying it down. Both carry a negative amount: `debt_incurred` says credits
@@ -494,6 +494,10 @@ export type CreditLotLifecycle =
  * `refund_reversed` puts back what a `refund` row took out, when the buyer
  * takes the credits instead of money after a refund failed (0 when the lot
  * was never booked).
+ *
+ * `rounding_adjustment` records migration 0100 settling a balance written
+ * before charges were rounded to whole cents: a lot cut down, or a studio's
+ * debt raised, to two decimals (inner#1666). Negative like a charge.
  */
 export type CreditLedgerEntryType =
   | "topup"
@@ -502,7 +506,8 @@ export type CreditLedgerEntryType =
   | "refund_rejected"
   | "debt_incurred"
   | "debt_repayment"
-  | "refund_reversed";
+  | "refund_reversed"
+  | "rounding_adjustment";
 
 /**
  * One top-up, tracked for the rest of its life.

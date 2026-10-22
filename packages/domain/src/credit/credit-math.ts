@@ -17,7 +17,7 @@
  * be tested without one.
  */
 
-import type { ProjectCreditsView } from "@breatic/shared";
+import { ceilToCreditCent, type ProjectCreditsView } from "@breatic/shared";
 
 /** How many micro-credits make one credit — `numeric(20, 6)`'s scale. */
 const MICRO_PER_CREDIT = 1_000_000;
@@ -26,10 +26,10 @@ const MICRO_PER_CREDIT = 1_000_000;
 const SCALE = 6;
 
 /**
- * The smallest amount the ledger can hold. A balance at least this large is
- * a balance above zero.
+ * The smallest amount a charge settles to (inner#1666). A balance at least
+ * this large can pay for something.
  */
-export const SMALLEST_CREDIT = 1 / MICRO_PER_CREDIT;
+export const SMALLEST_CREDIT = 0.01;
 
 /**
  * Convert credits to integer micro-credits.
@@ -67,6 +67,29 @@ export function toMicroCredits(value: number | string): number {
   const padded = fraction.padEnd(SCALE, "0").slice(0, SCALE);
   const magnitude = Number(`${whole === "" ? "0" : whole}${padded}`);
   return sign === "-" ? -magnitude : magnitude;
+}
+
+/**
+ * What a charge or a hold of this amount takes, in micro-credits: the amount
+ * rounded up to whole cents (`ceilToCreditCent`, inner#1666).
+ * @param credits - A credit amount, zero or more.
+ * @returns The amount charged, in micro-credits.
+ * @throws {RangeError} When the amount is negative or not a finite number.
+ */
+export function toChargeMicro(credits: number): number {
+  return Math.round(ceilToCreditCent(credits) * 100) * (MICRO_PER_CREDIT / 100);
+}
+
+/**
+ * The credits a finished run records and is charged: rounded up to whole
+ * cents. It runs after the vendor has returned, where a throw would rerun the
+ * task and pay the vendor twice, so a figure that is not a positive number
+ * passes through unchanged for the charge to skip or log, as it did before.
+ * @param credits - What the run cost.
+ * @returns The amount to record and charge.
+ */
+export function toChargeCredits(credits: number): number {
+  return Number.isFinite(credits) && credits > 0 ? ceilToCreditCent(credits) : credits;
 }
 
 /**

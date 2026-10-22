@@ -5,6 +5,7 @@ import type { ExtraStep, PricingContract } from "@shared/types/model-catalog";
 import { isPresent } from "@shared/item-cap";
 import { joinSlotFiles } from "@shared/join-slot-files";
 import { upstreamPriceUsd } from "@shared/pricing/upstream-price";
+import { ceilToCreditCent } from "@shared/credit-cent";
 
 /** What the estimate reads off one declared param. */
 export interface PricedParam {
@@ -207,11 +208,12 @@ export async function estimateCredits(
   };
 
   /**
-   * A price in US dollars, in credits.
+   * A price in US dollars, in credits, rounded up to whole cents as the
+   * charge will be.
    * @param amount - The price.
    * @returns The credits it comes to.
    */
-  const toCredits = (amount: number): number => amount * CENTS_PER_USD * creditMultiplier;
+  const toCredits = (amount: number): number => ceilToCreditCent(amount * CENTS_PER_USD * creditMultiplier);
   const usd = await priceUsd(text, true);
   // What every run of this setup pays: a lower bound counts only this.
   const everyRun = await priceUsd(text, false);

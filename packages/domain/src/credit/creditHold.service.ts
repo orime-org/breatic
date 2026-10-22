@@ -19,7 +19,7 @@
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { fromMicroCredits, positionFrom, toMicroCredits } from "@domain/credit/credit-math.js";
+import { fromMicroCredits, positionFrom, toChargeMicro, toMicroCredits } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -73,7 +73,7 @@ function expiryFor(ttlMs: number): Date {
 export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
   if (!env.PAYMENT_ENABLED) return { ok: true };
   const studioId = await resolveOwnerStudioId(request.projectId);
-  const amount = toMicroCredits(request.amount);
+  const amount = toChargeMicro(request.amount);
   return db.transaction(async (tx) => {
     const position = await lockedPosition(studioId, tx);
     if (toMicroCredits(position.available) < amount) return { ok: false, studioId, ...position };

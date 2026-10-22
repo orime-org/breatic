@@ -107,7 +107,7 @@ describe("reserveForRun", () => {
     getStudioDebt.mockResolvedValue(30);
     expect(await refusal(() => reserveForRun(PROJECT, USER, "t", 10))).toEqual({
       status: 402,
-      message: 'server.credit.in_debt {"owed":30}',
+      message: 'server.credit.in_debt {"owed":"30"}',
     });
   });
 
@@ -117,7 +117,7 @@ describe("reserveForRun", () => {
     expect(err).toBeInstanceOf(CreditsHeldError);
     expect(err).toMatchObject({
       statusCode: 402,
-      message: 'server.credit.held_by_running {"held":80,"available":20}',
+      message: 'server.credit.held_by_running {"held":"80","available":"20"}',
     });
   });
 
@@ -127,7 +127,7 @@ describe("reserveForRun", () => {
     const err = await reserveForRun(PROJECT, USER, "t", 60).catch((e: unknown) => e);
     // Still a hold refusal, so a lane that stores the cause on its node names it.
     expect(err).toBeInstanceOf(CreditsHeldError);
-    expect(err).toMatchObject({ statusCode: 402, message: 'server.credit.unassigned {"available":500}' });
+    expect(err).toMatchObject({ statusCode: 402, message: 'server.credit.unassigned {"available":"500"}' });
   });
 
   it("says nothing is available rather than a negative figure when holds outgrow the balance", async () => {
@@ -135,7 +135,7 @@ describe("reserveForRun", () => {
     // what is left; the sentence answers how much can be used now.
     refuseWith(90, 95);
     expect((await refusal(() => reserveForRun(PROJECT, USER, "t", 10))).message).toBe(
-      'server.credit.held_by_running {"held":95,"available":0}',
+      'server.credit.held_by_running {"held":"95","available":"0"}',
     );
   });
 
@@ -143,7 +143,7 @@ describe("reserveForRun", () => {
     refuseWith(50, 20);
     expect(await refusal(() => reserveForRun(PROJECT, USER, "t", 60))).toEqual({
       status: 402,
-      message: 'server.error.insufficient_credits {"required":60,"available":30}',
+      message: 'server.error.insufficient_credits {"required":"60","available":"30"}',
     });
   });
 
@@ -152,8 +152,32 @@ describe("reserveForRun", () => {
     getUnassignedCredits.mockResolvedValue(500);
     expect(await refusal(() => reserveForRun(PROJECT, USER, "t", 60))).toEqual({
       status: 402,
-      message: 'server.credit.unassigned {"available":500}',
+      message: 'server.credit.unassigned {"available":"500"}',
     });
+  });
+
+  it("writes every figure in a refusal to at most two decimals, rounded up (inner#1666)", async () => {
+    refuseWith(-0.004, 0);
+    getStudioDebt.mockResolvedValue(0.004);
+    expect((await refusal(() => reserveForRun(PROJECT, USER, "t", 1))).message).toBe('server.credit.in_debt {"owed":"0.01"}');
+    refuseWith(2.5, 0);
+    expect((await refusal(() => reserveForRun(PROJECT, USER, "t", 3.4512))).message).toBe(
+      'server.error.insufficient_credits {"required":"3.46","available":"2.5"}',
+    );
+    refuseWith(100, 80.0012);
+    expect((await refusal(() => reserveForRun(PROJECT, USER, "t", 60))).message).toBe(
+      'server.credit.held_by_running {"held":"80.01","available":"20"}',
+    );
+  });
+
+  it("holds and judges the refusal by the estimate settled to whole hundredths (inner#1666)", async () => {
+    await reserveForRun(PROJECT, USER, "t", 7.000000000000001);
+    expect(reserveCredits).toHaveBeenCalledWith(expect.objectContaining({ amount: 7 }));
+    // The balance covers 7 unheld, so the holds are what stops it.
+    refuseWith(7, 0.5);
+    const err = await reserveForRun(PROJECT, USER, "t", 7.000000000000001).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CreditsHeldError);
+    expect(err).toMatchObject({ message: 'server.credit.held_by_running {"held":"0.5","available":"6.5"}' });
   });
 
   it("says granted credits are pinned elsewhere, then that there are none", async () => {

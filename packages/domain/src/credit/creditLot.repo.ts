@@ -27,7 +27,7 @@
  *      lock come back empty at the one moment it was needed.
  */
 
-import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "@breatic/core";
@@ -1398,6 +1398,9 @@ export interface StudioLedgerRow {
  * `spend` rows against the lot owner and its shortfall against nobody at
  * all — the studio owes that part — so filtering by payer would leave out
  * the shortfall entirely and report the run as costing less than it did.
+ *
+ * `rounding_adjustment` rows are left out: they record migration 0100
+ * rounding an old debt up to whole cents, which no one in the studio did.
  * @param studioId - The studio whose ledger to read.
  * @param limit - How many lines to return.
  * @param cursor - The `(created_at, id)` of the previous page's last line.
@@ -1449,7 +1452,7 @@ export async function listLedgerByStudio(
       ),
     )
     .leftJoin(projects, eq(projects.id, creditLedger.projectId))
-    .where(eq(creditLedger.studioId, studioId))
+    .where(and(eq(creditLedger.studioId, studioId), ne(creditLedger.entryType, "rounding_adjustment")))
     .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
     .having(
       cursor

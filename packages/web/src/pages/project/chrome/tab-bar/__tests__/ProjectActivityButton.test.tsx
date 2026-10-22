@@ -557,7 +557,7 @@ describe('entryMedia (#1622)', () => {
 });
 
 describe('activity feed row: thumbnail + credits (#1622)', () => {
-  it('a media generation row shows a thumbnail and the credits it cost (raw value)', async () => {
+  it('a media generation row shows a thumbnail and the credits it cost', async () => {
     listMock.mockResolvedValue({
       items: [
         entry({
@@ -574,6 +574,24 @@ describe('activity feed row: thumbnail + credits (#1622)', () => {
     await screen.findByTestId('project-activity-entry-g-1');
     expect(screen.getByTestId('project-activity-thumb-g-1')).toBeInTheDocument();
     expect(screen.getByTestId('project-activity-credits-g-1')).toHaveTextContent('1.5');
+  });
+
+  it('shows the credits to at most two decimals, rounded up (inner#1666)', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'g-2',
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'image', fileUrl: 'https://x/i.png', credits: 3.4512 },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-g-2');
+    expect(screen.getByTestId('project-activity-credits-g-2')).toHaveTextContent(/^3\.46$/);
   });
 
   it('plain rows (space / member) have no thumbnail and no credits', async () => {

@@ -26,6 +26,8 @@ The business core shared by server and worker. These rules apply when you change
 
 **Every consumption is multiplied by `CREDIT_MULTIPLIER` (default 1).** It is a deployment setting that the model catalog also applies, so a cost computed without it bills a different number than the one shown.
 
+**Every credit figure that is estimated, held, charged or shown settles to 0.01, rounded up, through `ceilToCreditCent` (`packages/shared/src/credit-cent.ts`) and the helpers built on it (`toChargeMicro`, `toChargeCredits`, `formatCredits`); never round a credit figure to cents any other way.** A second rounding drifts from the first, and a run is then held, refused, charged and shown by different numbers. Check: am I writing `toFixed`, `Math.ceil` or `Math.round` to bring credits to two decimals?
+
 ### Losing admin releases credit designations
 
 **The moment someone stops being a studio's admin, every credit lot they designated to that studio is released with `releaseDesignations` (`credit/creditLot.service.ts`), in the same transaction as the role change.** A designation is what lets a studio spend, so lots left designated would keep funding a studio its former admin no longer governs. How an admin is lost (only through a transfer): [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#studio-admin-and-credit-designations).

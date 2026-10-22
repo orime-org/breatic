@@ -74,6 +74,7 @@ import {
   createQueue,
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
+import { ceilToCreditCent } from "@breatic/shared";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
 
@@ -211,7 +212,9 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
       SELECT COALESCE(SUM(amount), 0)::text AS total FROM credit_ledger
       WHERE reference_id = ${rows[0]!.operation_key} AND entry_type = 'spend'
     `;
-    expect(Number(spent!.total)).toBeCloseTo(-Number(rows[0]!.credits), 4);
+    // The row keeps the raw cost; the charge settles it to whole hundredths,
+    // rounded up (inner#1666).
+    expect(Number(spent!.total)).toBeCloseTo(-ceilToCreditCent(Number(rows[0]!.credits)), 6);
   }, 60_000);
 
   it("takes the cost OpenRouter reports, and hands nothing to the later lookup", async () => {
@@ -327,13 +330,14 @@ describe("what a turn's charge does to the studio's credits", () => {
     const total = (type: string): number =>
       entries.filter((entry) => entry.entry_type === type).reduce((sum, entry) => sum + Number(entry.amount), 0);
     expect(total("spend")).toBeCloseTo(-10, 4);
-    expect(total("debt_incurred")).toBeCloseTo(-(Number(row!.credits) - 10), 4);
+    const charged = ceilToCreditCent(Number(row!.credits));
+    expect(total("debt_incurred")).toBeCloseTo(-(charged - 10), 6);
 
     const [debt] = await sql<{ amount: string }[]>`
       SELECT d.amount FROM studio_credit_debts d JOIN projects p ON p.studio_id = d.studio_id
       WHERE p.id = ${seeded.projectId}
     `;
-    expect(Number(debt!.amount)).toBeCloseTo(Number(row!.credits) - 10, 4);
+    expect(Number(debt!.amount)).toBeCloseTo(charged - 10, 6);
   }, 60_000);
 
   it("records the turn and draws on no purchase while payments are off", async () => {
@@ -356,7 +360,7 @@ describe("what a turn's charge does to the studio's credits", () => {
     `;
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ lot_id: null });
-    expect(Number(entries[0]!.amount)).toBeCloseTo(-Number(row!.credits), 4);
+    expect(Number(entries[0]!.amount)).toBeCloseTo(-ceilToCreditCent(Number(row!.credits)), 6);
     const [lot] = await sql<{ remaining_credits: string }[]>`
       SELECT remaining_credits FROM credit_lots WHERE user_id = ${seeded.userId}
     `;

@@ -16,7 +16,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
+import { FAILURE_LINES, formatCredits, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
 import { cutMarker, keptText, messageText } from "@domain/agent/tools/conversation-text.js";
 import { clip, isStop, onOneLine, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
@@ -350,7 +350,7 @@ function versionLine(v: NodeHistoryEntity): string {
     ...(str(meta, "toolId") ? [`mini-tool ${String(str(meta, "toolId"))}`] : []),
     ...(prompt === undefined ? [] : [`prompt ${asText(prompt)}`]),
     ...(Object.keys(rest).length > 0 ? [`params ${clip(JSON.stringify(rest), cfg.records_params_max_chars)}`] : []),
-    ...(typeof credits === "number" ? [`${String(credits)} credits`] : []),
+    ...(typeof credits === "number" ? [`${formatCredits(credits, "en-US")} credits`] : []),
     ...(content === undefined ? [] : [`content ${content}`]),
     ...(v.errorMessage ? [`error ${v.errorMessage}`] : []),
     v.createdAt.toISOString(),
@@ -432,7 +432,7 @@ function activityLine(e: ProjectActivityEntry, records: ProjectRecords): string 
     ...(e.nodeId === null ? [] : [`node ${e.nodeId}`]),
     ...(str(p, "model") ? [`model ${String(str(p, "model"))}`] : []),
     ...(str(p, "toolName") ? [`mini-tool ${String(str(p, "toolName"))}`] : []),
-    ...(typeof credits === "number" ? [`${String(credits)} credits`] : []),
+    ...(typeof credits === "number" ? [`${formatCredits(credits, "en-US")} credits`] : []),
     ...(str(p, "fileUrl") ? [`result ${String(str(p, "fileUrl"))}`] : []),
     ...(str(p, "errorMessage") ? [`error ${String(str(p, "errorMessage"))}`] : []),
     ...(str(p, "role") ? [`role ${str(p, "previousRole") ? `${String(str(p, "previousRole"))} → ` : ""}${String(str(p, "role"))}`] : []),

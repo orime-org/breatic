@@ -1389,8 +1389,8 @@ export const creditLedger = pgTable(
       onDelete: "restrict",
     }),
     // One of `topup` / `spend` / `refund` / `refund_rejected` (0061),
-    // `debt_incurred` / `debt_repayment` (0063) or `refund_reversed` (0094).
-    // CHECK in 0094.
+    // `debt_incurred` / `debt_repayment` (0063), `refund_reversed` (0094) or
+    // `rounding_adjustment` (0100). CHECK in 0100.
     entryType: varchar("entry_type", { length: 24 }).notNull(),
     // Positive in, negative out.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
@@ -1684,7 +1684,8 @@ export const agentUsageRecords = pgTable(
  * they have to be serialised against each other, which a sum cannot be. It is
  * the same trade `credit_lots.remaining_credits` makes, and it reconciles
  * against the ledger the same way: `amount` equals
- * `sum(debt_repayment) - sum(debt_incurred)`.
+ * `sum(debt_repayment) - sum(debt_incurred)` minus the `rounding_adjustment`
+ * rows with no lot (migration 0100 raising old debts to whole cents).
  *
  * Its own table rather than a column on `studios`, because both writers lock
  * it and `studios` is read on the way into every project — locking there would

@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { cn } from '@web/lib/utils';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { asFiniteCredits } from '@web/lib/as-finite-credits';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -489,7 +490,7 @@ export function ProjectActivityButton({
                               className='h-3 w-3 text-muted-foreground'
                               aria-hidden='true'
                             />
-                            {credits}
+                            {formatCreditAmount(credits)}
                           </span>
                         ) : null}
                       </div>
