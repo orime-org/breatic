@@ -5,8 +5,9 @@
  * The danger zone's slug entry: a button, and a dialog that holds the input.
  *
  * Confirm stays pressable (inner#1652). A press goes out only when the check
- * says valid, never merely "not invalid", because an emptied field reports
- * neither — it reports empty — and says why on the slug line otherwise.
+ * says valid or could not be made (unverified), never merely "not invalid",
+ * because an emptied field reports neither — it reports empty — and says why
+ * on the slug line otherwise.
  *
  * Confirming does not close the dialog. On success the whole tab unmounts
  * anyway, since the address it is standing on has just stopped existing; on

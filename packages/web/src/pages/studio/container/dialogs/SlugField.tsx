@@ -28,9 +28,9 @@ interface SlugFieldProps {
    */
   readOnly?: boolean;
   /**
-   * A reason found when the form was submitted (an empty required slug, or a
-   * shape the debounced check has not caught up with). It replaces the
-   * check's own line until the reader edits the field.
+   * A reason found when the form was submitted (an empty required slug). It
+   * replaces the check's own line until the reader edits the field. A form
+   * that refuses a shape at the press passes it as an `invalid` check instead.
    */
   error?: string | null;
 }
