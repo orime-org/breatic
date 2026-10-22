@@ -58,11 +58,12 @@ export function rowById(
  * place text can sit.
  * @param row - The row to read.
  * @returns Where the row's words start and end, or undefined when it holds
- * none.
+ * none: a table holds its words in its cells' rows (inner#1619).
  */
 export function contentRangeOf(
   row: RowInDocument,
 ): { from: number; to: number } | undefined {
+  if (row.node.type.name !== 'blockContainer') return undefined;
   const content = row.node.firstChild;
   if (content === null) return undefined;
   const from = row.from + 2;
