@@ -81,6 +81,17 @@ describe("batch-five audio tools", () => {
     });
   });
 
+  // inner#1305 visual review: readings that say what they are, and the four
+  // loudness standards as one list of equals.
+  it("reads denoise in dB, voice and reverb amount in percent, and stacks the loudness targets", () => {
+    const number = (tool: string, key: string) => miniToolById(tool)?.params.find((p) => p.key === key);
+    expect(number("audio.denoise", "intensity")).toMatchObject({ format: "denoiseDb" });
+    expect(number("video.audio-denoise", "intensity")).toMatchObject({ format: "denoiseDb" });
+    expect(number("audio.voice", "intensity")).toMatchObject({ unit: "%" });
+    expect(number("audio.reverb", "amount")).toMatchObject({ unit: "%" });
+    expect(number("audio.normalize", "target")).toMatchObject({ layout: "stack" });
+  });
+
   it("offers the four loudness targets with the platform each serves", () => {
     const normalize = miniToolById("audio.normalize");
     const target = normalize?.params.find((p) => p.key === "target");
@@ -88,6 +99,7 @@ describe("batch-five audio tools", () => {
       kind: "enum",
       key: "target",
       default: "-16",
+      layout: "stack",
       options: [
         { value: "-14", label: "−14 LUFS · Spotify / YouTube" },
         { value: "-16", label: "−16 LUFS · Podcasts" },

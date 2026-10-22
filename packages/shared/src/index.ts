@@ -433,6 +433,7 @@ export {
   dynamicsValueOfPreset,
 } from "@shared/audio-dynamics.js";
 export type { DynamicsField, DynamicsPreset, DynamicsSettings, DynamicsValue } from "@shared/audio-dynamics.js";
+export { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 export { formatBytes } from "@shared/format-bytes.js";
 
 

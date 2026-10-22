@@ -114,9 +114,10 @@ export interface NumberParam {
   readonly unit?: string;
   /**
    * How the value reads beside the slider, when not as the number and its
-   * unit: `signed` with a plus on positives; `balance` as Center, L n or R n.
+   * unit: `signed` with a plus on positives; `balance` as Center, L n or R n;
+   * `denoiseDb` as the noise reduction it sets.
    */
-  readonly format?: "signed" | "balance";
+  readonly format?: "signed" | "balance" | "denoiseDb";
 }
 
 /** A switch. */
@@ -144,6 +145,8 @@ export interface EnumParam {
   readonly key: string;
   readonly default: string;
   readonly options: readonly MiniToolOption[];
+  /** `stack` lists the options one to a row, for long labels of equal weight. */
+  readonly layout?: "stack";
 }
 
 /** A crop rectangle in source pixels; null until the panel reads the source size. */

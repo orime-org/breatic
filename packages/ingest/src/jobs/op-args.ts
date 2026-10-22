@@ -14,6 +14,7 @@ import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js"
 // file: the container's bundle is built without shared's dependencies, and
 // this file has none.
 import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.js";
+import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
 import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
@@ -343,17 +344,13 @@ export function opRuns(
 
 /**
  * One slider onto afftdn, the same for a video's sound and an audio file: the
- * slider is how far the noise comes down, 0.4 dB per step up to 40 dB, as the
- * reduction amount is in Audacity, Audition and RX. The noise floor stays at
- * -40 dB: afftdn takes off the full amount from noise under it (white noise to
- * about -50 dBFS, pink to about -60) while speech loses under 0.1 dB, and a
- * higher floor starts to take speech down with it (measured on the media
- * image, inner#1305).
+ * slider sets how far the noise comes down (`denoiseReductionDb`), and the
+ * noise floor stays where common noise sits (`DENOISE_NOISE_FLOOR_DB`).
  * @param intensity - The slider.
  * @returns The filter.
  */
 function denoiseFilter(intensity: number): string {
-  return `afftdn=nf=-40:nr=${(intensity * 0.4).toFixed(2)}`;
+  return `afftdn=nf=${DENOISE_NOISE_FLOOR_DB}:nr=${denoiseReductionDb(intensity).toFixed(2)}`;
 }
 
 /** One program and its arguments. */
