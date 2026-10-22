@@ -46,8 +46,10 @@ import {
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
+  AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
+  type AudioPeaksJob,
   type MailJob,
   type MediaReadJob,
   type UploadFinishJob,
@@ -118,6 +120,7 @@ import { runUrlIngest, type UrlIngestJobData } from "@worker/handlers/url-ingest
 import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
+import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 
@@ -128,6 +131,7 @@ const WORKER_QUEUES: readonly string[] = [
   UPLOAD_FINISH_QUEUE,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
+  AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
   ADS_CONVERSION_QUEUE,
 ];
@@ -259,6 +263,24 @@ export function startWorker(): void {
         attemptsAllowed: job?.opts?.attempts,
       },
       "media_read_job_failed",
+    );
+  });
+
+  // An audio row's peaks, read after it registered (inner#1305 §4.4). Its
+  // retries are the shared ones; what is left after the last is an audio whose
+  // cut band, until the backfill reads it, draws the browser's own decode within
+  // the waveform ceilings (config/mini-tools.yaml) and stays plain past them.
+  const audioPeaks = createWorker<AudioPeaksJob>(AUDIO_PEAKS_QUEUE, (job) => runAudioPeaks(job));
+
+  audioPeaks.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        assetId: job?.data.assetId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "audio_peaks_job_failed",
     );
   });
 
@@ -444,6 +466,7 @@ export function startWorker(): void {
         () => uploadFinish.close(),
         () => usageLookup.close(),
         () => mediaRead.close(),
+        () => audioPeaks.close(),
         () => mail.close(),
         () => adsConversion.close(),
         () => flushServerAnalytics(),

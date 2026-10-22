@@ -58,9 +58,12 @@ describe("opRuns", () => {
     expect(after(run!, "-vf")).toBe(`${EVEN},${buildAdjustVideoFilter(value)}`);
   });
 
-  it("denoises the sound and copies the picture", () => {
+  // The slider is how many dB the noise comes down, as in Audacity, Audition
+  // and RX; the floor sits where it catches common noise without touching
+  // speech (measured on the media image, inner#1305).
+  it("denoises the sound by the slider's amount in dB and copies the picture", () => {
     const [run] = opRuns("audio_denoise", { intensity: 50 }, IN, OUT, WORK, videoProbe());
-    expect(after(run!, "-af")).toBe("afftdn=nf=-60.00:nr=19.50");
+    expect(after(run!, "-af")).toBe("afftdn=nf=-40:nr=20.00");
     expect(after(run!, "-c:v")).toBe("copy");
   });
 
@@ -239,8 +242,8 @@ describe("HDR colour", () => {
 });
 
 describe("outputRefusal", () => {
-  it("fails an output with no picture", () => {
-    expect(outputRefusal({ streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 1 })).toBe("tool_failed");
-    expect(outputRefusal(videoProbe())).toBeNull();
+  it("fails a video output with no picture", () => {
+    expect(outputRefusal({ streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 1 }, "video")).toBe("tool_failed");
+    expect(outputRefusal(videoProbe(), "video")).toBeNull();
   });
 });

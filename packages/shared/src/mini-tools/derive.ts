@@ -8,6 +8,8 @@
  */
 
 import { defaultAdjustValue } from "@shared/adjust-value.js";
+import { defaultDynamicsValue } from "@shared/audio-dynamics.js";
+import { defaultEqValue } from "@shared/audio-eq.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec, ModelToolSpec, SizeTier } from "@shared/mini-tools/types.js";
 import type { EstimateInput } from "@shared/pricing/estimate.js";
@@ -151,6 +153,12 @@ function defaultOf(param: MiniToolParam): unknown {
       return { ...UPRIGHT };
     case "cells":
       return [];
+    case "toggle":
+      return param.default;
+    case "eq":
+      return { ...defaultEqValue, gains: [...defaultEqValue.gains] };
+    case "dynamics":
+      return { ...defaultDynamicsValue };
   }
 }
 

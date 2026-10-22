@@ -59,7 +59,22 @@ const BATCH_ONE = {
     "video.motion",
     "video.animate",
   ],
-  audio: ["audio.separate", "audio.extend"],
+  // inner#1305: the ten container edits, then enhance before the batch-one model tools.
+  audio: [
+    "audio.denoise",
+    "audio.normalize",
+    "audio.speed",
+    "audio.cut",
+    "audio.eq",
+    "audio.compress",
+    "audio.pan",
+    "audio.reverb",
+    "audio.voice",
+    "audio.pitch",
+    "audio.enhance",
+    "audio.separate",
+    "audio.extend",
+  ],
 } as const;
 
 describe("MINI_TOOLS registry", () => {
@@ -166,7 +181,7 @@ describe("MINI_TOOLS registry", () => {
     ]);
   });
 
-  it("runs crop and rotate in the browser and the seven video operations in a container", () => {
+  it("runs crop and rotate in the browser and the video and audio edits in a container", () => {
     expect(miniToolById("image.crop")?.run.kind).toBe("browser");
     expect(miniToolById("image.rotate")?.run.kind).toBe("browser");
     const containerIds = MINI_TOOLS.filter((tool) => tool.run.kind === "container").map(
@@ -181,6 +196,7 @@ describe("MINI_TOOLS registry", () => {
         "video.audio-denoise",
         "video.stabilize",
         "video.hdr",
+        ...BATCH_ONE.audio.slice(0, 10),
       ].sort(),
     );
   });

@@ -18,6 +18,7 @@ import {
   modelCatalog,
 } from "@breatic/domain";
 import {
+  formatBytes,
   paramValueAllowed,
   t,
   type ModelEntry,
@@ -111,6 +112,33 @@ function snapshotOf(spec: MiniToolSpec, body: MiniToolRequest, entry: ModelEntry
 }
 
 /**
+ * Refuse a source the pinned model takes no longer or larger than (inner#1305),
+ * measured by what the ledger recorded of the stored file rather than what the
+ * request claims. A file the ledger has not measured goes through, and the
+ * model answers for it.
+ * @param spec - The tool.
+ * @param body - The validated request.
+ * @param entry - The pinned model's catalog entry.
+ * @returns Nothing.
+ * @throws {AppError} 400 when the stored file is past either ceiling.
+ */
+async function assertSourceWithinModel(spec: MiniToolSpec, body: MiniToolRequest, entry: ModelEntry): Promise<void> {
+  const declared = entry.params?.[spec.sourceParam];
+  const maxSeconds = declared?.max_total_duration;
+  const maxBytes = declared?.max_bytes;
+  if (maxSeconds === undefined && maxBytes === undefined) return;
+  const key = (await getStorageAdapter()).keyFromUrl(body.source.url);
+  const measured = key === null ? null : await assetRepo.findLiveByStorageKey(key);
+  if (measured === null) return;
+  if (maxSeconds !== undefined && measured.durationSeconds !== null && measured.durationSeconds > maxSeconds) {
+    throw new AppError(400, t("server.mini_tool.sourceTooLong", { minutes: Math.round(maxSeconds / 60) }));
+  }
+  if (maxBytes !== undefined && measured.sizeBytes > maxBytes) {
+    throw new AppError(400, t("server.mini_tool.sourceTooLarge", { size: formatBytes(maxBytes) }));
+  }
+}
+
+/**
  * A model tool's run: the pinned model, its values held to the catalog, and
  * the source and slots written under the model params they fill.
  * @param spec - The tool.
@@ -128,6 +156,7 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
       throw new AppError(400, t("server.mini_tool.invalidParam", { name }));
     }
   }
+  await assertSourceWithinModel(spec, body, entry);
   const snapshot = snapshotOf(spec, body, entry);
   const input = miniToolEstimateInput(spec, snapshot);
   const params: Record<string, unknown> = { ...input.params };
@@ -143,19 +172,21 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
 /**
  * A container tool's run: the stored key it reads, and the precheck its
  * operation's expected seconds come to at the class's published prices.
+ * @param spec - The tool, whose declared source medium the stored file must be.
  * @param op - The container operation.
  * @param body - The validated request.
  * @returns The prepared run.
- * @throws {AppError} 400 when the source is not one of our addresses, or not a video.
+ * @throws {AppError} 400 when the source is not one of our addresses, or not the tool's medium.
  */
-async function prepareContainerRun(op: string, body: MiniToolRequest): Promise<PreparedRun> {
+async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToolRequest): Promise<PreparedRun> {
   const sourceKey = (await getStorageAdapter()).keyFromUrl(body.source.url);
   if (sourceKey === null) throw new AppError(400, t("server.mini_tool.foreignSource"));
-  // Every container operation reads a video; the panel only offers video
-  // nodes, so another kind here came from a forged request.
+  // A container operation reads the medium its tool declares; the panel only
+  // offers a tool on a node of that medium, so another kind here came from a
+  // forged request.
   const kind = await assetRepo.findKindByStorageKey(sourceKey);
-  if (kind !== "video") {
-    logger.warn({ op, sourceKey, kind }, "mini_tool_source_not_video");
+  if (kind !== spec.source) {
+    logger.warn({ op, sourceKey, kind, expected: spec.source }, "mini_tool_source_wrong_kind");
     throw new AppError(400, t("server.mini_tool.foreignSource"));
   }
   const config = getMiniToolsConfig();
@@ -180,6 +211,6 @@ async function prepareContainerRun(op: string, body: MiniToolRequest): Promise<P
  */
 export function prepareRun(spec: MiniToolSpec, body: MiniToolRequest): Promise<PreparedRun> {
   if (isModelTool(spec)) return prepareModelRun(spec, body);
-  if (spec.run.kind === "container") return prepareContainerRun(spec.run.op, body);
+  if (spec.run.kind === "container") return prepareContainerRun(spec, spec.run.op, body);
   throw new AppError(400, t("server.mini_tool.unavailable"));
 }

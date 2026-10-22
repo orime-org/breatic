@@ -85,6 +85,7 @@ const UNFINISHED = Symbol("unfinished");
  *   ffmpeg has anything to say about it.
  * @param about.wantCover - Whether to ask for a frame as well.
  * @param about.wantPreview - Whether to ask for a preview as well.
+ * @param about.wantPeaks - Whether to ask for an audio object's peaks as well.
  * @param about.deadlineAt - When the task this run serves runs out, in epoch
  *   ms (inner#1367). The wait ends then, and every tool in the run is held to
  *   it; nothing here has a figure of its own.
@@ -99,6 +100,7 @@ export async function readMediaAtEdge(
     contentType: string;
     wantCover: boolean;
     wantPreview?: boolean;
+    wantPeaks?: boolean;
     deadlineAt: number;
     upright?: { order: UprightOrder; grant: UprightWriteGrant };
   },
@@ -112,6 +114,7 @@ export async function readMediaAtEdge(
     objectUrl: mediaObjectUrl(about.storageKey),
     wantCover: about.wantCover,
     wantPreview: about.wantPreview === true,
+    wantPeaks: about.wantPeaks === true,
     deadlineAt: about.deadlineAt,
     ...(about.upright !== undefined && { upright: about.upright.order }),
   };

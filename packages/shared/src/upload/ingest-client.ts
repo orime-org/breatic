@@ -466,6 +466,8 @@ export type PreviewOutcome = (typeof PREVIEW_OUTCOMES)[number];
 export interface StoredMediaRead extends MediaNumbers {
   /** Present when a preview was asked for and the answer named a known one. */
   preview?: PreviewOutcome;
+  /** Present when peaks were asked for; they take the same outcomes as a preview. */
+  peaks?: PreviewOutcome;
 }
 
 const previewOutcome = z
@@ -477,10 +479,11 @@ const previewOutcome = z
  * Ask the Worker what an object already in storage measures (#299).
  *
  * The read a cover or an avatar skipped when it was finished, asked for by our
- * worker once the upload has returned, and the backfill of previews. The only
- * thing it may write is a preview at a key derived from the object's own, and
- * one standing there is left alone, so a repeat costs one more container run
- * and nothing else. Bounded by the caller's deadline: the Worker holds its
+ * worker once the upload has returned, the audio peaks job, and the backfills
+ * of previews and peaks. The only things it may write are a preview and an
+ * audio object's peaks, each at a key derived from the object's own, and one
+ * standing there is left alone, so a repeat costs at most one more container
+ * run and nothing else. Bounded by the caller's deadline: the Worker holds its
  * container to `deadlineAt`, and the wait ends at the same instant.
  * @param uploadUrl - The ingest Worker's base address.
  * @param secret - The secret the Worker also holds.
@@ -490,8 +493,9 @@ const previewOutcome = z
  *   whether there is anything for the container to read.
  * @param about.deadlineAt - When the job asking runs out, in epoch ms.
  * @param about.wantPreview - Whether to cut a preview when none stands.
+ * @param about.wantPeaks - Whether to read the peaks of an audio object when none stand.
  * @returns The three numbers, each unusable one as none, and what became of
- *   the preview when one was asked for.
+ *   the preview and the peaks when each was asked for.
  * @throws {UploadHttpError} When the Worker refuses.
  * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -505,6 +509,7 @@ export async function readStoredMediaAtIngest(
     contentType: string;
     deadlineAt: number;
     wantPreview?: boolean;
+    wantPeaks?: boolean;
   },
 ): Promise<StoredMediaRead> {
   const answered = await askWorker<unknown>(
@@ -520,10 +525,14 @@ export async function readStoredMediaAtIngest(
     { replaySafe: true, bound: untilDeadline(about.deadlineAt) },
   );
   const numbers = mediaNumbers.parse(answered ?? {});
-  const preview = previewOutcome.parse(
-    (answered as { preview?: unknown } | null)?.preview,
-  );
-  return preview === undefined ? numbers : { ...numbers, preview };
+  const outcomes = answered as { preview?: unknown; peaks?: unknown } | null;
+  const preview = previewOutcome.parse(outcomes?.preview);
+  const peaks = previewOutcome.parse(outcomes?.peaks);
+  return {
+    ...numbers,
+    ...(preview !== undefined && { preview }),
+    ...(peaks !== undefined && { peaks }),
+  };
 }
 
 /**

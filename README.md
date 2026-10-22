@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README-CN.md)
 
-**The AI operating system for content creators.**
+**The real-time collaborative AI workspace for creative teams.**
 
 Bring your brief, scenes and media into one project. Write in Document Spaces, generate and refine assets in Canvas Spaces, and work with an AI agent and collaborators in the context of your production.
 

@@ -303,3 +303,23 @@ function hexToRgb(hex: string): string {
   const n = Number.parseInt(hex.slice(1), 16);
   return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
 }
+
+// inner#1305: the enhance strength is sent as 0–1 and read as a percentage.
+describe('a range shown as a percentage', () => {
+  const enhance = model({
+    strength: { description: '', min: 0, max: 1, step: 0.05, default: 0.85, fill: 'tool' },
+  });
+  const controls = [{ kind: 'range', name: 'strength', min: 0, max: 1, step: 0.05, display: 'percent' }] as const;
+
+  it('reads each step as a whole percentage, with no named steps under it', () => {
+    const view = render(
+      <ModelParamControls mode='enhance' model={enhance} controls={controls} value={{ strength: 0.85 }} onChange={() => {}} />,
+    );
+    expect(screen.getByTestId('generate-param-strength-value')).toHaveTextContent('85%');
+    expect(view.container.querySelector('[data-testid^="generate-param-strength-stop-"]')).toBeNull();
+    view.rerender(
+      <ModelParamControls mode='enhance' model={enhance} controls={controls} value={{ strength: 0.55 }} onChange={() => {}} />,
+    );
+    expect(screen.getByTestId('generate-param-strength-value')).toHaveTextContent('55%');
+  });
+});

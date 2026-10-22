@@ -241,7 +241,9 @@
     "mini_tool": {
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
-      "foreignSource": "This file cannot be processed."
+      "foreignSource": "This file cannot be processed.",
+      "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
+      "sourceTooLarge": "This tool takes files up to {size}."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -809,7 +811,8 @@
         "light_color": "Light colour",
         "light_color_hex": "Custom light colour",
         "light_intensity": "Intensity",
-        "light_quality": "Light quality"
+        "light_quality": "Light quality",
+        "strength": "Strength"
       },
       "paramField": {
         "speaker": "Name",
@@ -980,7 +983,7 @@
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
-        "no_audio_track": "This video has no audio track."
+        "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}"
       },
       "kind": {
         "upload": "Upload",
@@ -1122,6 +1125,40 @@
         "extend": {
           "label": "Extend",
           "prompt": "Describe the sound to add"
+        },
+        "denoise": {
+          "label": "Denoise"
+        },
+        "normalize": {
+          "label": "Normalize loudness",
+          "note": "Peak limit −1 dBTP"
+        },
+        "speed": {
+          "label": "Speed"
+        },
+        "cut": {
+          "label": "Cut"
+        },
+        "eq": {
+          "label": "Equalizer"
+        },
+        "compress": {
+          "label": "Compressor"
+        },
+        "pan": {
+          "label": "Stereo"
+        },
+        "reverb": {
+          "label": "Reverb"
+        },
+        "voice": {
+          "label": "Voice enhance"
+        },
+        "pitch": {
+          "label": "Pitch shift"
+        },
+        "enhance": {
+          "label": "Enhance"
         }
       },
       "param": {
@@ -1160,6 +1197,36 @@
         },
         "cols": {
           "label": "Columns"
+        },
+        "target": {
+          "label": "Target loudness"
+        },
+        "keepPitch": {
+          "label": "Keep pitch"
+        },
+        "eq": {
+          "label": "Preset"
+        },
+        "dynamics": {
+          "label": "Preset"
+        },
+        "pan": {
+          "label": "Left / right"
+        },
+        "width": {
+          "label": "Width"
+        },
+        "room": {
+          "label": "Room"
+        },
+        "amount": {
+          "label": "Amount"
+        },
+        "semitones": {
+          "label": "Semitones"
+        },
+        "cents": {
+          "label": "Cents"
         }
       },
       "panel": {
@@ -1182,7 +1249,9 @@
         "reset": "Reset",
         "imageTooLarge": "This picture is too large to adjust on this device.",
         "sourceTooLargeToExpand": "This picture is already as large as Expand can make it.",
-        "ratioTooLarge": "Larger than Expand can make this picture"
+        "ratioTooLarge": "Larger than Expand can make this picture",
+        "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
+        "sourceTooLarge": "This tool takes files up to {size}."
       },
       "adjust": {
         "exposure": "Exposure",
@@ -1241,6 +1310,13 @@
         "referenceNote": "Light comes from this picture. Colour, intensity and quality on the right override it.",
         "fromReference": "from reference",
         "sourceFromReference": "Follows the reference"
+      },
+      "dynamics": {
+        "threshold": "Threshold",
+        "ratio": "Ratio",
+        "attack": "Attack",
+        "release": "Release",
+        "makeup": "Make-up gain"
       }
     },
     "template": {

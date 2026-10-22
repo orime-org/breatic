@@ -95,8 +95,8 @@ interface Route {
   name: string;
   /** The provider, built on first use and kept. */
   provider: () => (modelId: string) => LanguageModel;
-  /** How this provider is told to reason, and how it is told not to. */
-  reasoning: { on: ProviderOptionsFor; off: ProviderOptionsFor };
+  /** How this provider is told to reason for a model, and how it is told not to. */
+  reasoning: { on: (modelString: string | undefined) => ProviderOptionsFor; off: ProviderOptionsFor };
   /**
    * How this provider is told to cache the prompt prefix for a model, or
    * nothing when it caches a repeated prefix on its own.
@@ -187,7 +187,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     reasoning: {
       // The same depth as the fallback asks for: Opus 5.5 left without an
       // effort thinks at its own default, medium.
-      on: { thinking: { type: "adaptive", display: "summarized" }, effort: "high" },
+      on: () => ({ thinking: { type: "adaptive", display: "summarized" }, effort: "high" }),
       // Not read: `callOptionsFor` sends Claude nothing when thinking is off.
       off: {},
     },
@@ -202,7 +202,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
       // Gemini 3 Pro takes only LOW or HIGH and has no off position, so on
       // that model this is the instruction going out rather than a promise
       // about what comes back. Gemini 2.5 Flash and its like accept 0.
-      on: { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } },
+      on: () => ({ thinkingConfig: { thinkingBudget: -1, includeThoughts: true } }),
       off: { thinkingConfig: { thinkingBudget: 0 } },
     },
     vendorId: asWritten,
@@ -213,7 +213,7 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     keyName: "OPENAI_API_KEY",
     name: "openai",
     provider: memo(() => createOpenAI({ apiKey: env.OPENAI_API_KEY || undefined })),
-    reasoning: { on: { reasoningEffort: "high" }, off: { reasoningEffort: "none" } },
+    reasoning: { on: () => ({ reasoningEffort: "high" }), off: { reasoningEffort: "none" } },
     vendorId: asWritten,
     cache: cachesOnItsOwn,
   },
@@ -223,7 +223,8 @@ export const DIRECT_ROUTES: readonly DirectRoute[] = [
     name: "deepseek",
     provider: memo(() => createDeepSeek({ apiKey: env.DEEPSEEK_API_KEY || undefined })),
     reasoning: {
-      on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
+      // DeepSeek's deepest level; inner#1650 measured Flash 1017 at it.
+      on: () => ({ thinking: { type: "enabled" }, reasoningEffort: "max" }),
       off: { thinking: { type: "disabled" } },
     },
     // Configured ids are written the way OpenRouter names the model
@@ -241,7 +242,9 @@ export const FALLBACK_ROUTE: Route = {
   reasoning: {
     // `max_tokens` or `effort` is required alongside; `enabled` alone does
     // not compile. `none` is the documented way to turn it off.
-    on: { reasoning: { effort: "high" } },
+    // OpenRouter lists max, high, low and none for DeepSeek Flash 1017 and
+    // turns `xhigh` into `high`; `max` is the level the direct route asks for.
+    on: (modelString) => ({ reasoning: { effort: modelString?.startsWith("deepseek/") ? "max" : "high" } }),
     off: { reasoning: { effort: "none" } },
   },
   // OpenRouter turns a request-level `cache_control` into Anthropic's
@@ -340,7 +343,7 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
   // `{ type: "disabled" }` with a 400, falls to the adaptive thinking it
   // cannot leave (Anthropic thinking docs, "Configuring thinking").
   const reasoning = wants.thinking
-    ? route.reasoning.on
+    ? route.reasoning.on(modelString)
     : isClaude(modelString)
       ? {}
       : route.reasoning.off;

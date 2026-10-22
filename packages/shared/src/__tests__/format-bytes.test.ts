@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { formatBytes } from '@web/lib/format-bytes';
+import { formatBytes } from "@shared/format-bytes.js";
 
 describe('formatBytes', () => {
   it('把配置里的字节还原成写它时用的单位', () => {

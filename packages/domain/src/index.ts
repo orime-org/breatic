@@ -88,6 +88,13 @@ export {
   type MediaReadJob,
   type MediaReadResult,
 } from "@domain/asset/media-read.service.js";
+export * as audioPeaksService from "@domain/asset/audio-peaks.service.js";
+export {
+  AUDIO_PEAKS_QUEUE,
+  AudioPeaksReadFailed,
+  type AudioPeaksJob,
+  type AudioPeaksResult,
+} from "@domain/asset/audio-peaks.service.js";
 export type {
   BackendUploadContext,
   StoredAsset,

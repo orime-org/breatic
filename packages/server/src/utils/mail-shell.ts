@@ -25,7 +25,7 @@ import { getMailLayout, runWithLocale, type SendMailOptions } from "@breatic/cor
 import { t, tRich } from "@breatic/shared";
 
 const BRAND = "Breatic";
-const SLOGAN = "Collaborate Better";
+const SLOGAN = "Create Freely. Collaborate Better";
 const COMPANY = "Orime, Inc.";
 const LEGAL_PAGES = ["about", "terms", "privacy"] as const;
 

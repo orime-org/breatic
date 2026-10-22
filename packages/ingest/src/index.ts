@@ -24,6 +24,7 @@ import {
   canonicalMediaType,
   isUploadableMediaType,
   hasCoverFrame,
+  peaksKeyFor,
   previewKeyFor,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
@@ -50,9 +51,11 @@ import {
   type ProbeReport,
 } from "@ingest/media-metadata.js";
 import { typeCorrectedByReport } from "@ingest/stored-media.js";
+import { peaksSampleCount } from "@ingest/peaks-step.js";
 import { pngSize } from "@ingest/png-size.js";
 import {
   COVER_CONTENT_TYPE,
+  PEAKS_CONTENT_TYPE,
   PREVIEW_CONTENT_TYPE,
 } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
@@ -637,6 +640,21 @@ async function storePreview(
   return stored !== null;
 }
 
+/**
+ * Store an audio object's peaks beside it (inner#1305 §4.4).
+ * @param env - The Worker's bindings.
+ * @param audioKey - The key of the audio they were read from.
+ * @param bytes - The peaks file.
+ * @returns Whether they landed.
+ */
+async function storePeaks(env: Env, audioKey: string, bytes: Uint8Array): Promise<boolean> {
+  const peaksKey = peaksKeyFor(audioKey);
+  const stored = await env.BUCKET.put(peaksKey, bytes, {
+    httpMetadata: { contentType: PEAKS_CONTENT_TYPE },
+  }).catch(noted("ingest_peaks_store_failed", { peaksKey }));
+  return stored !== null;
+}
+
 /** What one finish answers about the media it stored. */
 interface MediaAnswer {
   media: MediaMetadata;
@@ -1019,14 +1037,17 @@ interface MediaReadBody {
   /** When the job asking runs out, in epoch ms (inner#1367). */
   deadlineAt?: unknown;
   wantPreview?: unknown;
+  /** Whether to read an audio object's peaks when none stand (inner#1305). */
+  wantPeaks?: unknown;
 }
 
 /**
  * Read the media numbers of an object already in storage (#299).
  *
  * A project cover or a studio avatar is finished without a read, and our
- * worker asks for one once the upload has returned. Nothing is written: the
- * object stands, and the caller files what this answers on the ledger row.
+ * worker asks for one once the upload has returned. The object itself is left
+ * as it stands; the only writes are a preview or an audio object's peaks beside
+ * it when asked for, and the caller files the numbers on the ledger row.
  *
  * It takes the shared secret, because the key it names may be any key in the
  * bucket and every run starts a container. The type comes from the caller —
@@ -1034,7 +1055,8 @@ interface MediaReadBody {
  * header is what the ticket signed, which may be a guess.
  * @param request - The backend's request.
  * @param env - The Worker's bindings.
- * @returns The three numbers, each one this run could not read as null.
+ * @returns The three numbers, each one this run could not read as null, and
+ *   what became of the preview and the peaks when each was asked for.
  */
 async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   if (!fromOurBackend(request, env)) {
@@ -1060,25 +1082,75 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   if (stored === null) return new Response("Not found", { status: 404 });
 
   const askedForPreview = body?.wantPreview === true;
-  // A preview standing there is left as it is; the numbers are read either way.
+  const askedForPeaks = body?.wantPeaks === true;
+  // A preview or peaks standing there are left as they are; the numbers are
+  // read either way, except for a read of peaks alone: its callers (the peaks
+  // job and the backfill) read only the outcome, so standing peaks start no
+  // container.
   const standing =
     askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
+  const peaksStanding =
+    askedForPeaks && (await env.BUCKET.head(peaksKeyFor(storageKey))) !== null;
+  if (peaksStanding && !askedForPreview) {
+    return Response.json({ width: null, height: null, durationSeconds: null, peaks: "existing" });
+  }
   const read = await readMediaAtEdge(env, {
     storageKey,
     contentType,
     wantCover: false,
     wantPreview: askedForPreview && !standing,
+    wantPeaks: askedForPeaks && !peaksStanding,
     deadlineAt,
   });
   const numbers = mediaNumbersFor(
     typeCorrectedByReport(contentType, read.report),
     read.report,
   );
-  if (!askedForPreview) return Response.json(numbers);
   return Response.json({
     ...numbers,
-    preview: await previewOutcome(env, storageKey, standing, read),
+    ...(askedForPreview && { preview: await previewOutcome(env, storageKey, standing, read) }),
+    ...(askedForPeaks && { peaks: await peaksOutcome(env, storageKey, peaksStanding, read) }),
   });
+}
+
+/**
+ * Whether a read found no stream at all: what ffprobe answers when it could
+ * not read the object, which says nothing about what the object holds.
+ * @param report - What the container answered.
+ * @returns True for an empty report.
+ */
+function foundNothing(report: ProbeReport): boolean {
+  return report.streams.length === 0;
+}
+
+/**
+ * Settle the peaks a read was asked for (inner#1305 §4.4).
+ * @param env - The Worker's bindings.
+ * @param storageKey - The audio object they were read from.
+ * @param standing - Whether they already stood.
+ * @param read - What the container answered.
+ * @param read.answered - Whether a container answered at all.
+ * @param read.report - What ffprobe found.
+ * @param read.peaks - The peaks it read, when it read them.
+ * @returns What became of them: `none` for an object read as not audio with
+ *   a length (no sound, a picture of its own, or no length), `failed` for audio
+ *   with a length that came back without peaks and for a read that found
+ *   nothing, so the job tries again.
+ */
+async function peaksOutcome(
+  env: Env,
+  storageKey: string,
+  standing: boolean,
+  read: { answered: boolean; report: ProbeReport; peaks: Uint8Array | null },
+): Promise<PreviewOutcome> {
+  if (standing) return "existing";
+  if (!read.answered) return "failed";
+  if (read.peaks === null) {
+    return foundNothing(read.report) || peaksSampleCount({ wantPeaks: true, report: read.report }) !== null
+      ? "failed"
+      : "none";
+  }
+  return (await storePeaks(env, storageKey, read.peaks)) ? "generated" : "failed";
 }
 
 /**
@@ -1090,8 +1162,9 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
  * @param read.answered - Whether a container answered at all.
  * @param read.report - What ffprobe found.
  * @param read.preview - The preview it cut, when it cut one.
- * @returns What became of it: `none` only for a picture with no frame to cut
- *   from, `failed` for one that had a frame and came back without a preview.
+ * @returns What became of it: `none` only for a picture read as having no
+ *   frame to cut from, `failed` for one that had a frame and came back without
+ *   a preview and for a read that found nothing.
  */
 async function previewOutcome(
   env: Env,
@@ -1101,7 +1174,9 @@ async function previewOutcome(
 ): Promise<PreviewOutcome> {
   if (standing) return "existing";
   if (!read.answered) return "failed";
-  if (read.preview === null) return hasPreviewableFrame(read.report) ? "failed" : "none";
+  if (read.preview === null) {
+    return foundNothing(read.report) || hasPreviewableFrame(read.report) ? "failed" : "none";
+  }
   return (await storePreview(env, storageKey, read.preview)) ? "generated" : "failed";
 }
 

@@ -8,7 +8,7 @@
  * network to be assembled or read back.
  */
 
-import { SNIFF_WINDOW, sniffMimeTypeOfStream } from "@breatic/shared";
+import { SNIFF_WINDOW, canonicalMediaType, sniffMimeTypeOfStream } from "@breatic/shared";
 
 /** A part R2 has accepted, in the form completing the upload needs back. */
 export interface RecordedPart {
@@ -322,7 +322,7 @@ export async function hashStoredObject(
  * the size looked at there are one figure.
  * @param bucket - The bucket holding it.
  * @param storageKey - The assembled object's key.
- * @returns The media type its bytes are.
+ * @returns The media type its bytes are, under the one name the registry lists it by.
  * @throws {Error} When the object is not readable.
  */
 export async function sniffStoredObject(
@@ -335,8 +335,8 @@ export async function sniffStoredObject(
   if (head === null) throw new Error(`completed object ${storageKey} is missing`);
   const whole = await bucket.get(storageKey);
   if (whole === null) throw new Error(`completed object ${storageKey} is missing`);
-  return sniffMimeTypeOfStream(
-    whole.body,
-    new Uint8Array(await head.arrayBuffer()),
+  // One spelling for a format with several, as the ledger records it.
+  return canonicalMediaType(
+    await sniffMimeTypeOfStream(whole.body, new Uint8Array(await head.arrayBuffer())),
   );
 }

@@ -12,7 +12,6 @@
  * the container's cgroup counted.
  */
 
-import { execFile } from "node:child_process";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -22,10 +21,12 @@ import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
-import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
+import { inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
+
+import { runCommand, runSteps } from "./run-steps.js";
 
 /** What the Durable Object sends to `/run`. */
 export interface RunBody {
@@ -38,27 +39,6 @@ export interface RunBody {
 
 /** The most a cover frame may weigh. */
 const COVER_MAX_BYTES = 10 * 1024 * 1024;
-
-/**
- * Run one tool to completion.
- * @param program - `ffmpeg` or `ffprobe`.
- * @param args - Its arguments.
- * @param maxBytes - The most stdout may hold.
- * @returns What it wrote to stdout.
- * @throws {Error} When it fails or writes too much. It has no time of its own:
- *   the job's deadline ends the container (inner#1367).
- */
-function runTool(program: string, args: string[], maxBytes = 4 * 1024 * 1024): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile(program, args, { encoding: "buffer", maxBuffer: maxBytes }, (error, stdout, stderr) => {
-      if (error !== null) {
-        reject(new Error(`${program} failed: ${error.message} ${stderr.toString("utf8").slice(0, 2000)}`));
-        return;
-      }
-      resolve(stdout);
-    });
-  });
-}
 
 /**
  * Send a local file to the Worker.
@@ -124,22 +104,20 @@ export async function runJob(job: RunBody): Promise<void> {
     };
     const input = join(dir, "source");
     await download(job.input, input).catch(ours);
-    const source = readProbeOutput((await runTool("ffprobe", probeArgs(input, "own-file"))).toString("utf8"));
+    const source = readProbeOutput((await runCommand("ffprobe", probeArgs(input, "own-file"))).stdout.toString("utf8"));
     const refused = inputRefusal(job.op, source);
     if (refused !== null) {
       reason = refused;
       throw new Error(`source refused: ${refused}`);
     }
     for (const output of job.outputs) {
-      const file = join(dir, "out.mp4");
+      const file = join(dir, outputFileName(job.op));
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
-      for (const args of opRuns(job.op, job.params, input, file, dir, source)) {
-        await runTool("ffmpeg", args);
-      }
-      const probed = await runTool("ffprobe", probeArgs(file, "own-file")).catch(() => null);
+      await runSteps(opSteps(job.op, job.params, input, file, dir, source));
+      const probed = await runCommand("ffprobe", probeArgs(file, "own-file")).then((out) => out.stdout, () => null);
       const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
-      const empty = outputRefusal(report);
+      const empty = outputRefusal(report, mediumOf(job.op));
       if (empty !== null) {
         reason = empty;
         throw new Error(`output refused: ${empty}`);
@@ -148,7 +126,7 @@ export async function runJob(job: RunBody): Promise<void> {
       const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
-        const frame = await runTool("ffmpeg", coverArgs(file, "own-file"), COVER_MAX_BYTES).catch(() => null);
+        const frame = await runCommand("ffmpeg", coverArgs(file, "own-file"), COVER_MAX_BYTES).then((out) => out.stdout, () => null);
         if (frame !== null && frame.length > 0) {
           const coverFile = join(dir, "cover.png");
           await writeFile(coverFile, frame);

@@ -7,8 +7,11 @@ import * as React from 'react';
 import {
   ADJUST_RANGES,
   defaultAdjustValue,
+  denoiseReductionDb,
   parseAdjustValue,
   type AdjustValue,
+  type DynamicsValue,
+  type EqValue,
   type ModelEntry,
 } from '@breatic/shared';
 import {
@@ -22,6 +25,7 @@ import {
   type MiniToolParam,
   type MiniToolSlotValue,
   type MiniToolSpec,
+  type NumberParam,
 } from '@breatic/shared/mini-tools';
 
 import { Button } from '@web/components/ui/button';
@@ -39,8 +43,13 @@ import { controlParams, type ModelControl } from '@web/spaces/canvas/generate/mo
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
+import { AudioDynamicsControl } from '@web/spaces/canvas/mini-tool/AudioDynamicsControl';
+import { AudioBandWaveform } from '@web/spaces/canvas/mini-tool/AudioBandWaveform';
+import { AudioEqControl } from '@web/spaces/canvas/mini-tool/AudioEqControl';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
+import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
@@ -281,8 +290,9 @@ function ReferencePreview({
  * @returns The text.
  */
 function clock(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds - minutes * 60;
+  const tenths = Math.round(seconds * 10);
+  const minutes = Math.floor(tenths / 600);
+  const rest = (tenths % 600) / 10;
   return `${String(minutes).padStart(2, '0')}:${rest.toFixed(1).padStart(4, '0')}`;
 }
 
@@ -508,6 +518,11 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
             ))}
           </>
         )}
+        {spec.noteKey === undefined ? null : (
+          <p data-testid='mini-tool-note' className='text-xs text-muted-foreground'>
+            {t(spec.noteKey)}
+          </p>
+        )}
         {promptFirst ? null : promptBox}
       </div>
       <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
@@ -605,6 +620,21 @@ function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX
 }
 
 /**
+ * How a number param's value reads beside its slider: signed, as a balance
+ * (Center, L n, R n), as the noise reduction it sets, or as the number and its
+ * unit.
+ * @param value - The value.
+ * @param param - The param.
+ * @returns The reading.
+ */
+function numberReading(value: number, param: NumberParam): string {
+  if (param.format === 'signed') return signedReading(value);
+  if (param.format === 'denoiseDb') return `${denoiseReductionDb(value)} dB`;
+  if (param.format === 'balance') return value === 0 ? 'Center' : value < 0 ? `L ${-value}` : `R ${value}`;
+  return param.unit === undefined ? String(value) : `${value}${param.unit}`;
+}
+
+/**
  * The control one browser or container param calls for.
  * @param root0 - Component props.
  * @param root0.param - The param.
@@ -629,10 +659,39 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           max={param.max}
           step={param.step}
           value={typeof params[param.key] === 'number' ? (params[param.key] as number) : param.default}
-          format={(value) => (param.unit === undefined ? String(value) : `${value}${param.unit}`)}
+          format={(value) => numberReading(value, param)}
           onChange={onParams}
           testIdPrefix='mini-tool-param'
           className={undefined}
+          // A value that runs both ways fills from its neutral point.
+          origin={param.format === 'signed' || param.format === 'balance' ? 0 : undefined}
+        />
+      );
+    case 'toggle': {
+      const on = typeof params[param.key] === 'boolean' ? (params[param.key] as boolean) : param.default;
+      return (
+        <ParamToggleRow
+          id={`mini-tool-param-${param.key}-switch`}
+          label={label}
+          checked={on}
+          onCheckedChange={(checked) => onParams({ [param.key]: checked })}
+        />
+      );
+    }
+    case 'eq':
+      return (
+        <AudioEqControl
+          value={params[param.key] as EqValue | undefined}
+          label={label}
+          onChange={(value) => onParams({ [param.key]: value })}
+        />
+      );
+    case 'dynamics':
+      return (
+        <AudioDynamicsControl
+          value={params[param.key] as DynamicsValue | undefined}
+          label={label}
+          onChange={(value) => onParams({ [param.key]: value })}
         />
       );
     case 'enum': {
@@ -655,6 +714,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
             );
           }}
           testIdPrefix={`mini-tool-param-${param.key}`}
+          stack={param.layout === 'stack'}
         />
       );
     }
@@ -694,6 +754,8 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome-sm bg-muted'>
             {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
               <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
+            ) : spec.source === 'audio' && source.url !== undefined ? (
+              <AudioBandWaveform url={source.url} duration={source.duration} sizeBytes={source.sizeBytes} />
             ) : null}
             <div data-part='before' className='absolute inset-y-0 left-0 bg-background/70' style={{ width: `${from}%` }} />
             <div data-part='after' className='absolute inset-y-0 right-0 bg-background/70' style={{ left: `${to}%` }} />

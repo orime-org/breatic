@@ -26,6 +26,7 @@ import type { UprightOrder, UprightOutcome } from "@ingest/upright-run.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import {
   COVER_CONTENT_TYPE,
+  PEAKS_CONTENT_TYPE,
   PREVIEW_CONTENT_TYPE,
 } from "@ingest/probe-command.js";
 
@@ -53,6 +54,11 @@ export interface ProbeRequest {
    */
   wantPreview: boolean;
   /**
+   * Whether to read an audio object's peaks (inner#1305 §4.4); only audio with
+   * a length gets them (`peaksSampleCount`).
+   */
+  wantPeaks?: boolean;
+  /**
    * When the task this run serves runs out, in epoch ms (inner#1367). Every
    * tool in the run is held to it and to nothing of its own. An instant rather
    * than a span, so time a cold start spent before the request arrived is
@@ -74,6 +80,8 @@ export interface ProbeAnswer {
   cover: Uint8Array | null;
   /** The preview, when one was cut. */
   preview: Uint8Array | null;
+  /** An audio object's peaks file, when one was read. */
+  peaks: Uint8Array | null;
   /** Whether a container answered at all, which an empty report cannot say. */
   answered: boolean;
   /** How turning the picture upright ended, when the run was asked to. */
@@ -86,6 +94,7 @@ export interface ProbeAnswer {
  * @param cover - The PNG frame, or null when none was lifted.
  * @param preview - The WebP preview, or null when none was cut.
  * @param upright - How turning the picture upright ended, when it was asked.
+ * @param peaks - The peaks file, or null when none was read.
  * @returns The response the container sends.
  */
 export function buildProbeAnswer(
@@ -93,6 +102,7 @@ export function buildProbeAnswer(
   cover: Uint8Array | null,
   preview: Uint8Array | null = null,
   upright: UprightOutcome | null = null,
+  peaks: Uint8Array | null = null,
 ): Response {
   const form = new FormData();
   form.set("meta", JSON.stringify(report));
@@ -110,6 +120,9 @@ export function buildProbeAnswer(
       "preview",
       new File([preview], "preview.webp", { type: PREVIEW_CONTENT_TYPE }),
     );
+  }
+  if (peaks !== null) {
+    form.set("peaks", new File([peaks], "peaks.json", { type: PEAKS_CONTENT_TYPE }));
   }
   return new Response(form);
 }
@@ -132,6 +145,7 @@ export const UNREAD_ANSWER: ProbeAnswer = Object.freeze({
   report: NOTHING_FOUND,
   cover: null,
   preview: null,
+  peaks: null,
   answered: false,
   upright: null,
 });
@@ -180,6 +194,7 @@ export async function readProbeAnswer(
     report: parsed,
     cover: await bytesOf(form, "cover"),
     preview: await bytesOf(form, "preview"),
+    peaks: await bytesOf(form, "peaks"),
     answered: true,
     upright: uprightOf(form.get("upright")),
   };

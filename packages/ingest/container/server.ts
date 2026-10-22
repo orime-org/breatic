@@ -6,7 +6,8 @@
  *
  * Two endpoints. The probe runs ffprobe over the object it was handed, lifts
  * a cover frame with ffmpeg when asked for one, cuts a preview with vips when
- * asked for one and there is still time, and answers with all three. The run
+ * asked for one and there is still time, reads an audio object's peaks when
+ * asked for them, and answers with all of it. The run
  * takes one mini-tool job (inner#888), answers 202, and reports on its own
  * when the job ends. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
@@ -38,15 +39,18 @@ import {
 import {
   PREVIEW_MAX_BYTES,
   PROBE_MAX_BYTES,
+  peaksArgs,
   probeArgs,
   coverArgs,
   previewArgs,
   readProbeOutput,
 } from "@ingest/probe-command.js";
+import { peaksSampleCount } from "@ingest/peaks-step.js";
 import { previewSource } from "@ingest/preview-step.js";
 import type { UprightOrder } from "@ingest/upright-run.js";
 import { runUpright, type UprightDeps } from "./upright-probe.js";
 import { openObject, runTool } from "./run-tool.js";
+import { streamPeaks } from "./stream-peaks.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
@@ -254,6 +258,7 @@ createServer((req, res) => {
       objectUrl: asked.objectUrl,
       wantCover: asked.wantCover === true,
       wantPreview: asked.wantPreview === true,
+      wantPeaks: asked.wantPeaks === true,
       deadlineAt: asked.deadlineAt,
     };
     // Every tool in this run is held to the task's deadline and nothing else
@@ -272,6 +277,9 @@ createServer((req, res) => {
 
     const found = await probe(request.objectUrl, request.wantCover, signal);
     const preview = await cutPreview(request, found, signal);
-    send(res, buildProbeAnswer(found.report, found.cover, preview));
+    const samples = peaksSampleCount({ wantPeaks: request.wantPeaks === true, report: found.report });
+    const peaks =
+      samples === null ? null : await streamPeaks("ffmpeg", peaksArgs(request.objectUrl), samples, signal);
+    send(res, buildProbeAnswer(found.report, found.cover, preview, null, peaks));
   })();
 }).listen(PROBE_PORT);
