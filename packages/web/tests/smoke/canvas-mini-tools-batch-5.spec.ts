@@ -43,7 +43,7 @@ const FIXTURES = resolve(__dirname, '../fixtures/mini-tools');
 const SERVED = 'https://smoke-audio.test/audio/2026-10-21/1792580000000_18f58aed-b802-4243-a8ea-02d377de9679.mp3';
 
 /** What the spec answers for the peaks file beside the audio, and what was asked of it. */
-const served = { peaks: null as string | null, decodes: 0 };
+const served = { peaks: null as string | null, decodes: 0, peaksReads: 0 };
 
 /** The audio tools in the order the Tools submenu lists them. */
 const AUDIO_TOOLS = [
@@ -109,10 +109,12 @@ test.describe('panels', () => {
     const speech = readFileSync(join(FIXTURES, 'speech.mp3'));
     served.peaks = null;
     served.decodes = 0;
+    served.peaksReads = 0;
     await page.route('https://smoke-audio.test/**', (route) => {
       const url = route.request().url();
       const cors = { 'access-control-allow-origin': '*' };
       if (url.endsWith('.peaks.json')) {
+        served.peaksReads += 1;
         return served.peaks === null
           ? route.fulfill({ status: 404, body: 'Not found', headers: cors })
           : route.fulfill({ status: 200, body: served.peaks, headers: { ...cors, 'content-type': 'application/json' } });
@@ -192,9 +194,15 @@ test.describe('panels', () => {
 
     // Longer than the ten minutes the band decodes.
     const long = await seedAudio({ duration: 4000, size: 98_304 });
+    const reads = served.peaksReads;
+    const decodes = served.decodes;
     await openTool(page, long, 'audio.cut');
     await expect(page.getByTestId('mini-tool-range-band')).toBeVisible();
+    // Only a band past the ceilings reads its missing peaks again, so a second
+    // read says it chose to stay plain.
+    await expect.poll(() => served.peaksReads - reads, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
     await expect(page.getByTestId('mini-tool-waveform')).toHaveCount(0);
+    expect(served.decodes).toBe(decodes);
   });
 
   test('cut draws an hour-long source from its peaks file without decoding the audio', async () => {
@@ -215,6 +223,7 @@ test.describe('panels', () => {
     const long = await seedAudio({ duration: 3600, size: 144_000_000 });
     await openTool(page, long, 'audio.cut');
     await expect(page.getByTestId('mini-tool-range-band')).toBeVisible();
+    await expect.poll(() => served.peaksReads).toBeGreaterThan(0);
     await expect(page.getByTestId('mini-tool-waveform')).toHaveCount(0);
 
     // Written while the band is open: the band reads again every 5 s.
@@ -324,6 +333,8 @@ interface DocNode {
 /** One real run: the tool, its source and what is set on its panel first. */
 interface Run {
   tool: string;
+  /** What the result is looked up by, when the tool runs more than once. */
+  name?: string;
   source: 'speech.mp3' | 'music.wav';
   set?: () => Promise<void>;
 }
@@ -332,7 +343,7 @@ interface Run {
 let MEDIA = '';
 /** Uploaded source nodes by file name. */
 const sources = new Map<string, string>();
-/** Result node ids by tool. */
+/** Result node ids by run name, or by tool. */
 const results = new Map<string, string>();
 
 /**
@@ -395,6 +406,32 @@ async function upload(file: string): Promise<string> {
 }
 
 /**
+ * A stored URL's integrated loudness, as the EBU R128 meter reads it.
+ * @param url - The URL.
+ * @returns Its loudness in LUFS.
+ */
+function loudness(url: string): number {
+  const out = execFileSync('ffmpeg', ['-v', 'info', '-nostats', '-i', url, '-af', 'ebur128', '-f', 'null', '-'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  return Number(/Integrated loudness:\s+I:\s+(-?[\d.]+) LUFS/.exec(out)?.[1]);
+}
+
+/**
+ * How often a stored URL's first channel crosses zero, which follows its pitch.
+ * @param url - The URL.
+ * @returns Crossings per sample.
+ */
+function zeroCrossings(url: string): number {
+  const out = execFileSync('ffmpeg', ['-v', 'info', '-nostats', '-i', url, '-af', 'astats', '-f', 'null', '-'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  return Number(/Zero crossings rate:\s+([\d.]+)/.exec(out)?.[1]);
+}
+
+/**
  * A stored URL as ffprobe reads it.
  * @param url - The URL.
  * @returns Its container, length and audio stream.
@@ -423,6 +460,15 @@ const RUNS: Run[] = [
     set: () => page.getByTestId('mini-tool-param-target--23').click(),
   },
   { tool: 'audio.speed', source: 'music.wav', set: () => nudge('mini-tool-param-rate-slider', 'ArrowRight', 2) },
+  {
+    tool: 'audio.speed',
+    name: 'audio.speed pitch follows',
+    source: 'music.wav',
+    set: async () => {
+      await nudge('mini-tool-param-rate-slider', 'ArrowRight', 2);
+      await page.getByTestId('mini-tool-param-keepPitch-switch').click();
+    },
+  },
   // Two seconds off the start: PageUp moves the start by ten steps of 0.1 s.
   { tool: 'audio.cut', source: 'music.wav', set: () => nudge('mini-tool-range', 'PageUp', 2) },
   { tool: 'audio.eq', source: 'music.wav', set: () => page.getByTestId('mini-tool-eq-preset-bass_boost').click() },
@@ -495,7 +541,7 @@ test.describe('real runs', () => {
           { timeout: 30_000 },
         )
         .toBe(1);
-      results.set(run.tool, made[0]!);
+      results.set(run.name ?? run.tool, made[0]!);
       // Results open beside their source; they are read from the document,
       // so they move off below, out of the way of the next menu.
       await moveNode(made[0]!, { x: results.size * 450, y: 3000 });
@@ -515,12 +561,19 @@ test.describe('real runs', () => {
     const nodes = new Map((await documentNodes()).map((n) => [n.id, n.content]));
     const read = (tool: string): ReturnType<typeof probe> => probe(nodes.get(results.get(tool)!)!);
     for (const run of RUNS.filter((r) => r.tool !== 'audio.enhance')) {
-      const out = read(run.tool);
+      const out = read(run.name ?? run.tool);
       expect(out.format, run.tool).toContain('mp4');
       expect(out.codec, run.tool).toBe('aac');
     }
     expect(read('audio.enhance').codec).toMatch(/^pcm_/);
+    // Stored as the type the model declares, so a download is named for what it holds.
+    expect(nodes.get(results.get('audio.enhance')!)).toMatch(/\.wav$/);
+    expect(Math.abs(loudness(nodes.get(results.get('audio.normalize')!)!) + 23)).toBeLessThanOrEqual(1);
     expect(read('audio.speed').duration).toBeCloseTo(8 / 1.5, 0);
+    expect(read('audio.speed pitch follows').duration).toBeCloseTo(8 / 1.5, 0);
+    // At 1.5× the 220 Hz side keeps its pitch, or rises with the speed to 330 Hz.
+    const url = (name: string): string => nodes.get(results.get(name)!)!;
+    expect(zeroCrossings(url('audio.speed pitch follows')) / zeroCrossings(url('audio.speed'))).toBeCloseTo(1.5, 1);
     expect(read('audio.cut').duration).toBeCloseTo(6, 0);
     expect(read('audio.pitch').duration).toBeCloseTo(8, 0);
     expect(read('audio.pan').channels).toBe(2);
