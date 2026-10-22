@@ -146,7 +146,11 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
   const held = heldRange(selection);
   if (held !== null) {
     const slice = view.state.doc.slice(held.from, held.to);
-    return { blocks: fragmentToBlocks(slice.content as never) as never[], slice };
+    // The blocks are read with the nodes around the range: when both ends
+    // share a block, the table nested under it, the range opens inside that
+    // block and its own words sit outside any block of their own.
+    const whole = view.state.doc.slice(held.from, held.to, true);
+    return { blocks: fragmentToBlocks(whole.content as never) as never[], slice };
   }
   if (!holdsTable(selection)) return null;
   return { blocks: fragmentToBlocks(selection.content().content as never) as never[], slice: null };

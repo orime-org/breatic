@@ -177,3 +177,40 @@ describe('copying from a table whose cells hold blocks', () => {
     expect(editor.prosemirrorState.doc.textContent).toContain('a2');
   });
 });
+
+describe('copying a selection that starts in the words of the block a table is nested under', () => {
+  /**
+   * Opens a list item with a table and a line nested under it.
+   * @returns The editor.
+   */
+  const nested = (): Editor => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'bulletListItem', content: 'item', children: [tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }), { type: 'paragraph', content: 'kid' }] },
+    ] as never);
+    return editor;
+  };
+
+  it('carries the item\'s selected words with a selection ending in the table', () => {
+    const editor = nested();
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at(editor, 'item') + 2, at(editor, 'b1') + 1)));
+
+    const data = clip(editor);
+
+    expect(data['text/plain']).toContain('em');
+    expect(data['text/plain']).toContain('<table>');
+  });
+
+  it('carries the item\'s selected words with a selection over the table to the line under it', () => {
+    const editor = nested();
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at(editor, 'item') + 2, at(editor, 'kid') + 2)));
+
+    const data = clip(editor);
+
+    expect(data['text/plain']).toContain('em');
+    expect(data['text/plain']).toContain('<table>');
+    expect(data['text/plain']).toContain('ki');
+  });
+});
