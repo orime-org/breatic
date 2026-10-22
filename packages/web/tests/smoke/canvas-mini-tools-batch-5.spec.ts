@@ -232,6 +232,35 @@ test.describe('panels', () => {
     expect(served.decodes).toBe(0);
   });
 
+  // wavesurfer.js lifts its waveform with a z-index inside its shadow root;
+  // the band's handles and dimmed ends must still sit above it.
+  test('cut drags a handle over the drawn waveform with the mouse and dims the cut-away end', async () => {
+    served.peaks = JSON.stringify({ version: 1, peaks: Array.from({ length: 1000 }, () => 255) });
+    const id = await seedAudio();
+    await openTool(page, id, 'audio.cut');
+    const band = page.getByTestId('mini-tool-range-band');
+    await expect(band.getByTestId('mini-tool-waveform')).toHaveAttribute('data-from', 'peaks', { timeout: 15_000 });
+    const start = band.getByRole('slider').first();
+    const at = (await start.boundingBox())!;
+    const box = (await band.boundingBox())!;
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.4, at.y + at.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText(/^00:00\.0 – /)).toHaveCount(0);
+    // Under the handles' slider, the dimmed end is painted over the waveform.
+    const upper = await page.evaluate(
+      ([x, y]) => {
+        const hit = document
+          .elementsFromPoint(x!, y!)
+          .find((el) => el.getAttribute('data-part') === 'before' || el.closest('[data-testid="mini-tool-waveform"]') !== null);
+        return hit?.getAttribute('data-part') ?? 'waveform';
+      },
+      [box.x + box.width * 0.2, box.y + box.height / 2],
+    );
+    expect(upper).toBe('before');
+  });
+
   test('the equalizer fills its bands from a preset and turns Custom when one band moves', async () => {
     const id = await seedAudio();
     await openTool(page, id, 'audio.eq');

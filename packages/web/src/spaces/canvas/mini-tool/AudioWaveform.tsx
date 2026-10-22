@@ -77,7 +77,9 @@ export const AudioWaveform = React.memo(function AudioWaveform({
       data-testid='mini-tool-waveform'
       data-state={failed ? 'failed' : 'drawn'}
       data-from={peaks !== undefined && duration !== undefined ? 'peaks' : 'decode'}
-      className={failed ? 'hidden' : 'absolute inset-0 text-foreground'}
+      // wavesurfer.js lifts its waveform with a z-index inside its shadow root;
+      // isolating the box keeps it under the band's dimmed ends and handles.
+      className={failed ? 'hidden' : 'absolute inset-0 isolate text-foreground'}
     />
   );
 });
