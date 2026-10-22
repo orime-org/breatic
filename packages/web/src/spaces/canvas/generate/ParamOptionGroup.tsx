@@ -34,6 +34,8 @@ interface ParamOptionGroupProps {
    * columns (inner#1304); a row that cannot hold every label wraps.
    */
   even?: boolean;
+  /** Whether the options list one to a row, for long labels of equal weight. */
+  stack?: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export const PARAM_OPTION_CLASS =
  * @param root0.testIdPrefix - `data-testid` stem for the options.
  * @param root0.className - Extra classes on the wrapper.
  * @param root0.even - Whether every option takes the same width.
+ * @param root0.stack - Whether the options list one to a row.
  * @returns The option group, or null when there is nothing to offer.
  */
 export function ParamOptionGroup({
@@ -97,6 +100,7 @@ export function ParamOptionGroup({
   testIdPrefix,
   className,
   even = false,
+  stack = false,
 }: ParamOptionGroupProps): React.JSX.Element | null {
   if (options.length === 0) return null;
   return (
@@ -108,7 +112,7 @@ export function ParamOptionGroup({
         dead space on the right — 75px in the ten-preset duration group, against
         the 12px padding on the left, and a different amount per row.
       */}
-      <div className='flex flex-wrap gap-1.5'>
+      <div className={stack ? 'flex flex-col gap-1.5' : 'flex flex-wrap gap-1.5'} data-layout={stack ? 'stack' : undefined}>
         {options.map((option) => (
           <Button
             key={String(option.value)}

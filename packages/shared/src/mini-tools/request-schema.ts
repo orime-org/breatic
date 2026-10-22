@@ -12,6 +12,8 @@
 import { z } from "zod";
 
 import { ADJUST_RANGES } from "@shared/adjust-value.js";
+import { DYNAMICS_PRESETS, DYNAMICS_RANGES, type DynamicsPreset } from "@shared/audio-dynamics.js";
+import { EQ_BANDS_HZ, EQ_GAIN_RANGE, EQ_PRESETS, type EqPreset } from "@shared/audio-eq.js";
 import { isModelTool } from "@shared/mini-tools/derive.js";
 import { mostOutputsOf, outputsOf } from "@shared/mini-tools/outputs.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
@@ -61,6 +63,20 @@ function paramSchema(param: MiniToolParam, cellsCap: number): z.ZodType {
       return z.array(z.number().min(param.item.min).max(param.item.max)).max(param.maxItems);
     case "cells":
       return z.array(z.number().int().nonnegative()).max(cellsCap);
+    case "toggle":
+      return z.boolean();
+    case "eq":
+      return z.strictObject({
+        preset: z.enum([...(Object.keys(EQ_PRESETS) as EqPreset[]), "custom"]),
+        gains: z.array(z.number().min(EQ_GAIN_RANGE.min).max(EQ_GAIN_RANGE.max)).length(EQ_BANDS_HZ.length),
+      });
+    case "dynamics":
+      return z.strictObject({
+        preset: z.enum([...(Object.keys(DYNAMICS_PRESETS) as DynamicsPreset[]), "custom"]),
+        ...Object.fromEntries(
+          Object.entries(DYNAMICS_RANGES).map(([field, range]) => [field, z.number().min(range.min).max(range.max)]),
+        ),
+      });
   }
 }
 

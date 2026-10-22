@@ -1064,6 +1064,9 @@ importers:
       vanilla-cookieconsent:
         specifier: 3.1.0
         version: 3.1.0
+      wavesurfer.js:
+        specifier: 8.0.2
+        version: 8.0.2
       web-vitals:
         specifier: ^2.1.4
         version: 2.1.4
@@ -11000,6 +11003,9 @@ packages:
     resolution: {integrity: sha512-g9CXukMjazlJJVQ3OHzXsnG25KFYgSgKMIyoJrD8ggr0DbS9UNF7OzIqWmmKKBMedkxj3T01uqEaGnn+y7QhMA==}
     engines: {node: ^20.12||^22.13||>=24.0}
     hasBin: true
+
+  wavesurfer.js@8.0.2:
+    resolution: {integrity: sha512-REv2U0DvZIm/i4K61qA7OZ3dGjFNtZFbh0PGRJ4EPcCU3Vs2tiPzIVFw1jipapIQnib76OPH2T8ARNSW47jN+w==}
 
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
@@ -22004,6 +22010,8 @@ snapshots:
       xml-name-validator: 5.0.0
 
   watskeburt@5.0.3: {}
+
+  wavesurfer.js@8.0.2: {}
 
   web-namespaces@2.0.1: {}
 

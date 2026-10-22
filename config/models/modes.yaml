@@ -170,6 +170,11 @@ audio:
       description: >
         Separate vocals from instrumental in any audio track. Outputs
         isolated vocal or instrumental stem.
+    enhance:
+      label: Audio Enhance
+      description: >
+        Clean speech in one pass: background noise and room echo removed,
+        loudness levelled. Used by the audio enhance mini-tool.
 
 tts:
   modes:

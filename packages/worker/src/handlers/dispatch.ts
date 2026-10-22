@@ -24,7 +24,7 @@ import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
-import { nodeHistoryService } from "@breatic/domain";
+import { modelCatalog, nodeHistoryService } from "@breatic/domain";
 import {
   assetService,
   createUsageRecorder,
@@ -48,7 +48,7 @@ import {
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
-import { isModelTool, miniToolById } from "@breatic/shared/mini-tools";
+import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -670,6 +670,7 @@ async function runTaskBody(
       projectId,
       taskId,
       deadlineAt,
+      outputType: declaredOutputType(model, toolId),
     });
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
@@ -1390,6 +1391,38 @@ const OUTPUT_CONTENT_TYPES: Record<string, string> = {
   three_d: "model/gltf-binary",
 };
 
+/**
+ * The type a run's model declares it returns, which its result is stored as
+ * (inner#1305 §7.4). A mini-tool's job carries no model, so a model tool's is
+ * the one the registry pins it to.
+ * @param model - The job's model.
+ * @param toolId - The job's mini-tool, when it runs one.
+ * @returns The declared type, or undefined when the model declares none or
+ *   the run has no model.
+ */
+export function declaredOutputType(model: string | undefined, toolId: string | undefined): string | undefined {
+  const spec = toolId === undefined ? undefined : miniToolById(toolId);
+  const runModel = model ?? (spec === undefined ? undefined : modelOf(spec));
+  return runModel === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), runModel)?.output_type;
+}
+
+/**
+ * The extension a result is stored under when its model declares the type it
+ * returns (inner#1305), one per media type an upload may be.
+ */
+const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "audio/mpeg": ".mp3",
+  "audio/wav": ".wav",
+  "audio/mp4": ".m4a",
+  "audio/webm": ".webm",
+};
+
 /** Provider-level result fields that may carry a URL consumers read. */
 const EXTRA_URL_FIELDS = [
   "result_url",
@@ -1424,6 +1457,8 @@ const EXTRA_URL_FIELDS = [
  * @param opts.projectId - Project the assets belong to, if any.
  * @param opts.taskId - Producing task id (asset cost link).
  * @param opts.deadlineAt - When the task runs out; every store is cut there.
+ * @param opts.outputType - The type the run's model declares it returns, which
+ *   names the key's extension and the stored type in place of the task type's.
  * @returns The outputs with temp URLs / buffers replaced by canonical storage URLs.
  * @throws {Error} When an output could not be stored or registered. Registering
  *   is not separable here: the report the Worker sends is what registers, so a
@@ -1432,7 +1467,7 @@ const EXTRA_URL_FIELDS = [
 export async function persistOutputs(
   outputs: PersistedOutput[],
   extras: Record<string, unknown>,
-  opts: { taskType: string; userId: string; projectId?: string; taskId: string; deadlineAt: number },
+  opts: { taskType: string; userId: string; projectId?: string; taskId: string; deadlineAt: number; outputType?: string | undefined },
 ): Promise<PersistedOutput[]> {
   const persisted: PersistedOutput[] = [];
   const adapter = await getStorageAdapter();
@@ -1458,9 +1493,12 @@ export async function persistOutputs(
       generationTaskId: opts.taskId,
       deadlineAt: opts.deadlineAt,
       taskType: opts.taskType,
-      ext: OUTPUT_EXTENSIONS[opts.taskType] ?? ".bin",
+      ext:
+        (opts.outputType === undefined ? undefined : EXTENSION_OF_TYPE[opts.outputType]) ??
+        OUTPUT_EXTENSIONS[opts.taskType] ??
+        ".bin",
       contentType:
-        contentType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
+        contentType ?? opts.outputType ?? OUTPUT_CONTENT_TYPES[opts.taskType] ?? "application/octet-stream",
     };
   };
 

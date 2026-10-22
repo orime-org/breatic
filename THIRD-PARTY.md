@@ -45,7 +45,9 @@ every new dependency, which is what that review is for.
 
 It reads media numbers, cuts cover frames, and runs the mini-tools' video
 operations: crop, speed, cut, colour adjustment, audio denoise, stabilisation
-(`libvidstab`) and HDR conversion (`zimg` and `libx265`).
+(`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the audio
+operations: denoise, loudness, speed, cut, equaliser, compressor, pan and
+voice enhance.
 
 Version 3 of the GPL: Alpine configures this build with `--enable-gpl` **and**
 `--enable-version3`, and asked directly it answers
@@ -88,6 +90,21 @@ texts and a `SOURCE` file at `/usr/share/vips-source/`, written from the
 installed packages while the image is built, as the FFmpeg one above is, so a
 rebuild that resolves `=~8.17` to a later release writes the later one rather
 than repeating what is written here.
+
+### SoX in the media container
+
+| | |
+|---|---|
+| Version | `14.4.2-r14` |
+| Origin | Alpine 3.23, installed with `apk add sox=~14.4` ([packages/ingest/Dockerfile](./packages/ingest/Dockerfile)) |
+| Licence | **GPL-2.0-or-later AND LGPL-2.1-or-later** (Alpine's package metadata) |
+| Source | `https://downloads.sourceforge.net/project/sox/sox/14.4.2/sox-14.4.2.tar.bz2` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/41db20bd083f5123b2d88808f935e7bba0f0a914/community/sox` for the recipe Alpine built it with |
+
+It runs the audio mini-tools' reverb and pitch shift. The container's service
+runs `sox` as a separate program, piping the decoded sound through it, and
+loads none of its libraries. The image carries the licence texts and a
+`SOURCE` file at `/usr/share/sox-source/`, written from the installed package
+while the image is built, as the FFmpeg one above is.
 
 ## Packages in our container images
 

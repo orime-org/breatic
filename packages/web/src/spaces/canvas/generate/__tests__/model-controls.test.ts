@@ -459,3 +459,15 @@ describe('every param a model tool shows is named in every locale', () => {
     expect(keys.filter((key) => !json.canvas.generatePanel.param?.[key])).toEqual([]);
   });
 });
+
+// inner#1305: a strength the model takes from 0 to 1 reads as a percentage.
+describe('controlsForKeys with a percent display', () => {
+  it('carries the display onto the range and names no steps', () => {
+    const enhance = model({
+      strength: { description: '', min: 0, max: 1, step: 0.05, default: 0.85, fill: 'tool' },
+    });
+    expect(controlsForKeys(enhance, ['strength'], { strength: 'percent' })).toEqual([
+      { kind: 'range', name: 'strength', min: 0, max: 1, step: 0.05, display: 'percent' },
+    ]);
+  });
+});

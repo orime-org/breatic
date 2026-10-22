@@ -100,16 +100,21 @@ const MINI_TOOL_SOURCES: readonly [MiniToolMedium, string][] = [
   ["audio", "Sound"],
 ];
 
+/** What the list adds to a tool that runs in the media container. */
+const BILLED_BY_RUN_TIME = "billed by how long it runs";
+
 /**
  * The Mini-tools list, read off the registry: each tool by the name its menu
- * row shows, and what it is for.
+ * row shows, what it is for, and for the ones run in the media container,
+ * that they are billed by run time.
  * @returns One line per kind of node, then one per tool.
  */
 function miniToolLines(): string[] {
   return MINI_TOOL_SOURCES.flatMap(([source, name]) => [
     `- ${name}:`,
     ...MINI_TOOLS.filter((tool) => tool.source === source).map(
-      (tool) => `  - ${quoted(t(tool.labelKey))}: ${tool.guide}.`,
+      (tool) =>
+        `  - ${quoted(t(tool.labelKey))}: ${tool.guide}${tool.run.kind === "container" ? ` (${BILLED_BY_RUN_TIME})` : ""}.`,
     ),
   ]);
 }
@@ -919,7 +924,7 @@ export function renderProductGuide(): string {
       `only a box for what to change, which must be filled, and ${quoted(t("canvas.generatePanel.param.resolution"))}; ` +
       "the picture itself stays as it was. On these three other tools a box at the bottom takes anything to add and " +
       "can be left empty. The bottom line says what it costs: the picture tools crop, rotate, adjust, markup and " +
-      "grid split are free, the video tools that work on the file are billed by how long they run, and the others show an " +
+      `grid split are free, the tools marked (${BILLED_BY_RUN_TIME}) in the list above are billed that way, and the others show an ` +
       "estimate. The X, Esc or a click on empty canvas closes the panel; in " +
       `${quoted(t("canvas.miniTool.image.mark.label"))}, Esc first leaves the text being typed, then lets go of ` +
       "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
@@ -937,7 +942,7 @@ export function renderProductGuide(): string {
       "stays as it was. The new nodes appear at once; until our server has taken the work in, the person who " +
       "pressed sees a grey shimmering placeholder on them, and a run that ends before then shows a red line on " +
       "them saying why, the same as an upload. What the run did shows in the new node's column of task icons and " +
-      "its task list, the same as a generation. If the node's picture or video changes while the panel is open, " +
+      "its task list, the same as a generation. If the node's picture, video or sound changes while the panel is open, " +
       "the crop, range and turns go back to their start, the expand frame goes back over the picture, and " +
       "anything drawn or written on it is cleared.",
     "",

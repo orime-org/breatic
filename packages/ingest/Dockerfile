@@ -23,9 +23,14 @@ WORKDIR /src
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
-# The mini-tool runs build their colour filter from this one file of shared
-# (src/jobs/op-args.ts), resolved through tsconfig's @shared/* path.
+# The mini-tool runs build their colour, denoise, equaliser and compressor filters, and
+# the probe reads audio peaks, from these files of shared (src/jobs/op-args.ts,
+# container/stream-peaks.ts), resolved through tsconfig's @shared/* path.
 COPY packages/shared/src/adjust-value.ts /shared/src/adjust-value.ts
+COPY packages/shared/src/audio-eq.ts /shared/src/audio-eq.ts
+COPY packages/shared/src/audio-denoise.ts /shared/src/audio-denoise.ts
+COPY packages/shared/src/audio-dynamics.ts /shared/src/audio-dynamics.ts
+COPY packages/shared/src/audio-peaks.ts /shared/src/audio-peaks.ts
 COPY scripts/release.mjs ./scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
@@ -51,7 +56,7 @@ ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.version=$RELEASE_VERSION \
       org.opencontainers.image.revision=$VCS_REF
-RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0 vips-tools=~8.17
+RUN apk add --no-cache nodejs=~24 ffmpeg=~8.0 vips-tools=~8.17 sox=~14.4
 
 # ── ffmpeg is GPL-licensed (#178) ────────────────────────────────────────
 # Alpine builds ffmpeg with GPL components (x264 among them), so distributing
@@ -150,6 +155,34 @@ RUN set -eu; \
     done; \
     echo "The licence texts are in this directory."; \
   } > /usr/share/vips-source/SOURCE
+
+# ── sox is GPL-licensed (inner#1305) ─────────────────────────────────────
+# The audio mini-tools' reverb and pitch run the sox program, which Alpine
+# ships under GPL-2.0-or-later AND LGPL-2.1-or-later. It is met the way
+# ffmpeg's and vips's are: the service runs it as a separate program and
+# loads no library of it, the licence texts travel with the image, and a
+# SOURCE file names the package, its licence and the recipe it was built
+# from, every value read out of the installed package.
+COPY packages/ingest/container/COPYING.GPLv2 /usr/share/sox-source/COPYING.GPLv2
+COPY packages/ingest/container/COPYING.LGPLv2.1 /usr/share/sox-source/COPYING.LGPLv2.1
+RUN set -eu; \
+  info=$(awk '/^P:sox$/,/^$/' /lib/apk/db/installed); \
+  version=$(printf '%s\n' "$info" | sed -n 's/^V://p'); \
+  licence=$(printf '%s\n' "$info" | sed -n 's/^L://p'); \
+  commit=$(printf '%s\n' "$info" | sed -n 's/^c://p'); \
+  upstream=$(printf '%s\n' "$version" | sed 's/-r[0-9]*$//'); \
+  repo=$(apk policy sox | tail -1 | sed 's#.*/##'); \
+  { \
+    echo "sox $version, $licence."; \
+    echo; \
+    echo "Built by Alpine Linux from the recipe at this exact commit:"; \
+    echo "  https://gitlab.alpinelinux.org/alpine/aports/-/tree/$commit/$repo/sox"; \
+    echo; \
+    echo "The program's own source for this version:"; \
+    echo "  https://downloads.sourceforge.net/project/sox/sox/$upstream/sox-$upstream.tar.bz2"; \
+    echo; \
+    echo "The licence texts are in this directory."; \
+  } > /usr/share/sox-source/SOURCE
 
 COPY --from=build /out/server.mjs /app/server.mjs
 COPY --from=build /out/build-info.json /app/build-info.json

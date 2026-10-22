@@ -743,6 +743,34 @@ describe('reading a stored object', () => {
     });
   });
 
+  // The audio-peaks job asks for peaks the same way (inner#1305) and retries
+  // when they came back failed.
+  it('asks for peaks and answers what became of them', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { width: null, height: null, durationSeconds: 61, peaks: 'failed' }),
+    );
+
+    const read = await readStoredMediaAtIngest(WORKER_URL, SECRET, {
+      ...ABOUT,
+      wantPeaks: true,
+    });
+
+    expect(JSON.parse(String(mockedRequest.mock.calls[0]?.[1]?.body))).toMatchObject({
+      wantPeaks: true,
+    });
+    expect(read).toEqual({ width: null, height: null, durationSeconds: 61, peaks: 'failed' });
+  });
+
+  it('reads a peaks outcome it does not know as none given', async () => {
+    mockedRequest.mockResolvedValueOnce(
+      answers(200, { width: null, height: null, durationSeconds: 61, peaks: 'maybe' }),
+    );
+
+    const read = await readStoredMediaAtIngest(WORKER_URL, SECRET, { ...ABOUT, wantPeaks: true });
+
+    expect(read).not.toHaveProperty('peaks');
+  });
+
   it('reads an outcome it does not know as none given', async () => {
     mockedRequest.mockResolvedValueOnce(
       answers(200, { width: 800, height: 450, durationSeconds: null, preview: 'maybe' }),

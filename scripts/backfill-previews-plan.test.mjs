@@ -59,3 +59,10 @@ test("counts whatever outcome the Worker names", () => {
 test("counts a read that named no outcome as failed", () => {
   assert.equal(outcomeOf({}), "failed");
 });
+
+// The peaks backfill (inner#1305) counts the same four outcomes off its own field.
+test("counts the outcome of the field it is asked about", () => {
+  assert.equal(outcomeOf({ preview: "existing", peaks: "generated" }, undefined, "peaks"), "generated");
+  assert.equal(outcomeOf({ preview: "existing" }, undefined, "peaks"), "failed");
+  assert.equal(outcomeOf(null, Object.assign(new Error("gone"), { status: 404 }), "peaks"), "missing");
+});

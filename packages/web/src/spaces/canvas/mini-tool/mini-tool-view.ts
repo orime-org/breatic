@@ -49,6 +49,8 @@ export interface MiniToolSourceInfo {
   duration?: number | undefined;
   /** Where the source plays from. */
   url?: string | undefined;
+  /** What the ledger measured the stored file at, in bytes. */
+  sizeBytes?: number | undefined;
 }
 
 /** A param chosen as an output size: its tiers on the source and the one in use. */
@@ -65,6 +67,8 @@ export type MiniToolRefusal =
   | 'noUsableTier'
   | 'slotMissing'
   | 'slotTooLong'
+  | 'sourceTooLong'
+  | 'sourceTooLarge'
   | 'drawingEmpty'
   | 'adjustNeutral'
   | 'singleTile'
@@ -311,6 +315,8 @@ export function miniToolRefusal(input: {
     if (!slotFilled(slots[slot.key]) && !slotOptional(slot, entry)) return 'slotMissing';
   }
   if (slotLengthCap(spec, entry, slots) !== null) return 'slotTooLong';
+  const limit = sourceLimitOf(spec, entry, source);
+  if (limit !== null) return limit.kind === 'duration' ? 'sourceTooLong' : 'sourceTooLarge';
   if (spec.drawing !== undefined && input.inked !== true) return 'drawingEmpty';
   if (laysOutInSourcePixels(spec) && (source.width === undefined || source.height === undefined)) return 'sourceMissing';
   if (spec.expand !== undefined && source.width !== undefined && source.height !== undefined) {
@@ -329,6 +335,33 @@ export function miniToolRefusal(input: {
   if (shape !== null && shape.rows * shape.cols <= 1) return 'singleTile';
   if (pickedCellsOf(spec, params)?.length === 0) return 'noTilePicked';
   if (promptRequired(spec, entry) && prompt.trim() === '') return 'promptMissing';
+  return null;
+}
+
+/**
+ * The pinned model's ceiling a model tool's source is past (inner#1305 §7.3):
+ * the length or the size its source param declares in the catalog. A source
+ * whose length or size is not known is not held back; the model answers for it.
+ * @param spec - The tool.
+ * @param entry - The pinned model's catalog entry, undefined before the catalog is read.
+ * @param source - What the panel knows of the source.
+ * @returns Which ceiling is passed and its value, or null when none is.
+ */
+export function sourceLimitOf(
+  spec: MiniToolSpec,
+  entry: ModelEntry | undefined,
+  source: MiniToolSourceInfo,
+): { kind: 'duration' | 'bytes'; limit: number } | null {
+  if (!isModelTool(spec)) return null;
+  const declared = entry?.params[spec.sourceParam];
+  const maxSeconds = declared?.max_total_duration;
+  if (maxSeconds !== undefined && source.duration !== undefined && source.duration > maxSeconds) {
+    return { kind: 'duration', limit: maxSeconds };
+  }
+  const maxBytes = declared?.max_bytes;
+  if (maxBytes !== undefined && source.sizeBytes !== undefined && source.sizeBytes > maxBytes) {
+    return { kind: 'bytes', limit: maxBytes };
+  }
   return null;
 }
 

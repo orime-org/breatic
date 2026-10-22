@@ -41,7 +41,7 @@ export type ItemFieldControl =
 export type ModelControl =
   | { kind: 'toggle'; name: string }
   | { kind: 'choice'; name: string; options: ParamOption[] }
-  | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[] }
+  | { kind: 'range'; name: string; min: number; max: number; step: number; stops?: SliderStop[]; display?: 'percent' }
   | { kind: 'text'; name: string }
   | { kind: 'items'; name: string; max: number | undefined; fields: ItemFieldControl[] }
   | { kind: 'cameraAngle'; name: 'camera_angle'; params: CameraAngleParams }
@@ -55,7 +55,7 @@ export type ModelControl =
     };
 
 /** How a mini-tool's registry asks a param to be drawn (inner#1304). */
-export type ParamDisplay = 'swatches' | 'swatchCustom' | 'lightAngle';
+export type ParamDisplay = 'swatches' | 'swatchCustom' | 'lightAngle' | 'percent';
 
 /**
  * How a pose on a sphere reads, azimuth then elevation then distance, each step
@@ -225,6 +225,10 @@ export function controlsForKeys(
     const control = controlFor(name, spec);
     if (control?.kind === 'choice' && display[name] === 'swatches') {
       controls.push({ kind: 'swatches', name, options: control.options, ...(custom !== undefined && { custom }) });
+    } else if (control?.kind === 'range' && display[name] === 'percent') {
+      // A 0–1 value read as a whole percentage, so it names no steps of its own.
+      const { stops: _stops, ...range } = control;
+      controls.push({ ...range, display: 'percent' });
     } else if (control) {
       controls.push(control);
     }

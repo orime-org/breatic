@@ -416,6 +416,28 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustRange, AdjustTerms, AdjustValue } from "@shared/adjust-value.js";
+export {
+  EQ_BANDS_HZ,
+  EQ_GAIN_RANGE,
+  EQ_PRESETS,
+  EQ_PRESET_LABELS,
+  PEAK_LIMITER,
+  buildEqFilter,
+  defaultEqValue,
+  eqValueOfPreset,
+} from "@shared/audio-eq.js";
+export type { EqPreset, EqValue } from "@shared/audio-eq.js";
+export {
+  DYNAMICS_PRESETS,
+  DYNAMICS_PRESET_LABELS,
+  DYNAMICS_RANGES,
+  buildCompressorFilter,
+  defaultDynamicsValue,
+  dynamicsValueOfPreset,
+} from "@shared/audio-dynamics.js";
+export type { DynamicsField, DynamicsPreset, DynamicsSettings, DynamicsValue } from "@shared/audio-dynamics.js";
+export { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
+export { formatBytes } from "@shared/format-bytes.js";
 
 
 // The confirmation email names the instant the window closes, in the buyer's
@@ -791,6 +813,15 @@ export {
   originalUrlFor,
   isStoredObjectUrl,
 } from "@shared/upload/preview.js";
+// Where a stored audio's peaks live and what they hold (inner#1305).
+export { AUDIO_PEAK_COUNT, AUDIO_PEAK_MAX } from "@shared/audio-peaks.js";
+export {
+  PEAKS_SUFFIX,
+  audioPeaksSchema,
+  peaksKeyFor,
+  peaksUrlFor,
+  type AudioPeaks,
+} from "@shared/upload/peaks.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and
 // whether we take it.

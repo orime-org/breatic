@@ -20,6 +20,7 @@ import {
   setRectSide,
   slotLengthCap,
   slotOptional,
+  sourceLimitOf,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 
 /**
@@ -186,6 +187,33 @@ describe('miniToolRefusal', () => {
 
     it('lets picks within the cap run', () => {
       expect(run([{ url: 'a', duration: 7 }, { url: 'b', duration: 8 }])).toBeNull();
+    });
+  });
+
+  // inner#1305 §7.3: the pinned model's own ceilings on the source, said on the press.
+  describe('a source past the model\'s ceilings', () => {
+    const enhance = entry({
+      audio: { description: '', default: null, fill: 'tool', accepts: 'audio', max_total_duration: 1800, max_bytes: 536_870_912 },
+      strength: { description: '', default: 0.85, min: 0, max: 1, step: 0.05, fill: 'tool' },
+    });
+    const run = (source: { duration?: number; sizeBytes?: number }) =>
+      miniToolRefusal({ spec: tool('audio.enhance'), entry: enhance, prompt: '', slots: {}, sourceShown: true, exporting: false, source });
+
+    it('refuses a source longer or larger than the model takes, naming the ceiling', () => {
+      expect(run({ duration: 1801, sizeBytes: 10 })).toBe('sourceTooLong');
+      expect(run({ duration: 60, sizeBytes: 536_870_913 })).toBe('sourceTooLarge');
+      expect(sourceLimitOf(tool('audio.enhance'), enhance, { duration: 1801 })).toEqual({ kind: 'duration', limit: 1800 });
+      expect(sourceLimitOf(tool('audio.enhance'), enhance, { sizeBytes: 536_870_913 })).toEqual({ kind: 'bytes', limit: 536_870_912 });
+    });
+
+    it('lets a source at the ceilings, or of unknown length and size, run', () => {
+      expect(run({ duration: 1800, sizeBytes: 536_870_912 })).toBeNull();
+      expect(run({})).toBeNull();
+    });
+
+    it('leaves Execute pressable so the press can say why', () => {
+      expect(BLOCKING_REFUSALS.has('sourceTooLong')).toBe(false);
+      expect(BLOCKING_REFUSALS.has('sourceTooLarge')).toBe(false);
     });
   });
 
