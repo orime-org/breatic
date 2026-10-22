@@ -198,7 +198,7 @@ function edgeOf(doc: PMNode, table: TableAt, dir: -1 | 1): number {
  * @param state - The editor state.
  * @returns The selection taking the whole table, or null when it is already so or does not leave a table.
  */
-export function wholeTableSelection(state: EditorState): TableSpanSelection | null {
+function wholeTableSelection(state: EditorState): TableSpanSelection | null {
   const { selection, doc } = state;
   const tables = selection instanceof TextSelection ? heldTables(selection) : null;
   if (tables === null) return null;

@@ -112,7 +112,7 @@ export function tableLineOf(inTable: Element): number | undefined {
  * @param cell - The cell.
  * @returns True when it is.
  */
-export function standsOnTableLine(cell: Element): boolean {
+function standsOnTableLine(cell: Element): boolean {
   const line = tableLineOf(cell);
   return line !== undefined && cell.getBoundingClientRect().left < line + 1;
 }
