@@ -15,14 +15,15 @@ import {
 import { useTranslation } from '@web/i18n/use-translation';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 
 /** How each setting reads beside its slider, in its own unit. */
 const READING: Readonly<Record<DynamicsField, (value: number) => string>> = {
-  threshold: (value) => `${value} dB`,
+  threshold: (value) => `${signedReading(value)} dB`,
   ratio: (value) => `${value}:1`,
   attack: (value) => `${value} ms`,
   release: (value) => `${value} ms`,
-  makeup: (value) => `+${value} dB`,
+  makeup: (value) => `${signedReading(value)} dB`,
 };
 
 const FIELDS = Object.keys(DYNAMICS_RANGES) as DynamicsField[];

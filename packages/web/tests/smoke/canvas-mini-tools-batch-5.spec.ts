@@ -274,7 +274,7 @@ test.describe('panels', () => {
     await expect(page.getByTestId('mini-tool-eq-band-9-value')).toHaveText('0');
 
     await nudge('mini-tool-eq-band-9-slider', 'ArrowDown', 3);
-    await expect(page.getByTestId('mini-tool-eq-band-9-value')).toHaveText('-3');
+    await expect(page.getByTestId('mini-tool-eq-band-9-value')).toHaveText('\u22123');
     await expect(page.getByTestId('mini-tool-eq-preset-custom')).toHaveAttribute('aria-current', 'true');
 
     await page.getByTestId('mini-tool-eq-preset-flat').click();
@@ -286,7 +286,7 @@ test.describe('panels', () => {
     const id = await seedAudio();
     await openTool(page, id, 'audio.compress');
     await expect(page.getByTestId('mini-tool-dynamics-preset-medium')).toHaveAttribute('aria-current', 'true');
-    await expect(page.getByTestId('mini-tool-dynamics-threshold-value')).toHaveText('-24 dB');
+    await expect(page.getByTestId('mini-tool-dynamics-threshold-value')).toHaveText('\u221224 dB');
     await expect(page.getByTestId('mini-tool-dynamics-ratio-value')).toHaveText('3:1');
     await expect(page.getByTestId('mini-tool-dynamics-attack-value')).toHaveText('10 ms');
     await expect(page.getByTestId('mini-tool-dynamics-makeup-value')).toHaveText('+4 dB');
@@ -313,7 +313,7 @@ test.describe('panels', () => {
     for (const room of ['small_room', 'medium_room', 'church_hall', 'cathedral', 'bathroom']) {
       await expect(page.getByTestId(`mini-tool-param-room-${room}`)).toBeVisible();
     }
-    await expect(page.getByTestId('mini-tool-param-amount-value')).toHaveText('50');
+    await expect(page.getByTestId('mini-tool-param-amount-value')).toHaveText('50%');
     await page.keyboard.press('Escape');
 
     await openTool(page, id, 'audio.pitch');
@@ -321,7 +321,7 @@ test.describe('panels', () => {
     await nudge('mini-tool-param-semitones-slider', 'ArrowRight', 3);
     await expect(page.getByTestId('mini-tool-param-semitones-value')).toHaveText('+3');
     await nudge('mini-tool-param-cents-slider', 'ArrowLeft', 20);
-    await expect(page.getByTestId('mini-tool-param-cents-value')).toHaveText('-20');
+    await expect(page.getByTestId('mini-tool-param-cents-value')).toHaveText('\u221220');
   });
 
   test('enhance reads its strength as a percentage and tells its ceilings on Run', async () => {

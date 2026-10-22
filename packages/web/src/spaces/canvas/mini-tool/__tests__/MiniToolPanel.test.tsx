@@ -571,10 +571,11 @@ describe('the batch-four panels', () => {
 describe('the batch-five panels', () => {
   const AUDIO = { duration: 95.2, url: 'https://cdn/a.m4a', sizeBytes: 4_000_000 };
 
-  it('keeps the pitch on a switch, and writes it when flipped', () => {
+  it('keeps the pitch on the shared switch row, with its state word, and writes it when flipped', () => {
     const props = mount({ spec: tool('audio.speed'), params: { rate: 1, keepPitch: true }, source: AUDIO });
     const toggle = screen.getByTestId('mini-tool-param-keepPitch-switch');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle.closest('label')).toHaveTextContent('On');
     fireEvent.click(toggle);
     expect(props.onParams).toHaveBeenLastCalledWith({ keepPitch: false });
   });
@@ -625,11 +626,19 @@ describe('the batch-five panels', () => {
       expect(screen.getByTestId('mini-tool-eq-band-9-value')).toHaveTextContent('0');
     });
 
-    it('signs each band\'s gain', () => {
+    it('signs each band\'s gain with a true minus, and quiets the bands left at 0', () => {
       mount({ spec: tool('audio.eq'), params: { eq: { preset: 'voice', gains: [-6, -4, -2, 0, 0, 2, 3, 3, 1, 0] } }, source: AUDIO });
-      expect(screen.getByTestId('mini-tool-eq-band-0-value')).toHaveTextContent('-6');
+      expect(screen.getByTestId('mini-tool-eq-band-0-value')).toHaveTextContent('\u22126');
       expect(screen.getByTestId('mini-tool-eq-band-6-value')).toHaveTextContent('+3');
       expect(screen.getByTestId('mini-tool-eq-band-3-value')).toHaveTextContent('0');
+      expect(screen.getByTestId('mini-tool-eq-band-3-value')).toHaveClass('text-muted-foreground');
+      expect(screen.getByTestId('mini-tool-eq-band-6-value')).toHaveClass('text-foreground');
+    });
+
+    // The approved demo's 0 dB line across the ten bands.
+    it('draws a 0 dB line across the bands', () => {
+      mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-eq-zero')).toBeInTheDocument();
     });
   });
 
@@ -659,6 +668,15 @@ describe('the batch-five panels', () => {
       expect(props.onParams).toHaveBeenLastCalledWith({ dynamics: { ...medium, preset: 'custom', threshold: -23 } });
     });
 
+    it('reads its threshold with a true minus and its make-up gain plain at 0', () => {
+      mount({ spec: tool('audio.compress'), params: { dynamics: { ...medium, makeup: 0 } }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-dynamics-threshold-value')).toHaveTextContent('\u221224 dB');
+      expect(screen.getByTestId('mini-tool-dynamics-makeup-value')).toHaveTextContent(/^0 dB$/);
+      cleanupAll();
+      mount({ spec: tool('audio.compress'), params: { dynamics: medium }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-dynamics-makeup-value')).toHaveTextContent('+4 dB');
+    });
+
     it('shows Custom selected once the settings match no preset', () => {
       mount({ spec: tool('audio.compress'), params: { dynamics: { ...medium, preset: 'custom', ratio: 5 } }, source: AUDIO });
       expect(screen.getByTestId('mini-tool-dynamics-preset-custom')).toHaveAttribute('aria-current', 'true');
@@ -678,7 +696,33 @@ describe('the batch-five panels', () => {
     cleanupAll();
     mount({ spec: tool('audio.pitch'), params: { semitones: 3, cents: -20 }, source: AUDIO });
     expect(screen.getByTestId('mini-tool-param-semitones-value')).toHaveTextContent('+3');
-    expect(screen.getByTestId('mini-tool-param-cents-value')).toHaveTextContent('-20');
+    expect(screen.getByTestId('mini-tool-param-cents-value')).toHaveTextContent('\u221220');
+  });
+
+  // A value that runs both ways is drawn from its neutral point, as the EQ is.
+  it('fills the balance and the signed sliders from 0', () => {
+    mount({ spec: tool('audio.pan'), params: { pan: 0, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-slider').querySelector('[data-slot="slider-origin-fill"]')).not.toBeNull();
+    expect(screen.getByTestId('mini-tool-param-width-slider').querySelector('[data-slot="slider-origin-fill"]')).toBeNull();
+    cleanupAll();
+    mount({ spec: tool('audio.pitch'), params: { semitones: 0, cents: 0 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-semitones-slider').querySelector('[data-slot="slider-origin-fill"]')).not.toBeNull();
+  });
+
+  it('reads denoise as the dB it takes off, and voice and reverb amount in percent', () => {
+    mount({ spec: tool('audio.denoise'), params: { intensity: 50 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-intensity-value')).toHaveTextContent('20 dB');
+    cleanupAll();
+    mount({ spec: tool('audio.voice'), params: { intensity: 50 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-intensity-value')).toHaveTextContent('50%');
+    cleanupAll();
+    mount({ spec: tool('audio.reverb'), params: { room: 'large_room', amount: 50 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-amount-value')).toHaveTextContent('50%');
+  });
+
+  it('lists the loudness targets one to a row', () => {
+    mount({ spec: tool('audio.normalize'), params: { target: '-16' }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-target--16').parentElement).toHaveAttribute('data-layout', 'stack');
   });
 
   describe('the cut band of an audio source (inner#1305 §4.4)', () => {

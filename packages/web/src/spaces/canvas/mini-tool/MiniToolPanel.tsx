@@ -7,6 +7,7 @@ import * as React from 'react';
 import {
   ADJUST_RANGES,
   defaultAdjustValue,
+  denoiseReductionDb,
   parseAdjustValue,
   type AdjustValue,
   type DynamicsValue,
@@ -31,7 +32,6 @@ import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Slider } from '@web/components/ui/slider';
-import { Switch } from '@web/components/ui/switch';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -43,11 +43,13 @@ import { controlParams, type ModelControl } from '@web/spaces/canvas/generate/mo
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
 import { AudioDynamicsControl } from '@web/spaces/canvas/mini-tool/AudioDynamicsControl';
 import { AudioBandWaveform } from '@web/spaces/canvas/mini-tool/AudioBandWaveform';
 import { AudioEqControl } from '@web/spaces/canvas/mini-tool/AudioEqControl';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
+import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
@@ -619,13 +621,15 @@ function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX
 
 /**
  * How a number param's value reads beside its slider: signed, as a balance
- * (Center, L n, R n), or as the number and its unit.
+ * (Center, L n, R n), as the noise reduction it sets, or as the number and its
+ * unit.
  * @param value - The value.
  * @param param - The param.
  * @returns The reading.
  */
 function numberReading(value: number, param: NumberParam): string {
-  if (param.format === 'signed') return value > 0 ? `+${value}` : String(value);
+  if (param.format === 'signed') return signedReading(value);
+  if (param.format === 'denoiseDb') return `${denoiseReductionDb(value)} dB`;
   if (param.format === 'balance') return value === 0 ? 'Center' : value < 0 ? `L ${-value}` : `R ${value}`;
   return param.unit === undefined ? String(value) : `${value}${param.unit}`;
 }
@@ -659,19 +663,19 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           onChange={onParams}
           testIdPrefix='mini-tool-param'
           className={undefined}
+          // A value that runs both ways fills from its neutral point.
+          origin={param.format === 'signed' || param.format === 'balance' ? 0 : undefined}
         />
       );
     case 'toggle': {
       const on = typeof params[param.key] === 'boolean' ? (params[param.key] as boolean) : param.default;
       return (
-        <label className='flex items-center justify-between text-xs font-medium text-muted-foreground'>
-          {label}
-          <Switch
-            data-testid={`mini-tool-param-${param.key}-switch`}
-            checked={on}
-            onCheckedChange={(checked) => onParams({ [param.key]: checked })}
-          />
-        </label>
+        <ParamToggleRow
+          id={`mini-tool-param-${param.key}-switch`}
+          label={label}
+          checked={on}
+          onCheckedChange={(checked) => onParams({ [param.key]: checked })}
+        />
       );
     }
     case 'eq':
@@ -710,6 +714,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
             );
           }}
           testIdPrefix={`mini-tool-param-${param.key}`}
+          stack={param.layout === 'stack'}
         />
       );
     }

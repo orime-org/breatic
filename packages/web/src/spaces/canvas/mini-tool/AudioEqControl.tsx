@@ -13,8 +13,10 @@ import {
 } from '@breatic/shared';
 
 import { Slider } from '@web/components/ui/slider';
+import { cn } from '@web/lib/utils';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { useSliderGesture } from '@web/spaces/canvas/generate/use-slider-gesture';
+import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 
 /**
  * A band's centre as it is printed under its slider.
@@ -31,7 +33,7 @@ function bandName(hz: number): string {
  * @returns The reading.
  */
 function gainReading(gain: number): string {
-  return gain > 0 ? `+${gain}` : String(gain);
+  return signedReading(gain);
 }
 
 interface EqBandProps {
@@ -57,7 +59,11 @@ const EqBand = React.memo(function EqBand({ hz, band, gain, onCommit }: EqBandPr
   const reading = shown ?? gain;
   return (
     <div className='flex flex-col items-center gap-1'>
-      <span data-testid={`mini-tool-eq-band-${band}-value`} className='text-2xs tabular-nums text-foreground'>
+      <span
+        data-testid={`mini-tool-eq-band-${band}-value`}
+        // A moved band stands out from the ones left at 0.
+        className={cn('text-xs tabular-nums', reading === 0 ? 'text-muted-foreground' : 'text-foreground')}
+      >
         {gainReading(reading)}
       </span>
       <Slider
@@ -133,7 +139,14 @@ export const AudioEqControl = React.memo(function AudioEqControl({
         testIdPrefix='mini-tool-eq-preset'
         even
       />
-      <div className='grid grid-cols-10 gap-0.5'>
+      <div className='relative grid grid-cols-10 gap-0.5'>
+        {/* The 0 dB line through the middle of every band's track: the reading
+            row (1rem), its gap (0.25rem) and half the 6rem track. */}
+        <div
+          data-testid='mini-tool-eq-zero'
+          aria-hidden='true'
+          className='pointer-events-none absolute inset-x-0 top-[4.25rem] border-t border-dashed border-border'
+        />
         {EQ_BANDS_HZ.map((hz, band) => (
           <EqBand key={hz} hz={hz} band={band} gain={held.gains[band] ?? 0} onCommit={onBand} />
         ))}
