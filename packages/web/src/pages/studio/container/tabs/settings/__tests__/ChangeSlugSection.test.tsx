@@ -410,6 +410,8 @@ describe('ChangeSlugSection — the confirm gate', () => {
     );
 
     setFlags({ saving: true, renaming: false });
+    expect(input).toHaveAttribute('readonly');
+    expect(input).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
     expect(onSave).not.toHaveBeenCalled();
   });

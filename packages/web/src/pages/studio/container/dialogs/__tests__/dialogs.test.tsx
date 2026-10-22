@@ -284,7 +284,12 @@ describe('NewItemDialog — submitting (#255)', () => {
     const button = screen.getByRole('button', { name: 'Create' });
     expect(button).toHaveAttribute('aria-busy', 'true');
     expect(button).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByLabelText('Name')).toBeDisabled();
+    // Read-only keeps the focus of the field the Enter came from, so a refused
+    // create can be corrected by typing straight away.
+    for (const label of ['Name', /^Slug/]) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
+      expect(screen.getByLabelText(label)).not.toBeDisabled();
+    }
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
     expect(onOpenChange).not.toHaveBeenCalled();
 
@@ -475,14 +480,16 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     expect(screen.getByRole('alert')).toHaveTextContent('That slug is already taken.');
   });
 
-  it('holds both fields while the create is out', () => {
+  it('holds both fields read-only while the create is out, so they keep focus', () => {
     vi.mocked(useCreateStudio).mockReturnValue({
       mutate: mockMutate,
       isPending: true,
     } as unknown as ReturnType<typeof useCreateStudio>);
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
-    expect(screen.getByLabelText('Name')).toBeDisabled();
-    expect(screen.getByLabelText('Slug')).toBeDisabled();
+    for (const label of ['Name', 'Slug']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
+      expect(screen.getByLabelText(label)).not.toBeDisabled();
+    }
   });
 
   it('marks Create busy while the create is out, and clears it once answered', () => {

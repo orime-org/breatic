@@ -279,7 +279,7 @@ export function NewItemDialog({
                 value={name}
                 onChange={(event) => changeName(event.target.value)}
                 placeholder={namePlaceholder}
-                disabled={submitting}
+                readOnly={submitting}
                 aria-invalid={nameError !== null}
                 aria-describedby={nameError !== null ? `${nameId}-error` : undefined}
               />
@@ -303,7 +303,7 @@ export function NewItemDialog({
               check={slugLine}
               bounds={ITEM_SLUG_BOUNDS}
               helper={slugHelper}
-              disabled={submitting}
+              readOnly={submitting}
             />
           </DialogBody>
           <DialogFooter>

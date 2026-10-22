@@ -97,7 +97,7 @@ describe('InviteMemberDialog', () => {
     expect(onInvite).not.toHaveBeenCalled();
   });
 
-  it('holds the email and role while the invite is out (inner#1652)', () => {
+  it('holds the email read-only and the role disabled while the invite is out (inner#1652)', () => {
     render(
       <InviteMemberDialog
         open
@@ -107,7 +107,10 @@ describe('InviteMemberDialog', () => {
         error={null}
       />,
     );
-    expect(screen.getByLabelText('Email')).toBeDisabled();
+    // Read-only keeps the focus Enter left in the field, so a refused invite
+    // can be corrected by typing straight away.
+    expect(screen.getByLabelText('Email')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Email')).not.toBeDisabled();
     expect(screen.getByLabelText('Role')).toBeDisabled();
   });
 

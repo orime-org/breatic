@@ -199,7 +199,7 @@ export function ChangeSlugSection({
                 setSlug(value);
                 setSlugError(null);
               }}
-              disabled={saving}
+              readOnly={saving}
               // The hook answers `valid` for the studio's own slug; here
               // that is no news, so the field goes back to its description.
               check={changed ? availability : { state: 'empty' }}

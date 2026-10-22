@@ -173,7 +173,7 @@ export function NewStudioDialog({
                   setName(event.target.value);
                   setNameError(null);
                 }}
-                disabled={createStudio.isPending}
+                readOnly={createStudio.isPending}
                 aria-invalid={nameError !== null}
                 aria-describedby={nameError !== null ? 'new-studio-name-error' : undefined}
               />
@@ -190,7 +190,7 @@ export function NewStudioDialog({
                 setSlug(next);
                 setSlugError(null);
               }}
-              disabled={createStudio.isPending}
+              readOnly={createStudio.isPending}
               check={availability}
               error={slugError}
               bounds={STUDIO_SLUG_BOUNDS}

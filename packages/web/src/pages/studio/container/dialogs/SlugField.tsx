@@ -21,12 +21,12 @@ interface SlugFieldProps {
   /** What the field is for and its rules, shown while it is empty. */
   helper: string;
   /**
-   * Greys the input out while an edit could not be submitted anyway — the
-   * rename dialog sets it while ANY settings save is in flight, which is the
-   * same condition under which a press of its Confirm does nothing. Typing
-   * into a field whose Confirm cannot go out only looks like it will work.
+   * Holds the value while an edit could not be submitted anyway (a request is
+   * in flight). Read-only, not disabled: Chromium drops a disabled field's
+   * focus to the page, so after a refused submit the reader's typing would go
+   * nowhere.
    */
-  disabled?: boolean;
+  readOnly?: boolean;
   /**
    * A reason found when the form was submitted (an empty required slug, or a
    * shape the debounced check has not caught up with). It replaces the
@@ -59,7 +59,7 @@ const HINT_TONE: Record<SlugCheck['state'], string> = {
  * @param props.check where the slug stands now.
  * @param props.bounds the slug length bounds.
  * @param props.helper the description shown while the field is empty.
- * @param props.disabled whether the input is greyed out (optional).
+ * @param props.readOnly whether the value is held while a request is out (optional).
  * @param props.error a submit-time reason shown in red over the check's line (optional).
  * @returns the slug field.
  */
@@ -72,7 +72,7 @@ export function SlugField({
   check,
   bounds,
   helper,
-  disabled = false,
+  readOnly = false,
   error = null,
 }: SlugFieldProps): React.JSX.Element {
   const t = useTranslation();
@@ -105,7 +105,7 @@ export function SlugField({
         id={id}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
+        readOnly={readOnly}
         placeholder={placeholder}
         aria-invalid={invalid}
         aria-describedby={hintId}

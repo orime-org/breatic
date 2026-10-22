@@ -121,7 +121,7 @@ export default function SlugSetupPage(): React.JSX.Element {
             setSlug(next);
             setSlugError(null);
           }}
-          disabled={submitting}
+          readOnly={submitting}
           check={availability}
           error={slugError}
           bounds={STUDIO_SLUG_BOUNDS}

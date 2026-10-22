@@ -327,6 +327,8 @@ describe('SlugSetupPage', () => {
     const busy = screen.getByRole('button', { name: 'Setting up...' });
     expect(busy).toHaveAttribute('aria-busy', 'true');
     expect(busy).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByLabelText('Slug')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Slug')).not.toBeDisabled();
 
     answer({ personalStudio: { name: 'my-handle', slug: 'my-handle', avatarUrl: null } });
     expect(await screen.findByTestId('studio-page')).toBeInTheDocument();

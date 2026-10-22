@@ -127,7 +127,9 @@ export function InviteMemberDialog({
                 ref={emailRef}
                 type='email'
                 value={email}
-                disabled={pending}
+                // Read-only keeps the focus Enter left here, so a refused
+                // invite is corrected by typing straight away.
+                readOnly={pending}
                 onChange={(event) => {
                   setEmail(event.target.value);
                   setEmailError(null);
