@@ -263,10 +263,14 @@ function unwrapOpenSides(slice: Slice): Slice {
 const keepPastedTablesWhole = new Plugin({
   key: new PluginKey('doc-table-paste-whole'),
   props: {
-    transformPasted: (slice) => {
+    // A cell holds blocks but no table, so a table pasted in a cell is fitted
+    // into the cell as before; what a paste into a cell does is inner#1312's.
+    transformPasted: (slice, view) => {
       const start = openAboveTables(slice.content, slice.openStart, -1);
       const end = openAboveTables(slice.content, slice.openEnd, 1);
-      return start === slice.openStart && end === slice.openEnd ? slice : unwrapOpenSides(new Slice(slice.content, start, end));
+      if (start === slice.openStart && end === slice.openEnd) return slice;
+      const closed = new Slice(slice.content, start, end);
+      return cellDepthOf(view.state.selection.$from) > 0 ? closed : unwrapOpenSides(closed);
     },
     // At the start of a line with words, ProseMirror splits the line before
     // the table and leaves its empty first half above it.
@@ -275,6 +279,7 @@ const keepPastedTablesWhole = new Plugin({
       const { $from } = selection;
       const first = slice.content.firstChild;
       if (!selection.empty || slice.openStart !== 0 || slice.openEnd !== 0 || first?.type.name !== DOC_TABLE) return false;
+      if (cellDepthOf($from) > 0) return false;
       if ($from.parentOffset !== 0 || $from.parent.content.size === 0 || $from.node($from.depth - 1).type.name !== 'blockContainer') return false;
       view.dispatch(view.state.tr.insert($from.before($from.depth - 1), slice.content).scrollIntoView());
       return true;

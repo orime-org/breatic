@@ -285,3 +285,31 @@ describe('a table pasted into a line with words (A16)', () => {
     expect(lines(editor)).toEqual(expected);
   });
 });
+
+describe('a table pasted with the caret in a cell (inner#1619; the rules for pasting into cells are inner#1312)', () => {
+  it.each([
+    ['a table and a line, in the middle of the cell\'s line', '<table><tr><td>t1</td><td>t2</td></tr></table><p>yl</p>', 2],
+    ['two tables and a line, at the start of the cell\'s line', '<table><tr><td>t1</td></tr></table><p>m</p><table><tr><td>u1</td></tr></table>', 0],
+  ] as const)('keeps the host table whole: %s', (_name, html, offset) => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['cellw', 'q'] }, { cells: ['r2', 's2'] }] }),
+    ] as never);
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text === 'cellw') at = pos + offset;
+      return at < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+
+    paste(editor, { 'text/html': html, 'text/plain': 'x' });
+
+    const top: string[] = [];
+    view.state.doc.firstChild!.forEach((node) => top.push(node.type.name));
+    expect(top).toEqual(['blockContainer', 'docTable']);
+    expect(view.state.doc.textContent).toContain('q');
+    expect(view.state.doc.textContent).toContain('s2');
+  });
+});
