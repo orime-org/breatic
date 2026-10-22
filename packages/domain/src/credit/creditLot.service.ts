@@ -27,6 +27,7 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
+  toChargeMicro,
   toMicroCredits,
   fromMicroCredits,
   planCharge,
@@ -276,7 +277,7 @@ export async function grantTrialCredits(
 export async function chargeForGeneration(
   input: ChargeInput,
 ): Promise<ChargeOutcome> {
-  const amountMicro = toMicroCredits(input.amount);
+  const amountMicro = toChargeMicro(input.amount);
   // A project that vanished while the task ran leaves nothing to charge, and
   // the usage still has to be recorded: the work was delivered. That is the one
   // thing `lot_id` was made nullable for.

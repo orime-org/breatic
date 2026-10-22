@@ -20,7 +20,7 @@
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
-import { t, type ProjectCreditsView } from "@breatic/shared";
+import { formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
 /**
  * A run refused because running work holds what it needs, so a lane that
@@ -74,27 +74,34 @@ type RefusalFigures = { studioId: string } & ProjectCreditsView;
  */
 async function refuse(userId: string, required: number, figures: RefusalFigures): Promise<never> {
   const { studioId, spendable, held, available } = figures;
+  const locale = getActiveLocale();
+  /**
+   * A figure as the sentence shows it: two decimals at most, rounded up.
+   * @param credits - The amount.
+   * @returns The text.
+   */
+  const shown = (credits: number): string => formatCredits(credits, locale);
 
   if (spendable < 0) {
     const owed = await creditLotService.getStudioDebt(studioId);
-    throw new AppError(402, t("server.credit.in_debt", { owed }));
+    throw new AppError(402, t("server.credit.in_debt", { owed: shown(owed) }));
   }
 
   if (held > 0 && spendable >= required) {
     const unassigned = await creditLotService.getUnassignedCredits(userId);
     // Still a hold refusal: the sentence points at the step that certainly
     // works, and a lane that stores the cause on its node names the hold.
-    if (unassigned > 0) throw new CreditsHeldError(t("server.credit.unassigned", { available: unassigned }));
-    throw new CreditsHeldError(t("server.credit.held_by_running", { held, available }));
+    if (unassigned > 0) throw new CreditsHeldError(t("server.credit.unassigned", { available: shown(unassigned) }));
+    throw new CreditsHeldError(t("server.credit.held_by_running", { held: shown(held), available: shown(available) }));
   }
 
   if (available > 0) {
-    throw new AppError(402, t("server.error.insufficient_credits", { required, available }));
+    throw new AppError(402, t("server.error.insufficient_credits", { required: shown(required), available: shown(available) }));
   }
 
   const unassigned = await creditLotService.getUnassignedCredits(userId);
   if (unassigned > 0) {
-    throw new AppError(402, t("server.credit.unassigned", { available: unassigned }));
+    throw new AppError(402, t("server.credit.unassigned", { available: shown(unassigned) }));
   }
 
   // Granted credits are pinned to the holder's personal studio when they are

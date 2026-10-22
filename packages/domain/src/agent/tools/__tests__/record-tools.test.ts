@@ -543,6 +543,17 @@ describe("read_node_history", () => {
     expect(recs.nodeRecords).toHaveBeenCalledWith(NODE_ID, { versionsOffset: 20, tasksOffset: 10 });
   });
 
+  it("writes a version's credits to at most two decimals, rounded up (inner#1666)", async () => {
+    const recs = records({
+      nodeRecords: vi.fn().mockResolvedValue({
+        tasks: { rows: [], total: 0 },
+        versions: { rows: [version({ metadata: { model: "flux-pro", credits: 3.4512 } })], total: 1 },
+      }),
+    });
+
+    expect(await call(NODE, { node_id: NODE_ID }, recs)).toMatch(/\b3\.46 credits\b/);
+  });
+
   it("writes each version's prompt, model, credits, result, and who made it", async () => {
     const recs = records({
       nodeRecords: vi.fn().mockResolvedValue({ tasks: { rows: [], total: 0 }, versions: { rows: [version({})], total: 1 } }),
@@ -745,6 +756,18 @@ describe("list_project_activity", () => {
     expect(answer).toContain("flux-pro");
     expect(answer).toMatch(/\b12 credits\b/);
     expect(answer).toContain("2026-10-18T08:01:00.000Z");
+  });
+
+  it("writes an event's credits to at most two decimals, rounded up (inner#1666)", async () => {
+    const recs = records({
+      activity: vi.fn().mockResolvedValue({
+        items: [entry({ payload: { source: "task", model: "flux-pro", credits: 3.4512 } })],
+        total: 1,
+        nextCursor: null,
+      }),
+    });
+
+    expect(await call(ACTIVITY, {}, recs)).toMatch(/\b3\.46 credits\b/);
   });
 
   it("names a Space by what the event recorded before what the message lists", async () => {

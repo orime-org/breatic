@@ -187,6 +187,20 @@ describe("reserveCredits", () => {
     expect((await creditHoldService.getCreditPosition(fx.studioId)).held).toBe(60);
   });
 
+  it("admits a run whose estimate is the balance plus floating-point residue (inner#1637)", async () => {
+    const fx = await studioWith(7);
+    const key = ref("residue");
+    expect(await creditHoldService.reserveCredits(req(fx, key, 7.000000000000001))).toEqual({ ok: true });
+    expect(await holdRows(key)).toEqual([{ status: "held", amount: "7.000000" }]);
+  });
+
+  it("holds a part-cent estimate as the next cent up (inner#1666)", async () => {
+    const fx = await studioWith(100);
+    const key = ref("cent");
+    await creditHoldService.reserveCredits(req(fx, key, 3.075));
+    expect(await holdRows(key)).toEqual([{ status: "held", amount: "3.080000" }]);
+  });
+
   it("subtracts debt before deciding", async () => {
     const fx = await studioWith(100);
     await creditLotService.chargeForGeneration({ projectId: fx.projectId, actorUserId: fx.userId, amount: 130 });

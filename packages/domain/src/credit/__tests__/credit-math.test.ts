@@ -20,6 +20,8 @@ import {
   fromMicroCredits,
   planCharge,
   positionFrom,
+  toChargeMicro,
+  SMALLEST_CREDIT,
 } from "@domain/credit/credit-math.js";
 
 describe("positionFrom (inner#1611)", () => {
@@ -176,5 +178,41 @@ describe("planCharge", () => {
         },
       ),
     );
+  });
+});
+
+describe("toChargeMicro (inner#1666)", () => {
+  it("charges a part-cent amount as the next cent up, in micro-credits", () => {
+    expect(toChargeMicro(3.075)).toBe(3_080_000);
+    expect(toChargeMicro(0.001)).toBe(10_000);
+    expect(toChargeMicro(7.25)).toBe(7_250_000);
+  });
+
+  it("charges 7 for an amount whose only excess is floating-point residue (inner#1637)", () => {
+    expect(toChargeMicro(7.000000000000001)).toBe(7_000_000);
+  });
+
+  it("lands on a whole cent, never below the amount and less than a cent above it", () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0, max: 50_000, noNaN: true }), (amount) => {
+        const charged = toChargeMicro(amount);
+        const exact = Math.round(amount * 1_000_000);
+        expect(charged % 10_000).toBe(0);
+        expect(charged).toBeGreaterThanOrEqual(exact);
+        expect(charged - exact).toBeLessThan(10_000);
+      }),
+    );
+  });
+
+  it("does not move an amount that is already whole cents, residue or not", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 5_000_000 }), fc.double({ min: -4e-7, max: 4e-7, noNaN: true }), (cents, noise) => {
+        expect(toChargeMicro(cents / 100 + noise)).toBe(cents * 10_000);
+      }),
+    );
+  });
+
+  it("makes a cent the smallest amount admission asks for", () => {
+    expect(SMALLEST_CREDIT).toBe(0.01);
   });
 });

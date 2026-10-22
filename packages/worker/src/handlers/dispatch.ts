@@ -23,7 +23,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
 import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
-import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider } from "@breatic/domain";
+import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
 import {
   assetService,
@@ -720,6 +720,10 @@ async function runTaskBody(
     );
     return { failed: true, reason: "job_lock_lost_zombie" };
   }
+
+  // Rounded once, here, so the task row, the node's history, the activity
+  // feed and the charge all carry the same whole-cent figure (inner#1666).
+  creditsUsed = toChargeCredits(creditsUsed);
 
   // ─── Stage 3: Mark completed + charge (atomic via CAS) ────────────
   // markCompletedAndBill uses a WHERE billed_at IS NULL clause so only

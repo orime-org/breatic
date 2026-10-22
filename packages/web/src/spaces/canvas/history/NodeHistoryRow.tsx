@@ -15,6 +15,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import {
   HoverPreview,
@@ -303,7 +304,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
                   className='h-3 w-3 text-muted-foreground'
                   aria-hidden='true'
                 />
-                {credits}
+                {formatCreditAmount(credits)}
               </span>
             ) : null}
         </div>

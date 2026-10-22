@@ -23,7 +23,8 @@ describe('formatCreditAmount', () => {
   it('最多两位小数，跟积分页那一列一致', () => {
     // 模型的每次调用成本不是整数，所以带小数的余额是常态。
     expect(formatCreditAmount(10.368)).toBe('10.37');
-    expect(formatCreditAmount(0.001)).toBe('0');
+    // A third decimal rounds up, as the charge does (inner#1666).
+    expect(formatCreditAmount(0.001)).toBe('0.01');
     expect(formatCreditAmount(-320.5)).toBe('-320.5');
   });
 

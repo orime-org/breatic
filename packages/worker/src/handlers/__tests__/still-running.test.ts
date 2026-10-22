@@ -114,6 +114,7 @@ vi.mock("@breatic/domain", async () => ({
   creditLotService: {},
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: vi.fn(() => 0),
+  toChargeCredits: (credits: number) => credits,
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: vi.fn() },
   settleTaskForNode: h.settleTaskForNode,

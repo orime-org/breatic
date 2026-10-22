@@ -289,6 +289,52 @@ describe("扣费", () => {
     }
   });
 
+  it("charges a part-cent amount as the next cent up (inner#1666)", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 100, fx.studioId);
+
+    for (const [amount, charged] of [[3.075, 3.08], [0.001, 0.01], [12.345678, 12.35]] as const) {
+      const outcome = await creditLotService.chargeForGeneration({
+        projectId: fx.projectId,
+        actorUserId: fx.userId,
+        amount,
+      });
+      expect(outcome.charged).toBe(charged);
+    }
+
+    expect((await readLot(lotId)).remaining).toBe("84.560000");
+    expect(await ledgerSum(lotId)).toBe("84.560000");
+  });
+
+  it("charges exactly 7 for 7 plus floating-point residue (inner#1637)", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 7, fx.studioId);
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 7.000000000000001,
+    });
+
+    expect(outcome).toMatchObject({ charged: 7, shortfall: 0 });
+    expect(await readLot(lotId)).toMatchObject({ remaining: "0.000000", lifecycle: "depleted" });
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0);
+  });
+
+  it("leaves a shortfall in whole cents when a part-cent charge runs short", async () => {
+    const fx = await seedFixture();
+    await seedLot(fx, 1, fx.studioId);
+
+    const outcome = await creditLotService.chargeForGeneration({
+      projectId: fx.projectId,
+      actorUserId: fx.userId,
+      amount: 1.234,
+    });
+
+    expect(outcome).toMatchObject({ charged: 1, shortfall: 0.24 });
+    expect(await creditLotService.getStudioDebt(fx.studioId)).toBe(0.24);
+  });
+
   it("不取未指定的笔——列为 null 的那一条腿", async () => {
     const fx = await seedFixture();
     const unassigned = await seedLot(fx, 500);
@@ -1319,6 +1365,22 @@ describe("studio 流水：一次生成一行", () => {
         model: null,
       }),
     ]);
+  });
+
+  it("leaves out the rows that rounded an old debt up to whole cents (inner#1666)", async () => {
+    const fx = await seedFixture();
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO credit_ledger (studio_id, entry_type, amount, description)
+      VALUES (${fx.studioId}, 'rounding_adjustment', -0.006544, 'rounding adjustment')
+      RETURNING id
+    `;
+    try {
+      expect(await creditLotRepo.listLedgerByStudio(fx.studioId, 10, null)).toEqual([]);
+    } finally {
+      // Suites that replay older migrations re-add the entry-type CHECK as it
+      // was then, which this type would fail.
+      await sql`DELETE FROM credit_ledger WHERE id = ${row!.id}`;
+    }
   });
 
   it("按 studio 取，不按谁付的钱切", async () => {

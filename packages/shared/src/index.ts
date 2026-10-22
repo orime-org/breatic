@@ -502,6 +502,7 @@ export {
 export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
+export { ceilToCreditCent } from "@shared/credit-cent.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the
