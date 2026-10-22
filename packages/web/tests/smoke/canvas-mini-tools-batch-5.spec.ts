@@ -335,7 +335,7 @@ interface Run {
   tool: string;
   /** What the result is looked up by, when the tool runs more than once. */
   name?: string;
-  source: 'speech.mp3' | 'music.wav';
+  source: 'speech.mp3' | 'music.wav' | 'noisy.wav';
   set?: () => Promise<void>;
 }
 
@@ -419,6 +419,22 @@ function loudness(url: string): number {
 }
 
 /**
+ * The level of a stretch of a stored URL.
+ * @param url - The URL.
+ * @param from - Where the stretch starts, in seconds.
+ * @param seconds - How long it is.
+ * @returns Its RMS level in dBFS.
+ */
+function rmsLevel(url: string, from: number, seconds: number): number {
+  const out = execFileSync(
+    'ffmpeg',
+    ['-v', 'info', '-nostats', '-ss', String(from), '-t', String(seconds), '-i', url, '-af', 'astats=measure_perchannel=none', '-f', 'null', '-'],
+    { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] },
+  );
+  return Number(/RMS level dB:\s+(-?[\d.]+)/.exec(out)?.[1]);
+}
+
+/**
  * How often a stored URL's first channel crosses zero, which follows its pitch.
  * @param url - The URL.
  * @returns Crossings per sample.
@@ -453,7 +469,7 @@ function probe(url: string): { format: string; duration: number; codec: string; 
 }
 
 const RUNS: Run[] = [
-  { tool: 'audio.denoise', source: 'speech.mp3' },
+  { tool: 'audio.denoise', source: 'noisy.wav' },
   {
     tool: 'audio.normalize',
     source: 'music.wav',
@@ -506,6 +522,14 @@ test.describe('real runs', () => {
       '-f', 'lavfi', '-i', 'sine=frequency=330:duration=8:sample_rate=44100',
       '-filter_complex', '[0][1]amerge=inputs=2,volume=0.5', ...mark, join(MEDIA, 'music.wav'),
     );
+    // The speech between two seconds of nothing, all of it under white noise
+    // at about -50 dBFS: the last 1.5 s hold the noise alone.
+    ffmpeg(
+      '-i', join(FIXTURES, 'speech.mp3'),
+      '-f', 'lavfi', '-i', 'anoisesrc=color=white:amplitude=0.0056:duration=10.2:sample_rate=48000',
+      '-filter_complex', '[0]aresample=48000,adelay=2000:all=1,apad=pad_dur=2[s];[s][1]amix=inputs=2:normalize=0:duration=first',
+      '-ac', '1', ...mark, join(MEDIA, 'noisy.wav'),
+    );
     page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
     await openSmokeProject(page);
     projectId = smokeProjectId();
@@ -520,7 +544,7 @@ test.describe('real runs', () => {
 
   test('every audio tool runs to a new audio node that holds what its name says @needs-model @needs-ingest @needs-ffmpeg @needs-internet', async () => {
     test.setTimeout(RUN_MS + 10 * 60_000);
-    for (const file of ['speech.mp3', 'music.wav'] as const) sources.set(file, await upload(file));
+    for (const file of ['speech.mp3', 'music.wav', 'noisy.wav'] as const) sources.set(file, await upload(file));
     await page.getByRole('button', { name: 'Fit to viewport' }).click();
 
     for (const run of RUNS) {
@@ -569,6 +593,12 @@ test.describe('real runs', () => {
     // Stored as the type the model declares, so a download is named for what it holds.
     expect(nodes.get(results.get('audio.enhance')!)).toMatch(/\.wav$/);
     expect(Math.abs(loudness(nodes.get(results.get('audio.normalize')!)!) + 23)).toBeLessThanOrEqual(1);
+    // B2 at the default strength: the noise alone comes down by its 20 dB and
+    // the speech keeps its level.
+    const noisy = nodes.get(sources.get('noisy.wav')!)!;
+    const denoised = nodes.get(results.get('audio.denoise')!)!;
+    expect(rmsLevel(noisy, 8.4, 1.5) - rmsLevel(denoised, 8.4, 1.5)).toBeGreaterThan(15);
+    expect(Math.abs(rmsLevel(noisy, 3, 4) - rmsLevel(denoised, 3, 4))).toBeLessThan(1);
     expect(read('audio.speed').duration).toBeCloseTo(8 / 1.5, 0);
     expect(read('audio.speed pitch follows').duration).toBeCloseTo(8 / 1.5, 0);
     // At 1.5× the 220 Hz side keeps its pitch, or rises with the speed to 330 Hz.
