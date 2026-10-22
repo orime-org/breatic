@@ -75,9 +75,12 @@ async function runPipe(commands: readonly Command[]): Promise<void> {
         });
       }),
   );
-  const settled = await Promise.allSettled(exits);
-  const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
-  if (failed !== undefined) throw failed.reason;
+  // A reader that fails closes the pipe under the writer, which then fails
+  // too; the reason is in whichever came last, so every failure is told.
+  const failed = (await Promise.allSettled(exits)).filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (failed.length > 0) throw new Error(failed.map((result) => (result.reason as Error).message).join("; "));
 }
 
 /**

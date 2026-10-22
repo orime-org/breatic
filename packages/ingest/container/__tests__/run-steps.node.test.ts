@@ -79,7 +79,8 @@ describe("runSteps", () => {
       kind: "pipe",
       commands: [{ program: "head", args: ["-c", "200000000", "/dev/zero"] }, ...rest],
     } as unknown as RunStep;
-    await expect(runSteps([pipe])).rejects.toThrow();
+    // The writer's own failure is only the echo; the reason is the reader's.
+    await expect(runSteps([pipe])).rejects.toThrow(/sh in a pipe exited 3/);
   }, 5_000);
 
   it("hands a measure step's stderr to the steps it decides on", async () => {
