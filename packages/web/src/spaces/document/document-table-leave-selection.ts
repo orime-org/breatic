@@ -220,10 +220,10 @@ export function tableAtLeavingHead(state: EditorState): TableAt | null {
 
 /**
  * Takes away a selection that takes tables whole, through the selection's own
- * replace, and leaves the caret where the selection started, as the body's
- * own deletes do (Tiptap's `deleteSelection`): the replace alone puts it past
- * what took the selection's place, the next line for one reaching the start
- * of the body.
+ * replace, the caret left where the body's own deletes leave it. For one
+ * reaching the start of the body that is where it started (Tiptap's
+ * `deleteSelection` puts the caret there while an end stays on the edge); the
+ * replace alone puts it on the next line.
  * @param view - The editor view.
  * @returns Whether there was one to take away.
  */
@@ -231,7 +231,9 @@ export function takeAwayHeldTables(view: EditorView): boolean {
   const { selection } = view.state;
   if (heldTables(selection) === null) return false;
   const tr = view.state.tr.deleteSelection();
-  tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(selection.from, -1))));
+  if (bodyEdgeAt(selection.$from.doc, selection.from) === 'start') {
+    tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(selection.from, -1))));
+  }
   view.dispatch(tr.scrollIntoView());
   return true;
 }
@@ -275,10 +277,15 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
       props: {
         decorations: cellsInSelection,
         // A typed key replaces the selection with its letter, through the
-        // selection's own replace, as the body's typing does.
+        // selection's own replace, as the body's typing does. From a table,
+        // the letter takes the marks of the empty line in the table's place:
+        // none unless the reader picked some.
         handleTextInput: (view, _from, _to, text) => {
-          if (heldTables(view.state.selection) === null) return false;
-          view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+          const tables = heldTables(view.state.selection);
+          if (tables === null) return false;
+          const tr = view.state.tr;
+          if (tables.from !== null && tr.storedMarks === null) tr.setStoredMarks([]);
+          view.dispatch(tr.insertText(text).scrollIntoView());
           return true;
         },
         // A drag of such a selection carries the whole table, which the drop

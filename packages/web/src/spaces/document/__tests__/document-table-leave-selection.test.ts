@@ -568,6 +568,37 @@ describe('what is left where a held table stood, as the body leaves it', () => {
     expect(blocks(editor)).toEqual(['paragraph:Z', 'paragraph:tail']);
   });
 
+  it('leaves the caret where the body does after Backspace over a selection from a cell to the start of a nested line', () => {
+    const nested = { type: 'bulletListItem', content: 'two', children: [{ type: 'paragraph', content: 'kid' }] };
+    const { editor } = openWith([{ type: 'paragraph', content: 'one' }, tableBlock(WORDS), nested]);
+    select(editor, at(editor, 'a1', 1), at(editor, 'kid', 0));
+    press(editor, 'Backspace');
+    const body = openWith([{ type: 'paragraph', content: 'one' }, { type: 'paragraph' }, nested]).editor;
+    select(body, at(body, 'one', 3) + 4, at(body, 'kid', 0));
+    press(body, 'Backspace');
+
+    expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
+    expect(editor.prosemirrorView.state.selection.head).toBe(body.prosemirrorView.state.selection.head);
+  });
+
+  it('types a plain key, as the body does, over a selection from a cell below the table whose first words are bold', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView;
+    const a1 = at(editor, 'a1', 0);
+    view.dispatch(view.state.tr.addMark(a1, a1 + 2, view.state.schema.marks['bold']!.create()));
+    select(editor, at(editor, 'b2', 1), at(editor, 'below', 2));
+
+    type(editor, 'Z');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:Zlow']);
+    let bold = false;
+    view.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((mark) => mark.type.name === 'bold')) bold = true;
+      return true;
+    });
+    expect(bold).toBe(false);
+  });
+
   it('makes the line a key is typed on a paragraph, as the body does, over a selection from a cell into a heading', () => {
     const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'heading', content: 'head' }]);
     select(editor, at(editor, 'a1', 1), at(editor, 'head', 2));
