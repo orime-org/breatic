@@ -24,7 +24,8 @@ export interface RowInDocument {
 }
 
 /**
- * The block container carrying that id, as the document holds it now.
+ * The block container carrying that id, as the document holds it now, or the
+ * table carrying it, which stands with no container around it (inner#1619).
  *
  * The CONTAINER rather than its content: `BlockContainer.ts:27` is
  * `blockContent blockGroup?`, so the container is what holds the row's own

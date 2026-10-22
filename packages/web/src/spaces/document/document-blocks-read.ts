@@ -43,7 +43,7 @@ const STAND_INS = new Set(['unsupportedBlock', 'unsupportedInline']);
 /**
  * The words of a block and everything under it -- list items nested in it,
  * every cell of a table -- one paragraph or cell per line.
- * @param node - The block's `blockContainer`.
+ * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
  * @returns The plain text.
  */
 export function blockPlainText(node: ProseMirrorNode): string {
@@ -64,7 +64,7 @@ function attrSet(node: ProseMirrorNode, key: string): boolean {
 /**
  * Whether a block holds a colour, an alignment, a width, a comment or any
  * other thing a Markdown rewrite would drop.
- * @param node - The block's `blockContainer`.
+ * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
  * @returns True when it does.
  */
 function lossyBlock(node: ProseMirrorNode): boolean {

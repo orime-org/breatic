@@ -340,10 +340,6 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
       },
       props: {
         decorations: cellsInSelection,
-        // A typed key replaces the selection with its letter, through the
-        // selection's own replace, as the body's typing does. From a table,
-        // the letter takes the marks of the empty line in the table's place:
-        // none unless the reader picked some.
         // A pasted table over an end in a table would go into that table's
         // cells (prosemirror-tables `handlePaste`, which runs next), so the
         // held tables turn into empty lines first; every other paste goes
@@ -353,6 +349,10 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
           if (heldTables(view.state.selection) !== null && pastedCells(slice) !== null) swapHeldTables(view);
           return false;
         },
+        // A typed key replaces the selection with its letter, through the
+        // selection's own replace, as the body's typing does. From a table,
+        // the letter takes the marks of the empty line in the table's place:
+        // none unless the reader picked some.
         handleTextInput: (view, _from, _to, text) => {
           const tables = heldTables(view.state.selection);
           if (tables === null) return false;
