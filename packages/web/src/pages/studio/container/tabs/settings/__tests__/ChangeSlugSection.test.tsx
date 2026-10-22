@@ -239,6 +239,20 @@ describe('ChangeSlugSection — the confirm gate', () => {
     expect(hint).not.toHaveTextContent('studio.container.dialog.slugRequired');
   });
 
+  it('opens again after Cancel without the reason left from the last opening', async () => {
+    renderSection();
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent('studio.container.dialog.slugRequired');
+    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-slug-dialog')).not.toBeInTheDocument(),
+    );
+    await openDialog();
+    expect(screen.getByTestId('danger-slug-hint')).not.toHaveTextContent('studio.container.dialog.slugRequired');
+  });
+
   it('waits for a running check, then sends (inner#1652)', async () => {
     let answer!: (value: { available: boolean }) => void;
     vi.mocked(studiosApi.checkSlugAvailable).mockReturnValue(

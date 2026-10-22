@@ -43,6 +43,18 @@ describe('RenameProjectDialog (inner#1652)', () => {
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
   });
 
+  it('opens again without the reason left from the last opening', async () => {
+    const user = userEvent.setup();
+    const props = { onOpenChange: vi.fn(), currentName: 'Spring', onRename: vi.fn(), pending: false };
+    const { rerender } = render(<RenameProjectDialog open {...props} />);
+    await user.clear(screen.getByRole('textbox'));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    rerender(<RenameProjectDialog open={false} {...props} />);
+    rerender(<RenameProjectDialog open {...props} />);
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
   it('closes without sending anything when the name is unchanged', async () => {
     const user = userEvent.setup();
     const { onRename, onOpenChange } = setup();

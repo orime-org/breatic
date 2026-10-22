@@ -53,6 +53,17 @@ describe('InviteMemberDialog', () => {
     expect(screen.queryByText('Enter an email address.')).not.toBeInTheDocument();
   });
 
+  it('opens again without the reason left from the last opening (inner#1652)', async () => {
+    const user = userEvent.setup();
+    const props = { onOpenChange: vi.fn(), onInvite: vi.fn(), pending: false, error: null };
+    const { rerender } = render(<InviteMemberDialog open {...props} />);
+    await user.click(screen.getByRole('button', { name: 'Send invite' }));
+    expect(screen.getByText('Enter an email address.')).toBeInTheDocument();
+    rerender(<InviteMemberDialog open={false} {...props} />);
+    rerender(<InviteMemberDialog open {...props} />);
+    expect(screen.queryByText('Enter an email address.')).not.toBeInTheDocument();
+  });
+
   it('says the email is not valid instead of sending it (inner#1652)', async () => {
     const user = userEvent.setup();
     const onInvite = vi.fn();

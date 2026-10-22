@@ -153,6 +153,17 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
   });
 
+  it('opens again after Cancel without the reason left from the last opening', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    rerender(<NewItemDialog kind='project' open={false} onOpenChange={vi.fn()} />);
+    rerender(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
   it('fills the slug from the name as it is typed', async () => {
     const user = userEvent.setup();
     render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
@@ -596,6 +607,18 @@ describe('NewStudioDialog — reasons on press and waiting for the check (inner#
     await user.type(screen.getByLabelText('Name'), 'N');
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Slug'), 'n');
+    expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a Slug.');
+  });
+
+  it('opens again after Cancel without the reasons left from the last opening', async () => {
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    setOpen(false);
+    setOpen(true);
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
     expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a Slug.');
   });
 
