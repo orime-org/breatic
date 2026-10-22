@@ -17,10 +17,10 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 | Endpoint | Who calls it |
 |---|---|
 | `POST /uploads`, `POST /fetch`, `PUT` part, `POST` finish | The upload path: the browser opens an upload and sends parts, our services pull a source URL (`/fetch`) and finish |
-| `POST /media` | Our worker: read width, height and duration of a stored object whose finish skipped that read |
+| `POST /media` | Our worker: read width, height and duration of a stored object whose finish skipped that read, or an audio object's peaks |
 | `POST /jobs`, `GET /jobs/{class}/{id}` | Our worker: submit and poll container mini-tool jobs (`src/jobs/`) |
 
-**`POST /media` is not read-only: with `wantPreview: true` the container also writes `<key>.preview.webp`.** The finish decides the preview itself from the stored type.
+**`POST /media` is not read-only: with `wantPreview: true` the container also writes `<key>.preview.webp`, and with `wantPeaks: true` the Worker writes `<key>.peaks.json`.** The finish decides the preview itself from the stored type; a peaks read whose file already stands answers `existing` without starting a container, because its only callers read nothing else.
 
 **A finish with `deferMediaRead: true` skips the media read, except for still images with EXIF orientation 2 to 8, which still go through the container to be turned upright.**
 
