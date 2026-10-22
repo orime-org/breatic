@@ -209,6 +209,33 @@ describe('a table under a selection', () => {
     expect(quotedIn(editor)).toEqual([]);
   });
 
+  it('quotes and unquotes a table with the lines around it, from a range that wraps it', () => {
+    const editor = open([{ type: 'paragraph', content: 'above' }, TABLE, { type: 'paragraph', content: 'below' }]);
+    select(editor, 'above', 'below');
+    const quoted = (): boolean[] => (editor.document as { props: { quoted: boolean } }[]).map((block) => block.props.quoted);
+
+    runBlockType(editor, 'quote');
+    expect(quoted()).toEqual([true, true, true]);
+
+    runBlockType(editor, 'quote');
+    expect(quoted()).toEqual([false, false, false]);
+  });
+
+  it('leaves the blocks in the cells of a table a selection takes whole, as when it wraps the table', () => {
+    const editor = open([{ type: 'paragraph', content: 'above' }, TABLE, { type: 'paragraph', content: 'below' }]);
+    select(editor, 'above', 'a2');
+
+    runBlockType(editor, 'heading-1');
+
+    expect(types(editor)).toEqual(['heading', 'docTable', 'paragraph']);
+    let inCells = 0;
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'heading') inCells += 1;
+      return true;
+    });
+    expect(inCells).toBe(1);
+  });
+
   it('converts the paragraphs around a table and leaves the table', () => {
     const editor = open([
       { type: 'paragraph', content: 'above' },

@@ -25,6 +25,7 @@ import type { Selection } from '@tiptap/pm/state';
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
 /** The table block's content node. */
 const TABLE = 'table';
@@ -254,9 +255,10 @@ function blocksOf(
   withWordless: boolean,
 ): BlockUnder[] {
   const found: BlockUnder[] = [];
-  for (const { $from, $to } of selection.ranges) {
-    const from = $from.pos;
-    const to = $to.pos;
+  // A selection taking a table whole acts on the whole table (inner#1619 T14).
+  const held = heldRange(selection);
+  const ranges = held === null ? selection.ranges.map(({ $from, $to }) => ({ from: $from.pos, to: $to.pos })) : [held];
+  for (const { from, to } of ranges) {
     doc.nodesBetween(from, to, (node, pos) => {
       const whole =
         node.type.name === TABLE ||

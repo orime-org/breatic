@@ -30,6 +30,7 @@ import type { Transaction } from '@tiptap/pm/state';
 
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 import {
   ORDERED_LIST,
   QUOTED,
@@ -184,11 +185,13 @@ export function writeToBlocks(
   blocks: readonly BlockUnder[],
   update: (content: PMNode) => Update,
 ): void {
-  for (const { pos } of blocks) {
-    // `updateBlockTr` is given the position before a `blockContainer`, and a
-    // container opens with its content node, so the container is one back.
-    const at = tr.mapping.map(pos - 1);
-    const content = tr.doc.nodeAt(at)?.firstChild;
+  for (const { node, pos } of blocks) {
+    // `updateBlockTr` is given the position before a block: a table whose
+    // cells hold blocks is one itself, and every other block's content node
+    // opens its `blockContainer`, which is one back.
+    const own = node.type.name === DOC_TABLE;
+    const at = tr.mapping.map(own ? pos : pos - 1);
+    const content = own ? tr.doc.nodeAt(at) : tr.doc.nodeAt(at)?.firstChild;
     if (!content) {
       continue;
     }
