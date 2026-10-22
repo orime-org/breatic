@@ -26,6 +26,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState } from '@tiptap/pm/state';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { tableAround } from '@web/spaces/document/document-table-nodes';
 import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** BlockNote's paste hook, as this editor's options take it. */
@@ -123,6 +125,10 @@ export function pasteTarget(state: EditorState): PasteTarget {
  */
 function caretLine(state: EditorState): { start: number; container: PMNode; empty: boolean } | null {
   const { $head } = state.selection;
+  // A selection taking a table whole stands its head on the table's first or
+  // last words (inner#1619 T14): the table is the line.
+  const held = heldTables(state.selection) === null ? null : tableAround($head);
+  if (held !== null) return { start: held.pos, container: held.node, empty: false };
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const container = $head.node(depth);
     if (container.type.name !== 'blockContainer') continue;

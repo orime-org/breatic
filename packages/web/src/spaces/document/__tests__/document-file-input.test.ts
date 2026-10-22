@@ -22,6 +22,7 @@ import {
   type FilesArrival,
 } from '@web/spaces/document/document-file-input';
 import { gapAfter, gapBefore } from './textblocks';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -148,6 +149,38 @@ describe('the gap a paste goes into (A3)', () => {
 
     const { doc } = editor.prosemirrorView!.state;
     expect(pasteTarget(editor.prosemirrorView!.state).gap).toBe(gapBefore(doc, empty));
+  });
+});
+
+describe('the gap a paste goes into over a selection taking a table whole (inner#1619 T14)', () => {
+  it.each([
+    ['from above into a cell', 'A', 1, 'b1', 1],
+    ['from below into a cell', 'B', 1, 'a1', 1],
+  ] as const)('is after the table, %s', (_name, anchorWords, anchorOffset, headWords, headOffset) => {
+    const editor = open([
+      { type: 'paragraph', content: 'A' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+      { type: 'paragraph', content: 'B' },
+    ]);
+    const view = editor.prosemirrorView!;
+    /**
+     * A position in some words.
+     * @param words - The words.
+     * @param offset - How far into them.
+     * @returns The position.
+     */
+    const at = (words: string, offset: number): number => {
+      let found = -1;
+      view.state.doc.descendants((node, pos) => {
+        if (found < 0 && node.isText && node.text === words) found = pos + offset;
+        return found < 0;
+      });
+      return found;
+    };
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at(anchorWords, anchorOffset), at(headWords, headOffset))));
+    const tableId = (editor.document as Seen[])[1]!.id;
+
+    expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
   });
 });
 
