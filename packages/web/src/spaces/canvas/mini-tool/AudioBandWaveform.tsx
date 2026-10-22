@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { getCachedWaveformLimits } from '@web/data/api/canvas';
-import { waveformDrawable } from '@web/spaces/canvas/mini-tool/audio-waveform';
+import { waveformDecodable } from '@web/spaces/canvas/mini-tool/audio-waveform';
 import { AudioWaveform } from '@web/spaces/canvas/mini-tool/AudioWaveform';
 import { useAudioPeaks, type PeaksRetry } from '@web/spaces/canvas/mini-tool/use-audio-peaks';
 
@@ -33,7 +33,7 @@ export const AudioBandWaveform = React.memo(function AudioBandWaveform({
   sizeBytes,
 }: AudioBandWaveformProps): React.JSX.Element | null {
   const limits = getCachedWaveformLimits();
-  const decodable = waveformDrawable({ url, duration, sizeBytes }, limits);
+  const decodable = waveformDecodable({ url, duration, sizeBytes }, limits);
   const retryMs = limits?.peaksRetryMs;
   const retryMaxMs = limits?.peaksRetryMaxMs;
   const retry = React.useMemo<PeaksRetry | null>(

@@ -116,7 +116,8 @@ export function getCachedUnderstandMaxBytes(): number | null {
 
 /**
  * Sync accessor for the cut band's waveform ceilings, or `null` while the
- * knobs have not loaded; the band stays plain until they have.
+ * knobs have not loaded; until they have, the band decodes no audio itself (a
+ * peaks file still draws).
  * @returns The ceilings, or null before the first fetch.
  */
 export function getCachedWaveformLimits(): WaveformLimits | null {
