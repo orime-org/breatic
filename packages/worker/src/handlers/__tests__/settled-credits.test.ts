@@ -7,7 +7,8 @@
  * the charge read them (inner#1666), whichever lane priced the run: a model
  * generation, a reading or a container mini-tool. The rounding sits after the
  * vendor has returned, so a figure it cannot round passes through untouched
- * instead of throwing, and the charge refuses it.
+ * instead of throwing: the charge refuses a cost that is not a number, and a
+ * negative one charges nothing.
  *
  * No real Redis / DB — everything is mocked.
  */

@@ -18,8 +18,9 @@
 -- would wait on a charge that is itself waiting to write the ledger.
 --
 -- Every statement touches only rows that still carry more than two decimals,
--- so running the data part again changes nothing; a later migration runs it
--- again for what the previous release wrote after this one (inner#1672).
+-- so running the data part again changes nothing; what the previous release
+-- writes after this one is left to a follow-up migration that runs it again
+-- (inner#1672).
 
 LOCK TABLE "studio_credit_debts", "credit_holds", "credit_lots", "credit_ledger" IN EXCLUSIVE MODE;--> statement-breakpoint
 
