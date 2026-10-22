@@ -142,6 +142,7 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     const create = screen.getByRole('button', { name: 'Create' });
     expect(create).not.toBeDisabled();
     expect(create).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('border', 'border-border');
 
     await user.click(create);
     expect(onCreate).not.toHaveBeenCalled();
@@ -162,6 +163,21 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     rerender(<NewItemDialog kind='project' open={false} onOpenChange={vi.fn()} />);
     rerender(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
+  it('opens again after Cancel without the slug reason left from the last opening', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.clear(slugInput());
+    await user.type(slugInput(), 'Bad_Slug');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    rerender(<NewItemDialog kind='project' open={false} onOpenChange={vi.fn()} />);
+    rerender(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    expect(screen.getByTestId('new-project-slug-hint')).not.toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   it('fills the slug from the name as it is typed', async () => {
