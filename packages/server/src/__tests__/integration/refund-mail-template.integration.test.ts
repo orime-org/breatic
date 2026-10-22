@@ -202,7 +202,7 @@ describe.each([
     const mail = await renderRefundMail(make());
     const year = new Date().getUTCFullYear();
     expect(mail.to).toBe("buyer@example.test");
-    expect(mail.html).toContain("Collaborate Better");
+    expect(mail.html).toContain("Create Freely. Collaborate Better");
     expect(mail.html).toContain(`src="${getMailLayout().logoUrl}"`);
     expect(mail.html).toContain(`© ${year} Orime, Inc.`);
     expect(mail.text).toContain(`© ${year} Orime, Inc.`);

@@ -30,7 +30,7 @@ describe("the system prompt", () => {
   const wording = (): string => buildSystemPrompt().replace(/\s+/g, " ");
 
   it("introduces Breatic by its positioning line", () => {
-    expect(wording()).toContain("an AI operating system for content creators");
+    expect(wording()).toContain("the real-time collaborative AI workspace for creative teams");
   });
 
   it("names every product term that stays English in any language", () => {
