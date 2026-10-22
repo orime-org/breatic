@@ -11,12 +11,12 @@
  * handle's menu is open or its drag runs — read off the layout table's DOM:
  * the frame (`[data-node-type="docTable"]`), its `<tbody>`, a `<td>` or
  * `<th>` and its row. At a table's height off its cells — the gutter out to
- * where the table's own strip stands, a cell's padding, the room right of the
- * table — the state names the table and no cell: the table's strip shows
- * whenever the table is hovered, as a body block's does (inner#1619 T13, user
- * 2026-10-21), and the row and column handles only over a cell. A press in a cell that turns into a drag selection
- * takes the handles away until the button comes up, so they stay out of the
- * reader's way.
+ * where the table's own strip stands, the room right of the table — the state
+ * names the table and no cell: the table's strip shows whenever the table is
+ * hovered, as a body block's does (inner#1619 T13, user 2026-10-21), and the
+ * row and column handles only over a cell, its padding included. A press in a
+ * cell that turns into a drag selection takes the handles away until the
+ * button comes up, so they stay out of the reader's way.
  */
 
 import { createExtension, createStore, type BlockNoteEditor } from '@blocknote/core';

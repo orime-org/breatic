@@ -124,9 +124,8 @@ export function replaceHeld(selection: Selection, tr: Transaction, content: Slic
   const tables = heldTables(selection);
   if (tables === null) return false;
   const doc = tr.doc;
-  const held = [tables.from, tables.to]
-    .filter((table, at, all): table is TableAt => table !== null && all.findIndex((other) => other?.pos === table.pos) === at)
-    .sort((a, b) => b.pos - a.pos);
+  // The later table first, so the earlier one's position still holds.
+  const held = [tables.to, tables.from?.pos === tables.to?.pos ? null : tables.from].filter((table): table is TableAt => table !== null);
   const steps = tr.steps.length;
   for (const table of held) tr.replaceWith(table.pos, endOf(table), doc.type.schema.nodes['blockContainer']!.createAndFill()!);
   const mapping = tr.mapping.slice(steps);
