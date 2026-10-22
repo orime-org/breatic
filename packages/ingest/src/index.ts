@@ -1082,11 +1082,16 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   const askedForPreview = body?.wantPreview === true;
   const askedForPeaks = body?.wantPeaks === true;
   // A preview or peaks standing there are left as they are; the numbers are
-  // read either way.
+  // read either way, except for a read of peaks alone: its callers (the peaks
+  // job and the backfill) read only the outcome, so standing peaks start no
+  // container.
   const standing =
     askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
   const peaksStanding =
     askedForPeaks && (await env.BUCKET.head(peaksKeyFor(storageKey))) !== null;
+  if (peaksStanding && !askedForPreview) {
+    return Response.json({ width: null, height: null, durationSeconds: null, peaks: "existing" });
+  }
   const read = await readMediaAtEdge(env, {
     storageKey,
     contentType,

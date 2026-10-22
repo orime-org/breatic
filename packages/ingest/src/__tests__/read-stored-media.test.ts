@@ -355,7 +355,9 @@ describe("a read that asks for peaks", () => {
     expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PEAKS_BYTES);
   });
 
-  it("leaves standing peaks alone and still measures", async () => {
+  // Peaks are asked for only by the peaks job and the backfill, which read
+  // nothing but the outcome, so a standing file starts no container.
+  it("leaves standing peaks alone without starting a container", async () => {
     const storageKey = await storedSong();
     await env.BUCKET.put(peaksKeyFor(storageKey), new Uint8Array([7]));
     const run = containerAnswering(SONG, null, null, PEAKS_BYTES);
@@ -366,8 +368,8 @@ describe("a read that asks for peaks", () => {
       run.media,
     );
 
-    expect(await response.json()).toMatchObject({ durationSeconds: 61, peaks: "existing" });
-    expect(run.asked).toMatchObject({ wantPeaks: false });
+    expect(await response.json()).toEqual({ width: null, height: null, durationSeconds: null, peaks: "existing" });
+    expect(run.asked).toBeNull();
     const stored = await env.BUCKET.get(peaksKeyFor(storageKey));
     expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(new Uint8Array([7]));
   });
