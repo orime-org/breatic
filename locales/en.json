@@ -587,11 +587,20 @@
       "history": "History",
       "snapshot": "Save snapshot",
       "download": "Download",
-      "understand": "Understand"
+      "understand": "Understand",
+      "transcribe": "Transcribe"
     },
     "understand": {
       "couldNotStart": "Could not start. Try again.",
       "sourceGone": "The node being read is gone. This reading has no wire to it."
+    },
+    "transcribe": {
+      "title": "Transcribe",
+      "keepFillers": "Keep filler words",
+      "keepFillersOn": "Writes um, uh and the like as spoken",
+      "keepFillersOff": "Leaves out um, uh and the like, and may reword a few others",
+      "couldNotStart": "Could not start the transcription. Try again.",
+      "sourceGone": "The node being transcribed is gone. This transcription has no wire to it."
     },
     "generatePanel": {
       "focus": "Focus",
@@ -969,8 +978,8 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {Larger than a transcription takes.} other {Larger than a transcription takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a transcription takes ({file}).} other {Larger than a transcription takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a transcription takes ({file}, {bytes}).} other {Larger than a transcription takes ({file}, {bytes}). The limit is {limit}.}}}}}}} other {{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {Cannot transcribe this file type.} other {Cannot transcribe this file type ({type}).}}} other {{type, select, none {Cannot transcribe this file type ({file}).} other {Cannot transcribe this file type ({file}, {type}).}}}}} other {{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}}}",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
@@ -983,12 +992,15 @@
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
-        "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}"
+        "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
+        "no_speech": "{medium, select, video {No one speaks in this video.} other {No one speaks in this audio.}}",
+        "cut_short": "This is too long to transcribe in full."
       },
       "kind": {
         "upload": "Upload",
         "generate": "Generate",
-        "understand": "Understand"
+        "understand": "Understand",
+        "transcribe": "Transcribe"
       }
     },
     "panel": {

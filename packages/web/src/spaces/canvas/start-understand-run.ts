@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * One press of Understand, from the menu item to the request (#2175).
+ * One press of Understand or Transcribe, from the menu item to the request
+ * (#2175, inner#856).
  *
  * The node and its edge are written before the request goes out, because the
  * node is the reader's content and its existence does not depend on the
@@ -10,6 +11,10 @@
  * What the server decides lands on the row it opens against that node — which
  * is why the two questions the browser can answer for itself are asked first:
  * a no to either has no row to land on, so it is a toast and nothing is built.
+ *
+ * The two presses are one reading with different names: what the new node is
+ * called, which wait it is, which route it is sent to and what the sentences
+ * call the act. Everything else is shared, so a fix to one is a fix to both.
  */
 
 import { getLocale, t } from '@breatic/shared';
@@ -66,25 +71,47 @@ export interface UnderstandRun {
   onBuilt: (built: { id: string; position: { x: number; y: number } }) => void;
 }
 
-/**
- * Prefix on the name of the node a reading builds, so a paragraph says which
- * node it is about.
- *
- * Same shape `node-clipboard.ts` gives a clone (`COPY-` plus the name of what
- * it was cloned from): a node derived from another is named after it, marked
- * by the act that derived it. A fixed-English data value, like the other
- * default names in `node-factory.ts` — the reader renames it from there.
- */
-const UNDERSTAND_PREFIX = 'UNDERSTAND-';
+/** One press of Transcribe: a reading of audio or video, with the panel's switch. */
+export interface TranscribeRun extends UnderstandRun {
+  /** Whether filler words stay as spoken. */
+  keepFillers: boolean;
+}
+
+/** Which of the two readings a press is. */
+type Reading = 'understand' | 'transcribe';
 
 /**
- * The run-once intent of an Understand press on one node (inner#1490).
+ * What tells the two readings apart in the browser.
+ *
+ * The prefix on the built node's name follows `node-clipboard.ts` (`COPY-`
+ * plus the name of what it was cloned from): a node derived from another is
+ * named after it, marked by the act that derived it. A fixed-English data
+ * value, like the other default names in `node-factory.ts` — the reader
+ * renames it from there.
+ */
+const READINGS: Readonly<Record<Reading, { prefix: string; sourceGone: string; couldNotStart: string }>> = {
+  understand: {
+    prefix: 'UNDERSTAND-',
+    sourceGone: 'canvas.understand.sourceGone',
+    couldNotStart: 'canvas.understand.couldNotStart',
+  },
+  transcribe: {
+    prefix: 'TRANSCRIBE-',
+    sourceGone: 'canvas.transcribe.sourceGone',
+    couldNotStart: 'canvas.transcribe.couldNotStart',
+  },
+};
+
+/**
+ * The run-once intent of a press on one node (inner#1490). Each reading waits
+ * on its own, so a node can be understood and transcribed at once.
+ * @param reading - Which reading it is.
  * @param spaceId - The Space the node lives in.
  * @param nodeId - The node being read.
  * @returns The intent id.
  */
-function understandIntent(spaceId: string, nodeId: string): string {
-  return `understand:${spaceId}:${nodeId}`;
+function readingIntent(reading: Reading, spaceId: string, nodeId: string): string {
+  return `${reading}:${spaceId}:${nodeId}`;
 }
 
 /**
@@ -94,8 +121,21 @@ function understandIntent(spaceId: string, nodeId: string): string {
  * @returns True while it waits.
  */
 export function useUnderstanding(spaceId: string, nodeId: string): boolean {
-  return useRunning(understandIntent(spaceId, nodeId)) !== undefined;
+  return useRunning(readingIntent('understand', spaceId, nodeId)) !== undefined;
 }
+
+/**
+ * Whether a Transcribe press on this node is still waiting; the panel's Run reads it.
+ * @param spaceId - The Space the node lives in.
+ * @param nodeId - The node being transcribed.
+ * @returns True while it waits.
+ */
+export function useTranscribing(spaceId: string, nodeId: string): boolean {
+  return useRunning(readingIntent('transcribe', spaceId, nodeId)) !== undefined;
+}
+
+/** The fields both readings send. */
+type ReadingBody = Parameters<typeof canvasApi.understand>[0];
 
 /**
  * Build the text node this run writes to, wire it, and ask for the run.
@@ -113,21 +153,55 @@ export function useUnderstanding(spaceId: string, nodeId: string): boolean {
  * @returns The press's whole run; what happens next is on the new node's task list.
  */
 export function startUnderstandRun(run: UnderstandRun): Promise<RunOnceOutcome<unknown>> {
-  const { projectId, spaceId, userId, source, onBuilt } = run;
-  return runOnce(understandIntent(spaceId, source.id), {
-    scope: 'understand',
-    prepare: () => buildUnderstandRun(projectId, spaceId, userId, source, onBuilt),
-    send: (key, body: UnderstandBody) => canvasApi.understand(body, key),
-    onFailure: reportUnderstandFailure,
-  });
+  return startReadingRun('understand', run, (key, body) => canvasApi.understand(body, key));
 }
 
-/** The request body of one Understand run. */
-type UnderstandBody = Parameters<typeof canvasApi.understand>[0];
+/**
+ * Build the text node a transcription writes to, wire it, and ask for it
+ * (inner#856). The same press as {@link startUnderstandRun}, carrying the
+ * panel's filler switch to its own route.
+ * @param run - The press, with the panel's switch.
+ * @returns The press's whole run; what happens next is on the new node's task list.
+ */
+export function startTranscribeRun(run: TranscribeRun): Promise<RunOnceOutcome<unknown>> {
+  return startReadingRun('transcribe', run, (key, body) =>
+    canvasApi.transcribe(
+      {
+        ...body,
+        // The menu offers Transcribe on audio and video nodes only.
+        source_type: body.source_type === 'video' ? 'video' : 'audio',
+        keep_fillers: run.keepFillers,
+      },
+      key,
+    ),
+  );
+}
+
+/**
+ * One press of either reading.
+ * @param reading - Which reading it is.
+ * @param run - The press: where it happens, who pressed, and what is read.
+ * @param send - Sends the prepared body under the press's key.
+ * @returns The press's whole run.
+ */
+function startReadingRun(
+  reading: Reading,
+  run: UnderstandRun,
+  send: (key: string, body: ReadingBody) => Promise<unknown>,
+): Promise<RunOnceOutcome<unknown>> {
+  const { projectId, spaceId, userId, source, onBuilt } = run;
+  return runOnce(readingIntent(reading, spaceId, source.id), {
+    scope: reading,
+    prepare: () => buildReadingRun(reading, projectId, spaceId, userId, source, onBuilt),
+    send,
+    onFailure: (err: unknown) => reportReadingFailure(reading, err),
+  });
+}
 
 /**
  * The browser's half of a press: refuse what it can settle, build and wire
  * the text node, and fix the request body.
+ * @param reading - Which reading it is.
  * @param projectId - The project.
  * @param spaceId - The Space.
  * @param userId - Who pressed.
@@ -135,13 +209,14 @@ type UnderstandBody = Parameters<typeof canvasApi.understand>[0];
  * @param onBuilt - Told about the node this press built.
  * @returns The request body, or null when the press was refused here.
  */
-function buildUnderstandRun(
+function buildReadingRun(
+  reading: Reading,
   projectId: string,
   spaceId: string,
   userId: string,
   source: UnderstandSource,
   onBuilt: UnderstandRun['onBuilt'],
-): UnderstandBody | null {
+): ReadingBody | null {
   // The ceiling rides on the knobs the canvas warms on mount, read here
   // without waiting. It is allowed to be absent: the refusal judges format
   // without it and skips only the size question, which the run then answers
@@ -162,14 +237,15 @@ function buildUnderstandRun(
     // raises it: this gate before anything is built, or the run once it is.
     toast.warning(
       refusal.kind === 'format'
-        ? t(
-          'canvas.task.failure.understand_unsupported_type',
-          refusalClause(refusal),
-        )
+        ? t('canvas.task.failure.understand_unsupported_type', {
+          ...refusalClause(refusal),
+          reading,
+        })
         : t('canvas.task.failure.understand_over_cap', {
           ...refusalClause(refusal),
           bytes: formatBytes(refusal.sizeBytes),
           limit: formatBytes(refusal.limitBytes),
+          reading,
         }),
     );
     return null;
@@ -182,7 +258,7 @@ function buildUnderstandRun(
     data: {
       ...built.data,
       ...(source.name !== undefined && {
-        name: UNDERSTAND_PREFIX + source.name,
+        name: READINGS[reading].prefix + source.name,
       }),
     },
   };
@@ -204,7 +280,7 @@ function buildUnderstandRun(
   // open. The address it holds was captured before that, so the reading goes
   // ahead — and the wire, which is the only thing saying what this reading is
   // about, is missing, so the reader is told.
-  if (!wired) toast.warning(t('canvas.understand.sourceGone'));
+  if (!wired) toast.warning(t(READINGS[reading].sourceGone));
   onBuilt({ id: node.id, position });
 
   return {
@@ -239,12 +315,13 @@ function buildUnderstandRun(
  * is where `t()` is, held there by `breatic/no-untranslated-error-message`.
  * `fromServer` is true only when the answer carried a sentence at all; the
  * short line below is for the rejections that carried none.
+ * @param reading - Which reading it was.
  * @param err - The final failure.
  */
-function reportUnderstandFailure(err: unknown): void {
+function reportReadingFailure(reading: Reading, err: unknown): void {
   const said =
     err instanceof ApiException && err.fromServer && err.message
       ? err.message
-      : t('canvas.understand.couldNotStart');
+      : t(READINGS[reading].couldNotStart);
   toast.error(said);
 }
