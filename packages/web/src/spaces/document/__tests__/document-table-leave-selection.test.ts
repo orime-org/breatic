@@ -15,7 +15,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';
+import { bodyEdgeBetween, bodyEdgePos, extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';
 import { resolveLinkSelection } from '@web/spaces/document/document-link';
 import { writeStyle } from '@web/spaces/document/document-style-write';
 import { selectionItem } from '@web/spaces/document/document-to-agent';
@@ -897,6 +897,76 @@ describe('Shift and an arrow at a table\'s edge', () => {
 
     const { selection, doc } = editor.prosemirrorView.state;
     expect(selection.head).toBe(doc.content.size - 2);
+  });
+
+  /**
+   * Presses Shift with a key and other modifiers through the editor's own handlers.
+   * @param editor - The editor.
+   * @param key - The key.
+   * @param mods - The other modifiers held.
+   */
+  const shift = (editor: Editor, key: string, mods: { altKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {}): void => {
+    const view = editor.prosemirrorView;
+    const event = new KeyboardEvent('keydown', { key, shiftKey: true, ...mods, bubbles: true, cancelable: true });
+    view.someProp('handleKeyDown', (f) => f(view, event));
+  };
+
+  for (const [name, key, mods] of [
+    ['Shift+Right', 'ArrowRight', {}],
+    ['Shift+Option+Right', 'ArrowRight', { altKey: true }],
+    ['Shift+Cmd+Right', 'ArrowRight', { metaKey: true }],
+    ['Shift+Ctrl+Right', 'ArrowRight', { ctrlKey: true }],
+    ['Shift+End', 'End', {}],
+  ] as const) {
+    it(`runs the end in a held table on past it with ${name}`, () => {
+      const { editor } = open();
+      select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+      shift(editor, key, mods);
+
+      const { selection } = editor.prosemirrorView.state;
+      expect([selection.anchor, selection.head]).toEqual([at(editor, 'lead', 2), at(editor, 'below', 0)]);
+    });
+  }
+
+  for (const [name, key, mods] of [
+    ['Shift+Left', 'ArrowLeft', {}],
+    ['Shift+Option+Left', 'ArrowLeft', { altKey: true }],
+    ['Shift+Home', 'Home', {}],
+  ] as const) {
+    it(`takes the selection back over a held table with ${name}`, () => {
+      const { editor } = open();
+      select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+      shift(editor, key, mods);
+
+      const { selection } = editor.prosemirrorView.state;
+      expect([selection.anchor, selection.head]).toEqual([at(editor, 'lead', 2), at(editor, 'lead', 4)]);
+    });
+  }
+
+  it('keeps the end outside the table with Shift and Right from an empty first cell, no cells selected', () => {
+    const { editor } = open({ rows: [{ cells: ['', 'b1'] }, { cells: ['a2', 'b2'] }] });
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    const view = editor.prosemirrorView;
+    select(editor, at(editor, 'below', 3), at(editor, 'b1', 0));
+    expect(view.state.selection.head).toBeLessThan(at(editor, 'b1', 0));
+
+    shift(editor, 'ArrowRight');
+
+    const { selection } = view.state;
+    expect(selection).not.toBeInstanceOf(CellSelection);
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'below', 3), at(editor, 'below', 0)]);
+  });
+
+  it('runs the end of a selection from the start of the body on past the table with Shift and Right', () => {
+    const { editor } = openWith([tableBlock(WORDS), { type: 'paragraph', content: 'below' }]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(view.state.doc, bodyEdgePos(view.state.doc, 'start'), at(editor, 'a2', 1))));
+
+    shift(editor, 'ArrowRight');
+
+    expect(view.state.selection.head).toBe(at(editor, 'below', 0));
   });
 
   it('leaves Shift and an arrow on an inner row to the table', () => {

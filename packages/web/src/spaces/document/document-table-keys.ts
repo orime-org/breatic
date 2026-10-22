@@ -297,11 +297,11 @@ function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
  */
 function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
   const { selection, doc } = view.state;
-  if (!(selection instanceof TextSelection)) return false;
   // A selection already holding a whole table moves its end in the table
   // over the whole table either way (inner#1619 design 5.3), never back into
   // a cell selection; any other only on its way out of a first or last row.
   const spanned = tableAtLeavingHead(view.state);
+  if (!(selection instanceof TextSelection) && spanned === null) return false;
   const edge = spanned === null
     ? tableExit(view, selection.$head, dir)?.edge
     : dir === 'up' ? spanned.pos : spanned.pos + spanned.node.nodeSize;
@@ -316,6 +316,35 @@ function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
   view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(doc, selection.anchor, past)).scrollIntoView());
   return true;
 }
+
+/**
+ * Shift with a key that extends along a line (by a character, a word, to the
+ * line's end) moves an end standing in a table the selection holds whole over
+ * the whole table (inner#1619 design 5.3), as Shift and Up or Down do. The
+ * browser's own extension moves that end within the table, where it is put
+ * back on the table's edge, and prosemirror-tables' turns it into cells
+ * (`shiftArrow`).
+ * @param view - The editor view.
+ * @param dir - Back (up) or on (down).
+ * @returns Whether the key was claimed.
+ */
+function crossHeldTable(view: EditorView, dir: 'up' | 'down'): boolean {
+  return tableAtLeavingHead(view.state) !== null && extendOutOfTable(view, dir);
+}
+
+/** The keys that extend a selection along a line, each with its way. */
+const ALONG_THE_LINE: Readonly<Record<string, 'up' | 'down'>> = {
+  'Shift-ArrowLeft': 'up',
+  'Shift-ArrowRight': 'down',
+  'Shift-Alt-ArrowLeft': 'up',
+  'Shift-Alt-ArrowRight': 'down',
+  'Shift-Meta-ArrowLeft': 'up',
+  'Shift-Meta-ArrowRight': 'down',
+  'Shift-Ctrl-ArrowLeft': 'up',
+  'Shift-Ctrl-ArrowRight': 'down',
+  'Shift-Home': 'up',
+  'Shift-End': 'down',
+};
 
 /**
  * The extension that binds the keys inside a table.
@@ -366,5 +395,11 @@ export const documentTableKeysExtension = createExtension(() => ({
     'Shift-ArrowUp': ({ editor }: { editor: KeysEditor }) => extendOutOfTable(editor.prosemirrorView, 'up'),
     'Shift-ArrowDown': ({ editor }: { editor: KeysEditor }) => extendOutOfTable(editor.prosemirrorView, 'down'),
     ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'down'),
+    ...Object.fromEntries(
+      Object.entries(ALONG_THE_LINE).map(([key, dir]) => [
+        key,
+        ({ editor }: { editor: KeysEditor }) => crossHeldTable(editor.prosemirrorView, dir),
+      ]),
+    ),
   },
 }) as never);
