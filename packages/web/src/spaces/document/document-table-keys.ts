@@ -34,9 +34,9 @@ import {
   goToNextCell,
   isInTable,
 } from '@tiptap/pm/tables';
-import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/document-table-nodes';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
-import { heldTables, tableAtLeavingHead, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { bodyEdgeBetween, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
 
 /** The parts of the editor these bindings use. */
@@ -332,10 +332,38 @@ function crossHeldTable(view: EditorView, dir: 'up' | 'down'): boolean {
   return tableAtLeavingHead(view.state) !== null && extendOutOfTable(view, dir);
 }
 
+/**
+ * Shift and an arrow with the head on the edge of a line facing a table run
+ * the head into it, onto its words farthest away, which takes the whole table
+ * into the selection (inner#1619 T14): the line's end before a table with
+ * Right, its start after one with Left, its first line after one with Up, its
+ * last before one with Down. Left to the browser, the first three move
+ * nothing.
+ * @param view - The editor view.
+ * @param key - Which arrow.
+ * @returns Whether the key was claimed.
+ */
+function extendIntoTable(view: EditorView, key: 'left' | 'right' | 'up' | 'down'): boolean {
+  const { selection, doc } = view.state;
+  if (!(selection instanceof TextSelection)) return false;
+  const { $head } = selection;
+  const forward = key === 'right' || key === 'down';
+  const next = Selection.findFrom(doc.resolve(forward ? $head.after() : $head.before()), forward ? 1 : -1, true);
+  const table = next === null ? null : tableAround(next.$head);
+  if (table === null || table.pos === tableAround($head)?.pos) return false;
+  // Measured only beside a table, so Up and Down everywhere else stay the
+  // browser's own.
+  const atEdge = key === 'left' || key === 'right'
+    ? $head.parentOffset === (forward ? $head.parent.content.size : 0)
+    : view.endOfTextblock(key);
+  if (!atEdge) return false;
+  const head = tableEdgeText(doc, table, forward ? 1 : -1);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, head)).scrollIntoView());
+  return true;
+}
+
 /** The keys that extend a selection along a line, each with its way. */
 const ALONG_THE_LINE: Readonly<Record<string, 'up' | 'down'>> = {
-  'Shift-ArrowLeft': 'up',
-  'Shift-ArrowRight': 'down',
   'Shift-Alt-ArrowLeft': 'up',
   'Shift-Alt-ArrowRight': 'down',
   'Shift-Meta-ArrowLeft': 'up',
@@ -392,8 +420,14 @@ export const documentTableKeysExtension = createExtension(() => ({
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, 1) || leaveEdgeTable(editor, 'right'),
     ArrowUp: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'up'),
-    'Shift-ArrowUp': ({ editor }: { editor: KeysEditor }) => extendOutOfTable(editor.prosemirrorView, 'up'),
-    'Shift-ArrowDown': ({ editor }: { editor: KeysEditor }) => extendOutOfTable(editor.prosemirrorView, 'down'),
+    'Shift-ArrowUp': ({ editor }: { editor: KeysEditor }) =>
+      extendOutOfTable(editor.prosemirrorView, 'up') || extendIntoTable(editor.prosemirrorView, 'up'),
+    'Shift-ArrowDown': ({ editor }: { editor: KeysEditor }) =>
+      extendOutOfTable(editor.prosemirrorView, 'down') || extendIntoTable(editor.prosemirrorView, 'down'),
+    'Shift-ArrowLeft': ({ editor }: { editor: KeysEditor }) =>
+      crossHeldTable(editor.prosemirrorView, 'up') || extendIntoTable(editor.prosemirrorView, 'left'),
+    'Shift-ArrowRight': ({ editor }: { editor: KeysEditor }) =>
+      crossHeldTable(editor.prosemirrorView, 'down') || extendIntoTable(editor.prosemirrorView, 'right'),
     ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'down'),
     ...Object.fromEntries(
       Object.entries(ALONG_THE_LINE).map(([key, dir]) => [

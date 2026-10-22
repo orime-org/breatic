@@ -988,6 +988,46 @@ describe('Shift and an arrow at a table\'s edge', () => {
     expect(view.state.selection.head).toBe(at(editor, 'below', 0));
   });
 
+  it('takes the whole table in with Shift and Right at the end of the line above it', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'lead', 4), at(editor, 'lead', 4));
+
+    shift(editor, 'ArrowRight');
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'lead', 4), at(editor, 'b2', 2)]);
+  });
+
+  it('takes the whole table in with Shift and Left at the start of the line below it', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'below', 0), at(editor, 'below', 0));
+
+    shift(editor, 'ArrowLeft');
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'below', 0), at(editor, 'a1', 0)]);
+  });
+
+  it('takes the whole table in with Shift and Up on the first line below it', () => {
+    const { editor } = open();
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    select(editor, at(editor, 'below', 3), at(editor, 'below', 3));
+
+    shift(editor, 'ArrowUp');
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'below', 3), at(editor, 'a1', 0)]);
+  });
+
+  it('leaves Shift and Right at the end of a cell\'s line to the table', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'a1', 2), at(editor, 'a1', 2));
+
+    shift(editor, 'ArrowRight');
+
+    expect(editor.prosemirrorView.state.selection.head).not.toBe(at(editor, 'b2', 2));
+  });
+
   it('leaves Shift and an arrow on an inner row to the table', () => {
     const { editor } = open();
     editor.prosemirrorView.endOfTextblock = (): boolean => true;
