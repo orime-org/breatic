@@ -113,6 +113,14 @@ describe('RegisterPage without email (two-step entry)', () => {
 
     const busy = screen.getByRole('button', { name: 'Creating...' });
     expect(busy).toHaveAttribute('aria-busy', 'true');
+    // Read-only keeps the focus Enter left in a field, so a refused submit is
+    // corrected by typing straight away (inner#1652).
+    const held = document.querySelectorAll('form input');
+    expect(held.length).toBeGreaterThan(0);
+    for (const field of held) {
+      expect(field).toHaveAttribute('readonly');
+      expect(field).not.toBeDisabled();
+    }
     expect(busy).toHaveAttribute('aria-disabled', 'true');
 
     answer(CODE_SENT);

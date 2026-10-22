@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect } from 'vitest';
+import fc from 'fast-check';
 
 import {
   ITEM_SLUG_BOUNDS,
   STUDIO_SLUG_BOUNDS,
+  itemSlugFromName,
   validateItemSlug,
   validateSlugShape,
   validateStudioSlug,
@@ -63,5 +65,82 @@ describe('validateItemSlug (not unique — shape only)', () => {
 
   it('rejects a malformed slug', () => {
     expect(validateItemSlug('Bad_Slug')).toBe('format');
+  });
+});
+
+describe('itemSlugFromName (inner#1463)', () => {
+  it.each([
+    ['Spring Campaign 2026', 'spring-campaign-2026'],
+    ['Café déjà vu', 'cafe-deja-vu'],
+    ['  My   App!!  ', 'my-app'],
+    ['2026 launch plan', 'launch-plan'],
+    ['我的项目', 'project'],
+    ['プロジェクト', 'project'],
+    ['🎨🚀', 'project'],
+    ['AI 短片', 'project'],
+    ['', 'project'],
+  ])('turns %j into %j', (name, expected) => {
+    expect(itemSlugFromName(name, 'project')).toBe(expected);
+  });
+
+  it('uses the given fallback word', () => {
+    expect(itemSlugFromName('资产集', 'collection')).toBe('collection');
+  });
+
+  it('cuts a long result at a hyphen within the length limit', () => {
+    const name = 'the quick brown fox jumps over the lazy dog again and again';
+    const slug = itemSlugFromName(name, 'project');
+    expect(slug.length).toBeLessThanOrEqual(ITEM_SLUG_BOUNDS.max);
+    expect(name.toLowerCase().replace(/ /g, '-').startsWith(slug)).toBe(true);
+    expect(slug.endsWith('-')).toBe(false);
+  });
+
+  it('cuts at the last hyphen when the limit falls inside a word', () => {
+    const name = 'alpha beta gamma delta epsilon zeta eta theta iotas kappa';
+    expect(itemSlugFromName(name, 'project')).toBe('alpha-beta-gamma-delta-epsilon-zeta-eta-theta');
+  });
+
+  it('keeps a word that ends exactly at the limit', () => {
+    const name = 'alpha beta gamma delta epsilon zeta eta theta iota kappa';
+    expect(itemSlugFromName(name, 'project')).toBe('alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota');
+  });
+
+  it('cuts at the limit when the only hyphen comes too early to leave a full slug', () => {
+    expect(itemSlugFromName(`Go ${'x'.repeat(60)}`, 'project')).toBe(`go-${'x'.repeat(47)}`);
+  });
+
+  it('cuts a single word longer than the limit at the limit', () => {
+    expect(itemSlugFromName('a'.repeat(70), 'project')).toBe('a'.repeat(ITEM_SLUG_BOUNDS.max));
+  });
+
+  it('keeps whole words of a Latin name, cutting only at a word end', () => {
+    const word = fc.stringMatching(/^[a-z][a-z0-9]{0,11}$/);
+    fc.assert(
+      fc.property(fc.array(word, { minLength: 1, maxLength: 12 }), (words) => {
+        const full = words.join('-');
+        const slug = itemSlugFromName(words.join(' '), 'project');
+        if (full.length < ITEM_SLUG_BOUNDS.min) {
+          expect(slug).toBe('project');
+        } else if (full.length <= ITEM_SLUG_BOUNDS.max) {
+          expect(slug).toBe(full);
+        } else {
+          const lastBreak = full.slice(0, ITEM_SLUG_BOUNDS.max + 1).lastIndexOf('-');
+          expect(slug).toBe(
+            lastBreak >= ITEM_SLUG_BOUNDS.min ? full.slice(0, lastBreak) : full.slice(0, ITEM_SLUG_BOUNDS.max),
+          );
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it('always produces a slug the create endpoint accepts', () => {
+    fc.assert(
+      fc.property(fc.string({ unit: 'binary', maxLength: 120 }), (name) => {
+        expect(validateItemSlug(itemSlugFromName(name, 'project'))).toBeNull();
+        expect(validateItemSlug(itemSlugFromName(name, 'collection'))).toBeNull();
+      }),
+      { numRuns: 500 },
+    );
   });
 });

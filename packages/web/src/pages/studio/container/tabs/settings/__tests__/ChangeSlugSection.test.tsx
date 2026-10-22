@@ -4,11 +4,10 @@
 /**
  * The danger zone's slug entry: a button, and a dialog that holds the input.
  *
- * The gate is written as "only when the check says valid" rather than
- * "unless the check says invalid", because an emptied field reports neither —
- * it reports empty. The version of this gate that lived in the basic-info form
- * had to be corrected for exactly that, and the correction travels with the
- * feature.
+ * Confirm stays pressable (inner#1652). A press goes out only when the check
+ * says valid or could not be made (unverified), never merely "not invalid",
+ * because an emptied field reports neither — it reports empty — and says why
+ * on the slug line otherwise.
  *
  * Confirming does not close the dialog. On success the whole tab unmounts
  * anyway, since the address it is standing on has just stopped existing; on
@@ -213,27 +212,114 @@ describe('ChangeSlugSection — how the footer looks', () => {
 });
 
 describe('ChangeSlugSection — the confirm gate', () => {
-  it('refuses the slug the studio already holds', async () => {
-    renderSection();
+  it('closes without sending anything when the slug is unchanged (inner#1652)', async () => {
+    const onSave = vi.fn();
+    renderSection({ onSave });
     await openDialog();
-    expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    expect(confirm).not.toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onSave).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-slug-dialog')).not.toBeInTheDocument(),
+    );
   });
 
-  it('refuses an emptied field, which reports empty rather than invalid', async () => {
+  it('says a slug is needed for an emptied field, which reports empty rather than invalid', async () => {
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(onSave).not.toHaveBeenCalled();
+    const hint = screen.getByTestId('danger-slug-hint');
+    expect(hint).toHaveTextContent('studio.container.dialog.slugRequired');
+    expect(hint).toHaveClass('text-status-error-foreground');
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: 'a' } });
+    expect(hint).not.toHaveTextContent('studio.container.dialog.slugRequired');
+  });
+
+  it('opens again after Cancel without the reason left from the last opening', async () => {
     renderSection();
     const input = await openDialog();
     fireEvent.change(input, { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent('studio.container.dialog.slugRequired');
+    fireEvent.click(screen.getByTestId('settings-slug-cancel'));
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled(),
+      expect(screen.queryByTestId('settings-slug-dialog')).not.toBeInTheDocument(),
     );
+    await openDialog();
+    expect(screen.getByTestId('danger-slug-hint')).not.toHaveTextContent('studio.container.dialog.slugRequired');
+  });
+
+  it('waits for a running check, then sends (inner#1652)', async () => {
+    let answer!: (value: { available: boolean }) => void;
+    vi.mocked(studiosApi.checkSlugAvailable).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    fireEvent.click(confirm);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+
+    answer({ available: true });
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' }, expect.any(Function)),
+    );
+  });
+
+  it('sends when the check could not be made, for the server to judge (inner#1652)', async () => {
+    vi.mocked(studiosApi.checkSlugAvailable).mockRejectedValue(new Error('down'));
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    await waitFor(() =>
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugUnverified',
+      ),
+    );
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(onSave).toHaveBeenCalledWith({ slug: 'acme-renamed' }, expect.any(Function));
+  });
+
+  it('waits for a running check and refuses a slug it finds taken (inner#1652)', async () => {
+    let answer!: (value: { available: boolean; reason: 'taken' }) => void;
+    vi.mocked(studiosApi.checkSlugAvailable).mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const onSave = vi.fn();
+    renderSection({ onSave });
+    const input = await openDialog();
+    fireEvent.change(input, { target: { value: 'acme-renamed' } });
+    input.blur();
+    const confirm = screen.getByTestId('settings-slug-confirm');
+    fireEvent.click(confirm);
+    expect(confirm).toHaveAttribute('aria-busy', 'true');
+
+    answer({ available: false, reason: 'taken' });
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(onSave).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveAttribute('aria-busy');
+    expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent('studio.container.dialog.slugTaken');
   });
 
   it('never asks the server whether the studio may keep its own slug', async () => {
     // The dialog opens holding it, and asking gets the truthful answer
     // "taken" — by the very studio doing the asking. Assert the request never
     // goes out, and that editing away and back leaves no taken error behind:
-    // checking the confirm button instead would pass either way, since it is
-    // disabled while the value is unchanged regardless.
+    // pressing the confirm button instead would pass either way, since a press
+    // on the unchanged value only closes the dialog.
     vi.mocked(studiosApi.checkSlugAvailable).mockResolvedValue({
       available: false,
       reason: 'taken',
@@ -266,7 +352,8 @@ describe('ChangeSlugSection — the confirm gate', () => {
       available: false,
       reason: 'taken',
     });
-    renderSection();
+    const onSave = vi.fn();
+    renderSection({ onSave });
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
@@ -274,7 +361,10 @@ describe('ChangeSlugSection — the confirm gate', () => {
         screen.getByText('studio.container.dialog.slugTaken'),
       ).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
+    input.blur();
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(input).toHaveFocus();
   });
 
   it('lets a free, well-formed slug through, and sends only the slug', async () => {
@@ -283,7 +373,9 @@ describe('ChangeSlugSection — the confirm gate', () => {
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
 
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
@@ -299,7 +391,9 @@ describe('ChangeSlugSection — the confirm gate', () => {
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
     const fieldShown = onSave.mock.calls[0][1] as () => boolean;
@@ -316,19 +410,25 @@ describe('ChangeSlugSection — the confirm gate', () => {
     expect(fieldShown()).toBe(false);
   });
 
-  it('shuts the moment ANY settings save goes out, so two cannot ride at once', async () => {
+  it('ignores a press the moment ANY settings save goes out, so two cannot ride at once', async () => {
     // The broad flag, not the narrow one: the name, the description and the
     // slug are one mutation, and firing the second replaces the first on the
     // observer without stopping its request.
-    const { setFlags } = renderSection();
+    const onSave = vi.fn();
+    const { setFlags } = renderSection({ onSave });
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
 
     setFlags({ saving: true, renaming: false });
-    expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
+    expect(input).toHaveAttribute('readonly');
+    expect(input).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
 
@@ -342,7 +442,9 @@ describe('ChangeSlugSection — while the request is out', () => {
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
     handle.setFlags({ saving: true, renaming: true });
     return handle;
@@ -369,12 +471,14 @@ describe('ChangeSlugSection — while the request is out', () => {
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
 
     handle.setFlags({ saving: true, renaming: false });
     const confirm = screen.getByTestId('settings-slug-confirm');
-    expect(confirm).toBeDisabled();
+    expect(confirm).not.toHaveAttribute('aria-busy');
     expect(confirm.querySelector('.animate-spin')).toBeNull();
   });
 
@@ -433,7 +537,9 @@ describe('ChangeSlugSection — after confirming', () => {
     const input = await openDialog();
     fireEvent.change(input, { target: { value: 'acme-renamed' } });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
 
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));

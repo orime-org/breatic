@@ -52,29 +52,31 @@ function setAvailability(check: SlugCheck): void {
  * @param strict - wrap in `React.StrictMode` to exercise double-mount.
  * @returns the render result.
  */
-function setup(strict = false): ReturnType<typeof render> {
-  const tree = (
-    <MemoryRouter initialEntries={['/choose-slug']}>
-      <Routes>
-        <Route path='/choose-slug' element={<SlugSetupPage />} />
-        <Route path='/studio' element={<div data-testid='studio-page' />} />
-      </Routes>
-    </MemoryRouter>
-  );
+function setup(strict = false): ReturnType<typeof render> & { refresh: () => void } {
   const client = new QueryClient();
-  const wrapped = (
-    <QueryClientProvider client={client}>{tree}</QueryClientProvider>
-  );
-  return render(
-    strict ? <React.StrictMode>{wrapped}</React.StrictMode> : wrapped,
-  );
+  const build = (): React.JSX.Element => {
+    const wrapped = (
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/choose-slug']}>
+          <Routes>
+            <Route path='/choose-slug' element={<SlugSetupPage />} />
+            <Route path='/studio' element={<div data-testid='studio-page' />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    return strict ? <React.StrictMode>{wrapped}</React.StrictMode> : wrapped;
+  };
+  const result = render(build());
+  // A fresh tree makes the page read the mocked check again.
+  return { ...result, refresh: () => result.rerender(build()) };
 }
 
 describe('SlugSetupPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default to `valid` so the form is interactive (submit enabled);
-    // individual tests override via `setAvailability`.
+    // Default to `valid` so a press goes through; individual tests override
+    // via `setAvailability`.
     setAvailability({ state: 'valid' });
     // A signed-in but not-yet-onboarded user (the state that reaches
     // this page): personalStudio is null until setup-studio runs.
@@ -86,7 +88,7 @@ describe('SlugSetupPage', () => {
     });
   });
 
-  it('renders the slug form with an enabled submit and the available line when available', () => {
+  it('renders the slug form with its submit and the available line when available', () => {
     setup();
     expect(screen.getByLabelText('Slug')).toBeInTheDocument();
     // When the live check reports `valid`, the helper line shows the
@@ -94,10 +96,7 @@ describe('SlugSetupPage', () => {
     expect(screen.getByText('Slug is available')).toHaveClass(
       'text-status-success-foreground',
     );
-    const submit = screen.getByRole('button', { name: 'Continue' });
-    expect(submit).toBeInTheDocument();
-    // The check is `valid`, so submit is enabled.
-    expect(submit).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
   });
 
   it('shows the default URL helper line when the input is empty', () => {
@@ -109,8 +108,22 @@ describe('SlugSetupPage', () => {
       'Your home will live at /studio/…. 6–39 characters',
     );
     expect(hint).toHaveClass('text-muted-foreground');
-    // Empty is not `valid`, so submit is disabled.
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('keeps Continue pressable and says a slug is needed when it is empty (inner#1652)', async () => {
+    setAvailability({ state: 'empty' });
+    const user = userEvent.setup();
+    setup();
+    const submit = screen.getByRole('button', { name: 'Continue' });
+    expect(submit).not.toBeDisabled();
+    await user.click(submit);
+    expect(authApi.setupStudio).not.toHaveBeenCalled();
+    const hint = screen.getByTestId('onboarding-slug-hint');
+    expect(hint).toHaveTextContent('Enter a Slug.');
+    expect(hint).toHaveClass('text-status-error-foreground');
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+    await user.type(screen.getByLabelText('Slug'), 'm');
+    expect(hint).not.toHaveTextContent('Enter a Slug.');
   });
 
   // INVARIANT (design §7 #8): StrictMode double-mount must not fire a
@@ -121,7 +134,7 @@ describe('SlugSetupPage', () => {
     expect(authApi.setupStudio).not.toHaveBeenCalled();
   });
 
-  it('shows the format error and disables submit when the slug is malformed (no API call)', async () => {
+  it('shows the format error and refuses the press when the slug is malformed (no API call)', async () => {
     // The live hook (mocked) reports the local shape failure.
     setAvailability({ state: 'invalid', reason: 'format' });
     const user = userEvent.setup();
@@ -133,23 +146,24 @@ describe('SlugSetupPage', () => {
       ),
     ).toHaveClass('text-status-error-foreground');
     const submit = screen.getByRole('button', { name: 'Continue' });
-    expect(submit).toBeDisabled();
+    expect(submit).not.toBeDisabled();
     await user.click(submit);
     expect(authApi.setupStudio).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
   });
 
-  it('shows the length error and disables submit when the slug is too short', async () => {
+  it('shows the length error and refuses the press when the slug is too short', async () => {
     setAvailability({ state: 'invalid', reason: 'length' });
     const user = userEvent.setup();
     setup();
     await user.type(screen.getByLabelText('Slug'), 'abc');
     expect(screen.getByText('Must be 6–39 characters.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(authApi.setupStudio).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
   });
 
-  it('shows the reserved/taken error and disables submit for a reserved slug', async () => {
+  it('shows the reserved/taken error and refuses the press for a reserved slug', async () => {
     setAvailability({ state: 'invalid', reason: 'reserved' });
     const user = userEvent.setup();
     setup();
@@ -157,9 +171,9 @@ describe('SlugSetupPage', () => {
     expect(
       screen.getByText('That Slug is already in use.'),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(authApi.setupStudio).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
   });
 
   it('shows the "checking" line while the live check is in flight', async () => {
@@ -168,8 +182,50 @@ describe('SlugSetupPage', () => {
     setup();
     await user.type(screen.getByLabelText('Slug'), 'pending-handle');
     expect(screen.getByText('Checking…')).toBeInTheDocument();
-    // Cannot submit while still checking.
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('waits for a running check and then sets up the Studio (inner#1652)', async () => {
+    vi.mocked(authApi.setupStudio).mockResolvedValueOnce({
+      personalStudio: { name: 'my-handle', slug: 'my-handle', avatarUrl: null },
+    });
+    setAvailability({ state: 'checking' });
+    const user = userEvent.setup();
+    const { refresh } = setup();
+    await user.type(screen.getByLabelText('Slug'), 'my-handle');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(authApi.setupStudio).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Continue' })).toHaveAttribute('aria-busy', 'true');
+
+    setAvailability({ state: 'valid' });
+    refresh();
+    expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
+    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle' });
+  });
+
+  it('reports a running check that comes back taken instead of sending (inner#1652)', async () => {
+    setAvailability({ state: 'checking' });
+    const user = userEvent.setup();
+    const { refresh } = setup();
+    await user.type(screen.getByLabelText('Slug'), 'taken-handle');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    setAvailability({ state: 'invalid', reason: 'taken' });
+    refresh();
+    expect(authApi.setupStudio).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Continue' })).not.toHaveAttribute('aria-busy');
+  });
+
+  it('sends a slug the check could not reach, for the server to judge (inner#1652)', async () => {
+    vi.mocked(authApi.setupStudio).mockResolvedValueOnce({
+      personalStudio: { name: 'my-handle', slug: 'my-handle', avatarUrl: null },
+    });
+    setAvailability({ state: 'unverified' });
+    const user = userEvent.setup();
+    setup();
+    await user.type(screen.getByLabelText('Slug'), 'my-handle');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
   });
 
   it('on success calls setup-studio, stores the personal studio, and navigates to /studio', async () => {
@@ -271,6 +327,8 @@ describe('SlugSetupPage', () => {
     const busy = screen.getByRole('button', { name: 'Setting up...' });
     expect(busy).toHaveAttribute('aria-busy', 'true');
     expect(busy).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByLabelText('Slug')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Slug')).not.toBeDisabled();
 
     answer({ personalStudio: { name: 'my-handle', slug: 'my-handle', avatarUrl: null } });
     expect(await screen.findByTestId('studio-page')).toBeInTheDocument();

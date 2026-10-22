@@ -99,6 +99,8 @@ export function MembersTab({
 
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [inviteError, setInviteError] = React.useState<string | null>(null);
+  /** An edited email is no longer the one the server error was about. */
+  const clearInviteError = React.useCallback((): void => setInviteError(null), []);
   const [confirm, setConfirm] = React.useState<Confirm>(null);
 
   /**
@@ -349,6 +351,7 @@ export function MembersTab({
         onInvite={(values) => inviteMutation.mutate(values)}
         pending={inviteMutation.isPending}
         error={inviteError}
+        onEmailEdit={clearInviteError}
       />
 
       <AlertDialog
