@@ -72,6 +72,22 @@ describe("streamPeaks", () => {
     expect(got).toBeNull();
   });
 
+  // A damaged source writes a line per bad frame before the read breaks off,
+  // so the mark can come after far more stderr than is worth keeping, and a
+  // pipe may hand it over split across two chunks.
+  it("keeps nothing when the source broke off after a long run of damaged frames", async () => {
+    const got = await streamPeaks(
+      process.execPath,
+      standIn(
+        `out([0.5]); for (let i = 0; i < 2000; i++) process.stderr.write("[mp3float @ 0x1] Header missing " + i + "\\n"); ` +
+          `process.stderr.write("[in#0/mp3 @ 0x1] Error during"); setTimeout(() => process.stderr.write(" demuxing: I/O error\\n"), 50);`,
+      ),
+      1,
+      LIVE(),
+    );
+    expect(got).toBeNull();
+  });
+
   it("keeps the peaks when the program reports a damaged frame and exits 0", async () => {
     const got = await streamPeaks(
       process.execPath,

@@ -32,7 +32,8 @@ export function streamPeaks(
   return new Promise((resolve) => {
     const buckets = peakBuckets(expectedSamples);
     let wrote = false;
-    let stderr = "";
+    let brokeOff = false;
+    let stderrTail = "";
     let settled = false;
     /**
      * Answer once, whatever ends the run first.
@@ -44,9 +45,13 @@ export function streamPeaks(
       resolve(bytes);
     };
     const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"], signal });
-    // `-v error` keeps this to the errors; past the cap only the head matters.
+    // A damaged source writes a line per bad frame before the mark that its
+    // read broke off, so the mark is looked for chunk by chunk, with the end of
+    // the chunk before in case it was split; only the tail is kept for the log.
     child.stderr.on("data", (chunk: Buffer) => {
-      if (stderr.length < 64 * 1024) stderr += chunk.toString("utf8");
+      const seen = stderrTail + chunk.toString("utf8");
+      brokeOff ||= seen.includes(SOURCE_BROKE_OFF);
+      stderrTail = seen.slice(-2000);
     });
     child.stdout.on("data", (chunk: Buffer) => {
       wrote = true;
@@ -57,9 +62,8 @@ export function streamPeaks(
       settle(null);
     });
     child.on("close", (code) => {
-      const brokeOff = stderr.includes(SOURCE_BROKE_OFF);
       if (code !== 0 || !wrote || brokeOff) {
-        console.error("media_peaks_failed", { code, wrote, brokeOff, stderr: stderr.slice(0, 2000) });
+        console.error("media_peaks_failed", { code, wrote, brokeOff, stderr: stderrTail });
         settle(null);
         return;
       }
