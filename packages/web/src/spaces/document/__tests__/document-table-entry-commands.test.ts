@@ -163,6 +163,20 @@ describe('indenting a table off its entry', () => {
       out: true,
     });
   });
+
+  it('says a block right under a table cannot go in, as Tab finds', () => {
+    const editor = open([table(['a', 'b', 'c', 'd']), { type: 'paragraph', content: 'below' }]);
+    const below = (editor.document[1] as { id: string }).id;
+
+    expect(indentReach(editor.prosemirrorState.doc, below).in).toBe(false);
+  });
+
+  it('says a table right under a table cannot go in', () => {
+    const editor = open([table(['a', 'b', 'c', 'd']), table(['e', 'f', 'g', 'h'])]);
+    const second = (editor.document[1] as { id: string }).id;
+
+    expect(indentReach(editor.prosemirrorState.doc, second).in).toBe(false);
+  });
 });
 
 describe('the other rows of the table entry', () => {

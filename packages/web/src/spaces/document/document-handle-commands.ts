@@ -118,9 +118,14 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
       return true;
     }
     const $before = doc.resolve(pos);
+    // A block nests under the block before it only when that one is a
+    // container (BlockNote's `sinkItem`); a table holds rows, not a group.
     // A block at the top of a table cell stays in the cell: only a block
     // nested in a group comes out one level.
-    reach = { in: $before.nodeBefore !== null, out: $before.depth > 1 && $before.parent.type.name === 'blockGroup' };
+    reach = {
+      in: $before.nodeBefore?.type.name === 'blockContainer',
+      out: $before.depth > 1 && $before.parent.type.name === 'blockGroup',
+    };
     return false;
   });
   return reach;
