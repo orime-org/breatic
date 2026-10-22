@@ -659,7 +659,7 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     source: "audio",
     run: { kind: "container", op: "voice" },
     labelKey: key("audio.voice", "label"),
-    guide: "makes speech clearer: less rumble and hiss, more presence",
+    guide: "makes speech clearer: less rumble and sibilance, more presence",
     icon: "Mic",
     params: [{ kind: "number", key: "intensity", default: 50, min: 0, max: 100, step: 1, unit: "%" }],
     slots: [],

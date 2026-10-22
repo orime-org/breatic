@@ -109,8 +109,8 @@ describe("what ffmpeg is asked for the cover", () => {
   });
 });
 
-// inner#1305 §4.4: one mono 8 kHz float stream on stdout, cut off by any read
-// error rather than ending early as if the object were shorter.
+// inner#1305 §4.4: one mono 8 kHz float stream on stdout. Damaged frames are
+// decoded past; the reader tells a source that broke off from stderr.
 describe("what ffmpeg is asked for the peaks", () => {
   it("writes the audio alone as mono 8 kHz floats to stdout", () => {
     const args = peaksArgs("http://media.local/object");

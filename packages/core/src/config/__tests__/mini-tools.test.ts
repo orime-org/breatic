@@ -43,10 +43,10 @@ describe("getMiniToolsConfig", () => {
     delete bare.waveform_peaks_retry_ms;
     delete bare.waveform_peaks_retry_max_ms;
     const parsed = miniToolsConfigSchema.parse(bare);
-    // 600 s of 48 kHz stereo peaks at about 650 MB in Chromium (inner#1305 §4.4).
+    // Decoding 600 s of 48 kHz stereo audio takes Chromium to about 650 MB (inner#1305 §4.4).
     expect(parsed.waveform_max_seconds).toBe(600);
     expect(parsed.waveform_max_bytes).toBe(200_000_000);
-    // How often, and for how long, an open cut band reads peaks not yet written.
+    // How often, and for how long, a band past those reads peaks not yet written.
     expect(parsed.waveform_peaks_retry_ms).toBe(5000);
     expect(parsed.waveform_peaks_retry_max_ms).toBe(600_000);
   });

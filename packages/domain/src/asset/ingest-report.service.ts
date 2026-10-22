@@ -171,8 +171,9 @@ export interface IngestSideEffects {
   coverRegisterFailed?: boolean;
   /**
    * An audio row's peaks read could not be queued (inner#1305 §4.4). The audio
-   * stands and plays; its cut band shows no waveform until the peaks backfill
-   * reaches it, and this line is what says so.
+   * stands and plays; until the peaks backfill reaches it, its cut band draws
+   * the browser's own decode within the waveform ceilings and stays plain past
+   * them, and this line is what says so.
    */
   peaksQueueFailed?: boolean;
 }

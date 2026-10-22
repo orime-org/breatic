@@ -40,11 +40,12 @@ export const miniToolsConfigSchema = z
     ops: z.strictObject(
       Object.fromEntries(CONTAINER_OPS.map((op) => [op, opSchema])) as Record<ContainerOp, typeof opSchema>,
     ),
-    // The audio cut band decodes the source in the browser to draw its
-    // waveform: the length bounds what the tab holds, the size what it downloads.
+    // The audio cut band draws from the peaks file beside the source; while that
+    // file is missing it decodes the source in the browser only under both of
+    // these: the length bounds what the tab holds, the size what it downloads.
     waveform_max_seconds: z.number().positive().default(600),
     waveform_max_bytes: z.number().int().positive().default(200_000_000),
-    // How often, and for how long, an open cut band reads peaks not yet written.
+    // How often, and for how long, a band past those reads peaks not yet written.
     waveform_peaks_retry_ms: z.number().int().positive().default(5000),
     waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
   })

@@ -13,7 +13,7 @@
 /** A modality a tool acts on or produces. */
 export type MiniToolMedium = "image" | "video" | "audio";
 
-/** The ffmpeg operations the mini-tool container runs. */
+/** The operations the mini-tool container runs, with ffmpeg and, for reverb and pitch, sox. */
 export const CONTAINER_OPS = [
   "crop",
   "speed",

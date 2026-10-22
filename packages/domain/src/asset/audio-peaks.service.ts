@@ -45,8 +45,9 @@ let queue: ReturnType<typeof createQueue> | undefined;
 /**
  * Queue a peaks read for a registered row, when it is an upload's own audio.
  *
- * Keyed by the row, so a re-delivered finish queues the same job again rather
- * than a second one.
+ * Keyed by the row, so a re-delivered finish adds nothing while the row's job
+ * is still held; one after it has been cleared queues a fresh read, which the
+ * ingest Worker answers as `existing` without a container.
  * @param outcome - What registration answered.
  * @returns Whether a job was queued.
  * @throws {unknown} When the queue's Redis refused the job.

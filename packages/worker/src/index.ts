@@ -268,7 +268,8 @@ export function startWorker(): void {
 
   // An audio row's peaks, read after it registered (inner#1305 §4.4). Its
   // retries are the shared ones; what is left after the last is an audio whose
-  // cut band falls back to the browser's own decode until the backfill reads it.
+  // cut band, until the backfill reads it, draws the browser's own decode within
+  // the waveform ceilings (config/mini-tools.yaml) and stays plain past them.
   const audioPeaks = createWorker<AudioPeaksJob>(AUDIO_PEAKS_QUEUE, (job) => runAudioPeaks(job));
 
   audioPeaks.on("failed", (job, err) => {

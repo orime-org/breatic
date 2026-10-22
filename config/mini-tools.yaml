@@ -51,7 +51,8 @@ ops:
   hdr:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 900
-  # inner#1305: the audio operations, each one ffmpeg run or one pipe through sox.
+  # inner#1305: the audio operations, each one ffmpeg run, one pipe through sox,
+  # or (normalize) a measuring ffmpeg pass and then one ffmpeg run.
   denoise:
     container_class: "MiniToolContainerStd1"
     precheck_seconds: 300
@@ -85,8 +86,9 @@ ops:
 
 # The audio cut band draws the source's waveform from the peaks file beside it
 # (inner#1305 §4.4). An audio without one yet is decoded in the browser only
-# under both of these: the length bounds the memory the decode holds (600 s of
-# 48 kHz stereo peaks at about 650 MB in Chromium), the size what it downloads.
+# under both of these: the length bounds the memory the decode holds (decoding
+# 600 s of 48 kHz stereo audio takes Chromium to about 650 MB), the size what it
+# downloads.
 waveform_max_seconds: 600
 waveform_max_bytes: 200000000
 # A band over those, open before its peaks are written, reads them again this

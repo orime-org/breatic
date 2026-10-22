@@ -1045,8 +1045,9 @@ interface MediaReadBody {
  * Read the media numbers of an object already in storage (#299).
  *
  * A project cover or a studio avatar is finished without a read, and our
- * worker asks for one once the upload has returned. Nothing is written: the
- * object stands, and the caller files what this answers on the ledger row.
+ * worker asks for one once the upload has returned. The object itself is left
+ * as it stands; the only writes are a preview or an audio object's peaks beside
+ * it when asked for, and the caller files the numbers on the ledger row.
  *
  * It takes the shared secret, because the key it names may be any key in the
  * bucket and every run starts a container. The type comes from the caller —
@@ -1054,7 +1055,8 @@ interface MediaReadBody {
  * header is what the ticket signed, which may be a guess.
  * @param request - The backend's request.
  * @param env - The Worker's bindings.
- * @returns The three numbers, each one this run could not read as null.
+ * @returns The three numbers, each one this run could not read as null, and
+ *   what became of the preview and the peaks when each was asked for.
  */
 async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   if (!fromOurBackend(request, env)) {
@@ -1130,9 +1132,10 @@ function foundNothing(report: ProbeReport): boolean {
  * @param read.answered - Whether a container answered at all.
  * @param read.report - What ffprobe found.
  * @param read.peaks - The peaks it read, when it read them.
- * @returns What became of them: `none` only for an object read as having no
- *   sound and length, `failed` for audio that came back without peaks and for
- *   a read that found nothing, so the job tries again.
+ * @returns What became of them: `none` for an object read as not audio with
+ *   a length (no sound, a picture of its own, or no length), `failed` for audio
+ *   with a length that came back without peaks and for a read that found
+ *   nothing, so the job tries again.
  */
 async function peaksOutcome(
   env: Env,

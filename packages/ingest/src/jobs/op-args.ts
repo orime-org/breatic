@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The ffmpeg runs one mini-tool container operation makes (inner#888 §8.3).
+ * The ffmpeg and sox steps one mini-tool container operation makes
+ * (inner#888 §8.3, inner#1305).
  *
  * Here rather than in the container's server so the argument lists can be
  * tested without ffmpeg; the server is bundled with it at image build time,
@@ -10,9 +11,9 @@
  */
 
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
-// The one runtime piece of shared the container needs, taken from its own
+// The runtime pieces of shared the container needs, each taken from its own
 // file: the container's bundle is built without shared's dependencies, and
-// this file has none.
+// these files have none.
 import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.js";
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
