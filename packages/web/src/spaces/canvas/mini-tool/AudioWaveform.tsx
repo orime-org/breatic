@@ -11,6 +11,21 @@ import { corsUrl } from '@web/lib/cors-url';
 /** The rate the waveform is decoded at: enough for a 36px band, a fraction of the memory. */
 const DECODE_RATE = 3000;
 
+/**
+ * The document's theme, which the bars are coloured by when they are painted:
+ * the canvas keeps the colour it was drawn in, so a change draws them again.
+ * @returns The `data-theme` on the document, or undefined when none is set.
+ */
+function useDocumentTheme(): string | undefined {
+  const [theme, setTheme] = React.useState(() => document.documentElement.dataset.theme);
+  React.useEffect(() => {
+    const observer = new MutationObserver(() => setTheme(document.documentElement.dataset.theme));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+  return theme;
+}
+
 interface AudioWaveformProps {
   src: string;
   /** The source's peaks file values; when given, the file is not loaded at all. */
@@ -38,6 +53,7 @@ export const AudioWaveform = React.memo(function AudioWaveform({
 }: AudioWaveformProps): React.JSX.Element {
   const boxRef = React.useRef<HTMLDivElement>(null);
   const [failed, setFailed] = React.useState(false);
+  const theme = useDocumentTheme();
 
   React.useEffect(() => {
     const box = boxRef.current;
@@ -60,7 +76,7 @@ export const AudioWaveform = React.memo(function AudioWaveform({
       cursorWidth: 0,
       interact: false,
       normalize: true,
-      barWidth: 2,
+      barWidth: 1,
       barGap: 1,
       sampleRate: DECODE_RATE,
     });
@@ -69,7 +85,7 @@ export const AudioWaveform = React.memo(function AudioWaveform({
       offError();
       surfer.destroy();
     };
-  }, [src, peaks, duration]);
+  }, [src, peaks, duration, theme]);
 
   return (
     <div
@@ -79,7 +95,9 @@ export const AudioWaveform = React.memo(function AudioWaveform({
       data-from={peaks !== undefined && duration !== undefined ? 'peaks' : 'decode'}
       // wavesurfer.js lifts its waveform with a z-index inside its shadow root;
       // isolating the box keeps it under the band's dimmed ends and handles.
-      className={failed ? 'hidden' : 'absolute inset-0 isolate text-foreground'}
+      // Thin bars that stop short of the band's edges leave the handles on
+      // them visible, as the approved demo draws it.
+      className={failed ? 'hidden' : 'absolute inset-x-0 inset-y-1 isolate text-foreground'}
     />
   );
 });

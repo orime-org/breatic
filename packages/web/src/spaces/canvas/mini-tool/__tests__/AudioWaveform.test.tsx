@@ -41,6 +41,24 @@ describe('AudioWaveform', () => {
     expect(screen.getByTestId('mini-tool-waveform')).toHaveClass('text-foreground');
   });
 
+  // As the approved demo draws it: thin bars that stop short of the band's
+  // edges, so the handles on them stay visible.
+  it('draws one-pixel bars inset from the band\'s top and bottom', () => {
+    render(<AudioWaveform src={SRC} />);
+    const options = (create.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(options).toMatchObject({ barWidth: 1, barGap: 1 });
+    expect(screen.getByTestId('mini-tool-waveform')).toHaveClass('inset-y-1');
+  });
+
+  // The bars are painted on a canvas with the colour read when drawn.
+  it('draws again when the theme changes', async () => {
+    render(<AudioWaveform src={SRC} />);
+    expect(create).toHaveBeenCalledTimes(1);
+    document.documentElement.dataset.theme = 'dark';
+    await vi.waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    delete document.documentElement.dataset.theme;
+  });
+
   it('decodes the audio over a fresh CORS fetch when it has no peaks', () => {
     render(<AudioWaveform src={SRC} />);
 
