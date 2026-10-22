@@ -62,6 +62,17 @@ const ROUTES: ReadonlyArray<{ path: string; body: Record<string, unknown> }> = [
     },
   },
   {
+    path: "/api/v1/canvas/transcribe",
+    body: {
+      project_id: PID,
+      space_id: SID,
+      source_type: "audio",
+      source_url: "https://assets.invalid/audio/a.m4a",
+      node_ids: [NODE],
+      keep_fillers: false,
+    },
+  },
+  {
     path: "/api/v1/mini-tools",
     body: {
       project_id: PID,

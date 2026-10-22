@@ -710,6 +710,85 @@ describe("Tasks routes", () => {
     );
   });
 
+  // inner#856: a transcription is a reading with its own action, question
+  // and switch; it lands in the same lane and on the same row machinery.
+  describe("POST /canvas/transcribe", () => {
+    const TRANSCRIBE = {
+      project_id: PID,
+      space_id: SID,
+      source_type: "audio",
+      source_url: "https://cdn/x.m4a",
+      node_ids: [READ_INTO],
+      keep_fillers: false,
+      reader_locale: "zh-TW",
+    };
+
+    /**
+     * Send one transcription press.
+     * @param body - The request body.
+     * @returns The response.
+     */
+    const press = async (body: Record<string, unknown>): Promise<Response> =>
+      await createApp().request("/api/v1/canvas/transcribe", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify(body),
+      });
+
+    it("opens a transcription row named after the pinned model", async () => {
+      const res = await press(TRANSCRIBE);
+      expect(res.status).toBe(201);
+      expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "transcribe", label: UNDERSTAND_PINS.model }),
+      );
+    });
+
+    it("queues a reading that asks for a transcription", async () => {
+      await press(TRANSCRIBE);
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          taskType: "understand",
+          source: "understand",
+          params: expect.objectContaining({
+            reading: "transcribe",
+            keep_fillers: false,
+            reader_locale: "zh-TW",
+            source_type: "audio",
+          }),
+        }),
+        expect.anything(),
+      );
+      expect(mocks.taskService.create).toHaveBeenCalledWith(
+        expect.anything(),
+        PID,
+        SID,
+        "understand",
+        "append",
+        expect.objectContaining({ reading: "transcribe" }),
+        UNDERSTAND_PINS.model,
+        "understand",
+      );
+    });
+
+    it("asks its own throttle", async () => {
+      await press(TRANSCRIBE);
+      expect(mocks.checkRateLimit).toHaveBeenCalledWith(expect.anything(), [
+        { key: expect.stringContaining("transcribe:"), max: expect.any(Number), windowSeconds: expect.any(Number) },
+      ]);
+    });
+
+    it.each([
+      ["a picture", { ...TRANSCRIBE, source_type: "image" }],
+      ["no filler switch", { ...TRANSCRIBE, keep_fillers: undefined }],
+      ["two nodes", { ...TRANSCRIBE, node_ids: [READ_INTO, READ_INTO] }],
+    ])("refuses %s", async (_name, body) => {
+      const res = await press(body);
+      expect(res.status).toBe(422);
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`
