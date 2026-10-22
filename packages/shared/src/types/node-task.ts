@@ -7,7 +7,7 @@
  * state the row is in. `kind` stays the behaviour (`upload` / `generation`)
  * the server settles by; this is what the row says.
  */
-export const NODE_TASK_ACTIONS = ["upload", "generate", "understand", "mini_tool"] as const;
+export const NODE_TASK_ACTIONS = ["upload", "generate", "understand", "mini_tool", "transcribe"] as const;
 
 /** One of {@link NODE_TASK_ACTIONS}. */
 export type NodeTaskAction = (typeof NODE_TASK_ACTIONS)[number];

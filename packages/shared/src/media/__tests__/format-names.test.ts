@@ -73,7 +73,12 @@ describe("the two gates spell from one table", () => {
   // media type. They name the same formats and can come apart silently.
   it("agrees with the words the model-facing sentence is built from", () => {
     expect(AUDIO_FORMAT_NAMES).toBe(
-      formatPhrase([formatNameOf("audio/mpeg"), formatNameOf("audio/wav")] as string[]),
+      formatPhrase([
+        formatNameOf("audio/mpeg"),
+        formatNameOf("audio/wav"),
+        formatNameOf("audio/mp4"),
+        formatNameOf("audio/webm"),
+      ] as string[]),
     );
     expect(IMAGE_FORMAT_NAMES).toBe(
       formatPhrase([

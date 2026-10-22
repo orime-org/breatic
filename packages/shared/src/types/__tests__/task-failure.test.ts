@@ -165,6 +165,33 @@ describe("a cause and what it was about", () => {
     );
   });
 
+  // inner#856: a transcription's row and its history entry say "transcribe"
+  // and name the medium it heard nothing in, read off the record itself.
+  it("carries which reading it was and the medium it was about", () => {
+    const stored = encodeTaskFailure("no_speech", { reading: "transcribe", medium: "video" });
+    expect(readTaskFailure(stored)).toEqual({
+      reason: "no_speech",
+      reading: "transcribe",
+      medium: "video",
+    });
+    expect(
+      readTaskFailure(
+        encodeTaskFailure("understand_over_cap", { reading: "transcribe", file: "a.mp3", bytes: 9 }),
+      ),
+    ).toEqual({ reason: "understand_over_cap", reading: "transcribe", file: "a.mp3", bytes: 9 });
+  });
+
+  it("drops a reading or medium that is not one of ours", () => {
+    expect(readTaskFailure('{"reason":"no_speech","reading":"guess","medium":"image"}')).toEqual({
+      reason: "no_speech",
+    });
+  });
+
+  it("names the two ways a transcription ends without a transcript", () => {
+    expect(TASK_FAILURE_REASONS).toContain("no_speech");
+    expect(TASK_FAILURE_REASONS).toContain("cut_short");
+  });
+
   // Every row written before a cause could carry anything holds a bare code,
   // and reads back the same way it always has.
   it("reads a bare code as the cause it has always been", () => {
