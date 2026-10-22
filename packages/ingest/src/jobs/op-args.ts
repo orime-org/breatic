@@ -343,15 +343,17 @@ export function opRuns(
 
 /**
  * One slider onto afftdn, the same for a video's sound and an audio file: the
- * noise floor from -80 dB to -40 dB and the reduction from 3 dB to 36 dB as
- * the slider goes from 0 to 100.
+ * slider is how far the noise comes down, 0.4 dB per step up to 40 dB, as the
+ * reduction amount is in Audacity, Audition and RX. The noise floor stays at
+ * -40 dB: afftdn takes off the full amount from noise under it (white noise to
+ * about -50 dBFS, pink to about -60) while speech loses under 0.1 dB, and a
+ * higher floor starts to take speech down with it (measured on the media
+ * image, inner#1305).
  * @param intensity - The slider.
  * @returns The filter.
  */
 function denoiseFilter(intensity: number): string {
-  const nf = -80 + (intensity / 100) * 40;
-  const nr = 3 + (intensity / 100) * 33;
-  return `afftdn=nf=${nf.toFixed(2)}:nr=${nr.toFixed(2)}`;
+  return `afftdn=nf=-40:nr=${(intensity * 0.4).toFixed(2)}`;
 }
 
 /** One program and its arguments. */

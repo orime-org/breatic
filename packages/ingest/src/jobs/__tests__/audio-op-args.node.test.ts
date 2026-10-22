@@ -111,7 +111,10 @@ describe("audio outputs", () => {
 describe("denoise, cut, EQ, compressor", () => {
   it("denoises with the video tool's mapping", () => {
     expect(after(onlyRun(opSteps("denoise", { intensity: 50 }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
-      `${FLOAT},afftdn=nf=-60.00:nr=19.50`,
+      `${FLOAT},afftdn=nf=-40:nr=20.00`,
+    );
+    expect(after(onlyRun(opSteps("denoise", { intensity: 100 }, IN, OUT, WORK, audioProbe())), "-af")).toBe(
+      `${FLOAT},afftdn=nf=-40:nr=40.00`,
     );
   });
 
