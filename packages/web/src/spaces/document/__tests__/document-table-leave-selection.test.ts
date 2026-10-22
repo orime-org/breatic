@@ -547,6 +547,36 @@ describe('what is left where a held table stood, as the body leaves it', () => {
     expect(editor.prosemirrorView.state.doc.textContent).toBe('leadild');
   });
 
+  it('leaves the caret where the body does after Backspace over a selection from a cell to the start of the body', () => {
+    const { editor } = openWith([{ type: 'divider' }, tableBlock(WORDS), { type: 'paragraph', content: 'tail' }]);
+    selectToEdge(editor, at(editor, 'b2', 1), 'start');
+    press(editor, 'Backspace');
+    const body = openWith([{ type: 'divider' }, { type: 'paragraph' }, { type: 'paragraph', content: 'tail' }]).editor;
+    selectToEdge(body, at(body, 'tail', 0) - 4, 'start');
+    press(body, 'Backspace');
+
+    expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
+    expect(editor.prosemirrorView.state.selection.head).toBe(body.prosemirrorView.state.selection.head);
+  });
+
+  it('puts a key typed over a selection from a cell to the start of the body on a line of its own, as the body does', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'paragraph', content: 'tail' }]);
+    selectToEdge(editor, at(editor, 'b2', 1), 'start');
+
+    type(editor, 'Z');
+
+    expect(blocks(editor)).toEqual(['paragraph:Z', 'paragraph:tail']);
+  });
+
+  it('makes the line a key is typed on a paragraph, as the body does, over a selection from a cell into a heading', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), { type: 'heading', content: 'head' }]);
+    select(editor, at(editor, 'a1', 1), at(editor, 'head', 2));
+
+    type(editor, 'Z');
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:Zad']);
+  });
+
   it('leaves no empty line under a list item whose nested table is taken away', () => {
     const { editor } = openWith([
       { type: 'paragraph', content: 'lead' },

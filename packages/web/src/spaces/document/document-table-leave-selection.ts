@@ -20,12 +20,12 @@
  * `TableSpanSelection` and the body-edge selection: each table it takes
  * becomes an empty line, and the selection then goes as the body's own does.
  * Cut, a drag's move and Enter (`document-enter.ts`) reach it through
- * `tr.deleteSelection()`. Inputs that would delete the range by position call
- * it first through `takeAwayHeldTables`: Backspace, Delete, the word and line
- * deletes, Shift+Enter (`document-table-keys.ts`), paste
- * (`document-table-paste.ts`, ahead of the table plugin's paste into cells),
- * a typed key, an input method's composition and the browser's own deletes
- * (`beforeinput`).
+ * `tr.deleteSelection()`, and a typed key through `tr.insertText`. Inputs that
+ * would delete the range by position call it first through
+ * `takeAwayHeldTables`: Backspace, Delete, the word and line deletes,
+ * Shift+Enter (`document-table-keys.ts`), paste (`document-table-paste.ts`,
+ * ahead of the table plugin's paste into cells), an input method's
+ * composition and the browser's own deletes (`beforeinput`).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -221,13 +221,19 @@ export function tableAtLeavingHead(state: EditorState): TableAt | null {
 
 /**
  * Takes away a selection that takes tables whole, through the selection's own
- * replace.
+ * replace, and leaves the caret where the selection started, as the body's
+ * own deletes do (Tiptap's `deleteSelection`): the replace alone puts it past
+ * what took the selection's place, the next line for one reaching the start
+ * of the body.
  * @param view - The editor view.
  * @returns Whether there was one to take away.
  */
 export function takeAwayHeldTables(view: EditorView): boolean {
-  if (heldTables(view.state.selection) === null) return false;
-  view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+  const { selection } = view.state;
+  if (heldTables(selection) === null) return false;
+  const tr = view.state.tr.deleteSelection();
+  tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(selection.from, -1))));
+  view.dispatch(tr.scrollIntoView());
   return true;
 }
 
@@ -269,9 +275,11 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
       },
       props: {
         decorations: cellsInSelection,
+        // A typed key replaces the selection with its letter, through the
+        // selection's own replace, as the body's typing does.
         handleTextInput: (view, _from, _to, text) => {
           if (heldTables(view.state.selection) === null) return false;
-          view.dispatch(view.state.tr.deleteSelection().insertText(text).scrollIntoView());
+          view.dispatch(view.state.tr.insertText(text).scrollIntoView());
           return true;
         },
         // A drag of such a selection carries the whole table, which the drop
