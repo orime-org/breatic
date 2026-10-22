@@ -167,7 +167,7 @@ describe('a table under a selection', () => {
 
     expect(blocksUnder(doc, selection).map(({ node }) => node.textContent)).toEqual(['a1']);
     expect(blocksUnderFor(doc, selection, 'heading-1').map(({ node }) => node.textContent)).toEqual(['a1']);
-    expect(canRunBlockType(editor)).toBe(true);
+    expect(canRunBlockType(editor, 'heading-1')).toBe(true);
   });
 
   it('is the blocks of the cells words run across, for the quote row', () => {

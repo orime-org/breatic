@@ -24,7 +24,7 @@ import type { Selection } from '@tiptap/pm/state';
 
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE, tableAround } from '@web/spaces/document/document-table-nodes';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
 /** The table block's content node. */
@@ -311,13 +311,15 @@ export function rowOf(content: PMNode): BlockTypeId | undefined {
  * The end the reader anchored on, so the face answers "what am I in" rather
  * than going blank over a selection spanning two types (user 2026-08-27). An
  * anchor that resolves outside any block — a select-all, a node selection —
- * falls to the first block the selection covers.
+ * falls to the first block the selection covers, and so does one in a table
+ * the selection takes whole, whose cells' blocks no row acts on.
  * @param doc - The document.
  * @param selection - The selection over it.
  * @returns That row, `paragraph` when the selection covers no block at all.
  */
 export function faceOf(doc: PMNode, selection: Selection): BlockTypeId {
-  const anchored = contentAt(doc, selection.anchor);
+  const inHeld = heldRange(selection) !== null && tableAround(doc.resolve(selection.anchor)) !== null;
+  const anchored = inHeld ? null : contentAt(doc, selection.anchor);
   const content = anchored ?? blocksUnder(doc, selection)[0]?.node;
   if (content === undefined) {
     return 'paragraph';

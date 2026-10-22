@@ -38,7 +38,6 @@ import {
 import {
   LEVEL_OF_ROW,
   TYPE_OF_ROW,
-  blocksUnder,
   blocksUnderFor,
   tickedOver,
   type BlockTypeId,
@@ -261,16 +260,17 @@ function keepSelection(tr: Transaction, before: SelectionBefore): void {
 }
 
 /**
- * Whether the menu's rows can act on this selection.
- *
- * Every row answers the same, so the answer takes no row: in the flat model any
- * block can become any of the nine, and the only selection none of them reach
- * is one covering no block at all. A row the selection already carries is
- * ticked rather than greyed — the tick already says "you are here", and greying
- * it too would be two marks for one fact.
+ * Whether a row of the menu can act on this selection: whether the selection
+ * holds a block that row acts on. In the flat model any block with words can
+ * become any of the nine; a table taken whole can only be quoted, so a
+ * selection holding tables alone leaves the quote row live and greys the
+ * others (inner#1619 T14). A row the selection already carries is ticked
+ * rather than greyed — the tick already says "you are here", and greying it
+ * too would be two marks for one fact.
  * @param editor - The editor.
- * @returns Whether the selection holds a block.
+ * @param id - Which row.
+ * @returns Whether the selection holds a block that row acts on.
  */
-export function canRunBlockType(editor: RunEditor): boolean {
-  return editor.transact((tr) => blocksUnder(tr.doc, tr.selection).length > 0);
+export function canRunBlockType(editor: RunEditor, id: BlockTypeId): boolean {
+  return editor.transact((tr) => blocksUnderFor(tr.doc, tr.selection, id).length > 0);
 }

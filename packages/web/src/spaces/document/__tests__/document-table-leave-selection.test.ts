@@ -16,7 +16,11 @@ import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { bodyEdgeBetween, bodyEdgePos, extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';
+import { canRunBlockType } from '@web/spaces/document/document-block-run';
+import { faceOf } from '@web/spaces/document/document-block-ticks';
 import { resolveLinkSelection } from '@web/spaces/document/document-link';
+import { startRowDrag } from '@web/spaces/document/document-row-drag';
+import { MEDIA_IN_SELECTION_CLASS } from '@web/spaces/document/document-selection-paint';
 import { writeStyle } from '@web/spaces/document/document-style-write';
 import { selectionItem } from '@web/spaces/document/document-to-agent';
 import { tableClipped } from '@web/spaces/document/document-table-copy';
@@ -977,5 +981,71 @@ describe('Shift and an arrow at a table\'s edge', () => {
     press(editor, 'ArrowDown', true);
 
     expect(editor.prosemirrorView.state.selection.head).not.toBe(at(editor, 'below', 0));
+  });
+});
+
+describe('what reads one end of a held selection', () => {
+  it('names the block type of the block outside the table, not of a cell\'s block', () => {
+    const table: TableInput = { rows: [{ cells: [{ blocks: [{ type: 'heading', content: 'h1' }] }, 'b1'] }, { cells: ['a2', 'b2'] }] };
+    const { editor } = open(table);
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+    const { doc, selection } = editor.prosemirrorView.state;
+
+    expect(faceOf(doc, selection)).toBe('paragraph');
+  });
+
+  it('pastes rich text as the body does when the ends of a held selection stand in code blocks', () => {
+    const table: TableInput = { rows: [{ cells: [{ blocks: [{ type: 'codeBlock', content: 'c1' }] }, 'b1'] }] };
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(table), { type: 'codeBlock', content: 'code2' }]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'code2', 3));
+
+    paste(editor, { 'text/html': '<p><strong>bold</strong></p>', 'text/plain': 'bold' });
+
+    // An empty line in the table's place: the pasted paragraph goes there,
+    // bold, and the code block's rest joins it.
+    expect((editor.document as unknown as { type: string; content: unknown }[]).map((block) => [block.type, block.content])).toEqual([
+      ['paragraph', [{ type: 'text', text: 'lead', styles: {} }]],
+      ['paragraph', [{ type: 'text', text: 'bold', styles: { bold: true } }, { type: 'text', text: 'e2', styles: {} }]],
+    ]);
+  });
+
+  it('opens a line with Enter as the body does, the words before the selection kept as they are', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: '## rest' }, tableBlock(WORDS), { type: 'paragraph', content: 'tail' }]);
+    select(editor, at(editor, '## rest', 2), at(editor, 'b1', 1));
+
+    press(editor, 'Enter');
+
+    expect(blocks(editor)).toEqual(['paragraph:##', 'paragraph:', 'paragraph:tail']);
+  });
+
+  it('offers the quote row alone over a selection holding only tables', () => {
+    const { editor } = openWith([tableBlock(WORDS), tableBlock({ rows: [{ cells: ['c1', 'd1'] }] })]);
+    select(editor, at(editor, 'a1', 0), at(editor, 'd1', 2));
+
+    expect(canRunBlockType(editor as never, 'quote')).toBe(true);
+    expect(canRunBlockType(editor as never, 'heading-1')).toBe(false);
+  });
+
+  it('frames a picture at the edge of a cell of a held table', () => {
+    const table: TableInput = { rows: [{ cells: [{ blocks: [{ type: 'image', props: { url: 'https://example.com/a.png' } }] }, 'b1'] }, { cells: ['a2', 'b2'] }] };
+    const { editor } = open(table);
+    select(editor, at(editor, 'below', 2), at(editor, 'b1', 1));
+
+    expect(editor.prosemirrorView.dom.querySelectorAll(`.${MEDIA_IN_SELECTION_CLASS}`).length).toBe(1);
+  });
+
+  it('starts dragging a row by its handle when the selection runs from a cell to a nested line', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock(WORDS),
+      { type: 'bulletListItem', content: 'parent', children: [{ type: 'bulletListItem', content: 'child' }] },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'child', 3));
+    const transfer = { setData: () => undefined, clearData: () => undefined, setDragImage: () => undefined } as unknown as DataTransfer;
+
+    const end = startRowDrag(editor as never, { dataTransfer: transfer, clientY: 0 }, (editor.document[2] as { id: string }).id);
+    end();
+
+    expect(editor.prosemirrorView.state.selection.from).toBe(at(editor, 'a1', 0));
   });
 });

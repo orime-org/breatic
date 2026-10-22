@@ -127,6 +127,31 @@ function handleQuotedEnter(editor: ListEditor): boolean {
 }
 
 /**
+ * Enter's split at the caret a range taken away leaves, where the line before
+ * the caret has words: the new line a paragraph, as the library's Enter over
+ * a range makes it. Left to the library, the caret goes to the input rules
+ * first (BlockNote's Enter sidecar), which a range never reaches: words left
+ * before it that read as a shorthand, `##` or `-`, would turn the line into a
+ * heading or a list item and open no line.
+ *
+ * At the start of a line, on an empty one and on the blocks answering Enter
+ * themselves the input rules have nothing to read, so those stay the
+ * library's.
+ * @param editor - The editor Enter was pressed in.
+ * @returns Whether the line was split here.
+ */
+function splitAfterRange(editor: ListEditor): boolean {
+  return editor.transact((tr) => {
+    const { $from, from } = tr.selection;
+    if (!tr.selection.empty || $from.parentOffset === 0) return false;
+    const info = getBlockInfoNearPos(tr, from);
+    if (!info.hasContent || OWN_ENTER_TYPES.some((type) => type === info.content.node.type.name)) return false;
+    tr.scrollIntoView();
+    return splitCarryingQuote(tr, from, false, false);
+  });
+}
+
+/**
  * Opens an empty paragraph block at a position, with the caret inside it.
  *
  * All three paths into a new block want this and none can ask BlockNote for
@@ -315,7 +340,9 @@ export const documentEnterExtension = createExtension(() => {
         // the line it is on included. Left to the library, the split is placed
         // at the range's start, which can be the edge, outside any line
         // (#124, A6), or in the table it took away.
-        if (editor.prosemirrorState.selection instanceof BodyEdgeSelection || heldTables(editor.prosemirrorState.selection) !== null) {
+        const tookRange =
+          editor.prosemirrorState.selection instanceof BodyEdgeSelection || heldTables(editor.prosemirrorState.selection) !== null;
+        if (tookRange) {
           editor.transact((tr) => tr.deleteSelection());
         }
         const { selection } = editor.prosemirrorState;
@@ -330,7 +357,7 @@ export const documentEnterExtension = createExtension(() => {
         if (selection instanceof NodeSelection && !selection.node.isInline) {
           return handleWholeBlockEnter(editor);
         }
-        return handleQuotedEnter(editor);
+        return handleQuotedEnter(editor) || (tookRange && splitAfterRange(editor));
       },
       // A line break belongs inside a line. A whole selected block has none to
       // break, and neither has the end of a selection reaching past the first or
