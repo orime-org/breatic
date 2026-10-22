@@ -136,12 +136,18 @@ const COVER_SCALE =
 export const PEAKS_CONTENT_TYPE = "application/json";
 
 /**
+ * What ffmpeg writes to stderr when the object's stream ends before its
+ * length, such as a read cut off mid-object. A damaged frame does not write it.
+ */
+export const SOURCE_BROKE_OFF = "Error during demuxing";
+
+/**
  * The one ffmpeg call that reads an audio object's peaks (inner#1305 §4.4).
  *
  * The sound alone, mixed to mono at the peaks' rate, as 32-bit floats on
- * stdout for the reader to fold into stretches as they arrive. `-xerror`
- * stops it at the first read or decode error: without it, an object whose
- * stream breaks off ends as if it were shorter and exits 0.
+ * stdout for the reader to fold into stretches as they arrive. A damaged
+ * frame is skipped, as players skip it; a source that breaks off still exits
+ * 0, so the reader tells it apart by `SOURCE_BROKE_OFF` on stderr.
  * @param objectUrl - Where the container reads the object.
  * @returns The argument list, without the program name.
  */
@@ -149,7 +155,6 @@ export function peaksArgs(objectUrl: string): string[] {
   return [
     "-v",
     "error",
-    "-xerror",
     "-protocol_whitelist",
     protocolsFor("object"),
     "-i",

@@ -128,8 +128,10 @@ describe("what ffmpeg is asked for the peaks", () => {
     ]);
   });
 
-  it("stops on the first read or decode error", () => {
-    expect(peaksArgs("http://media.local/object")).toContain("-xerror");
+  // A damaged frame in playable audio must not cut the peaks short; a source
+  // that breaks off is told apart by what ffmpeg writes to stderr.
+  it("decodes past a damaged frame", () => {
+    expect(peaksArgs("http://media.local/object")).not.toContain("-xerror");
   });
 
   it("carries the same protocol whitelist", () => {

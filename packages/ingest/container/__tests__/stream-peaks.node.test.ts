@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { audioPeaksSchema } from "@shared/upload/peaks.js";
+import { SOURCE_BROKE_OFF } from "@ingest/probe-command.js";
 import { streamPeaks } from "../stream-peaks.js";
 
 /**
@@ -59,6 +60,26 @@ describe("streamPeaks", () => {
   it("keeps nothing when the program exits non-zero", async () => {
     const got = await streamPeaks(process.execPath, standIn("out([0.5]); process.exitCode = 1;"), 1, LIVE());
     expect(got).toBeNull();
+  });
+
+  it("keeps nothing when the program says the source broke off, though it exits 0", async () => {
+    const got = await streamPeaks(
+      process.execPath,
+      standIn(`out([0.5]); process.stderr.write("[in#0/mp3 @ 0x1] ${SOURCE_BROKE_OFF}: I/O error\\n");`),
+      1,
+      LIVE(),
+    );
+    expect(got).toBeNull();
+  });
+
+  it("keeps the peaks when the program reports a damaged frame and exits 0", async () => {
+    const got = await streamPeaks(
+      process.execPath,
+      standIn('out([0.5]); process.stderr.write("[mp3float @ 0x1] Header missing\\n");'),
+      1,
+      LIVE(),
+    );
+    expect(parsed(got)).toEqual({ version: 1, peaks: [128] });
   });
 
   it("keeps nothing when the program cannot be started", async () => {

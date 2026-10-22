@@ -12,6 +12,7 @@
 import { spawn } from "node:child_process";
 
 import { encodeAudioPeaks, peakBuckets } from "@shared/audio-peaks.js";
+import { SOURCE_BROKE_OFF } from "@ingest/probe-command.js";
 
 /**
  * Run the decoder and read its stdout into a peaks file.
@@ -20,7 +21,7 @@ import { encodeAudioPeaks, peakBuckets } from "@shared/audio-peaks.js";
  * @param expectedSamples - How many samples the object holds at the peaks' rate.
  * @param signal - The run's deadline; the decoder is killed when it passes.
  * @returns The peaks file's bytes, or null when the decoder failed, was cut
- *   off or wrote nothing.
+ *   off, read a source that broke off or wrote nothing.
  */
 export function streamPeaks(
   program: string,
@@ -31,6 +32,7 @@ export function streamPeaks(
   return new Promise((resolve) => {
     const buckets = peakBuckets(expectedSamples);
     let wrote = false;
+    let stderr = "";
     let settled = false;
     /**
      * Answer once, whatever ends the run first.
@@ -41,7 +43,11 @@ export function streamPeaks(
       settled = true;
       resolve(bytes);
     };
-    const child = spawn(program, args, { stdio: ["ignore", "pipe", "ignore"], signal });
+    const child = spawn(program, args, { stdio: ["ignore", "pipe", "pipe"], signal });
+    // `-v error` keeps this to the errors; past the cap only the head matters.
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (stderr.length < 64 * 1024) stderr += chunk.toString("utf8");
+    });
     child.stdout.on("data", (chunk: Buffer) => {
       wrote = true;
       buckets.add(chunk);
@@ -51,8 +57,9 @@ export function streamPeaks(
       settle(null);
     });
     child.on("close", (code) => {
-      if (code !== 0 || !wrote) {
-        console.error("media_peaks_failed", { code, wrote });
+      const brokeOff = stderr.includes(SOURCE_BROKE_OFF);
+      if (code !== 0 || !wrote || brokeOff) {
+        console.error("media_peaks_failed", { code, wrote, brokeOff, stderr: stderr.slice(0, 2000) });
         settle(null);
         return;
       }
