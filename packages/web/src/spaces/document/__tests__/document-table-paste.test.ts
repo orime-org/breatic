@@ -253,3 +253,35 @@ describe('pasting cells over cells (A16)', () => {
     expect(tables(editor)).toEqual([[['city', 'pop'], ['Oslo', '7']]]);
   });
 });
+
+describe('a table pasted into a line with words (A16)', () => {
+  /** A bare web table, nothing around it. */
+  const BARE = '<table><tr><td>t1</td><td>t2</td></tr><tr><td>t3</td><td>t4</td></tr></table>';
+
+  /**
+   * The body's blocks as `type:words`, a table as its cells.
+   * @param editor - The editor.
+   * @returns One entry per block.
+   */
+  const lines = (editor: Editor): string[] => {
+    const out: string[] = [];
+    editor.prosemirrorView!.state.doc.firstChild!.forEach((node) => {
+      out.push(node.type.name === 'docTable' ? `table:${node.textContent}` : `${node.firstChild!.type.name}:${node.textContent}`);
+    });
+    return out;
+  };
+
+  it.each([
+    ['in the middle, the line split around it', 2, ['paragraph:le', 'table:t1t2t3t4', 'paragraph:ad']],
+    ['at the end, under the line', 4, ['paragraph:lead', 'table:t1t2t3t4']],
+    ['at the start, above the line', 0, ['table:t1t2t3t4', 'paragraph:lead']],
+  ] as const)('lands as a table %s', (_name, offset, expected) => {
+    const editor = open();
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3 + offset)));
+
+    paste(editor, { 'text/html': BARE, 'text/plain': 't1\tt2\nt3\tt4' });
+
+    expect(lines(editor)).toEqual(expected);
+  });
+});

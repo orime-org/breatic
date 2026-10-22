@@ -234,10 +234,31 @@ function openAboveTables(content: Fragment, open: number, side: -1 | 1): number 
 }
 
 /**
+ * A slice with the wrappers it is open through on both sides taken off: one
+ * whose only child is open at both ends carries that child's content one
+ * level down. A table left inside a wrapper open at both sides is fitted into
+ * the line around the caret, its cells' words joining it; a table at the top
+ * of a closed slice is placed as a block.
+ * @param slice - The slice.
+ * @returns The slice without those wrappers.
+ */
+function unwrapOpenSides(slice: Slice): Slice {
+  let { content, openStart, openEnd } = slice;
+  while (openStart > 0 && openEnd > 0 && content.childCount === 1) {
+    content = content.firstChild!.content;
+    openStart -= 1;
+    openEnd -= 1;
+  }
+  return new Slice(content, openStart, openEnd);
+}
+
+/**
  * Keeps a pasted table whole. A layout block's node is never isolating
  * (BlockNote `meta.ts`), so a slice opened through a table would join its
  * first or last cell's block with the block around the caret and leave the
- * cell without it. Closing the slice at the table lands the table as a block.
+ * cell without it. Closing the slice at the table lands the table as a block:
+ * in the middle of a line the line splits around it, at its end the table
+ * goes under it, and at its start above it, the line kept whole.
  */
 const keepPastedTablesWhole = new Plugin({
   key: new PluginKey('doc-table-paste-whole'),
@@ -245,7 +266,18 @@ const keepPastedTablesWhole = new Plugin({
     transformPasted: (slice) => {
       const start = openAboveTables(slice.content, slice.openStart, -1);
       const end = openAboveTables(slice.content, slice.openEnd, 1);
-      return start === slice.openStart && end === slice.openEnd ? slice : new Slice(slice.content, start, end);
+      return start === slice.openStart && end === slice.openEnd ? slice : unwrapOpenSides(new Slice(slice.content, start, end));
+    },
+    // At the start of a line with words, ProseMirror splits the line before
+    // the table and leaves its empty first half above it.
+    handlePaste: (view, _event, slice) => {
+      const { selection } = view.state;
+      const { $from } = selection;
+      const first = slice.content.firstChild;
+      if (!selection.empty || slice.openStart !== 0 || slice.openEnd !== 0 || first?.type.name !== DOC_TABLE) return false;
+      if ($from.parentOffset !== 0 || $from.parent.content.size === 0 || $from.node($from.depth - 1).type.name !== 'blockContainer') return false;
+      view.dispatch(view.state.tr.insert($from.before($from.depth - 1), slice.content).scrollIntoView());
+      return true;
     },
   },
 });
