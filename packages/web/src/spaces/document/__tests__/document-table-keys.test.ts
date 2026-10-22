@@ -650,6 +650,39 @@ describe('the edges of a cell (inner#1619 design 5.3)', () => {
     expect(selection.$head.parentOffset).toBe(2);
   });
 
+  it.each([
+    ['a heading', { type: 'heading', content: 'below' }],
+    ['a bullet item', { type: 'bulletListItem', content: 'below' }],
+    ['a numbered item', { type: 'numberedListItem', content: 'below' }],
+    ['a to-do', { type: 'checkListItem', content: 'below' }],
+  ])('Backspace at the start of %s under the table turns it into a paragraph, the caret kept', (_name, block) => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
+      block,
+    ] as never);
+    caretAt(editor, 'below');
+
+    press(editor, 'Backspace');
+
+    expect((editor.document[1] as { type: string }).type).toBe('paragraph');
+    expect(caretCell(editor)).toBeNull();
+  });
+
+  it('Backspace at the start of a quoted line under the table takes the quote off, the caret kept', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
+      { type: 'paragraph', content: 'below', props: { quoted: true } },
+    ] as never);
+    caretAt(editor, 'below');
+
+    press(editor, 'Backspace');
+
+    expect((editor.document[1] as { props: Record<string, unknown> }).props['quoted']).toBe(false);
+    expect(caretCell(editor)).toBeNull();
+  });
+
   it('Delete at the end of the block above the table does nothing', () => {
     const editor = openAround();
     caretAfter(editor, 'above');

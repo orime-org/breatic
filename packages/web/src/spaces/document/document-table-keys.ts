@@ -141,14 +141,31 @@ function containerDepth($pos: ResolvedPos): number {
 }
 
 /**
+ * The body's own first step for Backspace at the start of a block, which no
+ * edge of a table changes: a heading or a list item turns into a paragraph,
+ * which the body's Backspace does, and a quoted line loses its quote.
+ * @param view - The editor view.
+ * @param $head - The caret.
+ * @param depth - The depth of the caret's block container.
+ * @returns False to leave the key to the body, true once the quote is taken
+ *   off, undefined for a plain paragraph.
+ */
+function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
+  const content = $head.node(depth).firstChild;
+  if (content?.type.name !== 'paragraph') return false;
+  if (content.attrs['quoted'] !== true) return undefined;
+  view.dispatch(view.state.tr.setNodeMarkup($head.before(depth) + 1, undefined, { ...content.attrs, quoted: false }));
+  return true;
+}
+
+/**
  * Backspace at the start of a block where the body's own would reach across
- * a cell's or a table's edge (design 5.3):
+ * a cell's or a table's edge (design 5.3), after the body's own first step
+ * ({@link firstStepAtStart}):
  *
- * - at the start of the paragraph that opens a cell it does nothing; a
- *   quoted one loses its quote first, and a heading or list item there turns
- *   into a paragraph first, which the body's own Backspace does;
- * - at the start of the block right under a table it moves the caret to the
- *   end of the table's last cell, and joins nothing.
+ * - at the start of the paragraph that opens a cell it does nothing;
+ * - at the start of the paragraph right under a table it moves the caret to
+ *   the end of the table's last cell, and joins nothing.
  * @param view - The editor view.
  * @returns Whether the key was claimed.
  */
@@ -161,20 +178,15 @@ function backspaceAtEdge(view: EditorView): boolean {
   if (depth < 0) return false;
   const parent = $head.node(depth - 1);
   const index = $head.index(depth - 1);
-  if (isTableCell(parent) && index === 0) {
-    const content = $head.node(depth).firstChild;
-    if (content?.type.name !== 'paragraph') return false;
-    if (content.attrs['quoted'] === true) {
-      view.dispatch(view.state.tr.setNodeMarkup($head.before(depth) + 1, undefined, { ...content.attrs, quoted: false }));
-    }
-    return true;
-  }
+  if (isTableCell(parent) && index === 0) return firstStepAtStart(view, $head, depth) ?? true;
   if (cellDepthOf($head) > 0) return false;
   // What a selection can stand on before the block is in a table's cell only
   // when a table ends right before it: a divider or a picture between them is
   // a block of its own, which the body's Backspace takes.
   const inTable = Selection.findFrom(view.state.doc.resolve($head.before(depth)), -1);
   if (inTable === null || cellDepthOf(inTable.$head) < 0) return false;
+  const step = firstStepAtStart(view, $head, depth);
+  if (step !== undefined) return step;
   view.dispatch(view.state.tr.setSelection(inTable).scrollIntoView());
   return true;
 }
