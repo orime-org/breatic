@@ -790,6 +790,21 @@ describe('what is left where a held table stood, as the body leaves it', () => {
   });
 });
 
+describe('the empty line a held table becomes', () => {
+  it('keeps the quote of a quoted table, as an empty line in a quote would', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      { ...tableBlock(WORDS), props: { quoted: true } },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    select(editor, at(editor, 'b1', 1), at(editor, 'tail', 2));
+
+    type(editor, 'X');
+
+    expect((editor.document as unknown as { props: Record<string, unknown> }[]).map((block) => block.props['quoted'])).toEqual([false, true]);
+  });
+});
+
 describe('keys over a held table', () => {
   it('opens the lines Enter opens as the body does, the table taken away first', () => {
     const quotedLead = { type: 'paragraph', props: { quoted: true }, content: 'lead' };

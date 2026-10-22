@@ -38,7 +38,7 @@ import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { syncBindingOf, type SyncBound } from '@web/spaces/document/document-link-tracking';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { rowById } from '@web/spaces/document/document-row-by-id';
-import { holdsBlocks } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE, holdsBlocks } from '@web/spaces/document/document-table-nodes';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
@@ -174,7 +174,9 @@ function placeSlot(batch: UploadBatch, k: number, doc: PMNode): { at: number; qu
  * @returns True when its line is quoted.
  */
 function isQuoted(row: PMNode | null | undefined): boolean {
-  return row?.firstChild?.attrs[QUOTED] === true;
+  // A table carries its quote on its own node, which no container wraps.
+  const content = row?.type.name === DOC_TABLE ? row : row?.firstChild;
+  return content?.attrs[QUOTED] === true;
 }
 
 /**

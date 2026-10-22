@@ -92,7 +92,9 @@ export function insertRowForMenu(
   lead: readonly BlockSpec[] = [],
 ): string {
   const quoted = row.props?.[QUOTED] === true;
-  const firstChild = row.children?.[0];
+  // A table's children are its rows, which hold no block to go before; the
+  // row goes under the table, as under any block without children.
+  const firstChild = row.type === DOC_TABLE ? undefined : row.children?.[0];
   const made = editor.insertBlocks(
     [...lead, { type: 'paragraph' }].map((block) => ({
       ...block,

@@ -111,6 +111,20 @@ export function heldRange(selection: Selection): { from: number; to: number } | 
 type Rebuild = (doc: PMNode, anchor: number, head: number) => Selection;
 
 /**
+ * The empty line a table turns into: a paragraph carrying the table's own
+ * props it has, its quote and colour among them, as the line the table stood
+ * for would.
+ * @param table - The table.
+ * @returns The line's block.
+ */
+function emptyLineFor(table: PMNode): PMNode {
+  const { schema } = table.type;
+  const paragraph = schema.nodes['paragraph']!;
+  const attrs = Object.fromEntries(Object.keys(paragraph.spec.attrs ?? {}).filter((name) => name in table.attrs).map((name) => [name, table.attrs[name]]));
+  return schema.nodes['blockContainer']!.create(null, paragraph.create(attrs));
+}
+
+/**
  * Turns each table a selection takes whole into an empty line, its end in the
  * table moved onto that line: the selection the body would hold had the
  * table been an empty line.
@@ -126,7 +140,7 @@ export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild
   // The later table first, so the earlier one's position still holds.
   const held = [tables.to, tables.from?.pos === tables.to?.pos ? null : tables.from].filter((table): table is TableAt => table !== null);
   const steps = tr.steps.length;
-  for (const table of held) tr.replaceWith(table.pos, endOf(table), doc.type.schema.nodes['blockContainer']!.createAndFill()!);
+  for (const table of held) tr.replaceWith(table.pos, endOf(table), emptyLineFor(table.node));
   const mapping = tr.mapping.slice(steps);
   /**
    * Where an end of the selection lands on the changed document.

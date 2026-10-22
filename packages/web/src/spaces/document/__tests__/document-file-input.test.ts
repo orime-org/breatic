@@ -23,6 +23,7 @@ import {
 } from '@web/spaces/document/document-file-input';
 import { gapAfter, gapBefore } from './textblocks';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { CellSelection } from '@tiptap/pm/tables';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -347,5 +348,26 @@ describe('the line a file drag shows (A2)', () => {
     });
 
     expect(shown).toBeNull();
+  });
+});
+
+describe('the gap a paste goes into with cells of a table selected (inner#1619)', () => {
+  it('is after the table', () => {
+    const editor = open([
+      { type: 'paragraph', content: 'A' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+      { type: 'paragraph', content: 'B' },
+      { type: 'paragraph', content: 'C' },
+    ]);
+    const view = editor.prosemirrorView!;
+    const cells: number[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+    const tableId = (editor.document as Seen[])[1]!.id;
+
+    expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
   });
 });

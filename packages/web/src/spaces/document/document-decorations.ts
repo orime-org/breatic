@@ -38,7 +38,7 @@ import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
-import { cellDepthOf } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
@@ -112,10 +112,12 @@ const BULLET_SHAPES = 3;
 function bulletLevel(doc: PMNode, pos: number): number {
   const at = doc.resolve(pos);
   let run = 0;
-  // Ancestors alternate `blockGroup` and `blockContainer`; a container says
-  // what kind of block it is through its own content node, the first child.
+  // A container says what kind of block it is through its own content node,
+  // the first child. A table cell holds a body of its own (inner#1619), so a
+  // list in it counts from there, as the quote's depth does.
   for (let depth = at.depth; depth > 0; depth -= 1) {
     const node = at.node(depth);
+    if (isTableCell(node)) break;
     if (node.type.name !== 'blockContainer') continue;
     if (node.firstChild?.type.name !== 'bulletListItem') break;
     run += 1;

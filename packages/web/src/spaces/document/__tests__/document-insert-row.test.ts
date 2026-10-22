@@ -21,6 +21,7 @@ import {
   mediaGapOnRow,
 } from '@web/spaces/document/document-insert-row';
 import { gapBefore } from './textblocks';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 const mounted: ReturnType<typeof buildDocumentEditor>[] = [];
 
@@ -246,5 +247,16 @@ describe('the gap a media pick uploads into (inner#1127 A1)', () => {
     const gap = mediaGapOnRow(editor, editor.document[0] as never);
 
     expect(gap).toBe(gapBefore(editor.prosemirrorState.doc, (editor.document as Seen[])[0]!.id));
+  });
+});
+
+describe('the row insert-below makes under a table (inner#1619)', () => {
+  it('goes right under the table, its rows left as they are', () => {
+    const editor = open([tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }), { type: 'paragraph', content: 'after' }]);
+
+    insertRowForMenu(editor, editor.document[0] as never);
+
+    expect((editor.document as Seen[]).map((block) => block.type)).toEqual(['docTable', 'paragraph', 'paragraph']);
+    expect(shape(editor.document).slice(1)).toEqual(['', 'after']);
   });
 });

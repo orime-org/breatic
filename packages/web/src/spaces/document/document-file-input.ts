@@ -26,7 +26,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, type EditorState } from '@tiptap/pm/state';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
-import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { tableAtLeavingHead } from '@web/spaces/document/document-table-leave-selection';
 import { tableAround } from '@web/spaces/document/document-table-nodes';
 import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
@@ -127,7 +127,7 @@ function caretLine(state: EditorState): { start: number; container: PMNode; empt
   const { $head } = state.selection;
   // A selection taking a table whole stands its head on the table's first or
   // last words (inner#1619 T14): the table is the line.
-  const held = heldTables(state.selection) === null ? null : tableAround($head);
+  const held = tableAtLeavingHead(state);
   if (held !== null) return { start: held.pos, container: held.node, empty: false };
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const container = $head.node(depth);
@@ -135,7 +135,10 @@ function caretLine(state: EditorState): { start: number; container: PMNode; empt
     const empty = container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
     return { start: $head.before(depth), container, empty };
   }
-  return null;
+  // Selected cells stand their head between cells, in no block's container:
+  // the table, which no container wraps, is the line.
+  const table = tableAround($head);
+  return table === null ? null : { start: table.pos, container: table.node, empty: false };
 }
 
 /**
