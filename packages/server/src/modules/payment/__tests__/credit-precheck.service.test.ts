@@ -170,6 +170,16 @@ describe("reserveForRun", () => {
     );
   });
 
+  it("holds and judges the refusal by the estimate settled to whole hundredths (inner#1666)", async () => {
+    await reserveForRun(PROJECT, USER, "t", 7.000000000000001);
+    expect(reserveCredits).toHaveBeenCalledWith(expect.objectContaining({ amount: 7 }));
+    // The balance covers 7 unheld, so the holds are what stops it.
+    refuseWith(7, 0.5);
+    const err = await reserveForRun(PROJECT, USER, "t", 7.000000000000001).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CreditsHeldError);
+    expect(err).toMatchObject({ message: 'server.credit.held_by_running {"held":"0.5","available":"6.5"}' });
+  });
+
   it("says granted credits are pinned elsewhere, then that there are none", async () => {
     refuseWith(0, 0);
     getGrantedCredits.mockResolvedValue(10);

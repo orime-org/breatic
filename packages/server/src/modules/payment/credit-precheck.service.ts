@@ -20,7 +20,7 @@
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
-import { formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
+import { ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
 /**
  * A run refused because running work holds what it needs, so a lane that
@@ -122,13 +122,16 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * ends. Skipped entirely when payments are disabled (dev / self-host).
  *
  * The hold lasts the task budget, the longest a run may go on (two hours,
- * `default_budget_ms`), so a run still working is still counted.
+ * `default_budget_ms`), so a run still working is still counted. The estimate
+ * is settled to whole hundredths once, here, so the hold and the refusal's
+ * choice of cause read the same figure (inner#1666).
  * @param projectId - The project the run belongs to; its studio pays.
  * @param userId - The authenticated caller.
  * @param referenceId - The run's task id, which the worker releases by.
  * @param required - The run's estimate.
  * @throws {CreditsHeldError} 402 when running work holds what it needs.
  * @throws {AppError} 402 when the studio cannot cover it for another cause.
+ * @throws {RangeError} When the estimate is negative or not a number.
  */
 export async function reserveForRun(
   projectId: string,
@@ -137,15 +140,16 @@ export async function reserveForRun(
   required: number,
 ): Promise<void> {
   if (!env.PAYMENT_ENABLED) return;
+  const charge = ceilToCreditCent(required);
   const outcome = await creditHoldService.reserveCredits({
     projectId,
     actorUserId: userId,
     referenceId,
-    amount: required,
+    amount: charge,
     ttlMs: getNodeTaskConfig().default_budget_ms,
   });
   if (outcome.ok) return;
-  await refuse(userId, required, outcome);
+  await refuse(userId, charge, outcome);
 }
 
 /**
