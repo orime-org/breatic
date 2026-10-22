@@ -165,7 +165,7 @@ export default function ForgotPasswordPage(): React.JSX.Element {
               setEmail(e.target.value);
               if (emailError) setEmailError(null);
             }}
-            disabled={submitting}
+            readOnly={submitting}
             aria-invalid={!!emailError || undefined}
             aria-describedby={emailError ? 'forgot-email-error' : undefined}
           />

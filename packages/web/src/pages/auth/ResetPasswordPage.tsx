@@ -116,7 +116,7 @@ function TokenResetForm({
               setPassword(e.target.value);
               if (passwordError) setPasswordError(null);
             }}
-            disabled={submitting}
+            readOnly={submitting}
             aria-invalid={!!passwordError || undefined}
             aria-describedby={passwordError ? 'reset-password-error' : undefined}
             showLabel={t('auth.passwordShow')}
@@ -218,7 +218,7 @@ function RecoveryResetForm(): React.JSX.Element {
                 setEmail(e.target.value);
                 if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.email || undefined}
               aria-describedby={errors.email ? 'recovery-email-error' : undefined}
             />
@@ -239,7 +239,7 @@ function RecoveryResetForm(): React.JSX.Element {
                 setRecoveryCode(e.target.value.toUpperCase());
                 if (errors.recoveryCode) setErrors((p) => ({ ...p, recoveryCode: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.recoveryCode || undefined}
               aria-describedby={errors.recoveryCode ? 'recovery-code-error' : undefined}
               className='font-mono tracking-wider'
@@ -261,7 +261,7 @@ function RecoveryResetForm(): React.JSX.Element {
                 setNewPassword(e.target.value);
                 if (errors.newPassword) setErrors((p) => ({ ...p, newPassword: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.newPassword || undefined}
               aria-describedby={errors.newPassword ? 'recovery-new-password-error' : undefined}
               showLabel={t('auth.passwordShow')}

@@ -169,7 +169,7 @@ export default function RegisterPage(): React.JSX.Element {
                 setEmail(e.target.value);
                 if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.email || undefined}
               aria-describedby={errors.email ? 'register-email-error' : undefined}
             />
@@ -188,7 +188,7 @@ export default function RegisterPage(): React.JSX.Element {
                 setPassword(e.target.value);
                 if (errors.password) setErrors((p) => ({ ...p, password: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.password || undefined}
               aria-describedby={errors.password ? 'register-password-error' : undefined}
               showLabel={t('auth.passwordShow')}
