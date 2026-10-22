@@ -19,14 +19,15 @@
  * Deleting is the selection's own replace, `replaceHeld`, shared by
  * `TableSpanSelection` and the body-edge selection: each table it takes
  * becomes an empty line (`swapHeld`), and the selection then goes as the
- * body's own does. Cut, a drag's move and Enter (`document-enter.ts`) reach it
- * through `tr.deleteSelection()`, and a typed key through `tr.insertText`.
- * These take it away first through `takeAwayHeldTables`, which leaves the
- * caret where the body's deletes do: Backspace, Delete, the word and line
- * deletes, Shift+Enter (`document-table-keys.ts`), an input method's
- * composition and the browser's own deletes (`beforeinput`). A paste (`document-table-paste.ts`) and text the
- * browser inserts with no key call `swapHeldTables` first and then go over
- * what is left as in the body.
+ * body's own does. Cut, a drag's move, Enter (`document-enter.ts`) and a
+ * paste reach it through the selection's replace, and a typed key through
+ * `tr.insertText`; a pasted link marks the selection, as in the body. These
+ * take it away first through `takeAwayHeldTables`, which leaves the caret
+ * where the body's deletes do: Backspace, Delete, the word and line deletes,
+ * Shift+Enter (`document-table-keys.ts`), an input method's composition and
+ * the browser's own deletes (`beforeinput`). A pasted table and text the
+ * browser inserts with no key turn the held tables into empty lines first
+ * (`swapHeldTables`) and then go over what is left as in the body.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -41,7 +42,7 @@ import {
   type EditorState,
   type Transaction,
 } from '@tiptap/pm/state';
-import { CellSelection } from '@tiptap/pm/tables';
+import { CellSelection, __pastedCells as pastedCells } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { bodyEdgeAt, bodyEdgePos } from '@web/spaces/document/document-body-edge-pos';
@@ -161,7 +162,10 @@ export function replaceHeld(selection: Selection, tr: Transaction, content: Slic
   return true;
 }
 
-/** A selection that turns the tables it takes whole into empty lines (`swapHeld`) its own way. */
+/**
+ * The body-edge selection, which rebuilds itself through `bodyEdgeBetween`
+ * when its tables turn into empty lines; this module cannot import that.
+ */
 interface SwapsTables {
   swapTables(tr: Transaction): Selection | null;
 }
@@ -169,17 +173,14 @@ interface SwapsTables {
 /**
  * Turns the tables the editor's selection takes whole into empty lines and
  * leaves the selection over what is left, for an input the body then handles
- * as its own: a paste, text the browser inserts.
+ * as its own: a pasted table, text the browser inserts.
  * @param view - The editor view.
- * @returns Whether there were tables to turn.
  */
-export function swapHeldTables(view: EditorView): boolean {
+function swapHeldTables(view: EditorView): void {
   const { selection } = view.state;
   const tr = view.state.tr;
   const rest = 'swapTables' in selection ? (selection as SwapsTables).swapTables(tr) : swapHeld(selection, tr, textBetween);
-  if (rest === null) return false;
-  view.dispatch(tr.setSelection(rest));
-  return true;
+  if (rest !== null) view.dispatch(tr.setSelection(rest));
 }
 
 /**
@@ -209,15 +210,6 @@ class TableSpanSelection extends TextSelection {
    */
   override replaceWith(tr: Transaction, node: PMNode): void {
     if (!replaceHeld(this, tr, node, textBetween)) super.replaceWith(tr, node);
-  }
-
-  /**
-   * Turns the tables at its ends into empty lines.
-   * @param tr - The transaction.
-   * @returns The selection over what is left, or null when it takes no table whole.
-   */
-  swapTables(tr: Transaction): Selection | null {
-    return swapHeld(this, tr, textBetween);
   }
 }
 
@@ -324,6 +316,15 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
         // selection's own replace, as the body's typing does. From a table,
         // the letter takes the marks of the empty line in the table's place:
         // none unless the reader picked some.
+        // A pasted table over an end in a table would go into that table's
+        // cells (prosemirror-tables `handlePaste`, which runs next), so the
+        // held tables turn into empty lines first; every other paste goes
+        // through the selection's own replace, or a link onto it, as in the
+        // body.
+        handlePaste: (view, _event, slice) => {
+          if (heldTables(view.state.selection) !== null && pastedCells(slice) !== null) swapHeldTables(view);
+          return false;
+        },
         handleTextInput: (view, _from, _to, text) => {
           const tables = heldTables(view.state.selection);
           if (tables === null) return false;
@@ -347,7 +348,7 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
           beforeinput: (view, event) => {
             // Text the browser inserts with no key or composition (an emoji
             // picker) goes over what is left, as in the body.
-            if (event.inputType === 'insertText' || event.inputType === 'insertReplacementText') {
+            if (event.inputType === 'insertText') {
               swapHeldTables(view);
               return false;
             }

@@ -653,6 +653,34 @@ describe('what is left where a held table stood, as the body leaves it', () => {
     expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
   });
 
+  it('links a held selection when a link is pasted over it, the table kept, as the body links and keeps what is selected', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView;
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 3));
+
+    paste(editor, { 'text/plain': 'https://example.com' });
+
+    expect(blocks(editor)[1]).toBe('docTable');
+    expect(view.state.doc.textContent).toBe('leada1b1a2b2below');
+    const linked: string[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((mark) => mark.type.name === 'link')) linked.push(node.text!);
+      return true;
+    });
+    expect(linked).toContain('bel');
+  });
+
+  it('leaves a spelling replacement to the browser over a held selection', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView;
+    select(editor, at(editor, 'lead', 2), at(editor, 'b1', 1));
+    const input = new InputEvent('beforeinput', { inputType: 'insertReplacementText', data: 'lad', bubbles: true, cancelable: true });
+
+    view.dom.dispatchEvent(input);
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'docTable', 'paragraph:below']);
+  });
+
   it('turns the table into an empty line and leaves the browser to insert text that comes without a key', () => {
     const { editor } = open();
     const view = editor.prosemirrorView;

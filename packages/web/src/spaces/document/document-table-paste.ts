@@ -21,15 +21,6 @@
 
 import type { BlockNoteEditorOptions } from '@blocknote/core';
 
-import { swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
-
-/**
- * The clipboard types BlockNote pastes from: with none of them it pastes
- * nothing (`acceptedMIMETypes.ts`, `pasteExtension.ts:55-57`), which the
- * package does not export.
- */
-const PASTED_TYPES: readonly string[] = ['vscode-editor-data', 'blocknote/html', 'text/markdown', 'text/html', 'text/plain', 'Files'];
-
 /** BlockNote's paste hook, as this editor's options take it. */
 type PasteHandler = NonNullable<BlockNoteEditorOptions<never, never, never>['pasteHandler']>;
 
@@ -88,18 +79,11 @@ export function evenPastedTables(html: string): string {
  * The clipboard is the event's, and BlockNote's handler reads it from there.
  * @param context - What BlockNote hands the paste hook.
  * @param context.event - The paste.
- * @param context.editor - The editor.
  * @param context.defaultPasteHandler - BlockNote's own paste.
  * @returns Whether the paste was handled.
  */
-export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
+export const documentPasteHandler: PasteHandler = ({ event, defaultPasteHandler }) => {
   const data = event.clipboardData;
-  // A selection holding a whole table has the table turned into an empty line
-  // first (inner#1619 T14), and the paste then replaces what is left as it
-  // does in the body; pasted cells over an end in a table would otherwise go
-  // into that table's cells (prosemirror-tables `handlePaste`). A paste that
-  // brings nothing leaves it.
-  if (data !== null && PASTED_TYPES.some((type) => data.types.includes(type))) swapHeldTables(editor.prosemirrorView);
   const html = data?.getData('text/html') ?? '';
   const even = evenPastedTables(html);
   if (data !== null && even !== html) {
