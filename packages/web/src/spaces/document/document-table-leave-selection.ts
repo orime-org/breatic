@@ -18,14 +18,15 @@
  *
  * Deleting is the selection's own replace, `replaceHeld`, shared by
  * `TableSpanSelection` and the body-edge selection: each table it takes
- * becomes an empty line, and the selection then goes as the body's own does.
- * Cut, a drag's move and Enter (`document-enter.ts`) reach it through
- * `tr.deleteSelection()`, and a typed key through `tr.insertText`. Inputs that
- * would delete the range by position call it first through
- * `takeAwayHeldTables`: Backspace, Delete, the word and line deletes,
- * Shift+Enter (`document-table-keys.ts`), paste (`document-table-paste.ts`,
- * ahead of the table plugin's paste into cells), an input method's
- * composition and the browser's own deletes (`beforeinput`).
+ * becomes an empty line (`swapHeld`), and the selection then goes as the
+ * body's own does. Cut, a drag's move and Enter (`document-enter.ts`) reach it
+ * through `tr.deleteSelection()`, and a typed key through `tr.insertText`.
+ * These take it away first through `takeAwayHeldTables`, which leaves the
+ * caret where the body's deletes do: Backspace, Delete, the word and line
+ * deletes, Shift+Enter (`document-table-keys.ts`), an input method's
+ * composition and the browser's own deletes (`beforeinput`). A paste (`document-table-paste.ts`) and text the
+ * browser inserts with no key call `swapHeldTables` first and then go over
+ * what is left as in the body.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -104,25 +105,20 @@ export function heldRange(selection: Selection): { from: number; to: number } | 
 }
 
 /** Builds a selection of one kind between two positions. */
-export type Rebuild = (doc: PMNode, anchor: number, head: number) => Selection;
+type Rebuild = (doc: PMNode, anchor: number, head: number) => Selection;
 
 /**
- * Replaces a selection that takes tables whole, the tables whole: what a
- * selection's own `replace` and `replaceWith` do for a selection leaving a
- * table and for one to an edge of the body. Each table it takes becomes an
- * empty line, its end in the table moves onto that line, and the selection
- * then goes the way the body's own does: the lines at its ends join, the
- * blocks between go, and an end on an edge of the body takes everything to
- * that edge.
+ * Turns each table a selection takes whole into an empty line, its end in the
+ * table moved onto that line: the selection the body would hold had the
+ * table been an empty line.
  * @param selection - The selection.
  * @param tr - The transaction.
- * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
  * @param rebuild - Builds a selection of the same kind on the changed document.
- * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
+ * @returns That selection on the changed document, or null when the selection takes no table whole.
  */
-export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild): boolean {
+export function swapHeld(selection: Selection, tr: Transaction, rebuild: Rebuild): Selection | null {
   const tables = heldTables(selection);
-  if (tables === null) return false;
+  if (tables === null) return null;
   const doc = tr.doc;
   // The later table first, so the earlier one's position still holds.
   const held = [tables.to, tables.from?.pos === tables.to?.pos ? null : tables.from].filter((table): table is TableAt => table !== null);
@@ -141,9 +137,48 @@ export function replaceHeld(selection: Selection, tr: Transaction, content: Slic
     // Inside the line that took the table's place: its block, then its words.
     return table === undefined ? mapping.map(pos) : mapping.map(table.pos, -1) + 2;
   };
-  const rest = rebuild(tr.doc, place(selection.anchor), place(selection.head));
+  return rebuild(tr.doc, place(selection.anchor), place(selection.head));
+}
+
+/**
+ * Replaces a selection that takes tables whole, the tables whole: what a
+ * selection's own `replace` and `replaceWith` do for a selection leaving a
+ * table and for one to an edge of the body. Each table it takes becomes an
+ * empty line (`swapHeld`), and the selection then goes the way the body's own
+ * does: the lines at its ends join, the blocks between go, and an end on an
+ * edge of the body takes everything to that edge.
+ * @param selection - The selection.
+ * @param tr - The transaction.
+ * @param content - What goes in its place: a slice (`replace`), a node (`replaceWith`), or nothing.
+ * @param rebuild - Builds a selection of the same kind on the changed document.
+ * @returns Whether the selection took a table whole; false leaves it to the selection's usual replace.
+ */
+export function replaceHeld(selection: Selection, tr: Transaction, content: Slice | PMNode | undefined, rebuild: Rebuild): boolean {
+  const rest = swapHeld(selection, tr, rebuild);
+  if (rest === null) return false;
   if (content === undefined || content instanceof Slice) rest.replace(tr, content);
   else rest.replaceWith(tr, content);
+  return true;
+}
+
+/** A selection that turns the tables it takes whole into empty lines (`swapHeld`) its own way. */
+interface SwapsTables {
+  swapTables(tr: Transaction): Selection | null;
+}
+
+/**
+ * Turns the tables the editor's selection takes whole into empty lines and
+ * leaves the selection over what is left, for an input the body then handles
+ * as its own: a paste, text the browser inserts.
+ * @param view - The editor view.
+ * @returns Whether there were tables to turn.
+ */
+export function swapHeldTables(view: EditorView): boolean {
+  const { selection } = view.state;
+  const tr = view.state.tr;
+  const rest = 'swapTables' in selection ? (selection as SwapsTables).swapTables(tr) : swapHeld(selection, tr, textBetween);
+  if (rest === null) return false;
+  view.dispatch(tr.setSelection(rest));
   return true;
 }
 
@@ -157,7 +192,7 @@ export function replaceHeld(selection: Selection, tr: Transaction, content: Slic
 const textBetween: Rebuild = (doc, anchor, head) => TextSelection.between(doc.resolve(anchor), doc.resolve(head));
 
 /** A selection leaving a table, its ends on the table's first or last words. */
-export class TableSpanSelection extends TextSelection {
+class TableSpanSelection extends TextSelection {
   /**
    * Replaces the selection, the tables at its ends whole.
    * @param tr - The transaction.
@@ -174,6 +209,15 @@ export class TableSpanSelection extends TextSelection {
    */
   override replaceWith(tr: Transaction, node: PMNode): void {
     if (!replaceHeld(this, tr, node, textBetween)) super.replaceWith(tr, node);
+  }
+
+  /**
+   * Turns the tables at its ends into empty lines.
+   * @param tr - The transaction.
+   * @returns The selection over what is left, or null when it takes no table whole.
+   */
+  swapTables(tr: Transaction): Selection | null {
+    return swapHeld(this, tr, textBetween);
   }
 }
 
@@ -301,6 +345,12 @@ export const documentTableLeaveSelectionExtension = createExtension(() => ({
             return false;
           },
           beforeinput: (view, event) => {
+            // Text the browser inserts with no key or composition (an emoji
+            // picker) goes over what is left, as in the body.
+            if (event.inputType === 'insertText' || event.inputType === 'insertReplacementText') {
+              swapHeldTables(view);
+              return false;
+            }
             if (!event.inputType.startsWith('delete') || !takeAwayHeldTables(view)) return false;
             event.preventDefault();
             return true;

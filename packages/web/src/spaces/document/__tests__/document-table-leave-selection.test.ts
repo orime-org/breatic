@@ -125,6 +125,19 @@ function type(editor: Editor, text: string): void {
   if (!view.someProp('handleTextInput', (f) => f(view, from, to, text, fallback))) view.dispatch(fallback());
 }
 
+/**
+ * Pastes through the body's own paste handling, a clipboard holding the given types.
+ * @param editor - The editor.
+ * @param data - The clipboard's contents by type.
+ */
+function paste(editor: Editor, data: Readonly<Record<string, string>>): void {
+  const event = new Event('paste', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: { types: Object.keys(data), files: [], items: [], getData: (format: string) => data[format] ?? '' },
+  });
+  editor.prosemirrorView.dom.dispatchEvent(event);
+}
+
 describe('a selection leaving a table', () => {
   it('takes the whole table when it runs from a cell to below the table', () => {
     const { editor } = open();
@@ -597,6 +610,61 @@ describe('what is left where a held table stood, as the body leaves it', () => {
       return true;
     });
     expect(bold).toBe(false);
+  });
+
+  for (const [what, data] of [
+    ['words', { 'text/plain': 'Z' }],
+    ['lines', { 'text/html': '<p>X1</p><p>X2</p>', 'text/plain': 'X1\nX2' }],
+  ] as const) {
+    it(`pastes ${what} as the body does over a selection from a cell into a heading`, () => {
+      const heading = { type: 'heading', content: 'head' };
+      const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS), heading]);
+      select(editor, at(editor, 'b1', 1), at(editor, 'head', 2));
+      paste(editor, data);
+      const body = openWith([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph' }, heading]).editor;
+      select(body, at(body, 'lead', 4) + 4, at(body, 'head', 2));
+      paste(body, data);
+
+      expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
+    });
+  }
+
+  it('brings the table back with its words in one undo after a paste over it', () => {
+    const { editor, manager } = open();
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 2));
+    paste(editor, { 'text/plain': 'Z' });
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:Zlow']);
+
+    manager.undo();
+
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'docTable', 'paragraph:below']);
+    expect(editor.prosemirrorView.state.doc.textContent).toBe('leada1b1a2b2below');
+  });
+
+  it('pastes as the body does over a selection from a cell to the start of the body', () => {
+    const tail = { type: 'paragraph', content: 'tail' };
+    const { editor } = openWith([{ type: 'divider' }, tableBlock(WORDS), tail]);
+    selectToEdge(editor, at(editor, 'b2', 1), 'start');
+    paste(editor, { 'text/plain': 'Z' });
+    const body = openWith([{ type: 'divider' }, { type: 'paragraph' }, tail]).editor;
+    selectToEdge(body, at(body, 'tail', 0) - 4, 'start');
+    paste(body, { 'text/plain': 'Z' });
+
+    expect(editor.prosemirrorView.state.doc.toString()).toBe(body.prosemirrorView.state.doc.toString());
+  });
+
+  it('turns the table into an empty line and leaves the browser to insert text that comes without a key', () => {
+    const { editor } = open();
+    const view = editor.prosemirrorView;
+    select(editor, at(editor, 'b2', 1), at(editor, 'below', 2));
+    const input = new InputEvent('beforeinput', { inputType: 'insertText', data: 'Z', bubbles: true, cancelable: true });
+
+    view.dom.dispatchEvent(input);
+
+    expect(input.defaultPrevented).toBe(false);
+    expect(blocks(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:below']);
+    expect(view.state.selection.from).toBe(at(editor, 'lead', 4) + 4);
+    expect(view.state.selection.to).toBe(at(editor, 'below', 2));
   });
 
   it('makes the line a key is typed on a paragraph, as the body does, over a selection from a cell into a heading', () => {

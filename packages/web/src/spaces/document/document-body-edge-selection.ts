@@ -26,7 +26,7 @@ import type { Mappable } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { bodyEdgeAt, bodyEdgePos, type BodyEdge } from '@web/spaces/document/document-body-edge-pos';
-import { replaceHeld } from '@web/spaces/document/document-table-leave-selection';
+import { replaceHeld, swapHeld } from '@web/spaces/document/document-table-leave-selection';
 
 export { bodyEdgeAt, bodyEdgePos, type BodyEdge };
 
@@ -223,6 +223,15 @@ class BodyEdgeSelectionClass extends Selection {
    */
   override replaceWith(tr: Transaction, node: Node): void {
     if (!replaceHeld(this, tr, node, bodyEdgeBetween)) super.replaceWith(tr, node);
+  }
+
+  /**
+   * Turns a table its end in text stands in into an empty line.
+   * @param tr - The transaction.
+   * @returns The selection over what is left, or null when it takes no table whole.
+   */
+  swapTables(tr: Transaction): Selection | null {
+    return swapHeld(this, tr, bodyEdgeBetween);
   }
 
   /**

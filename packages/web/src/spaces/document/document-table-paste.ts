@@ -21,7 +21,7 @@
 
 import type { BlockNoteEditorOptions } from '@blocknote/core';
 
-import { takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 
 /**
  * The clipboard types BlockNote pastes from: with none of them it pastes
@@ -94,11 +94,12 @@ export function evenPastedTables(html: string): string {
  */
 export const documentPasteHandler: PasteHandler = ({ event, editor, defaultPasteHandler }) => {
   const data = event.clipboardData;
-  // A selection holding a whole table goes first, through its own replace
-  // (inner#1619 T14): pasted cells over an end in a table would otherwise go
+  // A selection holding a whole table has the table turned into an empty line
+  // first (inner#1619 T14), and the paste then replaces what is left as it
+  // does in the body; pasted cells over an end in a table would otherwise go
   // into that table's cells (prosemirror-tables `handlePaste`). A paste that
   // brings nothing leaves it.
-  if (data !== null && PASTED_TYPES.some((type) => data.types.includes(type))) takeAwayHeldTables(editor.prosemirrorView);
+  if (data !== null && PASTED_TYPES.some((type) => data.types.includes(type))) swapHeldTables(editor.prosemirrorView);
   const html = data?.getData('text/html') ?? '';
   const even = evenPastedTables(html);
   if (data !== null && even !== html) {
