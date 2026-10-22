@@ -18,7 +18,7 @@
  *
  * Needs a running dev stack (`pnpm dev`).
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -435,15 +435,24 @@ async function upload(file: string): Promise<string> {
 }
 
 /**
+ * What ffmpeg's meters print, on stderr, while it reads a stored URL.
+ * @param args - The input and filter arguments.
+ * @returns ffmpeg's stderr.
+ * @throws {Error} When ffmpeg exits with an error.
+ */
+function ffmpegReport(args: string[]): string {
+  const run = spawnSync('ffmpeg', ['-v', 'info', '-nostats', ...args, '-f', 'null', '-'], { encoding: 'utf8' });
+  if (run.status !== 0) throw new Error(`ffmpeg exited ${String(run.status)}: ${run.stderr.slice(-500)}`);
+  return run.stderr;
+}
+
+/**
  * A stored URL's integrated loudness, as the EBU R128 meter reads it.
  * @param url - The URL.
  * @returns Its loudness in LUFS.
  */
 function loudness(url: string): number {
-  const out = execFileSync('ffmpeg', ['-v', 'info', '-nostats', '-i', url, '-af', 'ebur128', '-f', 'null', '-'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
+  const out = ffmpegReport(['-i', url, '-af', 'ebur128']);
   return Number(/Integrated loudness:\s+I:\s+(-?[\d.]+) LUFS/.exec(out)?.[1]);
 }
 
@@ -455,11 +464,7 @@ function loudness(url: string): number {
  * @returns Its RMS level in dBFS.
  */
 function rmsLevel(url: string, from: number, seconds: number): number {
-  const out = execFileSync(
-    'ffmpeg',
-    ['-v', 'info', '-nostats', '-ss', String(from), '-t', String(seconds), '-i', url, '-af', 'astats=measure_perchannel=none', '-f', 'null', '-'],
-    { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'] },
-  );
+  const out = ffmpegReport(['-ss', String(from), '-t', String(seconds), '-i', url, '-af', 'astats=measure_perchannel=none']);
   return Number(/RMS level dB:\s+(-?[\d.]+)/.exec(out)?.[1]);
 }
 
@@ -469,10 +474,7 @@ function rmsLevel(url: string, from: number, seconds: number): number {
  * @returns Crossings per sample.
  */
 function zeroCrossings(url: string): number {
-  const out = execFileSync('ffmpeg', ['-v', 'info', '-nostats', '-i', url, '-af', 'astats', '-f', 'null', '-'], {
-    encoding: 'utf8',
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
+  const out = ffmpegReport(['-i', url, '-af', 'astats']);
   return Number(/Zero crossings rate:\s+([\d.]+)/.exec(out)?.[1]);
 }
 
