@@ -335,7 +335,7 @@ interface Run {
   tool: string;
   /** What the result is looked up by, when the tool runs more than once. */
   name?: string;
-  source: 'speech.mp3' | 'music.wav' | 'noisy.wav';
+  source: 'speech.mp3' | 'music.wav';
   set?: () => Promise<void>;
 }
 
@@ -469,7 +469,7 @@ function probe(url: string): { format: string; duration: number; codec: string; 
 }
 
 const RUNS: Run[] = [
-  { tool: 'audio.denoise', source: 'noisy.wav' },
+  { tool: 'audio.denoise', source: 'speech.mp3' },
   {
     tool: 'audio.normalize',
     source: 'music.wav',
@@ -515,7 +515,6 @@ test.describe('real runs', () => {
     const ffmpeg = (...args: string[]): void => {
       execFileSync('ffmpeg', ['-v', 'error', '-y', ...args]);
     };
-    ffmpeg('-i', join(FIXTURES, 'speech.mp3'), '-c', 'copy', ...mark, join(MEDIA, 'speech.mp3'));
     // Eight seconds of stereo at 44.1 kHz: a different tone on each side.
     ffmpeg(
       '-f', 'lavfi', '-i', 'sine=frequency=220:duration=8:sample_rate=44100',
@@ -523,12 +522,13 @@ test.describe('real runs', () => {
       '-filter_complex', '[0][1]amerge=inputs=2,volume=0.5', ...mark, join(MEDIA, 'music.wav'),
     );
     // The speech between two seconds of nothing, all of it under white noise
-    // at about -50 dBFS: the last 1.5 s hold the noise alone.
+    // at about -50 dBFS, so denoise has something to take away: the last
+    // 1.5 s hold the noise alone.
     ffmpeg(
       '-i', join(FIXTURES, 'speech.mp3'),
       '-f', 'lavfi', '-i', 'anoisesrc=color=white:amplitude=0.0056:duration=10.2:sample_rate=48000',
       '-filter_complex', '[0]aresample=48000,adelay=2000:all=1,apad=pad_dur=2[s];[s][1]amix=inputs=2:normalize=0:duration=first',
-      '-ac', '1', ...mark, join(MEDIA, 'noisy.wav'),
+      '-ac', '1', '-c:a', 'libmp3lame', '-b:a', '192k', ...mark, join(MEDIA, 'speech.mp3'),
     );
     page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
     await openSmokeProject(page);
@@ -544,7 +544,7 @@ test.describe('real runs', () => {
 
   test('every audio tool runs to a new audio node that holds what its name says @needs-model @needs-ingest @needs-ffmpeg @needs-internet', async () => {
     test.setTimeout(RUN_MS + 10 * 60_000);
-    for (const file of ['speech.mp3', 'music.wav', 'noisy.wav'] as const) sources.set(file, await upload(file));
+    for (const file of ['speech.mp3', 'music.wav'] as const) sources.set(file, await upload(file));
     await page.getByRole('button', { name: 'Fit to viewport' }).click();
 
     for (const run of RUNS) {
@@ -595,7 +595,7 @@ test.describe('real runs', () => {
     expect(Math.abs(loudness(nodes.get(results.get('audio.normalize')!)!) + 23)).toBeLessThanOrEqual(1);
     // B2 at the default strength: the noise alone comes down by its 20 dB and
     // the speech keeps its level.
-    const noisy = nodes.get(sources.get('noisy.wav')!)!;
+    const noisy = nodes.get(sources.get('speech.mp3')!)!;
     const denoised = nodes.get(results.get('audio.denoise')!)!;
     expect(rmsLevel(noisy, 8.4, 1.5) - rmsLevel(denoised, 8.4, 1.5)).toBeGreaterThan(15);
     expect(Math.abs(rmsLevel(noisy, 3, 4) - rmsLevel(denoised, 3, 4))).toBeLessThan(1);
@@ -609,7 +609,7 @@ test.describe('real runs', () => {
     expect(read('audio.pan').channels).toBe(2);
     // A mono source stays mono, its tail added.
     expect(read('audio.reverb').channels).toBe(1);
-    expect(read('audio.reverb').duration).toBeGreaterThan(6.144);
+    expect(read('audio.reverb').duration).toBeGreaterThan(10.2);
 
     // inner#1305 §4.4: every audio row an upload or a run wrote gets a peaks
     // file beside it, read after it registered.
