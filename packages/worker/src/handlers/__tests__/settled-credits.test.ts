@@ -122,6 +122,8 @@ vi.mock("@breatic/domain", async () => ({
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
   resolveActiveProvider: vi.fn(),
+  // No model declares an output type here, so the result keeps the stored one.
+  modelCatalog: { getModelCatalog: () => ({ image: [], video: [], audio: [], tts: [], three_d: [] }) },
   nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: h.recordGenerationSuccess },
   settleTaskForNode: h.settleTaskForNode,
   understandMediaAt: h.understandMediaAt,
