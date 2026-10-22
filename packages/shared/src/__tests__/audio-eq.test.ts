@@ -18,8 +18,10 @@ const LIMITER = PEAK_LIMITER;
 // inner#1305: AAC raises a peak by about 1 dB when it encodes, so the ceiling
 // sits 2 dB under full scale; measured, a -1 dBFS ceiling decoded at +0.08 dBFS.
 describe("PEAK_LIMITER", () => {
-  it("holds peaks 2 dB under full scale without touching the level below them", () => {
-    expect(PEAK_LIMITER).toBe("alimiter=limit=0.794:level=disabled");
+  // alimiter looks 5 ms ahead; uncompensated, every limited result starts 5 ms
+  // late and loses its last 5 ms (measured on an impulse, inner#1305).
+  it("holds peaks 2 dB under full scale, leaves the level below them and keeps the timing", () => {
+    expect(PEAK_LIMITER).toBe("alimiter=limit=0.794:level=disabled:latency=1");
   });
 });
 

@@ -61,9 +61,10 @@ export const defaultEqValue: EqValue = eqValueOfPreset("flat");
  * The ceiling every audio chain that can raise the level ends with: peaks held
  * 2 dB under full scale, the level below them untouched. AAC raises a peak by
  * about 1 dB as it encodes, so a -1 dBFS ceiling decoded above full scale
- * (measured on a widened -1 dBFS stereo source, inner#1305).
+ * (measured on a widened -1 dBFS stereo source, inner#1305). `latency=1`
+ * takes back the 5 ms its lookahead delays the sound by.
  */
-export const PEAK_LIMITER = "alimiter=limit=0.794:level=disabled";
+export const PEAK_LIMITER = "alimiter=limit=0.794:level=disabled:latency=1";
 
 /** The rate assumed for a source whose probe read none. */
 const ASSUMED_RATE = 48000;
