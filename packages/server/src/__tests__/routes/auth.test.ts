@@ -259,7 +259,7 @@ describe("Auth routes", () => {
 
   describe("POST /auth/logout", () => {
     it("clears the session cookie and 200s", async () => {
-      mocks.authService.logout.mockResolvedValue(undefined);
+      mocks.authService.logout.mockResolvedValue({});
 
       const app = withPeer(createApp());
       const res = await app.request("/api/v1/auth/logout", {

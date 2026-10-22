@@ -4,15 +4,23 @@
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Two fire-and-forget notification paths, both per project:
+ * Four fire-and-forget notification paths:
  *
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
- *                           it on the meta doc.
+ *                           it on the meta doc. Per project.
+ *   - `credits:changed`   — server or worker publishes after a charge made
+ *                           in the project commits; every collab instance
+ *                           relays it on the meta doc. Per project.
  *   - `connections:close` — collab's lifecycle consumer publishes after
  *                           a duplicate / archive / restore; every collab
  *                           instance closes its connections to the
  *                           project so the clients re-authenticate.
+ *                           Per project.
+ *   - `sessions:revoked`  — core's session revocation publishes the ids of
+ *                           the sessions it deleted; every collab instance
+ *                           closes the connections opened with them. Per
+ *                           deployment (inner#1548).
  *
  * Space lifecycle (create / delete / lock / restore) used to live
  * here as `publishSpace*` + `space:*` channels — removed 2026-05-23
@@ -26,7 +34,9 @@
  *   - Notification-only. A missed `activity:new` is made up by the next
  *     reconnect, which re-queries PG; a missed
  *     `connections:close` leaves that instance's connections on the role
- *     they had until they next reconnect.
+ *     they had until they next reconnect; a missed `credits:changed` is
+ *     made up the next time a screen showing the balance reads it; a missed
+ *     `sessions:revoked` is made up by collab's session recheck.
  *   - No replay / consumer-group semantics needed.
  *
  * Why DB2 (REDIS_STREAM_URL):
@@ -47,10 +57,12 @@ import {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
+  sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
+  type SessionsRevokedEvent,
 } from "@breatic/shared";
 
 /**
@@ -126,4 +138,27 @@ export async function publishProjectConnectionsClose(
   };
   const redis = getStreamRedis();
   await redis.publish(projectConnectionsCloseChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * The channel collab subscribes to for ended sessions, with this deployment's
+ * prefix (the same reason as {@link projectControlChannelPattern}).
+ * @returns The channel name.
+ */
+export function sessionsRevokedChannelName(): string {
+  return sessionsRevokedChannel(env.REDIS_KEY_PREFIX);
+}
+
+/**
+ * Tell every collab instance that these sessions ended (inner#1548), so each
+ * closes the connections opened with them. Called only by the session store's
+ * revoke functions, right after they delete the sessions.
+ * @param userId - Whose sessions they were.
+ * @param sessionIds - The ended sessions' ids (core `sessionId`).
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishSessionsRevoked(userId: string, sessionIds: string[]): Promise<void> {
+  const event: SessionsRevokedEvent = { type: "sessions:revoked", userId, sessionIds, ts: Date.now() };
+  await getStreamRedis().publish(sessionsRevokedChannelName(), JSON.stringify(event));
 }

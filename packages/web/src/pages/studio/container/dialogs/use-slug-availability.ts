@@ -101,8 +101,8 @@ export function useSlugAvailability(
   }
   // Debounce-skew guard: while the live input has not yet settled into the
   // debounced value, the query still reflects the OLD slug — report `checking`
-  // so the submit gate never treats a stale `valid` as valid for the new
-  // input (the gate and the submitted slug stay consistent).
+  // so a press never treats a stale `valid` as valid for the new input (it
+  // waits instead, and what it sends is what was checked).
   if (trimmed !== slug) {
     return { state: 'checking' };
   }
@@ -113,6 +113,9 @@ export function useSlugAvailability(
   // slug that is no longer valid at all.
   if (isOwn) {
     return { state: 'valid' };
+  }
+  if (query.isError && !query.isFetching) {
+    return { state: 'unverified' };
   }
   if (query.isFetching || query.data === undefined) {
     return { state: 'checking' };

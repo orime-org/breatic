@@ -70,6 +70,10 @@ Check: was the element still moving when I took this number?
 
 Check: are the first frames of my fake stream the ones the server sends?
 
+**A held request from a run-once press (new project, generate, checkout) is answered with a 4xx, and its route stays in place until the case ends.** `runOnce` (`stores/task-actions-in-flight.ts`) resends the same request after a 5xx without `Idempotency-Status` or no answer at all, and `page.unroute` lets requests still held go on to the server, so the resend creates the real thing on the slot's account.
+
+Check: if this held press is sent again, where does the resend go?
+
 ## Signing in
 
 **Do not sign in from inside a case.** Pages open signed in as the slot's first account through the `test` exported by `tests/helpers/slot.ts`, and every sign-in counts against the `login` limit in `config/rate-limits.yaml`, which the whole suite shares. Only a case whose subject is switching accounts signs in itself.

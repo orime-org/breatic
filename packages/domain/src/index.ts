@@ -117,10 +117,25 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
+  RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
+export { MAX_TURN_INDEX, RecordsRefused } from "@domain/agent/tools/project-records.js";
+export type {
+  ProjectRecords,
+  RecordsRefusalKind,
+  ConversationSummary,
+  ConversationListPage,
+  MessageHit,
+  MessageHitPage,
+  StoredMessage,
+  ConversationTurns,
+  NodeTaskRecord,
+  NodeRecords,
+  ActivityPage,
+} from "@domain/agent/tools/project-records.js";
 export { buildAgentConfig } from "@domain/agent/agent-config.js";
 export { instructionsText } from "@domain/agent/instructions.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";

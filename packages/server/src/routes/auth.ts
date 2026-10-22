@@ -20,7 +20,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
-import { env, NotFoundError, trackServerEvent } from "@breatic/core";
+import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef } from "@breatic/shared";
@@ -400,11 +400,47 @@ auth.get("/me", requireAuth, async (c) => {
 auth.post("/logout", requireAuth, async (c) => {
   const token = readSessionCookie(c);
   if (token) {
-    await authService.logout(token);
+    const { signalFailure } = await authService.logout(token);
+    logRevocationSignalFailure(signalFailure, c.get("user").id);
   }
   clearSessionCookie(c);
   return c.json({ message: t("server.auth.logout_success") });
 });
+
+/**
+ * `POST /auth/logout-others` — end every session of the caller except this
+ * one (inner#1548). Collab closes the documents the ended sessions opened.
+ * Calling it again only ends what was opened since, so a repeated press is
+ * harmless.
+ * @returns `200` with `{ message }`; `401` without a session; `429` past
+ *   `logout-others-ip` or `logout-others` in `config/rate-limits.yaml`
+ */
+auth.post(
+  "/logout-others",
+  requireAuth,
+  rateLimitForAll([{ action: "logout-others-ip" }, { action: "logout-others", keyBy: "user" }]),
+  async (c) => {
+    const user = c.get("user");
+    const token = readSessionCookie(c);
+    if (!token) throw new UnauthorizedError(t("server.auth.not_authenticated"));
+    const { signalFailure } = await authService.logoutOthers(user.id, token);
+    logRevocationSignalFailure(signalFailure, user.id);
+    logger.info({ userId: user.id }, "logged_out_other_sessions");
+    return c.json({ message: t("server.auth.logout_others_success") });
+  },
+);
+
+/**
+ * Log that ended sessions were not announced to collab. The sessions are gone
+ * either way; collab's periodic recheck closes their connections later.
+ * @param signalFailure - The publish error, when there was one.
+ * @param userId - Whose sessions ended.
+ */
+function logRevocationSignalFailure(signalFailure: unknown, userId: string): void {
+  if (signalFailure !== undefined) {
+    logger.error({ err: signalFailure, userId }, "session_revocation_signal_failed");
+  }
+}
 
 // ── Password Reset ───────────────────────────────────────────────
 
@@ -452,7 +488,10 @@ auth.post(
   validate("json", resetPasswordSchema),
   async (c) => {
     const { token, password } = c.req.valid("json");
-    await authService.resetPassword(token, password);
+    const { signalFailure } = await authService.resetPassword(token, password);
+    if (signalFailure !== undefined) {
+      logger.error({ err: signalFailure, tokenPrefix: token.slice(0, 8) }, "session_revocation_signal_failed");
+    }
     // Audit log moved from auth.service.ts (17B mandate). The
     // service deliberately does not return userId here (token is
     // single-use + already consumed at this point), so we log
@@ -495,12 +534,13 @@ auth.post(
   rateLimitForAll([{ action: "reset-recovery-ip" }, { action: "reset-recovery", keyBy: "ip+email" }]),
   async (c) => {
     const { email, recoveryCode, newPassword } = c.req.valid("json");
-    const { newRecoveryCode, userId } = await authService.resetPasswordWithRecoveryCode(
+    const { newRecoveryCode, userId, signalFailure } = await authService.resetPasswordWithRecoveryCode(
       email,
       recoveryCode,
       newPassword,
     );
     // Audit log moved from auth.service.ts (17B mandate).
+    logRevocationSignalFailure(signalFailure, userId);
     logger.info({ userId }, "password_reset_via_recovery_code");
     return c.json({
       data: { newRecoveryCode },

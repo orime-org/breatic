@@ -116,6 +116,7 @@ export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
+  SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
@@ -151,6 +152,7 @@ export {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
+  sessionsRevokedChannel,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
   MAX_SPACES_PER_PROJECT,
@@ -186,6 +188,7 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
+  isMemberLeave,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";

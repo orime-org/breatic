@@ -794,6 +794,15 @@ describe("what the guide says about each surface", () => {
     expect(wrong).toMatch(/as many open editing connections as the plan of the studio's admin allows \(only their upgrade raises it\)/);
   });
 
+  it("says where to sign out of other devices, and what those devices then show", () => {
+    // inner#1548: the account menu is on the studio pages, which the coverage
+    // test does not reach, so this pins the sentence directly.
+    const wrong = section("When something is wrong");
+    expect(wrong).toContain(`"${t("studio.topBar.logoutOthers")}"`);
+    expect(wrong).toMatch(/account menu on the studio pages/);
+    expect(wrong).toMatch(/every device except the one/);
+  });
+
   it("says where credits are bought and that only the studio's admin assigns them", () => {
     const chat = section("The chat panel");
     expect(chat).toContain(`"${t("studio.topBar.credits")}" then "${t("credits.section.buy")}"`);

@@ -59,6 +59,19 @@ describe('a failed step in a reply', () => {
     expect(view.body).toBe(`Let me look.\n\n${failurePlaceholder(0)}\n\nCarrying on.`);
   });
 
+  it.each([
+    ['search_conversations', 'chat.tool.step.searchConversations'],
+    ['read_conversation', 'chat.tool.step.readConversation'],
+    ['read_node_history', 'chat.tool.step.readNodeHistory'],
+    ['list_project_activity', 'chat.tool.step.readActivity'],
+  ])('names the step of %s that could not read the records', (tool, key) => {
+    const view = toChatMessage(
+      reply([{ type: `tool-${tool}`, toolCallId: 'r1', state: 'output-error', input: {}, errorText: 'chat.tool.failure.notMember' }]),
+    );
+
+    expect(view.failureLines).toEqual([{ step: { key }, reason: 'chat.tool.failure.notMember', count: 1 }]);
+  });
+
   it('leaves the prose the reader copies as it was', () => {
     const view = toChatMessage(reply([text('Let me look.'), failedSearch('s1', 'poster'), text('Carrying on.')]));
 

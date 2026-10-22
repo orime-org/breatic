@@ -25,7 +25,6 @@ function Harness(): React.JSX.Element {
           create({
             name: 'My Project',
             slug: 'my-proj',
-            description: '',
             spaceType: 'canvas',
             studioId: 's-1',
           })

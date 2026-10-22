@@ -71,7 +71,6 @@ export function useCreateProject(
             name: values.name,
             slug: values.slug,
             spaceType: values.spaceType ?? 'canvas',
-            description: values.description || undefined,
           };
         },
         send: (key, body: ProjectCreateBody) => projectsApi.create(body, key),

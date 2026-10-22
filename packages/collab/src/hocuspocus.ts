@@ -25,6 +25,7 @@ import {
   createLogger,
   createRedisClient,
   getRedis,
+  getSession,
   getCollabRedis,
   getProjectConcurrentEditorLimit,
   projectAuthService,
@@ -39,6 +40,7 @@ import {
   type SeatClaim,
 } from "@collab/services/connection-registry.js";
 import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
+import { closeIfSessionEnded } from "@collab/services/session-revocation.js";
 import {
   shouldRegisterConnection,
   shouldTrackConnection,
@@ -444,6 +446,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         );
       } catch (err) {
         logger.error({ err, documentName, userId: auth.user.id }, "role_recheck_failed");
+      }
+
+      // The same for the session: one ended after the handshake read it was
+      // announced before this connection could be found (inner#1548).
+      try {
+        await closeIfSessionEnded(connection, (token) => getSession(authRedis, token));
+      } catch (err) {
+        logger.error({ err, documentName, userId: auth.user.id }, "session_recheck_failed");
       }
     },
 

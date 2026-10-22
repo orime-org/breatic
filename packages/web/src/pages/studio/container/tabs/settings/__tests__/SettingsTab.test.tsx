@@ -138,14 +138,15 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
       target: { value: 'acme-renamed' },
     });
     // Wait for the check to ANSWER, not merely to be asked: while it is still
-    // out the button is disabled for that reason instead, and the case would
-    // pass without the gate it exists to test.
+    // out a press would wait for that reason instead, and the case would pass
+    // without the guard it exists to test.
     await waitFor(() =>
       expect(
         screen.getByText('studio.container.dialog.slugAvailable'),
       ).toBeInTheDocument(),
     );
-    expect(screen.getByTestId('settings-slug-confirm')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('settings-slug-confirm'));
+    expect(studiosApi.update).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the rename dialog dismissible while the RENAME itself is in flight', async () => {
@@ -163,7 +164,9 @@ describe('SettingsTab — a save of one thing must not seize the other', () => {
       target: { value: 'acme-renamed' },
     });
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
     await waitFor(() => expect(studiosApi.update).toHaveBeenCalledTimes(1));
@@ -222,7 +225,7 @@ describe('SettingsTab — Save waits for the studio to show the saved values (in
     expect(save).toHaveAttribute('aria-busy', 'true');
     landRefetch!();
     await waitFor(() => expect(save).not.toHaveAttribute('aria-busy'));
-    expect(save).toBeDisabled();
+    expect(screen.getByTestId('settings-name')).toHaveValue('Acme Inc');
   });
 
   it('stops waiting once the studio shows the new name, even while an unrelated read is still refetching', async () => {
@@ -280,7 +283,9 @@ describe('SettingsTab — Save waits for the studio to show the saved values (in
       { target: { value: 'acme-renamed' } },
     );
     await waitFor(() =>
-      expect(screen.getByTestId('settings-slug-confirm')).toBeEnabled(),
+      expect(screen.getByTestId('danger-slug-hint')).toHaveTextContent(
+        'studio.container.dialog.slugAvailable',
+      ),
     );
     fireEvent.click(screen.getByTestId('settings-slug-confirm'));
     await waitFor(() =>

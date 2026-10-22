@@ -227,6 +227,7 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
+  isMemberLeave,
 } from "@shared/types/project-activity.js";
 export type {
   ProjectActivityType,
@@ -264,11 +265,13 @@ export {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
+  sessionsRevokedChannel,
 } from "@shared/types/redis-events.js";
 export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
+  SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,

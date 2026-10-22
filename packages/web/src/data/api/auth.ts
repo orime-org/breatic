@@ -152,6 +152,10 @@ export const authApi = {
   logout() {
     return apiPost<void>('/auth/logout');
   },
+  // Ends every other session of this account; this one stays (inner#1548).
+  logoutOthers() {
+    return apiPost<void>('/auth/logout-others');
+  },
   forgotPassword(body: { email: string }) {
     return apiPost<{ message: string }>('/auth/forgot-password', body);
   },

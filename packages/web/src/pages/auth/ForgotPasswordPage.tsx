@@ -12,7 +12,8 @@ import { Label } from '@web/components/ui/label';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 
 /**
  * Forgot-password entry. It offers the one way back in that works on this
@@ -72,7 +73,7 @@ export default function ForgotPasswordPage(): React.JSX.Element {
     if (submitting) return;
     setFormError(null);
     const trimmedEmail = email.trim();
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!looksLikeEmail(trimmedEmail)) {
       setEmailError(t('auth.invalidEmail'));
       return;
     }
@@ -164,7 +165,7 @@ export default function ForgotPasswordPage(): React.JSX.Element {
               setEmail(e.target.value);
               if (emailError) setEmailError(null);
             }}
-            disabled={submitting}
+            readOnly={submitting}
             aria-invalid={!!emailError || undefined}
             aria-describedby={emailError ? 'forgot-email-error' : undefined}
           />

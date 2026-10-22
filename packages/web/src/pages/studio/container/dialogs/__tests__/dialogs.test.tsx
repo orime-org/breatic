@@ -33,13 +33,21 @@ vi.mock('@web/pages/studio/container/dialogs/use-create-studio');
 type User = ReturnType<typeof userEvent.setup>;
 
 /**
- * Type a slug and wait until the live check has called it available.
+ * Replace whatever the slug field holds with a value of the reader's own.
  * @param user - The user-event session.
  * @param value - The slug to type.
  */
-async function typeValidSlug(user: User, value: string): Promise<void> {
-  await user.type(screen.getByLabelText('Slug'), value);
-  await screen.findByText('Slug is available');
+async function typeSlug(user: User, value: string): Promise<void> {
+  await user.clear(slugInput());
+  await user.type(slugInput(), value);
+}
+
+/**
+ * The slug input, whose label reads "Slug (optional)" in the item dialog.
+ * @returns The input.
+ */
+function slugInput(): HTMLElement {
+  return screen.getByLabelText(/^Slug/);
 }
 
 describe('NewItemDialog (spec §3.12)', () => {
@@ -47,7 +55,7 @@ describe('NewItemDialog (spec §3.12)', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
     expect(screen.getByText('New project')).toBeInTheDocument();
     expect(screen.getByLabelText('Name')).toBeInTheDocument();
-    expect(screen.getByLabelText('Slug')).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug (optional)')).toBeInTheDocument();
   });
 
   it('shows the space-type picker for a project but not for a collection', () => {
@@ -64,48 +72,28 @@ describe('NewItemDialog (spec §3.12)', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('describes the slug, with its length, while the slug is empty', () => {
+  it('describes the slug, with its length and that an empty one comes from the name', () => {
     render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent('6–50 characters');
+    const line = screen.getByTestId('new-project-slug-hint');
+    expect(line).toHaveTextContent('6–50 characters');
+    expect(line).toHaveTextContent('Left empty, it is generated from the name.');
   });
 
   it('uses collection placeholders in the collection dialog', () => {
     render(<NewItemDialog kind='collection' open onOpenChange={() => {}} />);
     expect(screen.getByLabelText('Name')).toHaveAttribute('placeholder', 'My collection');
-    expect(screen.getByLabelText('Slug')).toHaveAttribute('placeholder', 'my-collection');
+    expect(slugInput()).toHaveAttribute('placeholder', 'Generated from the name if left empty');
   });
 
-  it('checks the slug as it is typed and holds Create while it is malformed', async () => {
-    const user = userEvent.setup();
-    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    await user.type(screen.getByLabelText('Name'), 'My Project');
-    await user.type(screen.getByLabelText('Slug'), 'Bad_Slug');
-    expect(await screen.findByText(/Start with a lowercase letter/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-  });
-
-  it('reports valid values and closes on submit', async () => {
+  it('has no description field and sends none (inner#1463)', async () => {
     const onCreate = vi.fn();
-    const onOpenChange = vi.fn();
     const user = userEvent.setup();
-    render(
-      <NewItemDialog
-        kind='collection'
-        open
-        onOpenChange={onOpenChange}
-        onCreate={onCreate}
-      />,
-    );
+    render(<NewItemDialog kind='collection' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    expect(screen.queryByLabelText(/Description/)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('Name'), 'Moodboard');
-    await typeValidSlug(user, 'mood-board');
     await user.click(screen.getByRole('button', { name: 'Create' }));
-    // An exact match, so a visibility field creeping back in fails here.
-    expect(onCreate).toHaveBeenCalledWith({
-      name: 'Moodboard',
-      slug: 'mood-board',
-      description: '',
-    });
-    expect(onOpenChange).toHaveBeenCalledWith(false);
+    // An exact match, so a visibility or description field creeping back in fails here.
+    expect(onCreate).toHaveBeenCalledWith({ name: 'Moodboard', slug: 'moodboard' });
   });
 
   it('reports a project without any visibility field', async () => {
@@ -115,43 +103,184 @@ describe('NewItemDialog (spec §3.12)', () => {
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, 'fresh-proj');
+    await typeSlug(user, 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith({
       name: 'Fresh',
       slug: 'fresh-proj',
-      description: '',
       spaceType: 'canvas',
     });
   });
 
-  it('disables Create until a name is entered and renders an outline Cancel (project-dialog parity)', async () => {
-    const user = userEvent.setup();
-    render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    expect(
-      screen.getByRole('button', { name: 'Cancel' }).className,
-    ).toContain('border-border');
-    await user.type(screen.getByLabelText('Name'), 'My Project');
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    await typeValidSlug(user, 'my-project');
-    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
-  });
-
-  it('submits the trimmed slug it checked', async () => {
+  it('submits the trimmed slug the reader typed', async () => {
     const onCreate = vi.fn();
     const user = userEvent.setup();
     render(
       <NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, '  fresh-proj  ');
+    await typeSlug(user, '  fresh-proj  ');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({ slug: 'fresh-proj' }),
     );
   });
 
+  it('leaves the browser out of it: no native required check on the form', () => {
+    const { container } = render(<NewItemDialog kind='project' open onOpenChange={() => {}} />);
+    const form = (document.body.querySelector('form') ?? container.querySelector('form'))!;
+    expect(form).toHaveAttribute('novalidate');
+    expect(screen.getByLabelText('Name')).not.toHaveAttribute('required');
+  });
+});
+
+describe('NewItemDialog — reasons on press and an optional slug (inner#1652, inner#1463)', () => {
+  it('keeps Create pressable and says a name is needed under the name field', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).not.toBeDisabled();
+    expect(create).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('border', 'border-border');
+
+    await user.click(create);
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a name.')).toHaveClass('text-xs');
+    expect(screen.getByLabelText('Name')).toHaveFocus();
+    expect(screen.getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
+
+    await user.type(screen.getByLabelText('Name'), 'A');
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
+  it('opens again after Cancel without the reason left from the last opening', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    rerender(<NewItemDialog kind='project' open={false} onOpenChange={vi.fn()} />);
+    rerender(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
+  it('opens again after Cancel without the slug reason left from the last opening', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.clear(slugInput());
+    await user.type(slugInput(), 'Bad_Slug');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    rerender(<NewItemDialog kind='project' open={false} onOpenChange={vi.fn()} />);
+    rerender(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    expect(screen.getByTestId('new-project-slug-hint')).not.toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('puts the Slug right under the Name it follows, before the Type cards', () => {
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    const name = screen.getByLabelText('Name');
+    const slug = slugInput();
+    const type = screen.getByRole('radio', { name: /Canvas/ });
+    expect(name.compareDocumentPosition(slug) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slug.compareDocumentPosition(type) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('fills the slug from the name as it is typed', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    expect(slugInput()).toHaveValue('spring-campaign');
+    await user.clear(screen.getByLabelText('Name'));
+    expect(slugInput()).toHaveValue('');
+  });
+
+  it('stops following the name once the reader edits the slug', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring');
+    await typeSlug(user, 'my-own-slug');
+    await user.type(screen.getByLabelText('Name'), ' Campaign');
+    expect(slugInput()).toHaveValue('my-own-slug');
+  });
+
+  it('keeps a cleared slug empty until the name changes again', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    await user.clear(slugInput());
+    expect(slugInput()).toHaveValue('');
+    await user.type(screen.getByLabelText('Name'), 's');
+    expect(slugInput()).toHaveValue('spring-campaigns');
+  });
+
+  it.each([
+    ['project', '我的项目', 'project'],
+    ['collection', '我的素材', 'collection'],
+  ] as const)('gives a %s with no Latin letters in its name the fallback slug', async (kind, name, slug) => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind={kind} open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), name);
+    expect(slugInput()).toHaveValue(slug);
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ slug }));
+  });
+
+  it('makes a slug from the name when the slug is left empty at press', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    await user.clear(slugInput());
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ slug: 'spring-campaign' }));
+  });
+
+  it('refuses a malformed slug pressed before the typing check settles, and says why', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), 'Fresh');
+    await user.clear(slugInput());
+    await user.type(slugInput(), 'Bad_Slug');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).toHaveFocus();
+
+    // Editing the slug drops the reason at once, before the typing check runs.
+    await user.clear(slugInput());
+    await user.type(slugInput(), 'good-slug');
+    expect(screen.getByTestId('new-project-slug-hint')).not.toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('shows the description line, not an availability line, for a valid slug', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring Campaign');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    const line = screen.getByTestId('new-project-slug-hint');
+    expect(line).toHaveTextContent('Left empty, it is generated from the name.');
+    expect(line).not.toHaveTextContent(/available|Checking/);
+  });
+
+  it('says why a typed slug is refused once the typing check settles, before any press', async () => {
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    await user.type(screen.getByLabelText('Name'), 'Spring');
+    await typeSlug(user, 'Bad_Slug');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(screen.getByTestId('new-project-slug-hint')).toHaveTextContent(/Start with a lowercase letter/);
+    expect(slugInput()).toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+describe('NewItemDialog — submitting (#255)', () => {
   // inner#1490: a create is held outside the dialog, so a dialog opened while
   // one is out — from either entry, with any studio picked — shows Create busy.
   it('shows Create busy while a project create is out', () => {
@@ -184,7 +313,6 @@ describe('NewItemDialog (spec §3.12)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     // The label stays, so the button is still addressable by its name — which
@@ -192,7 +320,12 @@ describe('NewItemDialog (spec §3.12)', () => {
     const button = screen.getByRole('button', { name: 'Create' });
     expect(button).toHaveAttribute('aria-busy', 'true');
     expect(button).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByLabelText('Name')).toBeDisabled();
+    // Read-only keeps the focus of the field the Enter came from, so a refused
+    // create can be corrected by typing straight away.
+    for (const label of ['Name', /^Slug/]) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
+      expect(screen.getByLabelText(label)).not.toBeDisabled();
+    }
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled();
     expect(onOpenChange).not.toHaveBeenCalled();
 
@@ -222,7 +355,6 @@ describe('NewItemDialog (spec §3.12)', () => {
       />,
     );
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await typeValidSlug(user, 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
 
     await act(async () => {
@@ -384,14 +516,16 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     expect(screen.getByRole('alert')).toHaveTextContent('That slug is already taken.');
   });
 
-  it('holds both fields while the create is out', () => {
+  it('holds both fields read-only while the create is out, so they keep focus', () => {
     vi.mocked(useCreateStudio).mockReturnValue({
       mutate: mockMutate,
       isPending: true,
     } as unknown as ReturnType<typeof useCreateStudio>);
     renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
-    expect(screen.getByLabelText('Name')).toBeDisabled();
-    expect(screen.getByLabelText('Slug')).toBeDisabled();
+    for (const label of ['Name', 'Slug']) {
+      expect(screen.getByLabelText(label)).toHaveAttribute('readonly');
+      expect(screen.getByLabelText(label)).not.toBeDisabled();
+    }
   });
 
   it('marks Create busy while the create is out, and clears it once answered', () => {
@@ -439,25 +573,6 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     expect(screen.getByText('Slug is available')).toBeInTheDocument();
   });
 
-  it('shows taken and keeps Create disabled for a taken slug', async () => {
-    setAvailability({ state: 'invalid', reason: 'taken' });
-    const user = userEvent.setup();
-    renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
-    await user.type(screen.getByLabelText('Name'), 'Acme');
-    expect(screen.getByText(/in use/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-  });
-
-  it('disables Create until a name is entered AND the slug is available', async () => {
-    setAvailability({ state: 'valid' });
-    const user = userEvent.setup();
-    renderStudio(<NewStudioDialog open onOpenChange={() => {}} />);
-    // Available slug but no name yet → still disabled.
-    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
-    await user.type(screen.getByLabelText('Name'), 'Nova');
-    expect(screen.getByRole('button', { name: 'Create' })).not.toBeDisabled();
-  });
-
   it('submits the name + slug (no type) when the slug is available', async () => {
     setAvailability({ state: 'valid' });
     const user = userEvent.setup();
@@ -472,5 +587,177 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
         onError: expect.any(Function),
       }),
     );
+  });
+});
+
+describe('NewStudioDialog — reasons on press and waiting for the check (inner#1652)', () => {
+  const mutate = vi.fn();
+
+  beforeEach(() => {
+    mutate.mockReset();
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'empty' });
+  });
+
+  /**
+   * Render the dialog in a query client with an open flag the test can change.
+   * @returns The rerender, taking the next open flag.
+   */
+  function renderOpen(): (open: boolean) => void {
+    const client = new QueryClient();
+    const onOpenChange = vi.fn();
+    const tree = (open: boolean): ReactElement => (
+      <QueryClientProvider client={client}>
+        <NewStudioDialog open={open} onOpenChange={onOpenChange} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree(true));
+    return (open) => rerender(tree(open));
+  }
+
+  it('keeps Create pressable and names every missing field, focusing the first', async () => {
+    const user = userEvent.setup();
+    renderOpen();
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).not.toBeDisabled();
+    await user.click(create);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a name.')).toHaveClass('text-xs');
+    expect(screen.getByTestId('new-studio-slug-hint')).toHaveTextContent('Enter a Slug.');
+    expect(screen.getByLabelText('Name')).toHaveFocus();
+
+    await user.type(screen.getByLabelText('Name'), 'N');
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('Slug'), 'n');
+    expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a Slug.');
+  });
+
+  it('opens again after Cancel without the reasons left from the last opening', async () => {
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    setOpen(false);
+    setOpen(true);
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+    expect(screen.getByTestId('new-studio-slug-hint')).not.toHaveTextContent('Enter a Slug.');
+  });
+
+  it('focuses the slug when it is the field in the way', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'invalid', reason: 'taken' });
+    const user = userEvent.setup();
+    renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Acme');
+    await user.type(screen.getByLabelText('Slug'), 'acme-studio');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText(/in use/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+  });
+
+  it('waits for a running check, then creates with what is on screen', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Create' })).toHaveAttribute('aria-busy', 'true');
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab' }, expect.anything());
+  });
+
+  it('reports the answer instead of creating when the check comes back taken', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'invalid', reason: 'taken' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Slug')).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Create' })).not.toHaveAttribute('aria-busy');
+  });
+
+  it('does not create when the slug is edited during the wait', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await user.type(screen.getByLabelText('Slug'), 's');
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('does not create when the dialog closes during the wait', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    setOpen(false);
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('checks the name again when the wait ends', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'checking' });
+    const user = userEvent.setup();
+    const setOpen = renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await user.clear(screen.getByLabelText('Name'));
+
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    setOpen(true);
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a name.')).toBeInTheDocument();
+  });
+
+  it('sends a slug the check could not reach, for the server to judge', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'unverified' });
+    const user = userEvent.setup();
+    renderOpen();
+    await user.type(screen.getByLabelText('Name'), 'Nova');
+    await user.type(screen.getByLabelText('Slug'), 'nova-lab');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab' }, expect.anything());
+  });
+
+  it('ignores a press while the create is out', async () => {
+    vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
+    vi.mocked(useCreateStudio).mockReturnValue({
+      mutate,
+      isPending: true,
+    } as unknown as ReturnType<typeof useCreateStudio>);
+    renderOpen();
+    // The fields are locked while pending, so the press arrives on an empty form.
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Create' }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
+  });
+
+  it('leaves the browser out of it: no native required check', () => {
+    renderOpen();
+    expect(screen.getByTestId('new-studio-dialog').querySelector('form')).toHaveAttribute('novalidate');
+    expect(screen.getByLabelText('Name')).not.toHaveAttribute('required');
   });
 });

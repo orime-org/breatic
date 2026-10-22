@@ -18,6 +18,7 @@ import {
   createLogger,
   createRedisClient,
   getRedis,
+  getSession,
   getStreamRedis,
   getCollabRedis,
   closeCollabRedis,
@@ -44,6 +45,7 @@ import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startProjectControlSync } from "@collab/services/project-control-sync.js";
+import { startSessionRevocation, type SessionRevocation } from "@collab/services/session-revocation.js";
 import { startMemberChangeSync } from "@collab/services/member-change-sync.js";
 
 // Initialize the root logger with the collab service name before any child
@@ -259,6 +261,44 @@ async function main(): Promise<void> {
     return;
   }
 
+  // The control-plane client (DB2, the same Redis instance as the streams).
+  // Two consumers each .duplicate() it for a dedicated subscriber: ended
+  // sessions, below, before the port opens; project control sync (activity,
+  // credits, project connection closes), after it. The client uses the core
+  // factory so it inherits the production-safety knobs (keepAlive,
+  // commandTimeout: undefined for the subscribe path's blocking semantics,
+  // READONLY-aware reconnect, error log tagging).
+  const controlRedis = createRedisClient(REDIS_STREAM_URL, {
+    name: "collab-project-control",
+    lazyConnect: false,
+    commandTimeout: undefined,
+  });
+  // Production error logging. The core factory installs a no-op
+  // `error` listener so emitted errors don't crash the process; the
+  // application entry attaches the real logger per the "core and shared must not log" mandate.
+  controlRedis.on("error", (err) => {
+    logger.error(
+      { err, client: "collab-project-control" },
+      "redis_error",
+    );
+  });
+  // Ended sessions (inner#1548). Subscribed before the WebSocket port opens,
+  // so a failed first SUBSCRIBE ends startup with no client connected, like
+  // the member-change listener above.
+  let sessionRevocation: SessionRevocation;
+  try {
+    sessionRevocation = await startSessionRevocation(hocuspocus, {
+      source: controlRedis,
+      readSession: (token) => getSession(getRedis(), token),
+      recheckIntervalMs: getCollabConfig().session_recheck_interval_ms,
+    });
+  } catch (err) {
+    logger.error({ err }, "session_revocation_listen_failed");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
   await server.listen();
   logger.info({ port: env.COLLAB_PORT }, "Hocuspocus collaboration server started");
 
@@ -308,26 +348,6 @@ async function main(): Promise<void> {
     settings: consumerSettings,
   });
 
-  // Start the control-plane subscriber (activity, project connection closes).
-  // Same Redis instance as the streams (DB2); it .duplicate()s the connection
-  // for its dedicated subscriber. The client uses the core factory so it
-  // inherits the production-safety knobs (keepAlive,
-  // commandTimeout: undefined for the subscribe path's blocking
-  // semantics, READONLY-aware reconnect, error log tagging).
-  const controlRedis = createRedisClient(REDIS_STREAM_URL, {
-    name: "collab-project-control",
-    lazyConnect: false,
-    commandTimeout: undefined,
-  });
-  // Production error logging. The core factory installs a no-op
-  // `error` listener so emitted errors don't crash the process; the
-  // application entry attaches the real logger per the "core and shared must not log" mandate.
-  controlRedis.on("error", (err) => {
-    logger.error(
-      { err, client: "collab-project-control" },
-      "redis_error",
-    );
-  });
   const stopProjectControlSync = startProjectControlSync(hocuspocus, controlRedis);
 
   // Health probe server - separate port so probe traffic doesn't
@@ -457,6 +477,7 @@ async function main(): Promise<void> {
         () => healthServer.stop(),
         () => stopProjectControlSync(),
         () => memberChanges.stop(),
+        () => sessionRevocation.stop(),
         // Stop answering demote requests. This unsubscribes and nothing more
         // — the SUBSCRIBE client it rides on is made inside
         // createCollabServer, is not exposed here, and goes when the process

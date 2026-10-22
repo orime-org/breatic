@@ -23,13 +23,12 @@ import { projectInvitationsApi } from '@web/data/api/project-invitations';
 import { ApiException } from '@web/data/api/types';
 import { useUIStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 import type { InvitableProjectRole } from '@breatic/shared';
 
 interface ShareDialogProps {
   projectId: string;
 }
-
-const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * Share popover — invite-by-email (project invite-confirm handshake,
@@ -76,7 +75,7 @@ export function ShareDialog({
   async function handleSendInvite(): Promise<void> {
     if (inviteSubmitting) return;
     const trimmed = invite.trim();
-    if (!EMAIL_RX.test(trimmed)) {
+    if (!looksLikeEmail(trimmed)) {
       setInviteError(t('share.invalidEmail'));
       return;
     }
