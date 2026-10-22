@@ -37,7 +37,7 @@ import {
 import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/document-table-nodes';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { bodyEdgeBetween, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
+import { BodyEdgeSelection, bodyEdgeBetween, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -298,93 +298,107 @@ function leaveEdgeTable(editor: KeysEditor, dir: EdgeArrow): boolean {
   return true;
 }
 
-/**
- * Shift and an arrow on the way out of a table run the selection's head to
- * the nearest words past it, which takes the whole table into the selection
- * (inner#1619 T14, `document-table-leave-selection.ts`). The browser's own
- * extension stops inside the table's frame.
- * @param view - The editor view.
- * @param dir - Up or down.
- * @returns Whether the key was claimed.
- */
-function extendOutOfTable(view: EditorView, dir: 'up' | 'down'): boolean {
-  const { selection, doc } = view.state;
-  // A selection already holding a whole table moves its end in the table
-  // over the whole table either way (inner#1619 design 5.3), never back into
-  // a cell selection; any other only on its way out of a first or last row.
-  const spanned = tableAtLeavingHead(view.state);
-  if (!(selection instanceof TextSelection) && spanned === null) return false;
-  const edge = spanned === null
-    ? tableExit(view, selection.$head, dir)?.edge
-    : dir === 'up' ? spanned.pos : spanned.pos + spanned.node.nodeSize;
-  if (edge === undefined) return false;
-  // The nearest words past the table, or the body's edge when only blocks
-  // without words are there, as Shift and an arrow reach elsewhere. A table
-  // the body starts or ends with has its edge inside it: the selection
-  // already holds all there is that way.
-  const past = textOrEdge(doc, edge, dir === 'up' ? -1 : 1);
-  const within = spanned !== null && past > spanned.pos && past < spanned.pos + spanned.node.nodeSize;
-  if (past === edge || within) return spanned !== null;
-  view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(doc, selection.anchor, past)).scrollIntoView());
-  return true;
+/** How a key that extends a selection reaches past the line its head is on. */
+type Reach =
+  /** From the start or the end of the line's block. */
+  | 'block'
+  /** From the block's first or last line as drawn. */
+  | 'line'
+  /** Never: it stays on the line. */
+  | null;
+
+/** A key that extends a selection: which way, and how it reaches past a line. */
+interface Extending {
+  readonly back: boolean;
+  readonly reach: Reach;
 }
 
 /**
- * Shift with a key that extends along a line (by a character, a word, to the
- * line's end) moves an end standing in a table the selection holds whole over
- * the whole table (inner#1619 design 5.3), as Shift and Up or Down do. The
- * browser's own extension moves that end within the table, where it is put
- * back on the table's edge, and prosemirror-tables' turns it into cells
- * (`shiftArrow`).
- * @param view - The editor view.
- * @param dir - Back (up) or on (down).
- * @returns Whether the key was claimed.
+ * Every key that extends a selection, the browser's own included. Shift with
+ * Cmd and Up or Down (Ctrl outside macOS) moves the selected rows instead
+ * (`document-keyboard-move.ts`).
  */
-function crossHeldTable(view: EditorView, dir: 'up' | 'down'): boolean {
-  return tableAtLeavingHead(view.state) !== null && extendOutOfTable(view, dir);
-}
+const EXTENDING: Readonly<Record<string, Extending>> = {
+  'Shift-ArrowLeft': { back: true, reach: 'block' },
+  'Shift-ArrowRight': { back: false, reach: 'block' },
+  'Shift-ArrowUp': { back: true, reach: 'line' },
+  'Shift-ArrowDown': { back: false, reach: 'line' },
+  'Shift-Alt-ArrowLeft': { back: true, reach: 'block' },
+  'Shift-Alt-ArrowRight': { back: false, reach: 'block' },
+  'Shift-Alt-ArrowUp': { back: true, reach: 'block' },
+  'Shift-Alt-ArrowDown': { back: false, reach: 'block' },
+  'Shift-Ctrl-ArrowLeft': { back: true, reach: 'block' },
+  'Shift-Ctrl-ArrowRight': { back: false, reach: 'block' },
+  'Shift-Meta-ArrowLeft': { back: true, reach: null },
+  'Shift-Meta-ArrowRight': { back: false, reach: null },
+  'Shift-Home': { back: true, reach: null },
+  'Shift-End': { back: false, reach: null },
+};
 
 /**
- * Shift and an arrow with the head on the edge of a line facing a table run
- * the head into it, onto its words farthest away, which takes the whole table
- * into the selection (inner#1619 T14): the line's end before a table with
- * Right, its start after one with Left, its first line after one with Up, its
- * last before one with Down. Left to the browser, the first three move
- * nothing.
+ * Where a key that extends a selection takes its head when a table is in
+ * the way, a table counting as the one empty line the body would have in its
+ * place (inner#1619 T14, design 5.3). The browser's own extension cannot step
+ * into a table from the line beside it, moves an end standing in a table the
+ * selection holds whole only within the table, where it is put back on the
+ * table's edge, and prosemirror-tables' turns it into cells (`shiftArrow`).
+ *
+ * - An end standing in a table the selection holds whole goes over the whole
+ *   table: to the nearest words past it, or the body's edge when only blocks
+ *   without words are there. A table the body starts or ends with has that
+ *   edge inside it, so the selection already holds all there is that way.
+ * - An end on its way out of a table's first or last row (Up and Down) goes
+ *   to the nearest words past the table, the whole table with it.
+ * - An end on the edge of a line facing a table goes onto the table's words
+ *   farthest away, which takes the whole table in.
+ * - An end coming back into the table the other end stands in leaves a caret
+ *   there: on the body's empty line both ends would meet.
  * @param view - The editor view.
- * @param key - Which arrow.
+ * @param key - The key.
  * @returns Whether the key was claimed.
  */
-function extendIntoTable(view: EditorView, key: 'left' | 'right' | 'up' | 'down'): boolean {
+function extendAcrossTable(view: EditorView, key: Extending): boolean {
   const { selection, doc } = view.state;
-  if (!(selection instanceof TextSelection)) return false;
-  const { $head } = selection;
-  const forward = key === 'right' || key === 'down';
-  const next = Selection.findFrom(doc.resolve(forward ? $head.after() : $head.before()), forward ? 1 : -1, true);
+  if (!(selection instanceof TextSelection) && !(selection instanceof BodyEdgeSelection)) return false;
+  const { $head, anchor } = selection;
+  const step = key.back ? -1 : 1;
+  const own = tableAround(doc.resolve(anchor));
+  /**
+   * Puts the head somewhere, or a caret on the anchor when that is in the
+   * anchor's own table.
+   * @param head - Where the head goes.
+   * @returns True.
+   */
+  const extendTo = (head: number): boolean => {
+    const meets = own !== null && head > own.pos && head < own.pos + own.node.nodeSize;
+    view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(doc, anchor, meets ? anchor : head)).scrollIntoView());
+    return true;
+  };
+  const held = tableAtLeavingHead(view.state);
+  if (held !== null) {
+    const edge = key.back ? held.pos : held.pos + held.node.nodeSize;
+    const past = textOrEdge(doc, edge, step);
+    const within = past > held.pos && past < held.pos + held.node.nodeSize;
+    return (past === edge || within) && own?.pos !== held.pos ? true : extendTo(past);
+  }
+  if (key.reach === null) return false;
+  if (key.reach === 'line' && selection instanceof TextSelection) {
+    const exit = tableExit(view, $head, key.back ? 'up' : 'down')?.edge;
+    if (exit !== undefined) {
+      const past = textOrEdge(doc, exit, step);
+      return past !== exit && extendTo(past);
+    }
+  }
+  const next = Selection.findFrom(doc.resolve(key.back ? $head.before() : $head.after()), step, true);
   const table = next === null ? null : tableAround(next.$head);
   if (table === null || table.pos === tableAround($head)?.pos) return false;
   // Measured only beside a table, so Up and Down everywhere else stay the
   // browser's own.
-  const atEdge = key === 'left' || key === 'right'
-    ? $head.parentOffset === (forward ? $head.parent.content.size : 0)
-    : view.endOfTextblock(key);
-  if (!atEdge) return false;
-  const head = tableEdgeText(doc, table, forward ? 1 : -1);
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(doc, selection.anchor, head)).scrollIntoView());
-  return true;
+  const atEdge = key.reach === 'block'
+    ? $head.parentOffset === (key.back ? 0 : $head.parent.content.size)
+    : view.endOfTextblock(key.back ? 'up' : 'down');
+  return atEdge && extendTo(tableEdgeText(doc, table, step));
 }
-
-/** The keys that extend a selection along a line, each with its way. */
-const ALONG_THE_LINE: Readonly<Record<string, 'up' | 'down'>> = {
-  'Shift-Alt-ArrowLeft': 'up',
-  'Shift-Alt-ArrowRight': 'down',
-  'Shift-Meta-ArrowLeft': 'up',
-  'Shift-Meta-ArrowRight': 'down',
-  'Shift-Ctrl-ArrowLeft': 'up',
-  'Shift-Ctrl-ArrowRight': 'down',
-  'Shift-Home': 'up',
-  'Shift-End': 'down',
-};
 
 /**
  * The extension that binds the keys inside a table.
@@ -432,19 +446,11 @@ export const documentTableKeysExtension = createExtension(() => ({
     ArrowRight: ({ editor }: { editor: KeysEditor }) =>
       collapseInCell(editor.prosemirrorView, 1) || leaveEdgeTable(editor, 'right'),
     ArrowUp: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'up'),
-    'Shift-ArrowUp': ({ editor }: { editor: KeysEditor }) =>
-      extendOutOfTable(editor.prosemirrorView, 'up') || extendIntoTable(editor.prosemirrorView, 'up'),
-    'Shift-ArrowDown': ({ editor }: { editor: KeysEditor }) =>
-      extendOutOfTable(editor.prosemirrorView, 'down') || extendIntoTable(editor.prosemirrorView, 'down'),
-    'Shift-ArrowLeft': ({ editor }: { editor: KeysEditor }) =>
-      crossHeldTable(editor.prosemirrorView, 'up') || extendIntoTable(editor.prosemirrorView, 'left'),
-    'Shift-ArrowRight': ({ editor }: { editor: KeysEditor }) =>
-      crossHeldTable(editor.prosemirrorView, 'down') || extendIntoTable(editor.prosemirrorView, 'right'),
     ArrowDown: ({ editor }: { editor: KeysEditor }) => leaveEdgeTable(editor, 'down'),
     ...Object.fromEntries(
-      Object.entries(ALONG_THE_LINE).map(([key, dir]) => [
-        key,
-        ({ editor }: { editor: KeysEditor }) => crossHeldTable(editor.prosemirrorView, dir),
+      Object.entries(EXTENDING).map(([name, key]) => [
+        name,
+        ({ editor }: { editor: KeysEditor }) => extendAcrossTable(editor.prosemirrorView, key),
       ]),
     ),
   },

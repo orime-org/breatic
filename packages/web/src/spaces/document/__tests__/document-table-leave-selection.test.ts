@@ -1028,6 +1028,69 @@ describe('Shift and an arrow at a table\'s edge', () => {
     expect(editor.prosemirrorView.state.selection.head).not.toBe(at(editor, 'b2', 2));
   });
 
+  it('runs the end in a held table on past it with Shift+Option+Down, and back with Shift+Option+Up', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+
+    shift(editor, 'ArrowDown', { altKey: true });
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'lead', 2), at(editor, 'below', 0)]);
+
+    select(editor, at(editor, 'lead', 2), at(editor, 'a2', 1));
+    shift(editor, 'ArrowUp', { altKey: true });
+    const back = editor.prosemirrorView.state.selection;
+    expect([back.anchor, back.head]).toEqual([at(editor, 'lead', 2), at(editor, 'lead', 4)]);
+  });
+
+  it('takes the whole table in with Shift+Option+Up at the start of the line below it', () => {
+    const { editor } = open();
+    select(editor, at(editor, 'below', 0), at(editor, 'below', 0));
+
+    shift(editor, 'ArrowUp', { altKey: true });
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.anchor, selection.head]).toEqual([at(editor, 'below', 0), at(editor, 'a1', 0)]);
+  });
+
+  it('leaves a caret where it started when Shift and Up bring the end back from the line below into the table the selection started in', () => {
+    const { editor } = open();
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    select(editor, at(editor, 'b1', 1), at(editor, 'below', 1));
+    const anchor = editor.prosemirrorView.state.selection.anchor;
+
+    shift(editor, 'ArrowUp');
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.empty, selection.anchor]).toEqual([true, anchor]);
+  });
+
+  it('leaves a caret where it started when Shift and Up bring the end back over the second of two held tables', () => {
+    const { editor } = openWith([
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['a0', 'b0'] }, { cells: ['c0', 'd0'] }] }),
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['c1', 'd1'] }] }),
+      { type: 'paragraph', content: 'below' },
+    ]);
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    select(editor, at(editor, 'b0', 1), at(editor, 'c1', 1));
+    const anchor = editor.prosemirrorView.state.selection.anchor;
+
+    shift(editor, 'ArrowUp');
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.empty, selection.anchor]).toEqual([true, anchor]);
+  });
+
+  it('leaves a caret by the end of the body when Shift and Right bring the end of a selection from that end back over the table closing the body', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, { type: 'paragraph', content: 'mid' }, tableBlock(WORDS)]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(view.state.doc, bodyEdgePos(view.state.doc, 'end'), at(editor, 'b2', 1))));
+
+    shift(editor, 'ArrowRight');
+
+    expect(view.state.selection.empty).toBe(true);
+  });
+
   it('leaves Shift and an arrow on an inner row to the table', () => {
     const { editor } = open();
     editor.prosemirrorView.endOfTextblock = (): boolean => true;
