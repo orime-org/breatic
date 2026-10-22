@@ -330,7 +330,8 @@ export const documentTableKeysExtension = createExtension(() => ({
     // Enter over a selection holding a whole table is `document-enter`'s,
     // which takes it away first. Shift+Enter takes it away through its own
     // replace and then breaks the line at the caret it leaves: the body's
-    // deletes the range by position and breaks where the selection started.
+    // leaves the range and breaks at its head (BlockNote `handleEnter(true)`),
+    // which here can be in a cell.
     Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),
     'Shift-Enter': ({ editor }: { editor: KeysEditor }) => {
       takeAwayHeldTables(editor.prosemirrorView);
