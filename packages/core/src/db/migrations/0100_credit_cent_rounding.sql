@@ -19,7 +19,7 @@
 --
 -- Every statement touches only rows that still carry more than two decimals,
 -- so running the data part again changes nothing; a later migration runs it
--- again for what the previous release wrote after this one.
+-- again for what the previous release wrote after this one (inner#1672).
 
 LOCK TABLE "studio_credit_debts", "credit_holds", "credit_lots", "credit_ledger" IN EXCLUSIVE MODE;--> statement-breakpoint
 
