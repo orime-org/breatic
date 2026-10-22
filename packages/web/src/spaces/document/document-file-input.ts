@@ -27,7 +27,7 @@ import { Plugin, type EditorState } from '@tiptap/pm/state';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
 import { tableAtLeavingHead } from '@web/spaces/document/document-table-leave-selection';
-import { tableAround } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 import type { UploadGap } from '@web/spaces/document/document-upload-slots';
 
 /** BlockNote's paste hook, as this editor's options take it. */
@@ -131,14 +131,14 @@ function caretLine(state: EditorState): { start: number; container: PMNode; empt
   if (held !== null) return { start: held.pos, container: held.node, empty: false };
   for (let depth = $head.depth; depth > 0; depth -= 1) {
     const container = $head.node(depth);
+    // Selected cells stand their head between cells, in no block's container
+    // of their own: the table, which no container wraps, is the line.
+    if (container.type.name === DOC_TABLE) return { start: $head.before(depth), container, empty: false };
     if (container.type.name !== 'blockContainer') continue;
     const empty = container.firstChild?.isTextblock === true && container.firstChild.content.size === 0;
     return { start: $head.before(depth), container, empty };
   }
-  // Selected cells stand their head between cells, in no block's container:
-  // the table, which no container wraps, is the line.
-  const table = tableAround($head);
-  return table === null ? null : { start: table.pos, container: table.node, empty: false };
+  return null;
 }
 
 /**

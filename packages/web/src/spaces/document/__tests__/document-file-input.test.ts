@@ -371,3 +371,23 @@ describe('the gap a paste goes into with cells of a table selected (inner#1619)'
     expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
   });
 });
+
+describe('the gap a paste goes into with cells of a nested table selected (inner#1619)', () => {
+  it('is after the table, above the line nested after it', () => {
+    const editor = open([
+      { type: 'bulletListItem', content: 'P', children: [tableBlock({ rows: [{ cells: ['x1', 'x2'] }] }), { type: 'paragraph', content: 'after' }] },
+      { type: 'paragraph', content: 'B' },
+    ]);
+    const view = editor.prosemirrorView!;
+    const cells: number[] = [];
+    let tableId = '';
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'docTableCell') cells.push(pos);
+      if (node.type.name === 'docTable') tableId = String(node.attrs['id']);
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]!, cells[1]!)));
+
+    expect(pasteTarget(view.state)).toEqual({ gap: gapAfter(view.state.doc, tableId), aimed: false });
+  });
+});
