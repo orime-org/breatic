@@ -7,7 +7,7 @@
  * away whole, never cutting it.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
@@ -15,7 +15,8 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { bodyEdgeBetween, bodyEdgePos, extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';
+import { BodyEdgeSelection, bodyEdgeBetween, bodyEdgePos, extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { canRunBlockType } from '@web/spaces/document/document-block-run';
 import { faceOf } from '@web/spaces/document/document-block-ticks';
 import { resolveLinkSelection } from '@web/spaces/document/document-link';
@@ -1165,5 +1166,91 @@ describe('what reads one end of a held selection', () => {
     end();
 
     expect(editor.prosemirrorView.state.selection.from).toBe(at(editor, 'a1', 0));
+  });
+});
+
+describe('Shift and Up or Down out of a table at an end of the body', () => {
+  /**
+   * Presses Shift with a key through the editor's own handlers.
+   * @param editor - The editor.
+   * @param key - The key.
+   * @returns Whether a handler claimed it.
+   */
+  const shift = (editor: Editor, key: string): boolean => {
+    const view = editor.prosemirrorView;
+    const event = new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true, cancelable: true });
+    return view.someProp('handleKeyDown', (f) => f(view, event)) ?? false;
+  };
+
+  it.each([
+    ['words in the last row of a table closing the body, Shift+Down', 'end', 'b2', 0, 2, 'ArrowDown'],
+    ['a caret in the last row of a table closing the body, Shift+Down', 'end', 'b2', 1, 1, 'ArrowDown'],
+    ['words in the first row of a table opening the body, Shift+Up', 'start', 'a1', 2, 0, 'ArrowUp'],
+    ['a caret in the first row of a table opening the body, Shift+Up', 'start', 'a1', 1, 1, 'ArrowUp'],
+  ] as const)('takes the whole table to the body\'s edge: %s', (_name, edge, words, from, to, key) => {
+    const content = edge === 'end' ? [{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)] : [tableBlock(WORDS), { type: 'paragraph', content: 'below' }];
+    const { editor } = openWith(content);
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    select(editor, at(editor, words, from), at(editor, words, to));
+
+    shift(editor, key);
+
+    const { selection } = editor.prosemirrorView.state;
+    expect(selection).toBeInstanceOf(BodyEdgeSelection);
+    expect(heldTables(selection)).not.toBeNull();
+  });
+});
+
+describe('Shift and Up or Down beside a table, from a line that wraps', () => {
+  /**
+   * Lays out a block over three lines for coordsAtPos: its start on the
+   * first, its end on the last, the head on the one given.
+   * @param editor - The editor.
+   * @param head - The head.
+   * @param headLine - Which of three lines the head is on, 0 to 2.
+   */
+  const linesFor = (editor: Editor, head: number, headLine: number): void => {
+    const view = editor.prosemirrorView;
+    const $head = view.state.doc.resolve(head);
+    const line = (n: number): { left: number; right: number; top: number; bottom: number } => ({ left: 0, right: 10, top: n * 20, bottom: n * 20 + 20 });
+    vi.spyOn(view, 'coordsAtPos').mockImplementation((pos) => line(pos === $head.start() ? 0 : pos === $head.end() ? 2 : headLine));
+  };
+
+  /**
+   * Presses Shift and Up through the editor's own handlers.
+   * @param editor - The editor.
+   */
+  const shiftUp = (editor: Editor): void => {
+    const view = editor.prosemirrorView;
+    const event = new KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true, cancelable: true });
+    view.someProp('handleKeyDown', (f) => f(view, event));
+  };
+
+  it('leaves Shift+Up from the last line of a range in a wrapping line under a table to the browser', () => {
+    const { editor } = openWith([tableBlock(WORDS), { type: 'paragraph', content: 'a long line under the table' }]);
+    // Measured from the range's start, the line under the table reads as the
+    // first line of its block; measured from the head, it is the last.
+    editor.prosemirrorView.endOfTextblock = (): boolean => true;
+    const start = at(editor, 'a long line under the table', 1);
+    const head = at(editor, 'a long line under the table', 20);
+    select(editor, start, head);
+    linesFor(editor, head, 2);
+
+    shiftUp(editor);
+
+    const { selection } = editor.prosemirrorView.state;
+    expect([selection.anchor, selection.head]).toEqual([start, head]);
+  });
+
+  it('takes the table in with Shift+Up from the first line of a wrapping line under it', () => {
+    const { editor } = openWith([tableBlock(WORDS), { type: 'paragraph', content: 'a long line under the table' }]);
+    editor.prosemirrorView.endOfTextblock = (): boolean => false;
+    const head = at(editor, 'a long line under the table', 3);
+    select(editor, at(editor, 'a long line under the table', 20), head);
+    linesFor(editor, head, 0);
+
+    shiftUp(editor);
+
+    expect(heldTables(editor.prosemirrorView.state.selection)).not.toBeNull();
   });
 });

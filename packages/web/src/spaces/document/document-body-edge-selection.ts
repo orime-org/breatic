@@ -562,14 +562,29 @@ function atLastLineTowards(view: EditorView, head: number, edge: BodyEdge): bool
   const dir = edge === 'end' ? 1 : -1;
   const beyond = doc.resolve(dir > 0 ? $head.after() : $head.before());
   if (Selection.findFrom(beyond, dir, true) !== null) return false;
+  return headOnEdgeLine(view, head, dir);
+}
+
+/**
+ * Whether a head in a text block is on that block's first line (going up) or
+ * its last (going down), measured from the page at the head itself:
+ * `endOfTextblock` measures a range's `$from` going up and its `$to` going
+ * down (prosemirror-view `endOfTextblockVertical`).
+ * @param view - The view.
+ * @param head - The head, in a text block.
+ * @param dir - -1 for the first line, 1 for the last.
+ * @returns True when an arrow that way leaves the block.
+ */
+export function headOnEdgeLine(view: EditorView, head: number, dir: -1 | 1): boolean {
+  const $head = view.state.doc.resolve(head);
   // At a line wrap the head's one position is both the end of a line and the
   // start of the next; it is read as the line further from the edge, so the
   // page moves it a line before the edge is taken. The block's own end is read
   // as the page lays it out: a block ending in a line break ends on the empty
   // line after it, which the head has still to reach.
-  const caret = view.coordsAtPos(head, edge === 'end' ? -1 : 1);
+  const caret = view.coordsAtPos(head, dir > 0 ? -1 : 1);
   const middle = (caret.top + caret.bottom) / 2;
-  return edge === 'end'
+  return dir > 0
     ? middle >= view.coordsAtPos($head.end()).top
     : middle <= view.coordsAtPos($head.start()).bottom;
 }

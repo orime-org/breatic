@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Tab, Shift-Tab, Enter and the arrows inside a table cell, and Backspace and
- * Delete over every cell of an empty table.
+ * The keys at and around tables: Tab, Shift-Tab, Enter and the arrows in a
+ * cell; Backspace and Delete over every cell of an empty table, at the edges
+ * of a cell and at the block beside a table; the arrows that open a line
+ * beside a table at an end of the body; Backspace, Delete and the word and
+ * line deletes over a selection holding a table whole (`takeAwayHeldTables`);
+ * and every key that extends a selection (`EXTENDING`), which counts a table
+ * as the one empty line the body would have (`extendAcrossTable`).
  *
  * A cell holds blocks the way the body does (inner#1619), so Enter and
  * Shift-Enter in a cell are the body's own. Tab in a list item nests it where
@@ -18,7 +23,9 @@
  * Order matters in both directions. This runs ahead of `document-tab`, whose
  * Tab nests the block anywhere. `document-enter` runs ahead of this: its
  * input-method guard has to see the Enter that commits a composition, and it
- * declines the Enter over selected cells and in a stored table's cell.
+ * declines the Enter over selected cells and in a stored table's cell. It also
+ * runs ahead of `document-body-edge-selection`, so a selection key near a
+ * table is answered here for a body-edge selection too.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -37,7 +44,7 @@ import {
 import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/document-table-nodes';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { BodyEdgeSelection, bodyEdgeBetween, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
+import { BodyEdgeSelection, bodyEdgeAt, bodyEdgeBetween, headOnEdgeLine, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -268,7 +275,8 @@ function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { bloc
   }
   const edgeRow = edgeLine && (before ? at.top === 0 : at.bottom === at.map.height);
   const edgeColumn = dir === 'left' ? at.left === 0 : dir === 'right' ? at.right === at.map.width : true;
-  if (!edgeRow || !edgeColumn || !view.endOfTextblock(dir)) return null;
+  const onEdgeLine = dir === 'up' || dir === 'down' ? headOnEdgeLine(view, $head.pos, dir === 'up' ? -1 : 1) : view.endOfTextblock(dir);
+  if (!edgeRow || !edgeColumn || !onEdgeLine) return null;
   return { blockId: at.blockId, edge: before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1) };
 }
 
@@ -370,7 +378,9 @@ function extendAcrossTable(view: EditorView, key: Extending): boolean {
    * @returns True.
    */
   const extendTo = (head: number): boolean => {
-    const meets = own !== null && head > own.pos && head < own.pos + own.node.nodeSize;
+    // An edge of the body inside the anchor's table is where the end reaches
+    // past that table, not a place in it.
+    const meets = own !== null && bodyEdgeAt(doc, head) === null && head > own.pos && head < own.pos + own.node.nodeSize;
     view.dispatch(view.state.tr.setSelection(bodyEdgeBetween(doc, anchor, meets ? anchor : head)).scrollIntoView());
     return true;
   };
@@ -396,7 +406,7 @@ function extendAcrossTable(view: EditorView, key: Extending): boolean {
   // browser's own.
   const atEdge = key.reach === 'block'
     ? $head.parentOffset === (key.back ? 0 : $head.parent.content.size)
-    : view.endOfTextblock(key.back ? 'up' : 'down');
+    : headOnEdgeLine(view, $head.pos, step);
   return atEdge && extendTo(tableEdgeText(doc, table, step));
 }
 
