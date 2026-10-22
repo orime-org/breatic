@@ -18,6 +18,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTableHandlesController';
+import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -124,6 +125,28 @@ describe('the table\'s own strip (T13, user 2026-10-21)', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('doc-block-table-handle')).toBeNull();
+    });
+  });
+
+  it('stands beside the table where it moved to, not where it was', async () => {
+    const editor = open();
+    editor.insertBlocks([{ type: 'paragraph', content: 'tail' }] as never, editor.document[1]!, 'after');
+    const view = editor.prosemirrorView;
+    pointAt(editor, 'b1');
+    const id = view.dom.querySelector('[data-node-type="docTable"]')!.getAttribute('data-id')!;
+
+    act(() => {
+      moveRowTo(view, id, view.state.doc.content.size - 2);
+    });
+    // The moved table is drawn afresh, far below where it stood.
+    view.dom.querySelector('[data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(200, 500, 400, 80);
+    act(() => {
+      view.dispatch(view.state.tr.insertText('!', 1));
+    });
+
+    const carrier = (): HTMLElement => screen.getByTestId('doc-block-table-handle').closest('[data-row-id]')!.parentElement!.parentElement!;
+    await waitFor(() => {
+      expect(carrier().style.transform).toMatch(/, 500px\)$/);
     });
   });
 

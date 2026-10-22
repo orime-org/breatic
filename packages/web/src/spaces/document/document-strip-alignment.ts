@@ -81,7 +81,19 @@ export const BODY_GUTTER_START = TABLE_STRIP_OUTSET + STRIP_SIZE + 8;
 
 
 /**
- * A table's left line as it is drawn: the table body's left edge, or the
+ * Where a table's own strip starts on the left: `TABLE_STRIP_OUTSET` and its
+ * width out from the body's left edge, the root block group, whatever the
+ * table's nesting (#1097 A13). The pointer counts as over the table from here.
+ * @param body - The editable element.
+ * @returns The x, or undefined before the body holds a block group.
+ */
+export function tableStripLeft(body: Element): number | undefined {
+  const root = body.firstElementChild;
+  return root === null ? undefined : root.getBoundingClientRect().left - TABLE_STRIP_OUTSET - STRIP_SIZE;
+}
+
+/**
+ * A table's left line as it is drawn:the table body's left edge, or the
  * scroll frame's when the table is scrolled sideways past it.
  * @param inTable - The table's body, an element in it, or the table's element.
  * @returns The line's x, or undefined when there is no table body.
@@ -153,8 +165,10 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
                 : cell.getBoundingClientRect().left - COLUMN_RESIZE_ZONE - 1 - width;
               return { x: x + left - (rowLeft - width) };
             }
-            const outset = anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true ? TABLE_STRIP_OUTSET : STRIP_OUTSET;
-            return { x: x + root.getBoundingClientRect().left - rowLeft - outset };
+            if (anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true) {
+              return { x: x + tableStripLeft(bodyOf()!)! - (rowLeft - rects.floating.width) };
+            }
+            return { x: x + root.getBoundingClientRect().left - rowLeft - STRIP_OUTSET };
           },
         },
       ],

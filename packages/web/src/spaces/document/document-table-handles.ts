@@ -24,7 +24,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
-import { STRIP_SIZE, TABLE_STRIP_OUTSET, tableLineOf } from '@web/spaces/document/document-strip-alignment';
+import { tableStripLeft } from '@web/spaces/document/document-strip-alignment';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The cell the handles stand on, and the boxes they are placed by. */
@@ -174,13 +174,14 @@ class TableHoverView {
    * @returns The table's frame, or null when no table is there.
    */
   private tableAt(event: MouseEvent): Element | null {
+    const left = tableStripLeft(this.view.dom);
+    if (left === undefined || event.clientX < left) return null;
     for (const frame of this.view.dom.querySelectorAll(FRAME)) {
       const body = frame.querySelector('tbody');
-      const line = tableLineOf(frame);
-      if (body === null || line === undefined) continue;
+      if (body === null) continue;
       const box = body.getBoundingClientRect();
       if (event.clientY < box.top || event.clientY > box.bottom) continue;
-      if (event.clientX >= line - TABLE_STRIP_OUTSET - STRIP_SIZE && event.clientX <= frame.getBoundingClientRect().right) return frame;
+      if (event.clientX <= frame.getBoundingClientRect().right) return frame;
     }
     return null;
   }

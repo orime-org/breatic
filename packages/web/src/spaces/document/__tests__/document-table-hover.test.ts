@@ -18,6 +18,7 @@ import {
   TABLE_CONTROL,
   type TableHandlesState,
 } from '@web/spaces/document/document-table-handles';
+import { STRIP_SIZE, TABLE_STRIP_OUTSET, tableStripLeft } from '@web/spaces/document/document-strip-alignment';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -190,6 +191,36 @@ describe('the cell the pointer is over', () => {
     view.dom.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 150, clientY: 120 }));
 
     expect(hovered(editor)).toMatchObject({ show: true, block: { id: tableId(editor) }, rowIndex: undefined, colIndex: undefined });
+  });
+
+  it('names a table nested two levels deep with the pointer where its strip stands', () => {
+    const editor = buildDocumentEditor({
+      fragment: documentBodyFragment(new Y.Doc()),
+      extensions: [documentTableHandlesExtension()],
+    });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      {
+        type: 'paragraph',
+        content: 'outer',
+        children: [{ type: 'paragraph', content: 'inner', children: [tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] }],
+      },
+    ] as never);
+    const view = editor.prosemirrorView;
+    // The body's edge at 100, the table two 24px indent steps in at 148.
+    (view.dom.firstElementChild as HTMLElement).getBoundingClientRect = () => new DOMRect(100, 0, 600, 400);
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(148, 100, 200, 60);
+    const frame = view.dom.querySelector('[data-node-type="docTable"]')!;
+    frame.getBoundingClientRect = () => new DOMRect(148, 96, 552, 68);
+    const strip = tableStripLeft(view.dom)!;
+
+    view.dom.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: strip + 1, clientY: 120 }));
+
+    expect(strip).toBe(100 - TABLE_STRIP_OUTSET - STRIP_SIZE);
+    expect(hovered(editor)).toMatchObject({ show: true, block: { id: frame.getAttribute('data-id') }, rowIndex: undefined });
   });
 
   it('is gone with the pointer in the gutter beside no table', () => {

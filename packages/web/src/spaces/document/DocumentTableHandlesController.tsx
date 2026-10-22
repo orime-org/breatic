@@ -17,7 +17,7 @@
  */
 
 import { SideMenuExtension } from '@blocknote/core/extensions';
-import { BlockPopover, GenericPopover, type FloatingUIOptions, type GenericPopoverReference } from '@blocknote/react';
+import { GenericPopover, type FloatingUIOptions, type GenericPopoverReference } from '@blocknote/react';
 import { useExtension, useExtensionState } from '@blocknote/react';
 import { autoUpdate, offset, type ReferenceElement } from '@floating-ui/react';
 import * as React from 'react';
@@ -34,26 +34,32 @@ import { HANDLE_THICKNESS } from '@web/spaces/document/document-table-control-pl
 import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
 import { BlockStrip, type StripHold } from '@web/spaces/document/DocumentBlockHandle';
 
-/** The row and column references the handles are placed by. */
+/** The references the table's strip and its row and column handles are placed by. */
 interface References {
+  readonly table?: GenericPopoverReference;
   readonly row?: GenericPopoverReference;
   readonly column?: GenericPopoverReference;
 }
 
 /**
- * The boxes the row and column handles are placed by: a row's box spans the
- * table across, a column's spans it down.
+ * The boxes the handles are placed by, read off the table as it is drawn now:
+ * a move redraws the table, and the strip follows it there. A row's box spans
+ * the table across, a column's spans it down.
  * @param editor - The editor.
- * @param state - Which cell the pointer is over.
- * @returns The references, none while there is no cell to place by.
+ * @param state - Which table, and which cell, the pointer is over.
+ * @returns The references; no row or column one while there is no cell to place by.
  */
 function referencesOf(editor: HandleEditor, state: TableHandlesState | undefined): References {
-  if (state === undefined || state.rowIndex === undefined || state.colIndex === undefined) return {};
+  if (state === undefined) return {};
   const frame = editor.domElement?.querySelector(`[data-node-type="${DOC_TABLE}"][data-id="${state.block.id}"]`);
-  const table = frame?.querySelector('table');
+  if (frame === null || frame === undefined) return {};
+  const own = { table: { element: frame } };
+  if (state.rowIndex === undefined || state.colIndex === undefined) return own;
+  const table = frame.querySelector('table');
   const cell = table?.querySelector('tbody')?.children[state.rowIndex]?.children[state.colIndex];
-  if (table === null || table === undefined || cell === undefined) return {};
+  if (table === null || table === undefined || cell === undefined) return own;
   return {
+    ...own,
     row: {
       element: table,
       getBoundingClientRect: () => {
@@ -176,11 +182,13 @@ export function DocumentTableHandlesController({ editor }: { editor: HandleEdito
   if (state === undefined) return null;
   return (
     <>
-      <BlockPopover blockId={open.table ? table?.id : undefined} {...tableOptions}>
-        <div {...{ [TABLE_CONTROL]: '' }}>
-          <BlockStrip block={table} hold={tableHold} />
-        </div>
-      </BlockPopover>
+      <GenericPopover reference={open.table ? references.table : undefined} {...tableOptions}>
+        {open.table ? (
+          <div {...{ [TABLE_CONTROL]: '' }}>
+            <BlockStrip block={table} hold={tableHold} />
+          </div>
+        ) : null}
+      </GenericPopover>
       <GenericPopover reference={references.row} {...options.row}>
         {open.row ? (
           <DocumentTableHandle orientation='row' hideOtherElements={hideRowOthers} />
