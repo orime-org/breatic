@@ -11,8 +11,10 @@
  * reads it back from the page while the pointer drags (prosemirror-view
  * `selectionFromDOM`, and our body-edge pointer from the selection's ends), and
  * a range set apart from them turns a drag into a caret. So the selection
- * keeps its ends on the table's first or last words (`TableSpanSelection`),
- * and what has to act on the whole table reads `heldRange`: the decoration
+ * keeps its ends on the table's first or last words (`TableSpanSelection`, and
+ * the body-edge selection's end in text), which makes its range every word of
+ * the table; what has to act on the whole table, the blocks without words at
+ * its edges included, reads `heldRange`: the decoration
  * drawing every cell selected, copying (`document-table-copy.ts`) and a
  * drag's content (`transformCopied`).
  *
@@ -215,13 +217,13 @@ class TableSpanSelection extends TextSelection {
 
 /**
  * The first (towards the start) or last (towards the end) place in a table a
- * caret can stand.
+ * caret can stand: where an end of a selection taking the table whole sits.
  * @param doc - The document.
  * @param table - The table.
  * @param dir - -1 for the end towards the start, 1 for the end towards the end.
  * @returns The position.
  */
-function edgeOf(doc: PMNode, table: TableAt, dir: -1 | 1): number {
+export function tableEdgeText(doc: PMNode, table: TableAt, dir: -1 | 1): number {
   // A selection's end in the table is such a place, so one is always found
   // inside the table.
   return dir < 0
@@ -230,16 +232,27 @@ function edgeOf(doc: PMNode, table: TableAt, dir: -1 | 1): number {
 }
 
 /**
- * The selection a text selection leaving a table becomes.
+ * The body-edge selection, which moves its own end in text; this module
+ * cannot import it.
+ */
+interface HoldsTablesWhole {
+  wholeTables(): Selection | null;
+}
+
+/**
+ * The selection a selection leaving a table becomes: its ends in the tables
+ * it takes whole moved onto those tables' outer words, so that its range is
+ * every word of them, as every reader of the range needs.
  * @param state - The editor state.
  * @returns The selection taking the whole table, or null when it is already so or does not leave a table.
  */
-function wholeTableSelection(state: EditorState): TableSpanSelection | null {
+function wholeTableSelection(state: EditorState): Selection | null {
   const { selection, doc } = state;
+  if ('wholeTables' in selection) return (selection as HoldsTablesWhole).wholeTables();
   const tables = selection instanceof TextSelection ? heldTables(selection) : null;
   if (tables === null) return null;
-  const from = tables.from === null ? selection.from : edgeOf(doc, tables.from, -1);
-  const to = tables.to === null ? selection.to : edgeOf(doc, tables.to, 1);
+  const from = tables.from === null ? selection.from : tableEdgeText(doc, tables.from, -1);
+  const to = tables.to === null ? selection.to : tableEdgeText(doc, tables.to, 1);
   if (selection instanceof TableSpanSelection && from === selection.from && to === selection.to) return null;
   const [anchor, head] = selection.anchor <= selection.head ? [from, to] : [to, from];
   return new TableSpanSelection(doc.resolve(anchor), doc.resolve(head));

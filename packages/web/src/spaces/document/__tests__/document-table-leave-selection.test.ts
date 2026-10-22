@@ -15,7 +15,10 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { extendToBodyEdge } from '@web/spaces/document/document-body-edge-selection';
+import { extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';
+import { resolveLinkSelection } from '@web/spaces/document/document-link';
+import { writeStyle } from '@web/spaces/document/document-style-write';
+import { selectionItem } from '@web/spaces/document/document-to-agent';
 import { tableClipped } from '@web/spaces/document/document-table-copy';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
@@ -518,6 +521,65 @@ describe('a selection from a cell to an edge of the body', () => {
 
     expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
     expect(blocks(editor)[0]).toBe('paragraph:lead');
+  });
+});
+
+describe('a selection from a cell to an edge of the body, on the whole table', () => {
+  /** The words of every cell that carry bold. */
+  const boldCells = (editor: Editor): string[] => {
+    const out: string[] = [];
+    editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.isText && node.marks.some((mark) => mark.type.name === 'bold')) out.push(node.text!);
+      return true;
+    });
+    return out;
+  };
+
+  it('runs from the table\'s first words when it runs from a cell to the end of the body', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    selectToEdge(editor, at(editor, 'b1', 1), 'end');
+
+    expect(editor.prosemirrorView.state.selection.from).toBe(at(editor, 'a1', 0));
+  });
+
+  it('runs to the table\'s last words when it runs from a cell to the start of the body', () => {
+    const { editor } = openWith([tableBlock(WORDS), { type: 'paragraph', content: 'below' }]);
+    selectToEdge(editor, at(editor, 'a2', 1), 'start');
+
+    expect(editor.prosemirrorView.state.selection.to).toBe(at(editor, 'b2', 2));
+  });
+
+  it('makes every cell bold, the cells before the press included', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    selectToEdge(editor, at(editor, 'b1', 1), 'end');
+
+    writeStyle(editor, true, ['bold']);
+
+    expect(boldCells(editor)).toEqual(['a1', 'b1', 'a2', 'b2']);
+  });
+
+  it('finds a link in a cell before the press', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    const view = editor.prosemirrorView;
+    const a1 = at(editor, 'a1', 0);
+    view.dispatch(view.state.tr.addMark(a1, a1 + 2, view.state.schema.marks['link']!.create({ href: 'https://example.com' })));
+    selectToEdge(editor, at(editor, 'b1', 1), 'end');
+
+    expect(resolveLinkSelection(view.state).href).toBe('https://example.com');
+  });
+
+  it('names what it adds to the Agent from the table\'s first words', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    selectToEdge(editor, at(editor, 'b1', 1), 'end');
+
+    expect(selectionItem(editor as never).name.startsWith('a1')).toBe(true);
+  });
+
+  it('shows collaborators the selection from the table\'s first words', () => {
+    const { editor } = openWith([{ type: 'paragraph', content: 'lead' }, tableBlock(WORDS)]);
+    selectToEdge(editor, at(editor, 'b1', 1), 'end');
+
+    expect(Math.min(...Object.values(textEnds(editor.prosemirrorView.state.selection)))).toBe(at(editor, 'a1', 0));
   });
 });
 

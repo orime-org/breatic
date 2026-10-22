@@ -26,7 +26,8 @@ import type { Mappable } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { bodyEdgeAt, bodyEdgePos, type BodyEdge } from '@web/spaces/document/document-body-edge-pos';
-import { replaceHeld, swapHeld } from '@web/spaces/document/document-table-leave-selection';
+import { replaceHeld, swapHeld, tableEdgeText } from '@web/spaces/document/document-table-leave-selection';
+import { tableAround } from '@web/spaces/document/document-table-nodes';
 
 export { bodyEdgeAt, bodyEdgePos, type BodyEdge };
 
@@ -232,6 +233,21 @@ class BodyEdgeSelectionClass extends Selection {
    */
   swapTables(tr: Transaction): Selection | null {
     return swapHeld(this, tr, bodyEdgeBetween);
+  }
+
+  /**
+   * The same selection with its text end, when it stands in a table, on that
+   * table's words farthest from the edge: the selection takes the table whole
+   * (inner#1619 T14), and its range then holds every word of it.
+   * @returns That selection, or null when the text end is outside any table or already there.
+   */
+  wholeTables(): Selection | null {
+    const { side, edge, other } = this.edgeOf();
+    const doc = this.$head.doc;
+    const table = tableAround(doc.resolve(other));
+    if (table === null) return null;
+    const outer = tableEdgeText(doc, table, edge === 'end' ? -1 : 1);
+    return outer === other ? null : BodyEdgeSelectionClass.build(doc, side, edge, outer);
   }
 
   /**
