@@ -15,6 +15,6 @@ const html = readFileSync(resolve(import.meta.dirname, '../../index.html'), 'utf
 describe('the app shell head', () => {
   it('describes Breatic by its positioning line', () => {
     const description = html.match(/<meta name="description" content="([^"]*)"/)?.[1];
-    expect(description).toBe('Breatic - An AI operating system for content creators');
+    expect(description).toBe('Breatic - The real-time collaborative AI workspace for creative teams');
   });
 });

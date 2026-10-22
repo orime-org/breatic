@@ -6,7 +6,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 
 ## Project overview
 
-breatic is an AI operating system for content creators: a TypeScript pnpm + turbo monorepo of 9 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document or timeline); never invent a `Workspace` entity or name.
+breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 9 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document or timeline); never invent a `Workspace` entity or name.
 
 | Read | When |
 |---|---|

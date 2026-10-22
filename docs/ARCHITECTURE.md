@@ -10,7 +10,7 @@ breatic monorepo 的完整工程参考,合三份文档于一处:**Backend** 架�
 
 ### Product
 
-内容创作者的 AI 操作系统。全栈 TypeScript monorepo,9 个 package + 3 个运行时服务。
+面向创意团队的实时协作 AI 工作空间。全栈 TypeScript monorepo,9 个 package + 3 个运行时服务。
 
 ### Tech stack (backend)
 
