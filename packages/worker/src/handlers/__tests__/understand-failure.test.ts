@@ -13,8 +13,14 @@
 import { describe, expect, it } from "vitest";
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 
+import { readTaskFailure } from "@breatic/shared";
+
 import {
   AnsweredNothing,
+  CutShort,
+  NoSpeech,
+  StoppedPartWay,
+  TranscriptionBlocked,
   understandFailureCode,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
@@ -204,5 +210,62 @@ describe("which refusals a second attempt would only repeat", () => {
   it("leaves anything it does not recognise open", () => {
     expect(verdictStands(new Error("boom"))).toBe(false);
     expect(verdictStands(new AnsweredNothing())).toBe(false);
+  });
+});
+
+// inner#856: the four ways a transcription ends without a transcript.
+describe("what a transcription that put nothing on the node is stored as", () => {
+  it.each([
+    [new NoSpeech("audio"), "no_speech"],
+    [new CutShort(), "cut_short"],
+    [new StoppedPartWay("error"), "internal"],
+    [new TranscriptionBlocked("content_filter"), "declined"],
+  ])("stores %o as %s", (err, code) => {
+    expect(understandFailureCode(err)).toBe(code);
+  });
+
+  // A block was measured once in three sends of the same audio, and a blocked
+  // call costs nothing, so the queue's next attempt is worth taking; so is one
+  // after the service broke mid-answer. Silence and a full allowance are the
+  // same next time.
+  it("tries a block and a broken answer again, and stands by silence and length", () => {
+    expect(verdictStands(new TranscriptionBlocked("content_filter"))).toBe(false);
+    expect(verdictStands(new StoppedPartWay("error"))).toBe(false);
+    expect(verdictStands(new NoSpeech("video"))).toBe(true);
+    expect(verdictStands(new CutShort())).toBe(true);
+  });
+
+  it("writes down that it was a transcription and the medium it heard nothing in", () => {
+    const stored = storedFailure(
+      "understand",
+      new NoSpeech("video"),
+      "https://assets.invalid/video/a.mp4",
+      "transcribe",
+    );
+    expect(readTaskFailure(stored)).toEqual({
+      reason: "no_speech",
+      reading: "transcribe",
+      medium: "video",
+    });
+  });
+
+  it("keeps the file it refused beside the reading", () => {
+    const stored = storedFailure(
+      "understand",
+      new MediaUnavailable("too-large", { bytes: 99 }),
+      "https://assets.invalid/audio/1_a.m4a",
+      "transcribe",
+    );
+    expect(readTaskFailure(stored)).toEqual({
+      reason: "understand_over_cap",
+      reading: "transcribe",
+      file: "1_a.m4a",
+      bytes: 99,
+    });
+  });
+
+  it("names no reading for an understanding", () => {
+    const stored = storedFailure("understand", new AnsweredNothing(), "https://assets.invalid/a.png");
+    expect(readTaskFailure(stored)).toEqual({ reason: "no_result" });
   });
 });

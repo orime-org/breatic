@@ -24,6 +24,12 @@ max_media_bytes: 20971520
 # who asked for a description of a video is reading all of it.
 max_output_tokens: 8192
 
+# How much a transcription may write, in tokens (inner#856). Separate from the
+# figure above because a transcript is every word said: 21 minutes of speech
+# took 5290 tokens, and a file at max_media_bytes holds about 80 minutes. This
+# is the pinned model's own ceiling on every backend that serves it.
+transcribe_max_output_tokens: 65536
+
 # How many readings one worker process holds in memory at once.
 # The tasks queue runs many jobs at a time, and each reading here may hold up
 # to max_media_bytes several times over. A reading that finds every place

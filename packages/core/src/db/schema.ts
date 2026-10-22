@@ -1632,7 +1632,7 @@ export const agentUsageRecords = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     operationKey: varchar("operation_key", { length: 255 }).notNull(),
     // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
-    // / `mini_tool`.
+    // / `canvas_transcribe` / `mini_tool`.
     feature: varchar("feature", { length: 40 }).notNull(),
     // `model`, `tool:<name>` for a paid call a tool made, or `container` for
     // a mini-tool container run.

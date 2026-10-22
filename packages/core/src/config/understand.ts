@@ -22,6 +22,7 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 const understandConfigSchema = z.object({
   max_media_bytes: z.number().int().positive().default(20_971_520),
   max_output_tokens: z.number().int().positive().default(8_192),
+  transcribe_max_output_tokens: z.number().int().positive().default(65_536),
   max_concurrent: z.number().int().positive().default(5),
 });
 

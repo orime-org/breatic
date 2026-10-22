@@ -53,6 +53,13 @@ import {
 import type { UsageRecorder, UsageRow } from "@breatic/domain";
 
 import { runUnderstand } from "@worker/handlers/dispatch.js";
+import {
+  AnsweredNothing,
+  CutShort,
+  NoSpeech,
+  StoppedPartWay,
+  TranscriptionBlocked,
+} from "@worker/handlers/understand-failure.js";
 
 const PARAMS = {
   source_type: "image",
@@ -306,5 +313,115 @@ describe("running one understand task", () => {
     await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
       MediaUnavailable,
     );
+  });
+});
+
+// inner#856: a transcription runs the same reading with its own question and
+// allowance, and puts nothing on the node unless the model finished.
+describe("running one transcription", () => {
+  const TRANSCRIBE = {
+    source_type: "audio",
+    source_url: "https://assets.invalid/audio/a.m4a",
+    reading: "transcribe",
+    keep_fillers: true,
+    reader_locale: "zh-CN",
+  };
+
+  /**
+   * Answer with this text and stop reason.
+   * @param text - What the model wrote.
+   * @param finishReason - Why it stopped.
+   */
+  function answers(text: string, finishReason: string): void {
+    vi.mocked(understandMediaAt).mockResolvedValue({ text, finishReason, kind: "audio" });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    rows = [];
+    missing = [];
+    answers("大家好。\n你好。", "stop");
+  });
+
+  it("asks the transcription question with its own allowance", async () => {
+    await runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT);
+
+    const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
+    expect(args?.question).toContain("Transcribe the speech in this audio.");
+    expect(args?.question).toContain("Simplified Chinese");
+    expect(args?.question).toContain("Keep filler words");
+    expect(args?.question).not.toMatch(/Answer in/);
+    expect(args?.maxOutputTokens).toBe(65_536);
+  });
+
+  it("puts a finished transcript on the node", async () => {
+    const [result] = await runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT);
+    expect(result).toMatchObject({ outputs: [{ content: "大家好。\n你好。" }] });
+  });
+
+  it("fails as no speech, naming the medium, when nobody talks", async () => {
+    answers("  NO_SPEECH\n", "stop");
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toMatchObject({
+      name: "NoSpeech",
+      medium: "audio",
+    });
+    await expect(
+      runUnderstand({ ...TRANSCRIBE, source_type: "video" }, recorder(), DEADLINE_AT),
+    ).rejects.toBeInstanceOf(NoSpeech);
+  });
+
+  it.each([
+    ["length", CutShort],
+    ["content_filter", TranscriptionBlocked],
+    ["error", StoppedPartWay],
+  ])("puts nothing on the node when it stopped for %s part way", async (reason, kind) => {
+    answers("The first half of what was", reason);
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(kind);
+  });
+
+  it("reads an empty answer the filter stopped as a block, and any other as nothing", async () => {
+    answers("", "content_filter");
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
+      TranscriptionBlocked,
+    );
+    answers("", "stop");
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
+      AnsweredNothing,
+    );
+  });
+
+  it.each(["content_policy_violation", "refusal"])(
+    "reads a refusal the service typed %s as a block",
+    async (errorType) => {
+      vi.mocked(understandMediaAt).mockRejectedValue(
+        new UnderstandRefused(403, "SAFETY", "deployment", errorType),
+      );
+      await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
+        TranscriptionBlocked,
+      );
+    },
+  );
+
+  it("lets any other refusal through as it is", async () => {
+    vi.mocked(understandMediaAt).mockRejectedValue(new UnderstandRefused(403, "budget", "deployment"));
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
+      UnderstandRefused,
+    );
+  });
+
+  it("leaves an understanding that stopped part way as it was", async () => {
+    answers("A dog on a", "content_filter");
+    const [result] = await runUnderstand(
+      { source_type: "image", source_url: "https://assets.invalid/image/a.png" },
+      recorder(),
+      DEADLINE_AT,
+    );
+    expect(result).toMatchObject({ outputs: [{ content: "A dog on a" }] });
+    vi.mocked(understandMediaAt).mockRejectedValue(
+      new UnderstandRefused(403, "SAFETY", "deployment", "content_policy_violation"),
+    );
+    await expect(
+      runUnderstand({ source_type: "image", source_url: "https://assets.invalid/image/a.png" }, recorder(), DEADLINE_AT),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
   });
 });

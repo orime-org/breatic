@@ -31,11 +31,16 @@ import {
   settleTaskForNode,
   readingLimitsUntil,
   understandMediaAt,
+  UnderstandRefused,
   UNDERSTAND_PINS,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import {
   AnsweredNothing,
+  CutShort,
+  NoSpeech,
+  StoppedPartWay,
+  TranscriptionBlocked,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
@@ -54,6 +59,11 @@ import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
+import {
+  isTranscription,
+  NO_SPEECH,
+  transcribeQuestion,
+} from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 
 /**
@@ -514,7 +524,7 @@ async function runTaskBody(
    * @param feature - Which path this task runs.
    * @returns The recorder.
    */
-  const recorderFor = (feature: "canvas_understand"): UsageRecorder =>
+  const recorderFor = (feature: "canvas_understand" | "canvas_transcribe"): UsageRecorder =>
     createUsageRecorder({
       operationKey: `task:${taskId}`,
       feature,
@@ -570,7 +580,7 @@ async function runTaskBody(
       }
       [providerResult, creditsUsed] = await runUnderstand(
         params,
-        recorderFor("canvas_understand"),
+        recorderFor(isTranscription(params) ? "canvas_transcribe" : "canvas_understand"),
         deadlineAt,
       );
     } else if (taskType in AIGC_TASK_TYPES) {
@@ -608,6 +618,7 @@ async function runTaskBody(
       taskType,
       err,
       typeof params.source_url === "string" ? params.source_url : undefined,
+      isTranscription(params) ? "transcribe" : undefined,
     );
     // The error itself, beside what the row will hold. A reading stores a
     // code of ours, and `internal` says only that a part of this broke —
@@ -1682,7 +1693,13 @@ export async function runUnderstand(
 ): Promise<[Record<string, unknown>, number]> {
   const sourceType = params.source_type as string;
   const cfg = getUnderstandConfig();
-  const question = understandQuestion(params.prompt, sourceType, params.reader_locale);
+  // A transcription is the same reading with its own question and allowance
+  // (inner#856): a transcript is every word said, and asking for an answer
+  // language makes the model translate.
+  const transcribing = isTranscription(params);
+  const question = transcribing
+    ? transcribeQuestion(sourceType, params.keep_fillers !== false, params.reader_locale)
+    : understandQuestion(params.prompt, sourceType, params.reader_locale);
 
   /**
    * Record the one call this run made.
@@ -1715,7 +1732,7 @@ export async function runUnderstand(
       baseUrl: UNDERSTAND_PINS.baseUrl,
       maxBytes: cfg.max_media_bytes,
       ...readingLimitsUntil(deadlineAt, cfg.max_media_bytes),
-      maxOutputTokens: cfg.max_output_tokens,
+      maxOutputTokens: transcribing ? cfg.transcribe_max_output_tokens : cfg.max_output_tokens,
       onBilled: record,
     }));
   } catch (err) {
@@ -1725,9 +1742,20 @@ export async function runUnderstand(
     await usage.settle().catch((recordErr: unknown) =>
       logger.error({ err: recordErr }, "agent_usage_record_failed"),
     );
+    // A 403 is a key, a budget or a content block; only the service's own
+    // error type says which. A block was measured once in three sends of the
+    // same audio, so a transcription takes it as one worth asking again.
+    if (
+      transcribing &&
+      err instanceof UnderstandRefused &&
+      (err.errorType === "content_policy_violation" || err.errorType === "refusal")
+    ) {
+      throw new TranscriptionBlocked(err.errorType);
+    }
     throw err;
   }
   const credits = await usage.settle();
+  if (transcribing) return [transcriptOf(answer, sourceType), credits];
 
   // A run that answered nothing finished having put nothing on the node.
   // Writing it would replace what the reader had with an empty node while
@@ -1740,6 +1768,34 @@ export async function runUnderstand(
     { outputs: [{ content: answer.text }], finish_reason: answer.finishReason },
     credits,
   ];
+}
+
+/**
+ * What a transcription puts on its node, or why it puts nothing (inner#856).
+ *
+ * Only a finished answer is a transcript: one the service stopped part way
+ * reads exactly like a whole one, so it is never written.
+ * @param answer - What the model wrote and why it stopped.
+ * @param answer.text - What the model wrote.
+ * @param answer.finishReason - Why it stopped, in the service's own words.
+ * @param sourceType - The medium transcribed, which a no-speech refusal names.
+ * @returns One output holding the transcript.
+ * @throws {TranscriptionBlocked} when a content filter stopped the answer.
+ * @throws {CutShort} when the answer reached the output ceiling.
+ * @throws {StoppedPartWay} when it stopped for any other reason.
+ * @throws {NoSpeech} when the model heard nobody speak.
+ * @throws {AnsweredNothing} when it finished having written nothing.
+ */
+function transcriptOf(
+  answer: { text: string; finishReason: string },
+  sourceType: string,
+): Record<string, unknown> {
+  if (answer.finishReason === "content_filter") throw new TranscriptionBlocked("content_filter");
+  if (answer.text === "") throw new AnsweredNothing();
+  if (answer.finishReason === "length") throw new CutShort();
+  if (answer.finishReason !== "stop") throw new StoppedPartWay(answer.finishReason);
+  if (answer.text.trim() === NO_SPEECH) throw new NoSpeech(sourceType === "video" ? "video" : "audio");
+  return { outputs: [{ content: answer.text }], finish_reason: answer.finishReason };
 }
 
 /**

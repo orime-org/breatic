@@ -68,6 +68,59 @@ export class AnsweredNothing extends Error {
   }
 }
 
+/** A transcription heard no one speak (inner#856). */
+export class NoSpeech extends Error {
+  /** The medium it heard nothing in, which the reader's sentence names. */
+  public readonly medium: "audio" | "video";
+
+  /**
+   * Builds the error a transcription that heard no speech throws.
+   * @param medium - The medium it heard nothing in.
+   */
+  public constructor(medium: "audio" | "video") {
+    super(`no one speaks in this ${medium}`);
+    this.name = "NoSpeech";
+    this.medium = medium;
+  }
+}
+
+/** A transcription stopped at the length it may write before it was done. */
+export class CutShort extends Error {
+  /** Builds the error a transcription that ran out of allowance throws. */
+  public constructor() {
+    super("the transcript reached the output ceiling before it ended");
+    this.name = "CutShort";
+  }
+}
+
+/**
+ * A transcription the service blocked: a content filter stopped the answer, or
+ * the service refused the request as a content violation. Measured once in
+ * three sends of the same audio, at no cost, so it is worth asking again.
+ */
+export class TranscriptionBlocked extends Error {
+  /**
+   * Builds the error a blocked transcription throws.
+   * @param how - The stop reason or error type the block arrived as.
+   */
+  public constructor(how: string) {
+    super(`the transcription was blocked (${how})`);
+    this.name = "TranscriptionBlocked";
+  }
+}
+
+/** A transcription the service stopped writing part way, for a reason of its own. */
+export class StoppedPartWay extends Error {
+  /**
+   * Builds the error a transcription that stopped part way throws.
+   * @param finishReason - The stop reason the service gave.
+   */
+  public constructor(finishReason: string) {
+    super(`the transcription stopped part way (${finishReason})`);
+    this.name = "StoppedPartWay";
+  }
+}
+
 /**
  * Kinds whose verdict a second attempt would only repeat.
  *
@@ -112,6 +165,8 @@ export function verdictStands(err: unknown): boolean {
   if (err instanceof DeadlinePassed) return true;
   if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
+  // The same media is just as silent, and just as long, the next time.
+  if (err instanceof NoSpeech || err instanceof CutShort) return true;
   return false;
 }
 
@@ -123,6 +178,10 @@ export function verdictStands(err: unknown): boolean {
 export function understandFailureCode(err: unknown): TaskFailureReason {
   if (err instanceof MediaUnavailable) return UNAVAILABLE_AS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_AS[err.kind];
+  if (err instanceof NoSpeech) return "no_speech";
+  if (err instanceof CutShort) return "cut_short";
+  if (err instanceof TranscriptionBlocked) return "declined";
+  if (err instanceof StoppedPartWay) return "internal";
   if (err instanceof AnsweredNothing) return "no_result";
   // Something on our side broke, and which part is in the log rather than on
   // the node: a reader has the same thing to do either way.
@@ -157,6 +216,8 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   media_refused: false,
   tool_failed: false,
   no_audio_track: false,
+  no_speech: false,
+  cut_short: false,
 };
 
 /**
@@ -171,13 +232,18 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
  *
  * A cause that says nothing about a file adds nothing; `encodeTaskFailure`
  * settles that, and stores the bare code.
+ * Which reading failed and the medium a transcription heard nothing in travel
+ * whatever the cause: the sentence names the act the reader asked for, on
+ * the row and in the history alike (inner#856).
  * @param err - Whatever the run threw.
  * @param sourceUrl - The address this run was handed.
+ * @param reading - Which reading this was, when it was not an understanding.
  * @returns What to store in the row's `error_message`.
  */
 export function understandFailureMessage(
   err: unknown,
   sourceUrl: string | undefined,
+  reading?: "transcribe",
 ): string {
   const reason = understandFailureCode(err);
   const about = err instanceof MediaUnavailable ? err : undefined;
@@ -187,5 +253,7 @@ export function understandFailureMessage(
       type: formatNameOf(about?.declaredType) ?? undefined,
       bytes: about?.bytes,
     }),
+    ...(reading !== undefined && { reading }),
+    ...(err instanceof NoSpeech && { medium: err.medium }),
   });
 }
