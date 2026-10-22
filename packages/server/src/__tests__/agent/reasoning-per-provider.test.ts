@@ -177,7 +177,7 @@ describe("asking DeepSeek for its working", () => {
     // has to name whoever is on the other end -- a request addressed to
     // anyone else is a switch that reads as working and asks for nothing.
     const options = await providerOptionsFor("deepseek/deepseek-v4-pro");
-    expect(options?.openrouter?.reasoning).toEqual({ effort: "high" });
+    expect(options?.openrouter?.reasoning).toEqual({ effort: "xhigh" });
   });
 
   it("does not address Anthropic when Anthropic is not who is being called", async () => {

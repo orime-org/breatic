@@ -303,9 +303,9 @@ const SPELLINGS = [
     name: "deepseek",
     authHeader: "authorization",
     authPrefix: "Bearer ",
-    on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
+    on: { thinking: { type: "enabled" }, reasoningEffort: "max" },
     off: { thinking: { type: "disabled" } },
-    onWire: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+    onWire: { thinking: { type: "enabled" }, reasoning_effort: "max" },
     offWire: { thinking: { type: "disabled" } },
   },
   {
@@ -367,6 +367,19 @@ describe("callOptionsFor", () => {
       expect(callOptionsFor(model, { thinking: false, cache: false }).providerOptions).toEqual({ [name]: off });
     },
   );
+
+  // inner#1650 measured DeepSeek Flash 1017 at OpenRouter's `xhigh`, which it
+  // passes on as DeepSeek's `max`, and Claude at `high`.
+  it.each([
+    ["deepseek/deepseek-v4.1-flash-1017", "xhigh"],
+    ["anthropic/claude-opus-5.5", "high"],
+  ])("asks OpenRouter for %s to think at %s", async (model, effort) => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const { callOptionsFor } = await freshLlm();
+    expect(callOptionsFor(model, { thinking: true, cache: false }).providerOptions).toEqual({
+      openrouter: { reasoning: { effort } },
+    });
+  });
 
   it("takes the fallback when the caller has no model to name", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
