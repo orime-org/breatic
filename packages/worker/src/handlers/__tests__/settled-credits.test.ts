@@ -39,6 +39,8 @@ const h = vi.hoisted(() => {
     slotFull: { value: false },
     threeD: vi.fn(),
     understandMediaAt: vi.fn(),
+    upsertGenerationSucceeded: vi.fn(),
+    recordGenerationSuccess: vi.fn(async (_entry: unknown) => ({ id: "history-1" })),
   };
 });
 
@@ -81,7 +83,7 @@ vi.mock("@breatic/core", () => ({
   getAgentConfig: vi.fn(() => ({})),
   projectActivitiesRepo: {
     insertGenerationFailedIfAbsent: vi.fn(),
-    upsertGenerationSucceeded: vi.fn(),
+    upsertGenerationSucceeded: h.upsertGenerationSucceeded,
   },
   publishActivityNew: vi.fn(),
   getStorageAdapter: vi.fn(async () => ({ keyFromUrl: () => "video/out.mp4" })),
@@ -113,7 +115,7 @@ vi.mock("@breatic/domain", async () => ({
   creditsForUsd: vi.fn(() => 0),
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
   resolveActiveProvider: vi.fn(),
-  nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: vi.fn(async () => ({})) },
+  nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: h.recordGenerationSuccess },
   settleTaskForNode: h.settleTaskForNode,
   understandMediaAt: h.understandMediaAt,
   MediaUnavailable: class extends Error {},
@@ -169,12 +171,17 @@ function containerJob(): Job {
 /**
  * Run a container job that finishes having cost `credits`.
  * @param credits - What the container run reports.
- * @returns The credits the task was completed and billed with.
+ * @returns The credits the task was completed and billed with, after
+ *   checking the node's history and the activity feed recorded the same.
  */
 async function billedFor(credits: number): Promise<number> {
   h.runContainerJob.mockResolvedValue([{ outputs: [{ url: "https://cdn/out.mp4" }], cost: 0 }, credits]);
   await runTask(containerJob(), "lock-token");
-  return h.markCompletedAndBill.mock.calls[0]![2] as number;
+  const billed = h.markCompletedAndBill.mock.calls[0]![2] as number;
+  const history = (h.recordGenerationSuccess.mock.calls[0]![0] as { metadata: { credits: number } }).metadata.credits;
+  const activity = (h.upsertGenerationSucceeded.mock.calls[0]![0] as { payload: { credits: number } }).payload.credits;
+  expect({ history, activity }).toEqual({ history: billed, activity: billed });
+  return billed;
 }
 
 beforeEach(() => {
