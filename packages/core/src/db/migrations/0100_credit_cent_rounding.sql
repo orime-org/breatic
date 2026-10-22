@@ -10,15 +10,18 @@
 -- are locked first, in EXCLUSIVE mode, which conflicts with the row locks a
 -- charge or a hold takes: this waits for every transaction already in them
 -- and holds new ones back until it commits, so each balance is read and
--- rewritten with nothing writing in between. The ledger's CHECK change needs
--- its own exclusive lock until commit; taking row locks after it would wait
--- on a charge that is itself waiting to write the ledger.
+-- rewritten with nothing writing in between. The tables are taken one at a
+-- time in the order a charge locks them (a studio's debt, its holds, its
+-- lots: `creditLotService.chargeForGeneration`), so a charge already holding
+-- a debt row is never waiting on a lot this has locked. The ledger's CHECK
+-- change needs its own exclusive lock until commit; taking row locks after it
+-- would wait on a charge that is itself waiting to write the ledger.
 --
 -- Every statement touches only rows that still carry more than two decimals,
 -- so running the data part again changes nothing; a later migration runs it
 -- again for what the previous release wrote after this one.
 
-LOCK TABLE "credit_lots", "studio_credit_debts", "credit_holds", "credit_ledger" IN EXCLUSIVE MODE;--> statement-breakpoint
+LOCK TABLE "studio_credit_debts", "credit_holds", "credit_lots", "credit_ledger" IN EXCLUSIVE MODE;--> statement-breakpoint
 
 ALTER TABLE "credit_ledger" DROP CONSTRAINT IF EXISTS "credit_ledger_entry_type_check";--> statement-breakpoint
 ALTER TABLE "credit_ledger" ADD CONSTRAINT "credit_ledger_entry_type_check" CHECK (

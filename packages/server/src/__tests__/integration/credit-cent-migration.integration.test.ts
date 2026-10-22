@@ -266,4 +266,36 @@ describe("migration 0100 on unrounded balances", () => {
     // 100 - 0.000001 - 0.123456 = 99.876543, cut to 99.87.
     expect(await migrated).toEqual({ remaining: "99.870000", lifecycle: "active", ledger: "99.870000" });
   });
+
+  it("does not deadlock with a charge that has taken its studio's debt lock and not yet its lot", async () => {
+    const fx = await seedStudioFixture(sql, "cent-mig");
+    const lotId = await seedDesignatedLot(sql, fx, 100);
+    await spendUnrounded(sql, fx, lotId, "0.000001");
+
+    // chargeForGeneration's order: the studio's debt row, then the lot.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let locked!: () => void;
+    const debtTaken = new Promise<void>((resolve) => (locked = resolve));
+    const charge = sql.begin(async (tx) => {
+      await tx`INSERT INTO studio_credit_debts (studio_id) VALUES (${fx.studioId}) ON CONFLICT (studio_id) DO NOTHING`;
+      await tx`SELECT amount FROM studio_credit_debts WHERE studio_id = ${fx.studioId} FOR UPDATE`;
+      await tx`SELECT id FROM credit_lots WHERE designated_studio_id = ${fx.studioId}`;
+      locked();
+      await gate;
+      await tx`SELECT id FROM credit_lots WHERE id = ${lotId} FOR UPDATE`;
+      await spendUnrounded(tx, fx, lotId, "0.123456");
+    });
+    await debtTaken;
+
+    const migrated = rolledBack(async (tx) => {
+      await migrate(tx);
+      return lotState(tx, lotId);
+    });
+    await waitUntilBlockedOn(sql, ["every charge now settles to whole hundredths"], 1);
+    release();
+    await charge;
+
+    expect(await migrated).toEqual({ remaining: "99.870000", lifecycle: "active", ledger: "99.870000" });
+  });
 });
