@@ -592,6 +592,49 @@ describe("understandMedia — what a refusal is about", () => {
     expect(inline.kind).toBe("media");
   });
 
+  // inner#856: a block measured on 2026-10-22 came back as a 200 whose error
+  // carries code 403 and `metadata.error_type: content_policy_violation`.
+  // The type travels on the refusal as a fact; how it is judged is unchanged,
+  // and which caller reads it is the caller's business.
+  it("carries the error type the envelope names, judged as before", async () => {
+    const envelope = {
+      code: 403,
+      message: "SAFETY",
+      metadata: { error_type: "content_policy_violation" },
+    };
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: envelope }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const top = await refusalOf();
+    expect(top.errorType).toBe("content_policy_violation");
+    expect(top.kind).toBe("deployment");
+
+    httpRequestMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "" }, finish_reason: "content_filter", error: envelope }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const inChoice = await refusalOf();
+    expect(inChoice.errorType).toBe("content_policy_violation");
+    expect(inChoice.kind).toBe("deployment");
+  });
+
+  it("names no error type when the envelope carries none", async () => {
+    httpRequestMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: "Blocked by guardrail" } }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect((await refusalOf()).errorType).toBeUndefined();
+  });
+
   it("calls a 403 our deployment's problem, since the content refusal arrives on a 200", async () => {
     // The service's own words for 403 name three things: "insufficient
     // permissions, guardrail block, or moderation flag". The first is our key,
