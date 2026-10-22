@@ -48,8 +48,10 @@ const HINT_TONE: Record<SlugCheck['state'], string> = {
  * The slug input shared by the create-studio, create-project/collection,
  * rename-studio and onboarding forms. One line under the input carries the
  * whole story: the description while the field is empty, a pending line while
- * a check runs, then the reason it was refused (red) or that it is available
- * (green).
+ * a check runs, then the reason it was refused (red), that it is available
+ * (green), or that the check itself failed (grey; the press goes ahead and the
+ * server decides). A reason found at the press replaces the line in red until
+ * the field is edited.
  * @param props the field id, label, value, change handler, check, bounds and helper.
  * @param props.id the field id.
  * @param props.label the display label.
