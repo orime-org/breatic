@@ -69,6 +69,19 @@ describe("runSteps", () => {
     await expect(runSteps([pipe])).rejects.toThrow();
   });
 
+  // The writer fills the pipe buffer long before the reader is gone, so it
+  // only ends when the reader's exit closes the pipe under it.
+  it.each([
+    ["the middle", [{ program: "sh", args: ["-c", "exit 3"] }, { program: "cat", args: [] }]],
+    ["the last", [{ program: "cat", args: [] }, { program: "sh", args: ["-c", "exit 3"] }]],
+  ])("fails the pipe at once when %s command exits while the first is still writing", async (_where, rest) => {
+    const pipe = {
+      kind: "pipe",
+      commands: [{ program: "head", args: ["-c", "200000000", "/dev/zero"] }, ...rest],
+    } as unknown as RunStep;
+    await expect(runSteps([pipe])).rejects.toThrow();
+  }, 5_000);
+
   it("hands a measure step's stderr to the steps it decides on", async () => {
     const file = join(dir, "out.txt");
     const measure = {
