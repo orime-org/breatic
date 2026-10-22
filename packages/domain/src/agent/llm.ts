@@ -242,9 +242,9 @@ export const FALLBACK_ROUTE: Route = {
   reasoning: {
     // `max_tokens` or `effort` is required alongside; `enabled` alone does
     // not compile. `none` is the documented way to turn it off.
-    // OpenRouter passes `xhigh` on to DeepSeek as its `max`, the level the
-    // direct route asks for.
-    on: (modelString) => ({ reasoning: { effort: modelString?.startsWith("deepseek/") ? "xhigh" : "high" } }),
+    // OpenRouter lists max, high, low and none for DeepSeek Flash 1017 and
+    // turns `xhigh` into `high`; `max` is the level the direct route asks for.
+    on: (modelString) => ({ reasoning: { effort: modelString?.startsWith("deepseek/") ? "max" : "high" } }),
     off: { reasoning: { effort: "none" } },
   },
   // OpenRouter turns a request-level `cache_control` into Anthropic's

@@ -368,17 +368,16 @@ describe("callOptionsFor", () => {
     },
   );
 
-  // inner#1650 measured DeepSeek Flash 1017 at OpenRouter's `xhigh`, which it
-  // passes on as DeepSeek's `max`, and Claude at `high`.
+  // inner#1650 measured DeepSeek Flash 1017 at `max` and Claude at `high`.
   it.each([
-    ["deepseek/deepseek-v4.1-flash-1017", "xhigh"],
+    ["deepseek/deepseek-v4.1-flash-1017", "max"],
     ["anthropic/claude-opus-5.5", "high"],
   ])("asks OpenRouter for %s to think at %s", async (model, effort) => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     const { callOptionsFor } = await freshLlm();
-    expect(callOptionsFor(model, { thinking: true, cache: false }).providerOptions).toEqual({
-      openrouter: { reasoning: { effort } },
-    });
+    const { providerOptions } = callOptionsFor(model, { thinking: true, cache: false });
+    expect(providerOptions).toEqual({ openrouter: { reasoning: { effort } } });
+    expect((await callWith(model, providerOptions)).body.reasoning).toEqual({ effort });
   });
 
   it("takes the fallback when the caller has no model to name", async () => {
