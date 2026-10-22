@@ -77,7 +77,7 @@ export const AudioWaveform = React.memo(function AudioWaveform({
       data-testid='mini-tool-waveform'
       data-state={failed ? 'failed' : 'drawn'}
       data-from={peaks !== undefined && duration !== undefined ? 'peaks' : 'decode'}
-      className={failed ? 'hidden' : 'absolute inset-0 text-muted-foreground'}
+      className={failed ? 'hidden' : 'absolute inset-0 text-foreground'}
     />
   );
 });

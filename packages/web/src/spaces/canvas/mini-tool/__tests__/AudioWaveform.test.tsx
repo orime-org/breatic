@@ -34,6 +34,13 @@ describe('AudioWaveform', () => {
     expect(screen.getByTestId('mini-tool-waveform')).toHaveAttribute('data-from', 'peaks');
   });
 
+  // The kept span reads in the foreground colour; the band's overlays dim the
+  // cut-away ends (design §4.4, the approved demo).
+  it('draws its bars in the foreground colour', () => {
+    render(<AudioWaveform src={SRC} />);
+    expect(screen.getByTestId('mini-tool-waveform')).toHaveClass('text-foreground');
+  });
+
   it('decodes the audio over a fresh CORS fetch when it has no peaks', () => {
     render(<AudioWaveform src={SRC} />);
 
