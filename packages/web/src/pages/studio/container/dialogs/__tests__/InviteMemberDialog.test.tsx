@@ -108,7 +108,7 @@ describe('InviteMemberDialog', () => {
     expect(onInvite).not.toHaveBeenCalled();
   });
 
-  it('holds the email read-only and the role disabled while the invite is out (inner#1652)', () => {
+  it('holds the email read-only and leaves the role as it looks while the invite is out (inner#1652)', () => {
     render(
       <InviteMemberDialog
         open
@@ -122,7 +122,8 @@ describe('InviteMemberDialog', () => {
     // can be corrected by typing straight away.
     expect(screen.getByLabelText('Email')).toHaveAttribute('readonly');
     expect(screen.getByLabelText('Email')).not.toBeDisabled();
-    expect(screen.getByLabelText('Role')).toBeDisabled();
+    // The role went out with the press; changing it now alters nothing sent.
+    expect(screen.getByLabelText('Role')).not.toBeDisabled();
   });
 
   it('leaves the browser out of it: no native email check (inner#1652)', () => {

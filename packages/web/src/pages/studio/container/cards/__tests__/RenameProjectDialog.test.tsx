@@ -43,6 +43,12 @@ describe('RenameProjectDialog (inner#1652)', () => {
     expect(screen.queryByText('Enter a name.')).not.toBeInTheDocument();
   });
 
+  it('holds the name read-only while the rename is out', () => {
+    setup(true);
+    expect(screen.getByRole('textbox')).toHaveAttribute('readonly');
+    expect(screen.getByRole('textbox')).not.toBeDisabled();
+  });
+
   it('opens again without the reason left from the last opening', async () => {
     const user = userEvent.setup();
     const props = { onOpenChange: vi.fn(), currentName: 'Spring', onRename: vi.fn(), pending: false };

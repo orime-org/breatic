@@ -52,7 +52,7 @@ export interface StudioSettingsActions {
   leave: () => void;
   /** Drop a stale avatar failure — the picker closing means it is done with. */
   clearAvatarError: () => void;
-  /** Any studio edit is in flight — the basic-info form greys itself out. */
+  /** Any studio edit is in flight — the basic-info form holds its fields read-only. */
   saving: boolean;
   /**
    * The in-flight edit is NOT a slug change — the name and description Save

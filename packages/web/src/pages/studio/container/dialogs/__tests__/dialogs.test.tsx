@@ -180,6 +180,15 @@ describe('NewItemDialog — reasons on press and an optional slug (inner#1652, i
     expect(slugInput()).not.toHaveAttribute('aria-invalid', 'true');
   });
 
+  it('puts the Slug right under the Name it follows, before the Type cards', () => {
+    render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);
+    const name = screen.getByLabelText('Name');
+    const slug = slugInput();
+    const type = screen.getByRole('radio', { name: /Canvas/ });
+    expect(name.compareDocumentPosition(slug) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slug.compareDocumentPosition(type) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('fills the slug from the name as it is typed', async () => {
     const user = userEvent.setup();
     render(<NewItemDialog kind='project' open onOpenChange={vi.fn()} />);

@@ -108,7 +108,8 @@ export function BasicInfoSection({
           ref={nameRef}
           value={name}
           maxLength={NAME_MAX}
-          disabled={!canEdit || saving}
+          disabled={!canEdit}
+          readOnly={saving}
           onChange={(e) => {
             setName(e.target.value);
             setNameError(null);
@@ -131,7 +132,8 @@ export function BasicInfoSection({
           value={bio}
           maxLength={BIO_MAX}
           rows={3}
-          disabled={!canEdit || saving}
+          disabled={!canEdit}
+          readOnly={saving}
           onChange={(e) => setBio(e.target.value)}
           data-testid='settings-bio'
         />

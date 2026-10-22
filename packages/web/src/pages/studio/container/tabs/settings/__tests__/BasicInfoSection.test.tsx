@@ -97,6 +97,16 @@ describe('BasicInfoSection — the submit gate', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('holds both fields read-only, not greyed, while any settings save is out (inner#1652)', () => {
+    render(
+      <BasicInfoSection studio={STUDIO} canEdit saving savingDetails={false} onSave={vi.fn()} />,
+    );
+    for (const id of ['settings-name', 'settings-bio']) {
+      expect(screen.getByTestId(id)).toHaveAttribute('readonly');
+      expect(screen.getByTestId(id)).not.toBeDisabled();
+    }
+  });
+
   it('ignores a press while any settings save is out (inner#1652)', () => {
     const onSave = vi.fn();
     const tree = (saving: boolean): React.JSX.Element => (

@@ -287,13 +287,7 @@ export function NewItemDialog({
                 <FieldError id={`${nameId}-error`} className='text-xs'>{nameError}</FieldError>
               ) : null}
             </div>
-            {kind === 'project' ? (
-              <SpaceKindPicker
-                value={spaceType}
-                onChange={setSpaceType}
-                idPrefix={`new-${kind}-type`}
-              />
-            ) : null}
+            {/* Right under the Name it follows, so the generated value is seen as it is typed. */}
             <SlugField
               id={slugId}
               label={t('studio.container.dialog.slugLabelOptional')}
@@ -305,6 +299,13 @@ export function NewItemDialog({
               helper={slugHelper}
               readOnly={submitting}
             />
+            {kind === 'project' ? (
+              <SpaceKindPicker
+                value={spaceType}
+                onChange={setSpaceType}
+                idPrefix={`new-${kind}-type`}
+              />
+            ) : null}
           </DialogBody>
           <DialogFooter>
             <Button

@@ -152,7 +152,6 @@ export function InviteMemberDialog({
               </Label>
               <Select
                 value={role}
-                disabled={pending}
                 onValueChange={(next) =>
                   setRole(next as GrantableStudioRole)
                 }

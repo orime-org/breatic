@@ -103,6 +103,7 @@ export function RenameProjectDialog({
               value={name}
               maxLength={PROJECT_NAME_MAX_CHARS}
               ref={inputRef}
+              readOnly={pending}
               onChange={(event) => {
                 setName(event.target.value);
                 setNameError(null);
