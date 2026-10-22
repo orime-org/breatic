@@ -3,9 +3,11 @@
 
 /**
  * The credits a finished run records and charges are rounded up to whole
- * cents once, before the task row, the node's history and the charge read
- * them (inner#1666). The rounding sits after the vendor has returned, so a
- * figure it cannot round passes through untouched instead of throwing.
+ * cents once, before the task row, the node's history, the activity feed and
+ * the charge read them (inner#1666), whichever lane priced the run: a model
+ * generation, a reading or a container mini-tool. The rounding sits after the
+ * vendor has returned, so a figure it cannot round passes through untouched
+ * instead of throwing, and the charge refuses it.
  *
  * No real Redis / DB — everything is mocked.
  */
@@ -40,6 +42,9 @@ const h = vi.hoisted(() => {
     threeD: vi.fn(),
     understandMediaAt: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
+    chargeForGeneration: vi.fn(),
+    error: vi.fn(),
+    readingCredits: { value: 0 },
     recordGenerationSuccess: vi.fn(async (_entry: unknown) => ({ id: "history-1" })),
   };
 });
@@ -92,7 +97,7 @@ vi.mock("@breatic/core", () => ({
   storageKey: vi.fn(),
   env: {},
   NotFoundError: class extends Error {},
-  logger: { info: h.info, warn: h.warn, error: vi.fn(), debug: vi.fn() },
+  logger: { info: h.info, warn: h.warn, error: h.error, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", async () => ({
   // The real judgement: the case below is about the ending it gives.
@@ -110,23 +115,26 @@ vi.mock("@breatic/domain", async () => ({
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
-  creditLotService: {},
+  creditLotService: { chargeForGeneration: h.chargeForGeneration },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
-  creditsForUsd: vi.fn(() => 0),
+  // A dollar is a credit here, so each case's cost is the figure to round.
+  creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
   resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: h.recordGenerationSuccess },
   settleTaskForNode: h.settleTaskForNode,
   understandMediaAt: h.understandMediaAt,
+  readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
   MediaUnavailable: class extends Error {},
   UnderstandRefused: class extends Error {},
-  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => 0 }),
+  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => h.readingCredits.value }),
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
 }));
 
 import type { Job } from "bullmq";
 
+import { toChargeMicro } from "@domain/credit/credit-math.js";
 import { runTask } from "@worker/handlers/dispatch.js";
 
 const DEADLINE = 1_800_000_000_000;
@@ -160,23 +168,40 @@ function jobOf(data: Record<string, unknown>, attemptsMade = 0): Job {
   } as unknown as Job;
 }
 
-/**
- * A container mini-tool job.
- * @returns The job.
- */
-function containerJob(): Job {
-  return jobOf({ taskType: "video", model: undefined, params: {}, source: "mini_tool", toolId: "video.cut", sourceKey: "v/src.mp4" });
-}
+/** A lane that prices a run, and how to make its run cost a figure. */
+type Lane = { name: string; job: () => Job; costs: (credits: number) => void };
+
+const LANES: Lane[] = [
+  {
+    name: "a model generation",
+    job: () => jobOf({}),
+    costs: (credits) => h.runCatalogTask.mockResolvedValue({ outputs: [{ url: "https://cdn/out.png" }], cost: credits }),
+  },
+  {
+    name: "a reading",
+    job: () => jobOf({ taskType: "understand", model: undefined, params: { source_type: "image", source_url: "https://a/cat.png" } }),
+    costs: (credits) => {
+      h.understandMediaAt.mockResolvedValue({ text: "a cat", finishReason: "stop" });
+      h.readingCredits.value = credits;
+    },
+  },
+  {
+    name: "a container mini-tool",
+    job: () => jobOf({ taskType: "video", model: undefined, params: {}, source: "mini_tool", toolId: "video.cut", sourceKey: "v/src.mp4" }),
+    costs: (credits) => h.runContainerJob.mockResolvedValue([{ outputs: [{ url: "https://cdn/out.mp4" }], cost: 0 }, credits]),
+  },
+];
 
 /**
- * Run a container job that finishes having cost `credits`.
- * @param credits - What the container run reports.
- * @returns The credits the task was completed and billed with, after
- *   checking the node's history and the activity feed recorded the same.
+ * Run a lane's job that finishes having cost `credits`.
+ * @param lane - The lane that prices the run.
+ * @param credits - What the run reports it cost.
+ * @returns The credits the task row was completed with, after checking the
+ *   node's history and the activity feed recorded the same.
  */
-async function billedFor(credits: number): Promise<number> {
-  h.runContainerJob.mockResolvedValue([{ outputs: [{ url: "https://cdn/out.mp4" }], cost: 0 }, credits]);
-  await runTask(containerJob(), "lock-token");
+async function billedFor(lane: Lane, credits: number): Promise<number> {
+  lane.costs(credits);
+  await runTask(lane.job(), "lock-token");
   const billed = h.markCompletedAndBill.mock.calls[0]![2] as number;
   const history = (h.recordGenerationSuccess.mock.calls[0]![0] as { metadata: { credits: number } }).metadata.credits;
   const activity = (h.upsertGenerationSucceeded.mock.calls[0]![0] as { payload: { credits: number } }).payload.credits;
@@ -184,28 +209,47 @@ async function billedFor(credits: number): Promise<number> {
   return billed;
 }
 
+/**
+ * What the charge was asked to take.
+ * @returns The amount handed to the charge.
+ */
+function charged(): number {
+  return (h.chargeForGeneration.mock.calls[0]![0] as { amount: number }).amount;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   h.getByIdInternal.mockResolvedValue({ status: "running", startedAt: new Date(), billedAt: null, providerResultUrl: null, providerTaskId: null });
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
+  h.markCompletedAndBill.mockResolvedValue(true);
+  // The real charge settles its amount before it writes anything.
+  h.chargeForGeneration.mockImplementation(async (input: { amount: number }) => {
+    toChargeMicro(input.amount);
+    return { billed: true, charged: input.amount, shortfall: 0, studioId: "studio-1", lotIds: [] };
+  });
 });
 
-describe("the credits a finished run is billed with", () => {
-  it("rounds a part-cent cost up to the next cent", async () => {
-    expect(await billedFor(3.075)).toBe(3.08);
+describe.each(LANES)("the credits $name is billed with", (lane) => {
+  it("rounds a part-cent cost up to the next cent, and charges that", async () => {
+    expect(await billedFor(lane, 3.075)).toBe(3.08);
+    expect(charged()).toBe(3.08);
   });
 
   it("does not round floating-point residue up a cent (inner#1637)", async () => {
-    expect(await billedFor(7.000000000000001)).toBe(7);
+    expect(await billedFor(lane, 7.000000000000001)).toBe(7);
+    expect(charged()).toBe(7);
   });
 
   // The vendor has returned by now: a throw would rerun the task and pay it twice.
-  it("passes a cost that is not a number through without throwing", async () => {
-    expect(await billedFor(Number.NaN)).toBeNaN();
+  it("passes a cost that is not a number through without throwing, and the charge refuses it", async () => {
+    expect(await billedFor(lane, Number.NaN)).toBeNaN();
+    await expect(h.chargeForGeneration.mock.results[0]!.value).rejects.toThrow(RangeError);
+    expect(h.error).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("DEDUCT_FAILED_AFTER_COMPLETION"));
   });
 
-  it("passes a negative cost through without throwing", async () => {
-    expect(await billedFor(-1)).toBe(-1);
+  it("passes a negative cost through without throwing, and charges nothing", async () => {
+    expect(await billedFor(lane, -1)).toBe(-1);
+    expect(h.chargeForGeneration).not.toHaveBeenCalled();
   });
 });
