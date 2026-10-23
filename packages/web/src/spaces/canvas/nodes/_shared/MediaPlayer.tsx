@@ -148,6 +148,9 @@ export function MediaPlayer({
   const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
   const pointer = useSeekPointer(p.seekFraction, videoControls);
+  React.useLayoutEffect(() => {
+    if (controlsHidden) pointer.capture.current?.release();
+  }, [controlsHidden, pointer.capture]);
   const [inlineControls, setInlineControls] = React.useState<HTMLDivElement | null>(null);
   const themedControls = videoControls?.surface === 'popover';
   // Zoomed past the cover preview, the original cover is loaded off-screen (a

@@ -61,4 +61,21 @@ describe('a document video controls target', () => {
     unmount(); first.remove(); next.remove();
   });
 
+  it('releases an external seek when controls become hidden', () => {
+    const target = document.createElement('div'); document.body.appendChild(target);
+    const activity = vi.fn();
+    const config = { destination: target, surface: 'popover' as const, onSeekingChange: activity };
+    const { rerender, unmount } = render(<MediaPlayer modality='video' src='/clip.mp4' duration={100} videoControls={config} />);
+    const seek = screen.getByTestId('seek');
+    const media = screen.getByTestId('media-element') as HTMLVideoElement;
+    vi.spyOn(seek, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 0, 200, 24));
+    fireEvent.pointerDown(seek, { pointerId: 3, clientX: 160, button: 0 });
+    expect(media.currentTime).toBeCloseTo(30);
+    rerender(<MediaPlayer modality='video' src='/clip.mp4' duration={100} videoControls={config} controlsHidden />);
+    expect(activity.mock.calls.map(([active]) => active)).toEqual([true, false]);
+    fireEvent.pointerMove(seek, { pointerId: 3, clientX: 250 });
+    expect(media.currentTime).toBeCloseTo(30);
+    unmount(); target.remove();
+  });
+
 });
