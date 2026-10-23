@@ -2,22 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Project invite-confirmation handshake service (2026-06-18, #1337).
+ * Project invite-confirmation handshake service.
  *
- * The direct mirror of the studio invite service for the project membership
- * layer. Replaces the old `share_links` model (a link consumer joined on click,
- * with no decline state and no invitee-side handshake): an owner's invite now
- * creates a PENDING `project_invitations` row + an actionable bell notification;
- * the invitee becomes a real `project_members` row only when they confirm (via
- * the bell or the email link). The source of truth is the `project_invitations`
- * row (so the owner can see "invited (pending)"), not the notification.
+ * An owner invites an existing account or an unregistered mailbox. The shared
+ * invitation service arbitrates recipients under the target lock and settles
+ * mail delivery. Account invitations receive a bell notification immediately;
+ * mailbox invitations receive signup mail and become account invitations,
+ * with a notification, after matching email verification. The original row
+ * and share token survive that conversion. Membership starts only on confirm.
  *
- * Five operations:
- *   - `createInvite`: owner invites a registered user. Validates, then in ONE
- *     tx creates the pending row + the `project.invite_request` notification +
- *     links them. Returns the invitee + invitation id so the route layer can
- *     send the (optional) email. A second LIVE pending for the same
- *     (project, invitee) hits the partial unique → ConflictError.
+ * Four operations:
+ *   - `createInvite`: delegates creation, recipient arbitration, notification
+ *     and mail settlement to the shared invitation service. Duplicate live
+ *     invitations for the same recipient are rejected across both forms.
  *   - `confirmInvite`: the invitee accepts. In ONE tx: take the project's row
  *     (refusing if it is gone), the accept CAS (the serialization point —
  *     concurrent confirms apply EXACTLY ONCE), the collaborator ceiling behind

@@ -51,7 +51,7 @@ export interface SlugAvailability {
 /** A studio role an admin may grant by invite or change-role (never admin). */
 export type GrantableStudioRole = 'maintainer' | 'guest';
 
-/** Body for `POST /studio/:slug/members` — a registered email + granted role. */
+/** Body for `POST /studio/:slug/members` — recipient mailbox and granted role. */
 export interface InviteMemberBody {
   email: string;
   role: GrantableStudioRole;

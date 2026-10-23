@@ -28,7 +28,7 @@ const CHOOSE_SLUG_PATH = '/choose-slug';
 /**
  * ProtectedRoute — gates a route on `useCurrentUserStore.user` being
  * populated. Consumes the `bootstrapped` flag from the store to
- * distinguish three states:
+ * distinguish four states:
  *
  *   - `!bootstrapped` — the `AuthBootstrap` `/auth/me` ping has not
  *     yet completed. Render a loading shell. Bouncing to `/login`
@@ -44,9 +44,9 @@ const CHOOSE_SLUG_PATH = '/choose-slug';
  *   - `bootstrapped && user && personalStudio === null` — authenticated
  *     but onboarding is incomplete (the account exists, but the slug
  *     step that creates the personal studio has not run). Bounce to the
- *     onboarding slug page. This is the single gate that catches both
- *     a half-finished email registration and (in future) a fresh OAuth
- *     account, no matter which protected URL they land on. Skipped when
+ *     onboarding slug page with the requested path and search as `next`.
+ *     This gate catches both a half-finished email registration and a fresh
+ *     OAuth account, no matter which protected URL they land on. Skipped when
  *     `requirePersonalStudio` is `false` (the onboarding page itself).
  *
  *   - `bootstrapped && user && personalStudio !== null` — fully

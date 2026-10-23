@@ -2,21 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Studio invite-confirmation handshake service (2026-06-14).
+ * Studio invite-confirmation handshake service.
  *
- * Replaces the slice-3 "invite takes effect immediately" path: an admin's
- * invite now creates a PENDING `studio_invitations` row + an actionable bell
- * notification; the invitee becomes a real `studio_members` row only when they
- * confirm (via the bell or the email link). This mirrors the transfer-admin
- * handshake, but the source of truth is the `studio_invitations` row (so admins
- * can see "invited (pending)" in the Members tab), not the notification.
+ * An admin invites an existing account or an unregistered mailbox. The shared
+ * invitation service arbitrates recipients under the target lock and settles
+ * mail delivery. Account invitations receive a bell notification immediately;
+ * mailbox invitations receive signup mail and become account invitations,
+ * with a notification, after matching email verification. The original row
+ * and share token survive that conversion. Membership starts only on confirm.
  *
  * Four operations:
- *   - `createInvite`: admin invites a registered user. Validates, then in ONE
- *     tx creates the pending row + the `studio.invite_request` notification +
- *     links them, then sends the optional invite email (best-effort, when an
- *     origin is given). A second LIVE pending for the same (studio, invitee)
- *     hits the partial unique → ConflictError.
+ *   - `createInvite`: delegates creation, recipient arbitration, notification
+ *     and mail settlement to the shared invitation service. Duplicate live
+ *     invitations for the same recipient are rejected across both forms.
  *   - `confirmInvite`: the invitee accepts. In ONE tx: take the studio's row
  *     (refusing if it has been soft-deleted), the accept CAS (the
  *     serialization point — concurrent confirms apply EXACTLY ONCE), the member
