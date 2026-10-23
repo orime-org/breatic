@@ -161,8 +161,9 @@ function serviceSilent(cause: unknown, readerKey: FailureLine): Error {
 function refusedFailure(err: UnderstandRefused): Error {
   switch (err.kind) {
     case "media":
-      // 413 is the provider's body ceiling, reached by the file; any other
-      // code here is the inline request this side built (`understand.ts`).
+      // Only 413 establishes a size reason. Other media refusals do not
+      // establish whether bytes, an external image fetch or our request was
+      // responsible, so both audiences receive the service's facts.
       return err.status === 413
         ? toolFailed(
           `The service would not take this media: ${err.detail}. ` +
@@ -170,10 +171,10 @@ function refusedFailure(err: UnderstandRefused): Error {
           FAILURE_LINES.fileTooLarge,
         )
         : toolFailed(
-          `The service turned down the request this side built for this media: ${err.detail}. ` +
-            "That is a fault on our side, not in the file; trying once more may work, and if it fails " +
-            "again tell the user it is unavailable, without blaming anything they sent.",
-          FAILURE_LINES.ourFault,
+          `The service did not accept this media request: ${err.detail}. ` +
+            "Tell the user it could not be processed. Use the reported reason to choose the next step; " +
+            "do not guess the cause or which item failed.",
+          FAILURE_LINES.refused,
         );
     case "unfetchable":
       // An image travels as its address and the backend fetches it, so this

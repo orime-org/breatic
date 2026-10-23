@@ -12,8 +12,8 @@
  *
  * Who to ask is entirely the caller's: the model, the backend, the credential
  * and the address all arrive as inputs. So this module reads no catalog and no
- * configuration, and every caller — the agent's tool today, a worker task
- * later — decides those where it already knows them.
+ * configuration. The agent tool and worker tasks supply those inputs where
+ * each already knows them.
  */
 
 import { EmptyBody, httpRequest, readWithin, stripUnicodeTags } from "@breatic/shared";

@@ -483,9 +483,10 @@ const previewOutcome = z
  *
  * The read a cover or an avatar skipped when it was finished, asked for by our
  * worker once the upload has returned, the audio peaks job, and the backfills
- * of previews and peaks. The only things it may write are a preview and an
- * audio object's peaks, each at a key derived from the object's own, and one
- * standing there is left alone, so a repeat costs at most one more container
+ * of previews and peaks, and the Agent's versioned JPEG preparation. It may
+ * write a preview, an audio object's peaks or a requested Agent JPEG, each at
+ * a key derived from the object's own. Existing outputs are left alone, so a
+ * repeat costs at most one more container
  * run and nothing else. Bounded by the caller's deadline: the Worker holds its
  * container to `deadlineAt`, and the wait ends at the same instant.
  * @param uploadUrl - The ingest Worker's base address.
@@ -499,8 +500,8 @@ const previewOutcome = z
  * @param about.wantPeaks - Whether to read the peaks of an audio object when none stand.
  * @param about.agentPicture - Optional versioned JPEG encoding specification.
  * @param signal - Stops this caller's wait while preserving the media deadline.
- * @returns The three numbers, each unusable one as none, and what became of
- *   the preview and the peaks when each was asked for.
+ * @returns The three numbers, each unusable one as none, and the outcomes of
+ *   the requested preview, peaks and Agent JPEG.
  * @throws {UploadHttpError} When the Worker refuses.
  * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {unknown} The transport's own failure when no delivery produced a

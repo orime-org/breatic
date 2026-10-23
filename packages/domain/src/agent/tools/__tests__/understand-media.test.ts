@@ -468,13 +468,18 @@ describe("understand_media — a call the service refused", () => {
     expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
   });
 
-  it("puts a request we built that the service refused down to our server", async () => {
+  it("reports the provider's invalid-body refusal without deciding who caused it", async () => {
+    // A provider's words are evidence of its refusal, not proof that our
+    // server built an invalid body. Errors our own validators establish have
+    // their own paths; this branch holds only the provider's reported facts.
     understandMediaAtMock.mockRejectedValue(new UnderstandRefused(400, "Invalid request body", "media"));
 
     const { forModel, readerKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
 
-    expect(readerKey).toBe("chat.tool.failure.ourFault");
-    expect(forModel).toMatch(/our side/);
+    expect(readerKey).toBe(FAILURE_LINES.refused);
+    expect(forModel).toContain("Invalid request body");
+    expect(forModel).not.toMatch(/fault on our side|fault in the file|our fault|not in the file/i);
+    expect(forModel).not.toMatch(/put the file somewhere|give another address|rehost/i);
     expect(forModel).not.toContain("do not send the same file again");
   });
 
