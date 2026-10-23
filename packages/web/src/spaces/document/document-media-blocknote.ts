@@ -174,11 +174,14 @@ function mediaNodeView(
   let endDrag: (() => void) | null = null;
 
   const actions: MediaBlockActions = {
+    canEdit: () => editor.isEditable && blockId() !== null,
     setProps: (props) => {
+      if (!editor.isEditable) return;
       const id = blockId();
       if (id !== null) editor.updateBlock(id, { props } as never);
     },
     remove: () => {
+      if (!editor.isEditable) return;
       const id = blockId();
       if (id === null) return;
       // The caption field goes with the block; the keyboard stays with the body.
@@ -228,7 +231,7 @@ function mediaNodeView(
 
   /** Enters what the container shows now. */
   const render = (): void => {
-    putMediaView(editor, host, { type, props: propsOf(node), selected: selected && held, actions });
+    putMediaView(editor, host, { blockId: blockId()!, type, props: propsOf(node), selected: selected && held, actions });
   };
   writeAttributes(dom, node, spec.config.propSchema);
   render();
@@ -264,7 +267,7 @@ function mediaNodeView(
       CONTROL_KEY_EVENTS.has(event.type) ||
       (!carriesFiles(event) &&
       event.target instanceof Element &&
-      event.target.closest(MEDIA_CHROME) !== null),
+      event.target.closest(`${MEDIA_CHROME}, ${MEDIA_CAPTION_INPUT}`) !== null),
     // What React draws inside is not the document's; the node has no content.
     ignoreMutation: () => true,
     destroy: () => {

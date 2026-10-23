@@ -1591,7 +1591,9 @@
         "close": "Close",
         "download": "Download",
         "delete": "Delete",
-        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead."
+        "leftOut": "{count, plural, one {# image, video or audio was not pasted.} other {# images, videos or audio were not pasted.}} Drop or paste the files instead.",
+        "captionReadOnly": "Read-only. You can copy this draft.",
+        "captionRetained": "Media removed. Copy this draft before closing the Space."
       }
     },
     "readOnlyReconnect": "Reconnect"

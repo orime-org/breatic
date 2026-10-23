@@ -6,10 +6,9 @@
  * A16, A17, A19), rendered into its node view's container by
  * `DocumentMediaViews`.
  *
- * Everything the reader works with — the toolbar above the media, the caption
- * field, the resize handles — sits under `[data-media-chrome]`. The node view
- * hands every event from there to the browser and to these controls, and the
- * body's stylesheet hides it while the editor is not editable (A11).
+ * Editing controls carry `[data-media-chrome]`, whose events belong to the
+ * node view and whose visibility follows current edit permission. Playback
+ * controls and copyable caption drafts keep their own presentation lifetime.
  */
 
 import {
@@ -39,6 +38,10 @@ import { cn } from '@web/lib/utils';
 import { BUBBLE_BAR_CLASS, BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
 import { MediaPlayer } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { DocumentMediaImage } from '@web/spaces/document/DocumentMediaImage';
+import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popover';
+import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
+import { documentBarsOf, mediaEvent, mediaPanelShown, useDocumentBars } from '@web/spaces/document/document-bars';
+import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
@@ -59,6 +62,8 @@ export interface MediaBlockProps {
 
 /** What the toolbar and the handles do, against the block as it is now. */
 export interface MediaBlockActions {
+  /** Reads current editability and target existence at commit time. */
+  readonly canEdit?: () => boolean;
   readonly setProps: (props: Partial<Record<'caption' | 'textAlignment' | 'previewWidth', unknown>>) => void;
   readonly remove: () => void;
   readonly download: () => void;
@@ -75,6 +80,9 @@ export interface MediaBlockActions {
 }
 
 interface DocumentMediaBlockProps {
+  editor: object;
+  blockId: string;
+  readOnly: boolean;
   type: MediaBlockType;
   props: MediaBlockProps;
   /** Whether the block is node-selected, which gives it its corner knobs. */
@@ -162,6 +170,7 @@ interface ToolButtonProps {
   action: string;
   testId: string;
   pressed?: boolean;
+  tabbable?: boolean;
   /** Classes added to the button, for a colour of its own. */
   className?: string;
   onPress: () => void;
@@ -175,6 +184,7 @@ interface ToolButtonProps {
  * @param props.action - What it does, for the toolbar's own reading.
  * @param props.testId - Its test id.
  * @param props.pressed - Whether its state is the block's.
+ * @param props.tabbable - Whether keyboard traversal reaches this action.
  * @param props.className - Classes added to the button.
  * @param props.onPress - What it does.
  * @param props.children - Its icon.
@@ -185,6 +195,7 @@ function ToolButton({
   action,
   testId,
   pressed,
+  tabbable = false,
   className,
   onPress,
   children,
@@ -199,7 +210,7 @@ function ToolButton({
           data-action={action}
           data-testid={testId}
           data-state={pressed === true ? 'on' : 'off'}
-          tabIndex={-1}
+          tabIndex={tabbable ? 0 : -1}
           onClick={onPress}
         >
           {children}
@@ -224,6 +235,9 @@ function ToolButton({
  * @returns The block's content.
  */
 export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
+  editor,
+  blockId,
+  readOnly,
   type,
   props,
   selected,
@@ -237,12 +251,29 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const sized = type !== 'audio';
   const frame = React.useRef<HTMLDivElement>(null);
   const [dragWidth, setDragWidth] = React.useState<number | null>(null);
-  const [editingCaption, setEditingCaption] = React.useState(false);
+  const drafts = captionDraftsFor(editor);
+  const subscribeDraft = React.useCallback((listener: () => void): (() => void) => drafts.subscribe(listener), [drafts]);
+  const draft = React.useSyncExternalStore(subscribeDraft, () => drafts.get(blockId));
+  const editingCaption = draft?.phase === 'editing' || draft?.phase === 'suspended';
+  const bars = useDocumentBars(editor);
+  const [floatingActions, setFloatingActions] = React.useState<HTMLDivElement | null>(null);
+  const [inlineActions, setInlineActions] = React.useState<HTMLDivElement | null>(null);
+  const [floatingTransport, setFloatingTransport] = React.useState<HTMLDivElement | null>(null);
+  const panel = React.useRef<HTMLDivElement>(null);
+  const closeEpochs = React.useRef(new WeakMap<EventTarget, number>());
+  const trigger = React.useRef<HTMLDivElement>(null);
+  const actionsCapture = React.useRef(null);
+  const migratingActions = React.useRef(false);
+  const leaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionFocused = React.useRef(false);
+  const previousReadOnly = React.useRef(readOnly);
+  const handoffAfterRoleChange = readOnly && !previousReadOnly.current && actionFocused.current;
   const [fullscreen, setFullscreen] = React.useState(false);
   const fullscreenId = React.useId();
   const [narrower, setNarrower] = React.useState(false);
   // The width the media is laid out at, which the preview is judged against.
   const [shownWidth, setShownWidth] = React.useState<number | null>(null);
+  const [transportMinWidth, setTransportMinWidth] = React.useState(MIN_WIDTH.video);
   // The address whose picture has loaded or failed for good.
   const [settledFor, setSettledFor] = React.useState<string | null>(null);
   const toolbarRef = React.useRef<HTMLDivElement | null>(null);
@@ -253,7 +284,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     toolbarRef.current = el;
     setToolbarEl(el);
   }, []);
-  usePressKeepsFocus(toolbarEl);
+  const floating = type === 'video' && (shownWidth === null || shownWidth < transportMinWidth);
+  const panelShown = floating && mediaPanelShown(bars, host);
+  usePressKeepsFocus(floating ? null : toolbarEl);
   // Set when the caption field closes on a key, so its blur does not commit
   // a second time, or commit what Escape threw away.
   const closedOnKey = React.useRef(false);
@@ -303,19 +336,91 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   // its toolbar; the caption under it is the block's text, and answers
   // neither the hover nor a click (`document-media-row-press.ts`).
   const pointerOn = React.useCallback((): void => {
+    if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
     placeToolbar();
     onHover(host, true);
   }, [placeToolbar, onHover, host]);
   const pointerOff = React.useCallback((): void => {
-    onHover(host, false);
-  }, [onHover, host]);
+    if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+    if (!floating) { onHover(host, false); return; }
+    mediaEvent(editor, { type: 'leave', host });
+    const duration = parseFloat(getComputedStyle(host).getPropertyValue('--duration-fast')) || 0;
+    leaveTimer.current = setTimeout(() => onHover(host, false), duration);
+  }, [onHover, host, floating, editor]);
   const captionField = React.useRef<HTMLInputElement>(null);
-  React.useEffect(() => {
-    if (editingCaption) {
-      closedOnKey.current = false;
+  React.useLayoutEffect(() => {
+    previousReadOnly.current = readOnly;
+    if (!handoffAfterRoleChange || editingCaption || documentBarsOf(editor).media.activity?.kind === 'seeking') return;
+    mediaEvent(editor, { type: 'outside', host });
+    const destination = trigger.current ?? host.querySelector<HTMLElement>('[data-testid="play-toggle"]');
+    if (destination !== null) destination.focus({ preventScroll: true });
+    else actions.focusBody();
+  }, [readOnly, handoffAfterRoleChange, editingCaption, editor, host, actions]);
+  const captionSession = React.useRef(0);
+  if (editingCaption && draft !== undefined) captionSession.current = draft.session;
+  /** Saves the last DOM value when this presentation is hidden or removed. */
+  const detachCaption = React.useCallback((): void => {
+    const value = captionField.current?.value;
+    drafts.event(blockId, { type: 'detach', session: captionSession.current, value });
+  }, [drafts, blockId]);
+  React.useLayoutEffect(() => detachCaption, [detachCaption]);
+  React.useEffect(() => () => {
+    if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
+    mediaEvent(editor, { type: 'release', host });
+  }, [editor, host]);
+  React.useLayoutEffect(() => {
+    if (!editingCaption) return;
+    closedOnKey.current = false;
+    const intent = documentBarsOf(editor).media.intent;
+    if (intent?.host === host) {
+      if (floating) return;
       captionField.current?.focus();
-    }
-  }, [editingCaption]);
+      mediaEvent(editor, { type: 'complete-caption', host, epoch: intent.epoch });
+    } else captionField.current?.focus();
+  }, [editingCaption, floating, editor, host]);
+  React.useEffect(() => {
+    if (type !== 'video') return undefined;
+    /**
+     * Releases ownership when focus reaches a separate user surface.
+     * @param event - The actual focus destination.
+     */
+    const outsideFocus = (event: FocusEvent): void => {
+      const target = event.target;
+      if (target instanceof Node && !host.contains(target) && !panel.current?.contains(target)) mediaEvent(editor, { type: 'outside', host });
+    };
+    document.addEventListener('focusin', outsideFocus);
+    return () => document.removeEventListener('focusin', outsideFocus);
+  }, [type, editor, host]);
+  React.useEffect(() => {
+    if (!panelShown) return undefined;
+    const scroller = frame.current?.closest<HTMLElement>(SCROLLER);
+    if (scroller === null || scroller === undefined) return undefined;
+    /** Releases a panel whose media has left the document viewport. */
+    const follow = (): void => {
+      const box = frame.current?.getBoundingClientRect();
+      const viewport = scroller.getBoundingClientRect();
+      if (box !== undefined && box.height > 0 && viewport.height > 0 && (box.bottom <= viewport.top || box.top >= viewport.bottom)) mediaEvent(editor, { type: 'release', host });
+    };
+    scroller.addEventListener('scroll', follow, { passive: true });
+    return () => scroller.removeEventListener('scroll', follow);
+  }, [panelShown, editor, host]);
+  const onControlFocus = React.useCallback((focused: boolean, relatedTarget: EventTarget | null): void => {
+    const inside = relatedTarget instanceof Element && (panel.current?.contains(relatedTarget) || toolbarRef.current?.contains(relatedTarget) ||
+      (host.contains(relatedTarget) && relatedTarget.closest('[data-testid="controls"]') !== null));
+    if (!focused && inside) return;
+    mediaEvent(editor, { type: 'focus', host, focused });
+  }, [editor, host]);
+  const onSeekingChange = React.useCallback((active: boolean, release: () => void): void => {
+    if (active) mediaEvent(editor, { type: 'seek-start', host, release });
+    else mediaEvent(editor, { type: 'seek-end', host, focused: host.contains(document.activeElement) || panel.current?.contains(document.activeElement) === true });
+  }, [editor, host]);
+  const videoControls = React.useMemo<VideoControlsTarget>(() => ({
+    destination: floating ? panelShown ? floatingTransport : null : 'inline',
+    surface: floating ? 'popover' : 'video',
+    preserveFocus: bars.media.activity?.host === host,
+    onFocusChange: onControlFocus,
+    onSeekingChange,
+  }), [floating, panelShown, floatingTransport, bars.media.activity, host, onControlFocus, onSeekingChange]);
 
   // Alignment changes nothing on screen when the media is as wide as the
   // body, so it is offered only when it is narrower (A9).
@@ -326,7 +431,11 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     const measure = (): void => {
       const row = element.parentElement;
       setNarrower(row !== null && element.offsetWidth < row.clientWidth);
-      setShownWidth(element.offsetWidth);
+      setShownWidth(element.offsetWidth > 0 ? element.offsetWidth : null);
+      const style = getComputedStyle(element);
+      const button = parseFloat(style.getPropertyValue('--btn-inline'));
+      const gap = parseFloat(style.getPropertyValue('--space-2'));
+      if (button > 0 && gap > 0) setTransportMinWidth(2 * button + 40 + 4 * gap);
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return undefined;
@@ -362,7 +471,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
    */
   const startResize = (side: 'left' | 'right', event: React.PointerEvent<HTMLElement>): void => {
     const element = frame.current;
-    if (element === null) return;
+    if (element === null || readOnly || actions.canEdit?.() === false) return;
     const handle = event.currentTarget;
     handle.setPointerCapture?.(event.pointerId);
     const startX = event.clientX;
@@ -409,8 +518,13 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
    * @param value - What the field holds.
    */
   const commitCaption = (value: string): void => {
-    setEditingCaption(false);
-    if (value !== props.caption) actions.setProps({ caption: value });
+    const current = drafts.get(blockId);
+    if (current === undefined) return;
+    drafts.event(blockId, { type: 'input', session: captionSession.current, value });
+    drafts.event(blockId, { type: 'commit', session: captionSession.current, caption: props.caption,
+      readOnly: readOnly || actions.canEdit?.() === false, exists: current.exists,
+      write: (caption) => actions.setProps({ caption }),
+    });
   };
 
   const body =
@@ -425,8 +539,134 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         onDoubleClick={openFullscreen}
       />
     ) : (
-      <MediaPlayer modality={type} src={props.url} size={mediaSize} />
+      <MediaPlayer modality={type} src={props.url} size={mediaSize} videoControls={type === 'video' ? videoControls : undefined} />
     );
+
+  const toolbar = (
+    <div
+      ref={holdToolbar}
+      data-testid='doc-media-toolbar'
+      inert={readOnly}
+      onFocusCapture={() => {
+        if (!migratingActions.current) { actionFocused.current = true; onControlFocus(true, null); }
+      }}
+      onBlurCapture={(event) => {
+        if (!migratingActions.current) {
+          actionFocused.current = event.currentTarget.contains(event.relatedTarget);
+          onControlFocus(false, event.relatedTarget);
+        }
+      }}
+      data-side={side}
+      data-shown={toolbarShown ? 'true' : undefined}
+      className={cn(floating && panelShown ? 'flex items-center gap-0.5 p-0.5' : BUBBLE_BAR_CLASS, (!toolbarShown || readOnly || (floating && !panelShown)) && 'invisible')}
+    >
+      {sized &&
+            narrower &&
+            ALIGNMENTS.map(({ value, Icon, labelKey }) => (
+              <ToolButton
+                tabbable={floating && panelShown}
+                key={value}
+                label={t(labelKey)}
+                action='align'
+                testId={`doc-media-align-${value}`}
+                pressed={alignment === value}
+                className={value === 'right' ? GROUP_RULE_AFTER : undefined}
+                onPress={() => {
+                  actions.setProps({ textAlignment: value });
+                }}
+              >
+                <Icon />
+              </ToolButton>
+            ))}
+      <ToolButton
+        tabbable={floating && panelShown}
+        label={t('spaces.document.media.caption')}
+        action='caption'
+        testId='doc-media-caption-button'
+        onPress={() => {
+          // An open field already holds the keyboard with the block selected.
+          if (!editingCaption) actions.select();
+          mediaEvent(editor, { type: 'caption', host });
+          const intent = documentBarsOf(editor).media.intent;
+          if (panel.current !== null && intent?.host === host) closeEpochs.current.set(panel.current, intent.epoch);
+          drafts.event(blockId, { type: 'open', caption: props.caption, readOnly: readOnly || actions.canEdit?.() === false, exists: true });
+        }}
+      >
+        <Type />
+      </ToolButton>
+      {type === 'image' && (
+        <ToolButton
+          tabbable={floating && panelShown}
+          label={t('spaces.document.media.fullscreen')}
+          action='fullscreen'
+          testId='doc-media-fullscreen'
+          onPress={() => {
+            actions.select();
+            openFullscreen();
+          }}
+        >
+          <Maximize2 />
+        </ToolButton>
+      )}
+      <ToolButton
+        tabbable={floating && panelShown}
+        label={t('spaces.document.media.download')}
+        action='download'
+        testId='doc-media-download'
+        onPress={actions.download}
+      >
+        <Download />
+      </ToolButton>
+      <ToolButton
+        tabbable={floating && panelShown}
+        label={t('spaces.document.media.delete')}
+        action='delete'
+        testId='doc-media-delete'
+        // The red every delete row in the body uses (block and table
+        // menus), kept on hover.
+        className='text-status-error-foreground hover-enabled:text-status-error-foreground'
+        onPress={() => { actions.focusBody(); mediaEvent(editor, { type: 'release', host }); actions.remove(); }}
+      >
+        <Trash2 />
+      </ToolButton>
+    </div>
+  );
+  const mediaFrame = (
+    <div
+      data-testid='doc-media-frame'
+      data-media-frame=''
+      onPointerEnter={pointerOn}
+      onPointerLeave={pointerOff}
+      className='relative'
+      draggable
+      // Decided as the press lands: the corners resize and the player's
+      // controls play, and a native drag starting under either would
+      // cancel their pointer (a drag begins with `pointercancel`).
+      onPointerDownCapture={(event) => {
+        event.currentTarget.draggable = !ownsPress(event.target);
+      }}
+      onDragStart={(event) => {
+        actions.dragStart(event.nativeEvent);
+      }}
+      onDragEnd={actions.dragEnd}
+    >
+      {body}
+      {sized &&
+            selected &&
+            CORNERS.map(({ corner, side: towards, place, cursor }) => (
+              <span
+                key={corner}
+                data-media-chrome=''
+                data-media-knob=''
+                data-testid={`doc-media-resize-${corner}`}
+                className={`absolute h-6 w-6 ${place} ${cursor}`}
+                onPointerDown={(event) => {
+                  startResize(towards, event);
+                }}
+              />
+            ))}
+    </div>
+  );
 
   return (
     <div
@@ -440,6 +680,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         ref={frame}
         data-testid='doc-media-box'
         data-media-box=''
+        data-controls-mode={type === 'video' ? floating ? 'floating' : 'inline' : undefined}
         data-hovered={hovered ? 'true' : undefined}
         data-selected={selected ? 'true' : undefined}
         className={cn(
@@ -456,6 +697,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             block and the bar stays up. It takes the pointer only while the bar is shown, so
             the line above the media is clickable the rest of the time. */}
         <div
+          ref={setInlineActions}
           data-media-chrome=''
           onPointerEnter={pointerOn}
           onPointerLeave={pointerOff}
@@ -465,125 +707,81 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             side === 'top' ? 'bottom-full pb-2' : 'top-2',
           )}
         >
-          <div
-            ref={holdToolbar}
-            data-testid='doc-media-toolbar'
-            data-side={side}
-            data-shown={toolbarShown ? 'true' : undefined}
-            className={cn(BUBBLE_BAR_CLASS, !toolbarShown && 'invisible')}
-          >
-            {sized &&
-            narrower &&
-            ALIGNMENTS.map(({ value, Icon, labelKey }) => (
-              <ToolButton
-                key={value}
-                label={t(labelKey)}
-                action='align'
-                testId={`doc-media-align-${value}`}
-                pressed={alignment === value}
-                className={value === 'right' ? GROUP_RULE_AFTER : undefined}
-                onPress={() => {
-                  actions.setProps({ textAlignment: value });
-                }}
-              >
-                <Icon />
-              </ToolButton>
-            ))}
-            <ToolButton
-              label={t('spaces.document.media.caption')}
-              action='caption'
-              testId='doc-media-caption-button'
-              onPress={() => {
-                // An open field already holds the keyboard with the block selected.
-                if (!editingCaption) actions.select();
-                setEditingCaption(true);
-              }}
-            >
-              <Type />
-            </ToolButton>
-            {type === 'image' && (
-              <ToolButton
-                label={t('spaces.document.media.fullscreen')}
-                action='fullscreen'
-                testId='doc-media-fullscreen'
-                onPress={() => {
-                  actions.select();
-                  openFullscreen();
-                }}
-              >
-                <Maximize2 />
-              </ToolButton>
-            )}
-            <ToolButton
-              label={t('spaces.document.media.download')}
-              action='download'
-              testId='doc-media-download'
-              onPress={actions.download}
-            >
-              <Download />
-            </ToolButton>
-            <ToolButton
-              label={t('spaces.document.media.delete')}
-              action='delete'
-              testId='doc-media-delete'
-              // The red every delete row in the body uses (block and table
-              // menus), kept on hover.
-              className='text-status-error-foreground hover-enabled:text-status-error-foreground'
-              onPress={actions.remove}
-            >
-              <Trash2 />
-            </ToolButton>
-          </div>
+
         </div>
         {/* The media itself, which is what a frame goes around: the caption
             under it is the block's text, not its content area. */}
-        <div
-          data-testid='doc-media-frame'
-          data-media-frame=''
-          onPointerEnter={pointerOn}
-          onPointerLeave={pointerOff}
-          className='relative'
-          draggable
-          // Decided as the press lands: the corners resize and the player's
-          // controls play, and a native drag starting under either would
-          // cancel their pointer (a drag begins with `pointercancel`).
-          onPointerDownCapture={(event) => {
-            event.currentTarget.draggable = !ownsPress(event.target);
-          }}
-          onDragStart={(event) => {
-            actions.dragStart(event.nativeEvent);
-          }}
-          onDragEnd={actions.dragEnd}
-        >
-          {body}
-          {sized &&
-            selected &&
-            CORNERS.map(({ corner, side: towards, place, cursor }) => (
-              <span
-                key={corner}
-                data-media-chrome=''
-                data-media-knob=''
-                data-testid={`doc-media-resize-${corner}`}
-                className={`absolute h-6 w-6 ${place} ${cursor}`}
-                onPointerDown={(event) => {
-                  startResize(towards, event);
-                }}
-              />
-            ))}
-        </div>
+        {type === 'video' ? (
+          <Popover open={panelShown} onOpenChange={(open) => {
+            if (open) mediaEvent(editor, { type: 'open', host, origin: 'keyboard' });
+            else mediaEvent(editor, { type: 'outside', host });
+          }}>
+            <PopoverTrigger asChild>
+              <Button asChild variant={null} size={null} className='block w-full whitespace-normal rounded-none p-0'>
+                <div ref={trigger} data-testid='doc-media-video-trigger' role='button' tabIndex={floating ? 0 : -1}
+                  className='outline-none focus-visible:ring-1 focus-visible:ring-ring'
+                  onClick={(event) => { event.preventDefault(); }}
+                  onKeyDown={(event) => {
+                    if (event.target === event.currentTarget && event.key === 'Enter' && floating) {
+                      event.preventDefault(); event.stopPropagation(); mediaEvent(editor, { type: 'open', host, origin: 'keyboard' });
+                    }
+                  }}
+                >{mediaFrame}</div>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent ref={panel} data-testid='doc-media-video-panel' tabIndex={-1}
+              collisionBoundary={host.closest<HTMLElement>(SCROLLER)} collisionPadding={4} side='top' sideOffset={8}
+              className='@container w-max p-1'
+              style={{ minWidth: `calc(${transportMinWidth}px + var(--space-2))` }}
+              onPointerEnter={pointerOn} onPointerLeave={pointerOff}
+              onFocusCapture={() => onControlFocus(true, null)}
+              onBlurCapture={(event) => onControlFocus(false, event.relatedTarget)}
+              onOpenAutoFocus={(event) => {
+                event.preventDefault();
+                if (documentBarsOf(editor).media.request?.origin === 'keyboard') panel.current?.focus();
+              }}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                const state = documentBarsOf(editor).media;
+                const epoch = event.target === null ? undefined : closeEpochs.current.get(event.target);
+                if (state.intent?.host === host && state.intent.epoch === epoch && captionField.current?.isConnected) {
+                  captionField.current.focus(); mediaEvent(editor, { type: 'complete-caption', host, epoch: state.intent.epoch });
+                } else if (state.close?.host === host && state.close.reason === 'escape' && state.close.epoch === epoch) trigger.current?.focus({ preventScroll: true });
+              }}
+              onEscapeKeyDown={(event) => {
+                event.preventDefault(); mediaEvent(editor, { type: 'escape', host });
+                if (panel.current !== null) closeEpochs.current.set(panel.current, documentBarsOf(editor).media.epoch);
+              }}
+              onInteractOutside={(event) => {
+                const target = event.detail.originalEvent.target;
+                if (target instanceof Node && host.contains(target)) event.preventDefault();
+                else mediaEvent(editor, { type: 'outside', host });
+              }}
+            >
+              {!readOnly && <div ref={setFloatingActions} data-media-chrome='' />}
+              <div ref={setFloatingTransport} />
+            </PopoverContent>
+          </Popover>
+        ) : mediaFrame}
+        <MediaControlsPortal destination={floating && panelShown && !readOnly ? floatingActions : inlineActions} capture={actionsCapture} migrating={migratingActions}>{toolbar}</MediaControlsPortal>
         {editingCaption ? (
           <input
-            data-media-chrome=''
+            data-media-chrome={readOnly ? undefined : ''}
             ref={captionField}
             data-testid='doc-media-caption-input'
             autoComplete='off'
-            defaultValue={props.caption}
+            value={draft?.value ?? props.caption}
+            readOnly={readOnly || draft?.phase === 'suspended'}
+            onChange={(event) => drafts.event(blockId, { type: 'input', session: captionSession.current, value: event.currentTarget.value })}
+            onCompositionStart={(event) => drafts.event(blockId, { type: 'composition-start', session: captionSession.current, value: event.currentTarget.value })}
+            onCompositionUpdate={(event) => drafts.event(blockId, { type: 'input', session: captionSession.current, value: event.currentTarget.value })}
             placeholder={t('spaces.document.media.captionPlaceholder')}
-            className='mt-1.5 w-full border-0 border-b border-border bg-transparent py-0.5 text-center text-sm text-foreground outline-none'
-            onCompositionEnd={captionComposition.mark}
+            className='nodrag mt-1.5 w-full border-0 border-b border-border bg-transparent py-0.5 text-center text-sm text-foreground outline-none'
+            onCompositionEnd={(event) => { captionComposition.mark(); drafts.event(blockId, { type: 'composition-end', session: captionSession.current, value: event.currentTarget.value }); }}
             onKeyDown={(event) => {
               if (keyBelongsToInputMethod(event.nativeEvent, captionComposition)) return;
               if (event.key !== 'Enter' && event.key !== 'Escape') return;
+              event.preventDefault(); event.stopPropagation();
               closedOnKey.current = true;
               const { value } = event.currentTarget;
               // The keyboard goes back to the body while the field still holds
@@ -591,7 +789,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               // leaving the body, which lets go of the block.
               actions.focusBody();
               if (event.key === 'Enter') commitCaption(value);
-              else setEditingCaption(false);
+              else drafts.event(blockId, { type: 'cancel', session: captionSession.current, caption: props.caption });
             }}
             onBlur={(event) => {
               // A key already closed it, or the window went to another app and
@@ -608,6 +806,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             {props.caption}
           </div>
         ) : null}
+        {editingCaption && readOnly && <p className='text-xs text-muted-foreground'>{t('spaces.document.media.captionReadOnly')}</p>}
       </div>
       {type === 'image' && (
         <Dialog open={fullscreen} onOpenChange={setFullscreen}>

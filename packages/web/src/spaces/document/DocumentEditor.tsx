@@ -366,7 +366,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
           too; their controls are hidden while the body is not editable. */}
-      <DocumentMediaViews editor={handle.editor} />
+      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} />
       {/* What each upload in flight shows, in the body where it will land
           (inner#1127 A4). Kept for a body that turned read-only meanwhile:
           a failed file still has its placeholder to remove. */}
