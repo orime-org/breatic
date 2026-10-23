@@ -112,7 +112,7 @@ export async function createPending(input: {
  * The index keys on `status = 'pending' AND deleted_at IS NULL` and CANNOT
  * include `expires_at` (a partial-index predicate must be immutable — `now()` is
  * not). Every READ path already treats an expired pending as void (accept CAS,
- * `listPendingByProject`, landing all gate `expires_at > now()`), so without this
+ * `listPendingByProject`, landing all gate `expires_at > clock_timestamp()`), so without this
  * the row is invisible everywhere yet still trips the unique index on re-invite
  * → a spurious "already invited" (#1769). Called inside `createInvite`'s
  * transaction right before {@link createPending}, so freeing the slot and taking
@@ -136,7 +136,7 @@ export async function expireStalePending(
         eq(projectInvitations.invitedUserId, invitedUserId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        lte(projectInvitations.expiresAt, sql`now()`),
+        lte(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     );
 }
@@ -220,7 +220,7 @@ export async function acceptIfPending(
         eq(projectInvitations.invitedUserId, invitedUserId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        gt(projectInvitations.expiresAt, sql`now()`),
+        gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     )
     .returning({
@@ -264,7 +264,7 @@ export async function declineIfPending(
         eq(projectInvitations.invitedUserId, invitedUserId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        gt(projectInvitations.expiresAt, sql`now()`),
+        gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     )
     .returning({ notificationId: projectInvitations.notificationId });
@@ -360,7 +360,7 @@ export async function listPendingByProject(
         eq(projectInvitations.projectId, projectId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        gt(projectInvitations.expiresAt, sql`now()`),
+        gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     )
     .orderBy(desc(projectInvitations.createdAt));
@@ -499,7 +499,7 @@ export async function createPendingEmail(input: {
 export async function expireStalePendingEmail(targetId: string, email: string, tx: DbTx): Promise<void> {
   await tx.update(projectInvitations).set({ status: "failed", failedReason: "expired" }).where(and(
     eq(projectInvitations.projectId, targetId), eq(projectInvitations.invitedEmail, email),
-    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), lte(projectInvitations.expiresAt, sql`now()`),
+    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), lte(projectInvitations.expiresAt, sql`clock_timestamp()`),
   ));
 }
 
@@ -515,7 +515,7 @@ export async function expireStalePendingEmail(targetId: string, email: string, t
 export async function findPendingForRecipient(targetId: string, email: string, userId: string | null, tx: DbTx): Promise<RecipientInvitation[]> {
   return tx.select(recipientFields).from(projectInvitations).where(and(
     eq(projectInvitations.projectId, targetId), eq(projectInvitations.status, "pending"),
-    isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`now()`),
+    isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
     or(eq(projectInvitations.invitedEmail, email), userId === null ? undefined : eq(projectInvitations.invitedUserId, userId)),
   ));
 }
@@ -552,7 +552,7 @@ export async function findRecipientByToken(token: string): Promise<RecipientInvi
 export async function findPendingEmailCandidates(email: string): Promise<EmailInvitationCandidate[]> {
   return db.select({ id: projectInvitations.id, targetId: projectInvitations.projectId }).from(projectInvitations).where(and(
     eq(projectInvitations.invitedEmail, email), isNull(projectInvitations.invitedUserId),
-    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`now()`),
+    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
   ));
 }
 
@@ -561,17 +561,18 @@ export async function findPendingEmailCandidates(email: string): Promise<EmailIn
  * @param id - The original invitation.
  * @param email - Normalized mailbox checked inside the target lock.
  * @param userId - Verified account with that mailbox.
- * @param expiresAt - The recipient's new decision deadline.
+ * @param decisionWindowMs - The renewed decision window in milliseconds.
  * @param tx - Enclosing claim and notification transaction.
  * @returns The converted row, or null when the compare-and-set lost.
  * @throws {Error} When persistence fails.
  */
-export async function claimPendingEmail(id: string, email: string, userId: string, expiresAt: Date, tx: DbTx): Promise<RecipientInvitation | null> {
+export async function claimPendingEmail(id: string, email: string, userId: string, decisionWindowMs: number, tx: DbTx): Promise<RecipientInvitation | null> {
   const [row] = await tx.update(projectInvitations).set({
-    invitedUserId: userId, invitedEmail: null, claimedAt: sql`now()`, expiresAt,
+    invitedUserId: userId, invitedEmail: null, claimedAt: sql`statement_timestamp()`,
+    expiresAt: sql`statement_timestamp() + ${decisionWindowMs} * interval '1 millisecond'`,
   }).where(and(
     eq(projectInvitations.id, id), eq(projectInvitations.invitedEmail, email), isNull(projectInvitations.invitedUserId),
-    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`now()`),
+    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
   )).returning(recipientFields);
   return row ?? null;
 }
@@ -586,7 +587,7 @@ export async function claimPendingEmail(id: string, email: string, userId: strin
 export async function revokePendingEmail(id: string, tx: DbTx): Promise<boolean> {
   const rows = await tx.update(projectInvitations).set({ status: "revoked" }).where(and(
     eq(projectInvitations.id, id), eq(projectInvitations.status, "pending"), isNull(projectInvitations.invitedUserId),
-    isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`now()`),
+    isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
   )).returning({ id: projectInvitations.id });
   return rows.length === 1;
 }

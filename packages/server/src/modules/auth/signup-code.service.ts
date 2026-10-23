@@ -53,14 +53,7 @@ export interface SignupCodeSent {
   resendAfterSeconds: number;
 }
 
-/**
- * Whether an email sign-up must prove the address with a code. True for the
- * backends that deliver (smtp) or show (console) the mail.
- * @returns `true` unless `EMAIL_BACKEND` is `disabled`.
- */
-export function emailVerificationEnabled(): boolean {
-  return env.EMAIL_BACKEND !== "disabled";
-}
+export { emailVerificationEnabled } from "@server/config/auth.js";
 
 /**
  * A uniformly random six-digit code, zero-padded.

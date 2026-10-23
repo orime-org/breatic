@@ -13,16 +13,17 @@ import * as projectInvites from "@server/modules/project-invite/projectInvitatio
 import * as studioInvites from "@server/modules/studio/studioInvitations.repo.js";
 import * as notifications from "@server/modules/notification/notification.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
-import { emailVerificationEnabled } from "@server/modules/auth/signup-code.service.js";
+import { emailVerificationEnabled } from "@server/config/auth.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import type { InvitationKind, InvitationRole, RecipientInvitation } from "@server/modules/invitation/invitation.types.js";
 
-/** The live membership target held by the current transaction. */
+/** The membership target held by the current transaction. */
 export interface InvitationTarget {
   kind: InvitationKind;
   id: string;
   studioId: string;
   name: string;
+  archived: boolean;
 }
 
 /** Committed recipient arbitration, before the delivery attempt. */
@@ -48,21 +49,25 @@ export function invitationRepo(kind: InvitationKind): typeof projectInvites | ty
  * @param kind - The membership target kind.
  * @param id - The target id.
  * @param tx - The enclosing transaction.
- * @returns The locked live target, or null when closed.
+ * @param allowArchived - Whether settlement may inspect a completed archived target.
+ * @returns The locked target permitted by this operation, or null when unavailable.
  * @throws {ForbiddenError} When a personal Studio is invited into.
  * @throws {Error} When persistence fails.
  */
-async function lockTarget(kind: InvitationKind, id: string, tx: DbTx): Promise<InvitationTarget | null> {
+async function lockTarget(kind: InvitationKind, id: string, tx: DbTx, allowArchived = false): Promise<InvitationTarget | null> {
   if (kind === "project") {
-    if (!await projectRepo.lockLiveProject(id, tx)) return null;
+    const locked = allowArchived
+      ? await projectRepo.lockProject(id, tx)
+      : await projectRepo.lockLiveProject(id, tx);
+    if (!locked) return null;
     const project = await projectRepo.getProjectById(id, tx);
-    return project ? { kind, id, studioId: project.studioId, name: project.name } : null;
+    return project ? { kind, id, studioId: project.studioId, name: project.name, archived: project.archivedAt !== null } : null;
   }
   if (!await studioRepo.lockStudio(id, tx)) return null;
   const studio = await studioRepo.getById(id, tx);
   if (!studio) return null;
   if (studio.type === "personal") throw new ForbiddenError(t("server.studio.cannot_modify_personal"));
-  return { kind, id, studioId: id, name: studio.name };
+  return { kind, id, studioId: id, name: studio.name, archived: false };
 }
 
 /**
@@ -118,7 +123,7 @@ async function notifyRecipient(target: InvitationTarget, invite: RecipientInvita
 async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: UserEntity, tx: DbTx): Promise<boolean> {
   if (!user.emailVerified || invite.invitedEmail !== normalizeEmail(user.email)) return false;
   const claimed = await invitationRepo(target.kind).claimPendingEmail(
-    invite.id, normalizeEmail(user.email), user.id, new Date(Date.now() + getDecisionWindowMs()), tx,
+    invite.id, normalizeEmail(user.email), user.id, getDecisionWindowMs(), tx,
   );
   if (!claimed) return false;
   await notifyRecipient(target, claimed, await inviterNameOf(invite.invitedBy, tx), tx);
@@ -126,19 +131,30 @@ async function claimLocked(target: InvitationTarget, invite: RecipientInvitation
 }
 
 /**
- * Check an invite-time member and capacity precondition under the target lock.
+ * Refuse a new invitation request for someone who already belongs to the target.
  * @param target - The locked membership target.
  * @param user - Registered recipient, when present.
  * @param tx - The enclosing transaction.
- * @returns Once both preconditions hold.
- * @throws {ConflictError} When already a member or capacity is exhausted.
+ * @returns Once the recipient is known not to be a member.
+ * @throws {ConflictError} When already a member.
  * @throws {Error} When persistence fails.
  */
-async function checkNewInvitation(target: InvitationTarget, user: UserEntity | null, tx: DbTx): Promise<void> {
+async function checkInvitationRecipient(target: InvitationTarget, user: UserEntity | null, tx: DbTx): Promise<void> {
   const role = user === null ? null : target.kind === "project"
     ? await projectMembersRepo.getRole(target.id, user.id, tx)
     : await studioMembersRepo.getRole(target.id, user.id, tx);
   if (role) throw new ConflictError(t(`server.${target.kind}.already_member`));
+}
+
+/**
+ * Check capacity before creating a new invitation under the target lock.
+ * @param target - The locked membership target.
+ * @param tx - The enclosing transaction.
+ * @returns Once a membership seat is available.
+ * @throws {ConflictError} When capacity is exhausted.
+ * @throws {Error} When persistence fails.
+ */
+async function checkInvitationCapacity(target: InvitationTarget, tx: DbTx): Promise<void> {
   const limits = await getLimitsForStudio(target.studioId, tx);
   const limit = target.kind === "project" ? limits.project_members : limits.studio_members;
   const count = target.kind === "project"
@@ -175,6 +191,7 @@ export async function prepareInvitation(input: {
     if (!target) throw new NotFoundError(t("server.error.not_found"));
     const repo = invitationRepo(input.kind);
     const user = await usersRepo.getUserByEmail(email, tx);
+    await checkInvitationRecipient(target, user, tx);
     await repo.expireStalePendingEmail(target.id, email, tx);
     if (user) await repo.expireStalePending(target.id, user.id, tx);
     const pending = await repo.findPendingForRecipient(target.id, email, user?.id ?? null, tx);
@@ -185,7 +202,7 @@ export async function prepareInvitation(input: {
       if (existing.invitedUserId === null && user?.emailVerified) await claimLocked(target, existing, user, tx);
       return { duplicate: true, invitation: existing, target, invitee: user, inviterName };
     }
-    await checkNewInvitation(target, user, tx);
+    await checkInvitationCapacity(target, tx);
     if (!user && !emailVerificationEnabled()) throw new NotFoundError(t(`server.${input.kind}.email_not_registered_no_mail`));
     const expiresAt = new Date(Date.now() + getDecisionWindowMs());
     const common = { invitedBy: input.invitedBy, expiresAt, tx };
@@ -241,7 +258,7 @@ export async function claimInvitation(kind: InvitationKind, id: string, targetId
  */
 export async function settleSignupInvitationDelivery(kind: InvitationKind, id: string, targetId: string, delivered: boolean): Promise<boolean> {
   const outcome = await db.transaction(async (tx) => {
-    const target = await lockTarget(kind, targetId, tx);
+    const target = await lockTarget(kind, targetId, tx, true);
     if (!target) return "closed";
     const repo = invitationRepo(kind);
     const invite = await repo.findRecipientById(id, tx);
@@ -249,7 +266,7 @@ export async function settleSignupInvitationDelivery(kind: InvitationKind, id: s
     if (["accepted", "declined"].includes(invite.status) && invite.invitedUserId !== null && invite.notificationId !== null) {
       return await notificationRepo.findById(invite.notificationId, tx) ? "ordinary" : "closed";
     }
-    if (invite.status !== "pending" || invite.expiresAt.getTime() <= Date.now()) return "closed";
+    if (target.archived || invite.status !== "pending" || invite.expiresAt.getTime() <= Date.now()) return "closed";
     if (invite.invitedUserId !== null) {
       return invite.notificationId !== null && await notificationRepo.findById(invite.notificationId, tx) ? "ordinary" : "closed";
     }
