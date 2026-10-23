@@ -22,7 +22,7 @@
 
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
-import { Slice, type Fragment, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { flushSync } from 'react-dom';
@@ -32,6 +32,7 @@ import { deriveId } from '@breatic/shared';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 
 /** The narrowest a column can be dragged. */
 const CELL_MIN_WIDTH = 35;
@@ -270,7 +271,8 @@ const keepPastedTablesWhole = new Plugin({
       const end = openAboveTables(slice.content, slice.openEnd, 1);
       if (start === slice.openStart && end === slice.openEnd) return slice;
       const closed = new Slice(slice.content, start, end);
-      return cellDepthOf(view.state.selection.$from) > 0 ? closed : unwrapOpenSides(closed);
+      const { selection } = view.state;
+      return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
     },
     // At the start of a line with words, ProseMirror splits the line before
     // the table and leaves its empty first half above it.
@@ -284,6 +286,48 @@ const keepPastedTablesWhole = new Plugin({
       view.dispatch(view.state.tr.insert($from.before($from.depth - 1), slice.content).scrollIntoView());
       return true;
     },
+  },
+});
+
+/**
+ * Replaces tables in a fragment with their cells' blocks in reading order,
+ * preserving each block's attributes, marks and nested children.
+ * @param content - The fragment to unfold.
+ * @returns The fragment with table frames removed.
+ */
+function unfoldTables(content: Fragment): Fragment {
+  const blocks: PMNode[] = [];
+  content.forEach((node) => {
+    if (node.type.name === DOC_TABLE) {
+      node.forEach((row) => row.forEach((cell) => unfoldTables(cell.content).forEach((block) => blocks.push(block))));
+    } else {
+      blocks.push(node.isLeaf ? node : node.copy(unfoldTables(node.content)));
+    }
+  });
+  return Fragment.from(blocks);
+}
+
+/**
+ * A cell excludes tables among its immediate children; a list's block group
+ * can still accept one deeper down. Every document-changing entry therefore
+ * unfolds such tables, including block API writes and peer updates.
+ */
+const unfoldCellTables = new Plugin({
+  key: new PluginKey('doc-table-unfold-cell-tables'),
+  appendTransaction: (transactions, _old, state) => {
+    if (!transactions.some((tr) => tr.docChanged)) return null;
+    const tables: TableAt[] = [];
+    state.doc.descendants((node, pos) => {
+      if (node.type.name !== DOC_TABLE || cellDepthOf(state.doc.resolve(pos)) < 0) return true;
+      tables.push({ pos, node });
+      return false;
+    });
+    if (tables.length === 0) return null;
+    const tr = state.tr;
+    for (const { pos, node } of tables.reverse()) {
+      tr.replaceWith(pos, pos + node.nodeSize, unfoldTables(Fragment.from(node)));
+    }
+    return tr;
   },
 });
 
@@ -363,6 +407,7 @@ const DocTableEditing = Extension.create({
       defaultCellMinWidth: DEFAULT_CELL_WIDTH,
       View: null,
     }),
+    unfoldCellTables,
     tableEditing(),
     keepPastedTablesWhole,
   ],

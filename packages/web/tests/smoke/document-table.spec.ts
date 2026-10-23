@@ -21,7 +21,7 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
-import { clickAndSettle, pressAndSettle } from '../helpers/editor-keys';
+import { clickAndSettle, pressAndSettle, selectInBody } from '../helpers/editor-keys';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
 
 let page: Page;
@@ -893,6 +893,105 @@ test('A16: a table pasted from a spreadsheet lands as a table', async () => {
   }, EDITOR);
 
   expect(await grids(page)).toEqual([[['city', 'pop'], ['Oslo', '7']]]);
+});
+
+/**
+ * Sends HTML and its text fallback through the browser's paste event.
+ * @param p - The page holding the focused editor.
+ * @param html - The clipboard's HTML.
+ * @param text - Its text fallback.
+ */
+async function pasteHtml(p: Page, html: string, text: string): Promise<void> {
+  await p.evaluate(({ selector, html, text }) => {
+    const transfer = new DataTransfer();
+    transfer.setData('text/html', html);
+    transfer.setData('text/plain', text);
+    document.querySelector(selector)!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: transfer, bubbles: true, cancelable: true }));
+  }, { selector: EDITOR, html, text });
+}
+
+for (const theme of ['light', 'dark']) {
+  test(`T14: a table pasted over a selection leaving a cell replaces the table in the body (${theme})`, async () => {
+    await openFreshDocument(page);
+    await page.evaluate((theme) => document.documentElement.setAttribute('data-theme', theme), theme);
+    await smallTable(page);
+    await clickAndSettle(page, page.locator(TOP).nth(2));
+    await page.keyboard.type('below');
+    await selectInBody(page, () => page.evaluate((selector) => {
+      const body = document.querySelector(selector)!;
+      const from = Array.from(body.querySelectorAll('td .bn-inline-content')).find((node) => node.textContent === 'a1')!;
+      const to = Array.from(body.querySelectorAll('.bn-inline-content')).find((node) => node.textContent === 'below')!;
+      const range = document.createRange();
+      // The whole-table selection keeps its start on the table's first word.
+      range.setStart(from.firstChild!, 0);
+      range.setEnd(to.firstChild!, 2);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, EDITOR));
+    await expect(page.locator(`${EDITOR} td.doc-table-in-selection`)).toHaveCount(4);
+
+    await pasteHtml(page, '<table><tr><td>new1</td><td>new2</td></tr></table>', 'new1\tnew2');
+
+    await expect.poll(() => grids(page)).toEqual([[['new1', 'new2']]]);
+    await expect(page.locator(`${EDITOR} > .bn-block-group > [data-node-type='docTable']`)).toHaveCount(1);
+    await expect(page.locator(TOP).first()).toHaveText('lead');
+    await expect(page.locator(TOP).filter({ hasText: /^low$/ })).toHaveCount(1);
+  });
+}
+
+test('T1 and T9: a table pasted below a list in a cell becomes its blocks on both pages', async ({ browser }) => {
+  const spaceId = await openFreshDocument(page);
+  await smallTable(page);
+  const other = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+  other.on('pageerror', (error) => errors.push(String(error)));
+  try {
+    await other.goto(page.url());
+    await other.getByTestId(`space-tab-name-${spaceId}`).click();
+    await expect(other.locator(`${EDITOR} table`)).toHaveCount(1);
+    await clickAndSettle(page, cell(page, 'a1'));
+    await page.keyboard.press('End');
+
+    await pasteHtml(page, '<ul><li>Outer<ul><li>Inner<table><tr><td>nested1</td><td>nested2</td></tr></table></li></ul></li></ul>', 'Outer\nInner\nnested1\tnested2');
+
+    const expected = [[['a1OuterInnernested1nested2', 'b1'], ['a2', 'b2']]];
+    await expect.poll(() => grids(page)).toEqual(expected);
+    await expect.poll(() => grids(other)).toEqual(expected);
+    await expect(page.locator(`${EDITOR} td table, ${EDITOR} th table`)).toHaveCount(0);
+    await expect(other.locator(`${EDITOR} td table, ${EDITOR} th table`)).toHaveCount(0);
+  } finally {
+    await other.close();
+  }
+});
+
+test('T6: dragging a whole table into a nested list in a cell leaves the document unchanged', async () => {
+  await openFreshDocument(page);
+  await smallTable(page);
+  await clickAndSettle(page, cell(page, 'a1'));
+  await page.keyboard.press('End');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('- item');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('nested');
+  await page.keyboard.press('Tab');
+  await insertTable(page, 1, 1);
+  await page.keyboard.type('source');
+  const before = await grids(page);
+  const target = await page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^nested$/ }).boundingBox();
+  expect(target).not.toBeNull();
+  await page.evaluate(() => {
+    const events = { starts: 0, drops: 0 };
+    (window as unknown as { tableDropEvents: typeof events }).tableDropEvents = events;
+    document.addEventListener('dragstart', () => { events.starts += 1; }, { capture: true });
+    document.addEventListener('drop', () => { events.drops += 1; }, { capture: true });
+  });
+  await hoverTable(page);
+
+  await dragHandle(page, page.getByTestId('doc-block-table-handle'), { x: target!.x + target!.width - 4, y: target!.y + target!.height / 2 });
+
+  expect(await page.evaluate(() => (window as unknown as { tableDropEvents: { starts: number; drops: number } }).tableDropEvents)).toEqual({ starts: 1, drops: 1 });
+  await expect.poll(() => grids(page)).toEqual(before);
+  await expect(page.locator(`${EDITOR} td table, ${EDITOR} th table`)).toHaveCount(0);
 });
 
 test('A17: two pages on one Space end up with the same table', async ({ browser }) => {

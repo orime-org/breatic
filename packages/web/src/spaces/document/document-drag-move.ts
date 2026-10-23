@@ -36,7 +36,22 @@ import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
+
+/**
+ * Whether a carried block is a table or contains one in its children.
+ * @param node - The carried block.
+ * @returns True when moving it would move a table too.
+ */
+function carriesTable(node: PMNode): boolean {
+  if (node.type.name === DOC_TABLE) return true;
+  let found = false;
+  node.descendants((child) => {
+    if (child.type.name === DOC_TABLE) found = true;
+    return !found;
+  });
+  return found;
+}
 
 /**
  * Where a row would land for a drop at the given document position.
@@ -108,6 +123,7 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) return;
 
   const leaving = rangeToLift(view.state.doc, row);
   const tr = view.state.tr;
