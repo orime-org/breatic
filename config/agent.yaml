@@ -10,6 +10,25 @@ max_tool_iterations: 40
 # Default model for MainAgent chat.
 default_model: deepseek/deepseek-v4.1-flash-1017
 
+# Native picture support: auto reads the public model catalog; yes/no override it.
+main_model_sees_pictures: auto
+model_catalog_timeout_ms: 1000
+model_catalog_ttl_ms: 300000
+model_catalog_retry_ms: 30000
+
+# Native pictures are independent from the display preview. Budgets count each
+# occurrence in the request, including repeated pictures.
+chat_pictures_max: 50
+chat_pictures_max_bytes: 20971520
+picture_tokens_estimate: 4784
+agent_picture_long_edge: 1024
+agent_picture_quality: 85
+agent_picture_concurrency: 4
+
+# Ordered media in one understanding request. The existing byte limit also
+# bounds the combined audio/video download before the single model call.
+understand_media_max_items: 10
+
 # Model used for memory consolidation (summarizing old turns). The same model
 # that writes a conversation reads it back: two would put the summary in one
 # voice and the reply in another, and name two providers on one bill.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Asking a model about one piece of media.
+ * Asking a model one question about an ordered collection of media.
  *
  * Straight at the service's HTTP API. The three media shapes below are the
  * ones it takes, measured one by one against the live endpoint, and none of
@@ -20,6 +20,7 @@ import { EmptyBody, httpRequest, readWithin, stripUnicodeTags } from "@breatic/s
 import { UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
+  MediaTransport,
   RefusalFacts,
   RefusalKind,
   UnderstandAnswer,
@@ -92,10 +93,10 @@ function refusalKind(facts: RefusalFacts): RefusalKind {
     // The provider's body ceiling, reached by what we put in it.
     if (code === 413) return "media";
     // Measured, a video sent as a url comes back 400 `Cannot fetch content`.
-    // An image is the one kind that travels as its address, so a 400 there is
-    // about reaching the address and the move it leaves is to host the file
-    // somewhere else; on the inline path the body is ours and so is the fault.
-    if (code === 400) return facts.sentAsAddress ? "unfetchable" : "media";
+    // Only an address-only batch supports the existing unreachable-address
+    // classification. In a mixed batch, the same status may be an inline
+    // decoding or request failure; it cannot establish that a URL was unreachable.
+    if (code === 400) return facts.transport === "address" ? "unfetchable" : "media";
     // The one shape where the status has nothing to say: it is 200 by
     // construction. Measured, that is this model's guardrail declining the
     // question, and a differently worded one about the same file is answered.
@@ -142,7 +143,7 @@ interface Completion {
  * is not what decides — the body is.
  * @param res - The response as it arrived.
  * @param budgetMs - How long the whole body may take to arrive.
- * @param sentAsAddress - Whether the media went as an address to be fetched.
+ * @param transport - Whether this batch uses addresses, inline media or both.
  * @param signal - The caller's signal, so the read ends when they do.
  * @param onBilled - Told once, when the answer shows the call was billed.
  * @returns What the model wrote and why it stopped.
@@ -151,7 +152,7 @@ interface Completion {
 async function readAnswer(
   res: Response,
   budgetMs: number,
-  sentAsAddress: boolean,
+  transport: MediaTransport,
   signal: AbortSignal | undefined,
   onBilled: (costUsd: number | undefined) => void,
 ): Promise<UnderstandAnswer> {
@@ -178,7 +179,7 @@ async function readAnswer(
     return new UnderstandRefused(
       code,
       detail,
-      refusalKind({ ...facts, code, sentAsAddress }),
+      refusalKind({ ...facts, code, transport }),
       errorType,
     );
   };
@@ -280,7 +281,13 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     messages: [
       {
         role: "user",
-        content: [{ type: "text", text: stripUnicodeTags(request.question) }, mediaPart(request.media)],
+        content: [
+          { type: "text", text: stripUnicodeTags(request.question) },
+          ...request.media.flatMap((media, index) => [
+            { type: "text", text: `Item ${String(index + 1)}` },
+            mediaPart(media),
+          ]),
+        ],
       },
     ],
   };
@@ -311,10 +318,13 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     },
   );
 
+  const hasAddresses = request.media.some((media) => media.kind === "image");
+  const hasInline = request.media.some((media) => media.kind !== "image");
+  const transport: MediaTransport = hasAddresses ? (hasInline ? "mixed" : "address") : "inline";
   return readAnswer(
     res,
     request.timeoutMs,
-    request.media.kind === "image",
+    transport,
     request.signal,
     request.onBilled,
   );

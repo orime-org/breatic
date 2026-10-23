@@ -73,7 +73,7 @@ function turnCopy(usage?: UsageRecorder): Call {
   const execute = build().execute;
   if (!execute) throw new Error("understand_media has no execute");
   return (input, signal) =>
-    execute(input, toolOptions(signal ? { abortSignal: signal } : {}, usage) as never);
+    execute({ items: [{ url: input.url }], question: input.question }, toolOptions(signal ? { abortSignal: signal } : {}, usage) as never);
 }
 
 /**
@@ -222,7 +222,7 @@ describe("understand_media — a call that worked", () => {
     await run({ url: "https://example.com/dog.jpg", question: "What is this?" });
 
     expect(understandMediaAtMock).toHaveBeenCalledWith({
-      url: "https://example.com/dog.jpg",
+      items: [{ url: "https://example.com/dog.jpg" }],
       question: "What is this?",
       maxBytes: config.understand_media_max_bytes,
       fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
@@ -362,7 +362,7 @@ describe("understand_media — one at a time within a turn", () => {
     expect(await Promise.all(both)).toEqual(["ok", "ok"]);
   });
 
-  it("asks the model for one address at a time", async () => {
+  it("asks the model to group media into one request", async () => {
     // The gate below is the backstop. This sentence is what keeps it off the
     // normal path, and it was measured against the live model: the same
     // message carrying three addresses produced three overlapping calls
@@ -375,8 +375,8 @@ describe("understand_media — one at a time within a turn", () => {
     // entirely, so the shape is part of what is pinned.
     const { description } = build();
     if (typeof description !== "string") throw new Error("the description is not a string");
-    expect(description.toLowerCase()).toContain("one address at a time");
-    expect(description.toLowerCase()).toContain("wait for the answer");
+    expect(description.toLowerCase()).toContain("items");
+    expect(description.toLowerCase()).toContain("question");
   });
 });
 

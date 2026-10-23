@@ -24,6 +24,8 @@ import type * as coreModule from "@breatic/core";
 
 const httpRequestMock = vi.fn();
 
+vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+
 vi.mock("@breatic/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof sharedModule>();
   return {
@@ -176,9 +178,9 @@ describe("judge_likelihood is in the agent's hands", () => {
     expect(judgeLikelihood.metadata).toMatchObject({ runningLine: expect.any(String) });
   });
 
-  it("is left out of a deployment with no key", () => {
+  it("is left out of a deployment with no key", async () => {
     apiKey = undefined;
-    const config = buildAgentConfig({ basePrompt: "base" });
+    const config = await buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools)).not.toContain(JUDGE_LIKELIHOOD);
   });
 

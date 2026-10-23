@@ -39,7 +39,7 @@ const SVG = 'https://upload.wikimedia.org/wikipedia/commons/f/fd/Ghostscript_Tig
 /** The understand_media call of a turn, as the conversation stores it. */
 interface UnderstandCall {
   state: string;
-  input?: { url?: unknown };
+  input?: { items?: Array<{ url?: unknown }>; question?: unknown };
   output?: unknown;
   failureKind?: string;
   errorText?: string;
@@ -75,6 +75,7 @@ interface Turn {
   reply: string;
   toolLines: string;
   call: UnderstandCall | null;
+  calls: UnderstandCall[];
 }
 
 /**
@@ -98,6 +99,25 @@ async function askInFreshConversation(p: Page, prompt: string, address: string):
     if (result.call !== null) return result;
   }
   throw new Error(`no turn of ${String(TURNS_TO_LOOK)} called understand_media on ${address}`);
+}
+
+/**
+ * Ask for a mixed batch until the model chooses the understanding tool.
+ *
+ * A chosen batch is returned immediately, including malformed splits or
+ * ordering, so the case's assertions detect them rather than retrying them.
+ * @param p - The page to drive.
+ * @param prompt - The ordered batch and shared question to type.
+ * @param address - The first source to locate in the stored call.
+ * @returns The first turn that made any understanding call.
+ * @throws {Error} when the model never chooses the tool.
+ */
+async function askBatchInFreshConversation(p: Page, prompt: string, address: string): Promise<Turn> {
+  for (let turn = 1; turn <= TURNS_TO_LOOK; turn += 1) {
+    const result = await oneTurn(p, prompt, address);
+    if (result.calls.length > 0) return result;
+  }
+  throw new Error(`no turn of ${String(TURNS_TO_LOOK)} called understand_media for the mixed batch`);
 }
 
 /**
@@ -162,11 +182,9 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
     data: { messages: { role: string; parts: ({ type: string } & UnderstandCall)[] }[] };
   }).data;
   const asked = new URL(address).href;
-  const call =
-    messages
-      .flatMap((m) => m.parts)
-      .filter((part) => part.type === 'tool-understand_media' && sameAddress(part.input?.url, asked))
-      .at(-1) ?? null;
+  const calls = messages.flatMap((message) => message.parts)
+    .filter((part) => part.type === 'tool-understand_media');
+  const call = calls.filter((part) => part.input?.items?.some((item) => sameAddress(item.url, asked))).at(-1) ?? null;
   // The prose the model wrote, without the line a step that did not finish
   // leaves inside it (inner#1620).
   const reply = await body.evaluate((el) => {
@@ -174,7 +192,7 @@ async function oneTurn(p: Page, prompt: string, address: string): Promise<Turn> 
     copy.querySelectorAll('[data-testid="message-bubble-tool-failed"]').forEach((line) => line.remove());
     return (copy.innerText || copy.textContent || '').trim();
   });
-  return { reply, toolLines, call };
+  return { reply, toolLines, call, calls };
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -239,6 +257,35 @@ test('says what an audio clip sounds like @needs-internet @needs-model', async (
   expect(toolLines).toContain('Looking at the media');
   expect(call?.state).toBe('output-available');
   expect(String(call?.output)).toMatch(/piano|music|melod|钢琴|音乐/i);
+});
+
+test('compares an ordered audio image and video batch in one understanding call @needs-internet @needs-model', async () => {
+  const { calls, reply } = await askBatchInFreshConversation(
+    page,
+    'Use understand_media exactly once with these three items in this order: ' +
+      `Item 1 audio: ${AUDIO}; Item 2 image: ${IMAGE}; Item 3 video: ${VIDEO}. ` +
+      'Ask one shared question: identify what each item contains and compare their media types. ' +
+      'Keep the input order and label both the tool answer and your final answer Item 1, Item 2, and Item 3.',
+    AUDIO,
+  );
+
+  expect(calls).toHaveLength(1);
+  const call = calls[0];
+  expect(call?.state).toBe('output-available');
+  expect(call?.input?.items?.map((item) => typeof item.url === 'string' ? new URL(item.url).href : item.url)).toEqual([
+    new URL(AUDIO).href, new URL(IMAGE).href, new URL(VIDEO).href,
+  ]);
+  expect(typeof call?.input?.question).toBe('string');
+  expect(String(call?.input?.question)).toMatch(/contain|content|compare|describe|identify|type/i);
+  const answer = String(call?.output);
+  const sections = answer.match(/Item\s*1([\s\S]*?)Item\s*2([\s\S]*?)Item\s*3([\s\S]*)/i);
+  expect(sections).toHaveLength(4);
+  expect(sections?.[1]).toMatch(/piano|music|melod/i);
+  expect(sections?.[2]).toMatch(/puppy|dog|Labrador/i);
+  expect(sections?.[3]).toMatch(/tree|grass|meadow|forest|clearing/i);
+  expect(reply).toMatch(/Item\s*1/i);
+  expect(reply).toMatch(/Item\s*2/i);
+  expect(reply).toMatch(/Item\s*3/i);
 });
 
 test('says what it is doing while the call is in flight @needs-internet @needs-model', async () => {

@@ -12,12 +12,15 @@
 
 import { fetchMedia } from "@domain/understand/fetch-media.js";
 import { understandMedia } from "@domain/understand/understand.js";
-import type { MediaKind, UnderstandAnswer, UnderstandAt } from "@domain/understand/types.js";
+import { MediaUnavailable } from "@domain/understand/types.js";
+import type { Media, MediaKind, UnderstandAnswer, UnderstandAt } from "@domain/understand/types.js";
 
 /** What one call answered with, and which kind it turned out to be. */
 export interface UnderstandAtAnswer extends UnderstandAnswer {
   /** Which of the three kinds the address held. */
   kind: MediaKind;
+  /** Each input's settled kind in the original order. */
+  kinds: MediaKind[];
 }
 
 /**
@@ -26,14 +29,37 @@ export interface UnderstandAtAnswer extends UnderstandAnswer {
  * @returns What the model wrote, and which kind the address held.
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
+ * @throws {RangeError} when no media items were supplied.
+ * @throws {DOMException} when the caller stops the request.
  */
 export async function understandMediaAt(request: UnderstandAt): Promise<UnderstandAtAnswer> {
-  // Handed on whole rather than copied field by field. Each half reads the
-  // fields it declared and ignores the rest, so a field added to either one
-  // arrives here without a third place to update — and a figure cannot be
-  // routed to the wrong parameter, because nothing is routing them.
-  const media = await fetchMedia(request);
+  const media: Media[] = [];
+  let remainingDownloadBytes = request.maxBytes;
+  for (const [index, item] of request.items.entries()) {
+    request.signal?.throwIfAborted();
+    let fetched: Media;
+    try {
+      fetched = await fetchMedia({ ...request, ...item, remainingDownloadBytes });
+    } catch (err) {
+      request.signal?.throwIfAborted();
+      if (!(err instanceof MediaUnavailable)) throw err;
+      throw new MediaUnavailable(err.kind, {
+        itemIndex: index + 1,
+        url: item.url,
+        status: err.status,
+        detail: err.detail,
+        declaredType: err.declaredType,
+        bytes: err.bytes,
+        limit: err.limit,
+      });
+    }
+    request.signal?.throwIfAborted();
+    media.push(fetched);
+    if (fetched.kind !== "image") remainingDownloadBytes -= fetched.bytes.byteLength;
+  }
+  const first = media[0];
+  if (first === undefined) throw new RangeError("Media understanding requires at least one item.");
+  request.signal?.throwIfAborted();
   const answer = await understandMedia({ ...request, media });
-
-  return { ...answer, kind: media.kind };
+  return { ...answer, kind: first.kind, kinds: media.map((item) => item.kind) };
 }

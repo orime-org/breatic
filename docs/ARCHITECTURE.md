@@ -115,8 +115,24 @@ config/ locales/ (git-tracked)
 
 
 - **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求超过 `memory_budget_tokens`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_tokens`(默认 500,000)**再减去这次归纳自己可能写回去的量**以下(`effectiveKeepTokens`,预留 = 两个记忆上限之和的两倍,一个码元按一个 token 算)。**请求有多大,用 provider 报回来的计数**(`request-size.ts`):最新一条原样发回的回复行存着那一轮结束时整个会话的 token 数,再加上它之后的消息。**没有这个计数时**(请求前缀变了:本会话归纳过、同一读者在本 project 另一条会话里的归纳改写了项目记忆、工具或模型换了;或这条没存),按系统提示和工具 + 每一轮 + 这一轮的提问相加,**拿不到计数的部分按一个字符一个 token 估**(`payload-size.ts`),字符估只会让归纳提前、不会推迟。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
-- **历史按发出去的原样回放**:提供方缓存请求的前缀,只有下一次请求的前缀逐字节相同才读得回来。所以每条消息发给模型的那一份存在 `conversation_messages.for_model`,下一轮原样发回(`history-replay.ts` 的 `replayRows`),这一轮的请求 = 上一轮的请求末尾再接上新消息。**没有滑动压缩**,长会话只靠归纳收住。回复的思考块只在「它之前发过的一切都没变」时才发回(Anthropic preserved thinking 的要求,系统提示和工具定义都算):每条回复行存它那一轮的前缀哈希(`prefixHash`),哈希对不上的那行不带思考发回,逐行判。一轮停在中途(读者按停止、provider 中途报错)时,没被后续请求带出去的那一步由读者看到的零件重建(`reply-for-model.ts` 的 `inProgressStep`),以 provider 报错结束的最后一步,只有 SDK 又发起了下一次请求才算已原样发出(`main-agent.ts` 的 `onStepStart` 清掉 `lastStepUnsent`)。打开的 Space 跟回放历史里最新那份完整快照是同一个 Space、同一个哈希时,只发一行说明它没变。没有 `for_model` 的旧行照旧从零件渲染(`model-messages.ts`)。**归纳按整轮取,所以读历史那一步必须把 `turnIndex` 留着**:归纳的边界是一个轮次号,水位线记的也是它,`getMessagesForLlm` 剥掉它就没有边界可算
+- **历史回放**：`conversation_messages.for_model` 保留模型消息的逻辑事实；文字、工具调用及其结果按已存内容重放，图片按本次能力、张数和字节预算投影。`history-replay.ts` 先确定图片，再逐行或逐步骤检查实际生成前缀及自身内容，决定思考是否保留；计量覆盖见 [Agent picture requests](#agent-picture-requests)。没有 `for_model` 的旧行从零件渲染，不隐式导入外链图片。中断时尚未被后续请求带出的步骤由 `reply-for-model.ts` 的 `inProgressStep` 重建并清除思考；以 provider 报错结束的最后一步，只有 SDK 发起下一请求后才算已送出。打开的 Space 与最新完整快照的 Space id、哈希相同时，只发未变化说明。归纳按整轮取，历史必须保留 `turnIndex`，水位线才能表示正确边界。
 - **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool` / `interrupted` / `failed` / `truncated`)。**一次工具调用连同它的结果是一个零件**,靠 `status` 说它停在哪儿 —— 调用和结果是同一件发生过的事,拆成两个零件就要再按 id 配对回去;线上那一侧 SDK 的部件名是 `tool-<工具名>`,跟存储这边不是同一套名字。**成功的工具零件另存一份这一轮交给模型的结果**(`forModel`,只收 `text` / `json`,不发给前端):落库前由 `packages/server/src/agent/stored-model-output.ts` 的 `withModelOutputs` 按 SDK 自己的规则算出;回放只在这一行没有可用的 `for_model`、要从零件渲染时才读它。没有这一份的旧行,字符串结果原样交回,结构化结果换成一句「这条结果已经拿不到,需要就再调一次」—— 回灌从不拿当前的工具代码去读旧版本写下的结构化答复,工具答复以后加减字段,存下的会话照常能聊。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
+
+### Agent picture requests
+
+`buildAgentConfig` 每轮一次确定模型、图片能力和工具。`main_model_sees_pictures` 可覆盖为 `yes` 或 `no`；`auto` 查询公开模型目录的 `architecture.input_modalities`。目录缓存保留最后成功结果，共享在飞查询，失败进入短暂冷却；取消一轮的等待不取消其他轮共享的查询。归纳后只通过 `instructionsForAgentMemory` 更新记忆指令。
+
+用户明确附带的图片、明确交给 Agent 的图片节点、搜图缩略图和节点历史图片，经同一轮的 `prepareAgentPictures` 准备。当前打开 Space 自动携带的节点仍以文字及地址表达。本地地址必须匹配当前 Studio 的 live 资产；第三方图片复用 editor、限速及存储额度检查，由 ingest 拉取并登记，再以去重赢家的 canonical key 准备。历史回放不会隐式导入旧行的外链。
+
+供模型读取的是独立于显示预览的静态 JPEG：默认最长边 1024、质量 85，只缩小、应用 EXIF 方向、转 sRGB、透明合成白底、取首帧。`agentPictureKeyFor` 的 key 包含规格版本、尺寸和质量。`POST /media` 将规格传给媒体容器，Worker 条件创建派生对象，命中或竞争失败均以 R2 HEAD 的实际字节和 `image/jpeg` 为准；派生对象从属于登记源，不另建资产行。准备并发及本轮 memo 有界，取消只停止调用端等待和后续模型请求，容器仍受原任务截止时刻约束。
+
+用户消息持有完整 `image/jpeg` URL 文件块，时钟在前、语言提醒在最后一个文字块末尾。图片工具把准备好的事实保存为 `agent-pictures-v1` JSON，保留原界面结果；`toModelOutput` 不再执行 IO。发送中间件把同组工具的图片放在全部连续工具结果之后的一条 user 消息中，并允许准备好的 HTTPS JPEG 直接交给 provider，Node 不下载图片字节。
+
+`projectAgentRequest` 同时服务初次装配和 SDK 每一步。正常图片上限 `chat_pictures_max` 默认 50，至少 2；超出时从最早图片按半个上限为一批省略，同轮后续请求的硬上限为 `min(2N,100)`。JPEG 总字节上限默认 20 MiB，超出后继续按同样批次省略到半个字节预算。重复出现分别计数，未知字节数及单图超限不能作为可见图片。无图片能力时，当前消息和历史中的图片均成为保留标签、原地址和再查看方法的文字。
+
+`for_model` 保存完整逻辑消息和可选的图片事实；投影只修改本次副本，下一轮可按新预算恢复图片。新回复的 `steps` 记录每步消息区间及实际生成前缀。每步独立检查前缀和自身内容，失配时清除该步思考及各层 providerOptions，再以变换后的前缀核对下一步；在这个新前缀上生成的后续思考仍可保持。旧行继续采用行级前缀判据。投影版本和本轮策略进入前缀种子。
+
+计数只复用其实际覆盖的投影：可选 `countCoverage` 分别记录 `turnHash` 和 `endHash`，显式缺省表示该覆盖不可复用。某 turn 任一回复段失效或缺失时整体估算，用户消息及问卷续段各计一次；累计计数可退回更早的有效锚点。缺少有效 provider 计数时，文字沿用字符估算，图片每次实际出现按 `picture_tokens_estimate` 估算，工具 JSON 与展开后的同一张图片只计一次。原始用量和费用照常记录。
 
 ### Chat conversation ownership
 
@@ -220,7 +236,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **交互工具(1)**:`ask_user` —— LLM 调用它放出一张 1–4 题的问卷卡片,**没有 `execute`**:SDK 停在这一步,调用以 `awaiting` 存下,读者的答案稍后作为这次调用的结果交回。判据是**这个工具自己干不干活**:干活的工具(`web_search` / `search_images`)照常给每个调用方,它们找到的东西也到得了模型;只产出一份等别人画的载荷的,没有画的地方就不该给。
 
-`search_images` 打 Brave 的图片端点,搜索和展示由它一个人完成:它答复的结构化对象经 SDK 的原生 tool part 到前端(类型是 `tool-search_images`),`to-chat-message.ts` 读成 `assets` 画成一行方块;模型读的是同一份答复经 `toModelOutput` 渲染的文字。**两条路同源,中间没有第二次经手** —— 面板画的地址就是服务发来的地址。一条结果带图片的两个地址 —— 服务代理的缩略图(宽 500px,前端一律用它)和发布站自己托管的原图 —— 外加它被找到的那一页。**流式期间整轮只画一行**(`ToolRunLine`):最新那个还在跑的调用一个,显示工具自己声明的那句话(`metadata.runningLine`),没声明的才印工具名;跑完这一行就撤。认得出类型的工具另有自己的组件,由 `toChatMessage` 从 tool part 重建,刷新页面照样在。
+`search_images` 打 Brave 的图片端点，搜索和展示由一个工具完成。原结果中的缩略图、标题和来源仍经 SDK 的 `tool-search_images` 部件到前端，缩略图用于方块和大图预览；模型有图片能力时，执行阶段同时准备这些缩略图，`toModelOutput` 返回文字及 `agent-pictures-v1` JSON，由发送适配展开为图片。无图片能力时返回文字和地址，不执行准备。流式期间仍只显示最新在跑的工具自己的 `metadata.runningLine`，完成后由对应组件重建结果，刷新也可恢复。
 
 **找到的图片可以复制到画布**:除了显示「+N」的那一格,每个方块右上角有一颗悬停才出现的复制按钮(藏在「+N」后面的图片点开大图层后用标题栏那颗),点开的大图层标题栏有一颗带字的「复制」,两颗读同一份状态(`copy-asset.ts` 的 `useCopyAsset`,建在 `copy-answer.tsx` 的 `useKeyedCopy` 上,按缩略图地址分辨是哪一张)。复制写进剪贴板的是画布自己的格式:一个图片节点,内容是缩略图地址,标 `external: true`;到画布按 Cmd+V,画布建出空图片节点、由服务端把这个地址拉进存储(见下面「画布剪贴板」条)。用缩略图是因为它是搜索服务自己的 https 副本、格式是存储收的 JPEG / PNG,原图是发布站选的格式。
 
@@ -236,7 +252,7 @@ Agent 里没有选模板的控件,它按读者的需求自己调用。**提示�
 
 **每个工具的 `execute` 一律声明第二个参数,哪怕用不上**。框架把这一轮的取消信号放在那里,漏声明的工具永远收不到停止 —— 而一轮能停多快取决于最慢的那个工具肯不肯撒手,所以这是「用户点了停止多久才真停」的上界。交互工具那一个不等 I/O,接住即可(命名 `_options`)。守卫 `packages/domain/src/agent/tools/__tests__/tool-cancellation.test.ts` 遍历 `TOOL_MAP` 本身、逐个断言形参个数,再用一份具名清单顶住工具从注册表消失这个反方向。
 
-**`understand_media` —— 给一个图片 / 视频 / 音频的地址和一个问题,回一句它是什么**。图片当地址直传给后端去取,视频和音频在这台服务器下载、转 base64 装进请求体;模型和后端都钉死在工具里(`google/gemini-3.8-flash` 走 `google-vertex`),因为每一个实测数字都是对着这一组取的。取字节之前先判地址是不是公网可达(逐跳判,最多 10 跳)、类型在不在白名单里、大小在不在上限内,任何一条不过就不发起模型调用,把原因交回模型去跟用户说。**一轮之内一次只跑一个**:工具说明要求模型一次给一个地址、等到答复再问下一个,工具实例里另有一道闸把同一轮的第二个并发调用挡回去 —— 一步的几个调用在 SDK 里是同一个 `Promise.all`,而每个视频或音频调用要把文件握住好几份。
+**`understand_media` —— 一组有序图片、视频、音频地址加一个问题，一次理解多项**。入参为 `items: [{ url }]` 与 `question`，条数 schema 在每轮工具工厂中读取 `understand_media_max_items`，默认 10。图片以 URL 交给模型，音视频逐项下载并转 base64；每项仍检查公网地址、重定向、类型和大小，下载总额只累计音视频的实际字节，默认 20 MB。已无音视频余额时仍可检查后续图片；任何项失败都在发起模型调用前带上 Item 序号、地址和原因。请求按 Item 顺序组合，模型固定 `google/gemini-3.8-flash`、backend 固定 `google-vertex`，整批只记录一次服务调用。同轮一次只允许一个在飞理解调用，前一批完成后可再调用。工具说明按主模型图片能力区分直接看图和理解工具的适用情形。
 
 **`judge_likelihood` —— 模型拿不准时,把手上的材料和一组问题交给它,它答一个带概率的判断**(#282)。打 OpenRouter 的 `/api/alpha/decisions`,模型钉在 `packages/domain/src/agent/tools/jev.ts`(`typesafe/jev-1.13`),密钥是 `OPENROUTER_API_KEY`(没配就不进工具集)。请求体是 `state` 加 `questions`:`state` 形状不限;每个问题是三种之一 —— `noul` 答一个主张成立的概率,`choice` 给一组由模型自己命名的选项、答每个的概率和把握,`score` 给一串从低到高的档、答落在哪。**格式由端点自己定义**:我们只校验三种问题的形状(未声明的字段原样透传),其余交给端点,它拒收时会点名哪个字段,那句话原样带回给模型去改(`complaintOf` 只读 `error.message`,限 500ms)。答复逐个问题判能不能读,读不出的名字进 `unreadable`,其余照常返回。**拒收的分类比共用那张表多两条**:422 说的是模型写的请求体,判为可改写;拒收原文里点到我们钉的模型名,判为我们这边的配置,不管状态码。整次调用(几次投递、退避、读正文)共用 `config/agent.yaml` 的 `judge_likelihood_timeout_ms`(10 秒)。它在 `BASELINE_TOOLS` 里,失败时给模型的出路是「不靠这次判断,用手上已有的材料自己决定」,不向读者宣告。
 

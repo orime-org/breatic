@@ -22,6 +22,7 @@
  */
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
+import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
 import type { UprightOrder, UprightOutcome } from "@ingest/upright-run.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import {
@@ -44,6 +45,8 @@ export const PROBE_PATH = "/probe";
 
 /** What one run is asked to do. */
 export interface ProbeRequest {
+  /** Static JPEG to generate independently of the display preview. */
+  agentPicture?: AgentPictureSpec;
   /** Where to read the object, which is a hostname the Worker intercepts. */
   objectUrl: string;
   /** Whether to lift a cover frame, decided from the ticket's content type. */
@@ -75,6 +78,8 @@ export interface ProbeRequest {
 
 /** What the Worker got back from one container run. */
 export interface ProbeAnswer {
+  /** A static model-readable JPEG, independent from the WebP preview. */
+  agentPicture: Uint8Array | null;
   report: ProbeReport;
   /** The cover frame, when one was lifted. */
   cover: Uint8Array | null;
@@ -103,9 +108,13 @@ export function buildProbeAnswer(
   preview: Uint8Array | null = null,
   upright: UprightOutcome | null = null,
   peaks: Uint8Array | null = null,
+  agentPicture: Uint8Array | null = null,
 ): Response {
   const form = new FormData();
   form.set("meta", JSON.stringify(report));
+  if (agentPicture !== null) {
+    form.set("agentPicture", new File([agentPicture], "agent-picture.jpg", { type: "image/jpeg" }));
+  }
   if (upright !== null) form.set("upright", JSON.stringify(upright));
   if (cover !== null) {
     // Typed from the arguments that produced it: the container is what decided
@@ -142,6 +151,7 @@ function isProbeReport(parsed: unknown): parsed is ProbeReport {
 
 /** An answer that could not be read, which is what no answer reads as. */
 export const UNREAD_ANSWER: ProbeAnswer = Object.freeze({
+  agentPicture: null,
   report: NOTHING_FOUND,
   cover: null,
   preview: null,
@@ -192,12 +202,25 @@ export async function readProbeAnswer(
 
   return {
     report: parsed,
+    agentPicture: await pictureBytesOf(form),
     cover: await bytesOf(form, "cover"),
     preview: await bytesOf(form, "preview"),
     peaks: await bytesOf(form, "peaks"),
     answered: true,
     upright: uprightOf(form.get("upright")),
   };
+}
+
+/**
+ * Read the independently typed nonempty JPEG part.
+ * @param form - The container answer.
+ * @returns JPEG bytes, or none for an absent or invalid part.
+ * @throws {Error} When a binary part cannot be read.
+ */
+async function pictureBytesOf(form: FormData): Promise<Uint8Array | null> {
+  const part = form.get("agentPicture");
+  if (!(part instanceof File) || part.type !== "image/jpeg" || part.size === 0) return null;
+  return new Uint8Array(await part.arrayBuffer());
 }
 
 /**

@@ -54,7 +54,11 @@ Check: is the sentence I am writing about one tool or template? Then it belongs 
 
 ### One place assembles the agent
 
-**Model, instructions and tools are assembled only by `buildAgentConfig` in `agent/agent-config.ts`.** A second assembly point lets two agents drift apart.
+**Model, picture capability and tools are resolved once per turn by async `buildAgentConfig` in `agent/agent-config.ts`; a consolidation only rebuilds its memory instructions through `instructionsForAgentMemory`.** A second assembly point lets model capability, tools and message preparation disagree.
+
+### Picture requests are projected once
+
+**Use `projectAgentRequest` for the initial request and every SDK step; persist original logical picture facts and project independent copies.** Its selected pictures, expansion order and thinking checks are also the facts used for history hashes and counting. Tool execution prepares pictures once; `toModelOutput` and sending middleware perform no storage IO. Before changing these contracts, read [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
 ### Tool errors state the problem
 

@@ -241,10 +241,12 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     ): ReturnType<typeof orig.understandMediaAt> => {
       readingCtrl.requests.push(request);
       request.onBilled(readingCtrl.costUsd);
+      const kind = request.items[0]?.ledgerType === "video/mp4" ? "video" : "audio";
       return {
         text: readingCtrl.text,
         finishReason: "stop",
-        kind: request.ledgerType === "video/mp4" ? "video" : "audio",
+        kind,
+        kinds: [kind],
       };
     },
     backendUploadService: {
@@ -1568,7 +1570,7 @@ describe("transcription results and usage cross the real settlement and collabor
         expect(readingCtrl.requests[0]).toMatchObject({
           model: MODEL,
           backend: "google-vertex",
-          ledgerType: params.source_mime_type,
+          items: [{ url: params.source_url, ledgerType: params.source_mime_type }],
         });
 
         const historyBefore = await db.select().from(schema.nodeHistory)

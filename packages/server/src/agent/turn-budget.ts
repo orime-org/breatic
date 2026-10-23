@@ -32,6 +32,8 @@ export interface Assembly {
   userKept: UserForModel;
   /** The history and this turn's question, as they will be sent. */
   messages: ModelMessage[];
+  /** Initial selected logical facts, reused without restoring omissions within the SDK loop. */
+  logicalMessages?: ModelMessage[];
 }
 
 /** Who is asking, and whether they are still there. */

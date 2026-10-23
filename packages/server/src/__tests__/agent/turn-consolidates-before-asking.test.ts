@@ -72,6 +72,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
       ...(base.getAgentConfig as () => Record<string, unknown>)(),
       memory_budget_tokens: limits.budget,
       memory_keep_tokens: limits.keep,
+      main_model_sees_pictures: "no",
     }),
   };
 });
@@ -263,7 +264,7 @@ async function lastAssembledLength(): Promise<number> {
   >[0];
   const { buildAgentConfig: real } =
     await vi.importActual<typeof DomainModule>("@breatic/domain");
-  const resolved = real(call);
+  const resolved = await real(call);
   const sent = (
     await import("@server/agent/model-messages.js")
   ).toModelMessages(contexts.lastHistory);
@@ -429,12 +430,11 @@ describe("a turn that measured over the budget", () => {
     await runTurn();
 
     expect(buildTurnContext).toHaveBeenCalledTimes(2);
-    const lastAssembly = buildAgentConfig.mock.calls.at(-1)?.[0] as {
-      memoryContext: { conversationMemory: string };
-    };
-    expect(lastAssembly.memoryContext.conversationMemory).toBe(
-      "what turns 1 and 2 came to",
-    );
+    expect(buildAgentConfig).toHaveBeenCalledTimes(1);
+    expect(thisCase.sent?.prompt).toContainEqual(expect.objectContaining({
+      role: "system",
+      content: expect.stringContaining("## Conversation Memory\nwhat turns 1 and 2 came to"),
+    }));
   });
 
   it("reassembles even when the fold was discarded", async () => {
@@ -602,12 +602,11 @@ describe("a turn that measured over the budget", () => {
     await runTurn();
 
     expect(buildTurnContext).toHaveBeenCalledTimes(2);
-    const lastAssembly = buildAgentConfig.mock.calls.at(-1)?.[0] as {
-      memoryContext: { conversationMemory: string };
-    };
-    expect(lastAssembly.memoryContext.conversationMemory).toBe(
-      "what the other tab wrote",
-    );
+    expect(buildAgentConfig).toHaveBeenCalledTimes(1);
+    expect(thisCase.sent?.prompt).toContainEqual(expect.objectContaining({
+      role: "system",
+      content: expect.stringContaining("## Conversation Memory\nwhat the other tab wrote"),
+    }));
   });
 });
 
@@ -624,15 +623,13 @@ describe("a turn the reader stopped", () => {
 
     await runTurn(controller.signal);
 
-    // The fold is reached and hands back straight away: its first line is the
-    // signal check. Written as two statements rather than a loop over the
-    // calls — a loop over an empty list is an assertion that never runs, so a
-    // turn that skipped the fold entirely would read as a pass.
-    expect(consolidateWindow).toHaveBeenCalledTimes(1);
-    {
-      const asked = consolidateWindow.mock.calls[0]?.[0] as { signal?: AbortSignal };
-      expect(asked.signal?.aborted).toBe(true);
-    }
+    // Capability resolution now observes this stop before assembly reaches
+    // the fold. The visible outcome and absence of paid work remain the bar.
+    expect(consolidateWindow).not.toHaveBeenCalled();
+    expect(thisCase.sent).toBeNull();
+    expect(sent).toContainEqual({ type: "abort" });
+    const savedReply = addMessage.mock.calls.map(([, message]) => message).find((message) => message.role === "assistant");
+    expect(savedReply?.parts).toContainEqual({ type: "interrupted" });
   });
 
   it("does not assemble again when the fold never ran", async () => {

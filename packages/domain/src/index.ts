@@ -136,7 +136,34 @@ export type {
   NodeRecords,
   ActivityPage,
 } from "@domain/agent/tools/project-records.js";
-export { buildAgentConfig } from "@domain/agent/agent-config.js";
+export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
+export {
+  createAgentPicturePreparer,
+  type AgentPictureSource,
+  type AgentPictureSourceAsset,
+  type AgentPictureFacts,
+  type AgentPictureUnavailable,
+  type PreparedAgentPicture,
+  type PrepareAgentPictures,
+  type ToolPictureContext,
+  type AgentPicturePreparation,
+} from "@domain/agent/prepare-agent-pictures.js";
+export { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
+export { pictureMiddleware } from "@domain/agent/picture-middleware.js";
+export {
+  projectAgentRequest,
+  expandAgentPictures,
+  agentPictureOutputOf,
+  AGENT_PICTURE_PROJECTION_VERSION,
+  AGENT_TOOL_PICTURE_MARKER,
+  agentPictureLabelFor,
+  type AgentPicture,
+  type AgentPicturePolicy,
+  type AgentGenerationStep,
+  type AgentPictureOutput,
+  type AgentRequestProjection,
+  type ProjectedAgentRequest,
+} from "@domain/agent/project-agent-request.js";
 export { instructionsText } from "@domain/agent/instructions.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";

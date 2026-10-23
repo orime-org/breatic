@@ -14,12 +14,13 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
-import { INGEST_FAILURE_HEADER } from "@breatic/shared";
+import { initCore, getAgentConfig, getRedis, getStorageAdapter, setSession, sessionCookieName, loadLocales } from "@breatic/core";
+import { agentPictureKeyFor, INGEST_FAILURE_HEADER } from "@breatic/shared";
 import { backendUploadService, SaveRefused } from "@breatic/domain";
 import type { createApp } from "@server/app.js";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
+import { picturePreparerFor } from "@server/agent/prepare-pictures.js";
 
 try {
   initCore(process.env);
@@ -92,13 +93,14 @@ let reached: string[] = [];
  * Answer every outbound call with `answer`, as the ingest Worker would.
  * @param answer - The Worker's response.
  */
-function workerAnswers(answer: () => Response): void {
+function workerAnswers(answer: () => Response, onRequest?: (url: string, body: unknown) => Response | undefined): void {
   reached = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (url: unknown) => {
+    vi.fn(async (url: unknown, init?: RequestInit) => {
       reached.push(String(url));
-      return answer();
+      const handled = onRequest?.(String(url), JSON.parse(String(init?.body ?? "null")) as unknown);
+      return handled ?? answer();
     }),
   );
 }
@@ -107,16 +109,56 @@ function workerAnswers(answer: () => Response): void {
  * A Worker answer for a picture that landed. Its type differs from what the
  * link's `.jpg` suggests, so a registration that read the link would show.
  */
-function landedPicture(): Response {
+function landedPicture(contentHash = crypto.randomBytes(32).toString("hex")): Response {
   return new Response(
     JSON.stringify({
-      sha256: crypto.randomBytes(32).toString("hex"),
+      sha256: contentHash,
       sizeBytes: 4096,
       contentType: "image/png",
       cover: null,
     }),
     { status: 200, headers: { "content-type": "application/json" } },
   );
+}
+
+/**
+ * Answer source transfers and JPEG reads, recording only the latter's JSON.
+ *
+ * Database registration, deduplication, authorization and Redis gates remain
+ * real. The headers carrying the ingest capability are never inspected.
+ * @param contentHash - A fixed source hash for a deduplication case.
+ * @returns The JSON bodies actually sent to the external media endpoint.
+ * @throws {never} Never.
+ */
+function pictureWorker(contentHash?: string): unknown[] {
+  const reads: unknown[] = [];
+  workerAnswers(() => landedPicture(contentHash), (url, body) => {
+    if (!url.endsWith("/media")) return undefined;
+    reads.push(body);
+    return new Response(JSON.stringify({
+      width: 1024,
+      height: 768,
+      durationSeconds: null,
+      agentPicture: { outcome: "generated", sizeBytes: 6123, mediaType: "image/jpeg" },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  return reads;
+}
+
+/**
+ * Read the canonical registered source row, without consulting an opened grant.
+ * @param studioId - The Studio whose live source is being checked.
+ * @param fileUrl - The URL returned by real asset registration.
+ * @returns The one matching canonical key.
+ * @throws {Error} when registration did not leave exactly one live row.
+ */
+async function canonicalKey(studioId: string, fileUrl: string): Promise<string> {
+  const assets = await sql<{ storage_key: string }[]>`
+    SELECT storage_key FROM studio_assets
+    WHERE studio_id = ${studioId} AND file_url = ${fileUrl} AND deleted_at IS NULL
+  `;
+  expect(assets).toHaveLength(1);
+  return assets[0]!.storage_key;
 }
 
 /** The grants this project has, with their settlement columns. */
@@ -289,5 +331,106 @@ describe("the agent's save — when the link does not land", () => {
     expect(err).toBeInstanceOf(backendUploadService.ReaderUrlTransferError);
     expect(err).toMatchObject({ reason: "store_failed" });
     expect((await grantsOf(projectId))[0]!.voided_at).not.toBeNull();
+  });
+});
+
+describe("Agent pictures use the real Studio ledger and canonical registration", () => {
+  it("prepares a registered local source using its canonical key and measured JPEG facts", async () => {
+    const who = await seedEditor();
+    pictureWorker();
+    const saved = await saveToStorageFor(who)(SOURCE);
+    const key = await canonicalKey(who.studioId, saved.url);
+    const reads = pictureWorker();
+    const source = { label: "Attachment 1", sourceUrl: saved.url };
+
+    const prepared = await picturePreparerFor(who)([source]);
+
+    const config = getAgentConfig();
+    const spec = { version: 1 as const, longEdge: config.agent_picture_long_edge, quality: config.agent_picture_quality };
+    const storage = await getStorageAdapter();
+    expect(prepared).toEqual([{
+      status: "ready", ...source,
+      url: storage.publicUrl(agentPictureKeyFor(key, spec)),
+      sizeBytes: 6123, mediaType: "image/jpeg",
+    }]);
+    expect(reads).toEqual([expect.objectContaining({ storageKey: key, contentType: "image/png", agentPicture: spec })]);
+    expect(reached).toHaveLength(1);
+    expect(reached[0]).toMatch(/\/media$/);
+    expect(await grantsOf(who.projectId)).toHaveLength(1);
+  });
+
+  it("refuses another Studio's registered local source without reimport or JPEG IO", async () => {
+    const owner = await seedEditor();
+    const other = await seedEditor();
+    pictureWorker();
+    const saved = await saveToStorageFor(owner)(SOURCE);
+    await canonicalKey(owner.studioId, saved.url);
+    const reads = pictureWorker();
+    const source = { label: "Attachment 1", sourceUrl: saved.url };
+
+    const prepared = await picturePreparerFor(other)([source]);
+
+    expect(prepared).toEqual([{
+      status: "unavailable", ...source, reason: expect.stringMatching(/live asset.*Studio/),
+    }]);
+    expect(reads).toEqual([]);
+    expect(reached).toEqual([]);
+    expect(await grantsOf(other.projectId)).toEqual([]);
+  });
+
+  it("refuses a deleted local source without reimporting its still-valid storage URL", async () => {
+    const who = await seedEditor();
+    pictureWorker();
+    const saved = await saveToStorageFor(who)(SOURCE);
+    const key = await canonicalKey(who.studioId, saved.url);
+    await sql`
+      UPDATE studio_assets SET deleted_at = now()
+      WHERE studio_id = ${who.studioId} AND storage_key = ${key}
+    `;
+    const reads = pictureWorker();
+    const source = { label: "Attachment 1", sourceUrl: saved.url };
+
+    const prepared = await picturePreparerFor(who)([source]);
+
+    expect(prepared).toEqual([{
+      status: "unavailable", ...source, reason: expect.stringMatching(/live asset.*Studio/),
+    }]);
+    expect(reads).toEqual([]);
+    expect(reached).toEqual([]);
+    expect(await grantsOf(who.projectId)).toHaveLength(1);
+  });
+
+  it("prepares the deduplication winner after importing another URL with the same bytes", async () => {
+    const who = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const reads = pictureWorker(hash);
+    const first = await saveToStorageFor(who)(SOURCE);
+    const winnerKey = await canonicalKey(who.studioId, first.url);
+    const source = { label: "Search result 1", sourceUrl: "https://images.test.invalid/second/copy.bin" };
+
+    const prepared = await picturePreparerFor(who)([source]);
+
+    const config = getAgentConfig();
+    const spec = { version: 1 as const, longEdge: config.agent_picture_long_edge, quality: config.agent_picture_quality };
+    const storage = await getStorageAdapter();
+    expect(prepared).toEqual([{
+      status: "ready", ...source,
+      url: storage.publicUrl(agentPictureKeyFor(winnerKey, spec)),
+      sizeBytes: 6123, mediaType: "image/jpeg",
+    }]);
+    expect(reads).toEqual([expect.objectContaining({ storageKey: winnerKey, agentPicture: spec })]);
+    const assets = await sql<{ storage_key: string; file_url: string }[]>`
+      SELECT storage_key, file_url FROM studio_assets
+      WHERE studio_id = ${who.studioId} AND content_hash = ${hash} AND deleted_at IS NULL
+    `;
+    expect(assets).toEqual([{ storage_key: winnerKey, file_url: first.url }]);
+    const grants = await sql<{ storage_key: string; consumed_at: Date | null }[]>`
+      SELECT storage_key, consumed_at FROM upload_grants WHERE project_id = ${who.projectId}
+    `;
+    expect(grants).toHaveLength(2);
+    const loser = grants.find((grant) => grant.storage_key !== winnerKey);
+    expect(loser).toMatchObject({ storage_key: expect.any(String), consumed_at: expect.any(Date) });
+    expect((prepared[0] as { url: string }).url).not.toContain(loser!.storage_key);
+    expect(reached.map((url) => new URL(url).pathname)).toEqual(["/fetch", "/fetch", "/media"]);
   });
 });

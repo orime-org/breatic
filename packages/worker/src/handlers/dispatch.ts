@@ -1719,13 +1719,13 @@ export async function runUnderstand(
   let answer: Awaited<ReturnType<typeof understandMediaAt>>;
   try {
     answer = await withUnderstandSlot(() => understandMediaAt({
-      url: params.source_url as string,
-      // The ledger's judgement outranks what storage declares: the browser's
-      // gate let this run start on it, and storage answers with a type guessed
-      // from a file name.
-      ...(typeof params.source_mime_type === "string"
-        ? { ledgerType: params.source_mime_type }
-        : {}),
+      items: [{
+        url: params.source_url as string,
+        // The ledger's judgement outranks storage's filename-based type.
+        ...(typeof params.source_mime_type === "string"
+          ? { ledgerType: params.source_mime_type }
+          : {}),
+      }],
       question,
       model: UNDERSTAND_PINS.model,
       backend: UNDERSTAND_PINS.backend,

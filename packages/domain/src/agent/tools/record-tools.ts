@@ -39,6 +39,8 @@ import {
   type RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/tool-names.js";
 import { rowDeadline } from "@domain/node-task/node-task.service.js";
+import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
+import type { AgentPictureOutput } from "@domain/agent/project-agent-request.js";
 
 /** The reads every records object answers. */
 const READS = ["listConversations", "searchMessages", "readConversation", "nodeRecords", "activity", "spaceName"] as const;
@@ -576,6 +578,57 @@ const readNodeHistory: Tool<z.infer<typeof nodeInput>, string, RecordsContext> =
     return nodePage(node_id, recs, { tasks: tasks_offset ?? 0, versions: versions_offset ?? 0 });
   },
 });
+
+/**
+ * Build a node-history reader with pictures prepared once while reading its page.
+ * @param pictures - This turn's capability and authorized preparation callback.
+ * @returns The paginated history tool with pure model-output conversion.
+ * @throws {never} Never; its execution propagates read and preparation failures.
+ */
+export function makeReadNodeHistoryTool(pictures: ToolPictureContext = {}): Tool<z.infer<typeof nodeInput>, string | AgentPictureOutput, RecordsContext> {
+  return tool<z.infer<typeof nodeInput>, string | AgentPictureOutput, RecordsContext>({
+    inputSchema: nodeInput,
+    contextSchema: recordsContextSchema,
+    metadata: readNodeHistory.metadata,
+    description: `${readNodeHistory.description ?? ""}${pictures.seesPictures
+      ? " Image versions and existing video covers accompany the page as prepared pictures; unavailable pictures state their reason."
+      : " This page contains text and addresses; you will not see the pictures themselves."}`,
+    toModelOutput: ({ output }) => typeof output === "string"
+      ? { type: "text", value: output }
+      : { type: "json", value: output },
+    execute: async ({ node_id, versions_offset, tasks_offset }, { abortSignal, context }: RecordsOptions): Promise<string | AgentPictureOutput> => {
+      const recs = await guarded(
+        () => context.records.nodeRecords(node_id, { versionsOffset: versions_offset, tasksOffset: tasks_offset }),
+        abortSignal,
+      );
+      const text = nodePage(node_id, recs, { tasks: tasks_offset ?? 0, versions: versions_offset ?? 0 });
+      if (!pictures.seesPictures || pictures.preparePictures === undefined) return text;
+      const sources = recs.versions.rows.flatMap((version) => {
+        const sourceUrl = version.mimeType?.startsWith("image/")
+          ? version.content
+          : version.mimeType?.startsWith("video/") ? version.thumbnailUrl : undefined;
+        return typeof sourceUrl === "string" && sourceUrl !== ""
+          ? [{ label: `Node ${node_id}; version ${version.id}`, sourceUrl }]
+          : [];
+      });
+      if (sources.length === 0) return text;
+      const prepared = await pictures.preparePictures(sources, abortSignal);
+      abortSignal?.throwIfAborted();
+      const unavailable = prepared.flatMap((picture) => picture.status === "unavailable"
+        ? [`${picture.label}; source: ${picture.sourceUrl}; picture unavailable: ${picture.reason}.`]
+        : []);
+      return {
+        kind: "agent-pictures-v1",
+        text: [text, ...unavailable].join("\n"),
+        pictures: prepared.flatMap((picture) => {
+          if (picture.status !== "ready") return [];
+          const { status: _status, ...facts } = picture;
+          return [facts];
+        }),
+      };
+    },
+  });
+}
 
 /** Read the project's activity feed. */
 const listProjectActivity: Tool<z.infer<typeof activityInput>, string, RecordsContext> = tool({

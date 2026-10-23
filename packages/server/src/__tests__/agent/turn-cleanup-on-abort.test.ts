@@ -84,6 +84,7 @@ vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
+  const { MockLanguageModelV4 } = await import("ai/test");
   return {
     ...base,
     // The finalizer itself is the real one — mocking it would test the mock.
@@ -97,7 +98,7 @@ vi.mock("@breatic/domain", async () => {
     }),
     creditLotService: { chargeOnceForGeneration },
     resolveProvider: () => "test",
-    getModel: () => "model",
+    getModel: () => new MockLanguageModelV4({}),
   };
 });
 
@@ -119,6 +120,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  setUserForModel: vi.fn(async () => undefined),
   addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
 vi.mock("@server/agent/turn-budget.js", () => ({

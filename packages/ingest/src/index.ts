@@ -26,6 +26,10 @@ import {
   hasCoverFrame,
   peaksKeyFor,
   previewKeyFor,
+  agentPictureKeyFor,
+  agentPictureSpecSchema,
+  type AgentPictureSpec,
+  type AgentPictureRead,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
   type MediaLimits,
@@ -1032,6 +1036,7 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
 
 /** What our worker hands us to read an object already in storage. */
 interface MediaReadBody {
+  agentPicture?: unknown;
   storageKey?: unknown;
   contentType?: unknown;
   /** When the job asking runs out, in epoch ms (inner#1367). */
@@ -1081,6 +1086,15 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   const stored = await env.BUCKET.head(storageKey);
   if (stored === null) return new Response("Not found", { status: 404 });
 
+  const pictureSpec = body?.agentPicture === undefined ? undefined : agentPictureSpecSchema.safeParse(body.agentPicture);
+  if (pictureSpec !== undefined && !pictureSpec.success) {
+    return new Response("Invalid agentPicture specification", { status: 400 });
+  }
+  const agentPicture = pictureSpec?.success === true ? pictureSpec.data : undefined;
+  const pictureStanding = agentPicture === undefined
+    ? null
+    : await env.BUCKET.head(agentPictureKeyFor(storageKey, agentPicture));
+
   const askedForPreview = body?.wantPreview === true;
   const askedForPeaks = body?.wantPeaks === true;
   // A preview or peaks standing there are left as they are; the numbers are
@@ -1091,8 +1105,12 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
     askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
   const peaksStanding =
     askedForPeaks && (await env.BUCKET.head(peaksKeyFor(storageKey))) !== null;
-  if (peaksStanding && !askedForPreview) {
+  if (peaksStanding && !askedForPreview && agentPicture === undefined) {
     return Response.json({ width: null, height: null, durationSeconds: null, peaks: "existing" });
+  }
+  if (agentPicture !== undefined && pictureStanding !== null && !askedForPreview && !askedForPeaks) {
+    return Response.json({ width: null, height: null, durationSeconds: null,
+      agentPicture: pictureFacts(pictureStanding, "existing") });
   }
   const read = await readMediaAtEdge(env, {
     storageKey,
@@ -1100,6 +1118,7 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
     wantCover: false,
     wantPreview: askedForPreview && !standing,
     wantPeaks: askedForPeaks && !peaksStanding,
+    ...(agentPicture !== undefined && pictureStanding === null && { agentPicture }),
     deadlineAt,
   });
   const numbers = mediaNumbersFor(
@@ -1110,7 +1129,55 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
     ...numbers,
     ...(askedForPreview && { preview: await previewOutcome(env, storageKey, standing, read) }),
     ...(askedForPeaks && { peaks: await peaksOutcome(env, storageKey, peaksStanding, read) }),
+    ...(agentPicture !== undefined && { agentPicture: await settleAgentPicture(env, storageKey, agentPicture, pictureStanding, read) }),
   });
+}
+
+/**
+ * Read measured facts from an existing immutable derived JPEG.
+ * @param object - R2's actual object metadata.
+ * @param outcome - Whether this request created it or found it.
+ * @returns Valid JPEG facts, or a failed preparation.
+ * @throws {never} Never.
+ */
+function pictureFacts(object: R2Object | null, outcome: "generated" | "existing"): AgentPictureRead {
+  return object !== null && object.size > 0 && object.httpMetadata?.contentType === "image/jpeg"
+    ? { outcome, sizeBytes: object.size, mediaType: "image/jpeg" }
+    : { outcome: "failed" };
+}
+
+/**
+ * Create a JPEG once and reread the winner's facts after concurrent creation.
+ * @param env - Worker storage bindings.
+ * @param storageKey - Registered canonical source key.
+ * @param spec - Requested versioned encoding specification.
+ * @param standing - Object present before the container ran.
+ * @param read - Container result.
+ * @returns The stored object's measured facts or failure outcome.
+ * @throws {never} Storage failures are reported at this application boundary.
+ */
+async function settleAgentPicture(
+  env: Env,
+  storageKey: string,
+  spec: AgentPictureSpec,
+  standing: R2Object | null,
+  read: { agentPicture: Uint8Array | null; answered: boolean; report: ProbeReport },
+): Promise<AgentPictureRead> {
+  if (standing !== null) return pictureFacts(standing, "existing");
+  if (read.agentPicture === null) {
+    return { outcome: read.answered && !foundNothing(read.report) && !hasPreviewableFrame(read.report) ? "none" : "failed" };
+  }
+  const key = agentPictureKeyFor(storageKey, spec);
+  try {
+    const created = await env.BUCKET.put(key, read.agentPicture, {
+      onlyIf: { etagDoesNotMatch: "*" },
+      httpMetadata: { contentType: "image/jpeg" },
+    });
+    return pictureFacts(await env.BUCKET.head(key), created === null ? "existing" : "generated");
+  } catch (err) {
+    noteFailure("ingest_agent_picture_write_failed", { storageKey, err: err instanceof Error ? err.message : String(err) });
+    return { outcome: "failed" };
+  }
 }
 
 /**

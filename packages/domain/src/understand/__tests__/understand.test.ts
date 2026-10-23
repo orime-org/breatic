@@ -97,7 +97,7 @@ describe("understandMedia — the three media shapes", () => {
   it("sends an image as a url the backend fetches itself", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/dog.jpg" },
+      media: [{ kind: "image", url: "https://example.com/dog.jpg" }],
     });
 
     expect(sentMediaPart()).toEqual({
@@ -109,11 +109,11 @@ describe("understandMedia — the three media shapes", () => {
   it("sends a video as a data uri carrying its bytes", async () => {
     await understandMedia({
       ...base,
-      media: {
+      media: [{
         kind: "video",
         bytes: new Uint8Array([0, 1, 2, 3]),
         format: "video/mp4",
-      },
+      }],
     });
 
     expect(sentMediaPart()).toEqual({
@@ -129,11 +129,11 @@ describe("understandMedia — the three media shapes", () => {
     // to the wire rather than being derived again from the type.
     await understandMedia({
       ...base,
-      media: {
+      media: [{
         kind: "audio",
         bytes: new Uint8Array([4, 5, 6]),
         format: "wav",
-      },
+      }],
     });
 
     expect(sentMediaPart()).toEqual({
@@ -149,7 +149,7 @@ describe("understandMedia — the three media shapes", () => {
     await understandMedia({
       ...base,
       question: "How long is this clip?",
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
 
     const messages = sentBody().messages as Array<{
@@ -166,7 +166,7 @@ describe("understandMedia — the three media shapes", () => {
     await understandMedia({
       ...base,
       question: `How long is this clip?${hidden}`,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
 
     const messages = sentBody().messages as Array<{ content: Array<Record<string, unknown>> }>;
@@ -178,7 +178,7 @@ describe("understandMedia — what pins the backend", () => {
   it("names the model and pins the backend with fallbacks off", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
 
     const body = sentBody();
@@ -191,7 +191,7 @@ describe("understandMedia — what pins the backend", () => {
     await understandMedia({
       ...base,
       backend: undefined,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
 
     expect(sentBody()).not.toHaveProperty("provider");
@@ -205,7 +205,7 @@ describe("understandMedia — what pins the backend", () => {
       apiKey: "another-key",
       baseUrl: "https://example.invalid/v9",
       maxOutputTokens: 64,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
 
     const [url, init] = httpRequestMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -224,7 +224,7 @@ describe("understandMedia — what it tells the transport", () => {
     await understandMedia({
       ...base,
       timeoutMs: 90_000,
-      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
+      media: [{ kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" }],
     });
 
     const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
@@ -237,7 +237,7 @@ describe("understandMedia — what it tells the transport", () => {
     await understandMedia({
       ...base,
       signal: controller.signal,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
 
     const options = httpRequestMock.mock.calls[0]?.[2] as Record<string, unknown>;
@@ -251,7 +251,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/dog.jpg" },
+      media: [{ kind: "image", url: "https://example.com/dog.jpg" }],
     });
 
     expect(result.text).toBe("A black Labrador retriever.");
@@ -263,7 +263,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
+      media: [{ kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" }],
     });
 
     expect(result.text).toBe("The clip opens on a");
@@ -275,7 +275,7 @@ describe("understandMedia — what comes back", () => {
 
     const result = await understandMedia({
       ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" },
+      media: [{ kind: "audio", bytes: new Uint8Array([1]), format: "mp3" }],
     });
 
     expect(result.text).toBe("");
@@ -296,7 +296,7 @@ describe("understandMedia — what comes back", () => {
       ),
     );
 
-    await understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } });
+    await understandMedia({ ...base, media: [{ kind: "image", url: "https://example.com/dog.jpg" }] });
 
     expect(billed).toEqual([0.0037]);
   });
@@ -306,7 +306,7 @@ describe("understandMedia — what comes back", () => {
   it("reports a billed call with no figure when the answer carried no cost", async () => {
     httpRequestMock.mockResolvedValue(answered("A dog."));
 
-    await understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } });
+    await understandMedia({ ...base, media: [{ kind: "image", url: "https://example.com/dog.jpg" }] });
 
     expect(billed).toEqual([undefined]);
   });
@@ -325,7 +325,7 @@ describe("understandMedia — what comes back", () => {
     );
 
     await expect(
-      understandMedia({ ...base, media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" } }),
+      understandMedia({ ...base, media: [{ kind: "audio", bytes: new Uint8Array([1]), format: "mp3" }] }),
     ).rejects.toBeInstanceOf(UnderstandRefused);
 
     expect(billed).toEqual([0.0021]);
@@ -337,7 +337,7 @@ describe("understandMedia — what comes back", () => {
     );
 
     await expect(
-      understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } }),
+      understandMedia({ ...base, media: [{ kind: "image", url: "https://example.com/dog.jpg" }] }),
     ).rejects.toBeInstanceOf(UnderstandRefused);
 
     expect(billed).toEqual([]);
@@ -349,7 +349,7 @@ describe("understandMedia — what comes back", () => {
     httpRequestMock.mockResolvedValue(new Response("not json", { status: 200 }));
 
     await expect(
-      understandMedia({ ...base, media: { kind: "image", url: "https://example.com/dog.jpg" } }),
+      understandMedia({ ...base, media: [{ kind: "image", url: "https://example.com/dog.jpg" }] }),
     ).rejects.toBeInstanceOf(UnderstandRefused);
 
     expect(billed).toEqual([undefined]);
@@ -371,7 +371,7 @@ describe("understandMedia — what comes back", () => {
 
     const call = understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
+      media: [{ kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" }],
     });
 
     await expect(call).rejects.toBeInstanceOf(UnderstandRefused);
@@ -396,7 +396,7 @@ describe("understandMedia — what comes back", () => {
 
     const call = understandMedia({
       ...base,
-      media: { kind: "audio", bytes: new Uint8Array([1]), format: "mp3" },
+      media: [{ kind: "audio", bytes: new Uint8Array([1]), format: "mp3" }],
     });
 
     await expect(call).rejects.toBeInstanceOf(UnderstandRefused);
@@ -424,7 +424,7 @@ describe("understandMedia — what comes back", () => {
     await expect(
       understandMedia({
         ...base,
-        media: { kind: "image", url: "https://example.com/a.png" },
+        media: [{ kind: "image", url: "https://example.com/a.png" }],
       }),
       // A 200 that parsed and holds nothing is not something to say about the
       // media, and nothing here shows a second attempt would differ.
@@ -447,7 +447,7 @@ describe("understandMedia — what comes back", () => {
       understandMedia({
         ...base,
         timeoutMs: 20,
-        media: { kind: "image", url: "https://example.com/a.png" },
+        media: [{ kind: "image", url: "https://example.com/a.png" }],
       }),
       // The headers arrived and the body stopped on the way, which is the one
       // failure the status cannot speak for and the kind a retry fixes.
@@ -465,7 +465,7 @@ describe("understandMedia — what comes back", () => {
     await expect(
       understandMedia({
         ...base,
-        media: { kind: "image", url: "https://example.com/a.png" },
+        media: [{ kind: "image", url: "https://example.com/a.png" }],
       }),
     ).rejects.toMatchObject({ name: "UnderstandRefused", kind: "deployment" });
   });
@@ -486,7 +486,7 @@ describe("understandMedia — what comes back", () => {
       await expect(
         understandMedia({
           ...base,
-          media: { kind: "image", url: "https://example.com/a.png" },
+          media: [{ kind: "image", url: "https://example.com/a.png" }],
         }),
       ).rejects.toMatchObject({ status, kind: "transient" });
     }
@@ -501,7 +501,7 @@ describe("understandMedia — what a refusal is about", () => {
   async function refusalOf(): Promise<UnderstandRefused> {
     return (await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     }).then(
       () => {
         throw new Error("expected a refusal");
@@ -582,7 +582,7 @@ describe("understandMedia — what a refusal is about", () => {
 
     const inline = await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" },
+      media: [{ kind: "video", bytes: new Uint8Array([1]), format: "video/mp4" }],
     }).then(
       () => {
         throw new Error("expected a refusal");
@@ -722,7 +722,7 @@ describe("understandMedia — what a refusal is about", () => {
 
     const answer = await understandMedia({
       ...base,
-      media: { kind: "image", url: "https://example.com/a.png" },
+      media: [{ kind: "image", url: "https://example.com/a.png" }],
     });
     expect(answer.text).toBe("A red car parked");
     expect(answer.finishReason).toBe("error");
@@ -737,11 +737,11 @@ describe("understandMedia — the name a video travels under", () => {
     // that is discovered, which is the cost the audio table exists to avoid.
     await understandMedia({
       ...base,
-      media: {
+      media: [{
         kind: "video",
         bytes: new Uint8Array([1]),
         format: "video/mov",
-      },
+      }],
     });
 
     expect(sentMediaPart()).toMatchObject({
@@ -752,7 +752,7 @@ describe("understandMedia — the name a video travels under", () => {
   it("sends the other video types unchanged", async () => {
     await understandMedia({
       ...base,
-      media: { kind: "video", bytes: new Uint8Array([1]), format: "video/webm" },
+      media: [{ kind: "video", bytes: new Uint8Array([1]), format: "video/webm" }],
     });
 
     expect(sentMediaPart()).toMatchObject({

@@ -23,6 +23,7 @@
  */
 
 import { z } from "zod";
+import { agentPictureReadSchema, type AgentPictureRead, type AgentPictureSpec } from "@shared/upload/agent-picture.js";
 import { MAX_TIMER_MS } from "@shared/http/constants.js";
 import { untilDeadline, type UntilDeadline } from "@shared/http/deadline.js";
 import { httpRequest } from "@shared/http/request.js";
@@ -468,6 +469,8 @@ export interface StoredMediaRead extends MediaNumbers {
   preview?: PreviewOutcome;
   /** Present when peaks were asked for; they take the same outcomes as a preview. */
   peaks?: PreviewOutcome;
+  /** Measured facts of the static JPEG prepared for a model request. */
+  agentPicture?: AgentPictureRead;
 }
 
 const previewOutcome = z
@@ -494,6 +497,8 @@ const previewOutcome = z
  * @param about.deadlineAt - When the job asking runs out, in epoch ms.
  * @param about.wantPreview - Whether to cut a preview when none stands.
  * @param about.wantPeaks - Whether to read the peaks of an audio object when none stand.
+ * @param about.agentPicture - Optional versioned JPEG encoding specification.
+ * @param signal - Stops this caller's wait while preserving the media deadline.
  * @returns The three numbers, each unusable one as none, and what became of
  *   the preview and the peaks when each was asked for.
  * @throws {UploadHttpError} When the Worker refuses.
@@ -510,8 +515,12 @@ export async function readStoredMediaAtIngest(
     deadlineAt: number;
     wantPreview?: boolean;
     wantPeaks?: boolean;
+    agentPicture?: AgentPictureSpec;
   },
+  signal?: AbortSignal,
 ): Promise<StoredMediaRead> {
+  const deadline = untilDeadline(about.deadlineAt);
+  const bound = signal === undefined ? deadline : { ...deadline, signal: AbortSignal.any([deadline.signal, signal]) };
   const answered = await askWorker<unknown>(
     `${uploadUrl}/media`,
     {
@@ -522,16 +531,20 @@ export async function readStoredMediaAtIngest(
       },
       body: JSON.stringify(about),
     },
-    { replaySafe: true, bound: untilDeadline(about.deadlineAt) },
+    { replaySafe: true, bound },
   );
   const numbers = mediaNumbers.parse(answered ?? {});
-  const outcomes = answered as { preview?: unknown; peaks?: unknown } | null;
+  const outcomes = answered as { preview?: unknown; peaks?: unknown; agentPicture?: unknown } | null;
   const preview = previewOutcome.parse(outcomes?.preview);
   const peaks = previewOutcome.parse(outcomes?.peaks);
+  const picture = outcomes?.agentPicture === undefined
+    ? undefined
+    : agentPictureReadSchema.safeParse(outcomes.agentPicture);
   return {
     ...numbers,
     ...(preview !== undefined && { preview }),
     ...(peaks !== undefined && { peaks }),
+    ...(picture !== undefined && { agentPicture: picture.success ? picture.data : { outcome: "failed" as const } }),
   };
 }
 

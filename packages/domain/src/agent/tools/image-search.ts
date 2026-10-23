@@ -37,6 +37,8 @@ import {
   toolFailed,
 } from "@domain/agent/tools/failure.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
+import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
+import type { AgentPictureOutput } from "@domain/agent/project-agent-request.js";
 
 /**
  * How this tool names what it does, in the sentences it fails with.
@@ -114,6 +116,8 @@ export interface ImageResult {
 
 /** What one image search found. */
 export interface ImageSearchAnswer {
+  /** The logical model result prepared once during execution, when enabled. */
+  forModel?: AgentPictureOutput;
   /** What was searched for, as it was sent. */
   query: string;
   /** What came back, in the order the service ranked it. */
@@ -340,3 +344,54 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
     }
   },
 });
+
+/**
+ * Build one turn's image search with its resolved picture capability.
+ * @param pictures - The turn-bound preparation callback and model capability.
+ * @returns The image search tool, with pure model-output rendering.
+ * @throws {never} Never; execution propagates search and preparation failures.
+ */
+export function makeImageSearchTool(pictures: ToolPictureContext = {}): Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, UsageContext> {
+  return tool<z.infer<typeof inputSchema>, ImageSearchAnswer, UsageContext>({
+    inputSchema,
+    contextSchema: usageContextSchema,
+    metadata: imageSearch.metadata,
+    description: pictures.seesPictures
+      ? "Find pictures by subject, style, lighting or composition. Each result includes its title, thumbnail address and a prepared picture for you to inspect and compare. A picture that cannot be prepared is identified with its reason."
+      : imageSearch.description,
+    toModelOutput: ({ output }) => output.forModel === undefined
+      ? { type: "text", value: renderImagesForModel(output) }
+      : { type: "json", value: output.forModel },
+    execute: async (input, options): Promise<ImageSearchAnswer> => {
+      if (imageSearch.execute === undefined) throw new Error("Image search has no execution function.");
+      // This implementation returns one answer; it never yields preliminary
+      // results, although the SDK's general Tool type permits generators.
+      const answer = await imageSearch.execute(input, options) as ImageSearchAnswer;
+      if (!pictures.seesPictures || pictures.preparePictures === undefined || answer.images.length === 0) return answer;
+      const prepared = await pictures.preparePictures(answer.images.map((image, index) => ({
+        label: `Search result ${String(index + 1)}: ${clip(onOneLine(image.title), TITLE_CHARS)}`,
+        sourceUrl: image.thumbnailUrl,
+      })), options.abortSignal);
+      options.abortSignal?.throwIfAborted();
+      const text = renderImagesForModel(answer).replace(
+        "You have not seen these pictures -- you have their titles and addresses and nothing else -- so do not describe, rank or compare what is in them.",
+        "Prepared pictures accompany the available results. Only those pictures are visible; unavailable results remain identified by their titles and addresses.",
+      );
+      const unavailable = prepared.flatMap((picture) => picture.status === "unavailable"
+        ? [`${picture.label}; source: ${picture.sourceUrl}; picture unavailable: ${picture.reason}.`]
+        : []);
+      return {
+        ...answer,
+        forModel: {
+          kind: "agent-pictures-v1",
+          text: [text, ...unavailable].join("\n"),
+          pictures: prepared.flatMap((picture) => {
+            if (picture.status !== "ready") return [];
+            const { status: _status, ...facts } = picture;
+            return [facts];
+          }),
+        },
+      };
+    },
+  });
+}

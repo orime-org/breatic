@@ -37,6 +37,13 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
     if (!rows.some((one) => one.reply !== undefined)) {
       return { turnIndex, tokens: measureMessages(rows.flatMap((one) => one.messages)) };
     }
+    const hasCoverage = rows.some((one) => one.reply?.countCoverage !== undefined);
+    const invalid = rows.some((one) => {
+      if (hasCoverage && one.row.role === "assistant" && (one.reply === undefined || !one.asSent)) return true;
+      const coverage = one.reply?.countCoverage;
+      return coverage !== undefined && (!one.asSent || coverage.turnHash === undefined || coverage.turnHash !== one.turnCoverageHash);
+    });
+    if (invalid) return { turnIndex, tokens: measureMessages(rows.flatMap((one) => one.messages)) };
     const tokens = rows.reduce(
       (sum, one) =>
         sum + (one.reply?.turnTokens ?? (one.row.role === "assistant" ? measureMessages(one.messages) : 0)),
@@ -65,7 +72,11 @@ export function requestTokens(
 ): number {
   const { replayed } = assembly;
   const question = measureMessages(assembly.messages.slice(-1));
-  const newestAsSent = replayed.findLastIndex((one) => one.asSent);
+  const newestAsSent = replayed.findLastIndex((one) => {
+    if (!one.asSent || one.reply === undefined) return false;
+    const coverage = one.reply.countCoverage;
+    return coverage === undefined || (coverage.endHash !== undefined && coverage.endHash === one.endCoverageHash);
+  });
   const sized = replayed[newestAsSent]?.reply;
   if (sized !== undefined) {
     const after = replayed.slice(newestAsSent + 1).flatMap((one) => one.messages);

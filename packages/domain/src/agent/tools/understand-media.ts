@@ -33,15 +33,11 @@ import {
   VIDEO_FORMAT_NAMES,
 } from "@domain/understand/index.js";
 
-/** What the model may ask this tool to look at. */
-const inputSchema = z.object({
-  url: z.string().url().describe("Address of the image, video or audio"),
-  question: z
-    .string()
-    .trim()
-    .min(1)
-    .describe("What to find out about it"),
-});
+/** One ordered batch and its shared question. */
+interface UnderstandMediaInput {
+  items: Array<{ url: string }>;
+  question: string;
+}
 
 /**
  * What to tell the model when a type is one this endpoint will not take.
@@ -94,6 +90,7 @@ function unsupportedSentence(declaredType: string | undefined): string {
  * @returns The sentence for the model, and the line a reader is shown.
  */
 function unavailableFailure(err: MediaUnavailable): Error {
+  const item = err.itemIndex === undefined ? "" : `Item ${String(err.itemIndex)} (${err.url ?? "unknown address"}): `;
   switch (err.kind) {
     case "too-large": {
       // The size is stated only when the far side stated it. A body that
@@ -101,31 +98,31 @@ function unavailableFailure(err: MediaUnavailable): Error {
       // is that more than the limit came, not how much.
       const size = err.bytes === undefined ? "That file is" : `That file is ${err.bytes} bytes,`;
       return toolFailed(
-        `${size} over the ${err.limit} byte limit, so it was not sent. ` +
+        `${item}${size} over the ${err.limit} byte limit, so it was not sent. ` +
           "Tell the user it is too large, and say the limit.",
         FAILURE_LINES.fileTooLarge,
       );
     }
     case "unsupported-type":
-      return toolFailed(unsupportedSentence(err.declaredType), FAILURE_LINES.unsupportedType);
+      return toolFailed(`${item}${unsupportedSentence(err.declaredType)}`, FAILURE_LINES.unsupportedType);
     case "slow":
       // No count: the read gives up on a budget, and how much had arrived by
       // then is not something that side comes away with.
       return toolFailed(
-        "That file took too long to arrive. Tell the user the download did not finish.",
+        `${item}That file took too long to arrive. Tell the user the download did not finish.`,
         FAILURE_LINES.tooSlow,
       );
     case "empty":
       return toolFailed(
-        "That address holds an empty file, so there was nothing to look at. " +
+        `${item}That address holds an empty file, so there was nothing to look at. ` +
           "Tell the user the file is empty.",
         FAILURE_LINES.emptyFile,
       );
     case "unreachable":
       return toolFailed(
         err.status
-          ? `That address answered ${err.status}, so there was nothing to look at.`
-          : `That address could not be reached: ${err.detail ?? "no answer"}.`,
+          ? `${item}That address answered ${err.status}, so there was nothing to look at.`
+          : `${item}That address could not be reached: ${err.detail ?? "no answer"}.`,
         FAILURE_LINES.linkUnreachable,
       );
   }
@@ -227,16 +224,23 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
  * below. Kept once for the module instead, that gate would be shared by every
  * conversation on this server, and one turn reading a file would turn away
  * everyone else.
+ * @param options - The main model's resolved ability to see pictures.
+ * @param options.seesPictures - Whether the main model receives prepared pictures directly.
  * @returns The tool.
+ * @throws {Error} when the Agent configuration cannot be loaded.
  */
-export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string, UsageContext> {
-  // Whether this turn already has one of these in the air. The model gets one
-  // address per call, so a message carrying several files becomes several
-  // calls in one step, and `ai@7.0.68` runs every tool call of a step through
-  // one `Promise.all` (`dist/index.js:8171-8180`) — the same fact `web-search`
-  // cites for its citation numbers. A video or audio call holds its file
-  // several times over on the way to a request body; which kind an address
-  // holds is not known until it has been fetched, so the gate covers all three.
+export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}): Tool<UnderstandMediaInput, string, UsageContext> {
+  const config = { ...getAgentConfig() };
+  const inputSchema = z.object({
+    items: z.array(z.object({ url: z.string().url().describe("Address of the image, video or audio") }))
+      .min(1)
+      .max(config.understand_media_max_items)
+      .describe("Media to compare or understand, in the order to use in the answer"),
+    question: z.string().trim().min(1).describe("One question about all supplied items"),
+  });
+  // One batch may hold several inline AV files. The SDK executes tools from
+  // one step concurrently, so this per-turn gate admits only one whole batch
+  // at a time and bounds its cumulative download allowance.
   //
   // Turned away rather than queued: the model plans the step, and a refusal
   // naming what to wait for lets it come back for this file having read the
@@ -244,21 +248,21 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
   let running = false;
 
   return tool({
-    // The second sentence is load-bearing and was measured: the same message
-    // carrying three addresses produced three overlapping calls without it and
-    // three sequential ones with it. One call at a time is what keeps a step
-    // from holding several files at once, and the model is the one holding the
-    // plan for the step, so this is where it belongs.
     description:
-      "Look at an image, watch a video, or listen to audio at a given address and answer a " +
-      "question about it. Give one address at a time, and wait for the answer before asking " +
-      "about the next one.",
+      (options.seesPictures
+        ? "Watch videos, listen to audio, compare mixed media, or inspect an original image for details missing from the supplied picture. Pictures already supplied with messages can be read directly. "
+        : "Look at images, watch videos, listen to audio, or compare mixed media. ") +
+      `Give one shared question and an ordered batch of 1 to ${String(config.understand_media_max_items)} items. ` +
+      `Audio and video downloads together must fit the ${String(config.understand_media_max_bytes)} byte allowance. ` +
+      "Images each retain the same single-file byte limit. Item numbers identify the input order. " +
+      "Pictures omitted from this request's budget can be inspected here using their original source address. " +
+      "Wait for this batch's answer before calling again.",
     inputSchema,
     contextSchema: usageContextSchema,
     // What the panel reads about a running call, resolved by the web package.
     metadata: { runningLine: "chat.tool.understanding" },
     execute: async (
-      { url, question },
+      { items, question },
       { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
     ): Promise<string> => {
       /**
@@ -275,7 +279,8 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         });
       };
 
-      const config = getAgentConfig();
+      if (abortSignal?.aborted) throw stoppedByUser();
+      const input = inputSchema.parse({ items, question });
       const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
       if (!apiKey) {
         // Defensive: `buildToolSet` leaves this tool out of the set entirely
@@ -304,8 +309,8 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       let answer;
       try {
         answer = await understandMediaAt({
-          url,
-          question,
+          items: input.items,
+          question: input.question,
           maxBytes: config.understand_media_max_bytes,
           fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
           minBytesPerSec: config.understand_media_min_bytes_per_sec,

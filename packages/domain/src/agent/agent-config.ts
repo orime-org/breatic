@@ -15,13 +15,17 @@
 import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
-import type { Instructions } from "@domain/agent/instructions.js";
+import { instructionsForAgentMemory, type Instructions } from "@domain/agent/instructions.js";
+import { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
+import type { AgentPicturePolicy } from "@domain/agent/project-agent-request.js";
 import {
   BASELINE_TOOLS,
   CANVAS_TOOLS,
   buildToolSet,
   type ToolContext,
 } from "@domain/agent/tools/index.js";
+
+export { instructionsForAgentMemory } from "@domain/agent/instructions.js";
 
 /** What a caller tells the factory about the run it is about to start. */
 export interface AgentConfigRequest {
@@ -36,6 +40,8 @@ export interface AgentConfigRequest {
   memoryContext?: MemoryContext;
   /** What the turn knows that a tool needs when it is built. */
   toolContext?: ToolContext;
+  /** Stop this turn's wait without cancelling the shared model-directory query. */
+  signal?: AbortSignal;
 }
 
 /** The three things, resolved. */
@@ -51,30 +57,42 @@ export interface ResolvedAgentConfig {
   instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
+  /** Fixed native-picture capability shared by messages and tools for this turn. */
+  seesPictures: boolean;
+  /** Fixed request-projection policy, also included in the history prefix seed. */
+  picturePolicy?: AgentPicturePolicy;
 }
 
 /**
  * Resolve model, instructions and tools for one agent run.
  * @param request - What the caller knows about this run.
  * @returns The three things, decided in one place.
- * @throws {never} Never.
+ * @throws {unknown} The turn's stop reason when capability resolution is cancelled.
  */
-export function buildAgentConfig(
+export async function buildAgentConfig(
   request: AgentConfigRequest,
-): ResolvedAgentConfig {
+): Promise<ResolvedAgentConfig> {
   const { basePrompt, memoryContext, toolContext } = request;
-
+  const config = getAgentConfig();
+  const modelId = config.default_model;
+  const seesPictures = await resolveModelPictureCapability(modelId, {
+    override: config.main_model_sees_pictures,
+    timeoutMs: config.model_catalog_timeout_ms,
+    ttlMs: config.model_catalog_ttl_ms,
+    retryMs: config.model_catalog_retry_ms,
+  }, request.signal);
+  const picturePolicy: AgentPicturePolicy = {
+    seesPictures,
+    maxPictures: config.chat_pictures_max,
+    maxBytes: config.chat_pictures_max_bytes,
+    pictureTokensEstimate: config.picture_tokens_estimate,
+  };
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
-
   return {
-    modelId: getAgentConfig().default_model,
-    instructions: {
-      base: basePrompt,
-      ...(memoryContext?.projectMemory ? { project: `## Project Context\n${memoryContext.projectMemory}` } : {}),
-      ...(memoryContext?.conversationMemory
-        ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }
-        : {}),
-    },
-    tools: buildToolSet(toolNames, toolContext),
+    modelId,
+    instructions: instructionsForAgentMemory(basePrompt, memoryContext),
+    tools: buildToolSet(toolNames, { ...toolContext, mediaUrlAllowed: toolContext?.mediaUrlAllowed ?? (() => false), seesPictures }),
+    seesPictures,
+    picturePolicy,
   };
 }

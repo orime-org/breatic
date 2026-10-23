@@ -11,6 +11,8 @@ import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { CANVAS_TOOLS } from "@domain/agent/tools/index.js";
 
+vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
@@ -32,8 +34,8 @@ beforeAll(() => {
 });
 
 describe("who reaches the canvas tools", () => {
-  it("offers them to a plain chat turn", () => {
-    const offered = Object.keys(buildAgentConfig({ basePrompt: "base" }).tools);
+  it("offers them to a plain chat turn", async () => {
+    const offered = Object.keys((await buildAgentConfig({ basePrompt: "base" })).tools);
     // A name in the list that the map cannot build is dropped silently, so a
     // typo would leave the plain-chat turn without the tool and nothing red.
     // The count guards the loop itself: over an empty list it asserts nothing.

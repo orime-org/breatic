@@ -109,6 +109,7 @@ describe("a meta part that parses to the wrong thing", () => {
       cover: null,
       preview: null,
       peaks: null,
+      agentPicture: null,
       answered: false,
       upright: null,
     });
@@ -122,7 +123,7 @@ describe("an answer carrying a preview", () => {
 
     const read = await readProbeAnswer(buildProbeAnswer(report, null, preview));
 
-    expect(read).toEqual({ report, cover: null, preview, peaks: null, answered: true, upright: null });
+    expect(read).toEqual({ report, cover: null, preview, peaks: null, agentPicture: null, answered: true, upright: null });
   });
 });
 
