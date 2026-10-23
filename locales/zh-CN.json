@@ -65,7 +65,9 @@
       "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
-      "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。"
+      "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。",
+      "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
+      "invite_mail_failed": "邮件没发出去，请重试。"
     },
     "project": {
       "join_already_member": "你已经是这个 Project 的成员。",
@@ -84,7 +86,9 @@
       "not_found": "找不到这个 Project",
       "archived": "这个 Project 已归档，只能查看。",
       "copy_name": "副本 - {name}",
-      "leave_owner": "Owner 需要先转让所有权才能退出。"
+      "leave_owner": "Owner 需要先转让所有权才能退出。",
+      "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
+      "invite_mail_failed": "邮件没发出去，请重试。"
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
@@ -236,6 +240,16 @@
         "subject": "你的验证码",
         "lead": "在注册页面输入下面的验证码，完成创建账号。",
         "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} 邀请你加入 {project}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身份参与 Project <b>{project}</b>。",
+        "action": "注册并加入"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} 邀请你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身份加入 Studio <b>{studio}</b>。",
+        "action": "注册并加入"
       }
     },
     "mini_tool": {
@@ -1375,7 +1389,10 @@
         "resendIn": "{seconds} 秒后可重新发送",
         "changeEmail": "换一个邮箱",
         "newCodeSent": "新验证码已发送。"
-      }
+      },
+      "invitedBanner": "{inviterName} 邀请你加入 {targetName}",
+      "invitedEmailMismatch": "邀请发给了 {email}，用其他邮箱注册不会收到这条邀请。",
+      "inviteClosed": "这条邀请已失效。"
     },
     "onboarding": {
       "title": "选择你的 Slug",
@@ -1815,7 +1832,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} 还没注册，已发邮件邀请对方注册。",
+    "awaitingSignup": "等待注册",
+    "pendingTitle": "邀请中",
+    "pendingBadge": "{role} · 待确认",
+    "revoke": "撤销",
+    "revokeSuccess": "邀请已撤销。",
+    "revokeFailed": "无法撤销邀请，请重试。"
   },
   "notifications": {
     "title": "通知",
@@ -2054,7 +2078,9 @@
         "pendingBadge": "{role} · 待确认",
         "revoke": "撤销",
         "revokeSuccess": "已撤销邀请。",
-        "inviteSent": "邀请已发送。"
+        "inviteSent": "邀请已发送。",
+        "inviteSentPendingSignup": "{email} 还没注册，已发邮件邀请对方注册。",
+        "awaitingSignup": "等待注册"
       },
       "settings": {
         "basicTitle": "基本信息",

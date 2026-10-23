@@ -85,7 +85,8 @@ export default function ProtectedRoute({
   }
 
   if (requirePersonalStudio && user.personalStudio === null) {
-    return <Navigate to={CHOOSE_SLUG_PATH} replace />;
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`${CHOOSE_SLUG_PATH}?next=${next}`} replace />;
   }
 
   return <>{children}</>;

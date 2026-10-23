@@ -56,6 +56,7 @@ const MAINTAINER: StudioMember = {
 };
 const PENDING: PendingInvitationSummary = {
   invitationId: 'inv-1',
+  awaitingSignup: false,
   invitedUserId: 'u-dee',
   name: 'Dee',
   email: 'dee@x.example',
@@ -111,7 +112,7 @@ describe('MembersTab — row menu visibility', () => {
 describe('MembersTab — invite flow', () => {
   it('opens the invite dialog and calls inviteMember with email + role', async () => {
     const user = userEvent.setup();
-    vi.mocked(studiosApi.inviteMember).mockResolvedValueOnce({ ok: true });
+    vi.mocked(studiosApi.inviteMember).mockResolvedValueOnce({ ok: true, pendingSignup: false });
     renderTab(
       <MembersTab slug='acme' members={[ADMIN]} studioRole='admin' studioType='team' pendingInvitations={[]} />,
     );

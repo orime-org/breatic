@@ -294,6 +294,7 @@ studio.get("/:slug/members", async (c) => {
 studio.post(
   "/:slug/members",
   requireStudioRole("admin"),
+  rateLimitFor("invite", "user"),
   validate("json", inviteMemberSchema),
   async (c) => {
     const user = c.get("user");
@@ -301,14 +302,14 @@ studio.post(
     const body = c.req.valid("json");
     // The optional best-effort invite email is sent inside the service (the bell
     // notification is the always-delivered path); the route only passes the Origin.
-    await studioInviteService.createInvite(
+    const result = await studioInviteService.createInvite(
       slug,
       user.id,
       body.email,
       body.role,
       frontendOrigin(c.req.header("Origin")),
     );
-    return c.json({ data: { ok: true } }, 201);
+    return c.json({ data: { ok: true, pendingSignup: result.pendingSignup } }, 201);
   },
 );
 

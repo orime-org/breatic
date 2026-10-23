@@ -62,7 +62,9 @@
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
-      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。"
+      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。",
+      "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
+      "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",
@@ -81,7 +83,9 @@
       "not_found": "Project が見つかりません",
       "archived": "この Project はアーカイブ済みのため閲覧のみです。",
       "copy_name": "コピー - {name}",
-      "leave_owner": "Owner は所有権を譲渡してから退出してください。"
+      "leave_owner": "Owner は所有権を譲渡してから退出してください。",
+      "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
+      "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -236,6 +240,16 @@
         "subject": "確認コード",
         "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
         "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} さんが {project} に招待しています",
+        "lead": "<b>{inviter}</b> さんが Project <b>{project}</b> に <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> として招待しています。",
+        "action": "登録して参加"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} さんが {studio} に招待しています",
+        "lead": "<b>{inviter}</b> さんが Studio <b>{studio}</b> に <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> として招待しています。",
+        "action": "登録して参加"
       }
     },
     "mini_tool": {
@@ -1375,7 +1389,10 @@
         "resendIn": "{seconds} 秒後に再送信できます",
         "changeEmail": "別のメールアドレスを使う",
         "newCodeSent": "新しいコードを送信しました。"
-      }
+      },
+      "invitedBanner": "{inviterName} さんが {targetName} に招待しています",
+      "invitedEmailMismatch": "この招待は {email} 宛てです。別のアドレスで登録しても、この招待は届きません。",
+      "inviteClosed": "この招待は無効になりました。"
     },
     "onboarding": {
       "title": "Slug を選択",
@@ -1815,7 +1832,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} は未登録です。登録を案内する招待メールを送信しました。",
+    "awaitingSignup": "登録待ち",
+    "pendingTitle": "招待中",
+    "pendingBadge": "{role} · 回答待ち",
+    "revoke": "取り消す",
+    "revokeSuccess": "招待を取り消しました。",
+    "revokeFailed": "招待を取り消せませんでした。もう一度お試しください。"
   },
   "notifications": {
     "title": "通知",
@@ -2054,7 +2078,9 @@
         "pendingBadge": "{role}・保留中",
         "revoke": "取り消す",
         "revokeSuccess": "招待を取り消しました。",
-        "inviteSent": "招待を送信しました。"
+        "inviteSent": "招待を送信しました。",
+        "inviteSentPendingSignup": "{email} は未登録です。登録を案内する招待メールを送信しました。",
+        "awaitingSignup": "登録待ち"
       },
       "settings": {
         "basicTitle": "基本情報",

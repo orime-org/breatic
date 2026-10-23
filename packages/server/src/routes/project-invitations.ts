@@ -23,6 +23,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { requireRole, getProjectId } from "@server/middleware/role.js";
 import type { AuthRoleVariables } from "@server/middleware/role.js";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
+import { rateLimitFor } from "@server/middleware/rate-limit.js";
 
 /** Create-invite body — a registered email + the granted role (never owner). */
 const inviteCreateSchema = z.object({
@@ -47,6 +48,7 @@ projectInvites.use(requireAuth);
 projectInvites.post(
   "/",
   requireRole("owner"),
+  rateLimitFor("invite", "user"),
   validate("json", inviteCreateSchema),
   async (c) => {
     const user = c.get("user");
@@ -54,14 +56,14 @@ projectInvites.post(
     const body = c.req.valid("json");
     // The optional best-effort invite email is sent inside the service (the bell
     // notification is the always-delivered path); the route only passes the Origin.
-    await projectInviteService.createInvite(
+    const result = await projectInviteService.createInvite(
       projectId,
       user.id,
       body.email,
       body.role,
       frontendOrigin(c.req.header("Origin")),
     );
-    return c.json({ data: { ok: true } }, 201);
+    return c.json({ data: { ok: true, pendingSignup: result.pendingSignup } }, 201);
   },
 );
 

@@ -113,11 +113,13 @@ export function MembersTab({
   const inviteMutation = useMutation({
     mutationFn: (input: { email: string; role: GrantableStudioRole }) =>
       studiosApi.inviteMember(slug, input),
-    onSuccess: async () => {
+    onSuccess: async (result, input) => {
       await invalidateMembers();
       setInviteOpen(false);
       setInviteError(null);
-      toast.success(t('studio.container.members.inviteSent'));
+      toast.success(result?.pendingSignup
+        ? t('studio.container.members.inviteSentPendingSignup', { email: input.email })
+        : t('studio.container.members.inviteSent'));
     },
     onError: (err) => {
       // Invite errors stay inline in the dialog (404 email not registered / 409
@@ -299,28 +301,29 @@ export function MembersTab({
                 >
                   <td className='py-2.5'>
                     <span className='flex items-center gap-3'>
-                      {/* An invitee has no studio of their own here yet, but
-                          they are still a person — same round avatar, same
-                          initial as every other member row. */}
                       <StudioAvatar
-                        name={inv.name}
+                        name={inv.awaitingSignup ? inv.email : inv.name}
                         type='personal'
                         avatarUrl={null}
                         size='md'
                       />
                       <span className='flex min-w-0 flex-col'>
                         <span className='truncate font-semibold text-foreground'>
-                          {inv.name}
+                          {inv.awaitingSignup ? inv.email : inv.name}
                         </span>
-                        <span className='truncate text-xs text-muted-foreground'>
-                          {inv.email}
-                        </span>
+                        {inv.awaitingSignup ? null : (
+                          <span className='truncate text-xs text-muted-foreground'>
+                            {inv.email}
+                          </span>
+                        )}
                       </span>
                     </span>
                   </td>
                   <td className='py-2.5'>
                     <span className='inline-flex h-5 items-center rounded-content-sm border border-border bg-background px-2 text-2xs font-semibold text-muted-foreground'>
-                      {t('studio.container.members.pendingBadge', {
+                      {inv.awaitingSignup ? (
+                        <>{roleLabel(inv.role, t)}{' · '}<span>{t('studio.container.members.awaitingSignup')}</span></>
+                      ) : t('studio.container.members.pendingBadge', {
                         role: roleLabel(inv.role, t),
                       })}
                     </span>

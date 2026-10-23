@@ -20,6 +20,7 @@ import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
+import { safeNextPath } from '@web/lib/safe-next-path';
 
 /**
  * Email + password login.
@@ -52,6 +53,10 @@ export default function LoginPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
+  const next = safeNextPath(params.get('next'));
+  const registerPath = params.has('next')
+    ? `/register?next=${encodeURIComponent(next)}`
+    : '/register';
   const setUser = useCurrentUserStore((s) => s.setUser);
 
   const [email, setEmail] = React.useState('');
@@ -81,7 +86,7 @@ export default function LoginPage(): React.JSX.Element {
       setUser(toCurrentUser(user));
       if (created) reportConversion('signup', `signup:${user.id}`);
       changeLocale(user.locale);
-      navigate(params.get('next') ?? '/studio', { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       if (mounted.current) setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
     } finally {
@@ -125,7 +130,7 @@ export default function LoginPage(): React.JSX.Element {
       if (!mounted.current) return;
       setUser(toCurrentUser(user));
       changeLocale(user.locale);
-      navigate(params.get('next') ?? '/studio', { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.login.failed');
@@ -148,7 +153,7 @@ export default function LoginPage(): React.JSX.Element {
       footer={
         <>
           {t('auth.login.noAccount')}{' '}
-          <AuthLink to='/register'>{t('auth.login.signUp')}</AuthLink>
+          <AuthLink to={registerPath}>{t('auth.login.signUp')}</AuthLink>
         </>
       }
     >

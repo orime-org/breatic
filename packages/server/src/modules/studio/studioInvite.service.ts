@@ -32,164 +32,52 @@
  */
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
 import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
+import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { buildStudioInvitationMail } from "@server/utils/notification-mail.js";
-import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
-import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
+import { ConflictError, NotFoundError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { decisionLink } from "@server/utils/decision-link.js";
-import {
-  getDecisionWindowMs,
-} from "@server/config/limits.js";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
 
 /**
- * Invite a registered user into a studio — creates a PENDING invite (it does
- * NOT take effect until the invitee confirms) plus the actionable bell
- * notification, atomically.
- *
- * Resolves the studio by slug, refuses personal studios, looks the invitee up
- * by email (unregistered → NotFound), and refuses re-inviting an already-active
- * member, then sends the optional invite email here (best-effort) when an
- * `origin` is given. The `studio_invitations_one_pending` partial unique maps a
- * duplicate LIVE pending to a ConflictError.
- * @param slug - The studio's URL handle
- * @param inviterUserId - The acting admin (becomes `invitedBy`; name in payload)
- * @param email - The invitee's email; must belong to a registered user
- * @param role - The granted studio role (maintainer | guest; never admin)
- * @param origin - Request Origin; when set, the best-effort invite email is sent
- *   here (the `/decision?token=` link is built from it). Omit to skip it.
- * @returns The new invitation id, the invitee's id + email, and the studio /
- *   inviter names + role
- * @throws {NotFoundError} studio not found, or no user with that email
- * @throws {ForbiddenError} the studio is personal (cannot have invited members)
- * @throws {ConflictError} the user is already an active member, or already has
- *   a live pending invite to this studio
+ * Invite an account or mailbox to a Studio through recipient arbitration.
+ * @param slug - The Studio administered by the inviter.
+ * @param inviterUserId - The acting administrator.
+ * @param email - Recipient mailbox.
+ * @param role - Granted membership role.
+ * @param origin - Trusted frontend origin for invitation links.
+ * @returns The committed invitation and its recipient delivery state.
+ * @throws {NotFoundError} When the target or invitation is closed.
+ * @throws {ConflictError} When duplicate, full, already a member or undelivered.
+ * @throws {Error} When persistence fails.
  */
 export async function createInvite(
-  slug: string,
-  inviterUserId: string,
-  email: string,
-  role: InvitableRole,
-  origin?: string,
+  slug: string, inviterUserId: string, email: string, role: InvitableRole, origin?: string,
 ): Promise<{
   invitationId: string;
-  inviteeUserId: string;
+  inviteeUserId: string | null;
   inviteeEmail: string;
   studioName: string;
   inviterName: string;
   role: InvitableRole;
+  pendingSignup: boolean;
 }> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
-  if (studio.type === "personal") {
-    throw new ForbiddenError(t("server.studio.cannot_modify_personal"));
-  }
-  const invitee = await usersRepo.getUserByEmail(email);
-  if (!invitee) throw new NotFoundError(t("server.studio.email_not_registered"));
-  const existingRole = await studioMembersRepo.getRole(studio.id, invitee.id);
-  if (existingRole) throw new ConflictError(t("server.studio.already_member"));
-
-  // The member ceiling of whoever currently administers this studio. Failing
-  // EARLY here is for the admin's benefit — they learn there is no room before
-  // an email goes out. It is NOT the gate: the studio can fill up between
-  // sending and accepting, which is what the check in `confirmInvite` is for,
-  // and only that one runs behind a row lock. Counts active members, the admin
-  // among them.
-  const { studio_members: memberLimit } = await getLimitsForStudio(studio.id);
-  const memberCount =
-    (await studioRepo.countMembersByStudioIds([studio.id])).get(studio.id) ?? 0;
-  if (memberCount >= memberLimit) {
-    throw new ConflictError(
-      t("server.studio.member_limit_reached", { limit: memberLimit }),
-    );
-  }
-
-  const profiles = await studioRepo.getPersonalProfilesByCreators([
-    inviterUserId,
-  ]);
-  const inviter = profiles.get(inviterUserId);
-  const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
-
-  let invitationId = "";
-  // The bell row builds its link from this, same as the email.
-  let shareToken = "";
-  try {
-    await db.transaction(async (tx) => {
-      // Reap any expired-but-still-'pending' invite for this (studio, invitee)
-      // first: the one-pending partial unique index ignores expiry (a partial
-      // predicate can't reference now()), so a timed-out invite would otherwise
-      // trip it and reject the re-invite with a spurious "already invited"
-      // (#1769). Same transaction → freeing the slot and taking it are atomic.
-      await invitesRepo.expireStalePending(studio.id, invitee.id, tx);
-      ({ id: invitationId, shareToken } = await invitesRepo.createPending({
-        studioId: studio.id,
-        invitedUserId: invitee.id,
-        role,
-        invitedBy: inviterUserId,
-        expiresAt,
-        tx,
-      }));
-      const notif = await notificationService.createStudioInviteRequest({
-        userId: invitee.id,
-        payload: {
-          invitationId,
-          studioId: studio.id,
-          studioName: studio.name,
-          inviterUserId,
-          inviterName,
-          role,
-          shareToken,
-        },
-        expiresAt,
-        tx,
-      });
-      await invitesRepo.attachNotification(invitationId, notif.id, tx);
-    });
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw new ConflictError(t("server.studio.already_invited"));
-    }
-    throw err;
-  }
-
-  // Best-effort invite email — the bell notification is the always-delivered
-  // path; this only fires when an SMTP backend is configured and the caller
-  // passed an origin. A send failure must NOT fail the request.
-  if (origin) {
-    await sendBestEffortMail(async () => {
-      return buildStudioInvitationMail({
-        locale: invitee.locale,
-        inviteeEmail: email,
-        inviterName,
-        studioName: studio.name,
-        role,
-        inviteLink: decisionLink(origin, shareToken),
-      });
-    }, { userId: invitee.id, subject: "studio_invite" });
-  }
-
+  const result = await createInvitation("studio", studio.id, inviterUserId, email, role, origin);
   trackServerEvent("member_invited", {
     userId: inviterUserId,
-    insertId: `invite:${invitationId}`,
-    properties: { studio_id: studio.id, scope: "studio", role, invitation_id: invitationId },
+    insertId: `invite:${result.invitationId}`,
+    properties: { studio_id: studio.id, scope: "studio", role, invitation_id: result.invitationId },
   });
   return {
-    invitationId,
-    inviteeUserId: invitee.id,
-    inviteeEmail: email,
-    studioName: studio.name,
-    inviterName,
-    role,
+    invitationId: result.invitationId, inviteeUserId: result.inviteeUserId, inviteeEmail: result.inviteeEmail,
+    studioName: result.targetName, inviterName: result.inviterName, role, pendingSignup: result.pendingSignup,
   };
 }
 
@@ -385,13 +273,15 @@ export async function revokeInvite(
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
   await db.transaction(async (tx) => {
+    await studioRepo.lockStudio(studio.id, tx);
+    if (!await studioRepo.getById(studio.id, tx)) throw new NotFoundError(t("server.error.not_found"));
     const revoked = await invitesRepo.revokeIfPending(
       invitationId,
       studio.id,
       tx,
     );
     if (!revoked) throw new NotFoundError(t("server.error.not_found"));
-    if (revoked.notificationId) {
+    if (revoked.notificationId && revoked.invitedUserId) {
       await notificationRepo.markRead(
         revoked.notificationId,
         revoked.invitedUserId,

@@ -66,6 +66,10 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 vi.mock("@breatic/domain", () => ({
 }));
 
+vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
+  claimEmailInvitations: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockSendMail = vi.fn().mockResolvedValue(true);
 
 const mockGetUserByEmail = vi.fn();
@@ -386,6 +390,7 @@ describe('Google identity session success boundaries', () => {
     expect(repo.createUser).toHaveBeenCalledWith({
       email: 'new@example.com',
       googleId: 'subject',
+      emailVerified: false,
       locale: 'en',
       attribution: null,
     });

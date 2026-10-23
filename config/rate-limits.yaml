@@ -158,3 +158,8 @@ project-join-request: { max: 20, window_seconds: 3600 }
 # Applied before the signature check, so a flood of unsigned requests is cut
 # off before it spends HMAC work or Redis nonce writes.
 internal-api: { max: 120, window_seconds: 60 }
+
+# Outbound invitations share one per-account daily budget across both targets.
+invite: { max: 50, window_seconds: 86400 }
+# Registration-link previews are public and counted by client address.
+invite-preview: { max: 30, window_seconds: 300 }

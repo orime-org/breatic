@@ -9,7 +9,7 @@ import type * as React from 'react';
 
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { TooltipProvider } from '@web/components/ui/tooltip';
-import { useUIStore } from '@web/stores';
+import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { ApiException } from '@web/data/api/types';
 
 const PID = '11111111-1111-4111-8111-111111111111';
@@ -17,6 +17,8 @@ const PID = '11111111-1111-4111-8111-111111111111';
 vi.mock('@web/data/api/project-invitations', () => ({
   projectInvitationsApi: {
     inviteMember: vi.fn(),
+    listPending: vi.fn().mockResolvedValue([]),
+    revoke: vi.fn(),
   },
 }));
 
@@ -55,6 +57,7 @@ function setup(props: Partial<React.ComponentProps<typeof ShareDialog>> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useCurrentUserStore.setState({ role: 'owner' });
 });
 
 describe('ShareDialog — invite by email flow', () => {
@@ -69,7 +72,7 @@ describe('ShareDialog — invite by email flow', () => {
 
   it('sends a valid email + role=viewer (default) to the new invitations endpoint', async () => {
     const user = userEvent.setup();
-    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce();
+    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({ ok: true, pendingSignup: false });
     setup();
     await user.type(
       screen.getByTestId('share-invite-input'),
@@ -88,7 +91,7 @@ describe('ShareDialog — invite by email flow', () => {
 
   it('confirms a sent invite with a toast and closes the popover', async () => {
     const user = userEvent.setup();
-    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce();
+    vi.mocked(projectInvitationsApi.inviteMember).mockResolvedValueOnce({ ok: true, pendingSignup: false });
     setup();
     await user.type(
       screen.getByTestId('share-invite-input'),
@@ -126,8 +129,8 @@ describe('ShareDialog — invite by email flow', () => {
     it(`reads the send button busy while inviting, and settles after it ${outcome}`, async () => {
       let settle!: () => void;
       vi.mocked(projectInvitationsApi.inviteMember).mockReturnValueOnce(
-        new Promise<void>((resolve, reject) => {
-          settle = outcome === 'succeeds' ? resolve : () => reject(new Error('refused'));
+        new Promise<Awaited<ReturnType<typeof projectInvitationsApi.inviteMember>>>((resolve, reject) => {
+          settle = outcome === 'succeeds' ? () => resolve({ ok: true, pendingSignup: false }) : () => reject(new Error('refused'));
         }),
       );
       const user = userEvent.setup();

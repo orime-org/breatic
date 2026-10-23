@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { Attribution, MembershipTier, PersonalStudioRef } from '@breatic/shared';
+import type { Attribution, MembershipTier, PersonalStudioRef, SignupInvitationPreview } from '@breatic/shared';
 
 import { apiGet, apiPost } from '@web/data/api/request';
 
@@ -125,6 +125,15 @@ interface ResetWithRecoveryCodeResponse {
 }
 
 export const authApi = {
+  /**
+   * Read the registration preview identified by an invitation's share token.
+   * @param token - The token carried by the invitation email.
+   * @returns The registration preview for that invitation.
+   * @throws {ApiException} When the token is missing or the request fails.
+   */
+  invitation(token: string): Promise<SignupInvitationPreview> {
+    return apiGet<SignupInvitationPreview>('/auth/invitation', { params: { token } });
+  },
   options() {
     return apiGet<AuthOptions>('/auth/options');
   },

@@ -1999,8 +1999,11 @@ export const studioInvitations = pgTable(
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     invitedUserId: uuid("invited_user_id")
-      .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Normalized recipient address until a verified account claims the invite. */
+    invitedEmail: varchar("invited_email", { length: 320 }),
+    /** Starts the recipient decision window after email verification. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     /** Granted studio role — 'maintainer' | 'guest' (admin is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
@@ -2038,6 +2041,7 @@ export const studioInvitations = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("studio_invitations_invitee_one_of", sql`(${table.invitedUserId} IS NULL) <> (${table.invitedEmail} IS NULL)`),
     uniqueIndex("studio_invitations_share_token_key").on(table.shareToken),
     index("studio_invitations_studio_id_idx").on(
       table.studioId,
@@ -2081,8 +2085,11 @@ export const projectInvitations = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     invitedUserId: uuid("invited_user_id")
-      .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Normalized recipient address until a verified account claims the invite. */
+    invitedEmail: varchar("invited_email", { length: 320 }),
+    /** Starts the recipient decision window after email verification. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     /** Granted project role — 'editor' | 'viewer' (owner is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
@@ -2120,6 +2127,7 @@ export const projectInvitations = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("project_invitations_invitee_one_of", sql`(${table.invitedUserId} IS NULL) <> (${table.invitedEmail} IS NULL)`),
     uniqueIndex("project_invitations_share_token_key").on(table.shareToken),
     index("project_invitations_project_id_idx").on(
       table.projectId,

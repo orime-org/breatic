@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import * as userRepo from "@server/modules/auth/user.repo.js";
+import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
@@ -91,6 +92,7 @@ export async function createAccount(data: Parameters<typeof userRepo.createUser>
   }).catch((err: unknown) => {
     logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
   });
+  if (user.emailVerified) await claimEmailInvitations(user);
   return user;
 }
 
@@ -196,6 +198,7 @@ export async function loginEmail(
     throw new UnauthorizedError(t("server.auth.invalid_credentials"));
   }
 
+  if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
@@ -241,17 +244,18 @@ export async function loginOrCreateGoogle(
       if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
       user = linked;
     } else {
-      user = await createAccount({ email, googleId, locale: getActiveLocale(), attribution });
+      user = await createAccount({ email, googleId, emailVerified: authoritativeEmail, locale: getActiveLocale(), attribution });
       created = true;
     }
   }
 
   // Google may attest a different address after the account's email changes.
   // It cannot verify the old address still stored on our account.
-  if (authoritativeEmail && user.email === normalizeEmail(email)) {
+  if (!created && authoritativeEmail && user.email === normalizeEmail(email)) {
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
+  if (user.emailVerified) await claimEmailInvitations(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
   return { user, token, created };

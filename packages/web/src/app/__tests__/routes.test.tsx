@@ -148,7 +148,11 @@ describe('routes', () => {
   });
 
   it('/register renders the auth page', async () => {
-    render(<AppRouter router={makeRouter('/register')} />);
+    render(
+      <QueryClientProvider>
+        <AppRouter router={makeRouter('/register')} />
+      </QueryClientProvider>,
+    );
     expect(
       await screen.findByRole('heading', { name: 'Create an account' }),
     ).toBeInTheDocument();
