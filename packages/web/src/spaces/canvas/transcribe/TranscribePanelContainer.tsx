@@ -13,6 +13,7 @@
  */
 
 import * as React from 'react';
+import { getLocale } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -93,7 +94,11 @@ function OpenTranscribePanel({ nodeId, onRun }: OpenTranscribePanelProps): React
             checked={keepFillers}
             onCheckedChange={setKeepFillers}
           />
-          <p data-testid='transcribe-hint' className='text-xs text-muted-foreground'>
+          <p
+            data-testid='transcribe-hint'
+            lang={getLocale()}
+            className='text-xs text-muted-foreground [&:lang(ko)]:break-keep'
+          >
             {t(keepFillers ? 'canvas.transcribe.keepFillersOn' : 'canvas.transcribe.keepFillersOff')}
           </p>
         </div>
