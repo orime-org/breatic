@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { budgetDeadlineFrom, env, getAgentConfig, getStorageAdapter, logger } from "@breatic/core";
-import { assetRepo, createAgentPicturePreparer, SaveRefused } from "@breatic/domain";
+import { assetRepo, createAgentPicturePreparer, readerUrlSchema, SaveRefused } from "@breatic/domain";
 import type { AgentPictureSource, PrepareAgentPictures } from "@breatic/domain";
 import { agentPictureKeyFor, attachmentTitle, readStoredMediaAtIngest } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
@@ -36,6 +36,9 @@ export function picturePreparerFor(who: PictureIdentity): PrepareAgentPictures {
         if (key === null) {
           if (who.allowedExternal !== undefined && !who.allowedExternal.has(source.sourceUrl)) {
             return { status: "unavailable", reason: "The source was not provided to this turn." };
+          }
+          if (!readerUrlSchema.safeParse(source.sourceUrl).success) {
+            return { status: "unavailable", reason: "The source must be a valid HTTPS URL within the source URL limit." };
           }
           const saved = await save(source.sourceUrl, signal);
           signal?.throwIfAborted();

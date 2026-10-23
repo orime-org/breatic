@@ -6,7 +6,7 @@ import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
 import type { ChatAttachedChip } from '@breatic/shared';
-import { test } from '../helpers/slot';
+import { stateFile, test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { dropFile, uniquePicture, watchQueuedFinish } from '../helpers/upload';
@@ -66,6 +66,104 @@ async function askAboutPictures(page: Page, prompt: string): Promise<{ chips: Ch
   const { messages } = ((await stored.json()) as { data: { messages: Array<{ parts: StoredPart[] }> } }).data;
   return { chips: body.attached_chips, reply: await answer.innerText(), parts: messages.flatMap((message) => message.parts) };
 }
+
+/**
+ * Attach one source through a visible canvas node and its real context menu.
+ * @param page - The page showing this case's disposable canvas.
+ * @param spaceId - The canvas owned by this case.
+ * @param sourceUrl - The source placed in the attachment snapshot.
+ * @throws {Error} when the live canvas module or node cannot be reached.
+ */
+async function attachCanvasSource(page: Page, spaceId: string, sourceUrl: string): Promise<void> {
+  const moduleUrl = await liveModuleUrl(page, CANVAS_SPACE);
+  const nodeId = await page.evaluate(async ({ at, projectId, canvasId, content }) => {
+    const canvas = await import(/* @vite-ignore */ at) as {
+      addNode: (project: string, space: string, node: unknown) => void;
+      removeNode: (project: string, space: string, id: string) => void;
+      readCanvasGraph: (project: string, space: string) => { nodes: Array<{ id: string }> };
+    };
+    for (const node of canvas.readCanvasGraph(projectId, canvasId).nodes) canvas.removeNode(projectId, canvasId, node.id);
+    const id = crypto.randomUUID();
+    canvas.addNode(projectId, canvasId, {
+      id, type: 'image', position: { x: 0, y: 0 },
+      data: { name: 'sample', content, createdAt: Date.now(), createdBy: 'agent-picture-e2e', locked: false, attachments: [] },
+    });
+    if (!canvas.readCanvasGraph(projectId, canvasId).nodes.some((node) => node.id === id)) {
+      throw new Error('the live canvas did not retain its source node');
+    }
+    return id;
+  }, { at: moduleUrl, projectId: smokeProjectId(), canvasId: spaceId, content: sourceUrl });
+  const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(1, { timeout: 20_000 });
+  await node.click({ button: 'right' });
+  await page.getByTestId('node-menu-add-to-agent').click();
+}
+
+test('refuses an equivalent picture URL from another Studio @needs-model @needs-storage @needs-ingest', async ({ page, browser }) => {
+  test.setTimeout(300_000); // A second Studio uploads the source before the real Agent refusal is checked.
+  const otherContext = await browser.newContext({ storageState: stateFile('B') });
+  const otherPage = await otherContext.newPage();
+  let ownerSpace = '';
+  let readerSpace = '';
+  try {
+    await openSmokeProject(otherPage, 'B');
+    ownerSpace = await createSpace(otherPage, 'canvas', `agent-source-owner-${Date.now()}`);
+    const uploaded = await uploadCanvasSample(otherPage);
+    const source = new URL(uploaded.fileUrl);
+    const sourceUrl = `${source.protocol}//${source.hostname.toUpperCase()}:${source.port || '443'}${source.pathname}?view=1#preview`;
+
+    await openSmokeProject(page);
+    readerSpace = await createSpace(page, 'canvas', `agent-source-reader-${Date.now()}`);
+    await startNewConversation(page);
+    await attachCanvasSource(page, readerSpace, sourceUrl);
+    const result = await askAboutPictures(page,
+      'Inspect the attached image directly. If it is available, name the top and bottom large color bands. ' +
+      'If its pixels are unavailable, reply exactly UNAVAILABLE. Do not call tools.',
+    );
+
+    expect(result.chips).toHaveLength(1);
+    expect(JSON.stringify(result.chips)).toContain(sourceUrl);
+    expect(result.reply.trim()).toMatch(/^UNAVAILABLE[.!]?$/i);
+    expect(result.parts.filter((part) => part.type.startsWith('tool-'))).toEqual([]);
+    await test.info().attach('other-studio-source.json', {
+      body: Buffer.from(JSON.stringify({ sourceUrl, answer: result.reply, parts: result.parts }, null, 2)), contentType: 'application/json',
+    });
+  } finally {
+    if (readerSpace !== '') await deleteSpace(page, readerSpace);
+    if (ownerSpace !== '') await deleteSpace(otherPage, ownerSpace);
+    await otherContext.close();
+  }
+});
+
+test('reads a valid picture between invalid attached sources @needs-model @needs-storage @needs-ingest', async ({ page }) => {
+  test.setTimeout(300_000); // A real upload, three source preparations and a model answer form this batch.
+  let spaceId = '';
+  try {
+    await openSmokeProject(page);
+    spaceId = await createSpace(page, 'canvas', `agent-source-batch-${Date.now()}`);
+    const uploaded = await uploadCanvasSample(page);
+    await startNewConversation(page);
+    const sources = ['http://invalid.example/sample.png', uploaded.fileUrl, 'not-a-url'];
+    for (const sourceUrl of sources) await attachCanvasSource(page, spaceId, sourceUrl);
+    await expect(page.locator('[data-testid^="chat-chip-"]')).toHaveCount(3, { timeout: 20_000 });
+
+    const result = await askAboutPictures(page,
+      'Inspect the available attached picture directly. Name its large color band at the top and at the bottom. ' +
+      'Reply in English using exactly Top: COLOR; Bottom: COLOR. Do not call tools.',
+    );
+
+    expect(result.chips).toHaveLength(3);
+    const received = result.chips.flatMap((chip) => (chip.data_snapshot.nodes as Array<{ data: { content: string } }>).map((node) => node.data.content));
+    expect(received).toEqual(sources);
+    expect(result.reply).toMatch(/Top:\s*red\s*;\s*Bottom:\s*blue\.?/i);
+    expect(result.parts.filter((part) => part.type.startsWith('tool-'))).toEqual([]);
+    await test.info().attach('mixed-source-batch.json', {
+      body: Buffer.from(JSON.stringify({ sources, answer: result.reply, parts: result.parts }, null, 2)), contentType: 'application/json',
+    });
+  } finally {
+    if (spaceId !== '') await deleteSpace(page, spaceId);
+  }
+});
 
 test('reads an attached JPEG directly with the main model @needs-model @needs-storage @needs-ingest', async ({ page }) => {
   // Real upload, upright conversion, JPEG preparation and one model answer may each wait on their external service.

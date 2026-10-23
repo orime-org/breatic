@@ -161,6 +161,18 @@ async function canonicalKey(studioId: string, fileUrl: string): Promise<string> 
   return assets[0]!.storage_key;
 }
 
+/**
+ * Spell the same stored address with a case-insensitive host and explicit port.
+ * @param fileUrl - The URL returned by actual asset registration.
+ * @returns An equivalent source URL with a view query and fragment.
+ * @throws {TypeError} When registration returned an invalid URL.
+ */
+function equivalentLocalUrl(fileUrl: string): string {
+  const parsed = new URL(fileUrl);
+  const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+  return `${parsed.protocol}//${parsed.hostname.toUpperCase()}:${port}${parsed.pathname}?view=1#preview`;
+}
+
 /** The grants this project has, with their settlement columns. */
 async function grantsOf(projectId: string): Promise<{ consumed_at: Date | null; voided_at: Date | null }[]> {
   return sql<{ consumed_at: Date | null; voided_at: Date | null }[]>`
@@ -359,6 +371,29 @@ describe("Agent pictures use the real Studio ledger and canonical registration",
     expect(await grantsOf(who.projectId)).toHaveLength(1);
   });
 
+  it("prepares an equivalent same-Studio URL using its existing canonical registration", async () => {
+    const who = await seedEditor();
+    pictureWorker();
+    const saved = await saveToStorageFor(who)(SOURCE);
+    const key = await canonicalKey(who.studioId, saved.url);
+    const reads = pictureWorker();
+    const source = { label: "Attachment 1", sourceUrl: equivalentLocalUrl(saved.url) };
+
+    const prepared = await picturePreparerFor(who)([source]);
+
+    const config = getAgentConfig();
+    const spec = { version: 1 as const, longEdge: config.agent_picture_long_edge, quality: config.agent_picture_quality };
+    const storage = await getStorageAdapter();
+    expect(prepared).toEqual([{
+      status: "ready", ...source,
+      url: storage.publicUrl(agentPictureKeyFor(key, spec)),
+      sizeBytes: 6123, mediaType: "image/jpeg",
+    }]);
+    expect(reads).toEqual([expect.objectContaining({ storageKey: key, agentPicture: spec })]);
+    expect(reached.map((url) => new URL(url).pathname)).toEqual(["/media"]);
+    expect(await grantsOf(who.projectId)).toHaveLength(1);
+  });
+
   it("refuses another Studio's registered local source without reimport or JPEG IO", async () => {
     const owner = await seedEditor();
     const other = await seedEditor();
@@ -376,6 +411,55 @@ describe("Agent pictures use the real Studio ledger and canonical registration",
     expect(reads).toEqual([]);
     expect(reached).toEqual([]);
     expect(await grantsOf(other.projectId)).toEqual([]);
+  });
+
+  it("refuses an equivalent other-Studio URL before any grant or JPEG read", async () => {
+    const owner = await seedEditor();
+    const other = await seedEditor();
+    pictureWorker();
+    const saved = await saveToStorageFor(owner)(SOURCE);
+    await canonicalKey(owner.studioId, saved.url);
+    const reads = pictureWorker();
+    const source = { label: "Attachment 1", sourceUrl: equivalentLocalUrl(saved.url) };
+
+    const prepared = await picturePreparerFor(other)([source]);
+
+    expect(prepared).toEqual([{
+      status: "unavailable", ...source, reason: expect.stringMatching(/live asset.*Studio/),
+    }]);
+    expect(reads).toEqual([]);
+    expect(reached).toEqual([]);
+    expect(await grantsOf(other.projectId)).toEqual([]);
+  });
+
+  it("keeps invalid sources unavailable while preparing a registered picture in the same batch", async () => {
+    const who = await seedEditor();
+    pictureWorker();
+    const saved = await saveToStorageFor(who)(SOURCE);
+    const key = await canonicalKey(who.studioId, saved.url);
+    const reads = pictureWorker();
+    const sources = [
+      { label: "Attachment 1", sourceUrl: "http://images.test.invalid/invalid.png" },
+      { label: "Attachment 2", sourceUrl: "not a URL" },
+      { label: "Attachment 3", sourceUrl: saved.url },
+      { label: "Attachment 4", sourceUrl: `https://images.test.invalid/${"x".repeat(2049 - "https://images.test.invalid/".length)}` },
+    ];
+
+    const prepared = await picturePreparerFor(who)(sources);
+
+    const config = getAgentConfig();
+    const spec = { version: 1 as const, longEdge: config.agent_picture_long_edge, quality: config.agent_picture_quality };
+    const storage = await getStorageAdapter();
+    const unavailable = { status: "unavailable", reason: expect.stringMatching(/\S/) };
+    expect(prepared).toEqual([
+      { ...sources[0], ...unavailable },
+      { ...sources[1], ...unavailable },
+      { status: "ready", ...sources[2], url: storage.publicUrl(agentPictureKeyFor(key, spec)), sizeBytes: 6123, mediaType: "image/jpeg" },
+      { ...sources[3], ...unavailable },
+    ]);
+    expect(reads).toEqual([expect.objectContaining({ storageKey: key, agentPicture: spec })]);
+    expect(reached.map((url) => new URL(url).pathname)).toEqual(["/media"]);
+    expect(await grantsOf(who.projectId)).toHaveLength(1);
   });
 
   it("refuses a deleted local source without reimporting its still-valid storage URL", async () => {

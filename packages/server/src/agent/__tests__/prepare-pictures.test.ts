@@ -4,14 +4,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Shared from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
+import type { AgentPicturePreparation, PrepareAgentPictures } from "@domain/agent/prepare-agent-pictures.js";
 
-interface Source { label: string; sourceUrl: string }
-interface Canonical { storageKey: string; contentType: string }
-interface Unavailable { status: "unavailable"; reason: string }
-interface BoundCallbacks {
-  resolveSource: (source: Source, signal?: AbortSignal) => Promise<Canonical | Unavailable>;
-  readPicture: (source: Canonical, spec: { version: 1; longEdge: number; quality: number }, signal?: AbortSignal) => Promise<unknown>;
-}
+type BoundCallbacks = Pick<AgentPicturePreparation, "resolveSource" | "readPicture">;
 
 const h = vi.hoisted(() => ({
   callbacks: undefined as BoundCallbacks | undefined,
@@ -26,13 +21,21 @@ vi.mock("@breatic/core", () => ({
   getStorageAdapter: async () => ({ keyFromUrl: h.keyFromUrl, publicUrl: (key: string): string => `https://media.example/${key}` }),
   logger: { error: h.error },
 }));
-vi.mock("@breatic/domain", () => ({
-  assetRepo: { findLiveByKeyInStudio: h.live },
-  createAgentPicturePreparer: (callbacks: BoundCallbacks) => { h.callbacks = callbacks; return vi.fn(); },
-  SaveRefused: class extends Error {
-    constructor(readonly kind: string, readonly reason?: string) { super(kind); }
-  },
-}));
+vi.mock("@breatic/domain", async () => {
+  const { createAgentPicturePreparer } = await import("@domain/agent/prepare-agent-pictures.js");
+  const { readerUrlSchema } = await import("@domain/asset/source-url.js");
+  return {
+    assetRepo: { findLiveByKeyInStudio: h.live },
+    createAgentPicturePreparer: (callbacks: AgentPicturePreparation): PrepareAgentPictures => {
+      h.callbacks = callbacks;
+      return createAgentPicturePreparer(callbacks);
+    },
+    readerUrlSchema,
+    SaveRefused: class extends Error {
+      constructor(readonly kind: string, readonly reason?: string) { super(kind); }
+    },
+  };
+});
 vi.mock("@breatic/shared", async (importOriginal) => {
   const actual = await importOriginal<typeof Shared>();
   return { ...actual, readStoredMediaAtIngest: h.read };
@@ -87,6 +90,84 @@ describe("Agent picture preparation is bound to the current Studio and canonical
     expect(h.save).toHaveBeenCalledWith(source.sourceUrl, controller.signal);
     expect(h.live).toHaveBeenCalledWith("studio-1", "canonical/winner.png");
     expect(resolved).toEqual({ storageKey: "canonical/winner.png", contentType: "image/png" });
+  });
+
+  it.each([
+    "http://external.example/image.png",
+    "ftp://external.example/image.png",
+    "not a URL",
+    "https://[invalid/image.png",
+    "",
+    `https://external.example/${"x".repeat(2049 - "https://external.example/".length)}`,
+  ])("returns an unavailable item before saving an invalid external source %s", async (sourceUrl) => {
+    const resolved = await callbacks().resolveSource({ label: "Attachment 1", sourceUrl });
+
+    expect(resolved).toEqual({ status: "unavailable", reason: expect.stringMatching(/\S/) });
+    expect(h.save).not.toHaveBeenCalled();
+    expect(h.live).not.toHaveBeenCalled();
+    expect(h.read).not.toHaveBeenCalled();
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
+  it("accepts an external HTTPS source at the existing 2048-character boundary", async () => {
+    const prefix = "https://external.example/";
+    const sourceUrl = `${prefix}${"x".repeat(2048 - prefix.length)}`;
+    const resolved = await callbacks().resolveSource({ label: "Attachment 1", sourceUrl });
+
+    expect(sourceUrl).toHaveLength(2048);
+    expect(h.save).toHaveBeenCalledExactlyOnceWith(sourceUrl, undefined);
+    expect(resolved).toEqual({ storageKey: "canonical/winner.png", contentType: "image/png" });
+  });
+
+  it("keeps ordered unavailable items around valid local and external pictures", async () => {
+    const sources = [
+      { label: "Attachment 1", sourceUrl: "http://external.example/one.png" },
+      { label: "Attachment 2", sourceUrl: "not a URL" },
+      { label: "Attachment 3", sourceUrl: "https://media.example/registered/one.png" },
+      { label: "Attachment 4", sourceUrl: `https://external.example/${"x".repeat(2049 - "https://external.example/".length)}` },
+      { label: "Search result 1", sourceUrl: "https://external.example/valid.png" },
+      { label: "Version 2", sourceUrl: "ftp://external.example/two.png" },
+    ];
+
+    const prepared = await picturePreparerFor(WHO)(sources);
+
+    const unavailable = { status: "unavailable", reason: expect.stringMatching(/\S/) };
+    const ready = { status: "ready", url: "https://media.example/canonical/winner.png.agent-v1-1024-q85.jpg", sizeBytes: 4567, mediaType: "image/jpeg" };
+    expect(prepared).toEqual([
+      { ...sources[0], ...unavailable },
+      { ...sources[1], ...unavailable },
+      { ...sources[2], ...ready },
+      { ...sources[3], ...unavailable },
+      { ...sources[4], ...ready },
+      { ...sources[5], ...unavailable },
+    ]);
+    expect(h.save).toHaveBeenCalledExactlyOnceWith(sources[4]!.sourceUrl, undefined);
+    expect(h.live.mock.calls).toEqual([["studio-1", "registered/one.png"], ["studio-1", "canonical/winner.png"]]);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
+  it("propagates an already-aborted turn before classifying an invalid source", async () => {
+    const controller = new AbortController();
+    const stopped = new Error("turn stopped");
+    controller.abort(stopped);
+
+    await expect(callbacks().resolveSource({ label: "Attachment 1", sourceUrl: "not a URL" }, controller.signal)).rejects.toBe(stopped);
+    expect(h.save).not.toHaveBeenCalled();
+    expect(h.live).not.toHaveBeenCalled();
+    expect(h.read).not.toHaveBeenCalled();
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
+  it("logs and propagates a valid source's storage failure to the complete batch", async () => {
+    const fault = new Error("storage unavailable");
+    h.save.mockRejectedValueOnce(fault);
+
+    await expect(picturePreparerFor(WHO)([
+      { label: "Attachment 1", sourceUrl: "https://external.example/valid.png" },
+      { label: "Attachment 2", sourceUrl: "https://media.example/registered/one.png" },
+    ])).rejects.toBe(fault);
+    expect(h.error).toHaveBeenCalledWith(expect.objectContaining({ err: fault, projectId: WHO.projectId, userId: WHO.userId }), "agent_picture_source_failed");
   });
 
   it("does not generate from an external save result that has no live registration", async () => {
