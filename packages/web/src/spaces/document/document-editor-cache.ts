@@ -88,6 +88,7 @@ import {
   type DocumentUploader,
 } from '@web/spaces/document/document-uploads';
 import type { FilesArrival } from '@web/spaces/document/document-file-input';
+import { captionDraftsFor, type CaptionDrafts } from '@web/spaces/document/document-caption-drafts';
 
 /** The editor plus what is handed out alongside it. */
 export interface DocumentEditorHandle {
@@ -108,6 +109,8 @@ export interface DocumentEditorHandle {
    * the local it is built in.
    */
   undoManager: Y.UndoManager;
+  /** Local caption edits with the same lifetime as this open document. */
+  captionDrafts: CaptionDrafts;
   /**
    * Subscribe to the guarded whole-document delete asking for confirmation.
    *
@@ -271,6 +274,7 @@ function createDocumentEditor(
   return {
     editor,
     undoManager,
+    captionDrafts: captionDraftsFor(editor),
     surface,
     uploader,
     onClearDocumentRequest: (listener) => {
@@ -285,6 +289,7 @@ function createDocumentEditor(
 const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
+    handle.captionDrafts.dispose();
     handle.editor.unmount();
     handle.surface.remove();
   },
