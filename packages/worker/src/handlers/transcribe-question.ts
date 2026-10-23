@@ -14,7 +14,7 @@
 export const NO_SPEECH = "NO_SPEECH";
 
 /** The fillers named to the model, in the languages it is likely to hear. */
-const FILLERS = "um, uh, er, 嗯, 呃, 那个, 就是说";
+const FILLERS = "um, uh, er, \u55ef, \u5443, \u90a3\u4e2a, \u5c31\u662f\u8bf4";
 
 /**
  * Build the question one transcription asks.
