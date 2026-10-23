@@ -1411,6 +1411,21 @@ for (const theme of ['light', 'dark']) {
       const screenshot = test.info().outputPath(`narrow-video-${theme}-${header ? 'header' : 'ordinary'}.png`);
       await page.screenshot({ path: screenshot });
       await test.info().attach('narrow-video', { path: screenshot, contentType: 'image/png' });
+      const beforeDownload = await video.evaluate((element: HTMLVideoElement) => ({ time: element.currentTime, paused: element.paused, volume: element.volume, muted: element.muted }));
+      const [download] = await Promise.all([
+        page.waitForEvent('download'),
+        page.getByTestId('doc-media-video-panel').getByTestId('doc-media-download').click(),
+      ]);
+      expect(readFileSync(await download.path()).equals(readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')))).toBe(true);
+      expect(await video.evaluate((element: HTMLVideoElement) => ({ time: element.currentTime, paused: element.paused, volume: element.volume, muted: element.muted }))).toEqual(beforeDownload);
+      await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
+      await page.getByTestId('doc-media-video-panel').getByTestId('fullscreen').click();
+      await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
+      await page.keyboard.press('Escape');
+      await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+      await media.getByTestId('doc-media-video-trigger').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
       await page.keyboard.press('Escape');
     });
   }

@@ -460,6 +460,13 @@ test('a video caption draft survives a live role change and remote edits, deleti
   await expect(draft).toHaveValue('Local caption draft');
   await viewer.getByTestId('doc-doc-menu-trigger').focus();
   await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveCount(0);
+  for (const code of ['zh-CN', 'en']) {
+    await viewer.getByTestId('lang-trigger').click();
+    await viewer.getByTestId(`lang-option-${code}`).click();
+    const catalog = JSON.parse(readFileSync(resolve(__dirname, `../../../../locales/${code}.json`), 'utf8')) as { spaces: { document: { media: { captionReadOnly: string } } } };
+    await expect(viewerSpace.getByText(catalog.spaces.document.media.captionReadOnly, { exact: true })).toBeVisible();
+    await expect(draft).toHaveValue('Local caption draft');
+  }
 
   const ownerCaption = await openVideoCaption(owner);
   await ownerCaption.fill('Remote caption');
@@ -487,7 +494,12 @@ test('a video caption draft survives a live role change and remote edits, deleti
   await ownerSpace.getByTestId('doc-media-video-trigger').focus();
   await owner.keyboard.press('Enter');
   await owner.getByTestId('doc-media-video-panel').getByTestId('doc-media-delete').click();
-  await expect(viewerSpace.getByTestId('doc-media-caption-retained')).toContainText('Unsaved caption to retain');
+  const kept = viewerSpace.getByTestId('doc-media-caption-retained');
+  await expect(kept).toBeVisible();
+  await expect(kept.locator('input')).toHaveValue('Unsaved caption to retain');
+  await kept.locator('input').focus();
+  await viewer.keyboard.press('Meta+a');
+  expect(await kept.locator('input').evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 'Unsaved caption to retain'.length]);
   await pressAndSettle(owner, 'Meta+z');
   await expect(viewer.locator(`${EDITOR} video`)).toBeVisible();
   await expect(viewerSpace.getByTestId('doc-media-caption-input')).toHaveValue('Unsaved caption to retain');
