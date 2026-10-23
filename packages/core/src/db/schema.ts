@@ -807,7 +807,8 @@ export const nodeTasks = pgTable(
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
     // What the row's first line names: 'upload' | 'generate' | 'understand'
-    // | 'mini_tool' (inner#888). Its CHECK lives in 0091.
+    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856). Its CHECK lives in
+    // 0092, widened in 0101.
     action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
@@ -1632,7 +1633,7 @@ export const agentUsageRecords = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     operationKey: varchar("operation_key", { length: 255 }).notNull(),
     // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
-    // / `mini_tool`.
+    // / `canvas_transcribe` / `mini_tool`.
     feature: varchar("feature", { length: 40 }).notNull(),
     // `model`, `tool:<name>` for a paid call a tool made, or `container` for
     // a mini-tool container run.

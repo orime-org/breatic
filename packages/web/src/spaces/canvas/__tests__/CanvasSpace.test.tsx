@@ -4628,7 +4628,7 @@ describe('what opening a tool on a node does to the camera and its layers', () =
   });
 });
 
-// What one press of Understand leaves the reader looking at (#2175). The node
+// What one reading leaves the reader looking at (#2175, inner#856). The node
 // it builds lands a whole node-step to the right of the one being read, which
 // on a canvas scrolled near its right edge is outside the viewport — and a
 // press whose only effect is off-screen reads as a press that did nothing.
@@ -4636,10 +4636,10 @@ describe('what opening a tool on a node does to the camera and its layers', () =
 // jsdom cannot render the ReactFlow viewport, so this pins the wiring the way
 // the locate-source contract above does; what that move comes to is
 // `viewportForBuilt`'s, and it has its own tests.
-describe('what an Understand press leaves on screen', () => {
+describe('what an Understand or Transcribe press leaves on screen', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const press = src.slice(
-    src.indexOf('const understandFromMenu'),
+    src.indexOf('const readingRunOf'),
     src.indexOf('const onUploadInputChange'),
   );
   // frameBuilt reads the source's box through measuredRects and the live
@@ -4655,6 +4655,15 @@ describe('what an Understand press leaves on screen', () => {
     // press that only lists it moves nothing.
     expect(press).toContain('setSelectAfterCreate([id])');
     expect(press).toContain('frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id)');
+  });
+
+  it('connects both reading actions to the builder that selects and frames the result', () => {
+    const understand = press.slice(press.indexOf('const understandFromMenu'), press.indexOf('const openTranscribePanel'));
+    const transcribe = press.slice(press.indexOf('const runTranscribe'));
+    expect(understand).toContain('readingRunOf(');
+    expect(understand).toContain('startUnderstandRun(run)');
+    expect(transcribe).toContain('readingRunOf(');
+    expect(transcribe).toContain('startTranscribeRun({ ...run, keepFillers })');
   });
 
   // The pan keeps the reader's zoom, so it slides in a straight line; the

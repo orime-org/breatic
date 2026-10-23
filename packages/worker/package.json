@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "fast-check": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

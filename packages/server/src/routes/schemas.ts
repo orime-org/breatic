@@ -17,6 +17,7 @@ export {
   chatMessageSchema,
   taskCreateSchema,
   understandSchema,
+  transcribeSchema,
   nodeHistorySnapshotSchema,
   canvasPasteSchema,
   projectCreateSchema,

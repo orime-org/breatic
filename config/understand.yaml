@@ -24,6 +24,12 @@ max_media_bytes: 20971520
 # who asked for a description of a video is reading all of it.
 max_output_tokens: 8192
 
+# How much a transcription may write, in tokens (inner#856). Separate from the
+# figure above because a transcript can be much longer than a description:
+# a measured 21-minute speech sample produced 5290 tokens. The byte limit
+# does not imply a duration limit; formats and bitrates vary.
+transcribe_max_output_tokens: 65536
+
 # How many readings one worker process holds in memory at once.
 # The tasks queue runs many jobs at a time, and each reading here may hold up
 # to max_media_bytes several times over. A reading that finds every place

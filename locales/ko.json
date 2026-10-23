@@ -581,6 +581,14 @@
       "couldNotStart": "시작하지 못했습니다. 다시 시도해 주세요.",
       "sourceGone": "읽어 들이던 노드가 없습니다. 이 읽기에는 연결선이 없습니다."
     },
+    "transcribe": {
+      "title": "받아쓰기",
+      "keepFillers": "추임새 남기기",
+      "keepFillersOn": "'음', '어', 'um' 같은 말을 말한 그대로 적습니다",
+      "keepFillersOff": "'음', '어', 'um' 같은 말을 뺍니다. 다른 낱말이 조금 바뀔 수 있습니다",
+      "couldNotStart": "받아쓰기를 시작하지 못했습니다. 다시 시도해 주세요.",
+      "sourceGone": "받아쓰던 노드가 없습니다. 이 받아쓰기에는 연결선이 없습니다."
+    },
     "generatePanel": {
       "focus": "포커스",
       "reference": "참조",
@@ -856,7 +864,8 @@
       "history": "기록",
       "snapshot": "스냅샷 저장",
       "download": "다운로드",
-      "understand": "내용 읽기"
+      "understand": "내용 읽기",
+      "transcribe": "받아쓰기"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -969,8 +978,8 @@
       "failure": {
         "aborted": "업로드가 끝나기 전에 중단되었습니다.",
         "over_cap": "이 파일은 업로드 크기 상한을 넘습니다.",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {이 파일은 받아쓰기 크기 상한을 넘습니다.} other {이 파일은 받아쓰기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 받아쓰기 크기 상한을 넘습니다({file}).} other {이 파일은 받아쓰기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 받아쓰기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 받아쓰기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}} other {{file, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다.} other {이 파일은 읽기 크기 상한을 넘습니다. 상한은 {limit}입니다.}}} other {{bytes, select, none {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}). 상한은 {limit}입니다.}}} other {{limit, select, unknown {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}).} other {이 파일은 읽기 크기 상한을 넘습니다({file}, {bytes}). 상한은 {limit}입니다.}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {받아쓸 수 없는 파일 형식입니다.} other {받아쓸 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {받아쓸 수 없는 파일 형식입니다({file}).} other {받아쓸 수 없는 파일 형식입니다({file}, {type}).}}}}} other {{file, select, none {{type, select, none {읽을 수 없는 파일 형식입니다.} other {읽을 수 없는 파일 형식입니다({type}).}}} other {{type, select, none {읽을 수 없는 파일 형식입니다({file}).} other {읽을 수 없는 파일 형식입니다({file}, {type}).}}}}}}",
         "expired": "시간이 초과되었습니다.",
         "no_result": "이 실행은 아무것도 생성하지 않았습니다.",
         "source_unreachable": "이 주소를 열 수 없습니다.",
@@ -983,12 +992,14 @@
         "declined": "모델이 이 요청을 거부했습니다.",
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
-        "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}"
+        "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}",
+        "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다."
       },
       "kind": {
         "upload": "업로드",
         "generate": "생성",
-        "understand": "내용 읽기"
+        "understand": "내용 읽기",
+        "transcribe": "받아쓰기"
       }
     },
     "panel": {

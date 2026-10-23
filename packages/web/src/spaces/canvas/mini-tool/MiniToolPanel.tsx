@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
+import { FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -37,6 +37,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { useTranslation } from '@web/i18n/use-translation';
 import { corsUrl } from '@web/lib/cors-url';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
+import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
 import { controlParams, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
@@ -525,44 +526,31 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         )}
         {promptFirst ? null : promptBox}
       </div>
-      <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
-        <div className='flex items-center gap-3'>
-          <span
-            data-testid='mini-tool-credit'
-            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+      <PanelRunFooter
+        creditText={creditText}
+        runLabel={t('canvas.miniTool.panel.run')}
+        disabled={blocked}
+        loading={refusal === 'exporting'}
+        onRun={onRun}
+        creditTestId='mini-tool-credit'
+        runTestId='mini-tool-run'
+      >
+        {/* The adjust's Reset clears every slider; it sits in the footer
+            beside the credit, at the other end of the row from Run. */}
+        {adjustParam === undefined ? null : (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            data-testid='mini-tool-adjust-reset'
+            onClick={() => onParams({ [adjustParam.key]: defaultAdjustValue })}
+            className='gap-1 text-xs'
           >
-            <Star className='h-3.5 w-3.5' aria-hidden='true' />
-            {creditText}
-          </span>
-          {/* The adjust's Reset clears every slider; it sits in the footer
-              beside the credit, at the other end of the row from Run. */}
-          {adjustParam === undefined ? null : (
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              data-testid='mini-tool-adjust-reset'
-              onClick={() => onParams({ [adjustParam.key]: defaultAdjustValue })}
-              className='gap-1 text-xs'
-            >
-              <RotateCcw className='h-3 w-3' aria-hidden='true' />
-              {t('canvas.miniTool.panel.reset')}
-            </Button>
-          )}
-        </div>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='mini-tool-run'
-          aria-label={t('canvas.miniTool.panel.run')}
-          disabled={blocked}
-          loading={refusal === 'exporting'}
-          icon={<ArrowUp className='h-4 w-4' aria-hidden='true' />}
-          onClick={onRun}
-          className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
-        />
-      </div>
+            <RotateCcw className='h-3 w-3' aria-hidden='true' />
+            {t('canvas.miniTool.panel.reset')}
+          </Button>
+        )}
+      </PanelRunFooter>
     </CanvasPanel>
   );
 });

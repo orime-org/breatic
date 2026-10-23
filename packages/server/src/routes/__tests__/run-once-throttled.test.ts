@@ -91,7 +91,7 @@ describe("run-once routes", () => {
         ),
       ),
     );
-    expect(all.size).toBe(8);
+    expect(all.size).toBe(9);
     expect([...all].filter(([, first]) => !first).map(([name]) => name)).toEqual([]);
   });
 });

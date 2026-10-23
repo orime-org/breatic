@@ -672,7 +672,7 @@ describe("understand_media — naming the real reason", () => {
   // memo, and it leaves the model with no move — while "this model takes mp3
   // and wav" is something it can pass on as an action.
   it.each([
-    ["an m4a", "audio/mp4"],
+    ["an aiff", "audio/aiff"],
     ["an ogg", "audio/ogg"],
     ["a flac", "audio/flac"],
   ])("tells the model %s is audio it cannot be sent", async (_name, type) => {
@@ -689,7 +689,7 @@ describe("understand_media — naming the real reason", () => {
     // statement of which audio can be sent, and a second copy of the list
     // would go on saying "mp3 and wav" the day a third one is added.
     expect(forModel).toContain(`It takes ${AUDIO_FORMAT_NAMES}.`);
-    expect(AUDIO_FORMAT_NAMES).toBe("MP3 / WAV");
+    expect(AUDIO_FORMAT_NAMES).toBe("MP3 / WAV / M4A / WebM");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 

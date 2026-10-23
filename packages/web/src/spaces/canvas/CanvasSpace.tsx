@@ -215,11 +215,17 @@ import {
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
-import { startUnderstandRun, useUnderstanding } from '@web/spaces/canvas/start-understand-run';
+import {
+  startTranscribeRun,
+  startUnderstandRun,
+  useUnderstanding,
+  type UnderstandRun,
+} from '@web/spaces/canvas/start-understand-run';
 import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
@@ -3940,56 +3946,78 @@ function CanvasSpaceInner({
   // the node's body is showing — so it reads the same answer. What happens
   // after the press is `startUnderstandRun`'s: it settles what the browser
   // can settle, builds the text node and its edge, and asks for the run.
-  // A press still waiting shows on the menu item (inner#1490).
+  // A press still waiting shows on the menu item (inner#1490). Transcribe
+  // (inner#856) is the same reading behind a panel, so both build their run
+  // here.
   const understandingMenuNode = useUnderstanding(spaceId, nodeMenu.nodeId ?? '');
+  const readingRunOf = React.useCallback(
+    (nodeId: string | null, url: string | null): UnderstandRun | null => {
+      const host = nodes.find((n) => n.id === nodeId);
+      if (
+        url === null ||
+        host === undefined ||
+        (host.type !== 'image' && host.type !== 'video' && host.type !== 'audio')
+      ) {
+        return null;
+      }
+      // A node inside a group stores its position relative to that group's
+      // origin, and the node this builds is top-level.
+      const group =
+        host.parentId === undefined
+          ? undefined
+          : nodes.find((n) => n.id === host.parentId);
+      return {
+        projectId,
+        spaceId,
+        userId: viewerId ?? '',
+        source: {
+          id: host.id,
+          name: host.data.name,
+          kind: host.type,
+          url,
+          mimeType: host.data.mimeType,
+          sizeBytes: host.data.sizeBytes,
+          position: host.position,
+          groupOrigin: group?.position ?? null,
+        },
+        // The node lands a whole step to the right of the one being read, which
+        // on a canvas scrolled near its right edge is outside the viewport. Two
+        // acts, the way the proposal path does them: selecting says which node
+        // this press is about, and framing is what puts it in front of the
+        // reader — a selection flag moves nothing.
+        onBuilt: ({ id, position }) => {
+          setSelectAfterCreate([id]);
+          frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id);
+        },
+      };
+    },
+    [frameBuilt, nodes, projectId, spaceId, viewerId],
+  );
   const understandFromMenu = React.useCallback((): void => {
-    const host = nodes.find((n) => n.id === nodeMenu.nodeId);
-    if (
-      menuDownloadUrl === null ||
-      host === undefined ||
-      (host.type !== 'image' && host.type !== 'video' && host.type !== 'audio')
-    ) {
-      return;
-    }
-    // A node inside a group stores its position relative to that group's
-    // origin, and the node this builds is top-level.
-    const group =
-      host.parentId === undefined
-        ? undefined
-        : nodes.find((n) => n.id === host.parentId);
-    void startUnderstandRun({
-      projectId,
-      spaceId,
-      userId: viewerId ?? '',
-      source: {
-        id: host.id,
-        name: host.data.name,
-        kind: host.type,
-        url: menuDownloadUrl,
-        mimeType: host.data.mimeType,
-        sizeBytes: host.data.sizeBytes,
-        position: host.position,
-        groupOrigin: group?.position ?? null,
-      },
-      // The node lands a whole step to the right of the one being read, which
-      // on a canvas scrolled near its right edge is outside the viewport. Two
-      // acts, the way the proposal path does them: selecting says which node
-      // this press is about, and framing is what puts it in front of the
-      // reader — a selection flag moves nothing.
-      onBuilt: ({ id, position }) => {
-        setSelectAfterCreate([id]);
-        frameBuilt(freshNodesBox([{ ...position, ...EMPTY_NODE_SIZE }]), host.id);
-      },
-    });
-  }, [
-    frameBuilt,
-    menuDownloadUrl,
-    nodes,
-    nodeMenu.nodeId,
-    projectId,
-    spaceId,
-    viewerId,
-  ]);
+    const run = readingRunOf(nodeMenu.nodeId, menuDownloadUrl);
+    if (run !== null) void startUnderstandRun(run);
+  }, [readingRunOf, nodeMenu.nodeId, menuDownloadUrl]);
+  const openTranscribePanel = useCanvasSession((s) => s.openTranscribePanel);
+  const transcribeFromMenu = React.useCallback((): void => {
+    if (menuDownloadUrl === null || nodeMenu.nodeId === null) return;
+    openTranscribePanel(nodeMenu.nodeId);
+  }, [menuDownloadUrl, nodeMenu.nodeId, openTranscribePanel]);
+  // The panel's Run reads the asset as the node holds it at the press: the
+  // menu that opened the panel may be long closed.
+  const runTranscribe = React.useCallback(
+    (nodeId: string, keepFillers: boolean): void => {
+      const run = readingRunOf(
+        nodeId,
+        readOnly ? null : downloadableAsset(nodes.find((n) => n.id === nodeId)),
+      );
+      if (run === null) {
+        toast.warning(t('canvas.miniTool.panel.sourceMissing'));
+        return;
+      }
+      void startTranscribeRun({ ...run, keepFillers });
+    },
+    [readingRunOf, readOnly, nodes, t],
+  );
   // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
   // Whatever the press makes in the browser first (a browser tool's file, a
   // drawing tool's images), the build and the upload are one tracked
@@ -4801,6 +4829,8 @@ function CanvasSpaceInner({
               getLastWriteWasLocal={getLastWriteWasLocal}
               onRun={runMiniTool}
             />
+            {/* The transcribe panel (inner#856), in the same slot. */}
+            <TranscribePanelContainer nodes={nodes} onRun={runTranscribe} />
             {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
             <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
@@ -5014,6 +5044,10 @@ function CanvasSpaceInner({
               menuDownloadUrl === null ? undefined : understandFromMenu
             }
             understanding={understandingMenuNode}
+            // Transcribe hears speech, which only audio and video carry; it
+            // greys on the same answer the two above read.
+            transcribeOffered={nodeMenu.type === 'audio' || nodeMenu.type === 'video'}
+            onTranscribe={menuDownloadUrl === null ? undefined : transcribeFromMenu}
             toolsOffered={miniToolsFor(nodeMenu.type).length > 0}
             tools={menuTools}
             onTool={openToolFromMenu}

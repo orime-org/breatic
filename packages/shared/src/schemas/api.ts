@@ -462,6 +462,18 @@ export const understandSchema = z.object({
 export type UnderstandInput = z.infer<typeof understandSchema>;
 
 /**
+ * One transcription press (inner#856): a reading of an audio or video node
+ * with the fixed transcription question, and the panel's one switch. Bound
+ * the same way as a reading; it carries no question of the reader's own.
+ */
+export const transcribeSchema = understandSchema.omit({ prompt: true, source_type: true }).extend({
+  source_type: z.enum(["audio", "video"]),
+  /** Whether filler words stay as spoken. */
+  keep_fillers: z.boolean(),
+});
+export type TranscribeInput = z.infer<typeof transcribeSchema>;
+
+/**
  * A copy of what a text node holds, kept because somebody asked for it
  * (#2175). The browser is the only writer: the words live in the canvas
  * document, which the server does not read.
