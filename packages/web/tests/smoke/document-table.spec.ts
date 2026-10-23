@@ -1188,3 +1188,103 @@ for (const key of ['Alt+Backspace', 'Enter']) {
     await expect(page.locator(TOP).first()).toHaveText('lead');
   });
 }
+
+
+for (const { type, chord, key } of [
+  { type: 'heading', chord: 'ControlOrMeta+Alt+1', key: 'Backspace' },
+  { type: 'codeBlock', chord: 'ControlOrMeta+Alt+c', key: 'Delete' },
+]) {
+  test(`T5: ${key} clears selected cells with an empty ${type}, and undo restores it`, async () => {
+    await openFreshDocument(page);
+    await insertTable(page, 2, 2);
+    await page.keyboard.press(chord);
+    await expect(page.locator(`${EDITOR} td [data-content-type="${type}"]`)).toHaveCount(1);
+    await pressAndSettle(page, 'Tab');
+    await page.keyboard.press(chord);
+    await expect(page.locator(`${EDITOR} td [data-content-type="${type}"]`)).toHaveCount(2);
+    await page.waitForTimeout(600);
+    await selectCells(page, 0, 3);
+
+    await page.keyboard.press(key);
+
+    await expect(page.locator(`${EDITOR} table`)).toHaveCount(1);
+    expect(await cellBlocks(page)).toEqual([[['paragraph'], ['paragraph']], [['paragraph'], ['paragraph']]]);
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(page.locator(`${EDITOR} td [data-content-type="${type}"]`)).toHaveCount(2);
+    await expect(page.locator(`${EDITOR} td`)).toHaveCount(4);
+  });
+}
+
+test('T5: merging an empty heading with a paragraph keeps both blocks', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 2, 2);
+  await page.keyboard.press('ControlOrMeta+Alt+1');
+  await expect(page.locator(`${EDITOR} td [data-content-type="heading"]`)).toHaveCount(1);
+  await pressAndSettle(page, 'Tab');
+  await page.keyboard.type('B');
+  await selectCells(page, 0, 1);
+
+  await page.getByTestId('doc-bubble-tool-mergeCells').click();
+
+  expect((await cellBlocks(page))[0]).toEqual([['heading', 'paragraph:B']]);
+});
+
+for (const theme of ['light', 'dark']) {
+  for (const header of [false, true]) {
+    test(`T7: video display and column resizing respect a narrow ${header ? 'header' : 'ordinary'} cell (${theme})`, async () => {
+      await openFreshDocument(page);
+      await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+      await insertTable(page, 1, 3);
+      await page.keyboard.type('narrow');
+      if (header) {
+        await hoverCell(page, 'narrow');
+        await page.getByTestId('doc-table-row-handle').click();
+        await page.getByTestId('doc-table-row-header').click();
+        await expect(page.locator(`${EDITOR} th`)).toHaveCount(3);
+      }
+      const target = page.locator(`${EDITOR} ${header ? 'th' : 'td'}`).nth(1);
+      const initial = await target.boundingBox();
+      if (initial === null) throw new Error('missing target cell');
+      await page.mouse.click(initial.x + 50, initial.y + initial.height / 2);
+      await page.mouse.move(5, 5);
+      await page.mouse.move(initial.x + 50, initial.y + initial.height / 2, { steps: 3 });
+      await page.getByTestId('doc-block-plus').click();
+      const chooser = page.waitForEvent('filechooser');
+      await page.getByTestId('doc-block-insert-video').click();
+      await (await chooser).setFiles({
+        name: 'cell-video.mp4', mimeType: 'video/mp4',
+        buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+      });
+      const media = target.locator('[data-content-type="video"] [data-media-box]');
+      await expect(media).toBeVisible({ timeout: 60_000 });
+      expect((await target.boundingBox())!.width).toBeLessThanOrEqual(initial.width + 1);
+      await clickAndSettle(page, page.locator(TOP).first());
+      for (const desired of [105, 80, 35]) {
+        const cellBox = await target.boundingBox();
+        if (cellBox === null) throw new Error('missing video cell');
+        const edge = cellBox.x + cellBox.width - 1;
+        const y = cellBox.y + cellBox.height - 4;
+        await page.mouse.move(edge - 15, y);
+        await page.mouse.move(edge, y, { steps: 3 });
+        await expect(page.locator(`${EDITOR} .column-resize-handle`)).not.toHaveCount(0);
+        await page.mouse.down();
+        await page.mouse.move(edge + desired - cellBox.width, y, { steps: 6 });
+        await page.mouse.up();
+        const sizes = await target.evaluate((td) => {
+          const style = getComputedStyle(td);
+          const media = td.querySelector('[data-media-box]')!;
+          return {
+            cell: td.getBoundingClientRect().width,
+            content: td.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+            media: media.getBoundingClientRect().width,
+            seek: td.querySelector('[data-testid="seek"]')!.getBoundingClientRect().width,
+          };
+        });
+        await test.info().attach(`cell-video-${desired}`, { body: JSON.stringify({ theme, header, desired, ...sizes }), contentType: 'application/json' });
+        expect(sizes.cell).toBeLessThanOrEqual(desired + 1);
+        expect(sizes.media).toBeGreaterThan(0);
+        expect(sizes.media).toBeLessThanOrEqual(sizes.content + 1);
+      }
+    });
+  }
+}

@@ -73,7 +73,7 @@ function selectAllCells(editor: Editor): void {
   const view = editor.prosemirrorView;
   const cells: number[] = [];
   view.state.doc.descendants((node, pos) => {
-    if (node.type.name === 'docTableCell') cells.push(pos);
+    if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') cells.push(pos);
     return true;
   });
   view.dispatch(
@@ -252,6 +252,44 @@ describe('the bubble bar over cells (A9)', () => {
 });
 
 describe('merging the selected cells (A10)', () => {
+  it.each(['heading', 'bulletListItem', 'numberedListItem', 'checkListItem', 'codeBlock'])(
+    'keeps an empty %s and its properties when merging cells', (type) => {
+      const editor = open();
+      editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: [
+        { blocks: [{ id: 'typed-empty', type, content: '', props: { level: 2, checked: true, language: 'typescript' } }] },
+        'B',
+      ] }] })] as never);
+      const original = editor.prosemirrorState.doc.firstChild!.firstChild!.firstChild!.firstChild!.firstChild!.toJSON();
+      selectAllCells(editor);
+
+      mergeSelectedCells(editor);
+
+      const merged = editor.prosemirrorState.doc.firstChild!.firstChild!.firstChild!.firstChild!;
+      expect(merged.childCount).toBe(2);
+      expect(merged.firstChild!.toJSON()).toEqual(original);
+      expect(merged.lastChild!.textContent).toBe('B');
+      expect(() => editor.prosemirrorState.doc.check()).not.toThrow();
+    },
+  );
+
+  it('keeps an empty heading in a header cell when merging', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [tableBlock({ headerRows: 1, rows: [{ cells: [
+      { blocks: [{ id: 'header-heading', type: 'heading', props: { level: 3 }, content: '' }] },
+      'B',
+    ] }] })] as never);
+    selectAllCells(editor);
+
+    mergeSelectedCells(editor);
+
+    const cell = editor.prosemirrorState.doc.firstChild!.firstChild!.firstChild!.firstChild!;
+    expect(cell.type.name).toBe('docTableHeader');
+    expect(cell.childCount).toBe(2);
+    expect(cell.firstChild!.attrs['id']).toBe('header-heading');
+    expect(cell.firstChild!.firstChild!.type.name).toBe('heading');
+    expect(cell.lastChild!.textContent).toBe('B');
+  });
+
   it('offers to merge only over two cells or more', () => {
     const editor = open();
     const view = editor.prosemirrorView;

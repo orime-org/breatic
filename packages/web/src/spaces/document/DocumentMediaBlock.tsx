@@ -378,8 +378,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
      */
     const widthAt = (x: number): number => {
       const raw = startWidth + (x - startX) * factor;
-      const capped = maxWidth > 0 ? Math.min(raw, maxWidth) : raw;
-      return Math.round(Math.max(MIN_WIDTH[type === 'video' ? 'video' : 'image'], capped));
+      const requested = Math.max(MIN_WIDTH[type === 'video' ? 'video' : 'image'], raw);
+      return Math.round(maxWidth > 0 ? Math.min(requested, maxWidth) : requested);
     };
     /**
      * Shows the width the drag has reached.
@@ -447,7 +447,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           (!sized || fillsRow) && 'w-full',
         )}
         style={{
-          ...(type === 'video' && { minWidth: `${MIN_WIDTH.video}px` }),
+          ...(type === 'video' && { minWidth: `min(${MIN_WIDTH.video}px, 100%)` }),
           ...(sized && boxWidth !== undefined && { width: `${boxWidth}px`, '--doc-media-width': `${boxWidth}px` }),
         }}
       >

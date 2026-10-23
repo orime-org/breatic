@@ -58,7 +58,7 @@ function open(cells: readonly [string, string, string, string]): { editor: Edito
 function selectCells(editor: Editor, all: boolean): void {
   const cells: number[] = [];
   editor.prosemirrorState.doc.descendants((node, pos) => {
-    if (node.type.name === 'docTableCell') cells.push(pos);
+    if (node.type.name === 'docTableCell' || node.type.name === 'docTableHeader') cells.push(pos);
     return true;
   });
   const view = editor.prosemirrorView!;
@@ -103,6 +103,35 @@ function texts(editor: Editor): string[] {
 }
 
 describe('deleting over selected cells (A15)', () => {
+  for (const type of ['heading', 'bulletListItem', 'numberedListItem', 'checkListItem', 'codeBlock']) {
+    for (const header of [false, true]) {
+      it.each(['Backspace', 'Delete'])(`%s clears an empty ${type} in ${header ? 'header' : 'ordinary'} cells and undo restores its type`, (key) => {
+        const { editor, manager } = open(['', '', '', '']);
+        editor.replaceBlocks(editor.document, [
+          { type: 'paragraph', content: 'above' },
+          tableBlock({ headerRows: header ? 2 : 0, rows: [0, 1].map(() => ({ cells: [0, 1].map(() => ({
+            blocks: [{ type, content: '', props: { level: 2, checked: true, language: 'typescript' } }],
+          })) })) }),
+        ] as never);
+        manager.stopCapturing();
+        const original = editor.prosemirrorState.doc.toJSON();
+        selectCells(editor, true);
+
+        press(editor, key);
+
+        expect(types(editor)).toEqual(['paragraph', 'docTable']);
+        const table = editor.prosemirrorState.doc.firstChild!.child(1);
+        table.forEach((row) => row.forEach((cell) => {
+          expect(cell.childCount).toBe(1);
+          expect(cell.firstChild!.firstChild!.type.name).toBe('paragraph');
+          expect(cell.textContent).toBe('');
+        }));
+        manager.undo();
+        expect(editor.prosemirrorState.doc.toJSON()).toEqual(original);
+      });
+    }
+  }
+
   it.each(['Backspace', 'Delete'])('%s empties the selected cells', (key) => {
     const { editor } = open(['a1', 'b1', 'a2', 'b2']);
     selectCells(editor, false);

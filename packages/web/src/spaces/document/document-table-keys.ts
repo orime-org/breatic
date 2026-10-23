@@ -38,6 +38,7 @@ import {
   addRowAfter,
   cellAround,
   CellSelection,
+  deleteCellSelection,
   goToNextCell,
   isInTable,
 } from '@tiptap/pm/tables';
@@ -219,15 +220,16 @@ function deleteAtEdge(view: EditorView): boolean {
 }
 
 /**
- * Takes a whole empty table away when every cell of it is selected, for
- * either key a reader deletes with. Anything else is the table plugin's:
- * `deleteCellSelection` empties the selected cells.
+ * Clears selected cells through the table command, or removes the whole
+ * table when every selected cell already holds one empty paragraph.
+ * Cell selections are handled before individual block shortcuts.
  * @param editor - The editor.
  * @returns Whether the key was claimed.
  */
-function deleteWholeTable(editor: KeysEditor): boolean {
-  const blockId = wholeEmptyTableSelected(editor.prosemirrorView.state);
-  if (blockId === null) return false;
+function deleteSelectedCells(editor: KeysEditor): boolean {
+  const view = editor.prosemirrorView;
+  const blockId = wholeEmptyTableSelected(view.state);
+  if (blockId === null) return deleteCellSelection(view.state, view.dispatch);
   editor.removeBlocks([blockId]);
   return true;
 }
@@ -433,9 +435,9 @@ export const documentTableKeysExtension = createExtension(() => ({
     // Over a selection holding a whole table, through the selection's own
     // replace (inner#1619 T14): the body's deletes the range by position.
     Backspace: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || deleteWholeTable(editor) || backspaceAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || deleteSelectedCells(editor) || backspaceAtEdge(editor.prosemirrorView),
     Delete: ({ editor }: { editor: KeysEditor }) =>
-      takeAwayHeldTables(editor.prosemirrorView) || deleteWholeTable(editor) || deleteAtEdge(editor.prosemirrorView),
+      takeAwayHeldTables(editor.prosemirrorView) || deleteSelectedCells(editor) || deleteAtEdge(editor.prosemirrorView),
     // The word and line deletes the body binds (Tiptap `keymap.ts:73-91`,
     // macOS ones included) delete the range by position as well.
     ...Object.fromEntries(

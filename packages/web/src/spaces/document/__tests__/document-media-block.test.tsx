@@ -752,6 +752,24 @@ describe('the toolbar looks like the selection bubble bar', () => {
 });
 
 describe('resizing (A8)', () => {
+  for (const type of ['image', 'video'] as const) {
+    for (const available of [24, 64, 100, 256]) {
+      it.each([-400, 400])(`keeps a ${type} resize within its ${available}px container when dragged %ipx`, (distance) => {
+        const editor = open(type, { previewWidth: 300, textAlignment: 'left' });
+        selectMedia(editor);
+        const box = within(element(editor)).getByTestId('doc-media-box');
+        vi.spyOn(box, 'offsetWidth', 'get').mockReturnValue(Math.min(300, available));
+        vi.spyOn(box.parentElement!, 'clientWidth', 'get').mockReturnValue(available);
+        const handle = within(element(editor)).getByTestId('doc-media-resize-se');
+
+        fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
+        fireEvent.pointerUp(handle, { clientX: 500 + distance, pointerId: 1 });
+
+        expect(media(editor).props['previewWidth']).toBe(distance > 0 ? available : Math.min(type === 'video' ? 128 : 48, available));
+      });
+    }
+  }
+
   it('offers a knob on each corner of a selected picture or video, and none before', () => {
     const editor = open('image', { previewWidth: 200 });
     expect(within(element(editor)).queryByTestId('doc-media-resize-se')).toBeNull();

@@ -480,15 +480,15 @@ export function canMergeCells(state: EditorState): boolean {
 }
 
 /**
- * Whether a cell holds nothing: one empty block with words and nothing
- * nested under it, the way a new cell starts.
+ * Whether a cell holds one empty paragraph with nothing nested under it.
+ * Other empty block types carry the reader's chosen structure.
  * @param cell - The cell node.
  * @returns True when it is empty.
  */
 function isEmptyCell(cell: PMNode): boolean {
   const only = cell.childCount === 1 ? cell.firstChild : null;
   const content = only?.childCount === 1 ? only.firstChild : null;
-  return content !== null && content !== undefined && content.isTextblock && content.content.size === 0;
+  return content?.type.name === 'paragraph' && content.content.size === 0;
 }
 
 /**
