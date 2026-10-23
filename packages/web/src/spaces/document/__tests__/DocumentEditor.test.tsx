@@ -36,6 +36,7 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 describe('DocumentEditor', () => {
   const NAME = 'project-p/document-chrome';
@@ -268,6 +269,38 @@ describe('DocumentEditor', () => {
       expect(scrollTo).toHaveBeenCalledTimes(1);
     } finally {
       HTMLElement.prototype.scrollTo = original;
+    }
+  });
+
+  it.each(['paragraph', 'table'] as const)('outlines the landed %s itself, leaving descendant blocks out of its measurement', async (kind) => {
+    const { editor } = handle;
+    const { rerender } = render(<DocumentEditor handle={handle} />);
+    editor.replaceBlocks(editor.document, [kind === 'table'
+      ? tableBlock({ rows: [{ cells: ['H1', 'H2'] }, { cells: ['A', 'B'] }] })
+      : { type: 'paragraph', content: 'Parent', children: [{ type: 'paragraph', content: 'Child' }] },
+    ] as never);
+    const blockId = (editor.document[0] as { id: string }).id;
+    const block = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
+    const own = kind === 'table' ? block : block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
+    const nested = block.querySelectorAll<HTMLElement>('.bn-block-content')[kind === 'table' ? 0 : 1]!;
+    expect(nested).not.toBe(own);
+    const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const spies = [
+      vi.spyOn(own, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 90, 300, 160)),
+      vi.spyOn(nested, 'getBoundingClientRect').mockReturnValue(new DOMRect(50, 100, 90, 20)),
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(10, 20, 500, 400)),
+    ];
+    viewport.style.setProperty('--space-2', '8px');
+    viewport.scrollTop = 30;
+    viewport.scrollLeft = 5;
+    try {
+      rerender(<DocumentEditor handle={handle} landed={{ how: 'write', blockId }} />);
+
+      await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
+        top: '92px', left: '27px', width: '316px', height: '176px',
+      }));
+    } finally {
+      for (const spy of spies) spy.mockRestore();
     }
   });
 

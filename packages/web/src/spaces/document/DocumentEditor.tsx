@@ -218,10 +218,10 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
     if (viewport === null || block === null || block === undefined) return undefined;
     shown.current = landed;
-    // Around the block's own words, standing off them on every side: the
-    // block's outer box starts where its first letter does and carries the
-    // spacing above it.
-    const at = (block.querySelector('.bn-block-content') ?? block).getBoundingClientRect();
+    // A regular block's own content leaves its indented children out. A
+    // layout table is already its own content frame; descendants belong to
+    // its cells and cannot stand in for the whole table (inner#1619).
+    const at = (block.querySelector(':scope > .bn-block > .bn-block-content') ?? block).getBoundingClientRect();
     const frame = viewport.getBoundingClientRect();
     const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
     const top = at.top - frame.top + viewport.scrollTop - gap;

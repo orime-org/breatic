@@ -347,28 +347,59 @@ test('a rewrite replaces the passage as one undo step', async () => {
   await expect(card).toHaveAttribute('data-state', 'idle');
 });
 
-test('an insert puts a table after the passage, opening the document when another Space is in front', async () => {
-  const docId = await openDocumentWithText();
-  await sendTheOpenSpace();
-  await answerWith((blocks, spaceId) => ({
-    ...onSecondBlock({})(blocks, spaceId),
-    kind: 'insert',
-    body: '| Shot | Size |\n|---|---|\n| 1 | Wide |',
-  }));
+for (const theme of ['light', 'dark']) {
+  test(`an insert puts a table after the passage, opening the document when another Space is in front (${theme})`, async () => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'error') errors.push(message.text());
+    });
+    const docId = await openDocumentWithText();
+    await sendTheOpenSpace();
+    await answerWith((blocks, spaceId) => ({
+      ...onSecondBlock({})(blocks, spaceId),
+      kind: 'insert',
+      body: '| Shot | Size |\n|---|---|\n| 1 | Wide |',
+    }));
 
-  const card = await askForTheCard();
-  await expect(card.getByTestId('document-proposal-anchor')).toHaveText('He pushes the door open and sees her bags packed.');
-  created.push(await createSpace(page, 'canvas', `doc-proposal-canvas-${String(Date.now())}`));
-  await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
-  await card.getByRole('button').last().click();
+    const card = await askForTheCard();
+    await expect(card.getByTestId('document-proposal-anchor')).toHaveText('He pushes the door open and sees her bags packed.');
+    created.push(await createSpace(page, 'canvas', `doc-proposal-canvas-${String(Date.now())}`));
+    await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
+    await page.getByTestId('theme-toggle').click();
+    await page.getByTestId(`theme-option-${theme}`).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    await card.getByRole('button').last().click();
 
-  await expect(card).toHaveAttribute('data-state', 'applied');
-  await expect(visibleSpace(page).getByTestId('document-space')).toHaveAttribute('data-space-id', docId);
-  const table = page.locator(`${DOCUMENT_EDITOR} table`);
-  await expect(table).toBeVisible();
-  const box = await table.boundingBox();
-  expect(box !== null && box.y >= 0 && box.y + box.height <= 900).toBe(true);
-});
+    await expect(card).toHaveAttribute('data-state', 'applied');
+    await expect(visibleSpace(page).getByTestId('document-space')).toHaveAttribute('data-space-id', docId);
+    const table = page.locator(`${DOCUMENT_EDITOR} table`);
+    await expect(table).toBeVisible();
+    const box = await table.boundingBox();
+    expect(box !== null && box.y >= 0 && box.y + box.height <= 900).toBe(true);
+    const mark = visibleSpace(page).getByTestId('document-proposal-landed');
+    await expect(mark).toBeVisible();
+    const bounds = await mark.evaluate((element) => {
+      const space = element.closest('[data-testid="document-space"]')!;
+      const frame = space.querySelector('[data-node-type="docTable"]')!;
+      const mark = element.getBoundingClientRect();
+      const table = frame.getBoundingClientRect();
+      const first = frame.querySelector('.bn-block-content')!.getBoundingClientRect();
+      return { theme: document.documentElement.getAttribute('data-theme'), mark: mark.toJSON(), table: table.toJSON(), first: first.toJSON() };
+    });
+    expect(bounds.theme).toBe(theme);
+    expect(bounds.mark.left).toBeLessThan(bounds.table.left);
+    expect(bounds.mark.top).toBeLessThan(bounds.table.top);
+    expect(bounds.mark.right).toBeGreaterThan(bounds.table.right);
+    expect(bounds.mark.bottom).toBeGreaterThan(bounds.table.bottom);
+    expect(bounds.mark.width).toBeGreaterThan(bounds.first.width);
+    await test.info().attach(`table-landing-${theme}`, { body: JSON.stringify(bounds), contentType: 'application/json' });
+    const screenshot = test.info().outputPath(`table-landing-${theme}.png`);
+    await page.screenshot({ path: screenshot });
+    await test.info().attach(`table-landing-${theme}.png`, { path: screenshot, contentType: 'image/png' });
+    expect(errors).toEqual([]);
+  });
+}
 
 test('a passage changed after the proposal is left alone, and a toast says so', async () => {
   await openDocumentWithText();
