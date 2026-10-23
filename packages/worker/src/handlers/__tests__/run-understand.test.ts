@@ -14,6 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fc from "fast-check";
 
 import type * as DomainModule from "@breatic/domain";
 import type * as CoreModule from "@breatic/core";
@@ -54,9 +55,7 @@ import type { UsageRecorder, UsageRow } from "@breatic/domain";
 
 import { runUnderstand } from "@worker/handlers/dispatch.js";
 import {
-  AnsweredNothing,
   CutShort,
-  NoSpeech,
   StoppedPartWay,
   TranscriptionBlocked,
 } from "@worker/handlers/understand-failure.js";
@@ -359,15 +358,43 @@ describe("running one transcription", () => {
     expect(result).toMatchObject({ outputs: [{ content: "大家好。\n你好。" }] });
   });
 
-  it("fails as no speech, naming the medium, when nobody talks", async () => {
-    answers("  NO_SPEECH\n", "stop");
-    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toMatchObject({
-      name: "NoSpeech",
-      medium: "audio",
+  describe.each(["audio", "video"])("normal %s responses", (sourceType) => {
+    it.each([
+      "The meeting starts now.\nPlease take a seat.",
+      "  NO_SPEECH\n",
+      "No one speaks in this recording.",
+      "An incorrect transcript.",
+      "",
+    ])("preserves %j and settles the reported cost", async (text) => {
+      billedThen(0.0037, () => ({ text, finishReason: "stop", kind: sourceType }));
+
+      const [result, credits] = await runUnderstand(
+        { ...TRANSCRIBE, source_type: sourceType }, recorder(), DEADLINE_AT,
+      );
+
+      expect(result).toEqual({ outputs: [{ content: text }], finish_reason: "stop" });
+      expect(credits).toBeCloseTo(0.37, 10);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ costUsd: 0.0037, costSource: "provider" });
+      expect(missing).toEqual([]);
     });
-    await expect(
-      runUnderstand({ ...TRANSCRIBE, source_type: "video" }, recorder(), DEADLINE_AT),
-    ).rejects.toBeInstanceOf(NoSpeech);
+  });
+
+  it("preserves arbitrary normal text independently of the reported charge", async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.oneof(fc.string(), fc.constant(""), fc.constant("NO_SPEECH")),
+      fc.integer({ min: 0, max: 10_000 }),
+      async (text, creditCents) => {
+        rows = [];
+        const costUsd = creditCents / 10_000;
+        billedThen(costUsd, () => ({ text, finishReason: "stop", kind: "audio" }));
+        const [result, credits] = await runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT);
+        expect(result).toEqual({ outputs: [{ content: text }], finish_reason: "stop" });
+        expect(credits).toBeCloseTo(creditCents / 100, 10);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({ costUsd, costSource: "provider" });
+      },
+    ));
   });
 
   it.each([
@@ -379,15 +406,13 @@ describe("running one transcription", () => {
     await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(kind);
   });
 
-  it("reads an empty answer the filter stopped as a block, and any other as nothing", async () => {
-    answers("", "content_filter");
-    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
-      TranscriptionBlocked,
-    );
-    answers("", "stop");
-    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
-      AnsweredNothing,
-    );
+  it.each([
+    ["length", CutShort],
+    ["content_filter", TranscriptionBlocked],
+    ["error", StoppedPartWay],
+  ])("keeps an empty response stopped for %s on the error path", async (reason, kind) => {
+    answers("", reason);
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(kind);
   });
 
   it.each(["content_policy_violation", "refusal"])(

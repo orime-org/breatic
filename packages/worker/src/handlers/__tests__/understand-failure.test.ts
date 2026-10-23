@@ -18,7 +18,6 @@ import { readTaskFailure } from "@breatic/shared";
 import {
   AnsweredNothing,
   CutShort,
-  NoSpeech,
   StoppedPartWay,
   TranscriptionBlocked,
   understandFailureCode,
@@ -213,10 +212,9 @@ describe("which refusals a second attempt would only repeat", () => {
   });
 });
 
-// inner#856: the four ways a transcription ends without a transcript.
+// inner#856: explicit service failures remain transcription failures.
 describe("what a transcription that put nothing on the node is stored as", () => {
   it.each([
-    [new NoSpeech("audio"), "no_speech"],
     [new CutShort(), "cut_short"],
     [new StoppedPartWay("error"), "internal"],
     [new TranscriptionBlocked("content_filter"), "declined"],
@@ -224,28 +222,23 @@ describe("what a transcription that put nothing on the node is stored as", () =>
     expect(understandFailureCode(err)).toBe(code);
   });
 
-  // A block was measured once in three sends of the same audio, and a blocked
-  // call costs nothing, so the queue's next attempt is worth taking; so is one
-  // after the service broke mid-answer. Silence and a full allowance are the
-  // same next time.
-  it("tries a block and a broken answer again, and stands by silence and length", () => {
+  // Preserve the existing retry policy for explicit service failures.
+  it("tries a block and a broken answer again, and stands by length", () => {
     expect(verdictStands(new TranscriptionBlocked("content_filter"))).toBe(false);
     expect(verdictStands(new StoppedPartWay("error"))).toBe(false);
-    expect(verdictStands(new NoSpeech("video"))).toBe(true);
     expect(verdictStands(new CutShort())).toBe(true);
   });
 
-  it("writes down that it was a transcription and the medium it heard nothing in", () => {
+  it("writes down that the truncated result was a transcription", () => {
     const stored = storedFailure(
       "understand",
-      new NoSpeech("video"),
+      new CutShort(),
       "https://assets.invalid/video/a.mp4",
       "transcribe",
     );
     expect(readTaskFailure(stored)).toEqual({
-      reason: "no_speech",
+      reason: "cut_short",
       reading: "transcribe",
-      medium: "video",
     });
   });
 

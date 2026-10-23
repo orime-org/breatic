@@ -498,9 +498,10 @@ export function renderProductGuide(): string {
       "with a new line per speaker and no speaker names or timestamps, into a connected text node to the right, " +
       "selects that node and slides the canvas to it when needed, closing the panel. Chinese uses Traditional " +
       "characters when the reader's language is Traditional Chinese, otherwise Simplified. An unsupported or " +
-      "oversized file makes no new node. No speech leaves the text blank and a failed task saying why; a " +
-      "transcription cut short or refused also fails without writing a partial result. Failed transcriptions " +
-      "are not charged. The menu row is greyed while the source holds nothing. If it cannot begin it says " +
+      "oversized file makes no new node. A normally completed response is saved as returned, even when empty " +
+      "or inaccurate, and charged by actual usage. The user judges its accuracy. A " +
+      "transcription cut short or refused also fails without writing a partial result. The menu row is " +
+      "greyed while the source holds nothing. If it cannot begin it says " +
       `${quoted(t("canvas.transcribe.couldNotStart"))} If the source is deleted as it starts, ` +
       `${quoted(t("canvas.transcribe.sourceGone"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools, ` +

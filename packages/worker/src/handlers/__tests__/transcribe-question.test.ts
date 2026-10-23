@@ -4,9 +4,8 @@
 /**
  * What a transcription asks the model (inner#856).
  *
- * The wording is the one measured against the pinned model on 2026-10-22:
- * the spoken language kept, a new line per speaker, Chinese in one script,
- * and NO_SPEECH when nobody talks. It names no answer language, because
+ * The wording keeps the spoken language, a new line per speaker and Chinese
+ * in one script. It names no answer language, because
  * that line makes the model translate.
  */
 
@@ -15,7 +14,7 @@ import { describe, expect, it } from "vitest";
 import { isTranscription, transcribeQuestion } from "@worker/handlers/transcribe-question.js";
 
 const HEAD =
-  "Transcribe the speech in this audio. Write the words exactly as they are spoken, in the language they are spoken in; do not translate, summarise or describe. Output only the transcript. If nobody speaks, output exactly NO_SPEECH. Start a new line whenever a different person starts speaking.";
+  "Transcribe the speech in this audio. Write the words exactly as they are spoken, in the language they are spoken in; do not translate, summarise or describe. Output only the transcript. Start a new line whenever a different person starts speaking.";
 
 describe("the question a transcription asks", () => {
   it("asks for the speech as spoken, in simplified characters, fillers kept", () => {

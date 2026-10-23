@@ -166,13 +166,12 @@ describe("a cause and what it was about", () => {
   });
 
   // inner#856: a transcription's row and its history entry say "transcribe"
-  // and name the medium it heard nothing in, read off the record itself.
-  it("carries which reading it was and the medium it was about", () => {
-    const stored = encodeTaskFailure("no_speech", { reading: "transcribe", medium: "video" });
+  // read off the record itself.
+  it("carries which reading was cut short", () => {
+    const stored = encodeTaskFailure("cut_short", { reading: "transcribe" });
     expect(readTaskFailure(stored)).toEqual({
-      reason: "no_speech",
+      reason: "cut_short",
       reading: "transcribe",
-      medium: "video",
     });
     expect(
       readTaskFailure(
@@ -181,14 +180,13 @@ describe("a cause and what it was about", () => {
     ).toEqual({ reason: "understand_over_cap", reading: "transcribe", file: "a.mp3", bytes: 9 });
   });
 
-  it("drops a reading or medium that is not one of ours", () => {
-    expect(readTaskFailure('{"reason":"no_speech","reading":"guess","medium":"image"}')).toEqual({
-      reason: "no_speech",
+  it("drops a reading that is not one of ours", () => {
+    expect(readTaskFailure('{"reason":"cut_short","reading":"guess"}')).toEqual({
+      reason: "cut_short",
     });
   });
 
-  it("names the two ways a transcription ends without a transcript", () => {
-    expect(TASK_FAILURE_REASONS).toContain("no_speech");
+  it("names a transcription truncated by the service", () => {
     expect(TASK_FAILURE_REASONS).toContain("cut_short");
   });
 

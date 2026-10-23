@@ -395,7 +395,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.failure.source_unreachable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.tool_failed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.no_audio_track": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "canvas.task.failure.no_speech": { described: /No speech leaves the text blank and a failed task saying why/ },
   "canvas.task.failure.cut_short": { described: /transcription cut short or refused also fails without writing a partial result/ },
   "canvas.task.failure.understand_over_cap": { described: /larger than a reading takes, or of a type it cannot read/ },
   "canvas.task.failure.understand_unsupported_type": { described: /larger than a reading takes, or of a type it cannot read/ },

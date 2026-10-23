@@ -993,7 +993,6 @@
         "media_refused": "模型不接受這個檔案。",
         "tool_failed": "工具沒能處理這個檔案。",
         "no_audio_track": "{kind, select, audio {這段音訊讀不出聲音。} other {這個影片沒有音軌。}}",
-        "no_speech": "{medium, select, video {這個影片裡沒有聽到有人說話。} other {這段音訊裡沒有聽到有人說話。}}",
         "cut_short": "內容太長，沒能轉寫完。"
       },
       "kind": {

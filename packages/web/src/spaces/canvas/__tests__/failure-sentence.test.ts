@@ -36,18 +36,8 @@ describe('no_audio_track', () => {
   });
 });
 
-// inner#856: a transcription's failure says "transcribe" and names the medium
-// it heard nothing in, read off the record, so the row and the history agree.
+// inner#856: the row and history name the reading that failed.
 describe('a transcription that failed', () => {
-  it('says no one speaks in the medium the record names', () => {
-    setLocale('en');
-    const t = renderHook(() => useTranslation()).result.current;
-    const video = encodeTaskFailure('no_speech', { reading: 'transcribe', medium: 'video' });
-    const audio = encodeTaskFailure('no_speech', { reading: 'transcribe', medium: 'audio' });
-    expect(failureSentence(video, t)).toBe('No one speaks in this video.');
-    expect(failureSentence(audio, t)).toBe('No one speaks in this audio.');
-  });
-
   it('says a long transcript did not fit', () => {
     setLocale('en');
     const t = renderHook(() => useTranslation()).result.current;
@@ -72,12 +62,11 @@ describe('a transcription that failed', () => {
       setLocale(locale);
       const t = renderHook(() => useTranslation()).result.current;
       for (const stored of [
-        encodeTaskFailure('no_speech', { reading: 'transcribe', medium: 'video' }),
         encodeTaskFailure('understand_over_cap', { reading: 'transcribe', file: 'a.mp3', bytes: 9 }),
         encodeTaskFailure('understand_over_cap', { file: 'a.mp3', bytes: 9 }),
         'cut_short',
       ]) {
-        expect(failureSentence(stored, t), `${locale} ${stored}`).not.toMatch(/no_speech|cut_short|\{/);
+        expect(failureSentence(stored, t), `${locale} ${stored}`).not.toMatch(/cut_short|\{/);
       }
     }
   });

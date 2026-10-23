@@ -38,7 +38,6 @@ import type { UsageRecorder } from "@breatic/domain";
 import {
   AnsweredNothing,
   CutShort,
-  NoSpeech,
   StoppedPartWay,
   TranscriptionBlocked,
   verdictStands,
@@ -61,7 +60,6 @@ import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
 import { understandQuestion } from "@worker/handlers/understand-question.js";
 import {
   isTranscription,
-  NO_SPEECH,
   transcribeQuestion,
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
@@ -1755,7 +1753,7 @@ export async function runUnderstand(
     throw err;
   }
   const credits = await usage.settle();
-  if (transcribing) return [transcriptOf(answer, sourceType), credits];
+  if (transcribing) return [transcriptOf(answer), credits];
 
   // A run that answered nothing finished having put nothing on the node.
   // Writing it would replace what the reader had with an empty node while
@@ -1773,28 +1771,22 @@ export async function runUnderstand(
 /**
  * What a transcription puts on its node, or why it puts nothing (inner#856).
  *
- * Only a finished answer is a transcript: one the service stopped part way
- * reads exactly like a whole one, so it is never written.
+ * A normal stop preserves the model's text verbatim, including empty text.
+ * Explicit service failures do not write a partial result.
  * @param answer - What the model wrote and why it stopped.
  * @param answer.text - What the model wrote.
  * @param answer.finishReason - Why it stopped, in the service's own words.
- * @param sourceType - The medium transcribed, which a no-speech refusal names.
  * @returns One output holding the transcript.
  * @throws {TranscriptionBlocked} when a content filter stopped the answer.
  * @throws {CutShort} when the answer reached the output ceiling.
  * @throws {StoppedPartWay} when it stopped for any other reason.
- * @throws {NoSpeech} when the model heard nobody speak.
- * @throws {AnsweredNothing} when it finished having written nothing.
  */
 function transcriptOf(
   answer: { text: string; finishReason: string },
-  sourceType: string,
 ): Record<string, unknown> {
   if (answer.finishReason === "content_filter") throw new TranscriptionBlocked("content_filter");
-  if (answer.text === "") throw new AnsweredNothing();
   if (answer.finishReason === "length") throw new CutShort();
   if (answer.finishReason !== "stop") throw new StoppedPartWay(answer.finishReason);
-  if (answer.text.trim() === NO_SPEECH) throw new NoSpeech(sourceType === "video" ? "video" : "audio");
   return { outputs: [{ content: answer.text }], finish_reason: answer.finishReason };
 }
 

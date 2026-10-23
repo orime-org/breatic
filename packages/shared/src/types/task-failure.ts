@@ -98,11 +98,6 @@ export const TASK_FAILURE_REASONS = [
    */
   "no_audio_track",
   /**
-   * A transcription heard no one speak (inner#856). The same file is just as
-   * silent next time, so running it again is not what is next.
-   */
-  "no_speech",
-  /**
    * A transcription stopped at the length it may write before it was done.
    * Nothing of it is put on the node: a transcript that ends early reads as
    * a whole one.
@@ -170,8 +165,6 @@ export interface TaskFailureDetail {
    * names the act the reader asked for, on the row and in the history alike.
    */
   reading?: "transcribe";
-  /** The medium a transcription heard nothing in, for the sentence that says so. */
-  medium?: "audio" | "video";
 }
 
 /** A stored failure, read back. */
@@ -199,7 +192,6 @@ export function encodeTaskFailure(
     ...(about.type !== undefined && about.type !== "" && { type: about.type }),
     ...(Number.isFinite(about.bytes) && { bytes: about.bytes }),
     ...(about.reading === "transcribe" && { reading: about.reading }),
-    ...((about.medium === "audio" || about.medium === "video") && { medium: about.medium }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -240,7 +232,6 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     ...(typeof held.type === "string" && { type: held.type }),
     ...(typeof held.bytes === "number" && { bytes: held.bytes }),
     ...(held.reading === "transcribe" && { reading: "transcribe" as const }),
-    ...((held.medium === "audio" || held.medium === "video") && { medium: held.medium }),
   };
 }
 

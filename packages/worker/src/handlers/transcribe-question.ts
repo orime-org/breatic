@@ -4,14 +4,10 @@
 /**
  * What a transcription asks (inner#856).
  *
- * Worded as measured against the pinned model on 2026-10-22: the words kept
- * in the language they were spoken in, a new line per speaker, Chinese in the
- * script the reader reads, and one fixed word when nobody speaks. It names no
- * answer language, because asking for one makes the model translate.
+ * Keeps the words in their spoken language, a new line per speaker and
+ * Chinese in the reader's script. It names no answer language, because
+ * asking for one makes the model translate.
  */
-
-/** The answer a transcription gives when nobody speaks in the media. */
-export const NO_SPEECH = "NO_SPEECH";
 
 /** The fillers named to the model, in the languages it is likely to hear. */
 const FILLERS = "um, uh, er, \u55ef, \u5443, \u90a3\u4e2a, \u5c31\u662f\u8bf4";
@@ -36,7 +32,6 @@ export function transcribeQuestion(
     `Transcribe the speech in this ${sourceType}.`,
     "Write the words exactly as they are spoken, in the language they are spoken in; do not translate, summarise or describe.",
     "Output only the transcript.",
-    `If nobody speaks, output exactly ${NO_SPEECH}.`,
     "Start a new line whenever a different person starts speaking.",
     `Write any Chinese in ${script} Chinese characters.`,
     fillers,

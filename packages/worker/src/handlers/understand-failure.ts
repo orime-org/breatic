@@ -68,22 +68,6 @@ export class AnsweredNothing extends Error {
   }
 }
 
-/** A transcription heard no one speak (inner#856). */
-export class NoSpeech extends Error {
-  /** The medium it heard nothing in, which the reader's sentence names. */
-  public readonly medium: "audio" | "video";
-
-  /**
-   * Builds the error a transcription that heard no speech throws.
-   * @param medium - The medium it heard nothing in.
-   */
-  public constructor(medium: "audio" | "video") {
-    super(`no one speaks in this ${medium}`);
-    this.name = "NoSpeech";
-    this.medium = medium;
-  }
-}
-
 /** A transcription stopped at the length it may write before it was done. */
 export class CutShort extends Error {
   /** Builds the error a transcription that ran out of allowance throws. */
@@ -165,8 +149,8 @@ export function verdictStands(err: unknown): boolean {
   if (err instanceof DeadlinePassed) return true;
   if (err instanceof MediaUnavailable) return MEDIA_ANSWER_STANDS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_ANSWER_STANDS[err.kind];
-  // The same media is just as silent, and just as long, the next time.
-  if (err instanceof NoSpeech || err instanceof CutShort) return true;
+  // The same output allowance applies on the next attempt.
+  if (err instanceof CutShort) return true;
   return false;
 }
 
@@ -178,7 +162,6 @@ export function verdictStands(err: unknown): boolean {
 export function understandFailureCode(err: unknown): TaskFailureReason {
   if (err instanceof MediaUnavailable) return UNAVAILABLE_AS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_AS[err.kind];
-  if (err instanceof NoSpeech) return "no_speech";
   if (err instanceof CutShort) return "cut_short";
   if (err instanceof TranscriptionBlocked) return "declined";
   if (err instanceof StoppedPartWay) return "internal";
@@ -216,7 +199,6 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   media_refused: false,
   tool_failed: false,
   no_audio_track: false,
-  no_speech: false,
   cut_short: false,
 };
 
@@ -232,9 +214,8 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
  *
  * A cause that says nothing about a file adds nothing; `encodeTaskFailure`
  * settles that, and stores the bare code.
- * Which reading failed and the medium a transcription heard nothing in travel
- * whatever the cause: the sentence names the act the reader asked for, on
- * the row and in the history alike (inner#856).
+ * Which reading failed travels whatever the cause: the sentence names the act
+ * the reader asked for, on the row and in the history alike (inner#856).
  * @param err - Whatever the run threw.
  * @param sourceUrl - The address this run was handed.
  * @param reading - Which reading this was, when it was not an understanding.
@@ -254,6 +235,5 @@ export function understandFailureMessage(
       bytes: about?.bytes,
     }),
     ...(reading !== undefined && { reading }),
-    ...(err instanceof NoSpeech && { medium: err.medium }),
   });
 }

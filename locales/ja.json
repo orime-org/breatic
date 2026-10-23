@@ -993,7 +993,6 @@
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
-        "no_speech": "{medium, select, video {この動画では誰も話していません。} other {この音声では誰も話していません。}}",
         "cut_short": "長すぎて最後まで文字起こしできませんでした。"
       },
       "kind": {
