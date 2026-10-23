@@ -6,7 +6,7 @@ import type * as MockModule1 from '@web/pages/studio/container/dialogs/use-slug-
 
 import type { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -31,6 +31,7 @@ vi.mock('@web/data/api/auth', async (importOriginal) => {
       invitation: preview,
       register: vi.fn(),
       verifySignupCode: vi.fn(),
+      resendSignupCode: vi.fn(),
       login: vi.fn(),
       setupStudio: vi.fn(),
     },
@@ -46,6 +47,7 @@ const DESTINATION = `/decision?token=${TOKEN}`;
 const INVITED_EMAIL = 'recipient@example.test';
 const USER = { id: 'invitee', email: INVITED_EMAIL, personalStudio: null, membershipTier: 'base', locale: 'en' } as const;
 const OPEN = { state: 'open', email: INVITED_EMAIL, inviterName: 'Ada', kind: 'project', targetName: 'Film', role: 'viewer' } as const;
+const CODE_SENT = { status: 'code_sent', expiresInSeconds: 600, resendAfterSeconds: 0 } as const;
 
 /** Exposes the destination reached through real router navigation. */
 function LocationProbe(): ReactElement {
@@ -54,9 +56,9 @@ function LocationProbe(): ReactElement {
 }
 
 /** Renders the real auth pages with their invitation landing route. */
-function setup(entry: string): ReturnType<typeof render> {
+function setup(entry: string): ReturnType<typeof render> & { client: QueryClient } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[entry]}>
         <LocationProbe />
@@ -71,6 +73,36 @@ function setup(entry: string): ReturnType<typeof render> {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...view, client };
+}
+
+/**
+ * Submit the invitation's prefilled address through the real registration form.
+ * @returns The active query cache and the user driving the verification step.
+ * @throws {Error} When registration cannot reach the verification step.
+ */
+async function startInvitedSignup(): Promise<{ client: QueryClient; user: ReturnType<typeof userEvent.setup> }> {
+  vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
+  const user = userEvent.setup();
+  const { client } = setup(`/register?invite=${TOKEN}`);
+  await waitFor(() => expect(screen.getByLabelText('Email')).toHaveValue(INVITED_EMAIL));
+  await user.type(screen.getByLabelText('Password'), 'password-123');
+  await user.click(screen.getByRole('button', { name: 'Create account' }));
+  expect(await screen.findByLabelText('Verification code')).toBeInTheDocument();
+  expect(authApi.register).toHaveBeenCalledWith({ email: INVITED_EMAIL, password: 'password-123' });
+  return { client, user };
+}
+
+/**
+ * Apply a closed preview and flush React Query's scheduled observer notifications.
+ * @param client - The query cache observed by the mounted registration page.
+ * @returns Once the closed preview has reached the page's observers.
+ */
+async function closeInvitationPreview(client: QueryClient): Promise<void> {
+  await act(async () => {
+    client.setQueryData(['auth', 'invitation', TOKEN], { state: 'closed' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 beforeEach(() => {
@@ -167,6 +199,51 @@ describe('invitation registration preview', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByTestId('invitation-decision')).toBeInTheDocument();
     expect(screen.getByTestId('invitation-location')).toHaveTextContent(DESTINATION);
+  });
+});
+
+describe('submitted invitation registration email', () => {
+  it('keeps the submitted address in the verification prompt when the invitation preview closes', async () => {
+    const { client } = await startInvitedSignup();
+    expect(screen.getByText(INVITED_EMAIL, { exact: true })).toBeInTheDocument();
+
+    await closeInvitationPreview(client);
+
+    expect(screen.getByRole('heading', { name: t('auth.register.code.title') })).toBeInTheDocument();
+    expect(screen.getByText(INVITED_EMAIL, { exact: true })).toBeInTheDocument();
+  });
+
+  it('keeps the submitted address when returning to the form after the invitation preview closes', async () => {
+    const { client, user } = await startInvitedSignup();
+    await closeInvitationPreview(client);
+
+    await user.click(screen.getByRole('button', { name: t('auth.register.code.changeEmail') }));
+
+    expect(screen.getByLabelText('Email')).toHaveValue(INVITED_EMAIL);
+    expect(screen.getByLabelText('Password')).toHaveValue('password-123');
+    expect(screen.getByText(t('auth.register.inviteClosed'))).toBeInTheDocument();
+  });
+
+  it.each(['verify', 'resend'] as const)('restarts an expired signup with the submitted address after %s and preserves its invitation destination', async (operation) => {
+    const { client, user } = await startInvitedSignup();
+    await closeInvitationPreview(client);
+    vi.mocked(authApi.register).mockResolvedValueOnce(CODE_SENT);
+    const expired = new ApiException({ status: 410, message: 'The sign-up has expired.' });
+    if (operation === 'verify') {
+      vi.mocked(authApi.verifySignupCode).mockRejectedValueOnce(expired);
+      await user.type(screen.getByLabelText('Verification code'), '123456');
+    } else {
+      vi.mocked(authApi.resendSignupCode).mockRejectedValueOnce(expired);
+      await user.click(screen.getByRole('button', { name: t('auth.register.code.resend') }));
+    }
+
+    await waitFor(() => expect(authApi.register).toHaveBeenCalledTimes(2));
+    expect(authApi.register).toHaveBeenLastCalledWith({ email: INVITED_EMAIL, password: 'password-123' });
+    expect(await screen.findByText(t('auth.register.code.newCodeSent'))).toBeInTheDocument();
+
+    vi.mocked(authApi.verifySignupCode).mockResolvedValueOnce({ user: USER });
+    await user.type(screen.getByLabelText('Verification code'), '654321');
+    await waitFor(() => expect(screen.getByTestId('invitation-location')).toHaveTextContent(`/choose-slug?next=${encodeURIComponent(DESTINATION)}`));
   });
 });
 

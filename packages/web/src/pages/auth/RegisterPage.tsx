@@ -186,6 +186,7 @@ export default function RegisterPage(): React.JSX.Element {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    setEmailDraft({ token: inviteToken, value: trimmedEmail });
     setSubmitting(true);
     trackEvent('signup_started', { method: 'email' });
     try {
