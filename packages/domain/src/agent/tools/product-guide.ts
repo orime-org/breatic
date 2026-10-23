@@ -485,8 +485,9 @@ export function renderProductGuide(): string {
       "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools). " +
       "Both are greyed while the node holds nothing. A reading that cannot " +
       `begin says ${quoted(t("canvas.understand.couldNotStart"))} A format or size refusal detected before ` +
-      "the request creates no node and says why. A refusal detected by the run appears on the new node's " +
-      "task row. If the node being read is " +
+      "the request creates no node. A refusal detected by the run appears on the new node's task row. " +
+      "Either says why: the file is larger than a reading takes, or of a type it cannot read. " +
+      "If the node being read is " +
       "deleted as it starts, " +
       `${quoted(t("canvas.understand.sourceGone"))}`,
     `- On a video or sound node, ${quoted(t("canvas.nodeMenu.transcribe"))}, directly below ` +
