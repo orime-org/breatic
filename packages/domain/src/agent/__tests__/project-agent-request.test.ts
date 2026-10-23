@@ -47,6 +47,13 @@ function fileUrls(messages: readonly ModelMessage[]): string[] {
   }));
 }
 
+/** Every ordinary picture placeholder in message order. */
+function picturePlaceholders(messages: readonly ModelMessage[]): string[] {
+  return messages.flatMap((message) => typeof message.content === "string" ? [] : message.content.flatMap((part) => {
+    return part.type === "text" && part.text.startsWith("[Picture ") ? [part.text] : [];
+  }));
+}
+
 /** A paired tool call with optional signed reasoning. */
 function call(id: string, signed = false): ModelMessage {
   return {
@@ -138,6 +145,91 @@ describe("the single Agent request picture projection", () => {
 
     expect(fileUrls(projected.messages)).toEqual([one.url, one.url]);
     expect(projected.changedMessageIndices).toEqual([0]);
+  });
+
+  it("preserves each native occurrence's source label when different attachments share a JPEG URL", () => {
+    const sharedUrl = picture(0).url;
+    const pictures = [0, 1, 2].map((index) => ({ ...picture(index), url: sharedUrl }));
+    const messages = pictures.map(userPicture);
+    const before = JSON.stringify({ messages, pictures });
+    const projected = projectAgentRequest({
+      messages, pictures, policy: { ...POLICY, maxPictures: 2 }, phase: "initial",
+    });
+
+    expect(projected.changedMessageIndices).toEqual([0]);
+    expect(picturePlaceholders(projected.messages)).toEqual([
+      `[Picture omitted from this request: Attachment 1; source: ${pictures[0]!.sourceUrl}; use understand_media to inspect it again.]`,
+    ]);
+    expect(projected.keptPictures).toEqual(pictures.slice(1));
+    expect(fileUrls(projected.messages)).toEqual([sharedUrl, sharedUrl]);
+    expect(JSON.stringify({ messages, pictures })).toBe(before);
+  });
+
+  it("preserves all native source labels when vision is disabled for attachments sharing a JPEG URL", () => {
+    const sharedUrl = picture(0).url;
+    const pictures = [0, 1, 2].map((index) => ({ ...picture(index), url: sharedUrl }));
+    const projected = projectAgentRequest({
+      messages: pictures.map(userPicture), pictures, policy: { ...POLICY, seesPictures: false }, phase: "initial",
+    });
+
+    expect(picturePlaceholders(projected.messages)).toEqual(pictures.map((one) =>
+      `[Picture unavailable: the current model cannot see pictures: ${one.label}; source: ${one.sourceUrl}; use understand_media to inspect it again.]`));
+    expect(projected.keptPictures).toEqual([]);
+    expect(fileUrls(projected.messages)).toEqual([]);
+    expect(projected.changedMessageIndices).toEqual([0, 1, 2]);
+  });
+
+  it.each(["byte-limit", "no-vision"] as const)("keeps shared-URL attribution after an earlier placeholder is carried into a %s step", (change) => {
+    const sharedUrl = picture(0).url;
+    const pictures = [0, 1, 2].map((index) => ({ ...picture(index, 40), url: sharedUrl }));
+    const initial = projectAgentRequest({
+      messages: pictures.map(userPicture), pictures, policy: { ...POLICY, maxPictures: 2 }, phase: "initial",
+    });
+    const before = JSON.stringify(initial.logicalMessages);
+    const projected = projectAgentRequest({
+      messages: initial.logicalMessages,
+      pictures,
+      policy: { ...POLICY, maxPictures: 2, ...(change === "byte-limit" ? { maxBytes: 60 } : { seesPictures: false }) },
+      phase: "step",
+    });
+
+    expect(picturePlaceholders(projected.messages)).toEqual(pictures.map((one) =>
+      expect.stringContaining(`${one.label}; source: ${one.sourceUrl}; use understand_media to inspect it again.`)));
+    expect(projected.logicalMessages[0]).toEqual(initial.logicalMessages[0]);
+    expect(projected.changedMessageIndices).toEqual([1, 2]);
+    expect(projected.keptPictures).toEqual([]);
+    expect(fileUrls(projected.messages)).toEqual([]);
+    expect(JSON.stringify(initial.logicalMessages)).toBe(before);
+  });
+
+  it("keeps native and tool source attribution separate when their prepared JPEG URL is shared", () => {
+    const native = picture(0);
+    const fromTool = { ...picture(1), label: "Search result 1", url: native.url };
+    const messages = [userPicture(native), call("shared"), result("shared", [fromTool])];
+    const before = JSON.stringify(messages);
+    const projected = projectAgentRequest({
+      messages, pictures: [native, fromTool], policy: { ...POLICY, seesPictures: false }, phase: "step",
+    });
+
+    expect(picturePlaceholders(projected.messages)).toEqual([
+      `[Picture unavailable: the current model cannot see pictures: Attachment 1; source: ${native.sourceUrl}; use understand_media to inspect it again.]`,
+    ]);
+    expect(projected.logicalMessages.map((message) => message.role)).toEqual(["user", "assistant", "tool"]);
+    expect(projected.logicalMessages[1]).toEqual(messages[1]);
+    expect(projected.logicalMessages[2]).toEqual({
+      role: "tool",
+      content: [{
+        type: "tool-result", toolCallId: "shared", toolName: "search_images",
+        output: { type: "json", value: {
+          kind: "agent-pictures-v1",
+          text: `Results shared\n[Picture unavailable: the current model cannot see pictures: Search result 1; source: ${fromTool.sourceUrl}; use understand_media to inspect it again.]`,
+          pictures: [],
+        } },
+      }],
+    });
+    expect(fileUrls(projected.messages)).toEqual([]);
+    expect(projected.keptPictures).toEqual([]);
+    expect(JSON.stringify(messages)).toBe(before);
   });
 
   it("drops oldest count batches until bytes are at most half after overflow", () => {

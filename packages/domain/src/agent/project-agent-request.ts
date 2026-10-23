@@ -188,14 +188,25 @@ function occurrenceFor(picture: AgentPicture, policy: AgentPicturePolicy): Occur
 export function projectAgentRequest(request: AgentRequestProjection): ProjectedAgentRequest {
   const { policy } = request;
   const logical = structuredClone(request.messages.filter((message) => !isExpansion(message)));
-  const facts = new Map(request.pictures.map((picture) => [picture.url, picture]));
+  const facts = new Map<string, AgentPicture[]>();
+  for (const picture of request.pictures) {
+    const sameUrl = facts.get(picture.url) ?? [];
+    sameUrl.push(picture);
+    facts.set(picture.url, sameUrl);
+  }
   const occurrences: Occurrence[] = [];
   for (const message of logical) {
     if (typeof message.content === "string") continue;
-    for (const part of message.content) {
+    for (const [partIndex, part] of message.content.entries()) {
       if (part.type === "file" && part.mediaType.startsWith("image/")) {
         const url = String(part.data);
-        const picture = facts.get(url) ?? { label: "Picture", sourceUrl: url, url, mediaType: "image/jpeg", sizeBytes: 0 };
+        const candidates = facts.get(url) ?? [];
+        const attribution = message.content[partIndex - 1];
+        // The adjacent durable label identifies this occurrence even when an
+        // earlier occurrence has already become a placeholder in an SDK step.
+        const picture = candidates.find((one) => attribution?.type === "text" &&
+          attribution.text === `${one.label}; source: ${one.sourceUrl}`) ?? candidates[0] ??
+          { label: "Picture", sourceUrl: url, url, mediaType: "image/jpeg", sizeBytes: 0 };
         occurrences.push(occurrenceFor(picture, policy));
       } else if (part.type === "tool-result") {
         for (const picture of agentPictureOutputOf(part.output)?.pictures ?? []) occurrences.push(occurrenceFor(picture, policy));
