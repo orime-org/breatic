@@ -40,6 +40,14 @@ const EMAIL = {
   ...REGISTERED, invitationId: 'email-invitation', invitedUserId: null, name: '',
   email: 'unregistered@example.test', role: 'editor', awaitingSignup: true,
 } as const;
+const LONG_REGISTERED = {
+  ...REGISTERED,
+  email: 'registered-creative-production-team@example-production.test',
+} as const;
+const LONG_EMAIL = {
+  ...EMAIL,
+  email: 'unregistered-creative-production-team@example-production.test',
+} as const;
 
 /** Renders the real popover with its query and overlay providers. */
 function setup(currentUserRole: ProjectRole = 'owner'): ReturnType<typeof render> {
@@ -110,6 +118,59 @@ describe('ShareDialog pending invitations', () => {
     expect(screen.getByText(t('share.pendingBadge', { role: t('share.role.view') }))).toBeInTheDocument();
     expect(screen.getByText(t('share.awaitingSignup'), { exact: false })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: t('share.revoke') })).toHaveLength(2);
+  });
+
+  it.each([
+    ['ordinary', LONG_REGISTERED],
+    ['mailbox', LONG_EMAIL],
+  ] as const)('shows the complete %s invitation email on hover and closes it on pointer leave', async (_kind, invitation) => {
+    listPending.mockResolvedValueOnce([invitation]);
+    const user = userEvent.setup();
+    setup();
+    const email = await screen.findByText(invitation.email);
+
+    await user.hover(email);
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe(invitation.email);
+    await user.unhover(email);
+    // Radix tracks a subsequent pointer move beyond its hoverable-content grace area.
+    await user.pointer({ target: document.body, coords: { clientX: 100, clientY: 100 } });
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    expect(revoke).not.toHaveBeenCalled();
+  });
+
+  it('shows both complete emails through Tab navigation and revokes the invitation selected by keyboard', async () => {
+    listPending.mockResolvedValueOnce([LONG_REGISTERED, LONG_EMAIL]).mockResolvedValue([LONG_REGISTERED]);
+    const user = userEvent.setup();
+    setup();
+    const registeredEmail = await screen.findByText(LONG_REGISTERED.email);
+    const mailboxEmail = screen.getByText(LONG_EMAIL.email);
+    const revokeButtons = screen.getAllByRole('button', { name: t('share.revoke') });
+    expect(revokeButtons).toHaveLength(2);
+    const [registeredRevoke, mailboxRevoke] = revokeButtons;
+
+    await user.click(screen.getByTestId('share-invite-input'));
+    await user.tab();
+    await user.tab();
+
+    expect(document.activeElement).toContainElement(registeredEmail);
+    expect((await screen.findByRole('tooltip')).textContent).toBe(LONG_REGISTERED.email);
+
+    await user.tab();
+    expect(registeredRevoke).toHaveFocus();
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull());
+    await user.tab();
+
+    expect(document.activeElement).toContainElement(mailboxEmail);
+    expect((await screen.findByRole('tooltip')).textContent).toBe(LONG_EMAIL.email);
+
+    await user.tab();
+    expect(mailboxRevoke).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith(PROJECT_ID, LONG_EMAIL.invitationId));
+    await waitFor(() => expect(screen.queryByText(LONG_EMAIL.email)).toBeNull());
+    expect(screen.getByText(LONG_REGISTERED.email)).toBeInTheDocument();
   });
 
   it('omits the pending section when the server returns an empty list', async () => {

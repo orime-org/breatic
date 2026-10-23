@@ -178,7 +178,8 @@ export function renderProductGuide(): string {
       `${quoted(t("share.pendingTitle"))} lists outstanding invitations: a registered person's name and email ` +
       "with a role and an awaiting-response badge, or an unregistered address with its role and " +
       `${quoted(t("share.awaitingSignup"))}. Each row has ${quoted(t("share.revoke"))}, which withdraws ` +
-      "that invitation; the list disappears when no invitations remain. Email invitations expire after " +
+      "that invitation. Hover the recipient identity or focus it with Tab to read the full email address; " +
+      "Tab then reaches that row's withdraw button. The list disappears when no invitations remain. Email invitations expire after " +
       "seven days; verification starts a fresh seven-day period for acceptance. Revocation or project " +
       "archival prevents an outstanding email invitation from becoming an account invitation. " +
       "With email disabled an unregistered address is refused with " +

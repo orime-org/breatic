@@ -11,6 +11,7 @@ import { Input } from '@web/components/ui/input';
 import { Badge } from '@web/components/ui/badge';
 import { Separator } from '@web/components/ui/separator';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import {
   Popover,
   PopoverContent,
@@ -261,12 +262,22 @@ const ProjectInvitationRow = React.memo(function ProjectInvitationRow({
   return (
     <li className='flex items-center gap-2 px-2 py-2' data-testid={`share-invitation-${invitation.invitationId}`}>
       <StudioAvatar name={name} type='personal' avatarUrl={invitation.avatarUrl} size='sm' />
-      <div className='min-w-0 max-w-48 flex-1'>
-        <div className='truncate text-sm font-semibold'>{name}</div>
-        {invitation.awaitingSignup ? null : (
-          <div className='truncate text-xs text-muted-foreground'>{invitation.email}</div>
-        )}
-      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className='min-w-0 max-w-48 flex-1 rounded-chrome-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            // Keyboard focus reveals the full recipient address.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+          >
+            <div className='truncate text-sm font-semibold'>{name}</div>
+            {invitation.awaitingSignup ? null : (
+              <div className='truncate text-xs text-muted-foreground'>{invitation.email}</div>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent portal className='max-w-sm break-all'>{invitation.email}</TooltipContent>
+      </Tooltip>
       <Badge variant='outline' className='shrink-0 whitespace-nowrap rounded-content-sm border-border bg-background text-2xs text-muted-foreground'>
         {invitation.awaitingSignup ? (
           <>{role}{' · '}<span>{t('share.awaitingSignup')}</span></>
