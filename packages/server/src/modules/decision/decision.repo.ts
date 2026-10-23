@@ -70,7 +70,7 @@ const SOURCES = [
  * @returns SQL that evaluates to the row's `failed_reason`.
  */
 export function failedReasonAtNow(expiresAt: AnyPgColumn): SQL<RequestFailedReason> {
-  return sql<RequestFailedReason>`CASE WHEN ${expiresAt} <= now() THEN 'expired' ELSE 'invalidated' END`;
+  return sql<RequestFailedReason>`CASE WHEN ${expiresAt} <= clock_timestamp() THEN 'expired' ELSE 'invalidated' END`;
 }
 
 /**
