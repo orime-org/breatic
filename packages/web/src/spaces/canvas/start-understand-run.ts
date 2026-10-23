@@ -78,7 +78,7 @@ export interface TranscribeRun extends UnderstandRun {
 }
 
 /** Which of the two readings a press is. */
-type Reading = 'understand' | 'transcribe';
+export type Reading = 'understand' | 'transcribe';
 
 /**
  * What tells the two readings apart in the browser.
@@ -110,7 +110,7 @@ const READINGS: Readonly<Record<Reading, { prefix: string; sourceGone: string; c
  * @param nodeId - The node being read.
  * @returns The intent id.
  */
-function readingIntent(reading: Reading, spaceId: string, nodeId: string): string {
+export function readingIntent(reading: Reading, spaceId: string, nodeId: string): string {
   return `${reading}:${spaceId}:${nodeId}`;
 }
 

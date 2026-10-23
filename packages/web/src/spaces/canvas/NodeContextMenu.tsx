@@ -3,6 +3,7 @@
 
 import {
   Bookmark,
+  Captions,
   Copy,
   CopyPlus,
   Download,
@@ -137,6 +138,14 @@ interface NodeContextMenuProps {
   /** A press of Understand on this node is still waiting (inner#1490): the item shows it and takes no press. */
   understanding?: boolean;
   /**
+   * Whether this node's kind can carry speech (audio and video, inner#856).
+   * Other kinds leave Transcribe out; a node of such a kind holding nothing
+   * yet keeps it, greyed.
+   */
+  transcribeOffered?: boolean;
+  /** Open the transcribe panel; absent disables the item rather than hiding it. */
+  onTranscribe?: () => void;
+  /**
    * Whether this node's kind has mini-tools at all (inner#888 §7.1). A kind
    * with none leaves the Tools row out.
    */
@@ -201,6 +210,8 @@ interface NodeContextMenuProps {
  * @param root0.onDownload - Download what this node is showing; absent disables the item rather than hiding it.
  * @param root0.onUnderstand - Read what this node is showing into a text node downstream; absent disables the item rather than hiding it.
  * @param root0.understanding - A press of Understand on this node is still waiting.
+ * @param root0.transcribeOffered - Whether this node's kind can carry speech, which Transcribe reads.
+ * @param root0.onTranscribe - Open the transcribe panel; absent disables the item rather than hiding it.
  * @param root0.toolsOffered - Whether this node's kind has mini-tools; absent leaves the Tools row out.
  * @param root0.tools - The tools this node can run now; absent or empty greys the Tools row.
  * @param root0.onTool - Open the chosen tool's panel.
@@ -231,6 +242,8 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
   onDownload,
   onUnderstand,
   understanding = false,
+  transcribeOffered = false,
+  onTranscribe,
   toolsOffered = false,
   tools,
   onTool,
@@ -354,6 +367,19 @@ export const NodeContextMenu = React.memo(function NodeContextMenu({
                   )}
                   {t('canvas.nodeMenu.understand')}
                 </DropdownMenuItem>
+                {/* Opens a panel first: whether filler words stay is the
+                    reader's to say before anything is built. */}
+                {transcribeOffered ? (
+                  <DropdownMenuItem
+                    disabled={!onTranscribe}
+                    data-testid='node-menu-transcribe'
+                    className='data-[disabled]:pointer-events-auto data-[disabled]:cursor-not-allowed'
+                    onSelect={onTranscribe}
+                  >
+                    <Captions className='mr-2 h-4 w-4' aria-hidden='true' />
+                    {t('canvas.nodeMenu.transcribe')}
+                  </DropdownMenuItem>
+                ) : null}
               </>
             ) : null}
             {toolsOffered ? (
