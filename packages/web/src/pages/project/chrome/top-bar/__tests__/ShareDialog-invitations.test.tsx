@@ -9,9 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { t } from '@breatic/shared';
+import { t, type ProjectRole } from '@breatic/shared';
+import { MemoryRouter } from 'react-router-dom';
 
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
+import { TopBar } from '@web/pages/project/chrome/top-bar/TopBar';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { projectInvitationsApi } from '@web/data/api/project-invitations';
@@ -40,11 +42,11 @@ const EMAIL = {
 } as const;
 
 /** Renders the real popover with its query and overlay providers. */
-function setup(): ReturnType<typeof render> {
+function setup(currentUserRole: ProjectRole = 'owner'): ReturnType<typeof render> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
   const content: ReactElement = (
     <QueryClientProvider client={client}>
-      <TooltipProvider><ShareDialog projectId={PROJECT_ID} /></TooltipProvider>
+      <TooltipProvider><ShareDialog projectId={PROJECT_ID} currentUserRole={currentUserRole} /></TooltipProvider>
     </QueryClientProvider>
   );
   useUIStore.setState({ shareOpen: true });
@@ -55,10 +57,49 @@ beforeEach(() => {
   vi.clearAllMocks();
   listPending.mockReset().mockResolvedValue([]);
   revoke.mockReset().mockResolvedValue({ ok: true });
-  useCurrentUserStore.setState({ role: 'owner' });
+  useCurrentUserStore.setState({ role: null });
 });
 
 describe('ShareDialog pending invitations', () => {
+  it('loads pending invitations for a project Owner when the global role is null', async () => {
+    listPending.mockResolvedValueOnce([EMAIL]);
+    setup('owner');
+    expect(useCurrentUserStore.getState().role).toBeNull();
+    await waitFor(() => expect(listPending).toHaveBeenCalledWith(PROJECT_ID));
+    expect(await screen.findByText(EMAIL.email)).toBeInTheDocument();
+    expect(screen.getByText(t('share.pendingTitle'))).toBeInTheDocument();
+  });
+
+  it('receives the project Owner role through the real TopBar with a null global role', async () => {
+    listPending.mockResolvedValueOnce([EMAIL]);
+    useUIStore.setState({ shareOpen: true });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <MemoryRouter>
+            <TopBar
+              projectId={PROJECT_ID}
+              projectName='Film'
+              // eslint-disable-next-line jsx-a11y/aria-role -- component prop, not a DOM ARIA role
+              role='owner'
+              actualRole='owner'
+              archived={false}
+              canRename
+              canLeave={false}
+              credits={{ status: 'ready', value: 0 }}
+              onRename={vi.fn()}
+              members={[]}
+            />
+          </MemoryRouter>
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    expect(useCurrentUserStore.getState().role).toBeNull();
+    await waitFor(() => expect(listPending).toHaveBeenCalledWith(PROJECT_ID));
+    expect(await screen.findByText(EMAIL.email)).toBeInTheDocument();
+  });
+
   it('shows ordinary and email invitations with their corresponding pending labels', async () => {
     listPending.mockResolvedValueOnce([REGISTERED, EMAIL]);
     setup();
@@ -78,10 +119,10 @@ describe('ShareDialog pending invitations', () => {
     expect(screen.queryByRole('button', { name: t('share.revoke') })).toBeNull();
   });
 
-  it('keeps the pending list Owner-only', () => {
-    useCurrentUserStore.setState({ role: 'editor' });
+  it.each(['editor', 'viewer'] as const)('keeps the pending list unavailable to a project %s with a stale global Owner role', (role) => {
+    useCurrentUserStore.setState({ role: 'owner' });
     listPending.mockResolvedValueOnce([EMAIL]);
-    setup();
+    setup(role);
     expect(listPending).not.toHaveBeenCalled();
     expect(screen.queryByText(t('share.pendingTitle'))).toBeNull();
     expect(screen.queryByText(EMAIL.email)).toBeNull();

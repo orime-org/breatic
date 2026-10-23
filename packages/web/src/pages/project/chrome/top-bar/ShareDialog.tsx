@@ -25,14 +25,15 @@ import {
 } from '@web/components/ui/select';
 import { projectInvitationsApi } from '@web/data/api/project-invitations';
 import { ApiException } from '@web/data/api/types';
-import { useCurrentUserStore, useUIStore } from '@web/stores';
+import { useUIStore } from '@web/stores';
 import { useTranslation } from '@web/i18n/use-translation';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
-import type { InvitableProjectRole, PendingProjectInvitationSummary } from '@breatic/shared';
+import type { InvitableProjectRole, PendingProjectInvitationSummary, ProjectRole } from '@breatic/shared';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 
 interface ShareDialogProps {
   projectId: string;
+  currentUserRole: ProjectRole;
 }
 
 /**
@@ -42,16 +43,18 @@ interface ShareDialogProps {
  * invitations. Membership starts when the recipient confirms.
  * @param root0 - Share dialog props.
  * @param root0.projectId - Id of the project being shared; the invite call targets it.
+ * @param root0.currentUserRole - The acting role read from this Project.
  * @returns the share trigger button and its email-only invite popover.
  */
 export function ShareDialog({
   projectId,
+  currentUserRole,
 }: ShareDialogProps): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   const open = useUIStore((s) => s.shareOpen);
   const setOpen = useUIStore((s) => s.setShareOpen);
-  const isOwner = useCurrentUserStore((s) => s.role === 'owner');
+  const isOwner = currentUserRole === 'owner';
   const invitationsKey = React.useMemo(() => ['project', projectId, 'invitations'], [projectId]);
   const invitations = useQuery({
     queryKey: invitationsKey,

@@ -9,7 +9,7 @@ import type * as React from 'react';
 
 import { ShareDialog } from '@web/pages/project/chrome/top-bar/ShareDialog';
 import { TooltipProvider } from '@web/components/ui/tooltip';
-import { useCurrentUserStore, useUIStore } from '@web/stores';
+import { useUIStore } from '@web/stores';
 import { ApiException } from '@web/data/api/types';
 
 const PID = '11111111-1111-4111-8111-111111111111';
@@ -50,14 +50,13 @@ function setup(props: Partial<React.ComponentProps<typeof ShareDialog>> = {}) {
   useUIStore.setState({ shareOpen: true });
   return render(
     <AllProviders>
-      <ShareDialog projectId={PID} {...props} />
+      <ShareDialog projectId={PID} currentUserRole='owner' {...props} />
     </AllProviders>,
   );
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useCurrentUserStore.setState({ role: 'owner' });
 });
 
 describe('ShareDialog — invite by email flow', () => {

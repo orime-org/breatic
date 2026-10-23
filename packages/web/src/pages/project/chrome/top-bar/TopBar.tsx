@@ -179,7 +179,7 @@ export function TopBar({
           {/* Share is an owner-only affordance (B model — hidden, not
               disabled, for non-owners). Backend `requireRole` enforces
               the real boundary; this hide is UX only. */}
-          {role === 'owner' ? <ShareDialog projectId={projectId} /> : null}
+          {role === 'owner' ? <ShareDialog projectId={projectId} currentUserRole={role} /> : null}
           <BellMenu />
         </div>
       </div>
