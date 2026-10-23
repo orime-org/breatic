@@ -1682,7 +1682,10 @@ export async function runMiniTool(
  * @throws {MediaUnavailable} when the address yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
  * @throws {StillRunning} when every reading place in this process is taken.
- * @throws {Error} when the answer is empty.
+ * @throws {AnsweredNothing} when an understanding returns empty text.
+ * @throws {TranscriptionBlocked} when a content filter blocks a transcription.
+ * @throws {CutShort} when a transcription reaches the output ceiling.
+ * @throws {StoppedPartWay} when a transcription ends for another abnormal reason.
  */
 export async function runUnderstand(
   params: Record<string, unknown>,

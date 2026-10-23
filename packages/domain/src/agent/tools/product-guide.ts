@@ -484,8 +484,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
       "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools). " +
       "Both are greyed while the node holds nothing. A reading that cannot " +
-      `begin says ${quoted(t("canvas.understand.couldNotStart"))} A file it cannot take makes no new node and ` +
-      "says why: it is larger than a reading takes, or of a type it cannot read. If the node being read is " +
+      `begin says ${quoted(t("canvas.understand.couldNotStart"))} A format or size refusal detected before ` +
+      "the request creates no node and says why. A refusal detected by the run appears on the new node's " +
+      "task row. If the node being read is " +
       "deleted as it starts, " +
       `${quoted(t("canvas.understand.sourceGone"))}`,
     `- On a video or sound node, ${quoted(t("canvas.nodeMenu.transcribe"))}, directly below ` +
@@ -497,8 +498,9 @@ export function renderProductGuide(): string {
       "transcription; X or Esc closes the panel. It writes the spoken words in their original language, " +
       "with a new line per speaker and no speaker names or timestamps, into a connected text node to the right, " +
       "selects that node and slides the canvas to it when needed, closing the panel. Chinese uses Traditional " +
-      "characters when the reader's language is Traditional Chinese, otherwise Simplified. An unsupported or " +
-      "oversized file makes no new node. A normally completed response is saved as returned, even when empty " +
+      "characters when the reader's language is Traditional Chinese, otherwise Simplified. A format or size " +
+      "refusal detected before the request creates no node; one detected by the run appears on the new " +
+      "node's task row. A normally completed response is saved as returned, even when empty " +
       "or inaccurate, and charged by actual usage. The user judges its accuracy. A " +
       "transcription cut short or refused also fails without writing a partial result. The menu row is " +
       "greyed while the source holds nothing. If it cannot begin it says " +

@@ -25,9 +25,9 @@ max_media_bytes: 20971520
 max_output_tokens: 8192
 
 # How much a transcription may write, in tokens (inner#856). Separate from the
-# figure above because a transcript is every word said: 21 minutes of speech
-# took 5290 tokens, and a file at max_media_bytes holds about 80 minutes. This
-# is the pinned model's own ceiling on every backend that serves it.
+# figure above because a transcript can be much longer than a description:
+# a measured 21-minute speech sample produced 5290 tokens. The byte limit
+# does not imply a duration limit; formats and bitrates vary.
 transcribe_max_output_tokens: 65536
 
 # How many readings one worker process holds in memory at once.
