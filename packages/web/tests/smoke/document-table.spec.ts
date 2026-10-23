@@ -18,11 +18,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, type Page } from 'playwright/test';
-import { test } from '../helpers/slot';
+import { test, stateFile } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { clickAndSettle, pressAndSettle, selectInBody } from '../helpers/editor-keys';
-import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
+import { resizeDocumentColumn } from '../helpers/document-table-geometry';
+import { roomForUploads } from '../helpers/upload-budget';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 
 let page: Page;
 let errors: string[];
@@ -1231,9 +1233,11 @@ test('T5: merging an empty heading with a paragraph keeps both blocks', async ()
 
 for (const theme of ['light', 'dark']) {
   for (const header of [false, true]) {
-    test(`T7: video display and column resizing respect a narrow ${header ? 'header' : 'ordinary'} cell (${theme})`, async () => {
+    test(`T7: video display and column resizing respect a narrow ${header ? 'header' : 'ordinary'} cell (${theme}) @needs-ingest @needs-storage`, async ({ browser }) => {
       await openFreshDocument(page);
-      await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
+      await page.getByTestId('theme-toggle').click();
+      await page.getByTestId(`theme-option-${theme}`).click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       await insertTable(page, 1, 3);
       await page.keyboard.type('narrow');
       if (header) {
@@ -1249,6 +1253,7 @@ for (const theme of ['light', 'dark']) {
       await page.mouse.move(5, 5);
       await page.mouse.move(initial.x + 50, initial.y + initial.height / 2, { steps: 3 });
       await page.getByTestId('doc-block-plus').click();
+      await roomForUploads(1);
       const chooser = page.waitForEvent('filechooser');
       await page.getByTestId('doc-block-insert-video').click();
       await (await chooser).setFiles({
@@ -1259,17 +1264,18 @@ for (const theme of ['light', 'dark']) {
       await expect(media).toBeVisible({ timeout: 60_000 });
       expect((await target.boundingBox())!.width).toBeLessThanOrEqual(initial.width + 1);
       await clickAndSettle(page, page.locator(TOP).first());
-      for (const desired of [105, 80, 35]) {
-        const cellBox = await target.boundingBox();
-        if (cellBox === null) throw new Error('missing video cell');
-        const edge = cellBox.x + cellBox.width - 1;
-        const y = cellBox.y + cellBox.height - 4;
-        await page.mouse.move(edge - 15, y);
-        await page.mouse.move(edge, y, { steps: 3 });
-        await expect(page.locator(`${EDITOR} .column-resize-handle`)).not.toHaveCount(0);
-        await page.mouse.down();
-        await page.mouse.move(edge + desired - cellBox.width, y, { steps: 6 });
-        await page.mouse.up();
+      const video = media.getByTestId('media-element');
+      await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(1);
+      await video.evaluate((element: HTMLVideoElement) => {
+        const player = element.closest('[data-testid="media-player"]')!;
+        (window as unknown as { tableVideoNodes: { video: Element; seek: Element; controls: Element } }).tableVideoNodes = {
+          video: element, seek: player.querySelector('[data-testid="seek"]')!, controls: player.querySelector('[data-testid="controls"]')!,
+        };
+        element.volume = 0.4;
+        element.muted = true;
+      });
+      for (const desired of [240, 120, 80, 35]) {
+        await resizeDocumentColumn(page, target, desired);
         const sizes = await target.evaluate((td) => {
           const style = getComputedStyle(td);
           const media = td.querySelector('[data-media-box]')!;
@@ -1277,14 +1283,135 @@ for (const theme of ['light', 'dark']) {
             cell: td.getBoundingClientRect().width,
             content: td.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
             media: media.getBoundingClientRect().width,
-            seek: td.querySelector('[data-testid="seek"]')!.getBoundingClientRect().width,
           };
         });
-        await test.info().attach(`cell-video-${desired}`, { body: JSON.stringify({ theme, header, desired, ...sizes }), contentType: 'application/json' });
         expect(sizes.cell).toBeLessThanOrEqual(desired + 1);
         expect(sizes.media).toBeGreaterThan(0);
         expect(sizes.media).toBeLessThanOrEqual(sizes.content + 1);
+        const floating = sizes.media < 128;
+        await expect(media).toHaveAttribute('data-controls-mode', floating ? 'floating' : 'inline');
+        const bodyHeight = await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height);
+        if (floating) {
+          await media.getByTestId('doc-media-video-trigger').focus();
+          await page.keyboard.press('Enter');
+          await expect(page.getByTestId('doc-media-video-panel')).toBeFocused();
+          await page.keyboard.press('Tab');
+          await expect(page.getByTestId('doc-media-video-panel').getByTestId('doc-media-caption-button')).toBeFocused();
+          await expect.poll(() => page.getByTestId('doc-media-video-panel').evaluate((element) => getComputedStyle(element).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
+        }
+        const controls = floating ? page.getByTestId('doc-media-video-panel').getByTestId('controls') : media.getByTestId('controls');
+        const seek = controls.getByTestId('seek');
+        const seekBox = await seek.boundingBox();
+        expect(seekBox!.width).toBeGreaterThanOrEqual(40);
+        await seek.click({ position: { x: seekBox!.width * 0.75, y: seekBox!.height / 2 } });
+        await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime / element.duration)).toBeCloseTo(0.75, 1);
+        const identity = await video.evaluate((element: HTMLVideoElement) => {
+          const saved = (window as unknown as { tableVideoNodes: { video: Element; seek: Element; controls: Element } }).tableVideoNodes;
+          return { video: saved.video === element, volume: element.volume, muted: element.muted, paused: element.paused };
+        });
+        const controlIdentity = await controls.evaluate((element) => {
+          const saved = (window as unknown as { tableVideoNodes: { seek: Element; controls: Element } }).tableVideoNodes;
+          return { seek: saved.seek === element.querySelector('[data-testid="seek"]'), controls: saved.controls === element };
+        });
+        expect({ ...identity, ...controlIdentity }).toEqual({ video: true, seek: true, controls: true, volume: 0.4, muted: true, paused: true });
+        if (floating) {
+          const actions = (await page.getByTestId('doc-media-video-panel').getByTestId('doc-media-toolbar').boundingBox())!;
+          const transport = (await controls.boundingBox())!;
+          expect(actions.y + actions.height).toBeLessThanOrEqual(transport.y);
+          expect(await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(bodyHeight, 1);
+          await page.keyboard.press('Escape');
+          await expect(media.getByTestId('doc-media-video-trigger')).toBeFocused();
+          await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
+        } else {
+          const transport = (await controls.boundingBox())!;
+          const picture = (await video.boundingBox())!;
+          expect(transport.y + transport.height).toBeCloseTo(picture.y + picture.height, 1);
+        }
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        await test.info().attach(`cell-video-${desired}`, { body: JSON.stringify({ theme, header, desired, ...sizes, seek: seekBox!.width }), contentType: 'application/json' });
       }
+      const spaceId = await visibleSpace(page).getByTestId('document-space').getAttribute('data-space-id');
+      const peer = await browser.newPage({ storageState: stateFile('A'), viewport: { width: 1680, height: 950 } });
+      try {
+        await peer.goto(page.url());
+        await peer.getByTestId(`space-tab-name-${String(spaceId)}`).click();
+        const peerCell = peer.locator(`${EDITOR} ${header ? 'th' : 'td'}`).nth(1);
+        await expect(peerCell.locator('video')).toBeVisible();
+        for (const [fromWidth, toWidth] of [[240, 80], [80, 240], [240, 180]] as const) {
+          await resizeDocumentColumn(peer, peerCell, fromWidth);
+          await expect.poll(async () => Math.abs((await target.boundingBox())!.width - fromWidth)).toBeLessThanOrEqual(1);
+          const floating = (await media.boundingBox())!.width < 128;
+          await expect(media).toHaveAttribute('data-controls-mode', floating ? 'floating' : 'inline');
+          if (floating) {
+            await media.getByTestId('doc-media-video-trigger').focus();
+            await page.keyboard.press('Enter');
+          }
+          const activeSeek = page.locator('[data-testid="seek"]:visible');
+          await expect(activeSeek).toHaveCount(1);
+          await activeSeek.evaluate((element) => {
+            element.addEventListener('pointerdown', (event) => {
+              (window as unknown as { tablePointer: number }).tablePointer = (event as PointerEvent).pointerId;
+            }, { once: true });
+          });
+          const before = (await activeSeek.boundingBox())!;
+          await page.mouse.move(before.x + before.width * 0.3, before.y + before.height / 2);
+          await page.mouse.down();
+          await expect.poll(() => activeSeek.evaluate((element) => element.hasPointerCapture((window as unknown as { tablePointer: number }).tablePointer))).toBe(true);
+          await resizeDocumentColumn(peer, peerCell, toWidth);
+          await expect.poll(async () => Math.abs((await target.boundingBox())!.width - toWidth)).toBeLessThanOrEqual(1);
+          const movedSeek = page.locator('[data-testid="seek"]:visible');
+          await expect(movedSeek).toHaveCount(1);
+          const after = (await movedSeek.boundingBox())!;
+          await page.mouse.move(after.x + after.width * 0.75, after.y + after.height / 2, { steps: 3 });
+          await page.mouse.up();
+          await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime / element.duration)).toBeCloseTo(0.75, 1);
+          expect(await movedSeek.evaluate((element) => (window as unknown as { tableVideoNodes: { seek: Element } }).tableVideoNodes.seek === element)).toBe(true);
+          await page.keyboard.press('Escape');
+        }
+        const playableSeek = page.locator('[data-testid="seek"]:visible');
+        await playableSeek.getByRole('slider').focus();
+        await page.keyboard.press('Home');
+        await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(0);
+        await page.locator('[data-testid="play-toggle"]:visible').click();
+        await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+        for (const width of [80, 240]) {
+          await resizeDocumentColumn(peer, peerCell, width);
+          await expect.poll(async () => Math.abs((await target.boundingBox())!.width - width)).toBeLessThanOrEqual(1);
+          await expect(page.locator('[data-testid="play-toggle"]:visible')).toBeFocused();
+          expect(await video.evaluate((element: HTMLVideoElement) => {
+            const saved = (window as unknown as { tableVideoNodes: { video: Element } }).tableVideoNodes;
+            return { same: element === saved.video, paused: element.paused, volume: element.volume, muted: element.muted };
+          })).toEqual({ same: true, paused: false, volume: 0.4, muted: true });
+        }
+        await page.locator('[data-testid="play-toggle"]:visible').click();
+        expect(await video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0);
+      } finally {
+        await page.mouse.up();
+        await peer.close();
+      }
+      await resizeDocumentColumn(page, target, 80);
+      for (const code of ['en', 'zh-CN', 'zh-TW', 'ja', 'ko']) {
+        await page.getByTestId('lang-trigger').click();
+        await page.getByTestId(`lang-option-${code}`).click();
+        await media.getByTestId('doc-media-video-trigger').focus();
+        await page.keyboard.press('Enter');
+        const panel = page.getByTestId('doc-media-video-panel');
+        await expect(panel).toBeVisible();
+        await panel.getByTestId('doc-media-caption-button').hover();
+        const catalog = JSON.parse(readFileSync(resolve(__dirname, `../../../../locales/${code}.json`), 'utf8')) as { spaces: { document: { media: { caption: string } } } };
+        await expect(page.getByRole('tooltip')).toHaveText(catalog.spaces.document.media.caption);
+        await page.keyboard.press('Escape');
+        await page.keyboard.press('Escape');
+      }
+      await page.getByTestId('lang-trigger').click();
+      await page.getByTestId('lang-option-en').click();
+      await media.getByTestId('doc-media-video-trigger').focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
+      const screenshot = test.info().outputPath(`narrow-video-${theme}-${header ? 'header' : 'ordinary'}.png`);
+      await page.screenshot({ path: screenshot });
+      await test.info().attach('narrow-video', { path: screenshot, contentType: 'image/png' });
+      await page.keyboard.press('Escape');
     });
   }
 }
