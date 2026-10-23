@@ -6,13 +6,9 @@
  *
  * Three kinds of bar float over the body: a media block's toolbar, the link
  * toolbar and the selection bubble bar. Each decides on its own whether it has
- * something to show; this is the one place they read whether another bar has
- * the screen. The order is fixed:
- *
- * 1. a media block the pointer is on — its toolbar, and nothing else;
- * 2. otherwise the link toolbar, when it is up;
- * 3. otherwise whatever the selection raises: a selected media block's
- *    toolbar, or the bubble bar.
+ * something to show. Media requests and active controls share one owner so
+ * late input and lifecycle events can be checked against their host. The
+ * media interaction owner, link toolbar and selection bar read this state.
  *
  * Some controls stand aside for a bar on screen rather than for the selection
  * behind it, which stays in the editor while the body does not hold the
@@ -34,9 +30,42 @@ export interface DocumentBars {
   readonly linkToolbarUp: boolean;
   /** Whether the selection bubble bar is up, standing aside for a panel of its own included. */
   readonly bubbleBarUp: boolean;
+  /** The media request, active controls and pending caption handoff. */
+  readonly media: MediaInteraction;
 }
 
-const NONE: DocumentBars = { hoveredMedia: null, linkToolbarUp: false, bubbleBarUp: false };
+/** An explicit media panel request. */
+interface MediaRequest {
+  host: HTMLElement;
+  origin: 'pointer' | 'keyboard';
+}
+
+/** The one host currently using media controls. */
+type MediaActivity = { host: HTMLElement; kind: 'focused' } | { host: HTMLElement; kind: 'seeking'; release: () => void };
+
+/** Media interaction facts belonging to one editor. */
+export interface MediaInteraction {
+  request: MediaRequest | null;
+  pending: MediaRequest | null;
+  activity: MediaActivity | null;
+  intent: { host: HTMLElement; epoch: number } | null;
+  close: { host: HTMLElement; reason: 'escape' | 'caption' | 'outside' | 'release' | 'pointer'; epoch: number } | null;
+  epoch: number;
+}
+
+/** Events accepted by the editor's media interaction owner. */
+export type MediaEvent =
+  | { type: 'hover'; host: HTMLElement; on: boolean }
+  | { type: 'leave'; host: HTMLElement }
+  | { type: 'open'; host: HTMLElement; origin: 'pointer' | 'keyboard' }
+  | { type: 'focus'; host: HTMLElement; focused: boolean }
+  | { type: 'seek-start'; host: HTMLElement; release: () => void }
+  | { type: 'seek-end'; host: HTMLElement; focused: boolean }
+  | { type: 'complete-caption'; host: HTMLElement; epoch: number }
+  | { type: 'caption' | 'escape' | 'outside' | 'release'; host: HTMLElement };
+
+const NO_MEDIA: MediaInteraction = { request: null, pending: null, activity: null, intent: null, close: null, epoch: 0 };
+const NONE: DocumentBars = { hoveredMedia: null, linkToolbarUp: false, bubbleBarUp: false, media: NO_MEDIA };
 
 /** Keyed by editor, so an editor that is dropped takes its state with it. */
 const store = keyedStore<object, DocumentBars>(
@@ -44,7 +73,8 @@ const store = keyedStore<object, DocumentBars>(
   (a, b) =>
     a.hoveredMedia === b.hoveredMedia &&
     a.linkToolbarUp === b.linkToolbarUp &&
-    a.bubbleBarUp === b.bubbleBarUp,
+    a.bubbleBarUp === b.bubbleBarUp &&
+    a.media === b.media,
 );
 
 /**
@@ -66,9 +96,77 @@ export function documentBarsOf(editor: object): DocumentBars {
  * @param on - True on arrival, false on leaving.
  */
 export function setHoveredMedia(editor: object, host: HTMLElement, on: boolean): void {
-  const state = store.get(editor);
-  if (on) store.set(editor, { ...state, hoveredMedia: host });
-  else if (state.hoveredMedia === host) store.set(editor, { ...state, hoveredMedia: null });
+  mediaEvent(editor, { type: 'hover', host, on });
+}
+
+/**
+ * Updates the editor's media interaction facts in one transaction.
+ * @param editor - The editor.
+ * @param event - The input or lifecycle event.
+ */
+export function mediaEvent(editor: object, event: MediaEvent): void {
+  const bars = store.get(editor);
+  const old = bars.media;
+  const host = event.host;
+  let media = old;
+  let hoveredMedia = bars.hoveredMedia;
+  if (event.type === 'hover' || event.type === 'leave') {
+    const on = event.type === 'hover' && event.on;
+    hoveredMedia = on ? host : hoveredMedia === host ? null : hoveredMedia;
+    if (on && old.request?.origin !== 'keyboard' && old.activity?.kind !== 'seeking' && old.intent?.host !== host) {
+      media = { ...old, request: { host, origin: 'pointer' }, close: null };
+    } else if (event.type === 'hover' && !event.on && old.request?.host === host && old.request.origin === 'pointer' && old.activity?.host !== host) {
+      media = { ...old, request: null, close: { host, reason: 'pointer', epoch: old.epoch } };
+    }
+  } else if (event.type === 'open') {
+    const request: MediaRequest = { host, origin: event.origin };
+    media = old.activity?.kind === 'seeking' && old.activity.host !== host
+      ? { ...old, pending: request }
+      : { ...old, request, pending: null, activity: old.activity?.host === host ? old.activity : null, intent: null, close: null, epoch: old.epoch + 1 };
+  } else if (event.type === 'focus') {
+    if (old.intent?.host === host || old.activity?.kind === 'seeking') return;
+    const dismiss = !event.focused && old.request?.host === host && old.request.origin === 'pointer' && hoveredMedia !== host;
+    media = { ...old, activity: event.focused ? { host, kind: 'focused' } : old.activity?.host === host ? null : old.activity,
+      request: event.focused && old.request?.host !== host ? null : dismiss ? null : old.request,
+      pending: event.focused ? null : old.pending,
+      intent: event.focused ? null : old.intent,
+      close: event.focused ? null : dismiss ? { host, reason: 'pointer', epoch: old.epoch } : old.close,
+    };
+  } else if (event.type === 'seek-start') {
+    if (old.activity?.kind === 'seeking' && old.activity.host !== host) old.activity.release();
+    media = { ...old, activity: { host, kind: 'seeking', release: event.release }, intent: null, close: null };
+  } else if (event.type === 'seek-end') {
+    if (old.activity?.host !== host || old.activity.kind !== 'seeking') return;
+    media = { ...old, request: old.pending ?? old.request, pending: null, activity: old.pending !== null ? null : event.focused ? { host, kind: 'focused' } : null };
+  } else if (event.type === 'complete-caption') {
+    if (old.intent?.host !== host || old.intent.epoch !== event.epoch) return;
+    media = { ...old, intent: null };
+  } else {
+    const owns = old.request?.host === host || old.activity?.host === host || old.intent?.host === host ||
+      (old.close?.host === host && old.request === null && old.activity === null && old.intent === null);
+    if (!owns && event.type !== 'caption') {
+      if (event.type === 'release' && hoveredMedia === host) store.set(editor, { ...bars, hoveredMedia: null });
+      return;
+    }
+    if (old.activity?.host === host && old.activity.kind === 'seeking') old.activity.release();
+    const epoch = old.epoch + 1;
+    media = { ...old, request: null, pending: null, activity: null, epoch,
+      intent: event.type === 'caption' ? { host, epoch } : null,
+      close: { host, reason: event.type, epoch },
+    };
+    if (event.type === 'release' || event.type === 'outside' || event.type === 'caption' || event.type === 'escape') hoveredMedia = hoveredMedia === host ? null : hoveredMedia;
+  }
+  store.set(editor, { ...bars, hoveredMedia, media });
+}
+
+/**
+ * Whether the host has a request or active controls keeping its panel open.
+ * @param bars - The current bar facts.
+ * @param host - The media host.
+ * @returns True when the host owns a panel.
+ */
+export function mediaPanelShown(bars: DocumentBars, host: HTMLElement): boolean {
+  return mediaBarShown(bars, host, false) && (bars.media.request?.host === host || bars.media.activity?.host === host);
 }
 
 /**
@@ -97,6 +195,11 @@ export function setBubbleBarUp(editor: object, up: boolean): void {
  * @returns True when its toolbar shows.
  */
 export function mediaBarShown(bars: DocumentBars, host: HTMLElement, selected: boolean): boolean {
+  const activity = bars.media.activity;
+  const owner = activity?.kind === 'seeking' ? activity.host
+    : bars.media.request?.origin === 'keyboard' ? bars.media.request.host
+      : activity?.host ?? bars.hoveredMedia ?? bars.media.request?.host;
+  if (owner !== null && owner !== undefined) return owner === host;
   return bars.hoveredMedia === null ? selected && !bars.linkToolbarUp : bars.hoveredMedia === host;
 }
 
@@ -107,7 +210,7 @@ export function mediaBarShown(bars: DocumentBars, host: HTMLElement, selected: b
  * @returns True when they do.
  */
 export function textBarsStandAside(bars: DocumentBars): boolean {
-  return bars.hoveredMedia !== null;
+  return bars.hoveredMedia !== null || bars.media.request !== null || bars.media.activity !== null;
 }
 
 /**
