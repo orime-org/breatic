@@ -1274,7 +1274,7 @@ for (const theme of ['light', 'dark']) {
         element.volume = 0.4;
         element.muted = true;
       });
-      for (const desired of [240, 120, 80, 35]) {
+      for (const desired of [240, 140, 120, 80, 35]) {
         await resizeDocumentColumn(page, target, desired);
         const sizes = await target.evaluate((td) => {
           const style = getComputedStyle(td);
@@ -1317,8 +1317,14 @@ for (const theme of ['light', 'dark']) {
         if (floating) {
           const actions = (await page.getByTestId('doc-media-video-panel').getByTestId('doc-media-toolbar').boundingBox())!;
           const transport = (await controls.boundingBox())!;
+          const panel = (await page.getByTestId('doc-media-video-panel').boundingBox())!;
+          expect(transport.x).toBeGreaterThanOrEqual(panel.x + 1);
+          expect(transport.x + transport.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
+          const fullscreen = (await controls.getByTestId('fullscreen').boundingBox())!;
+          expect(fullscreen.x + fullscreen.width).toBeLessThanOrEqual(panel.x + panel.width - 1);
           expect(actions.y + actions.height).toBeLessThanOrEqual(transport.y);
           expect(await page.locator(EDITOR).evaluate((element) => element.getBoundingClientRect().height)).toBeCloseTo(bodyHeight, 1);
+          await expect(page.getByRole('tooltip')).toHaveCount(0);
           await page.keyboard.press('Escape');
           await expect(media.getByTestId('doc-media-video-trigger')).toBeFocused();
           await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
@@ -1393,6 +1399,7 @@ for (const theme of ['light', 'dark']) {
       for (const code of ['en', 'zh-CN', 'zh-TW', 'ja', 'ko']) {
         await page.getByTestId('lang-trigger').click();
         await page.getByTestId(`lang-option-${code}`).click();
+        await expect(page.getByTestId('lang-popover')).toHaveCount(0);
         await media.getByTestId('doc-media-video-trigger').focus();
         await page.keyboard.press('Enter');
         const panel = page.getByTestId('doc-media-video-panel');
@@ -1405,9 +1412,11 @@ for (const theme of ['light', 'dark']) {
       }
       await page.getByTestId('lang-trigger').click();
       await page.getByTestId('lang-option-en').click();
+      await expect(page.getByTestId('lang-popover')).toHaveCount(0);
       await media.getByTestId('doc-media-video-trigger').focus();
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
+      await expect.poll(() => page.getByTestId('doc-media-video-panel').evaluate((element) => getComputedStyle(element).transform)).toMatch(/^(none|matrix\(1, 0, 0, 1, 0, 0\))$/);
       const screenshot = test.info().outputPath(`narrow-video-${theme}-${header ? 'header' : 'ordinary'}.png`);
       await page.screenshot({ path: screenshot });
       await test.info().attach('narrow-video', { path: screenshot, contentType: 'image/png' });
@@ -1419,14 +1428,74 @@ for (const theme of ['light', 'dark']) {
       expect(readFileSync(await download.path()).equals(readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')))).toBe(true);
       expect(await video.evaluate((element: HTMLVideoElement) => ({ time: element.currentTime, paused: element.paused, volume: element.volume, muted: element.muted }))).toEqual(beforeDownload);
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
-      await page.getByTestId('doc-media-video-panel').getByTestId('fullscreen').click();
-      await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
-      await page.keyboard.press('Escape');
+      try {
+        await page.getByTestId('doc-media-video-panel').getByTestId('fullscreen').click();
+        await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName)).toBe('VIDEO');
+      } finally {
+        await page.evaluate(async () => { if (document.fullscreenElement !== null) await document.exitFullscreen(); });
+      }
       await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
       await media.getByTestId('doc-media-video-trigger').focus();
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('doc-media-video-panel')).toBeVisible();
       await page.keyboard.press('Escape');
+      if (theme === 'light' && !header) {
+        const activePanel = page.locator('[data-testid="doc-media-video-panel"][data-state="open"]');
+        await media.getByTestId('doc-media-frame').hover();
+        await page.getByTestId('doc-block-handle').click();
+        await page.getByTestId('doc-block-row-duplicate').click();
+        const entries = target.getByTestId('doc-media-video-trigger');
+        await expect(entries).toHaveCount(2);
+        await entries.first().focus();
+        await page.keyboard.press('Enter');
+        await expect(activePanel).toHaveCount(1);
+        await expect(activePanel).toBeFocused();
+        await entries.nth(1).focus();
+        await page.keyboard.press('Enter');
+        await expect(activePanel).toHaveCount(1);
+        await expect(activePanel).toBeFocused();
+        await activePanel.getByTestId('play-toggle').click();
+        await expect.poll(() => target.locator('video').nth(1).evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+        expect(await target.locator('video').first().evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+        await activePanel.getByTestId('play-toggle').click();
+        await page.keyboard.press('Escape');
+        await clickAndSettle(page, page.locator(TOP).first());
+        await target.getByTestId('doc-media-frame').first().hover();
+        await expect(activePanel).toBeVisible();
+        await activePanel.hover();
+        await expect(activePanel).toBeVisible();
+        await page.mouse.move(5, 5);
+        await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
+
+        await clickAndSettle(page, page.locator(TOP).last());
+        await pasteHtml(page, '<p>scroll line</p>'.repeat(40), 'scroll line\n'.repeat(40));
+        await entries.first().focus();
+        await page.keyboard.press('Enter');
+        await expect(activePanel).toBeFocused();
+        await page.mouse.move(5, 5);
+        await page.getByTestId('document-editor-content').evaluate((element) => {
+          const viewport = element.closest('[data-radix-scroll-area-viewport]')!;
+          viewport.scrollTo({ top: viewport.scrollHeight });
+        });
+        await expect.poll(() => entries.first().evaluate((element) => {
+          const viewport = document.querySelector('[data-testid="document-editor-content"]')!.closest('[data-radix-scroll-area-viewport]')!;
+          return element.getBoundingClientRect().bottom <= viewport.getBoundingClientRect().top;
+        })).toBe(true);
+        await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
+        await page.getByTestId('document-editor-content').evaluate((element) => element.closest('[data-radix-scroll-area-viewport]')!.scrollTo({ top: 0 }));
+        await entries.first().focus();
+        await page.keyboard.press('Enter');
+        await activePanel.getByTestId('play-toggle').click();
+        const playing = await target.locator('video').first().elementHandle();
+        await expect.poll(() => playing!.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false);
+        await page.locator('[data-testid^="space-tab-name-"]').filter({ hasText: /^Canvas$/ }).click();
+        await expect(page.getByTestId('doc-media-video-panel')).toBeHidden();
+        await expect.poll(() => playing!.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+        await page.getByTestId(`space-tab-name-${String(spaceId)}`).click();
+        await expect(entries.first()).toBeVisible();
+        await expect(page.getByTestId('doc-media-video-panel')).toHaveCount(0);
+        expect(await target.locator('video').first().evaluate((element) => (window as unknown as { tableVideoNodes: { video: Element } }).tableVideoNodes.video === element)).toBe(true);
+      }
     });
   }
 }

@@ -171,9 +171,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     clearReplies(handle.editor);
   }, [handle.editor]);
   const rail = useCommentRail(handle.editor);
-  // Held here because this is where the editor's DOM enters the scroller, and
-  // the bar needs the element that now holds it. A child looking it up for
-  // itself would look before this effect has run.
+  // ScrollArea owns this viewport; pass it to document surfaces so a table's
+  // nested horizontal viewport cannot become their vertical scroll boundary.
   const [viewport, setViewport] = React.useState<HTMLElement | null>(null);
 
   // The link toolbar stands aside while the selection holds anything: that is
@@ -196,9 +195,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const container = body.current;
     if (container === null) return;
     adoptDocumentEditor(handle, container);
-    setViewport(
-      container.closest<HTMLElement>('[data-radix-scroll-area-viewport]'),
-    );
   }, [handle]);
 
   // Where an Agent proposal landed is shown once per landing: a hidden Space
@@ -297,11 +293,12 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           wheel anywhere in here moves both sides together. */}
       <div className='flex min-h-0 flex-1'>
         <ScrollArea
+          viewportRef={setViewport}
           className={`${BODY_SCROLLER_CLASS} flex-1`}
           // `relative` makes the viewport the containing block for the link
           // panel's anchor, which is what lets that anchor scroll with the text
-          // it points at. Nothing else inside is measured against it: the
-          // whole-document entry is `sticky` (it answers to the scroller), the
+          // it points at. It also owns the media scroll/collision boundary.
+          // The whole-document entry is `sticky` (it answers to the scroller), the
           // caret that opens a document is `absolute` with no offsets and so
           // stays at its static position, and a remote caret's label is measured
           // against the caret itself.
@@ -365,8 +362,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       )}
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
-          too; their controls are hidden while the body is not editable. */}
-      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} />
+          too; editing controls follow permission while playback stays available. */}
+      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
       {/* What each upload in flight shows, in the body where it will land
           (inner#1127 A4). Kept for a body that turned read-only meanwhile:
           a failed file still has its placeholder to remove. */}

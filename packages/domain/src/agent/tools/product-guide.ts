@@ -1192,8 +1192,13 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
       `${quoted(t("spaces.document.media.delete"))} (a bin). Clicking a picture or video also shows a small square at each ` +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
-      "dots. Videos and audio play in place. Someone who can only view the document " +
-      "sees and plays them without the icons.",
+      "dots. Videos and audio play in place. When a video is too narrow for its playback controls, " +
+      "hover it to open a floating panel, or Tab to the video and press Enter. Editing icons occupy " +
+      "the first row and play, seek and fullscreen the second; Escape returns to the video. Someone " +
+      "who can only view the document still has playback controls, without editing icons. A caption " +
+      "draft stays copyable if permission becomes read-only or the media is removed; undoing the " +
+      "removal restores its field. Copy a retained draft before closing the Space. Enter or blur saves " +
+      "an editable changed caption; Escape cancels it to the latest shared caption.",
     "- A table shows a table icon left of its first row instead of the six dots, whenever the pointer is " +
       "over the table or beside it at its height. Over a cell, or just left of the first column, the dots " +
       "of the block under the pointer show as well, just outside that cell's left edge, and the table icon " +

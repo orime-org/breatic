@@ -20,7 +20,8 @@
  *   live inside the node view. ProseMirror's default answer to an event there
  *   is to handle it itself (`prosemirror-view` `stopEvent` → false), so with
  *   the block node-selected a key typed in the caption would replace the
- *   whole block. Events from `[data-media-chrome]` are the controls' own.
+ *   whole block. Editing and playback controls retain their own browser
+ *   input; the row press may select their media without taking their focus.
  *
  * The node itself comes from `addNodeAndExtensionsToSpec`: a spec made by
  * `createBlockSpec` has no node until the schema is built
@@ -42,7 +43,7 @@ import type { Decoration } from '@tiptap/pm/view';
 import { downloadAsset } from '@web/lib/download';
 import {
   MEDIA_CAPTION_INPUT,
-  MEDIA_CHROME,
+  MEDIA_CONTROLS,
   MEDIA_FRAME,
   type MediaBlockActions,
   type MediaBlockProps,
@@ -267,7 +268,7 @@ function mediaNodeView(
       CONTROL_KEY_EVENTS.has(event.type) ||
       (!carriesFiles(event) &&
       event.target instanceof Element &&
-      event.target.closest(`${MEDIA_CHROME}, ${MEDIA_CAPTION_INPUT}`) !== null),
+      event.target.closest(`${MEDIA_CONTROLS}, ${MEDIA_CAPTION_INPUT}`) !== null),
     // What React draws inside is not the document's; the node has no content.
     ignoreMutation: () => true,
     destroy: () => {

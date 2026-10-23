@@ -87,7 +87,7 @@ function open(type: 'image' | 'video' | 'audio', props: Record<string, unknown> 
   // The page's tree, which the blocks are rendered from.
   render(
     <TooltipProvider>
-      <DocumentMediaViews editor={editor} />
+      <DocumentMediaViews editor={editor} viewport={scroller} />
     </TooltipProvider>,
   );
   act(() => {
@@ -649,9 +649,7 @@ describe('where the toolbar goes', () => {
    */
   function place(editor: Editor, mediaTop: number, scrollerTop: number): void {
     const frame = within(element(editor)).getByTestId('doc-media-box');
-    // The body stands in for the scroller the block is shown in.
-    const scroller = document.body;
-    scroller.setAttribute('data-radix-scroll-area-viewport', '');
+    const scroller = scrollerOf(editor);
     vi.spyOn(toolbar(editor), 'offsetHeight', 'get').mockReturnValue(34);
     vi.spyOn(frame, 'getBoundingClientRect').mockReturnValue(
       { top: mediaTop, bottom: mediaTop + 200, left: 0, right: 400, width: 400, height: 200 } as DOMRect,
@@ -678,7 +676,7 @@ describe('where the toolbar goes', () => {
 
     place(editor, 110, 100);
     act(() => {
-      document.body.dispatchEvent(new Event('scroll'));
+      scrollerOf(editor).dispatchEvent(new Event('scroll'));
     });
 
     expect(toolbar(editor).getAttribute('data-side')).toBe('inside');

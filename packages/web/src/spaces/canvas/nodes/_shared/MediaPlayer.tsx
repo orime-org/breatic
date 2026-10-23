@@ -263,6 +263,7 @@ export function MediaPlayer({
   const videoControlsRow = (
     <div
       data-testid='controls'
+      data-media-playback=''
       inert={controlsHidden}
       data-controls-surface={themedControls ? 'popover' : 'video'}
       onFocusCapture={() => { if (!pointer.migrating.current) videoControls?.onFocusChange?.(true, null); }}

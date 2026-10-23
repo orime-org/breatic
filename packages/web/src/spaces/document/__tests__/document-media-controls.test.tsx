@@ -12,8 +12,8 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 const editors: ReturnType<typeof buildDocumentEditor>[] = [];
 afterEach(() => { cleanup(); for (const editor of editors.splice(0)) editor.unmount(); document.body.innerHTML = ''; vi.restoreAllMocks(); });
 
-function open(type: 'image' | 'video' = 'image') {
-  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.hasAttribute('data-media-box') ? 80 : 0; });
+function open(type: 'image' | 'video' = 'image', width = 80) {
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return this.hasAttribute('data-media-box') ? width : 0; });
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(100);
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   editors.push(editor);
@@ -23,10 +23,54 @@ function open(type: 'image' | 'video' = 'image') {
   const rendered = render(<TooltipProvider><DocumentMediaViews editor={editor} /></TooltipProvider>);
   act(() => editor.replaceBlocks(editor.document, [{ type, props: { url: '/clip.mp4', caption: 'Shared A', mediaWidth: 240, mediaHeight: 160 } }] as never));
   const id = (editor.document[0] as { id: string }).id;
-  return { editor, id, rendered };
+  return { editor, id, rendered, scroller };
 }
 
 describe('document media control integration', () => {
+  it('releases a keyboard panel on its owned document scroll, past a nested table viewport', async () => {
+    const { editor, rendered, scroller } = open('video');
+    const nested = document.createElement('div');
+    nested.setAttribute('data-radix-scroll-area-viewport', '');
+    nested.appendChild(scroller.firstElementChild!);
+    scroller.appendChild(nested);
+    rendered.rerender(<TooltipProvider><DocumentMediaViews editor={editor} viewport={scroller} /></TooltipProvider>);
+    const trigger = screen.getByTestId('doc-media-video-trigger');
+    act(() => trigger.focus()); fireEvent.keyDown(trigger, { key: 'Enter' });
+    await screen.findByTestId('doc-media-video-panel');
+    vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 200));
+    vi.spyOn(screen.getByTestId('doc-media-box'), 'getBoundingClientRect').mockReturnValue(new DOMRect(0, -100, 80, 50));
+    fireEvent.scroll(scroller);
+    await waitFor(() => expect(screen.queryByTestId('doc-media-video-panel')).toBeNull());
+  });
+  it('focuses an already hovered video panel when Enter explicitly opens it', async () => {
+    open('video');
+    fireEvent.pointerEnter(screen.getByTestId('doc-media-frame'));
+    const panel = await screen.findByTestId('doc-media-video-panel');
+    const trigger = screen.getByTestId('doc-media-video-trigger');
+    act(() => trigger.focus());
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(panel).toHaveFocus();
+  });
+  it('selects the inline video without taking focus from its seek control', () => {
+    const { editor } = open('video', 240);
+    const seek = screen.getByTestId('seek');
+    const thumb = seek.querySelector<HTMLElement>('[role="slider"]')!;
+    act(() => thumb.focus());
+    fireEvent.pointerDown(thumb, { button: 0, pointerId: 7, clientX: 20 });
+    expect(thumb).toHaveFocus();
+    expect(editor.prosemirrorState.selection.toJSON()).toMatchObject({ type: 'node' });
+  });
+  it('returns from a focused floating seek control to its video entry on Escape', async () => {
+    open('video');
+    const trigger = screen.getByTestId('doc-media-video-trigger');
+    trigger.focus(); fireEvent.keyDown(trigger, { key: 'Enter' });
+    const panel = await screen.findByTestId('doc-media-video-panel');
+    const thumb = panel.querySelector<HTMLElement>('[role="slider"]')!;
+    act(() => thumb.focus());
+    fireEvent.keyDown(thumb, { key: 'Escape' });
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(screen.queryByTestId('doc-media-video-panel')).toBeNull();
+  });
   it('opens the narrow video panel by keyboard and hands caption focus over', async () => {
     open('video');
     const trigger = screen.getByTestId('doc-media-video-trigger');

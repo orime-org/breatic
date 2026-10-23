@@ -39,7 +39,7 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { MEDIA_CHROME, MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
+import { MEDIA_CONTROLS, MEDIA_FRAME, MEDIA_PLAYBACK } from '@web/spaces/document/DocumentMediaBlock';
 import { selectWordlessBlock } from '@web/spaces/document/document-block-place';
 import { MEDIA_BLOCK_TYPES } from '@web/spaces/document/document-media-types';
 
@@ -65,7 +65,7 @@ export function rowHit(target: EventTarget | null): RowHit | null {
   // The block's own controls answer their events themselves. ProseMirror
   // hands a handler for an event type it has none of (`pointerdown`, `click`)
   // every event of that type, without asking the node view's `stopEvent`.
-  if (!(target instanceof Element) || target.closest(MEDIA_CHROME) !== null) return null;
+  if (!(target instanceof Element) || target.closest(MEDIA_CONTROLS) !== null) return null;
   const row = target.closest(MEDIA_ROW);
   return row === null ? null : { row, onMedia: target.closest(MEDIA_FRAME) !== null };
 }
@@ -114,6 +114,13 @@ function repeatClickBesideMedia(event: MouseEvent): boolean {
  */
 function pressInMediaRow(view: EditorView, event: MouseEvent): void {
   if (event.shiftKey) return;
+  // Playback still selects its media, while focus and pointer capture stay
+  // with the control. The normal media press below gives the body the focus.
+  if (event.target instanceof Element && event.target.closest(MEDIA_PLAYBACK) !== null) {
+    const row = event.target.closest(MEDIA_ROW);
+    if (row !== null) selectWordlessBlock(view, row);
+    return;
+  }
   const hit = rowHit(event.target);
   if (hit === null || !hit.onMedia) return;
   selectWordlessBlock(view, hit.row);

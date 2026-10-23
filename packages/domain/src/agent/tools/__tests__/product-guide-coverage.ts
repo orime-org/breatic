@@ -802,6 +802,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.media.readOnly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.leftOut": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.captionPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "spaces.document.media.captionReadOnly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "spaces.document.media.captionRetained": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.media.close": { excluded: REASONS.SCREEN_READER, look: /an X at the top right closes it/ },
   "spaces.document.commands.aiProduceGroup": { excluded: REASONS.NOT_OPEN },
   "spaces.document.commands.aiRewriteGroup": { excluded: REASONS.NOT_OPEN },

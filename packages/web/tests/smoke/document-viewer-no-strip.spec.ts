@@ -460,6 +460,16 @@ test('a video caption draft survives a live role change and remote edits, deleti
   await expect(draft).toHaveValue('Local caption draft');
   await viewer.getByTestId('doc-doc-menu-trigger').focus();
   await expect(ownerSpace.getByTestId('doc-media-caption')).toHaveCount(0);
+  await viewer.getByTestId('space-drawer-trigger').click();
+  const canvas = viewer.getByTestId('space-drawer').getByRole('button', { name: 'Open Canvas', exact: true });
+  await expect(canvas).toBeVisible();
+  await canvas.click();
+  await expect(viewer.getByTestId('space-drawer')).toHaveCount(0);
+  await expect(viewer.getByTestId('doc-media-video-panel')).toHaveCount(0);
+  await viewer.getByTestId(`space-tab-name-${String(spaceId)}`).click();
+  await expect(draft).toBeVisible();
+  await expect(draft).toHaveAttribute('readonly', '');
+  await expect(draft).toHaveValue('Local caption draft');
   for (const code of ['zh-CN', 'en']) {
     await viewer.getByTestId('lang-trigger').click();
     await viewer.getByTestId(`lang-option-${code}`).click();

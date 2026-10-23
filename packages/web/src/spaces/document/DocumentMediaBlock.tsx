@@ -83,6 +83,7 @@ interface DocumentMediaBlockProps {
   editor: object;
   blockId: string;
   readOnly: boolean;
+  viewport: HTMLElement | null;
   type: MediaBlockType;
   props: MediaBlockProps;
   /** Whether the block is node-selected, which gives it its corner knobs. */
@@ -112,6 +113,12 @@ const TOOLBAR_GAP = 8;
 /** The block's own controls, which the node view hands their events. */
 export const MEDIA_CHROME = '[data-media-chrome]';
 
+/** Playback controls that retain their own focus and pointer capture. */
+export const MEDIA_PLAYBACK = '[data-media-playback]';
+
+/** Controls whose focus and browser input must not be taken by the body. */
+export const MEDIA_CONTROLS = `${MEDIA_CHROME}, ${MEDIA_PLAYBACK}`;
+
 /** What the block shows: the picture or the player. */
 export const MEDIA_FRAME = '[data-media-frame]';
 
@@ -124,11 +131,8 @@ export const MEDIA_CAPTION_INPUT = '[data-testid="doc-media-caption-input"]';
  * @returns True when it does.
  */
 function ownsPress(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest(`${MEDIA_CHROME}, .nodrag`) !== null;
+  return target instanceof Element && target.closest(`${MEDIA_CONTROLS}, .nodrag`) !== null;
 }
-
-/** The scroller the body is shown in, which clips what sticks out of it. */
-const SCROLLER = '[data-radix-scroll-area-viewport]';
 
 /** The alignments, in the order the toolbar offers them. */
 const ALIGNMENTS = [
@@ -232,12 +236,14 @@ function ToolButton({
  * @param props.host - Its container.
  * @param props.onHover - Told when the pointer arrives or leaves.
  * @param props.actions - What its controls do.
+ * @param props.viewport - The document-owned vertical scroll boundary.
  * @returns The block's content.
  */
 export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   editor,
   blockId,
   readOnly,
+  viewport,
   type,
   props,
   selected,
@@ -315,23 +321,23 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const placeToolbar = React.useCallback((): void => {
     const element = frame.current;
     const bar = toolbarRef.current;
-    const scroller = element?.closest(SCROLLER);
-    if (element === null || bar === null || scroller === null || scroller === undefined) return;
+    const scroller = viewport;
+    if (element === null || bar === null || scroller === null) return;
     const room = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'inside');
-  }, []);
+  }, [viewport]);
   // Placed when it shows, and again on every scroll while it is up: the room
   // above the media changes as the body moves under it.
   React.useEffect(() => {
     if (!toolbarShown) return undefined;
     placeToolbar();
-    const scroller = frame.current?.closest(SCROLLER);
-    if (scroller === null || scroller === undefined) return undefined;
+    const scroller = viewport;
+    if (scroller === null) return undefined;
     scroller.addEventListener('scroll', placeToolbar, { passive: true });
     return () => {
       scroller.removeEventListener('scroll', placeToolbar);
     };
-  }, [toolbarShown, placeToolbar]);
+  }, [toolbarShown, placeToolbar, viewport]);
   // The pointer is on the block while it is on what the block shows or on
   // its toolbar; the caption under it is the block's text, and answers
   // neither the hover nor a click (`document-media-row-press.ts`).
@@ -393,8 +399,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   }, [type, editor, host]);
   React.useEffect(() => {
     if (!panelShown) return undefined;
-    const scroller = frame.current?.closest<HTMLElement>(SCROLLER);
-    if (scroller === null || scroller === undefined) return undefined;
+    const scroller = viewport;
+    if (scroller === null) return undefined;
     /** Releases a panel whose media has left the document viewport. */
     const follow = (): void => {
       const box = frame.current?.getBoundingClientRect();
@@ -403,7 +409,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     };
     scroller.addEventListener('scroll', follow, { passive: true });
     return () => scroller.removeEventListener('scroll', follow);
-  }, [panelShown, editor, host]);
+  }, [panelShown, editor, host, viewport]);
   const onControlFocus = React.useCallback((focused: boolean, relatedTarget: EventTarget | null): void => {
     const inside = relatedTarget instanceof Element && (panel.current?.contains(relatedTarget) || toolbarRef.current?.contains(relatedTarget) ||
       (host.contains(relatedTarget) && relatedTarget.closest('[data-testid="controls"]') !== null));
@@ -434,7 +440,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       setShownWidth(element.offsetWidth > 0 ? element.offsetWidth : null);
       const style = getComputedStyle(element);
       const button = parseFloat(style.getPropertyValue('--btn-inline'));
-      const gap = parseFloat(style.getPropertyValue('--space-2'));
+      const gap = parseFloat(style.getPropertyValue('--space-4'));
       if (button > 0 && gap > 0) setTransportMinWidth(2 * button + 40 + 4 * gap);
     };
     measure();
@@ -724,15 +730,16 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
                   onKeyDown={(event) => {
                     if (event.target === event.currentTarget && event.key === 'Enter' && floating) {
                       event.preventDefault(); event.stopPropagation(); mediaEvent(editor, { type: 'open', host, origin: 'keyboard' });
+                      panel.current?.focus({ preventScroll: true });
                     }
                   }}
                 >{mediaFrame}</div>
               </Button>
             </PopoverTrigger>
             <PopoverContent ref={panel} data-testid='doc-media-video-panel' tabIndex={-1}
-              collisionBoundary={host.closest<HTMLElement>(SCROLLER)} collisionPadding={4} side='top' sideOffset={8}
-              className='@container w-max p-1'
-              style={{ minWidth: `calc(${transportMinWidth}px + var(--space-2))` }}
+              collisionBoundary={viewport} collisionPadding={4} side='top' sideOffset={8}
+              className='w-max p-1'
+              style={{ minWidth: `calc(${transportMinWidth}px + 2 * (var(--space-2) + 1px))` }}
               onPointerEnter={pointerOn} onPointerLeave={pointerOff}
               onFocusCapture={() => onControlFocus(true, null)}
               onBlurCapture={(event) => onControlFocus(false, event.relatedTarget)}
@@ -759,7 +766,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
               }}
             >
               {!readOnly && <div ref={setFloatingActions} data-media-chrome='' />}
-              <div ref={setFloatingTransport} />
+              <div ref={setFloatingTransport} className='@container' />
             </PopoverContent>
           </Popover>
         ) : mediaFrame}

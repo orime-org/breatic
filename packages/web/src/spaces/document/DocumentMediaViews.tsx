@@ -24,6 +24,8 @@ interface DocumentMediaViewsProps {
   editor: object & { readonly focus: () => void };
   /** Current project edit permission. */
   readOnly?: boolean;
+  /** The document's vertical viewport, owned by its ScrollArea. */
+  viewport?: HTMLElement | null;
 }
 
 /**
@@ -31,9 +33,10 @@ interface DocumentMediaViewsProps {
  * @param props - See {@link DocumentMediaViewsProps}.
  * @param props.editor - The editor.
  * @param props.readOnly - Current project edit permission.
+ * @param props.viewport - The document's own scroll boundary.
  * @returns The portals.
  */
-export function DocumentMediaViews({ editor, readOnly = false }: DocumentMediaViewsProps): React.JSX.Element {
+export function DocumentMediaViews({ editor, readOnly = false, viewport = null }: DocumentMediaViewsProps): React.JSX.Element {
   const subscribe = React.useCallback(
     (listener: () => void) => onMediaViewsChange(editor, listener),
     [editor],
@@ -68,6 +71,7 @@ export function DocumentMediaViews({ editor, readOnly = false }: DocumentMediaVi
             editor={editor}
             blockId={entry.blockId}
             readOnly={readOnly}
+            viewport={viewport}
             type={entry.type}
             props={entry.props}
             selected={entry.selected}
