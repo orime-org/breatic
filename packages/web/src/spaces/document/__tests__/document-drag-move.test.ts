@@ -206,7 +206,7 @@ describe('what the move writes', () => {
       { type: 'paragraph', content: 'beta' },
     ]);
     const nested = (
-      (editor.document[0] as unknown as { children: Seen[] }).children[0] as Seen
+      (editor.document[0] as unknown as { children: Seen[] }).children[0]
     ).id;
     const last = (editor.document[1] as unknown as Seen).id;
 

@@ -295,7 +295,7 @@ test('A3 and T3: words in a cell take styles there only, and Enter splits the bl
   for (let i = 0; i < 'two'.length; i += 1) await pressAndSettle(page, 'Shift+ArrowLeft');
   await page.keyboard.press('ControlOrMeta+b');
 
-  expect((await cellBlocks(page))[0]![0]).toEqual(['paragraph:one', 'paragraph:two']);
+  expect((await cellBlocks(page))[0][0]).toEqual(['paragraph:one', 'paragraph:two']);
   await expect(cell(page, 'onetwo').locator('strong')).toHaveText('two');
   await expect(page.locator(`${EDITOR} strong`)).toHaveCount(1);
   await expect(page.locator(`${EDITOR} table`)).toHaveCount(1);
@@ -479,7 +479,7 @@ test('A9 and A10: selecting cells offers a merge, and a merged cell splits back'
   await expect(page.getByTestId('doc-bubble-block-type')).toBeEnabled();
   await page.getByTestId('doc-bubble-tool-mergeCells').click();
   await expect(page.locator(`${EDITOR} tr`).first().locator('td')).toHaveCount(1);
-  expect((await grids(page))[0]![0]).toEqual(['a1b1']);
+  expect((await grids(page))[0][0]).toEqual(['a1b1']);
 
   await cell(page, 'a1b1').click();
   await page.getByTestId('doc-table-cell-button').click();
@@ -605,7 +605,7 @@ test('T13: from the right of a first-column cell, the pointer reaches the block\
   const before = await strip.boundingBox();
   await page.mouse.move(before!.x + before!.width / 2, before!.y + before!.height / 2, { steps: 12 });
   expect(await strip.boundingBox()).toEqual(before);
-  const under = await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest('[data-testid="doc-block-handle"]') !== null, [before!.x + 12, before!.y + 12]);
+  const under = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-testid="doc-block-handle"]') !== null, [before!.x + 12, before!.y + 12]);
   expect(under).toBe(true);
 
   await page.mouse.move(from.x, from.y);
@@ -860,9 +860,9 @@ test('A14 and T1: block shortcuts and block input rules work inside a cell, and 
   await page.keyboard.type('item');
   await page.keyboard.press('ControlOrMeta+Shift+8');
 
-  expect((await cellBlocks(page))[0]![0]).toEqual(['heading:Title', 'divider', 'bulletListItem:item']);
+  expect((await cellBlocks(page))[0][0]).toEqual(['heading:Title', 'divider', 'bulletListItem:item']);
   await expect(page.locator(`${EDITOR} table`)).toHaveCount(1);
-  expect((await grids(page))[0]![1]).toEqual(['', '']);
+  expect((await grids(page))[0][1]).toEqual(['', '']);
 });
 
 test('A15: Backspace over every cell of an empty table removes it, and undo brings it back', async () => {

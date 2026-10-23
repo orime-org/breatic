@@ -92,7 +92,7 @@ function drag(
 describe('the drag session', () => {
   it('starts when the drag first passes over the body, on the body scroller, vertically', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     const auto = autoScrollOf(view)!;
     expect(auto.state).toBe('idle');
@@ -104,7 +104,7 @@ describe('the drag session', () => {
 
   it('does not start on a drag that never passes over the body, such as a top bar link dragged about', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const link = document.createElement('a');
     link.href = '/studio';
     document.body.append(link);
@@ -118,7 +118,7 @@ describe('the drag session', () => {
     ['text in the Agent column', 'p'],
   ])('starts for %s once it is dragged over the body: the pointer decides, not where the drag began', (_name, tag) => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const source = document.createElement(tag);
     document.body.append(source);
     drag(source, 'dragstart');
@@ -130,7 +130,7 @@ describe('the drag session', () => {
 
   it('does not start on the dragenter that follows a drag from outside the body scroller', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const link = document.createElement('a');
     link.href = '/studio';
     document.body.append(link);
@@ -142,7 +142,7 @@ describe('the drag session', () => {
 
   it('starts for something dragged in from outside once a drag from the page ended, by its dragend or by a move with no button held', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const link = document.createElement('a');
     document.body.append(link);
     drag(link, 'dragstart');
@@ -158,7 +158,7 @@ describe('the drag session', () => {
 
   it('tells the loop a drag that leaves the window was started on the page, and one dragged in was not', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const auto = autoScrollOf(view)!;
     const leave = vi.spyOn(auto, 'leaveWindow');
     const scroller = view.dom.closest('[data-radix-scroll-area-viewport]')!;
@@ -174,21 +174,21 @@ describe('the drag session', () => {
 
   it('does not start on a cancelled dragstart', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart', {}, true);
     expect(autoScrollOf(view)!.state).toBe('idle');
   });
 
   it('starts when something is dragged in from outside the window', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragenter', { relatedTarget: null });
     expect(autoScrollOf(view)!.source).toBe('drag');
   });
 
   it('goes outside on a dragleave to nothing and comes back on the next dragover', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragover', { x: 600, y: 700 });
     // Within the page, a dragleave names where the pointer went.
@@ -206,7 +206,7 @@ describe('the drag session', () => {
 
   it('reads the pointer off a dragenter too: Chrome sends it instead of a dragover when the element under the pointer changes', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragover', { x: 600, y: 400 });
     const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
@@ -216,7 +216,7 @@ describe('the drag session', () => {
 
   it('ignores the library\'s synthetic drag events, which carry a pointer clamped into the editor', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragover', { x: 600, y: 400 });
     const auto = autoScrollOf(view)!;
@@ -236,7 +236,7 @@ describe('the drag session', () => {
 
   it.each(['drop', 'dragend'])('ends on %s', (type) => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragover', { x: 600, y: 400 });
     drag(view.dom, type);
@@ -245,7 +245,7 @@ describe('the drag session', () => {
 
   it('ends on the first mousemove with no button held, and not on one a drag lets through', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragover', { x: 600, y: 400 });
     // Firefox lets a few pointer events through after a drag starts
@@ -259,7 +259,7 @@ describe('the drag session', () => {
   it('in Safari, tells leaving the window by the count of dragenter and dragleave', () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragenter', { x: 600, y: 400, relatedTarget: null });
     // A real dragenter carries the pointer where it is.
@@ -274,7 +274,7 @@ describe('the drag session', () => {
     const { editor, scroller } = open([
       tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     ]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     // The frame the body draws around a table (`document-table-blocknote.tsx`)
     // is a React view a test page does not mount; it is put in place.
     const table = view.dom.querySelector('table')!;
@@ -312,7 +312,7 @@ describe('leaving the page (design §5.2): ended in the window, or out of it', (
    */
   function dragOver(points: { x: number; y: number }[], from: 'page' | 'outside' = 'page'): NonNullable<Editor['prosemirrorView']> {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     if (from === 'page') drag(view.dom, 'dragstart');
     else drag(scroller, 'dragenter', { ...points[0], relatedTarget: null });
     for (const point of points) drag(scroller, 'dragover', point);
@@ -359,7 +359,7 @@ describe('leaving the page (design §5.2): ended in the window, or out of it', (
   it('in Safari, a drag from the top bar into the body leaves the page only when it leaves the window', () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const link = document.createElement('a');
     document.body.append(link);
     drag(link, 'dragstart');
@@ -375,7 +375,7 @@ describe('leaving the page (design §5.2): ended in the window, or out of it', (
   it('in Safari, counts the next drag from nothing after a drag ended with dragend', () => {
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(SAFARI);
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     drag(view.dom, 'dragstart');
     drag(scroller, 'dragenter', { x: 600, y: 400, relatedTarget: null });
     drag(document.body, 'dragenter', { relatedTarget: null });
@@ -423,7 +423,7 @@ describe('leaving the window', () => {
 describe('the pulled-selection session', () => {
   it('starts from the press point when the follower takes a blank press, and follows the follower\'s pointer', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const begin = vi.spyOn(autoScrollOf(view)!, 'beginPress');
     followFromPoint(view, 10, 10);
     expect(begin).toHaveBeenCalledWith(scroller, { x: 10, y: 10 });
@@ -433,13 +433,13 @@ describe('the pulled-selection session', () => {
     const auto = autoScrollOf(view)!;
     expect(auto.source).toBe('press');
     expect(auto.target?.el).toBe(scroller);
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     expect(auto.state).toBe('idle');
   });
 
   it('starts when the follower takes a Shift press from the browser', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.focus();
     const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, shiftKey: true, clientX: 10, clientY: 100 });
     extendFromPress(view, event);
@@ -449,7 +449,7 @@ describe('the pulled-selection session', () => {
 
   it('gives a Shift press no pointer until it moves, so a still Shift+click does not scroll', () => {
     const { editor, scroller } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.focus();
     const begin = vi.spyOn(autoScrollOf(view)!, 'beginPress');
     extendFromPress(view, new MouseEvent('mousedown', { bubbles: true, cancelable: true, shiftKey: true, clientX: 10, clientY: 100 }));
@@ -457,24 +457,24 @@ describe('the pulled-selection session', () => {
     const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
     view.root.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, buttons: 1, clientX: 12, clientY: 120 }));
     expect(follow).toHaveBeenCalledWith({ x: 12, y: 120 });
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
 
   it('feeds the loop from pointer moves only: a scroll elsewhere on the page leaves a still Shift press without a pointer', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.focus();
     extendFromPress(view, new MouseEvent('mousedown', { bubbles: true, cancelable: true, shiftKey: true, clientX: 10, clientY: 100 }));
     const follow = vi.spyOn(autoScrollOf(view)!, 'follow');
     // The Agent column scrolling to its newest line while the press is held.
     document.body.dispatchEvent(new Event('scroll'));
     expect(follow).not.toHaveBeenCalled();
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   });
 
   it('does not start on a plain press the browser keeps', () => {
     const { editor } = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: 10, clientY: 10 }));
     expect(autoScrollOf(view)!.state).toBe('idle');
   });

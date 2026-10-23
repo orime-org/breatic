@@ -44,10 +44,10 @@ function open(text = 'lead'): Editor {
   editor.mount(host);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [{ type: 'paragraph', content: text }] as never);
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   view.dispatch(view.state.tr.setSelection(TextSelection.atEnd(view.state.doc)));
   // A press, a paste or a key in the body lands while it holds the focus.
-  editor.prosemirrorView!.focus();
+  editor.prosemirrorView.focus();
   return editor;
 }
 
@@ -69,7 +69,7 @@ function paste(editor: Editor, data: Record<string, string>): void {
       items: [],
     },
   });
-  editor.prosemirrorView!.dom.dispatchEvent(event);
+  editor.prosemirrorView.dom.dispatchEvent(event);
 }
 
 /**
@@ -162,7 +162,7 @@ describe('pasting a table from elsewhere (A16)', () => {
     paste(editor, { 'text/html': WEB_HTML, 'text/plain': 'key\tvalue' });
 
     expect(tables(editor)).toHaveLength(1);
-    expect(tables(editor)[0]![0]).toEqual(['key', 'value']);
+    expect(tables(editor)[0][0]).toEqual(['key', 'value']);
   });
 
   it('keeps a list in a pasted cell as a list, and leaves out an image from elsewhere', () => {
@@ -235,7 +235,7 @@ describe('pasting cells over cells (A16)', () => {
     editor.replaceBlocks(editor.document, [
       tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     ] as never);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     let a1 = -1;
     view.state.doc.descendants((node, pos) => {
       if (a1 < 0 && node.type.name === 'docTableCell' && node.textContent === 'a1') a1 = pos;
@@ -265,7 +265,7 @@ describe('a table pasted into a line with words (A16)', () => {
    */
   const lines = (editor: Editor): string[] => {
     const out: string[] = [];
-    editor.prosemirrorView!.state.doc.firstChild!.forEach((node) => {
+    editor.prosemirrorView.state.doc.firstChild!.forEach((node) => {
       out.push(node.type.name === 'docTable' ? `table:${node.textContent}` : `${node.firstChild!.type.name}:${node.textContent}`);
     });
     return out;
@@ -277,7 +277,7 @@ describe('a table pasted into a line with words (A16)', () => {
     ['at the start, above the line', 0, ['table:t1t2t3t4', 'paragraph:lead']],
   ] as const)('lands as a table %s', (_name, offset, expected) => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3 + offset)));
 
     paste(editor, { 'text/html': BARE, 'text/plain': 't1\tt2\nt3\tt4' });
@@ -296,7 +296,7 @@ describe('a table pasted with the caret in a cell (inner#1619; the rules for pas
       { type: 'paragraph', content: 'lead' },
       tableBlock({ rows: [{ cells: ['cellw', 'q'] }, { cells: ['r2', 's2'] }] }),
     ] as never);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     let at = -1;
     view.state.doc.descendants((node, pos) => {
       if (at < 0 && node.isText && node.text === 'cellw') at = pos + offset;
