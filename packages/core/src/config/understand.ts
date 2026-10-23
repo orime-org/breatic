@@ -5,7 +5,7 @@
  * Understand run loader (#2175).
  *
  * Reads `config/understand.yaml`: what a canvas run reading a node's media
- * into text is allowed to take, in size and in time.
+ * into text is allowed to take in media size, output tokens and concurrency.
  *
  * Its own file rather than a section of the agent's, because the two are
  * separate runs with separate ceilings — the agent's are sized for a
