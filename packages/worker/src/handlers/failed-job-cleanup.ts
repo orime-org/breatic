@@ -52,6 +52,7 @@ import {
   type TaskJobData,
 } from "@worker/handlers/dispatch.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
+import { isTranscription } from "@worker/handlers/transcribe-question.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
@@ -254,6 +255,8 @@ export async function cleanupFailedJobNodes(
         errorMessage: storedFailure(
           job.data.taskType,
           new Error(`Task failed: ${reason}`),
+          undefined,
+          isTranscription(job.data.params ?? {}) ? "transcribe" : undefined,
         ),
       });
       emitted++;

@@ -206,6 +206,36 @@ export const canvasApi = {
     );
   },
   /**
+   * Start a run that transcribes one node's audio or video into a text node
+   * the browser has already built (inner#856).
+   * @param body - The run, in the shape the route validates.
+   * @param body.project_id - Owning project.
+   * @param body.space_id - The canvas space both nodes live in.
+   * @param body.source_type - Whether the node holds audio or a video.
+   * @param body.source_url - The address of what it is showing.
+   * @param body.node_ids - The node this run writes to, which already exists.
+   * @param body.reader_locale - The reader's language, which picks the Chinese script.
+   * @param body.keep_fillers - Whether filler words stay as spoken.
+   * @param body.source_mime_type - What the ledger judged the file to be.
+   * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
+   * @returns The queued task.
+   * @throws {import('@web/data/api/types').ApiException} On 402 / 403 / 503.
+   */
+  transcribe(body: {
+    project_id: string;
+    space_id: string;
+    source_type: 'video' | 'audio';
+    source_url: string;
+    node_ids: string[];
+    reader_locale: string;
+    keep_fillers: boolean;
+    source_mime_type?: string;
+  }, key: string): Promise<CanvasTask> {
+    return apiPost<CanvasTask>('/canvas/transcribe', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
+  },
+  /**
    * Have the server fetch an address into storage for a node (#207).
    *
    * The answer only says the fetch is queued. The node's task row carries how

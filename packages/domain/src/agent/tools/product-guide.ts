@@ -459,7 +459,8 @@ export function renderProductGuide(): string {
     "icon. A node the reader makes is named Text, Image, Audio or Video in every language, and a node placed " +
       "from a proposal card has the name the card showed. A copied node or group is named COPY- followed by the " +
       "original's name, while nodes copied along inside a group keep their names; a node made by " +
-      `${quoted(t("canvas.nodeMenu.understand"))} is named UNDERSTAND- followed by the name of the node it read. ` +
+      `${quoted(t("canvas.nodeMenu.understand"))} is named UNDERSTAND- followed by the name of the node it read; ` +
+      `${quoted(t("canvas.nodeMenu.transcribe"))} makes one named TRANSCRIBE- followed by the source node's name. ` +
       "Double-click the name to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. " +
       "A group's name sits at its top-left and renames the same way. A locked node's or group's name cannot be " +
       "changed, and double-clicking it does nothing.",
@@ -494,13 +495,33 @@ export function renderProductGuide(): string {
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
       "files are served from an r2.dev address it opens the file in a new tab instead), then " +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
-      "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools), " +
-      `and ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools. All three ` +
-      "are greyed while the node holds nothing. A reading that cannot " +
-      `begin says ${quoted(t("canvas.understand.couldNotStart"))} A file it cannot take makes no new node and ` +
-      "says why: it is larger than a reading takes, or of a type it cannot read. If the node being read is " +
+      "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools). " +
+      "Both are greyed while the node holds nothing. A reading that cannot " +
+      `begin says ${quoted(t("canvas.understand.couldNotStart"))} A format or size refusal detected before ` +
+      "the request creates no node. A refusal detected by the run appears on the new node's task row. " +
+      "Either says why: the file is larger than a reading takes, or of a type it cannot read. " +
+      "If the node being read is " +
       "deleted as it starts, " +
       `${quoted(t("canvas.understand.sourceGone"))}`,
+    `- On a video or sound node, ${quoted(t("canvas.nodeMenu.transcribe"))}, directly below ` +
+      `${quoted(t("canvas.nodeMenu.understand"))}: opens a panel headed ${quoted(t("canvas.transcribe.title"))} ` +
+      `with one switch, ${quoted(t("canvas.transcribe.keepFillers"))}, on at first. Its hint is ` +
+      `${quoted(t("canvas.transcribe.keepFillersOn"))} when on, or ${quoted(t("canvas.transcribe.keepFillersOff"))} ` +
+      "when off. The choice stays across Spaces and Projects until the page reloads. The bottom row shows " +
+      `${quoted(t("canvas.miniTool.panel.usage"))} and a round upward-arrow button that starts the ` +
+      "transcription; X or Esc closes the panel. It writes the spoken words in their original language, " +
+      "with a new line per speaker and no speaker names or timestamps, into a connected text node to the right, " +
+      "selects that node and slides the canvas to it when needed, closing the panel. Chinese uses Traditional " +
+      "characters when the reader's language is Traditional Chinese, otherwise Simplified. A format or size " +
+      "refusal detected before the request creates no node; one detected by the run appears on the new " +
+      "node's task row. A normally completed response is saved as returned, even when empty " +
+      "or inaccurate, and charged by actual usage. The user judges its accuracy. A " +
+      "transcription cut short or refused also fails without writing a partial result. The menu row is " +
+      "greyed while the source holds nothing. If it cannot begin it says " +
+      `${quoted(t("canvas.transcribe.couldNotStart"))} If the source is deleted as it starts, ` +
+      `${quoted(t("canvas.transcribe.sourceGone"))}`,
+    `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools, ` +
+      "greyed while the node holds nothing.",
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
       "(Cmd/Ctrl+D), which places a copy slightly below and to the right, a step further while another node " +
       "already starts there. A copy, pasted or duplicated, carries the original's content but not its history, " +
@@ -648,7 +669,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.expired"))} (${quoted(t("canvas.task.lateResult"))} when a result came late). ` +
       "Each row opens with a small outlined badge naming the kind of task, its icon then its word: " +
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
-      `${quoted(t("canvas.task.kind.generate"))} with a sparkle, or ${quoted(t("canvas.task.kind.understand"))}, ` +
+      `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
+      `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
       "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +

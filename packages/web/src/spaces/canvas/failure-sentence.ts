@@ -84,5 +84,8 @@ export function failureSentence(
     // The one sentence reading it selects on this word, so a ceiling that has
     // not arrived yet drops the clause rather than printing a blank.
     limit: ceiling === null ? 'unknown' : formatBytes(ceiling),
+    // Which reading failed, off the record itself, so the row and history agree
+    // (inner#856). Always a value: ICU throws on a select with none.
+    reading: held.reading ?? 'other',
   });
 }

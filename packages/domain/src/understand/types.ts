@@ -185,8 +185,9 @@ export interface RefusalFacts {
  *
  * Carries a status even when that status is 200: this endpoint answers 200
  * with an `error` object in the body, which is a refusal wearing a success
- * code. Measured — the same audio asked to be transcribed word for word comes
- * back 200 saying `Gemini blocked the request: SAFETY`.
+ * code. Measured (inner#856, 2026-10-22): a content block came back 200 with
+ * `error: {code: 403, message: "SAFETY", metadata: {error_type:
+ * "content_policy_violation"}}`, once in three sends of the same audio.
  */
 export class UnderstandRefused extends Error {
   /** The status this refusal was judged by. */
@@ -195,19 +196,27 @@ export class UnderstandRefused extends Error {
   readonly detail: string;
   /** What the refusal is about. */
   readonly kind: RefusalKind;
+  /**
+   * The service's own name for the failure (`metadata.error_type`), when its
+   * envelope gave one. Reported as it came: the same 403 is a key, a budget
+   * or a content block, and only this tells them apart.
+   */
+  readonly errorType: string | undefined;
 
   /**
    * Build one.
    * @param status - The status this refusal was judged by.
    * @param detail - The words it is stated in, the service's or ours.
    * @param kind - What the refusal is about.
+   * @param errorType - The service's own name for the failure, when it gave one.
    */
-  constructor(status: number, detail: string, kind: RefusalKind) {
+  constructor(status: number, detail: string, kind: RefusalKind, errorType?: string) {
     super(`understand refused (${status}, ${kind}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
     this.kind = kind;
+    this.errorType = errorType;
   }
 }
 

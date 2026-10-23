@@ -114,6 +114,8 @@ function refusalKind(facts: RefusalFacts): RefusalKind {
 interface ServiceError {
   message?: unknown;
   code?: unknown;
+  /** `error_type` names the kind of failure where the code alone cannot: a 403 is a key, a budget or a content block. */
+  metadata?: { error_type?: unknown };
 }
 
 interface Completion {
@@ -134,10 +136,10 @@ interface Completion {
  * Read the answer, or say why there is none.
  *
  * A 200 carrying an `error` object is a refusal wearing a success code, and
- * this endpoint really does answer that way: measured, the same audio asked to
- * be transcribed word for word comes back 200 with
- * `Gemini blocked the request: SAFETY` in the body. So the status is not what
- * decides — the body is.
+ * this endpoint really does answer that way: measured (inner#856, 2026-10-22),
+ * a block arrives on a 200 with `error: {code: 403, message: "SAFETY"}` in the
+ * body, now and then and not for every send of the same audio. So the status
+ * is not what decides — the body is.
  * @param res - The response as it arrived.
  * @param budgetMs - How long the whole body may take to arrive.
  * @param sentAsAddress - Whether the media went as an address to be fetched.
@@ -164,14 +166,21 @@ async function readAnswer(
    * @param about - What is known beyond the words themselves.
    * @param about.source - Where they came from.
    * @param about.code - The code to judge by, when it is not the transport's.
+   * @param about.errorType - The service's own name for the failure, carried and not judged.
    * @returns The refusal to throw.
    */
   const refusal = (
     detail: string,
-    about: { source: RefusalFacts["source"]; code?: number },
+    about: { source: RefusalFacts["source"]; code?: number; errorType?: string },
   ): UnderstandRefused => {
     const code = about.code ?? res.status;
-    return new UnderstandRefused(code, detail, refusalKind({ ...about, code, sentAsAddress }));
+    const { errorType, ...facts } = about;
+    return new UnderstandRefused(
+      code,
+      detail,
+      refusalKind({ ...facts, code, sentAsAddress }),
+      errorType,
+    );
   };
 
   /**
@@ -180,6 +189,8 @@ async function readAnswer(
    * The code is the envelope's own when it carries one: an error raised once
    * the model is already producing output arrives on a 200, which by
    * construction says nothing about what went wrong.
+   * Its `error_type` travels on the refusal as a fact for the caller; it
+   * judges nothing here.
    * @param error - The object the service put in the body.
    * @param fallback - The body as it arrived, for an envelope with no message.
    * @returns The refusal to throw.
@@ -188,6 +199,9 @@ async function readAnswer(
     refusal(String(error.message ?? fallback), {
       source: "envelope",
       ...(typeof error.code === "number" ? { code: error.code } : {}),
+      ...(typeof error.metadata?.error_type === "string"
+        ? { errorType: error.metadata.error_type }
+        : {}),
     });
 
   let text: string;

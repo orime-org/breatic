@@ -595,6 +595,14 @@
       "couldNotStart": "没能开始，可以重试。",
       "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
     },
+    "transcribe": {
+      "title": "转写",
+      "keepFillers": "保留口头禅",
+      "keepFillersOn": "「嗯」「呃」「um」这类词照说的写",
+      "keepFillersOff": "去掉「嗯」「呃」「um」这类词，偶尔会顺带改动个别字",
+      "couldNotStart": "转写没能开始，可以重试。",
+      "sourceGone": "被转写的节点已不存在。这次转写没有连线。"
+    },
     "generatePanel": {
       "focus": "聚焦",
       "reference": "参考",
@@ -870,7 +878,8 @@
       "history": "历史记录",
       "snapshot": "保存快照",
       "download": "下载",
-      "understand": "理解"
+      "understand": "理解",
+      "transcribe": "转写"
     },
     "edge": {
       "delete": "删除连线"
@@ -983,8 +992,8 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {这个文件超过了转写的大小上限。} other {这个文件超过了转写的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了转写的大小上限（{file}）。} other {这个文件超过了转写的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了转写的大小上限（{file}，{bytes}）。} other {这个文件超过了转写的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}} other {{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {不能转写的文件类型。} other {不能转写的文件类型（{type}）。}}} other {{type, select, none {不能转写的文件类型（{file}）。} other {不能转写的文件类型（{file}，{type}）。}}}}} other {{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}}}",
         "expired": "它超时了。",
         "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
@@ -997,12 +1006,14 @@
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。",
-        "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}"
+        "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}",
+        "cut_short": "内容太长，没能转写完。"
       },
       "kind": {
         "upload": "上传",
         "generate": "生成",
-        "understand": "理解"
+        "understand": "理解",
+        "transcribe": "转写"
       }
     },
     "panel": {

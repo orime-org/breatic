@@ -13,15 +13,17 @@
  */
 
 import { formatPhrase } from "@shared/media/format-names.js";
+import { canonicalMediaType } from "@shared/upload/media-type.js";
 
 /**
  * What the endpoint calls each audio type it takes.
  *
- * The two names on the right are the whole of what it accepts, and neither is
+ * The names on the right are the whole of what it accepts, and none is
  * derivable from the type on the left: the same wav file is announced as
  * `audio/wav`, `audio/x-wav`, `audio/wave` or `audio/vnd.wave` depending on
- * the server. A subtype passed through reaches the service as `x-wav` and the
- * clip is refused after it has been uploaded.
+ * the server, and an m4a sent as `aac` was refused where `m4a` was answered
+ * (inner#856, measured 2026-10-22). A subtype passed through reaches the
+ * service under a name it may not take, after the clip has been uploaded.
  *
  * This is the only statement of which audio can be sent. Everything upstream
  * asks it rather than keeping a list of its own, so an address is refused
@@ -34,6 +36,8 @@ export const AUDIO_FORMATS = {
   "audio/x-wav": "wav",
   "audio/wave": "wav",
   "audio/vnd.wave": "wav",
+  "audio/mp4": "m4a",
+  "audio/webm": "webm",
 } as const satisfies Readonly<Record<string, string>>;
 
 /** What the endpoint calls a format it takes. */
@@ -76,6 +80,7 @@ const READER_SPELLING: Readonly<Record<string, string>> = {
   mov: "MOV",
   mp3: "MP3",
   wav: "WAV",
+  m4a: "M4A",
 };
 
 /**
@@ -150,9 +155,13 @@ export function videoFormatOf(mediaType: string): VideoFormat | undefined {
 
 /**
  * What this endpoint calls an audio type, when it takes it at all.
+ *
+ * Asked under the one spelling each format goes by here: a type off a
+ * response header is whatever the uploading browser called it (`audio/m4a`,
+ * `audio/x-m4a`), and the ledger's own is already canonical.
  * @param mediaType - The type the address was settled as.
  * @returns The format name, or undefined when this audio cannot be sent.
  */
 export function audioFormatOf(mediaType: string): AudioFormat | undefined {
-  return (AUDIO_FORMATS as Readonly<Record<string, AudioFormat>>)[mediaType];
+  return (AUDIO_FORMATS as Readonly<Record<string, AudioFormat>>)[canonicalMediaType(mediaType)];
 }

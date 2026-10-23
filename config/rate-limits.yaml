@@ -96,6 +96,11 @@ canvas-paste:   { max: 60,  window_seconds: 60 }
 # 30/60s, which is where the two neighbouring write routes sit.
 understand:     { max: 30,  window_seconds: 60 }
 
+# Transcribing a node's audio or video into a text node (inner#856). The same
+# shape as Understand, one press per run, and its own budget so a reader
+# alternating the two is not refused by the other's count.
+transcribe:     { max: 30,  window_seconds: 60 }
+
 # Generating (POST /canvas/tasks, post-auth, user-keyed). Same shape as
 # Understand: one call opens a task row per node it names and puts a model
 # call behind it, and its run-once record (inner#1490) is kept for a day.
