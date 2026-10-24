@@ -192,7 +192,8 @@ usage_lookup_delay_ms: 30000
 # 30, 60, 120, 240 and 480 s).
 usage_lookup_attempts: 6
 
-# How much the model may write about one piece of media, in tokens.
+# How much the model may write about one ordered media batch, in tokens.
+# All items share this output allowance.
 # The same figure web_search takes, for the same measured reason: 2048 returns
 # about a third of the text 8192 does, and the difference in time is 19ms.
 # A description that reaches this ceiling is passed on with the length finish

@@ -154,7 +154,7 @@ export class MediaUnavailable extends Error {
  * about something else.
  */
 export type RefusalKind =
-  /** About the media that was sent, and the same bytes fare the same again. */
+  /** The media request was refused; service facts determine what failed. */
   | "media"
   /** About the address we handed over: the backend could not fetch it. */
   | "unfetchable"

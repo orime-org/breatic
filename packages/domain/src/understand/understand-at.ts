@@ -15,19 +15,19 @@ import { understandMedia } from "@domain/understand/understand.js";
 import { MediaUnavailable } from "@domain/understand/types.js";
 import type { Media, MediaKind, UnderstandAnswer, UnderstandAt } from "@domain/understand/types.js";
 
-/** What one call answered with, and which kind it turned out to be. */
+/** What one ordered batch call answered with, and its settled media kinds. */
 export interface UnderstandAtAnswer extends UnderstandAnswer {
-  /** Which of the three kinds the address held. */
+  /** The first input's settled kind, retained for single-item callers. */
   kind: MediaKind;
   /** Each input's settled kind in the original order. */
   kinds: MediaKind[];
 }
 
 /**
- * Get the media at an address and ask a model about it.
- * @param request - The address, the question, the limits, and who to ask.
- * @returns What the model wrote, and which kind the address held.
- * @throws {MediaUnavailable} when the address yields no usable media.
+ * Get an ordered media batch and ask a model about it in one call.
+ * @param request - Ordered items, the question, shared limits, and who to ask.
+ * @returns What the model wrote, the first kind and all kinds in input order.
+ * @throws {MediaUnavailable} when an item yields no usable media.
  * @throws {UnderstandRefused} when the service would not answer.
  * @throws {RangeError} when no media items were supplied.
  * @throws {DOMException} when the caller stops the request.

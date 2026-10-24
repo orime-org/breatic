@@ -308,7 +308,8 @@ const agentConfigSchema = z.object({
    */
   judge_likelihood_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(10_000),
   /**
-   * How much the model may write about one piece of media, in tokens.
+   * How much the model may write about one ordered media batch, in tokens.
+   * All items share this output allowance.
    *
    * The same bounds and the same default as `web_search_max_tokens`: both cap
    * one answer from one model, and a floor matters here because a description

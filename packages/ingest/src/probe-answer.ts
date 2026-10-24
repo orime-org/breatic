@@ -4,11 +4,10 @@
 /**
  * The wire between the media container and the Worker (#209 + #210, §4.2).
  *
- * Up to four things travel together and three of them are binary, so the
- * answer is `multipart/form-data`: a `meta` part naming the streams and the
- * duration, a `cover` part carrying the PNG when a frame was lifted, a
- * `preview` part carrying the WebP when one was cut, and an `upright` part
- * saying how turning the picture ended when the run was asked to turn it.
+ * The answer is `multipart/form-data`: `meta` names streams and duration;
+ * optional `cover`, `preview`, `peaks` and `agentPicture` files carry a PNG,
+ * WebP, JSON peaks and model-readable JPEG respectively. An optional `upright`
+ * part says how turning the picture ended when the run was asked to turn it.
  *
  * Both halves live in one file because they are one agreement. The container
  * imports the writer, the Worker imports the reader, and a change to either
@@ -100,6 +99,7 @@ export interface ProbeAnswer {
  * @param preview - The WebP preview, or null when none was cut.
  * @param upright - How turning the picture upright ended, when it was asked.
  * @param peaks - The peaks file, or null when none was read.
+ * @param agentPicture - The model-readable JPEG, or null when none was made.
  * @returns The response the container sends.
  */
 export function buildProbeAnswer(

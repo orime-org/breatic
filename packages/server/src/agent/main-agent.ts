@@ -184,9 +184,9 @@ export class MainAgent {
     // The reader's clock opens this turn's message, on its own line, ahead of
     // any attached content, so it never sits under the "User message"
     // heading. The system prompt does not carry it. The reader's Spaces
-    // follow it, read fresh with each message. The message is kept as it was
-    // sent and later turns send it again as it is, so a provider's prefix
-    // cache matches everything up to the new message.
+    // follow it, read fresh with each message. Storage keeps the logical
+    // message and picture facts; each request projects a copy under its
+    // picture policy. Unchanged prefixes can reuse the provider's cache.
     const opening: Opening = {
       kind: "message",
       clockNote: readerClockNote(new Date(), timeZone),
@@ -363,10 +363,10 @@ export class MainAgent {
     /** What a tool answered, for calls whose result chunk never got read. */
     const whatToolAnswered = new Map<string, unknown>();
 
-    // What the reply row keeps of what was sent (`for_model`). Each finished
-    // step's messages, in order; a step went out as it is once a later request
-    // carried it. The hash is of the request the turn's first call sent; the
-    // provider's counts size the turn for the fold.
+    // Durable protocol facts for the reply row (`for_model`): each finished
+    // step's messages in order, plus the prefix hash of each generation.
+    // Picture projection can change later requests without rewriting these
+    // facts. Provider counts size the turn only while their coverage holds.
     const steps: ModelMessage[][] = [];
     const generationSteps: AgentGenerationStep[] = [];
     let generationPrefix = "";
@@ -381,7 +381,7 @@ export class MainAgent {
     let sent: Assembly | undefined;
 
     /**
-     * What the reply row keeps of what was sent: the finished steps, the step
+     * The reply's durable protocol facts: the finished steps, the step
      * the turn ended inside, and a note when it did not end on its own.
      * @param ended - How the turn ended and what it left behind.
      * @param ended.exit - How the turn ended.
@@ -542,7 +542,7 @@ export class MainAgent {
       };
       requestPictureFacts = [...pictureFactsOfRows(history), ...(preparedTurn?.pictures ?? [])];
       const replayed = replayRows(history, agentConfig, { messages: [userMessage], pictures: preparedTurn?.pictures ?? [] });
-      // Kept as it is so what is stored is what went out.
+      // Keep logical facts before projection so a later turn can reselect pictures.
       const userKept: UserForModel = {
         messages: [userMessage],
         ...((preparedTurn?.pictures?.length ?? 0) === 0 ? {} : { pictures: [...preparedTurn!.pictures!] }),

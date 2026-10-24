@@ -62,8 +62,8 @@ export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
 export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>> = {
   // How to build each tool for one turn. A tool that carries state for the
   // length of a turn -- the search tools share one space of citation numbers
-  // -- gets a fresh one per turn from here, and a tool that carries none
-  // hands back the same object every time.
+  // -- gets a fresh one per turn from here. Tools may also bind per-turn
+  // capabilities; context-independent tools can reuse one object.
   web_search: () => makeSearchTools().web_search,
   understand_media: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
   // The name a tool answers to is this key, and it is the constant rather
@@ -89,8 +89,8 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [SAVE_IMAGE]: () => makeSaveImageTool(),
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
-  // Read the user's records through what the turn hands them in its context,
-  // and hold nothing between calls, so one object each serves every turn.
+  // Record reads use the turn's execution context. Three reuse stateless
+  // objects; node history binds this turn's picture capability and preparer.
   [SEARCH_CONVERSATIONS]: () => recordTools[SEARCH_CONVERSATIONS],
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
   [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),

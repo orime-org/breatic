@@ -1051,17 +1051,18 @@ interface MediaReadBody {
  *
  * A project cover or a studio avatar is finished without a read, and our
  * worker asks for one once the upload has returned. The object itself is left
- * as it stands; the only writes are a preview or an audio object's peaks beside
- * it when asked for, and the caller files the numbers on the ledger row.
+ * as it stands; requested previews, audio peaks and model-readable JPEGs are
+ * written beside it, and the caller files the numbers on the ledger row.
  *
  * It takes the shared secret, because the key it names may be any key in the
- * bucket and every run starts a container. The type comes from the caller —
+ * bucket and a read may start a container. Existing peaks-only or JPEG-only
+ * requests can return without one. The type comes from the caller —
  * the one the ledger recorded off the stored bytes — because the object's own
  * header is what the ticket signed, which may be a guess.
  * @param request - The backend's request.
  * @param env - The Worker's bindings.
  * @returns The three numbers, each one this run could not read as null, and
- *   what became of the preview and the peaks when each was asked for.
+ *   requested preview, peaks and JPEG outcomes, including stored JPEG facts.
  */
 async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   if (!fromOurBackend(request, env)) {

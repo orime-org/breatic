@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The history, replayed as it was sent (inner#1549).
+ * Stored logical history, projected for the current request (inner#1549).
  *
  * A provider caches the prefix of a request and reads it back on the next one
- * only when it is the same, byte for byte. Each message is therefore stored as
- * it was sent (`conversation_messages.for_model`) and sent again as it is, so
- * the next turn's request is the last one with something added at the end.
+ * only when it is the same, byte for byte. `conversation_messages.for_model`
+ * keeps logical messages and picture facts. Replay projects a copy under the
+ * current picture policy; unchanged prefixes can still reuse the cache.
  *
  * A reply's thinking can go back only while everything sent before it is what
  * its turn sent: Anthropic's preserved thinking holds "everything you sent
- * before it is unchanged", system and tools included. Each reply row keeps
- * the hash of its turn's prefix, and a row whose hash no longer matches goes
- * back without its thinking. Taking a block out changes every byte after it,
+ * before it is unchanged", system and tools included. New reply rows keep a
+ * prefix hash per generation step; a step whose prefix or body changed goes
+ * back without its thinking. Legacy rows use the turn's prefix hash instead.
+ * Taking a block out changes every byte after it,
  * so the replies made while it was there stop matching too, and the ones made
  * after it was gone still match. Putting it back -- the tools or the system
  * prompt change and change back, as the tools do when the reader switches the
@@ -37,7 +38,7 @@ import type { MessageData } from "@breatic/shared";
 import { UNANSWERED_ASK } from "@server/agent/ask-result.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
-/** A stored message, with what was sent of it, if anything was kept. */
+/** A stored message with durable protocol facts, when available. */
 export type ReplayRow = MessageData & {
   /** `conversation_messages.for_model`, unread. */
   forModel: unknown;
@@ -84,10 +85,10 @@ const replyForModel = z.object({
   countCoverage: z.object({ version: z.literal(1), turnHash: z.string().optional(), endHash: z.string().optional() }).optional(),
 });
 
-/** What a user row keeps of what was sent. */
+/** A user row's logical messages, picture facts and Space snapshot. */
 export type UserForModel = z.infer<typeof userForModel>;
 
-/** What a reply row keeps of what was sent. */
+/** A reply row's protocol messages, picture facts and request coverage. */
 export type ReplyForModel = z.infer<typeof replyForModel>;
 
 // Parts that carry a model's working or only a provider's private payload.
@@ -180,7 +181,7 @@ export interface ReplayedRow {
   messages: ModelMessage[];
   /** Selected logical messages before the deterministic tool-picture expansion. */
   logicalMessages?: ModelMessage[];
-  /** What a reply row kept of what was sent, when it kept anything. */
+  /** Durable reply facts, when the row kept them. */
   reply?: ReplyForModel;
   /** A reply sent again as it was sent, thinking included. */
   asSent: boolean;

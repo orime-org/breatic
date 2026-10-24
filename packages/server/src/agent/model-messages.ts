@@ -10,9 +10,9 @@
  * wants the same history split differently: a tool call belongs to the
  * assistant, its result arrives as a message of its own.
  *
- * A row kept as it was sent (`for_model`) goes back as kept; this renders
- * the rows stored before that copy was kept, and is the replay's only way to
- * send them (`history-replay.ts`).
+ * Replay reads logical messages from `for_model` and projects them for the
+ * current request. This renders rows stored before that copy was kept, and
+ * is the replay's only way to send those older rows (`history-replay.ts`).
  */
 
 import type { ModelMessage } from "ai";

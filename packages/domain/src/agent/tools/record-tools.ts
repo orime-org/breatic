@@ -8,9 +8,9 @@
  *
  * The reads are the server's, bound to the turn's user and project and handed
  * in through the tool context as `ProjectRecords`; the model only names a
- * conversation, node or Space and how far to page. Each tool writes its
- * answer as text for the model, and every page says how much is left and how
- * to get it.
+ * conversation, node or Space and how far to page. Pages say how much is left
+ * and how to get it. Answers are text, except a picture-capable node-history
+ * reader can return structured text and prepared picture facts.
  */
 
 import { tool, type Tool } from "ai";

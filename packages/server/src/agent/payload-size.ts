@@ -11,12 +11,12 @@
  * only the two strings is short by the whole tool set, and short in a way
  * that grows every time a tool is added.
  *
- * Characters are the fallback: the fold is decided by the provider's own
- * token counts, and these measure only what no count covers -- a turn whose
- * reply kept no count (its calls reported nothing, or it was stored before
- * any copy was kept), what came after the newest reply sent again as it was
- * sent, this turn's question, and the system prompt and tools when no reply
- * goes out as it was sent. A character is never more than a token in the tokenizers
+ * The fallback counts text characters and adds the configured token estimate
+ * for each picture occurrence, without counting expanded tool pictures twice.
+ * Provider counts cover only requests whose stored coverage is still valid;
+ * this estimate covers the rest, including the current question and any
+ * instructions or tools outside that coverage.
+ * A character is never more than a token in the tokenizers
  * this build meets, so counting one as a token can only make a fold come
  * early. There is no library that counts tokens for a model reached through
  * OpenRouter — see the design's DD section.
@@ -32,7 +32,7 @@ import type { Instructions } from "@breatic/domain";
  * The length of one content part, by what the model is shown of it.
  * @param part - A part of a message's content.
  * @param picturesExpanded - Native files immediately following the tool group already represent its pictures.
- * @returns Its length in characters.
+ * @returns Text characters plus configured picture token estimates.
  */
 function measurePart(part: unknown, picturesExpanded = false): number {
   if (typeof part === "string") return part.length;
@@ -72,7 +72,7 @@ function measurePart(part: unknown, picturesExpanded = false): number {
  * how the SDK happens to serialise a message this month.
  * @param message - The message as the SDK will send it.
  * @param picturesExpanded - The tool group's pictures are present as native files after it.
- * @returns Its length in characters.
+ * @returns Text characters plus configured picture token estimates.
  */
 function measureMessage(message: ModelMessage, picturesExpanded = false): number {
   const { content } = message;
@@ -98,13 +98,13 @@ function measureTool(name: string, definition: Tool): number {
 }
 
 /**
- * How long a run of messages is, in characters.
+ * Estimate a run of messages in tokens using text characters and picture costs.
  *
  * The same ruler the budget is read with, applied to one part of what it
  * measures: a consolidation decides how many turns to take by what each of
  * them costs the assembled request.
  * @param messages - The messages to measure.
- * @returns Their total length.
+ * @returns Their combined fallback token estimate.
  */
 export function measureMessages(messages: readonly ModelMessage[]): number {
   return messages.reduce((sum, message, index) => {
