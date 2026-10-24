@@ -44,6 +44,10 @@ const analysisConfigSchema = z.strictObject({
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
+    settlement: z.strictObject({
+      lease_ms: z.number().int().positive().default(60_000),
+      retry_ms: z.number().int().positive().default(30_000),
+    }).default({ lease_ms: 60_000, retry_ms: 30_000 }),
     prices: z.object({
       vcpu_second_usd: z.number().nonnegative(),
       memory_gib_second_usd: z.number().nonnegative(),

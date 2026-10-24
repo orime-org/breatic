@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
+import type { VideoFrameTable, VideoSourceFrame } from "@shared/mini-tools/video-frame-table.js";
+export type { VideoFrameTable, VideoSourceFrame } from "@shared/mini-tools/video-frame-table.js";
 import {
   videoToolDialogueRowSchema,
   videoToolExpansionFrameSchema,
@@ -12,8 +14,6 @@ import {
   type VideoToolTimelineClip,
 } from "@shared/mini-tools/video-draft.js";
 
-export interface VideoSourceFrame { frameIndex: number; pts: number }
-export interface VideoFrameTable { frames: readonly VideoSourceFrame[]; videoEnd: number }
 export interface VideoFrameRequest { mode: "first" | "last" | "current" | "interval"; currentTime?: number; interval?: number }
 export interface VideoFrameOutput extends VideoSourceFrame { outputIndex: number }
 export interface VideoSplitOutput { outputIndex: number; start: number; end: number }

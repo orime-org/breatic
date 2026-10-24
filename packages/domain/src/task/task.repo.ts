@@ -10,7 +10,140 @@
 import { and, eq, desc, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+import type { MiniToolSettlement, MiniToolSettlementClaim } from "@domain/mini-tool/consumption.types.js";
+
+/** Parent facts read while serializing one task's consumption writes. */
+export interface LockedMiniToolConsumptionTask {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  status: string;
+  source: string;
+  model: string | null;
+  billedAt: Date | null;
+  billedCredits: number | null;
+  result: Record<string, unknown>;
+}
+
+/**
+ * Lock by immutable task identity before reading any consumption state.
+ * @param taskId - The parent task, including a task hidden from user history.
+ * @param tx - The transaction that will record usage and settlement together.
+ * @returns Current parent facts, or null when no task exists.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockMiniToolConsumptionTask(taskId: string, tx: DbTx): Promise<LockedMiniToolConsumptionTask | null> {
+  const [row] = await tx.select({
+    id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
+    status: tasks.status, source: tasks.source, result: tasks.result,
+    model: tasks.model, billedAt: tasks.billedAt, billedCredits: tasks.billedCredits,
+  }).from(tasks).where(eq(tasks.id, taskId)).for("update");
+  return row ? { ...row, result: row.result ?? {} } : null;
+}
+
+/**
+ * Claim a fixed amount without changing the parent's computation or media result.
+ * @param taskId - The parent whose immutable row lock is held.
+ * @param credits - The once-rounded complete expense.
+ * @param tx - The same transaction that writes funds and releases its hold.
+ * @returns Whether this transaction claimed the unbilled parent.
+ * @throws {Error} When the database write fails.
+ */
+export async function claimMiniToolCharge(taskId: string, credits: number, tx: DbTx): Promise<boolean> {
+  const rows = await tx.update(tasks).set({
+    billedAt: sql`clock_timestamp()`, billedCredits: credits, creditsUsed: credits,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(tasks.id, taskId), isNull(tasks.billedAt))).returning({ id: tasks.id });
+  return rows.length === 1;
+}
+
+/**
+ * Check a lookup lease against the database clock after acquiring the task lock.
+ * @param taskId - The task whose lock is held.
+ * @param claim - The lookup's original version and token.
+ * @param tx - The transaction holding the task lock.
+ * @returns Whether this claim may still write its answer.
+ * @throws {Error} When the database read fails.
+ */
+export async function hasMiniToolSettlementLease(taskId: string, claim: MiniToolSettlementClaim, tx: DbTx): Promise<boolean> {
+  const [row] = await tx.select({
+    valid: sql<boolean>`coalesce(
+      ${tasks.result}->'settlement'->>'state' = 'checking'
+      AND ${tasks.result}->'settlement'->>'version' = ${String(claim.version)}
+      AND ${tasks.result}->'settlement'->>'leaseToken' = ${claim.leaseToken}
+      AND (${tasks.result}->'settlement'->>'leaseUntil')::timestamptz > clock_timestamp(), false)`,
+  }).from(tasks).where(eq(tasks.id, taskId));
+  return row?.valid === true;
+}
+
+/**
+ * Read a fresh UTC instant without passing through JavaScript's millisecond Date.
+ * @param taskId - The task whose lock is held.
+ * @param tx - The transaction holding the task lock.
+ * @returns Database wall time with six fractional digits.
+ * @throws {Error} When the task is missing or the database read fails.
+ */
+export async function miniToolSettlementDatabaseNow(taskId: string, tx: DbTx): Promise<string> {
+  const [row] = await tx.select({
+    now: sql<string>`to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+  }).from(tasks).where(eq(tasks.id, taskId));
+  if (!row) throw new Error("Consumption task no longer exists");
+  return row.now;
+}
+
+/** SQL-clock instants and due decisions, retaining timestamp microseconds. */
+export type MiniToolSettlementClock = {
+  now: string;
+  leaseUntil: string;
+  retryAt: string;
+  waitingDue: boolean;
+  leaseExpired: boolean;
+};
+
+/**
+ * Read billing due times using only the database clock while the task lock is held.
+ * @param taskId - The immutable task identity.
+ * @param timing - Billing lease and retry configuration, independent of computation.
+ * @param timing.lease_ms - Duration of the lookup ownership.
+ * @param timing.retry_ms - Delay before another lookup attempt.
+ * @param tx - The short transaction holding the task lock.
+ * @returns One consistent clock sample, precise instants and due decisions.
+ * @throws {Error} When the task is absent or persistence is malformed.
+ */
+export async function miniToolSettlementClock(
+  taskId: string, timing: { lease_ms: number; retry_ms: number }, tx: DbTx,
+): Promise<MiniToolSettlementClock> {
+  const rows = await tx.execute<MiniToolSettlementClock>(sql`
+    WITH instant AS MATERIALIZED (SELECT clock_timestamp() AS at)
+    SELECT to_char(i.at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "now",
+      to_char((i.at + ${timing.lease_ms} * interval '1 millisecond') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "leaseUntil",
+      to_char((i.at + ${timing.retry_ms} * interval '1 millisecond') AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "retryAt",
+      coalesce((t.result->'settlement'->>'nextAttemptAt')::timestamptz <= i.at, false) AS "waitingDue",
+      coalesce((t.result->'settlement'->>'leaseUntil')::timestamptz <= i.at, false) AS "leaseExpired"
+    FROM ${tasks} t CROSS JOIN instant i WHERE t.id = ${taskId}`);
+  const row = rows[0];
+  if (!row) throw new Error("Settlement task no longer exists");
+  return row;
+}
+
+/**
+ * Merge only settlement metadata into the current result under the task lock.
+ * @param taskId - The parent whose calculation state and manifest stay intact.
+ * @param settlement - The validated next consumption-recording period.
+ * @param tx - The transaction that also wrote usage and the step's consumption.
+ * @returns Nothing.
+ * @throws {Error} When the task vanished or the database update fails.
+ */
+export async function storeMiniToolSettlement(taskId: string, settlement: MiniToolSettlement, tx: DbTx): Promise<void> {
+  const patch = sql.param({ settlement }, tasks.result);
+  const rows = await tx.update(tasks).set({
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
+  if (rows.length !== 1) throw new Error("Consumption task no longer exists");
+}
 
 /** Durable admission fields, with the database instant kept outside Date. */
 export interface AnalysisTaskRow {

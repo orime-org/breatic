@@ -16,6 +16,7 @@
     "dev": "tsup src/index.ts --format esm --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "lint": "eslint .",
     "clean": "rm -rf dist"
   },
@@ -34,8 +35,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
     "fast-check": "catalog:",
+    "testcontainers": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
     "vitest": "catalog:"

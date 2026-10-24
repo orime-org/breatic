@@ -11,6 +11,8 @@
 
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, taskUpstreamSteps } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
+import type { MiniToolConsumptionRecord } from "@domain/mini-tool/consumption.types.js";
 
 /** What a step does; decides what the executor reads off its answer. */
 export type UpstreamStepKind =
@@ -63,12 +65,49 @@ function toStep(row: typeof taskUpstreamSteps.$inferSelect): UpstreamStep {
 }
 
 /**
+ * Re-read a step only after its parent task's consumption lock is held.
+ * @param taskId - The immutable owning task.
+ * @param stepId - The immutable step identity.
+ * @param tx - The transaction holding that task's row lock.
+ * @returns The current owned step, or null when it does not belong to the task.
+ * @throws {Error} When the database read fails.
+ */
+export async function getStepForConsumption(taskId: string, stepId: string, tx: DbTx): Promise<UpstreamStep | null> {
+  const [row] = await tx.select().from(taskUpstreamSteps)
+    .where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)));
+  return row ? toStep(row) : null;
+}
+
+/**
+ * Merge only the consumption fact, preserving concurrent execution output fields.
+ * @param taskId - The owning task whose row lock is held.
+ * @param stepId - The step to update.
+ * @param consumption - The validated recorded consumption.
+ * @param tx - The transaction that already wrote this consumption's usage.
+ * @returns Nothing.
+ * @throws {Error} When the step vanished or its write fails.
+ */
+export async function storeMiniToolConsumption(
+  taskId: string, stepId: string, consumption: MiniToolConsumptionRecord, tx: DbTx,
+): Promise<void> {
+  const patch = sql.param({ miniToolConsumption: consumption }, taskUpstreamSteps.output);
+  const rows = await tx.update(taskUpstreamSteps).set({
+    output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Consumption step no longer belongs to its task");
+}
+
+/**
  * A task's steps in order.
  * @param taskId - The task.
+ * @param tx - An enclosing transaction when consumption state must be current.
  * @returns Its steps, by position.
+ * @throws {Error} When the database read fails.
  */
-export async function listSteps(taskId: string): Promise<UpstreamStep[]> {
-  const rows = await db
+export async function listSteps(taskId: string, tx?: DbTx): Promise<UpstreamStep[]> {
+  const rows = await (tx ?? db)
     .select()
     .from(taskUpstreamSteps)
     .where(eq(taskUpstreamSteps.taskId, taskId))

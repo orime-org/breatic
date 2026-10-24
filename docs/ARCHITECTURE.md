@@ -157,6 +157,10 @@ config/ locales/ (git-tracked)
 
 **画布转写**由 `POST /canvas/transcribe` 开启,使用独立的 `transcribe` 限流与幂等 scope。服务端复用 `startReading`,任务类型和来源为 `understand`,节点任务的 action 为 `transcribe`;worker 的 `runUnderstand` 根据 `reading` 选择转写问题和输出上限,模型与后端取同一份 `UNDERSTAND_PINS`。取媒体的大小、并发限制和两小时任务预算由理解与转写共用,两者的输出 token 上限分别读取 `config/understand.yaml`。模型正常以 `stop` 结束时,返回文字原样进入任务结果、节点历史和文本节点的 `data.body`,包括空字符串及模型表示没有人声的文字;本次调用的实际用量记为 `canvas_transcribe`,经既有任务结算路径扣费。识别准确度由用户判断。接口明确报告拒绝、截断或其他异常停止时按任务失败协议处理。
 
+**逐步消费的领域事务**：视频 mini-tool 的实际消费身份与费用保存在 `task_upstream_steps.output.miniToolConsumption`，任务的待办和查询租约保存在 `tasks.result.settlement`。`recordMiniToolConsumption` 在 task 主键行锁内重读 step，将一项已确认费用的 usage、step 状态和任务待办放进同一事务；保留每项原始积分，父任务只在汇总时统一向上取整到分。`settleMiniToolCharge` 仅对计算 completed/failed、消费身份集合明确完整且费用全部 recorded 的任务认领固定金额，将 billing guard、资金账本、债务与 hold 释放放进同一事务，提交后才发布积分变化。金额未知不能当零，也不能因为待办为空而推断没有消费；已确认零费用允许记录和零结算。消费及资金事务保留计算终态、媒体清单与原任务期限。
+
+`claimMiniToolSettlement` 先以数据库时钟认领当前到期版本；`confirmMiniToolConsumption` 在版本、token、原消费身份及租约仍有效时先保存实际费用，再交共同 usage 事务。只读上游查询在 SQL 事务外进行。缺费用或查询失败经 `deferMiniToolSettlement` 保存新到期版本；过期租约也推进版本，使迟到答复失效。`config/mini-tools.yaml` 的 `settlement.lease_ms` 与 `retry_ms` 只管理费用查询，不改变节点任务的两小时预算。
+
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
 `worker/src/handlers/dispatch.ts` 里一个任务从投递到结束的顺序。**碰 worker 任何一步之前先定位「我在第几步」—— 同一个失败在第 3 步和第 5 步的后果完全相反**:

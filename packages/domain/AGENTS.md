@@ -20,7 +20,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Charging is atomic and idempotent
 
-**A charge and its ledger rows are written in one `db.transaction()`: a finished task is billed through `markCompletedAndBill`, and a generation is charged through `chargeOnceForGeneration(refKey, ...)`, which charges each `refKey` at most once.** A charge split across transactions, or repeated on a retry, leaves the balance and the ledger disagreeing.
+**A charge and its ledger rows are written in one `db.transaction()`: a finished task is billed through `markCompletedAndBill`, a generation through `chargeOnceForGeneration(refKey, ...)`, and a video mini-tool with persistent per-step consumption through `settleMiniToolCharge(taskId)`.** The mini-tool entry claims the task billing guard, aggregates its complete recorded consumption once, and passes the same transaction to the credit engine; callers supply no replacement amount. A charge split across transactions, or repeated on a retry, leaves the balance and the ledger disagreeing.
 
 **A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat holds nothing: a turn is admitted on the balance and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
 

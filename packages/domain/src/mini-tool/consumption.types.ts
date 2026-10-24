@@ -1,0 +1,78 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import { z } from "zod";
+import { miniToolConsumptionIdentitySchema } from "@breatic/shared/mini-tools";
+
+const containerPricingSchema = z.strictObject({
+  configVersion: z.string().min(1),
+  size: z.strictObject({ vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
+  prices: z.strictObject({ vcpu_second_usd: z.number().nonnegative(), memory_gib_second_usd: z.number().nonnegative(), disk_gb_second_usd: z.number().nonnegative() }),
+});
+const consumptionKeySchema = z.string().regex(/^[a-f0-9]{64}$/);
+
+/** Backend-owned consumption facts frozen when an actual upstream call exists. */
+export const miniToolConsumptionRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1), consumptionKey: consumptionKeySchema,
+  identity: miniToolConsumptionIdentitySchema,
+  state: z.enum(["pending", "known", "recorded"]),
+  creditMultiplier: z.number().nonnegative(), chargeTo: z.enum(["user", "platform"]),
+  costUsd: z.number().nonnegative().nullable(),
+  costSource: z.enum(["generation_lookup", "computed"]).nullable(),
+  raw: z.json().nullable(), credits: z.number().nonnegative().nullable(),
+  containerPricing: containerPricingSchema.nullable(),
+}).superRefine((record, ctx) => {
+  if ((record.identity.kind === "container") !== (record.containerPricing !== null)) {
+    ctx.addIssue({ code: "custom", path: ["containerPricing"], message: "Container consumption requires frozen class pricing; provider consumption has none" });
+  }
+  if (record.state === "pending") {
+    if (record.costUsd !== null || record.costSource !== null || record.credits !== null) {
+      ctx.addIssue({ code: "custom", message: "Pending consumption has no confirmed amount" });
+    }
+    return;
+  }
+  if (record.costUsd === null || record.costSource !== (record.identity.kind === "provider" ? "generation_lookup" : "computed")) {
+    ctx.addIssue({ code: "custom", message: "Confirmed consumption requires its actual amount and source" });
+  }
+  if ((record.state === "recorded") !== (record.credits !== null)) {
+    ctx.addIssue({ code: "custom", path: ["credits"], message: "Only recorded consumption carries user credits" });
+  }
+  if (record.state === "recorded" && record.chargeTo === "platform" && record.credits !== 0) {
+    ctx.addIssue({ code: "custom", path: ["credits"], message: "Platform-funded consumption has zero user credits" });
+  }
+});
+
+/** Persistent work remaining after consumption lookup or recording. */
+export const miniToolSettlementSchema = z.strictObject({
+  version: z.number().int().nonnegative(), state: z.enum(["idle", "waiting", "checking", "settled"]),
+  pendingConsumptionKeys: z.array(consumptionKeySchema).refine((keys) => new Set(keys).size === keys.length),
+  nextAttemptAt: z.iso.datetime().nullable(), leaseToken: z.string().min(1).nullable(),
+  leaseUntil: z.iso.datetime().nullable(), lastError: z.string().nullable(),
+  consumptionSetComplete: z.boolean().optional(),
+});
+
+/** A lookup answer may commit only under its still-current database lease. */
+export const miniToolSettlementClaimSchema = z.strictObject({
+  version: z.number().int().nonnegative(), leaseToken: z.string().min(1),
+});
+
+/** Recording accepts no replacement quote or new upstream call. */
+export const recordMiniToolConsumptionInputSchema = z.strictObject({
+  taskId: z.string().uuid(), stepId: z.string().uuid(), identity: miniToolConsumptionIdentitySchema,
+  claim: miniToolSettlementClaimSchema.optional(),
+});
+
+export type MiniToolConsumptionRecord = z.infer<typeof miniToolConsumptionRecordSchema>;
+export type MiniToolContainerPricing = z.infer<typeof containerPricingSchema>;
+export type MiniToolSettlement = z.infer<typeof miniToolSettlementSchema>;
+export type MiniToolSettlementClaim = z.infer<typeof miniToolSettlementClaimSchema>;
+export type RecordMiniToolConsumptionInput = z.infer<typeof recordMiniToolConsumptionInputSchema>;
+
+/** Confirmed lookup amounts carry their original lease and no replacement pricing. */
+export const confirmMiniToolConsumptionInputSchema = recordMiniToolConsumptionInputSchema.extend({
+  claim: miniToolSettlementClaimSchema,
+  costUsd: z.number().nonnegative(),
+  costSource: z.enum(["generation_lookup", "computed"]),
+  raw: z.json(),
+});
+export type ConfirmMiniToolConsumptionInput = z.infer<typeof confirmMiniToolConsumptionInputSchema>;

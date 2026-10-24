@@ -136,6 +136,19 @@ front-end bundle covered by the next section.
 
 ## Packages reachable from the front-end bundle
 
+### Mediabunny
+
+| | |
+|---|---|
+| Version | `1.62.1` |
+| Package | `mediabunny` |
+| Reached through | Declared by `packages/web`; video track metadata and frame-accurate media reading |
+| Licence | **MPL-2.0** |
+| Source | https://github.com/Vanilagy/mediabunny/tree/v1.62.1 |
+
+The package is used as published, with no modified library files. Its licence
+and source remain available with the front end's third-party notices.
+
 ### BlockNote
 
 | | |

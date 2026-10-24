@@ -252,9 +252,9 @@ export async function grantTrialCredits(
 /**
  * Charge one generation to the studio that owns its project.
  *
- * Runs after the work was delivered, so it never fails the caller and never
- * rolls anything back. What it cannot cover it reports; what it can cover it
- * takes, lot by lot, oldest first.
+ * Runs after delivery. A shortfall is reported without failing delivered work;
+ * database errors reject so the owning transaction can roll back and retry.
+ * What it can cover it takes, lot by lot, oldest first.
  *
  * Locking is the part worth reading twice. Candidates are chosen without
  * locks, then locked one at a time in that same order — a fixed order, so two
@@ -272,10 +272,13 @@ export async function grantTrialCredits(
  *
  * Only as many lots are locked as the charge needs.
  * @param input - What to charge and on whose behalf.
+ * @param outer - Optional parent transaction; its caller publishes the credits signal after commit.
  * @returns What was taken, what was not, and from where.
+ * @throws {Error} When configuration, database or ledger writes fail.
  */
 export async function chargeForGeneration(
   input: ChargeInput,
+  outer?: DbTx,
 ): Promise<ChargeOutcome> {
   const amountMicro = toChargeMicro(input.amount);
   // A project that vanished while the task ran leaves nothing to charge, and
@@ -307,39 +310,36 @@ export async function chargeForGeneration(
     referenceId: input.referenceId,
   };
 
-  // Payments off — every local install and every self-hosted one. Usage is
-  // still recorded, because a deployment that charges nobody still wants to
-  // know what it produced; there is simply no purchase to draw it from.
-  if (!env.PAYMENT_ENABLED) {
-    await creditLotRepo.recordStandaloneUsage({
-      ...usageEntry,
-      amount: fromMicroCredits(-amountMicro),
-    });
-    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
-    return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
-  }
-
-  // No studio means no pool. Two ways to get here: the text tools, whose route
-  // never took a project id (#122, a gap in the product rather than a
-  // decision), and a project deleted while its task was still running.
-  // Recording the usage keeps the account honest; the shortfall tells the
-  // caller to log it.
-  if (studioId === null) {
-    await creditLotRepo.recordStandaloneUsage({
-      ...usageEntry,
-      amount: fromMicroCredits(-amountMicro),
-    });
-    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
-    return {
-      billed: false,
-      charged: 0,
-      shortfall: amountMicro / 1_000_000,
-      studioId: null,
-      lotIds: [],
+  // A standalone entry already owns its single-write transaction. When a
+  // parent guard or hold also belongs to it, use that same wider transaction.
+  if (!env.PAYMENT_ENABLED || studioId === null) {
+    /**
+     * Record expense without drawing down a purchase.
+     * @param tx - The optional parent or hold-owning transaction.
+     * @returns The original standalone outcome.
+     * @throws {Error} When the ledger or hold write fails.
+     */
+    const standalone = async (tx?: DbTx): Promise<ChargeOutcome> => {
+      await creditLotRepo.recordStandaloneUsage({
+        ...usageEntry, amount: fromMicroCredits(-amountMicro),
+      }, tx);
+      if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
+      return {
+        billed: false, charged: 0, shortfall: env.PAYMENT_ENABLED ? amountMicro / 1_000_000 : 0,
+        studioId, lotIds: [],
+      };
     };
+    if (outer) return standalone(outer);
+    return input.releaseHold ? db.transaction(standalone) : standalone();
   }
 
-  const outcome = await db.transaction(async (tx): Promise<ChargeOutcome> => {
+  /**
+   * Write a pool charge inside its supplied financial transaction.
+   * @param tx - The transaction holding any parent billing guard.
+   * @returns The charge outcome before commit and notification.
+   * @throws {Error} When a ledger, balance or hold write fails.
+   */
+  const run = async (tx: DbTx): Promise<ChargeOutcome> => {
     // The debt row first, and before any lot. Both writers take it in this
     // order, so two charges on one studio — or a charge and a designation —
     // queue up rather than each holding half of what the other needs. The
@@ -419,9 +419,10 @@ export async function chargeForGeneration(
       studioId,
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
-  });
+  };
+  const outcome = outer ? await run(outer) : await db.transaction(run);
   // After the commit, so a reader who reads again sees this charge.
-  if (input.projectId === null) return outcome;
+  if (outer || input.projectId === null) return outcome;
   try {
     await publishCreditsChanged(input.projectId);
     return outcome;

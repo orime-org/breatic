@@ -9,6 +9,11 @@
 # How often the worker asks the ingest Worker how a job is doing.
 poll_interval_ms: 5000
 
+# A billing lookup lease and retry delay; neither changes the node task budget.
+settlement:
+  lease_ms: 60000
+  retry_ms: 30000
+
 # Cloudflare's published per-second prices
 # (https://developers.cloudflare.com/containers/pricing/, read 2026-10-07).
 prices:
