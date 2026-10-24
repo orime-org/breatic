@@ -233,13 +233,29 @@ function statedLength(headers: Headers | undefined): number | undefined {
 }
 
 /**
+ * The applicable byte ceiling once the source's kind is known.
+ * @param request - The per-file limit and remaining download allowance.
+ * @param kind - The settled media kind.
+ * @returns Images' own ceiling, or the remaining AV ceiling.
+ * @throws {never} Never.
+ */
+function byteLimit(request: FetchMediaRequest, kind: Settled): number {
+  return kind.kind === "image"
+    ? request.maxBytes
+    : Math.min(request.maxBytes, request.remainingDownloadBytes ?? request.maxBytes);
+}
+
+/**
  * Settle what this address holds, and get it if it has to travel inline.
  * @param request - The address and the caller's limits.
  * @returns The media, ready to hand to a model.
  * @throws {MediaUnavailable} when the address yields no usable media.
+ * @throws {DOMException} when the caller stops the download.
  */
 export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
+  request.signal?.throwIfAborted();
   const peeked = await peek(request.url, request);
+  request.signal?.throwIfAborted();
   // Only an answer that came back whole describes what is there: a refusal
   // carries headers about the refusal, and a peek that never arrived carries
   // nothing at all. Both leave the type to the address's own name and both
@@ -260,8 +276,11 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // named yet says nothing about what will be carried, and that address is
   // refused for its type rather than its size.
   const headLength = statedLength(headers);
-  if (settled && headLength !== undefined && headLength > request.maxBytes) {
-    throw new MediaUnavailable("too-large", { bytes: headLength, limit: request.maxBytes });
+  if (settled && headLength !== undefined && headLength > byteLimit(request, settled)) {
+    throw new MediaUnavailable("too-large", { bytes: headLength, limit: byteLimit(request, settled) });
+  }
+  if (settledPeek && settled !== undefined && settled.kind !== "image" && byteLimit(request, settled) <= 0) {
+    throw new MediaUnavailable("too-large", { limit: byteLimit(request, settled) });
   }
 
   // An image is the one kind that never travels through here, so it is the one
@@ -289,6 +308,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   try {
     res = await fetchGuarded(request.url, {}, request);
   } catch (err) {
+    request.signal?.throwIfAborted();
     if (err instanceof MediaUnavailable) throw err;
     throw new MediaUnavailable("unreachable", { detail: reasonOf(err) });
   }
@@ -323,9 +343,10 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // Ahead of the image's own exit, because a host that declined the HEAD
   // leaves this as the only statement of length there will ever be.
   const stated = statedLength(res.headers);
-  if (stated !== undefined && stated > request.maxBytes) {
+  const limit = byteLimit(request, kind);
+  if (stated !== undefined && stated > limit) {
     void res.body?.cancel();
-    throw new MediaUnavailable("too-large", { bytes: stated, limit: request.maxBytes });
+    throw new MediaUnavailable("too-large", { bytes: stated, limit });
   }
 
   if (kind.kind === "image") {
@@ -334,21 +355,26 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     void res.body?.cancel();
     return { kind: "image", url: request.url };
   }
+  if (limit <= 0) {
+    void res.body?.cancel();
+    throw new MediaUnavailable("too-large", { limit });
+  }
 
   // How long the body may take, from how large it is. With no statement at all
   // the size is unknown and its upper bound is the limit itself, so the budget
   // is the one that limit implies — the same ceiling the read enforces anyway.
-  const expected = stated ?? request.maxBytes;
+  const expected = stated ?? limit;
   const budgetMs = Math.max(request.readFloorMs, (expected / request.minBytesPerSec) * 1000);
 
   let bytes: Uint8Array;
   try {
-    bytes = await readBytesWithin(res, budgetMs, request.maxBytes, request.signal);
+    bytes = await readBytesWithin(res, budgetMs, limit, request.signal);
   } catch (err) {
+    request.signal?.throwIfAborted();
     // No `bytes` on the size failure: what this path knows is "more than the
     // limit arrived", and the cut-off point is not the file's size.
     if (err instanceof BodyTooLarge) {
-      throw new MediaUnavailable("too-large", { limit: request.maxBytes });
+      throw new MediaUnavailable("too-large", { limit });
     }
     // A body that was never there is not a body that stopped part way, and it
     // is not an address that could not be reached either: this one answered

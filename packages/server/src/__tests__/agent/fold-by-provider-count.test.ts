@@ -87,7 +87,7 @@ function keptTurn(
 function assembled(history: ReplayRow[]): Assembly {
   const replayed = replayRows(history, AGENT);
   return {
-    agentConfig: AGENT,
+    agentConfig: { ...AGENT, seesPictures: false },
     replayed,
     watermark: 0,
     userKept: { messages: [QUESTION] },

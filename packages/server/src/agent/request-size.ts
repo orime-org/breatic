@@ -14,9 +14,9 @@ import type { Assembly } from "@server/agent/turn-budget.js";
 /**
  * What each turn in the history added to the conversation, oldest first.
  *
- * The provider's count where its reply kept one, which takes in thinking that
- * is replayed but stored only as a summary; otherwise what the turn is sent
- * as, a character counted as a token.
+ * A stored provider count is reused only when its coverage remains valid
+ * (legacy rows have no coverage hashes). Otherwise the replayed messages are
+ * estimated from text characters and configured picture token costs.
  * @param replayed - The history, row by row, as it is replayed.
  * @returns Each turn and what taking it saves.
  * @throws {never} Never.
@@ -37,6 +37,13 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
     if (!rows.some((one) => one.reply !== undefined)) {
       return { turnIndex, tokens: measureMessages(rows.flatMap((one) => one.messages)) };
     }
+    const hasCoverage = rows.some((one) => one.reply?.countCoverage !== undefined);
+    const invalid = rows.some((one) => {
+      if (hasCoverage && one.row.role === "assistant" && (one.reply === undefined || !one.asSent)) return true;
+      const coverage = one.reply?.countCoverage;
+      return coverage !== undefined && (!one.asSent || coverage.turnHash === undefined || coverage.turnHash !== one.turnCoverageHash);
+    });
+    if (invalid) return { turnIndex, tokens: measureMessages(rows.flatMap((one) => one.messages)) };
     const tokens = rows.reduce(
       (sum, one) =>
         sum + (one.reply?.turnTokens ?? (one.row.role === "assistant" ? measureMessages(one.messages) : 0)),
@@ -49,14 +56,15 @@ export function costPerTurn(replayed: readonly ReplayedRow[]): TurnCost[] {
 /**
  * How big the request is, in tokens.
  *
- * The newest reply sent again as it was sent says how big the conversation
- * was when its turn ended, by the provider's count; what came after it is
+ * The newest unchanged reply with valid count coverage says how big the
+ * conversation was when its turn ended; legacy rows have no coverage hashes.
+ * What came after it is
  * added on. Without one -- the conversation was folded since, the system
  * prompt, tools or model changed, or nothing was kept -- it is the system prompt and tools, what each turn added, and this
  * turn's question.
  * @param assembly - What this turn would send.
  * @param turns - What each turn of its history added.
- * @returns The size, a character counted as a token where there is no count.
+ * @returns The size, using text characters and picture costs outside valid counts.
  * @throws {never} Never.
  */
 export function requestTokens(
@@ -65,7 +73,11 @@ export function requestTokens(
 ): number {
   const { replayed } = assembly;
   const question = measureMessages(assembly.messages.slice(-1));
-  const newestAsSent = replayed.findLastIndex((one) => one.asSent);
+  const newestAsSent = replayed.findLastIndex((one) => {
+    if (!one.asSent || one.reply === undefined) return false;
+    const coverage = one.reply.countCoverage;
+    return coverage === undefined || (coverage.endHash !== undefined && coverage.endHash === one.endCoverageHash);
+  });
   const sized = replayed[newestAsSent]?.reply;
   if (sized !== undefined) {
     const after = replayed.slice(newestAsSent + 1).flatMap((one) => one.messages);

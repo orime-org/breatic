@@ -14,7 +14,7 @@ import type * as CoreModule from "@breatic/core";
 import type { ReplayRow } from "@server/agent/history-replay.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 
-const AGENT = { modelId: "test", instructions: { base: "system" }, tools: {} };
+const AGENT = { modelId: "test", instructions: { base: "system" }, tools: {}, seesPictures: false };
 const QUESTION = { role: "user" as const, content: "and now?" };
 
 /**

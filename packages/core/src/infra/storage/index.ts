@@ -34,11 +34,8 @@ export interface StorageAdapter {
    * Null is also the answer to "is this ours", which is what the worker's
    * re-host step asks before pulling a URL a provider handed it: a local
    * mini-tool's output and a sync-transport's buffer are already in the
-   * bucket by the time it looks, so pulling them would store a second copy
-   * of what we have. One member answers both because one prefix does; a
-   * second would disagree with this one the moment the public base carries a
-   * path of its own, and a key stripped wrong reaches the bucket as a miss
-   * with nothing in it to trace back.
+   * bucket by the time it looks. Both decisions share the normalized origin
+   * and base-path match, including equivalent host and default-port spellings.
    */
   keyFromUrl(url: string): string | null;
 }

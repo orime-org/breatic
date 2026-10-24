@@ -9,7 +9,8 @@ import { env } from "@breatic/core";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
 import { makeSaveImageTool } from "@domain/agent/tools/save-image.js";
-import { recordTools } from "@domain/agent/tools/record-tools.js";
+import { recordTools, makeReadNodeHistoryTool } from "@domain/agent/tools/record-tools.js";
+import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
@@ -25,7 +26,7 @@ import {
   SAVE_IMAGE,
   SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
-import { imageSearch } from "@domain/agent/tools/image-search.js";
+import { imageSearch, makeImageSearchTool } from "@domain/agent/tools/image-search.js";
 import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
@@ -44,7 +45,7 @@ const proposeDocumentEdit = makeProposeDocumentEdit();
  * Optional at every build site: a tool built without it (a test, a probe)
  * gets `NO_TOOL_CONTEXT`, which vouches for no media address at all.
  */
-export type ToolContext = AskUserContext;
+export type ToolContext = AskUserContext & ToolPictureContext;
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
 export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
@@ -61,10 +62,10 @@ export const NO_TOOL_CONTEXT: ToolContext = { mediaUrlAllowed: () => false };
 export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>> = {
   // How to build each tool for one turn. A tool that carries state for the
   // length of a turn -- the search tools share one space of citation numbers
-  // -- gets a fresh one per turn from here, and a tool that carries none
-  // hands back the same object every time.
+  // -- gets a fresh one per turn from here. Tools may also bind per-turn
+  // capabilities; context-independent tools can reuse one object.
   web_search: () => makeSearchTools().web_search,
-  understand_media: () => makeUnderstandMediaTool(),
+  understand_media: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
   // wait for an answer read the same one, so there is no second spelling of
@@ -73,7 +74,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // Searches for pictures and answers with the row the panel draws. It does
   // work of its own, so it is not one of the interaction tools below, even
   // though the panel is what draws its answer.
-  search_images: () => imageSearch,
+  search_images: (context = NO_TOOL_CONTEXT) => makeImageSearchTool(context),
   // Read the catalog and hand back a value, so one object serves every turn.
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
@@ -88,11 +89,11 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [SAVE_IMAGE]: () => makeSaveImageTool(),
   // Holds nothing between calls, so one object serves every turn.
   [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
-  // Read the user's records through what the turn hands them in its context,
-  // and hold nothing between calls, so one object each serves every turn.
+  // Record reads use the turn's execution context. Three reuse stateless
+  // objects; node history binds this turn's picture capability and preparer.
   [SEARCH_CONVERSATIONS]: () => recordTools[SEARCH_CONVERSATIONS],
   [READ_CONVERSATION]: () => recordTools[READ_CONVERSATION],
-  [READ_NODE_HISTORY]: () => recordTools[READ_NODE_HISTORY],
+  [READ_NODE_HISTORY]: (context = NO_TOOL_CONTEXT) => makeReadNodeHistoryTool(context),
   [LIST_PROJECT_ACTIVITY]: () => recordTools[LIST_PROJECT_ACTIVITY],
 } as const;
 

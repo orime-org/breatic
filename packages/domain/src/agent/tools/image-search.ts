@@ -2,17 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * search_images — find pictures, and hand back the row the panel draws.
- *
- * One call does both halves. The structured answer is what the panel reads to
- * draw the squares; `toModelOutput` renders the same answer as text for the
- * model. Nothing is copied between the two, so nothing can be copied wrongly:
- * an address the panel draws from is the address the service sent.
- *
- * What the model is handed carries one address per picture, its thumbnail,
- * which it gives save_image to use that picture. It is told, in that text, that it has not
- * seen the pictures: it has their titles and addresses and nothing else, and
- * a reply comparing what is in them is a reply the reader can see is invented.
+ * Panel thumbnails retain the service's source URLs so preview and canvas
+ * copying share the search result's identity. Model JPEG facts are prepared
+ * during execution because rendering and history replay must be repeatable
+ * without storage IO. The turn's picture capability selects prepared JSON
+ * or the source-only text listing.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
@@ -37,6 +31,8 @@ import {
   toolFailed,
 } from "@domain/agent/tools/failure.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
+import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js";
+import type { AgentPictureOutput } from "@domain/agent/project-agent-request.js";
 
 /**
  * How this tool names what it does, in the sentences it fails with.
@@ -114,6 +110,8 @@ export interface ImageResult {
 
 /** What one image search found. */
 export interface ImageSearchAnswer {
+  /** The logical model result prepared once during execution, when enabled. */
+  forModel?: AgentPictureOutput;
   /** What was searched for, as it was sent. */
   query: string;
   /** What came back, in the order the service ranked it. */
@@ -191,13 +189,10 @@ function readImage(item: unknown): ImageResult | null {
  * could otherwise write an entry of its own into what reads as the result
  * list.
  *
- * Each result carries one address, its thumbnail, which the model hands to
- * `save_image` to use that picture. The thumbnail is the search service's own
- * copy, as JPEG or PNG, and the picture the row shows; the original is in
- * whatever format its site chose, and storage refuses a GIF or AVIF. The page
- * it was found on is left out, since nothing the model does takes it.
+ * The thumbnail identifies the picture for the panel, preparation and
+ * `save_image`. The page address supplies no input to those operations.
  * @param answer - What the search found.
- * @returns The text handed to the model.
+ * @returns The source listing used by both picture-capability variants.
  * @throws {never} Never.
  */
 export function renderImagesForModel(answer: ImageSearchAnswer): string {
@@ -340,3 +335,54 @@ export const imageSearch: Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, U
     }
   },
 });
+
+/**
+ * Build one turn's image search with its resolved picture capability.
+ * @param pictures - The turn-bound preparation callback and model capability.
+ * @returns The image search tool, with pure model-output rendering.
+ * @throws {never} Never; execution propagates search and preparation failures.
+ */
+export function makeImageSearchTool(pictures: ToolPictureContext = {}): Tool<z.infer<typeof inputSchema>, ImageSearchAnswer, UsageContext> {
+  return tool<z.infer<typeof inputSchema>, ImageSearchAnswer, UsageContext>({
+    inputSchema,
+    contextSchema: usageContextSchema,
+    metadata: imageSearch.metadata,
+    description: pictures.seesPictures
+      ? "Find pictures by subject, style, lighting or composition. Each result includes its title, thumbnail address and a prepared picture for you to inspect and compare. A picture that cannot be prepared is identified with its reason."
+      : imageSearch.description,
+    toModelOutput: ({ output }) => output.forModel === undefined
+      ? { type: "text", value: renderImagesForModel(output) }
+      : { type: "json", value: output.forModel },
+    execute: async (input, options): Promise<ImageSearchAnswer> => {
+      if (imageSearch.execute === undefined) throw new Error("Image search has no execution function.");
+      // This implementation returns one answer; it never yields preliminary
+      // results, although the SDK's general Tool type permits generators.
+      const answer = await imageSearch.execute(input, options) as ImageSearchAnswer;
+      if (!pictures.seesPictures || pictures.preparePictures === undefined || answer.images.length === 0) return answer;
+      const prepared = await pictures.preparePictures(answer.images.map((image, index) => ({
+        label: `Search result ${String(index + 1)}: ${clip(onOneLine(image.title), TITLE_CHARS)}`,
+        sourceUrl: image.thumbnailUrl,
+      })), options.abortSignal);
+      options.abortSignal?.throwIfAborted();
+      const text = renderImagesForModel(answer).replace(
+        "You have not seen these pictures -- you have their titles and addresses and nothing else -- so do not describe, rank or compare what is in them.",
+        "Prepared pictures accompany the available results. Only those pictures are visible; unavailable results remain identified by their titles and addresses.",
+      );
+      const unavailable = prepared.flatMap((picture) => picture.status === "unavailable"
+        ? [`${picture.label}; source: ${picture.sourceUrl}; picture unavailable: ${picture.reason}.`]
+        : []);
+      return {
+        ...answer,
+        forModel: {
+          kind: "agent-pictures-v1",
+          text: [text, ...unavailable].join("\n"),
+          pictures: prepared.flatMap((picture) => {
+            if (picture.status !== "ready") return [];
+            const { status: _status, ...facts } = picture;
+            return [facts];
+          }),
+        },
+      };
+    },
+  });
+}

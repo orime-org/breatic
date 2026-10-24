@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import type * as CoreModule from "@breatic/core";
 
 // The stream the model would have produced. Each test sets this before it
 // sends, so one double covers every shape a turn can take.
@@ -26,6 +27,15 @@ const stream = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
 // question and this is the other: a turn is written down in one shape and
 // read back out in another, and the tests below check both ends.
 const handedToModel = vi.hoisted(() => ({ calls: [] as Array<{ prompt: unknown }> }));
+
+// These text/tool storage cases do not need the external picture catalog.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof CoreModule>();
+  return {
+    ...actual,
+    getAgentConfig: () => ({ ...actual.getAgentConfig(), main_model_sees_pictures: "no" as const }),
+  };
+});
 
 // 替身在**模型**那一层，不在 `streamText` 上。后端出口现在是
 // `createUIMessageStream`，`streamText` 的结果经 `toUIMessageStream()` 变成上线
@@ -51,8 +61,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     // the model then asks for a tool that is not in the set -- which produces
     // no result at all and sends the turn round again until it runs out of
     // steps.
-    buildAgentConfig: (request: Parameters<typeof actual.buildAgentConfig>[0]) => ({
-      ...actual.buildAgentConfig(request),
+    buildAgentConfig: async (request: Parameters<typeof actual.buildAgentConfig>[0]) => ({
+      ...await actual.buildAgentConfig(request),
       tools: {
         echoes_its_input: tool({
           description: "Answers with whatever it was given.",

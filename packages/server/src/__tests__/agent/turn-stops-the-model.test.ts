@@ -215,6 +215,8 @@ describe("a stopped turn stops the model", () => {
     const { tool } = await import("ai");
     const { z } = await import("zod");
     const stopped = new AbortController();
+    let markToolStarted: (() => void) | undefined;
+    const toolStarted = new Promise<void>((resolve) => { markToolStarted = resolve; });
 
     turnTools = {
       slow_tool: tool({
@@ -227,13 +229,19 @@ describe("a stopped turn stops the model", () => {
               clearTimeout(timer);
               resolve("let go");
             });
+            markToolStarted?.();
           }),
       }),
     };
     providerParts = () => callsTool("slow_tool");
 
-    setTimeout(() => stopped.abort(new Error("user pressed stop")), 100);
-    await timeTurn(stopped.signal);
+    const turn = timeTurn(stopped.signal);
+    await Promise.race([
+      toolStarted,
+      turn.then(() => { throw new Error("The turn ended before its tool started"); }),
+    ]);
+    stopped.abort(new Error("user pressed stop"));
+    await turn;
 
     expect(providerCalls).toBe(1);
     // The step that finished before the stop is on the account.

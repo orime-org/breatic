@@ -10,6 +10,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { UserContent } from "ai";
 import type { ChatAttachedChip, ChatCanvasDetail, ChatCurrentSpace, ChatSpace, ChatSpaceContext } from "@breatic/shared";
 import { attachmentSection, attachmentTitle, writeReferences } from "@breatic/shared";
 
@@ -19,6 +20,19 @@ export interface UserTurn extends ChatSpaceContext {
   chips: readonly ChatAttachedChip[];
   /** What the user typed. */
   message: string;
+  /** Prepared JPEG facts, kept independently of the request's picture budget. */
+  pictures?: readonly PreparedPicture[];
+  /** Sources that could not produce a JPEG, with the reason retained for this turn. */
+  pictureFailures?: readonly { label: string; sourceUrl: string; reason: string }[];
+}
+
+/** An immutable registered JPEG and the source it represents. */
+export interface PreparedPicture {
+  label: string;
+  sourceUrl: string;
+  url: string;
+  sizeBytes: number;
+  mediaType: "image/jpeg";
 }
 
 /**
@@ -149,16 +163,26 @@ function spaceSections(space: ChatSpaceContext, spaceUnchanged: boolean): string
  * @param turn - What the message is made of.
  * @param spaceUnchanged - The open Space is what the history last sent of it
  *   in full, so it goes as one line.
- * @returns The typed words alone when there is no Space and nothing attached.
+ * @returns Text alone when no pictures were prepared, otherwise text and JPEG parts.
  * @throws {never} Never.
  */
-export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): string {
+export function userTurnForModel(turn: UserTurn, spaceUnchanged = false): UserContent {
   const { chips, message } = turn;
   const sections = spaceSections(turn, spaceUnchanged);
   if (chips.length > 0) sections.push(attachmentSection(chips));
-  if (sections.length === 0) return message;
+  for (const failed of turn.pictureFailures ?? []) {
+    sections.push(`[Picture unavailable: ${failed.label}; source: ${failed.sourceUrl}; reason: ${failed.reason}]`);
+  }
   const words = writeReferences(chips, message, (chip, n) => `[Attachment ${String(n)}: ${attachmentTitle(chip)}]`);
-  return `${sections.join("\n\n")}\n\n## User message\n\n${words}`;
+  const text = sections.length === 0 ? message : `${sections.join("\n\n")}\n\n## User message\n\n${words}`;
+  if (!turn.pictures?.length) return text;
+  return [
+    { type: "text", text },
+    ...turn.pictures.flatMap((picture) => [
+      { type: "text" as const, text: `${picture.label}; source: ${picture.sourceUrl}` },
+      { type: "file" as const, data: picture.url, mediaType: picture.mediaType },
+    ]),
+  ];
 }
 
 /**
@@ -184,11 +208,17 @@ export const READER_LANGUAGE_REMINDER =
  * @param clockNote - The line that says what time it is for the reader.
  * @param turn - What the message is made of.
  * @param spaceUnchanged - The open Space goes as one line.
- * @returns The message text.
+ * @returns The clock and content with the reminder in the final text part.
  * @throws {never} Never.
  */
-export function userMessageForModel(clockNote: string, turn: UserTurn, spaceUnchanged = false): string {
-  return `${clockNote}\n\n${userTurnForModel(turn, spaceUnchanged)}\n\n${READER_LANGUAGE_REMINDER}`;
+export function userMessageForModel(clockNote: string, turn: UserTurn, spaceUnchanged = false): UserContent {
+  const content = userTurnForModel(turn, spaceUnchanged);
+  if (typeof content === "string") return `${clockNote}\n\n${content}\n\n${READER_LANGUAGE_REMINDER}`;
+  return [
+    { type: "text", text: `${clockNote}\n\n` },
+    ...content,
+    { type: "text", text: READER_LANGUAGE_REMINDER },
+  ];
 }
 
 /**

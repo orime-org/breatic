@@ -229,6 +229,21 @@ const agentConfigSchema = z.object({
    * configuration yet at that point.
    */
   image_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /** Native picture support override and public model catalog cache timing. */
+  main_model_sees_pictures: z.enum(["auto", "yes", "no"]).default("auto"),
+  model_catalog_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(1000),
+  model_catalog_ttl_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(300000),
+  model_catalog_retry_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30000),
+  /** Native JPEG request budgets and the fallback token estimate per occurrence. */
+  chat_pictures_max: z.number().int().min(2).max(100).default(50),
+  chat_pictures_max_bytes: z.number().int().positive().default(20971520),
+  picture_tokens_estimate: z.number().int().positive().default(4784),
+  /** Version-one JPEG generation parameters and bounded preparation concurrency. */
+  agent_picture_long_edge: z.number().int().positive().default(1024),
+  agent_picture_quality: z.number().int().min(1).max(100).default(85),
+  agent_picture_concurrency: z.number().int().positive().default(4),
+  /** Maximum number of ordered items in one understanding request. */
+  understand_media_max_items: z.number().int().positive().default(10),
   /**
    * The largest file `understand_media` will take, in bytes, for all three
    * kinds alike.
@@ -293,7 +308,8 @@ const agentConfigSchema = z.object({
    */
   judge_likelihood_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(10_000),
   /**
-   * How much the model may write about one piece of media, in tokens.
+   * How much the model may write about one ordered media batch, in tokens.
+   * All items share this output allowance.
    *
    * The same bounds and the same default as `web_search_max_tokens`: both cap
    * one answer from one model, and a floor matters here because a description

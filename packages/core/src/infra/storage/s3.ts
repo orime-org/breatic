@@ -121,18 +121,17 @@ export class S3StorageAdapter implements StorageAdapter {
   /**
    * The key `url` names, or null when it names nothing of ours.
    *
-   * The prefix that decides whether a URL is ours is the same one that has to
-   * come off to leave the key, so both answers are read here. Two functions
-   * each holding their own copy of it disagree the moment the base carries a
-   * path or a trailing slash — and a key stripped wrong reaches the bucket as
-   * a miss with nothing in it to trace back.
+   * Source authorization and re-hosting share this classification. Equivalent
+   * origins and view-only query parameters must resolve to the same object.
    * @param url - The URL to read.
    * @returns The object's key, or null.
+   * @throws {never} Invalid addresses do not name a stored object.
    */
   keyFromUrl(url: string): string | null {
-    const prefix = `${this.publicBaseUrl}/`;
-    if (!url.startsWith(prefix)) return null;
-    const key = url.slice(prefix.length);
+    const source = URL.parse(url);
+    const base = URL.parse(`${this.publicBaseUrl}/`);
+    if (source === null || base === null || source.origin !== base.origin || !source.pathname.startsWith(base.pathname)) return null;
+    const key = source.pathname.slice(base.pathname.length);
     return key === "" ? null : key;
   }
 

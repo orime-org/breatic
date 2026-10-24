@@ -12,6 +12,7 @@
  */
 
 import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
+import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
@@ -209,6 +210,21 @@ export function previewArgs(): string[] {
     "16383",
     "--size",
     "down",
+  ];
+}
+
+/**
+ * Encode the first image frame as an upright sRGB JPEG on a white background.
+ * @param spec - Versioned JPEG dimensions and quality.
+ * @returns The vips arguments, reading stdin and writing JPEG to stdout.
+ * @throws {never} Never.
+ */
+export function agentPictureArgs(spec: AgentPictureSpec): string[] {
+  return [
+    "thumbnail_source", "[descriptor=0]",
+    `.jpg[Q=${spec.quality},keep=none,background=255]`,
+    String(spec.longEdge), "--height", String(spec.longEdge), "--size", "down",
+    "--output-profile", "srgb",
   ];
 }
 

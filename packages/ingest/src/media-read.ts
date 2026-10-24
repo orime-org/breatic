@@ -19,6 +19,7 @@
  */
 
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js";
+import type { AgentPictureSpec } from "@breatic/shared";
 import {
   PROBE_PATH,
   readProbeAnswer,
@@ -101,6 +102,7 @@ export async function readMediaAtEdge(
     wantCover: boolean;
     wantPreview?: boolean;
     wantPeaks?: boolean;
+    agentPicture?: AgentPictureSpec;
     deadlineAt: number;
     upright?: { order: UprightOrder; grant: UprightWriteGrant };
   },
@@ -116,6 +118,7 @@ export async function readMediaAtEdge(
     wantPreview: about.wantPreview === true,
     wantPeaks: about.wantPeaks === true,
     deadlineAt: about.deadlineAt,
+    ...(about.agentPicture !== undefined && { agentPicture: about.agentPicture }),
     ...(about.upright !== undefined && { upright: about.upright.order }),
   };
 
