@@ -171,8 +171,9 @@ export interface CreateAuthHookOptions {
 /**
  * Create the onAuthenticate hook for Hocuspocus.
  *
- * Returns a function that Hocuspocus calls on every WS handshake.
- * Throwing rejects the connection (4401 / 4403). Returning sets
+ * Hocuspocus calls this for each document's authentication on the shared socket.
+ * Throwing sends a document permission-denied response and clears its pending
+ * authentication state. Returning sets
  * `c.context.user` for the handlers that read it downstream —
  * `onStateless` (the caller's id and role on every `space:*` RPC),
  * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
@@ -519,9 +520,8 @@ export function createAuthHook({
       // infrastructure failure - Redis ping fail, postgres-js
       // connection drop, Yjs lib error. We log with `unexpected`
       // tag so dashboards can split "policy reject" vs "infra
-      // fail" trends and re-throw so Hocuspocus still closes the
-      // socket with 4401 (the client sees the same banner state
-      // either way; only the server-side trail differs).
+      // fail" trends. Re-throwing lets Hocuspocus send the document's
+      // permission-denied response and clear its pending authentication state.
       const e = err as Error;
       const isKnownReject =
         e.message === "Origin not allowed" ||

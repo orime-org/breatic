@@ -4,8 +4,9 @@
 /**
  * Closing connections whose session ended (inner#1548).
  *
- * A connection reads its session once, at the handshake. When the server ends
- * sessions (sign out, sign out of other devices, a password reset) it deletes
+ * Native upgrade admission and each document's authentication read the session.
+ * When the server ends sessions (sign out, sign out of other devices, a password
+ * reset) it deletes
  * them and publishes their ids (core `revokeSession` / `revokeAllSessions`);
  * every instance closes the connections opened with them, and the client's
  * re-authentication then fails because the session is gone.
@@ -15,7 +16,7 @@
  * subscriber reconnects) re-reads every connection's session, a timer does the
  * same (it is also what catches a session that simply expired), and the
  * `connected` hook reads a new connection's session once more, for a session
- * ended between its handshake and its registration.
+ * ended between its document authentication and registration.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";

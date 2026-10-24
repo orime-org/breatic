@@ -183,7 +183,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // connection at once.
   await seatHandover.start();
 
-  // Session lookup client for the onAuthenticate hook. Uses the
+  // Native upgrade admission and document authentication share the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
   // client server / worker use) — a session GET is a plain command, so
   // it shares the per-process singleton rather than hand-rolling a
