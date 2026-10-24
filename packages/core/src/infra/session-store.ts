@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
 import { publishSessionsRevoked } from "@core/infra/control-events.js";
+import { redactSessionError } from "@core/infra/session-error.js";
 
 /**
  * Name of the httpOnly session cookie, namespaced per deployment.
@@ -64,9 +65,14 @@ export async function setSession(redis: Redis, token: string, userId: string): P
  * @param redis - connected ioredis instance (session DB)
  * @param token - the session token to resolve
  * @returns the user ID, or `null` if the token is expired or unknown
+ * @throws {Error} When Redis cannot read the session, with credential-redacted diagnostics.
  */
 export async function getSession(redis: Redis, token: string): Promise<string | null> {
-  return redis.get(sessionKey(token));
+  try {
+    return await redis.get(sessionKey(token));
+  } catch (error) {
+    throw redactSessionError(error, [token]);
+  }
 }
 
 /** What ending sessions did besides deleting them. */

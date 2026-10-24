@@ -117,14 +117,16 @@ describe("getSession", () => {
   });
 
   it.each([
-    "failed secret-token",
-    42,
-    true,
-    false,
-    null,
-    undefined,
-    { privatePayload: "secret-token", command: { args: ["secret-token"] } },
-  ])("normalizes a non-Error rejection %j at the IO boundary", async (value) => {
+    { label: "string", value: "failed secret-token" },
+    { label: "number", value: 42 },
+    { label: "true", value: true },
+    { label: "false", value: false },
+    { label: "null", value: null },
+    { label: "undefined", value: undefined },
+    { label: "bigint", value: 12n },
+    { label: "symbol", value: Symbol("secret-token") },
+    { label: "object", value: { privatePayload: "secret-token", command: { args: ["secret-token"] } } },
+  ])("normalizes a $label rejection at the IO boundary", async ({ value }) => {
     const redis = sessionRedis();
     redis.get.mockRejectedValue(value);
 
@@ -135,6 +137,29 @@ describe("getSession", () => {
     expect(wire).not.toContain("secret-token");
     expect(wire).not.toContain("command");
     expect(wire).not.toContain("privatePayload");
+    expect(redis.get.mock.calls).toEqual([["dev:session:secret-token"]]);
+  });
+
+  it("normalizes a function rejection without exposing its source or properties", async () => {
+    /** Return a fixture credential embedded in the rejected function's source. */
+    function rejectedFunction(): string {
+      return "secret-token";
+    }
+    const redis = sessionRedis();
+    redis.get.mockRejectedValue(Object.assign(rejectedFunction, {
+      privatePayload: "secret-token",
+      command: { args: ["secret-token"] },
+    }));
+
+    const rejection = await rejectedLookup(redis, "secret-token");
+
+    expect(rejection).toBeInstanceOf(Error);
+    expect((rejection as Error).message.toLowerCase()).toContain("function");
+    const wire = JSON.stringify(pino.stdSerializers.err(rejection as Error));
+    expect(wire).not.toContain("secret-token");
+    expect(wire).not.toContain("rejectedFunction");
+    expect(wire).not.toContain("privatePayload");
+    expect(wire).not.toContain("command");
     expect(redis.get.mock.calls).toEqual([["dev:session:secret-token"]]);
   });
 

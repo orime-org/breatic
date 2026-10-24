@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { expect, type BrowserContext, type Page } from 'playwright/test';
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type { Doc } from 'yjs';
 
 import { test, stateFile } from '../helpers/slot';
 import { credentialsFor } from '../helpers/credentials';
@@ -41,8 +43,11 @@ async function appendText(page: Page, text: string): Promise<void> {
   await selectInBody(page, () => page.evaluate((selector) => {
     const editor = document.querySelector(selector);
     if (editor === null) throw new Error('The document editor is missing');
+    const paragraphs = editor.querySelectorAll('p');
+    const paragraph = paragraphs.item(paragraphs.length - 1);
+    if (paragraph === null) throw new Error('The document paragraph is missing');
     const range = document.createRange();
-    range.selectNodeContents(editor);
+    range.selectNodeContents(paragraph);
     range.collapse(false);
     const selection = window.getSelection();
     if (selection === null) throw new Error('The document selection is missing');
@@ -67,16 +72,11 @@ async function reconnect(page: Page, projectId: string): Promise<void> {
   await Promise.all([page.waitForEvent('websocket'), page.evaluate(async ({ urls, projectId }) => {
     const manager = await import(/* @vite-ignore */ urls.manager) as {
       hasDoc: (name: string) => boolean;
-      getDoc: (name: string) => unknown;
+      getDoc: (name: string) => Doc;
       docName: { projectMeta: (id: string) => string };
     };
-    interface Transport {
-      once: (event: string, callback: () => void) => void;
-      disconnect: () => void;
-      connect: () => Promise<void>;
-    }
     const socket = await import(/* @vite-ignore */ urls.socket) as {
-      acquireDocProvider: (name: string, doc: unknown) => { configuration: { websocketProvider: Transport } };
+      acquireDocProvider: (name: string, doc: Doc) => HocuspocusProvider;
       releaseDocProvider: (name: string) => void;
     };
     const name = manager.docName.projectMeta(projectId);
@@ -84,7 +84,14 @@ async function reconnect(page: Page, projectId: string): Promise<void> {
     const provider = socket.acquireDocProvider(name, manager.getDoc(name));
     try {
       const transport = provider.configuration.websocketProvider;
-      const closed = new Promise<void>((resolve) => transport.once('close', resolve));
+      const closed = new Promise<void>((resolve) => {
+        /** Release this observer when the shared transport closes. */
+        const onClose = (): void => {
+          transport.off('close', onClose);
+          resolve();
+        };
+        transport.on('close', onClose);
+      });
       transport.disconnect();
       await closed;
       await transport.connect();
@@ -101,6 +108,10 @@ test('valid sessions synchronize two Spaces and reconnect the shared transport',
   await openSmokeProject(page);
   const projectId = smokeProjectId();
   const projectUrl = page.url();
+  const project = await dataOf<{ name: string }>(
+    await page.request.get(`/api/v1/projects/${projectId}`),
+    'read the current Project name',
+  );
   const marker = `session-${crypto.randomUUID()}`;
   const first = `${marker}-first`;
   const second = `${marker}-second`;
@@ -121,7 +132,8 @@ test('valid sessions synchronize two Spaces and reconnect the shared transport',
     joinedUserId = me.id;
     await peer.goto(new URL('/studio', projectUrl).toString());
     await peer.getByTestId('bell-trigger').click();
-    await peer.locator('[data-testid^="bell-open-decision-"]').first().click();
+    const invitation = peer.locator('li[data-testid^="bell-notification-"]').filter({ hasText: project.name });
+    await invitation.locator('[data-testid^="bell-open-decision-"]').click();
     const accept = peer.getByRole('button', { name: 'Accept', exact: true });
     await accept.click();
     await expect(accept).toHaveCount(0);

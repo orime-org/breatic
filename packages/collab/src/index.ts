@@ -191,7 +191,7 @@ async function main(): Promise<void> {
   let shutdownDeadlineAt: number | undefined;
 
   // Create and start Hocuspocus server
-  const { server, hocuspocus, seatHandover, storeLoop, instanceId } =
+  const { server, hocuspocus, seatHandover, storeLoop, instanceId, stopUpgradeSessions } =
     await createCollabServer({
     collabRedisUrl: REDIS_COLLAB_URL,
     port: env.COLLAB_PORT,
@@ -436,6 +436,7 @@ async function main(): Promise<void> {
    */
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutting down...");
+    stopUpgradeSessions();
     // Stop starting new store rounds. A round already in flight finishes on
     // its own, and each document gets its own last attempt when the library
     // unloads it — `server.destroy()` is the first drain below, and it closes

@@ -262,7 +262,7 @@ describe("createCollabServer — mandatory session admission", () => {
       }
       await gate.onUpgrade({ request, socket: stream, head: Buffer.alloc(0) });
       expect(sessionLookupSpy).toHaveBeenCalledExactlyOnceWith(authRedisStub, "valid-session");
-      const stop = Reflect.get(result, "stopUpgradeSessions") as () => void;
+      const stop = Reflect.get(result, "stopUpgradeSessions");
       expect(typeof stop).toBe("function");
       stop();
       expect(stream.destroyed).toBe(false);
@@ -328,7 +328,7 @@ describe("createCollabServer — mandatory session admission", () => {
         () => ({ rejected: false, error: undefined }),
         (error: unknown) => ({ rejected: true, error }),
       );
-      const stop = Reflect.get(result, "stopUpgradeSessions") as () => void;
+      const stop = Reflect.get(result, "stopUpgradeSessions");
       expect(typeof stop).toBe("function");
       expect(stop()).toBeUndefined();
       expect(stream.destroyed).toBe(true);

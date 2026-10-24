@@ -193,7 +193,7 @@ describe("upgrade session gate — admission", () => {
     ["other=value", "other cookie"],
     [`${COOKIE}=`, "empty"],
     ["breatic_session_other=valid", "other deployment"],
-  ])("refuses a %s cookie before looking up a session (%s)", async (cookie) => {
+  ])("refuses a %s cookie before looking up a session (%s)", async (cookie, _description) => {
     const stream = socket();
     const recordFailedUpgrade = vi.fn(async () => undefined);
     const gate = createUpgradeSessionGate({ redis: REDIS, recordFailedUpgrade });
@@ -315,6 +315,28 @@ describe("upgrade session gate — independent completion chains", () => {
     expect(loggedText()).not.toContain(COOKIE_HEADER);
   });
 
+  it("releases a request with no Cookie header when failure accounting rejects", async () => {
+    const stream = socket();
+    const failure = Object.assign(new Error("accounting unavailable"), {
+      command: { args: ["dependency-session-key"] },
+    });
+    const recordFailedUpgrade = vi.fn(async () => { throw failure; });
+    const gate = createUpgradeSessionGate({ redis: REDIS, recordFailedUpgrade });
+    const upgrade = payload(stream);
+    delete upgrade.request.headers.cookie;
+
+    await expectRefused(observe(gate.onUpgrade(upgrade)), stream);
+
+    expect(sessionLookup).not.toHaveBeenCalled();
+    expect(recordFailedUpgrade).toHaveBeenCalledExactlyOnceWith(upgrade.request);
+    expect(stream.chunks.join("")).toMatch(/^HTTP\/1\.1 401 Unauthorized\r\n/);
+    const entry = eventData("error", "collab_upgrade_failure_count_error");
+    expect(entry).toMatchObject({ err: expect.any(Error), ctx: expect.any(Object) });
+    expect((entry.err as Error).message).toBe("accounting unavailable");
+    expect(Reflect.get(entry.err as Error, "command")).toBeUndefined();
+    expect(loggedText()).not.toContain("dependency-session-key");
+  });
+
   it("keeps one rejected decision while stop and peer closure arrive during accounting", async () => {
     sessionLookup.mockResolvedValue(null);
     const stream = socket();
@@ -356,6 +378,28 @@ describe("upgrade session gate — independent completion chains", () => {
 });
 
 describe("upgrade session gate — stream ownership", () => {
+  it("refuses when native destruction follows query resolution in the same Promise microtask", async () => {
+    const stream = socket();
+    const query = deferred<string | null>();
+    sessionLookup.mockReturnValue(query.promise);
+    const recordFailedUpgrade = vi.fn(async () => undefined);
+    const gate = createUpgradeSessionGate({ redis: REDIS, recordFailedUpgrade });
+    const watched = observe(gate.onUpgrade(payload(stream)));
+
+    await Promise.resolve().then(() => {
+      query.resolve("user-a");
+      stream.destroy();
+    });
+    await expectRefused(watched, stream);
+
+    expect(sessionLookup).toHaveBeenCalledExactlyOnceWith(REDIS, TOKEN);
+    expect(recordFailedUpgrade).not.toHaveBeenCalled();
+    expect(stream.chunks).toEqual([]);
+    expect(eventData("info", "collab_upgrade_peer_closed").ctx).toMatchObject({ decision: "peer_gone" });
+    gate.stop();
+    expect(stream.chunks).toEqual([]);
+  });
+
   it.each(["observe-first", "destroy-first", "close-first"])("releases a terminated stream in %s order", async (order) => {
     const stream = socket();
     const query = deferred<string | null>();
@@ -517,6 +561,22 @@ describe("upgrade session gate — stopping", () => {
 });
 
 describe("upgrade session gate — logs and event invariants", () => {
+  it("reads the first identity from a programmatic IncomingMessage header array", async () => {
+    const stream = socket();
+    stream.remoteAddress = "172.18.0.4";
+    const gate = createUpgradeSessionGate({ redis: REDIS });
+    const upgrade = payload(stream, "other=missing");
+    upgrade.request.headers["x-real-ip"] = ["203.0.113.9", "203.0.113.10"];
+
+    await expectRefused(observe(gate.onUpgrade(upgrade)), stream);
+
+    expect(sessionLookup).not.toHaveBeenCalled();
+    expect(eventData("warn", "collab_upgrade_session_rejected").ctx).toMatchObject({
+      peerAddress: "172.18.0.4",
+      identity: "203.0.113.9",
+    });
+  });
+
   it("correlates a rejection and accounting failure with a unique request id", async () => {
     sessionLookup.mockResolvedValue(null);
     const recordFailedUpgrade = vi.fn(async () => { throw new Error(`counter ${TOKEN} ${COOKIE_HEADER}`); });

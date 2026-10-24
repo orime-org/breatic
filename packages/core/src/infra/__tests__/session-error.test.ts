@@ -52,7 +52,6 @@ describe("redactSessionError", () => {
       command: { name: "get", args: [`dev:session:${token}`] },
       vendorPayload: { token },
     });
-    original.name = `ReplyError ${token}`;
     original.stack = `ReplyError: diagnostic ${token}\n at GET ${encoded}`;
 
     const safe = redactSessionError(original, [token]) as SessionError;
@@ -61,7 +60,7 @@ describe("redactSessionError", () => {
     expect(safe).toBeInstanceOf(Error);
     expect(safe).not.toBe(original);
     expect(safe.message).toBe("WRONGTYPE diagnostic [Redacted] [Redacted]");
-    expect(safe.name).toBe("ReplyError [Redacted]");
+    expect(safe.name).toBe("ReplyError");
     expect(safe.stack).toBe("ReplyError: diagnostic [Redacted]\n at GET [Redacted]");
     expect(safe.code).toBe("REDIS_[Redacted]");
     expect(safe.sourceType).toBe("ReplyError");
@@ -74,6 +73,20 @@ describe("redactSessionError", () => {
     expect(original.command).toEqual({ name: "get", args: [`dev:session:${token}`] });
     expect(original.message).toBe(`WRONGTYPE diagnostic ${token} ${encoded}`);
     expect(original.stack).toBe(`ReplyError: diagnostic ${token}\n at GET ${encoded}`);
+  });
+
+  it("sanitizes a writable Error name containing a credential", () => {
+    const original = new Error("SAFE_DIAGNOSTIC");
+    original.name = "VendorError secret-token";
+
+    const safe = redactSessionError(original, ["secret-token"]) as SessionError;
+
+    expect(safe.name).toBe("VendorError [Redacted]");
+    expect(safe.sourceType).toBe("Error");
+    expect(safe.message).toBe("SAFE_DIAGNOSTIC");
+    expect(serialized(safe)).not.toContain("secret-token");
+    expect(original.name).toBe("VendorError secret-token");
+    expectWhitelisted(safe);
   });
 
   it.each([503, "ECONNRESET"])("preserves the diagnostic code %s", (code) => {
@@ -108,6 +121,19 @@ describe("redactSessionError", () => {
     expectWhitelisted(safe);
   });
 
+  it("sanitizes an Error whose optional stack is absent", () => {
+    const original = new Error("SAFE_DIAGNOSTIC secret-token");
+    delete original.stack;
+
+    const safe = redactSessionError(original, ["secret-token"]);
+
+    expect(safe.message).toBe("SAFE_DIAGNOSTIC [Redacted]");
+    expect(safe.name).toBe("Error");
+    expect(serialized(safe)).not.toContain("secret-token");
+    expect(Object.hasOwn(original, "stack")).toBe(false);
+    expectWhitelisted(safe);
+  });
+
   it("recursively sanitizes causes while preserving the original errors", () => {
     const token = "secret/cause?token=two";
     const cause = Object.assign(new Error(`inner diagnostic ${token}`), {
@@ -135,6 +161,24 @@ describe("redactSessionError", () => {
     expect(Object.getOwnPropertyNames(cause)).toEqual(causeNames);
     expect(cause.command).toEqual({ args: [token] });
     expect(cause.message).toBe(`inner diagnostic ${token}`);
+  });
+
+  it.each([
+    ["cause secret-token", "cause [Redacted]"],
+    [42, "42"],
+    [false, "false"],
+    [null, "null"],
+  ] as const)("normalizes the primitive cause %s", (cause, expectedMessage) => {
+    const original = new Error("SAFE_DIAGNOSTIC", { cause });
+
+    const safe = redactSessionError(original, ["secret-token"]);
+
+    expect(safe.cause).toBeInstanceOf(Error);
+    expect((safe.cause as Error).message).toContain(expectedMessage);
+    expect(safe.message).toBe("SAFE_DIAGNOSTIC");
+    expect(serialized(safe)).not.toContain("secret-token");
+    expectWhitelisted(safe);
+    expect(original.cause).toBe(cause);
   });
 
   it.each(["self", "pair"] as const)("terminates a %s cause cycle with serializable diagnostics", (kind) => {
@@ -168,6 +212,7 @@ describe("redactSessionError", () => {
     [null, "null"],
     [undefined, "undefined"],
     [12n, "12"],
+    [Symbol("secret-token"), "Symbol([Redacted])"],
   ] as const)("normalizes the primitive rejection %s", (value, expectedMessage) => {
     const safe = redactSessionError(value, ["secret-token"]);
 
@@ -190,6 +235,29 @@ describe("redactSessionError", () => {
     expect(serialized(safe)).not.toContain("privatePayload");
     expectWhitelisted(safe);
     expect(original).toEqual({ message: token, command: { args: [token] }, privatePayload: token });
+  });
+
+  it("records the type of a function rejection without copying its source or properties", () => {
+    /** Return a fixture credential embedded in the rejected function's source. */
+    function rejectedFunction(): string {
+      return "secret-token";
+    }
+    const original = Object.assign(rejectedFunction, {
+      command: { args: ["secret-token"] },
+      privatePayload: "secret-token",
+    });
+
+    const safe = redactSessionError(original, ["secret-token"]);
+
+    expect(safe).toBeInstanceOf(Error);
+    expect(safe.message.toLowerCase()).toContain("function");
+    expect(serialized(safe)).not.toContain("secret-token");
+    expect(serialized(safe)).not.toContain("rejectedFunction");
+    expect(serialized(safe)).not.toContain("command");
+    expect(serialized(safe)).not.toContain("privatePayload");
+    expectWhitelisted(safe);
+    expect(original()).toBe("secret-token");
+    expect(original.command).toEqual({ args: ["secret-token"] });
   });
 
   it("redacts several literal secrets containing URI and regular-expression characters", () => {

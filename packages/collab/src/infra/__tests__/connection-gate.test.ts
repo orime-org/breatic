@@ -102,6 +102,32 @@ async function settle(promise: Promise<void>): Promise<unknown> {
 }
 
 describe("connection gate — onUpgrade", () => {
+  it("normalizes the first identity in a programmatic IncomingMessage header array", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({ "x-real-ip": ["203.0.113.9", "203.0.113.10"] }, "172.18.0.4");
+
+    await gate.onUpgrade(upgrade);
+
+    expect(upgrade.request.headers["x-real-ip"]).toBe("203.0.113.9");
+    expect(upgrade.request.headers["x-breatic-connection-verdict"]).toBe("count");
+    expect(throttle.count).toHaveBeenCalledExactlyOnceWith("203.0.113.9");
+    expect(upgrade.socket.destroyed).toBe(false);
+  });
+
+  it("refuses an empty programmatic IncomingMessage identity array before normalization", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({ "x-real-ip": [] }, "172.18.0.4");
+
+    const rejection = await settle(gate.onUpgrade(upgrade));
+
+    expect(Boolean(rejection)).toBe(false);
+    expect(upgrade.socket.written.join("")).toContain("403 Forbidden");
+    expect(upgrade.socket.destroyed).toBe(true);
+    expect(throttle.count).not.toHaveBeenCalled();
+  });
+
   it("normalises x-real-ip to the peer address for a loopback peer", async () => {
     const gate = createConnectionGate(fakeThrottle());
     const payload = fakeUpgradeRequest({}, "::1");
@@ -354,6 +380,18 @@ describe("connection gate — what a refusal leaves behind", () => {
 });
 
 describe("connection gate — onConnect", () => {
+  it("passes an empty identity for a direct module Headers input before normalization", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const directInput = { request: { headers: new Headers() } };
+
+    await gate.onConnect(directInput);
+    await gate.recordFailedAuth(directInput);
+
+    expect(throttle.isBanned).toHaveBeenCalledExactlyOnceWith("");
+    expect(throttle.count).toHaveBeenCalledExactlyOnceWith("");
+  });
+
   it("lets a document through when its address is not banned, without counting", async () => {
     const throttle = fakeThrottle();
     const gate = createConnectionGate(throttle);
@@ -432,6 +470,21 @@ describe("connection gate — failed authentication", () => {
 });
 
 describe("connection gate — failed upgrade", () => {
+  it.each([
+    { label: "nonempty array", identity: ["203.0.113.9", "203.0.113.10"], expected: "203.0.113.9" },
+    { label: "empty array", identity: [], expected: "" },
+    { label: "absent header", identity: undefined, expected: "" },
+  ])("handles a direct module $label input before upgrade normalization", async ({ identity, expected }) => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const headers: Record<string, string | string[]> = identity === undefined ? {} : { "x-real-ip": identity };
+    const directInput = fakeUpgradeRequest(headers, "172.18.0.4");
+
+    await gate.recordFailedUpgrade(directInput.request);
+
+    expect(throttle.count).toHaveBeenCalledExactlyOnceWith(expected);
+  });
+
   it("adds one failed-session attempt to the initial WebSocket attempt", async () => {
     const throttle = fakeThrottle();
     const gate = createConnectionGate(throttle);

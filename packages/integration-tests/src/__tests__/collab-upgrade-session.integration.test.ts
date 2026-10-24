@@ -114,7 +114,7 @@ afterAll(async () => {
  * @throws {Error} When PostgreSQL or Redis rejects fixture creation.
  */
 async function projectFixture(): Promise<ProjectFixture> {
-  const tag = randomUUID();
+  const tag = randomUUID().replaceAll("-", "");
   const users = await sql<{ id: string; email: string }[]>`
     INSERT INTO users (email, email_verified)
     VALUES (${`upgrade-owner-${tag}@example.test`}, true),
