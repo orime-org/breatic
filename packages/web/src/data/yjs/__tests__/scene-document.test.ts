@@ -8,8 +8,14 @@ import * as Y from 'yjs';
 import type * as SceneDocument from '../scene-document';
 
 type SceneModule = typeof SceneDocument;
+type RootShape = 'text' | 'array' | 'mixed';
 const modules = import.meta.glob<SceneModule>('../scene-document.ts');
 const documents: Y.Doc[] = [];
+const incompatibleRoots = ['scene', 'objects'].flatMap((root) =>
+  (['text', 'array', 'mixed'] as const).flatMap((shape) =>
+    [false, true].map((encoded) => ({ root, shape, encoded })),
+  ),
+);
 const ID = '11111111-1111-4111-8111-111111111111';
 const COPY = '22222222-2222-4222-8222-222222222222';
 const THIRD = '33333333-3333-4333-8333-333333333333';
@@ -48,6 +54,23 @@ function replica(source: Y.Doc): Y.Doc {
   return doc;
 }
 
+/** Creates incompatible sequence content through public Yjs APIs before any scene read binds the roots. */
+function incompatibleDocument(root: string, shape: RootShape, encoded: boolean): Y.Doc {
+  const source = new Y.Doc();
+  documents.push(source);
+  if (root === 'objects') source.getMap('scene').set('formatVersion', 1);
+  if (shape === 'text') source.getText(root).insert(0, 'incompatible root');
+  else if (shape === 'array') source.getArray(root).push(['incompatible root', 17]);
+  else {
+    source.getMap(root).set(root === 'scene' ? 'formatVersion' : 'retained', root === 'scene' ? 1 : true);
+    const peer = new Y.Doc();
+    documents.push(peer);
+    peer.getText(root).insert(0, 'sequence merged into map');
+    Y.applyUpdate(source, Y.encodeStateAsUpdate(peer));
+  }
+  return encoded ? replica(source) : source;
+}
+
 /** Exchanges both pre-merge updates so neither replica gets priority by arrival order. */
 function merge(left: Y.Doc, right: Y.Doc): void {
   const leftUpdate = Y.encodeStateAsUpdate(left);
@@ -75,6 +98,22 @@ describe('scene projection and command transactions', () => {
     expect(readSceneDocument(doc)).toMatchObject({ status: 'ready', objects: [], invalidObjects: [] });
     expect(planSceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, true).ok).toBe(true);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('retains valid Map-root scene values through binary restoration and accepts a subsequent command', async () => {
+    const { applySceneCommand, planSceneCommand, readSceneDocument, validateSceneRecovery } = await loadScene();
+    const source = sceneDoc();
+    expect(applySceneCommand(source, { type: 'create', objects: [ORIGINAL] }, Symbol(), true)).toEqual({ ok: true, ids: [ID] });
+    const restored = replica(source);
+    const before = Y.encodeStateAsUpdate(restored);
+    expect(() => validateSceneRecovery(restored)).not.toThrow();
+    expect(readSceneDocument(restored)).toMatchObject({ status: 'ready', objects: [ORIGINAL], invalidObjects: [] });
+    const command = { type: 'patch' as const, patches: [{ id: ID, position: [7, 8, 9] as [number, number, number] }] };
+    expect(planSceneCommand(restored, command, true).ok).toBe(true);
+    expect(Y.encodeStateAsUpdate(restored)).toEqual(before);
+    expect(applySceneCommand(restored, command, Symbol(), true)).toEqual({ ok: true, ids: [ID] });
+    expect(readSceneDocument(restored).objects).toEqual([{ ...ORIGINAL, position: [7, 8, 9] }]);
+    expect(readSceneDocument(source).objects).toEqual([ORIGINAL]);
   });
 
   it('creates immutable initial values and six prebuilt sequences outside personal undo', async () => {
@@ -341,6 +380,40 @@ describe('scene projection and command transactions', () => {
       expect(() => validateSceneRecovery(doc)).not.toThrow();
       expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     }
+  });
+});
+
+describe.each(incompatibleRoots)('incompatible $root $shape root with encoded=$encoded', ({ root, shape, encoded }) => {
+  it('projects unsupported content without changing its encoded bytes', async () => {
+    const { readSceneDocument } = await loadScene();
+    const doc = incompatibleDocument(root, shape, encoded);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(readSceneDocument(doc).status).toBe('unsupported');
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('rejects pure recovery validation without changing its encoded bytes', async () => {
+    const { validateSceneRecovery } = await loadScene();
+    const doc = incompatibleDocument(root, shape, encoded);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(() => validateSceneRecovery(doc)).toThrow(Error);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('refuses command planning without changing its encoded bytes', async () => {
+    const { planSceneCommand } = await loadScene();
+    const doc = incompatibleDocument(root, shape, encoded);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(planSceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, true)).toEqual({ ok: false, reason: 'unsupported' });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('refuses command application without changing its encoded bytes', async () => {
+    const { applySceneCommand } = await loadScene();
+    const doc = incompatibleDocument(root, shape, encoded);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(applySceneCommand(doc, { type: 'create', objects: [ORIGINAL] }, Symbol(), true)).toEqual({ ok: false, reason: 'unsupported' });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 });
 

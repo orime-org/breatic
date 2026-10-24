@@ -1,10 +1,43 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
 import * as shared from "../index.js";
+
+type RootShape = "text" | "array" | "mixed";
+const fixtureDocuments: Y.Doc[] = [];
+const incompatibleRoots = ["scene", "objects"].flatMap((root) =>
+  (["text", "array", "mixed"] as const).flatMap((shape) =>
+    [false, true].map((encoded) => ({ root, shape, encoded })),
+  ),
+);
+
+/** Creates real incompatible root content, optionally restored without binding its root type. */
+function incompatibleDocument(root: string, shape: RootShape, encoded: boolean): Y.Doc {
+  const source = new Y.Doc();
+  fixtureDocuments.push(source);
+  if (root === "objects") source.getMap("scene").set("formatVersion", 1);
+  if (shape === "text") source.getText(root).insert(0, "incompatible root");
+  else if (shape === "array") source.getArray(root).push(["incompatible root", 17]);
+  else {
+    source.getMap(root).set(root === "scene" ? "formatVersion" : "retained", root === "scene" ? 1 : true);
+    const peer = new Y.Doc();
+    fixtureDocuments.push(peer);
+    peer.getText(root).insert(0, "sequence merged into map");
+    Y.applyUpdate(source, Y.encodeStateAsUpdate(peer));
+  }
+  if (!encoded) return source;
+  const restored = new Y.Doc();
+  fixtureDocuments.push(restored);
+  Y.applyUpdate(restored, Y.encodeStateAsUpdate(source));
+  return restored;
+}
+
+afterEach(() => {
+  for (const doc of fixtureDocuments.splice(0)) doc.destroy();
+});
 
 /**
  * Initializes through the public API while keeping missing APIs in test assertions.
@@ -38,6 +71,15 @@ describe("scene document initialization", () => {
     expect([...restored.share.keys()].sort()).toEqual(["objects", "scene"]);
     source.destroy(); restored.destroy();
   });
+
+  it.each(incompatibleRoots)(
+    "rejects $root $shape root content with encoded=$encoded and preserves its bytes", ({ root, shape, encoded }) => {
+      const doc = incompatibleDocument(root, shape, encoded);
+      const before = Y.encodeStateAsUpdate(doc);
+      expect(() => initialize(doc)).toThrow(Error);
+      expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    },
+  );
 
   it("does not change initialized data or bytes when called again", () => {
     const doc = new Y.Doc();
