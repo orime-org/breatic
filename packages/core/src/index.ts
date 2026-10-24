@@ -61,6 +61,7 @@ export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
+export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
@@ -188,6 +189,9 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
+export * as assetRepo from "@core/asset/asset.repo.js";
+export type { RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export {
   projectActivitiesRepo,

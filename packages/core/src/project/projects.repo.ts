@@ -1,8 +1,24 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 import { and, eq, isNull } from "drizzle-orm";
-import { db } from "@core/db/client.js";
-import { projects } from "@core/db/schema.js";
+import { db, type DbTx } from "@core/db/client.js";
+import { projects, studios } from "@core/db/schema.js";
+
+/**
+ * Read a Project's owning Studio only while both entities remain live.
+ * @param projectId - The Project whose registered media is being accessed.
+ * @param tx - An enclosing business transaction, when supplied.
+ * @returns The owning Studio id, or undefined when either entity is deleted.
+ * @throws {Error} When the database query fails.
+ */
+export async function findLiveOwnerStudioId(projectId: string, tx?: DbTx): Promise<string | undefined> {
+  const [row] = await (tx ?? db).select({ studioId: projects.studioId })
+    .from(projects)
+    .innerJoin(studios, eq(studios.id, projects.studioId))
+    .where(and(eq(projects.id, projectId), isNull(projects.deletedAt), isNull(studios.deletedAt)))
+    .limit(1);
+  return row?.studioId;
+}
 
 /**
  * Reads the studio a project belongs to.

@@ -2632,6 +2632,23 @@ export const studioAssets = pgTable(
   ],
 );
 
+/** Long-lived Project media membership, separate from upload credentials. */
+export const projectAssetRefs = pgTable(
+  "project_asset_refs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "restrict" }),
+    assetId: uuid("asset_id").notNull().references(() => studioAssets.id, { onDelete: "restrict" }),
+    displayName: text("display_name"),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("project_asset_refs_live_key").on(table.projectId, table.assetId).where(sql`${table.deletedAt} IS NULL`),
+    index("project_asset_refs_page_idx").on(table.projectId, table.createdAt.desc(), table.id.desc()).where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
 // The anti-spoof authority (#1826, design §2.2 / §3.2) that REPLACES the
 // prefix-based isOwnedKey once storage keys drop their {userId}/{projectId}/
 // prefix. /upload-ticket writes one grant row per issued storage key K (user +

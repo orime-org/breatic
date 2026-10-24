@@ -20,6 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as sharedModule from "@breatic/shared";
+import type * as coreModule from "@breatic/core";
 import type * as IngestReportModule from "@domain/asset/ingest-report.service.js";
 
 const issueUploadGrant = vi.fn();
@@ -38,7 +39,8 @@ const DEADLINE_AT = Date.now() + 3_600_000;
 const IDLE_DISPATCHER = { dispatcher: "idle-socket" };
 const idleSocketDispatcher = vi.fn(() => IDLE_DISPATCHER);
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof coreModule>()),
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
   budgetDeadlineFrom: (startedAt: number) => startedAt + 7_200_000,
   // Shaped like the real one, which the cover key is checked against below.

@@ -17,7 +17,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { db } from "@breatic/core";
+import { assetRepo, db } from "@breatic/core";
 import type { StudioAssetEntity } from "@breatic/shared";
 
 /** One redundant object to hand to the offline reclaim job. */
@@ -74,10 +74,7 @@ export async function queueForReclaim(entry: ReclaimEntry): Promise<void> {
       (storage_key, content_hash, studio_id, kept_storage_key, source)
     SELECT ${entry.storageKey}, ${entry.contentHash}, ${entry.studioId}::uuid,
            ${entry.keptStorageKey}, ${entry.source}
-    WHERE NOT EXISTS (
-      SELECT 1 FROM studio_assets
-      WHERE storage_key = ${entry.storageKey} AND deleted_at IS NULL
-    )
+    WHERE NOT ${assetRepo.liveAssetExistsForStorageKey(entry.storageKey)}
     ON CONFLICT (storage_key) DO NOTHING
   `);
 }

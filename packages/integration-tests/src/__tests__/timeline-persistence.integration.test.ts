@@ -132,7 +132,7 @@ function documentName(kind: "timeline" | "canvas" | "document" = "timeline"): st
  * Add one fixture placement and its immutable record in the same transaction.
  * @returns The exact inputs later expected from the stored document.
  */
-function addPlacement(document: Y.Doc, startFrame: number, clipId = randomUUID()): PlacementFixture {
+function addPlacement(document: Y.Doc, startFrame: number, clipId: string = randomUUID()): PlacementFixture {
   const clip: ClipFixture = {
     id: clipId,
     trackId: "visual-1",
