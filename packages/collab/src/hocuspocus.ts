@@ -8,6 +8,7 @@
  * - PostgreSQL persistence (document storage)
  * - Redis extension (multi-instance sync)
  * - Throttle extension (connection rate limiting)
+ * - Session admission extension (before native WebSocket upgrade)
  * - Authentication hook (session token verification)
  *
  * All tunable parameters are loaded from `config/collab.yaml`.
@@ -33,6 +34,7 @@ import {
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
+import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
@@ -118,9 +120,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop + this process's instance id
+ * @returns Configured server, admission stop boundary, seat-handover channel, timed store loop and instance id.
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string; stopUpgradeSessions: () => void }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -181,7 +183,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // connection at once.
   await seatHandover.start();
 
-  // Session lookup client for the onAuthenticate hook. Uses the
+  // Native upgrade admission and document authentication share the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
   // client server / worker use) — a session GET is a plain command, so
   // it shares the per-process singleton rather than hand-rolling a
@@ -231,8 +233,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     : null;
   if (connectionGate) extensions.push(connectionGate);
 
+  const sessionGate = createUpgradeSessionGate({
+    redis: authRedis,
+    recordFailedUpgrade: connectionGate?.recordFailedUpgrade,
+  });
+  extensions.push(sessionGate);
+
   // Authentication — verifies session token AND per-project
-  // ownership. See packages/collab/src/auth.ts.
+  // ownership. See packages/collab/src/hooks/auth.ts.
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from
@@ -666,5 +674,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     seatHandover,
     storeLoop,
     instanceId,
+    stopUpgradeSessions: sessionGate.stop,
   };
 }

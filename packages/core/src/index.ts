@@ -172,6 +172,7 @@ export {
   sessionCookieName,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
+export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────

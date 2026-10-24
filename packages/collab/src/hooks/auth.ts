@@ -43,6 +43,7 @@
  */
 
 import type { Redis } from "@breatic/core";
+import { readCookie } from "@collab/infra/cookie.js";
 import {
   readListedContentDocNames,
   type DocumentRegistry,
@@ -70,30 +71,6 @@ import type { ProjectRole } from "@breatic/shared";
  * inference.
  */
 const logger = createLogger("auth");
-
-/**
- * Tiny RFC-6265 cookie parser. Hocuspocus only gives us the raw
- * `Cookie:` header string, so we hand-roll instead of pulling a
- * Hono-coupled cookie helper.
- *
- * Returns the value of the named cookie or null if absent.
- * @param header - Raw `Cookie:` header string from the WebSocket upgrade request, or undefined when no cookies were sent.
- * @param name - Name of the cookie to extract.
- * @returns The decoded value of the named cookie, or null when the header is absent or the cookie is not present.
- */
-export function readCookie(header: string | undefined, name: string): string | null {
-  if (!header) return null;
-  // Cookie header is `name1=val1; name2=val2`. Trim each pair so
-  // leading spaces after `; ` do not break matching.
-  for (const pair of header.split(";")) {
-    const eq = pair.indexOf("=");
-    if (eq < 0) continue;
-    const k = pair.slice(0, eq).trim();
-    if (k !== name) continue;
-    return decodeURIComponent(pair.slice(eq + 1).trim());
-  }
-  return null;
-}
 
 /**
  * Resolved user context returned to Hocuspocus. The return value is
@@ -194,8 +171,9 @@ export interface CreateAuthHookOptions {
 /**
  * Create the onAuthenticate hook for Hocuspocus.
  *
- * Returns a function that Hocuspocus calls on every WS handshake.
- * Throwing rejects the connection (4401 / 4403). Returning sets
+ * Hocuspocus calls this for each document's authentication on the shared socket.
+ * Throwing sends a document permission-denied response and clears its pending
+ * authentication state. Returning sets
  * `c.context.user` for the handlers that read it downstream —
  * `onStateless` (the caller's id and role on every `space:*` RPC),
  * `connected` and `onDisconnect` (presence), and `beforeHandleMessage`.
@@ -542,9 +520,8 @@ export function createAuthHook({
       // infrastructure failure - Redis ping fail, postgres-js
       // connection drop, Yjs lib error. We log with `unexpected`
       // tag so dashboards can split "policy reject" vs "infra
-      // fail" trends and re-throw so Hocuspocus still closes the
-      // socket with 4401 (the client sees the same banner state
-      // either way; only the server-side trail differs).
+      // fail" trends. Re-throwing lets Hocuspocus send the document's
+      // permission-denied response and clear its pending authentication state.
       const e = err as Error;
       const isKnownReject =
         e.message === "Origin not allowed" ||
