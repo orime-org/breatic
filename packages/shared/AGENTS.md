@@ -1,6 +1,6 @@
 # @breatic/shared
 
-The protocol layer used by both web and the backend: zod schemas, types, constants, cross-service event formats, the HTTP transport (`src/http/`), backoff (`src/backoff.ts`), and text rules both sides must apply identically (`src/agent/extract-prompt.ts`: web counts characters with it, worker cleans prompts with it). These rules apply when you change anything under `packages/shared/`.
+The protocol layer used by both web and the backend: zod schemas, types, constants, cross-service event formats, scene value schemas and empty-document initialization (`src/scene.ts`, `src/scene-version.ts`), the HTTP transport (`src/http/`), backoff (`src/backoff.ts`), and text rules both sides must apply identically (`src/agent/extract-prompt.ts`: web counts characters with it, worker cleans prompts with it). These rules apply when you change anything under `packages/shared/`.
 
 ## Package boundary
 

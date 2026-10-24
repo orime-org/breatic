@@ -924,3 +924,7 @@ export {
   type Attribution,
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
+
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SCENE_FORMAT_VERSION, initializeSceneDocument } from "@shared/scene-version.js";
