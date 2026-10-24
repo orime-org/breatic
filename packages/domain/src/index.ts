@@ -58,6 +58,16 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: task·credit cross-table atomic) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
+export {
+  miniToolAnalysisRequestSchema,
+  miniToolFrozenAnalysisSchema,
+  type MiniToolAnalysisRequest,
+  type MiniToolFrozenAnalysis,
+  type MiniToolAnalysisTaskParams,
+  type MiniToolAnalysisJob,
+  type AcceptedMiniToolAnalysis,
+} from "@domain/mini-tool/analysis.service.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 

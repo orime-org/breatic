@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { VideoToolAnalysisRef, VideoToolDraftFields } from '@shared/mini-tools/video-draft.js';
+
 /**
  * Canvas node types shared between frontend, Collab, and server.
  *
@@ -271,7 +273,7 @@ export interface CanvasNodeFields {
    */
   parentId?: string;
   /** Nested data Y.Map at runtime. */
-  data: {
+  data: VideoToolDraftFields & Partial<Record<`miniToolAnalysis:${string}`, VideoToolAnalysisRef>> & {
     /** Display label. */
     name: string;
 

@@ -172,7 +172,8 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    await reserveForRun(projectId, opts.userId, taskId, await opts.credits());
+    const required = await opts.credits();
+    if (required !== 0) await reserveForRun(projectId, opts.userId, taskId, required);
     const job = await opts.enqueue();
     // Queueing is the point of no return: the job runs whether or not its id
     // is kept. The id is for whoever has to find the job in the queue by hand.

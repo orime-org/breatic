@@ -13,6 +13,7 @@
 
 import type { CanvasNodeFields } from '@breatic/shared';
 import { NODE_MEDIA_KEYS, newId } from '@breatic/shared';
+import { rebindVideoToolDrafts } from '@web/data/video-tool-node-data';
 import type { CanvasEdge, SnapshotNode } from '@web/data/yjs/canvas-space';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
@@ -283,6 +284,8 @@ export interface PastedClones {
 
 /** Options for {@link cloneForPaste}. */
 export interface CloneOptions {
+  /** Destination Project, used to scope accepted mini-tool analysis references. */
+  targetProjectId?: string;
   /** Absolute positions of existing Groups a lone member may rejoin. */
   externalParentAbs?: ReadonlyMap<string, { x: number; y: number }>;
   /**
@@ -350,7 +353,11 @@ export function cloneForPaste(
       const parentAbs = options.externalParentAbs.get(node.parentId) as { x: number; y: number };
       position = { x: absShifted.x - parentAbs.x, y: absShifted.y - parentAbs.y };
     }
-    const data = rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>;
+    const data = rebindVideoToolDrafts(
+      rewriteMentions(contentOf(node.data), idMap, keptUpstream) as Record<string, unknown>,
+      idMap,
+      options.targetProjectId !== undefined && options.targetProjectId === payload.source?.projectId,
+    );
     const fallbackName = node.type === 'group' ? 'Group' : MODALITY_LABEL[node.type];
     const name = typeof data.name === 'string' ? data.name : fallbackName;
     if (node.external === true) {
@@ -455,7 +462,7 @@ function rewriteMentions(
       const copy = idMap.get(sourceId);
       if (copy !== undefined) return { ...record, attrs: { ...attrs, [MENTION_SOURCE_ID_ATTR]: copy } };
     }
-    const label = typeof attrs[MENTION_LABEL_ATTR] === 'string' ? (attrs[MENTION_LABEL_ATTR] as string) : '';
+    const label = typeof attrs[MENTION_LABEL_ATTR] === 'string' ? attrs[MENTION_LABEL_ATTR] : '';
     return { text: [{ insert: `@${label}` }] };
   }
   const out: Record<string, unknown> = {};

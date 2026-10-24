@@ -6,6 +6,19 @@ import { describe, expect, it } from "vitest";
 import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-tools.js";
 
 describe("getMiniToolsConfig", () => {
+  it("requires complete analysis profiles before accepting work", () => {
+    const config = structuredClone(getMiniToolsConfig()) as Record<string, unknown>;
+    delete config.analyses;
+    expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
+  });
+
+  it.each(["people", "scene_cuts", "tracked_mask"])("requires the %s analysis profile", (kind) => {
+    const config = structuredClone(getMiniToolsConfig());
+    const analyses = config.analyses as Record<string, unknown>;
+    delete analyses[kind];
+    expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
+  });
+
   it("loads every container operation from config/mini-tools.yaml", () => {
     const config = getMiniToolsConfig();
     expect(Object.keys(config.ops).sort()).toEqual(

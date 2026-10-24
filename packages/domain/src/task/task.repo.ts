@@ -12,6 +12,76 @@ import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
 
+/** Durable admission fields, with the database instant kept outside Date. */
+export interface AnalysisTaskRow {
+  id: string;
+  userId: string;
+  projectId: string | null;
+  spaceId: string;
+  taskType: string;
+  status: string;
+  params: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  errorMessage: string | null;
+  acceptedAt: string;
+}
+
+const analysisTaskSelection = {
+  id: tasks.id, userId: tasks.userId, projectId: tasks.projectId,
+  spaceId: tasks.spaceId, taskType: tasks.taskType, status: tasks.status,
+  params: tasks.params, result: tasks.result, errorMessage: tasks.errorMessage,
+  acceptedAt: sql<string>`to_char(${tasks.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`,
+};
+
+/**
+ * Read an analysis identity without losing SQL microseconds.
+ * @param id - The run/task UUID.
+ * @returns Its live row, including non-analysis rows for collision detection.
+ * @throws {Error} When the database read fails.
+ */
+export async function getAnalysisTask(id: string): Promise<AnalysisTaskRow | null> {
+  const [row] = await db.select(analysisTaskSelection).from(tasks)
+    .where(and(eq(tasks.id, id), isNull(tasks.deletedAt))).limit(1);
+  return row ? { ...row, params: row.params ?? {} } : null;
+}
+
+/**
+ * Claim the durable run UUID before opening any node task or spending credits.
+ * @param data - Frozen task inputs and the authenticated actor.
+ * @param data.id - The client-generated analysis run UUID.
+ * @param data.userId - The authenticated actor who owns this admission.
+ * @param data.projectId - The project that owns the analysis.
+ * @param data.spaceId - The canvas Space holding its source node.
+ * @param data.params - The frozen analysis and backend execution inputs.
+ * @param data.model - The served model, when this analysis calls one.
+ * @returns Whether this caller inserted the task.
+ * @throws {Error} When a database write fails.
+ */
+export async function claimAnalysisTask(data: {
+  id: string; userId: string; projectId: string; spaceId: string;
+  params: Record<string, unknown>; model?: string;
+}): Promise<boolean> {
+  const rows = await db.insert(tasks).values({
+    ...data, taskType: "mini_tool_analysis", mode: "append", source: "mini_tool",
+  }).onConflictDoNothing({ target: tasks.id }).returning({ id: tasks.id });
+  return rows.length === 1;
+}
+
+/**
+ * Store a public analysis record without changing its acceptance timestamp.
+ * @param id - The task UUID.
+ * @param analysis - The validated public analysis record.
+ * @returns Nothing.
+ * @throws {Error} When the database write fails.
+ */
+export async function storeAnalysisRecord(id: string, analysis: Record<string, unknown>): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ result: tasks.result }).from(tasks).where(eq(tasks.id, id)).for("update");
+    if (!row) throw new Error(`Analysis task ${id} does not exist`);
+    await tx.update(tasks).set({ result: { ...row.result, analysis }, updatedAt: new Date() }).where(eq(tasks.id, id));
+  });
+}
+
 /**
  * Convert a Drizzle row to a TaskEntity.
  * @param row - The raw Drizzle row selected from the `tasks` table.

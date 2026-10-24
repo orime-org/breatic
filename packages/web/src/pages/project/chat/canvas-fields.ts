@@ -45,7 +45,9 @@ type ViewKey = KeysOf<NodeView>;
  * what the canvas view carries, and what lives only in the shared map
  * (`body`, and the single `prompt` of nodes older than one prompt per mode).
  */
-type FieldKey = keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt';
+// Accepted-run metadata uses dynamic UUID keys. Like other task metadata it
+// follows the `other` fallback; it is never an Agent content/reference field.
+type FieldKey = Exclude<keyof CanvasNodeFields['data'] | ViewKey | 'body' | 'prompt', `miniToolAnalysis:${string}`>;
 
 /** Every field a node is handed over with. A key added to a node and not named here fails the typecheck. */
 export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
@@ -79,6 +81,14 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   musicVocal: 'reference',
   soundVideo: 'reference',
   focusImages: 'each',
+  miniToolAssetUrls: 'reference',
+  'miniToolDraft:video.expand': 'other',
+  'miniToolDraft:video.erase': 'other',
+  'miniToolDraft:video.lip-sync': 'other',
+  'miniToolDraft:video.remove-bg': 'other',
+  'miniToolDraft:video.extract-frames': 'other',
+  'miniToolDraft:video.transitions': 'other',
+  'miniToolDraft:video.split': 'other',
   replies: 'each',
   attachments: 'each',
   createdAt: 'other',

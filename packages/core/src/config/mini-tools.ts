@@ -28,6 +28,19 @@ const opSchema = z.strictObject({
   precheck_seconds: z.number().positive(),
 });
 
+const analysisProfileSchema = z.strictObject({
+  id: z.string().min(1),
+  version: z.string().min(1),
+  weightsHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  params: z.record(z.string(), z.json()),
+});
+
+const analysisConfigSchema = z.strictObject({
+  profile: analysisProfileSchema,
+  container_class: z.string().min(1),
+  precheck_seconds: z.number().positive(),
+});
+
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
@@ -40,6 +53,11 @@ export const miniToolsConfigSchema = z
     ops: z.strictObject(
       Object.fromEntries(CONTAINER_OPS.map((op) => [op, opSchema])) as Record<ContainerOp, typeof opSchema>,
     ),
+    analyses: z.strictObject({
+      people: analysisConfigSchema,
+      scene_cuts: analysisConfigSchema,
+      tracked_mask: analysisConfigSchema,
+    }),
     // The audio cut band draws from the peaks file beside the source; while that
     // file is missing it decodes the source in the browser only under both of
     // these: the length bounds what the tab holds, the size what it downloads.
@@ -57,6 +75,11 @@ export const miniToolsConfigSchema = z
           path: ["ops", op, "container_class"],
           message: `names "${spec.container_class}", which classes does not declare`,
         });
+      }
+    }
+    for (const [kind, spec] of Object.entries(config.analyses)) {
+      if (!(spec.container_class in config.classes)) {
+        ctx.addIssue({ code: "custom", path: ["analyses", kind, "container_class"], message: "Analysis names an undeclared container class" });
       }
     }
   });

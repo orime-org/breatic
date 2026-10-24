@@ -8,4 +8,8 @@ export * from "@shared/mini-tools/outputs.js";
 export * from "@shared/mini-tools/request-schema.js";
 export * from "@shared/mini-tools/analysis-input.js";
 export * from "@shared/mini-tools/analysis-record.js";
+export * from "@shared/mini-tools/analysis-request.js";
 export * from "@shared/mini-tools/consumption-identity.js";
+export * from "@shared/mini-tools/video-draft.js";
+export * from "@shared/mini-tools/video-plan.js";
+export * from "@shared/mini-tools/canonical-value.js";

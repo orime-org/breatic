@@ -82,6 +82,10 @@ image:
 
 video:
   modes:
+    analysis:
+      label: Video Analysis
+      description: >
+        Produce structured analysis from a video for a mini-tool.
     t2v:
       label: Text to Video
       description: >

@@ -27,6 +27,12 @@ const text = (chars: number): string => "x".repeat(chars);
 const urls = (n: number): string[] => Array.from({ length: n }, (_, i) => `u${i}`);
 
 const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
+  "wavespeed-ai/sam3-video-rle": [
+    { input: { video: "v", prompt: "flower", apply_mask: false }, durations: { video: [5.055] }, usd: 0.06 },
+    { input: { video: "v" }, durations: { video: [1] }, usd: 0.03 },
+    { input: { video: "v" }, durations: { video: [5] }, usd: 0.05 },
+    { input: { video: "v" }, durations: { video: [5.000001] }, usd: 0.06 },
+  ],
   "alibaba/happyhorse-1.1/reference-to-video": [
     { input: { resolution: "720p", duration: 5 }, usd: 0.7 },
     { input: { resolution: "1080p", duration: 5 }, usd: 0.945 },
@@ -222,7 +228,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 65 endpoints of the finalized catalog", () => {
+  it("covers exactly the 66 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

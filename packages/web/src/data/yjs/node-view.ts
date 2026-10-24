@@ -39,6 +39,7 @@ import type {
   NodeTaskCounts,
   NodeType,
 } from '@breatic/shared';
+import { videoToolNodeAssetUrls } from '@web/data/video-tool-node-data';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -55,6 +56,8 @@ interface NodeViewCommon {
 
 /** Fields shared by every content-node view. */
 interface ContentNodeViewBase extends NodeViewCommon {
+  /** Media retained by persisted mini-tool drafts; derived from the wire scalars. */
+  miniToolAssetUrls?: string[];
   /**
    * What the ledger judged this node's file to be, and counted its bytes at
    * (#240). Absent for a node stored before the ledger reported them, and for
@@ -344,11 +347,13 @@ export function deriveHandling(
 export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
   const { type, data } = fields;
   const locked = data.locked;
+  const miniToolAssetUrls = videoToolNodeAssetUrls(data);
   // Common content-view fields: the editable name (node name header), the
   // derived handling flag, and the Generate panel inputs (model / mode /
   // modelByMode / paramsByModel) — the panel reads these via the view and
   // writes back to the wire through the canvas-space setters.
   const contentCommon = {
+    ...(miniToolAssetUrls.length > 0 ? { miniToolAssetUrls } : {}),
     name: data.name,
     handling: deriveHandling(data),
     // What the ledger judged off the bytes that landed. The Understand gate

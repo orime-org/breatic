@@ -60,6 +60,49 @@
 
 models:
 
+  # Structured output consumed by the analysis worker, outside generation modes.
+  - name: "sam3-video-rle"
+    display_name: "SAM 3 Video RLE"
+    mode: "analysis"
+    takes_prompt: true
+    tier: "optional"
+    description: "Track a selected object as frame masks"
+    guide: "Track a selected object in a video and return per-frame run-length encoded masks for mini-tools."
+    generation_time: 600
+    icon: "meta"
+    params:
+      video:
+        description: "Source video"
+        default: null
+        accepts: "video"
+        fill: "none"
+        note: "The analysis executor fills this from the frozen registered binding."
+        max_total_duration: 600
+      apply_mask:
+        description: "Apply the mask to the preview"
+        default: false
+        values: [true, false]
+        fill: "none"
+        note: "The analysis worker reads raw masks."
+      box_prompts:
+        description: "Object boxes on the anchor frame"
+        default: []
+        fill: "none"
+        note: "Mapped from the frozen analysis selection."
+      point_prompts:
+        description: "Object points on the anchor frame"
+        default: []
+        fill: "none"
+        note: "Mapped from the frozen analysis selection."
+    providers:
+      - name: "wavespeed"
+        model_id: "wavespeed-ai/sam3-video-rle"
+        priority: 1
+        pricing:
+          base_price: 10000
+          formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), 600])]) * base_price}"
+          discount_rate: 100
+
   - name: "gemini-omni-1.1-flash-text-to-video"
     display_name: "Gemini Omni 1.1 Flash"
     variant: "Text-to-Video"

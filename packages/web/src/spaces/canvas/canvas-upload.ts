@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { validFocusImages } from '@web/data/focus-images';
+import { videoToolNodeAssetUrls } from '@web/data/video-tool-node-data';
 import {
   isUploadableMediaType,
   uploadableSpellings,
@@ -17,7 +18,6 @@ import {
   type UploadFailure,
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
@@ -369,6 +369,7 @@ export interface AssetNodeLike {
     content?: unknown;
     coverUrl?: unknown;
     focusImages?: unknown;
+    miniToolAssetUrls?: string[];
   };
 }
 
@@ -388,7 +389,7 @@ export interface AssetNodeLike {
 function slotUrls(data: unknown): string[] {
   const bag = data as Record<string, unknown> | undefined;
   const urls: string[] = [];
-  for (const spec of allSlotSpecs() as SlotSpec[]) {
+  for (const spec of allSlotSpecs()) {
     for (const pick of readSlotPicks(spec, bag?.[spec.field])) {
       urls.push(pick.url);
       if (pick.thumbnail && pick.thumbnail !== pick.url) urls.push(pick.thumbnail);
@@ -463,6 +464,7 @@ export function computeDeletedAssetEntries(
     // generating from — silently, until someone deletes the node it was
     // picked from (#1918).
     for (const url of slotUrls(n.data)) survivingUrls.add(url);
+    for (const url of videoToolNodeAssetUrls(n.data)) survivingUrls.add(url);
     // Focus crops (#1782) are uploaded assets too — a crop URL held by a
     // surviving node keeps the asset alive (adversarial round-2).
     for (const crop of validFocusImages(n.data?.focusImages)) {
@@ -524,6 +526,7 @@ export function assetUrlSurvives(
     if (slotUrls(data).includes(url)) {
       return true;
     }
+    if (videoToolNodeAssetUrls(data).includes(url)) return true;
     if (validFocusImages(data?.focusImages).some((c) => c.url === url)) {
       return true;
     }

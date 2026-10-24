@@ -95,3 +95,37 @@ waveform_max_bytes: 200000000
 # often for this long.
 waveform_peaks_retry_ms: 5000
 waveform_peaks_retry_max_ms: 600000
+
+# Frozen public detector/provider profiles for accepted analyses (inner#1306).
+# The worker consumes the accepted profile; later config changes apply to new runs.
+analyses:
+  people:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+    profile:
+      id: "opencv-yunet-2023mar"
+      version: "2023mar"
+      weightsHash: "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+      params:
+        scoreThreshold: 0.6
+        nmsThreshold: 0.3
+        topK: 5000
+  scene_cuts:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+    profile:
+      id: "pyscenedetect-content"
+      version: "0.7.2"
+      weightsHash: null
+      params:
+        threshold: 27
+        minSceneLength: 15
+  tracked_mask:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
+    profile:
+      id: "sam3-video-rle"
+      version: "wavespeed-ai/sam3-video-rle"
+      weightsHash: null
+      params:
+        apply_mask: false
