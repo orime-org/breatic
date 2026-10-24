@@ -450,7 +450,7 @@ describe('scene collaboration invariants with real Yjs replicas', () => {
 
   it('merges independent properties in either update order and undoes only each authors records', async () => {
     const { applySceneCommand, createSceneHistory, readSceneDocument } = await loadScene();
-    fc.assert(fc.property(fc.tuple(fc.integer(), fc.integer(), fc.integer()).filter((position) => position.some((value) => value !== 0)), fc.stringMatching(/^[A-Za-z]{1,20}$/), (position, name) => {
+    fc.assert(fc.property(fc.tuple(fc.integer(), fc.integer(), fc.integer()).filter((position) => position.some((value) => value !== 0)), fc.stringMatching(/^[A-Za-z]{1,20}$/).filter((name) => name !== ORIGINAL.name), (position, name) => {
       const a = sceneDoc(); const oa = Symbol(); const ob = Symbol();
       applySceneCommand(a, { type: 'create', objects: [ORIGINAL] }, Symbol(), true);
       const b = replica(a); const leftOrder = replica(a); const rightOrder = replica(a);
