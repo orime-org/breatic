@@ -731,6 +731,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.9.0
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.12)(typescript@5.8.3)(yaml@2.9.0)
