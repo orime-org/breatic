@@ -447,9 +447,12 @@ pnpm test / typecheck / lint
 `packages/shared/src/scene.ts` defines the plain scene values and their runtime
 schemas. Positions are finite Y-up metre tuples, rotations are normalized XYZW
 quaternions, and per-axis scales are positive. Model references identify a built-in
-model or a registered asset by UUID. `scene-version.ts` initializes version 1 only
-when both scene roots are empty; existing content, including unknown or missing
-version metadata, is retained.
+model or a registered asset by UUID. `scene-version.ts` initializes version 1 when
+both validated scene roots are empty; existing content, including unknown or
+missing version metadata, is retained. Its `getSceneRootMap` validates the root
+structure for initialization, projection and recovery checks. Yjs retains sequence
+content when a decoded root acquires its Map constructor, so the shared check
+rejects that content while preserving its encoded bytes.
 
 The document has a `scene` root Map with `formatVersion` and an `objects` root Map
 keyed by object UUID. Each object is a stable Map containing immutable `initial`
