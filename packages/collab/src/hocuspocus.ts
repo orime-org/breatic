@@ -240,7 +240,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   extensions.push(sessionGate);
 
   // Authentication — verifies session token AND per-project
-  // ownership. See packages/collab/src/auth.ts.
+  // ownership. See packages/collab/src/hooks/auth.ts.
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from

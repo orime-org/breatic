@@ -18,8 +18,8 @@ import { redactSessionError } from "@core/infra/session-error.js";
  * Name of the httpOnly session cookie, namespaced per deployment.
  *
  * Single source of truth shared by every backend service: the server writes /
- * reads / clears it through `setSessionCookie` &c., and collab parses it off
- * the WebSocket upgrade request in `onAuthenticate`. Defined here (next to the
+ * reads / clears it through `setSessionCookie` &c., and collab parses it during
+ * native WebSocket admission and each document's `onAuthenticate`. Defined here (next to the
  * session token store) so the two can never drift.
  *
  * The `REDIS_KEY_PREFIX` suffix is what keeps concurrent deployments from
