@@ -35,6 +35,9 @@ export const recordStripeWebhook: MiddlewareHandler<{ Variables: AuthVariables &
     return c.json({ received: false }, 503);
   }
   await next();
+  if (c.error !== undefined) {
+    logger.error({ err: c.error, ctx: { ...context, stage: "handler", responseStatus: c.res.status } }, "stripe_webhook_handler_failed");
+  }
   try {
     await stripeWebhookRecordingService.finishWebhookAttempt(id, c.res.status, c.error === undefined ? c.get("stripeWebhookResult") : "handler_exception");
   } catch (err) {

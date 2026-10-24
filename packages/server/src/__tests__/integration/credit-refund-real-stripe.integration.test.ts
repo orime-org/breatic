@@ -96,6 +96,7 @@ import {
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 import { expectRestored, expectRestoredBell } from "./credit-refund-cells.js";
+import { realStripeTestConfig } from "./real-stripe-config.js";
 
 /**
  * Long enough for Stripe to move a `pm_card_refundFail` refund to `failed`
@@ -123,6 +124,7 @@ let running: RunningApp | undefined;
 /** The product app with the Stripe webhook, served only while the CLI forwards. */
 let webhookApp: RunningApp | undefined;
 let stripe: Stripe;
+let stripeAccountId: string;
 const lots: SeededLot[] = [];
 
 beforeAll(async () => {
@@ -135,7 +137,7 @@ beforeAll(async () => {
     throw new Error("STRIPE_CLI_FORWARDING=1 needs STRIPE_WEBHOOK_SECRET set to the whsec_ that `stripe listen` printed.");
   }
   stripe = new Stripe(key);
-  initCore({
+  const configured = await realStripeTestConfig(stripe, {
     ...process.env,
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: key,
@@ -144,6 +146,8 @@ beforeAll(async () => {
     INTERNAL_API_SECRET: SECRET,
     INTERNAL_API_SECRET_PREVIOUS: PREVIOUS_SECRET,
   });
+  stripeAccountId = configured.STRIPE_WEBHOOK_ACCOUNT_ID;
+  initCore(configured);
   loadLocales();
   suite.sql = postgres(inject("DATABASE_URL"), {
     max: 8,
@@ -679,11 +683,9 @@ describe("the three refund webhooks, forwarded by the Stripe CLI", () => {
               connected_account_id, response_status, result, finished_at IS NOT NULL AS finished
             FROM stripe_webhook_attempts WHERE event_id IN ${suite.sql(sent.map(e => e.id))} AND deleted_at IS NULL
           `;
-          const account = await stripe.accounts.retrieve();
-          expect(process.env.STRIPE_WEBHOOK_ACCOUNT_ID).toBe(account.id);
           for (const event of sent) {
             expect(attempts).toContainEqual({
-              event_id: event.id, event_type: event.type, account_id: account.id,
+              event_id: event.id, event_type: event.type, account_id: stripeAccountId,
               endpoint_id: null, livemode: false, connected_account_id: null,
               response_status: 200, result: "refund_synced", finished: true,
             });

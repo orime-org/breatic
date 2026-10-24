@@ -3,6 +3,7 @@
 
 import { Hono } from "hono";
 import type * as BreaticCore from "@breatic/core";
+import { logger } from "@breatic/core";
 import { HTTPException } from "hono/http-exception";
 import fc from "fast-check";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -82,6 +83,7 @@ describe("persisted Stripe attempt HTTP boundary", () => {
     const id = mocked.start.mock.calls[0]![0] as string;
     expect(id).toMatch(/^[0-9a-f-]{36}$/);
     expect(mocked.finish).toHaveBeenCalledWith(id, 200, "ignored");
+    expect(logger.error).not.toHaveBeenCalledWith(expect.anything(), "stripe_webhook_handler_failed");
   });
 
   it("rejects a failed or unknown begin acknowledgement before business", async () => {
@@ -91,6 +93,10 @@ describe("persisted Stripe attempt HTTP boundary", () => {
     expect(await response.json()).toEqual({ received: false });
     expect(mocked.dispatch).toHaveBeenCalledTimes(0);
     expect(mocked.finish).toHaveBeenCalledTimes(0);
+    expect(logger.error).toHaveBeenCalledWith({
+      err: expect.any(Error),
+      ctx: { attemptId: mocked.start.mock.calls[0]![0], eventId: event.id, type: event.type, stage: "begin" },
+    }, "stripe_webhook_record_failed");
   });
 
   it.each([200, 500] as const)("preserves the business %s response when completion cannot be acknowledged", async status => {
@@ -102,6 +108,10 @@ describe("persisted Stripe attempt HTTP boundary", () => {
     expect(mocked.start).toHaveBeenCalledTimes(1);
     expect(mocked.dispatch).toHaveBeenCalledTimes(1);
     expect(mocked.finish).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith({
+      err: expect.any(Error),
+      ctx: { attemptId: mocked.start.mock.calls[0]![0], eventId: event.id, type: event.type, stage: "finish" },
+    }, "stripe_webhook_record_failed");
   });
 
   it.each([new Error("controlled business failure"), new HTTPException(409)])("records the response formed by the existing error boundary", async error => {
@@ -110,6 +120,39 @@ describe("persisted Stripe attempt HTTP boundary", () => {
     const expected = error instanceof HTTPException ? 409 : 500;
     expect(response.status).toBe(expected);
     expect(mocked.finish).toHaveBeenCalledWith(expect.any(String), expected, "handler_exception");
+  });
+
+  it.each([new Error("controlled business failure"), new HTTPException(409)])("associates a handler exception with its saved attempt and response", async error => {
+    mocked.dispatch.mockRejectedValue(error);
+    const response = await post();
+    const id = mocked.start.mock.calls[0]![0] as string;
+    expect(logger.error).toHaveBeenCalledWith({
+      err: error,
+      ctx: { attemptId: id, eventId: event.id, type: event.type, stage: "handler", responseStatus: response.status },
+    }, "stripe_webhook_handler_failed");
+    expect(mocked.finish).toHaveBeenCalledWith(id, response.status, "handler_exception");
+  });
+
+  it("keeps concurrent exception diagnostics associated with their own attempts", async () => {
+    const inputs = ["evt_concurrent_first", "evt_concurrent_second"].map(id => ({ ...event, id, data: { object: { id: "ch_private", payload: "controlled-payload-secret" } } }));
+    for (const input of inputs) mocked.verify.mockReturnValueOnce(input);
+    mocked.parseIdentity.mockImplementation((input: typeof event) => ({ eventId: input.id, eventType: input.type, livemode: false, connectedAccountId: null }));
+    const error = new Error("controlled shared exception");
+    mocked.dispatch.mockRejectedValue(error);
+    const responses = await Promise.all(inputs.map(() => post()));
+    expect(responses.map(response => response.status)).toEqual([500, 500]);
+    const diagnostics = vi.mocked(logger.error).mock.calls.filter(call => call[1] === "stripe_webhook_handler_failed");
+    expect(diagnostics).toHaveLength(2);
+    for (const [id, identity] of mocked.start.mock.calls as [string, { eventId: string; eventType: string }][]) {
+      expect(diagnostics).toContainEqual([{
+        err: error,
+        ctx: { attemptId: id, eventId: identity.eventId, type: identity.eventType, stage: "handler", responseStatus: 500 },
+      }, "stripe_webhook_handler_failed"]);
+      expect(mocked.finish).toHaveBeenCalledWith(id, 500, "handler_exception");
+    }
+    expect(new Set(mocked.start.mock.calls.map(call => call[0])).size).toBe(2);
+    expect(JSON.stringify(diagnostics)).not.toContain("controlled-payload-secret");
+    expect(JSON.stringify(diagnostics)).not.toContain("fixture-signature");
   });
 
   it("leaves recording unstarted for a rejected signature", async () => {
