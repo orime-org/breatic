@@ -558,6 +558,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
+      fast-check:
+        specifier: 'catalog:'
+        version: 4.9.0
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
