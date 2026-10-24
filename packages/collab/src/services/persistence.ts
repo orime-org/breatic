@@ -30,6 +30,7 @@ import { applyUpdate } from "yjs";
 import { createLogger, getTimelineConfig } from "@breatic/core";
 import { encodeInitialSpaceContent, parseDocName } from "@breatic/shared";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
+import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import { lazySeedMeta, type SeedOpener } from "@collab/services/lazy-seed.js";
 import {
@@ -70,7 +71,10 @@ export async function fetchDoc({
   const existing = parsed?.kind === "timeline"
     ? await yjsDocumentsRepo.loadTimelineDocData(documentName, encodeInitialSpaceContent("timeline", getTimelineConfig().defaults))
     : await yjsDocumentsRepo.fetchDocData(documentName);
-  if (existing) return existing;
+  if (existing) {
+    await acceptSpaceMediaReferences(documentName, existing);
+    return existing;
+  }
   return lazySeedMeta(documentName, opener);
 }
 
@@ -83,6 +87,7 @@ export async function fetchDoc({
  * @param args - Store payload.
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
  * @param args.state - Encoded Yjs update bytes to persist.
+ * @throws {Error} When media acceptance or the Yjs write fails.
  */
 export async function storeDoc({
   documentName,
@@ -91,6 +96,7 @@ export async function storeDoc({
   documentName: string;
   state: Uint8Array;
 }): Promise<void> {
+  await acceptSpaceMediaReferences(documentName, state);
   await yjsDocumentsRepo.upsertDocData(documentName, state);
 }
 

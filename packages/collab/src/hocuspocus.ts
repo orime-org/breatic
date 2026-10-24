@@ -57,8 +57,10 @@ import * as Y from "yjs";
 import {
   parseDocName,
   SpaceRpcRequestSchema,
+  TimelinePersistenceRequestSchema,
   type ProjectRole,
   type SpaceRpcResponse,
+  type TimelinePersistenceResponse,
 } from "@breatic/shared";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
@@ -75,6 +77,7 @@ import {
 } from "@collab/services/persistence.js";
 import { createUnloadGate, type UnloadGate } from "@collab/hooks/unload-gate.js";
 import { createStoreLoop, type StoreLoop } from "@collab/services/store-loop.js";
+import { handleTimelinePersistenceRpc } from "@collab/services/timeline-persistence.js";
 import { createStoreAlerter } from "@collab/services/store-alert.js";
 import {
   writeRescueFile,
@@ -536,19 +539,39 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
-    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc; we
-    // parse, route to the handler, and send the response on the requesting
-    // connection, which matches it by request `id`.
+    // Stateless RPCs remain scoped to their authenticated document connection.
+    // Meta carries Space lifecycle; Timeline content carries persistence facts.
+    // Each response goes only to the connection holding that correlation id.
     onStateless: async ({ documentName, payload, connection }) => {
       const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
+      if (!parsed || (parsed.kind !== "meta" && parsed.kind !== "timeline")) return;
 
       let json: unknown;
       try {
         json = JSON.parse(payload);
       } catch {
         return; // non-JSON stateless message (e.g. frontend cache invalidate)
+      }
+
+      if (parsed.kind === "timeline") {
+        const result = TimelinePersistenceRequestSchema.safeParse(json);
+        if (!result.success) return;
+        const userId = (connection.context as AuthContext | undefined)?.user?.id;
+        if (!userId) {
+          connection.sendStateless(JSON.stringify({
+            version: 1, id: result.data.id, type: "timeline:persistence:result", ok: false,
+            error: { code: "FORBIDDEN", message: "Anonymous caller" },
+          } satisfies TimelinePersistenceResponse));
+          return;
+        }
+        const response = await handleTimelinePersistenceRpc({
+          documentName,
+          userId,
+          readOnly: connection.readOnly,
+          requestStore: storeLoop.requestStore,
+        }, result.data);
+        connection.sendStateless(JSON.stringify(response));
+        return;
       }
 
       const reqResult = SpaceRpcRequestSchema.safeParse(json);
