@@ -122,9 +122,9 @@ config/ locales/ (git-tracked)
 
 `buildAgentConfig` 每轮一次确定模型、图片能力和工具。`main_model_sees_pictures` 可覆盖为 `yes` 或 `no`；`auto` 查询公开模型目录的 `architecture.input_modalities`。目录缓存保留最后成功结果，共享在飞查询，失败进入短暂冷却；取消一轮的等待不取消其他轮共享的查询。归纳后只通过 `instructionsForAgentMemory` 更新记忆指令。
 
-用户明确附带的图片、明确交给 Agent 的图片节点、搜图缩略图和节点历史图片，经同一轮的 `prepareAgentPictures` 准备。当前打开 Space 自动携带的节点仍以文字及地址表达。本地地址必须匹配当前 Studio 的 live 资产；第三方图片复用 editor、限速及存储额度检查，由 ingest 拉取并登记，再以去重赢家的 canonical key 准备。历史回放不会隐式导入旧行的外链。
+用户明确附带的图片、明确交给 Agent 的图片节点、搜图缩略图和节点历史图片，经同一轮的 `prepareAgentPictures` 准备。当前打开 Space 自动携带的节点仍以文字及地址表达。StorageAdapter 按 URL 的 origin 与基础路径解析本地 key，域名大小写和默认端口按 URL 语义统一，对象 key 取基础路径之后的 pathname。本地 key 必须匹配当前 Studio 的 live 资产。第三方图片先经 `readerUrlSchema` 校验，再复用 editor、限速及存储额度检查，由 ingest 拉取并登记，以去重赢家的 canonical key 准备。来源地址校验失败时该项保留标签、来源和不可用原因，其余合规图片继续准备。历史回放使用已存图片事实。
 
-供模型读取的是独立于显示预览的静态 JPEG：默认最长边 1024、质量 85，只缩小、应用 EXIF 方向、转 sRGB、透明合成白底、取首帧。`agentPictureKeyFor` 的 key 包含规格版本、尺寸和质量。`POST /media` 将规格传给媒体容器，Worker 条件创建派生对象，命中或竞争失败均以 R2 HEAD 的实际字节和 `image/jpeg` 为准；派生对象从属于登记源，不另建资产行。准备并发及本轮 memo 有界，取消只停止调用端等待和后续模型请求，容器仍受原任务截止时刻约束。
+供模型读取的是独立于显示预览的静态 JPEG：默认最长边 1024、质量 85，只缩小、应用 EXIF 方向、转 sRGB、透明合成白底、取首帧。`agentPictureKeyFor` 的 key 包含规格版本、尺寸和质量。`POST /media` 将规格传给媒体容器，Worker 条件创建派生对象，命中或竞争失败均以 R2 HEAD 的实际字节和 `image/jpeg` 为准；派生对象从属于登记源，不另建资产行。图片准备使用配置的并发上限，并在本轮按来源和规格复用结果；取消只停止调用端等待和后续模型请求，容器仍受原任务截止时刻约束。
 
 用户消息持有完整 `image/jpeg` URL 文件块，时钟在前、语言提醒在最后一个文字块末尾。图片工具把准备好的事实保存为 `agent-pictures-v1` JSON，保留原界面结果；`toModelOutput` 不再执行 IO。发送中间件把同组工具的图片放在全部连续工具结果之后的一条 user 消息中，并允许准备好的 HTTPS JPEG 直接交给 provider，Node 不下载图片字节。
 

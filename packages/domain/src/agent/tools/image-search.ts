@@ -2,17 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * search_images — find pictures, and hand back the row the panel draws.
- *
- * One call does both halves. The structured answer is what the panel reads to
- * draw the squares; `toModelOutput` renders the same answer as text for the
- * model. Nothing is copied between the two, so nothing can be copied wrongly:
- * an address the panel draws from is the address the service sent.
- *
- * What the model is handed carries one address per picture, its thumbnail,
- * which it gives save_image to use that picture. It is told, in that text, that it has not
- * seen the pictures: it has their titles and addresses and nothing else, and
- * a reply comparing what is in them is a reply the reader can see is invented.
+ * Panel thumbnails retain the service's source URLs so preview and canvas
+ * copying share the search result's identity. Model JPEG facts are prepared
+ * during execution because rendering and history replay must be repeatable
+ * without storage IO. The turn's picture capability selects prepared JSON
+ * or the source-only text listing.
  */
 import { tool, type Tool } from "ai";
 import { z } from "zod";
@@ -195,13 +189,10 @@ function readImage(item: unknown): ImageResult | null {
  * could otherwise write an entry of its own into what reads as the result
  * list.
  *
- * Each result carries one address, its thumbnail, which the model hands to
- * `save_image` to use that picture. The thumbnail is the search service's own
- * copy, as JPEG or PNG, and the picture the row shows; the original is in
- * whatever format its site chose, and storage refuses a GIF or AVIF. The page
- * it was found on is left out, since nothing the model does takes it.
+ * The thumbnail identifies the picture for the panel, preparation and
+ * `save_image`. The page address supplies no input to those operations.
  * @param answer - What the search found.
- * @returns The text handed to the model.
+ * @returns The source listing used by both picture-capability variants.
  * @throws {never} Never.
  */
 export function renderImagesForModel(answer: ImageSearchAnswer): string {
