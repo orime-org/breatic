@@ -292,8 +292,8 @@ export function createConnectionGate(throttle: Throttle): ConnectionGate {
     onConnect: async (data: ConnectHookPayload): Promise<void> => {
       const identity = countedIdentity(data);
       if (identity === null) return;
-      // A falsy rejection refuses the document quietly, before any session
-      // or role lookup runs for an address that is already banned.
+      // A falsy rejection refuses the document quietly, before this document's
+      // session or role lookup runs for an address that is already banned.
       if (await throttle.isBanned(identity)) throw undefined;
     },
 
