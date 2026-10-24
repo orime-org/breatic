@@ -165,8 +165,6 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
       if (outcome.kind === "admitted") {
         if (socket.destroyed || socket.readableEnded) {
           outcome = { kind: "peer_gone", reason: "peer_closed" };
-        } else if (stopping) {
-          outcome = { kind: "stopped", reason: "stopping", status: 503 };
         }
       }
       decision = outcome.kind;
