@@ -34,7 +34,7 @@ vi.mock("@domain/understand/understand.js", async (importOriginal) => {
 /** Every figure distinct, so a pair swapped between them shows as a wrong number. */
 const request = {
   onBilled: (): void => undefined,
-  url: "https://example.com/clip.mp4",
+  items: [{ url: "https://example.com/clip.mp4" }],
   question: "What happens?",
   maxBytes: 20_000_000,
   fetchTimeoutMs: 30_000,
@@ -69,7 +69,7 @@ describe("understandMediaAt — what each half is told", () => {
 
     expect(fetchMediaMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: request.url,
+        url: request.items[0]?.url,
         maxBytes: 20_000_000,
         fetchTimeoutMs: 30_000,
         minBytesPerSec: 65_536,
@@ -83,7 +83,7 @@ describe("understandMediaAt — what each half is told", () => {
 
     expect(understandMediaMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        media,
+        media: [media],
         question: request.question,
         timeoutMs: 180_000,
         model: "google/gemini-3.8-flash",
@@ -117,6 +117,7 @@ describe("understandMediaAt — the order", () => {
       text: "A rabbit wakes up.",
       finishReason: "stop",
       kind: "video",
+      kinds: ["video"],
     });
   });
 

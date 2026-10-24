@@ -16,6 +16,8 @@ import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { instructionsText } from "@domain/agent/instructions.js";
 
+vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
@@ -39,7 +41,7 @@ beforeAll(() => {
 
 
 describe("buildAgentConfig", () => {
-  it("hands a caller the baseline and the canvas tools", () => {
+  it("hands a caller the baseline and the canvas tools", async () => {
     // The defect this fixes: bare chat used to pass an empty array and get
     // no tools at all, so the model could not search and invented answers.
     //
@@ -47,7 +49,7 @@ describe("buildAgentConfig", () => {
     // which would be self-referential — adding a tool nobody vetted to that
     // constant would change both sides and stay green. This is the list, and
     // adding to it is supposed to require editing this line.
-    const config = buildAgentConfig({ basePrompt: "base" });
+    const config = await buildAgentConfig({ basePrompt: "base" });
     expect(Object.keys(config.tools).sort()).toEqual([
       "ask_user",
       "get_canvas_capabilities",
@@ -67,7 +69,7 @@ describe("buildAgentConfig", () => {
     ]);
   });
 
-  it("takes the model from config rather than a literal", () => {
+  it("takes the model from config rather than a literal", async () => {
     // Worker used to call getModel() with no argument, landing on a literal
     // in llm.ts that happened to equal agent.yaml's default_model but was
     // not read from it. Editing the yaml moved one and not the other.
@@ -83,11 +85,11 @@ describe("buildAgentConfig", () => {
       ...getAgentConfig(),
       default_model: sentinel,
     });
-    expect(buildAgentConfig({ basePrompt: "base" }).modelId).toBe(sentinel);
+    expect((await buildAgentConfig({ basePrompt: "base" })).modelId).toBe(sentinel);
   });
 
-  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", () => {
-    const config = buildAgentConfig({
+  it("keeps the base prompt, the project's memory and the conversation's memory as three parts", async () => {
+    const config = await buildAgentConfig({
       basePrompt: "base",
       memoryContext: { projectMemory: "p", conversationMemory: "c" },
     });
@@ -98,12 +100,12 @@ describe("buildAgentConfig", () => {
     });
   });
 
-  it("is the base prompt alone when there is no memory", () => {
-    expect(buildAgentConfig({ basePrompt: "base" }).instructions).toEqual({ base: "base" });
+  it("is the base prompt alone when there is no memory", async () => {
+    expect((await buildAgentConfig({ basePrompt: "base" })).instructions).toEqual({ base: "base" });
   });
 
-  it("reads as the same text as one prompt joined in order", () => {
-    const config = buildAgentConfig({
+  it("reads as the same text as one prompt joined in order", async () => {
+    const config = await buildAgentConfig({
       basePrompt: "base",
       memoryContext: { projectMemory: "p", conversationMemory: "c" },
     });

@@ -98,7 +98,7 @@
 **server 的集成测试层用同一套标签**:`packages/server/vitest.integration.config.ts` 的 `testNamePattern` 默认把名字里带 `@needs-` 的用例排除在外,vitest 把每一条记成 skipped,汇总里的 skip 数就是这个绿没盖到的部分。子门有意去跑,加 `-t @needs-<标签>`,它替换掉默认那条排除。现有一个 `@needs-payments` 子门:`credit-refund-real-stripe.integration.test.ts` 对着真实 Stripe 测试模式跑积分包退款处置,`STRIPE_SECRET_KEY` 不是 `sk_test_` 开头就在第一次调用之前拒跑:
 
 ```bash
-STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
+pnpm exec turbo run test:integration --filter=@breatic/server -- \
   -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
 ```
 

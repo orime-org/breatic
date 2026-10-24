@@ -8,7 +8,7 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
-import { createUIMessageStream, stepCountIs } from "ai";
+import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
 import { streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 
@@ -17,8 +17,13 @@ import {
   buildAgentConfig,
   finalizeTurn,
   ASK_USER,
+  agentPictureOutputOf,
+  expandAgentPictures,
+  instructionsForAgentMemory,
+  projectAgentRequest,
+  pictureMiddleware,
 } from "@breatic/domain";
-import type { OpenDocument, ResolvedAgentConfig } from "@breatic/domain";
+import type { AgentGenerationStep, AgentPicture, OpenDocument, PrepareAgentPictures, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { readerClockNote } from "@server/agent/reader-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
@@ -40,7 +45,7 @@ import { requestTokens } from "@server/agent/request-size.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
-import { lastFullSnapshotKey, prefixHash, replayRows } from "@server/agent/history-replay.js";
+import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
 import { inProgressStep, noteUsage, replyTokens, type ReportedUsage, type SettledCalls } from "@server/agent/reply-for-model.js";
@@ -48,6 +53,7 @@ import { measureMessages } from "@server/agent/payload-size.js";
 import { withModelOutputs } from "@server/agent/stored-model-output.js";
 import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
+import { picturePreparerFor, pictureSourcesForTurn } from "@server/agent/prepare-pictures.js";
 
 /**
  * What opened a segment of a turn: the reader's message, or the reader's
@@ -178,9 +184,9 @@ export class MainAgent {
     // The reader's clock opens this turn's message, on its own line, ahead of
     // any attached content, so it never sits under the "User message"
     // heading. The system prompt does not carry it. The reader's Spaces
-    // follow it, read fresh with each message. The message is kept as it was
-    // sent and later turns send it again as it is, so a provider's prefix
-    // cache matches everything up to the new message.
+    // follow it, read fresh with each message. Storage keeps the logical
+    // message and picture facts; each request projects a copy under its
+    // picture policy. Unchanged prefixes can reuse the provider's cache.
     const opening: Opening = {
       kind: "message",
       clockNote: readerClockNote(new Date(), timeZone),
@@ -295,6 +301,11 @@ export class MainAgent {
     // Media a questionnaire may show: what `search_images` returned in this
     // conversation, read from the history and added to as this turn searches.
     const vouchedMedia = new Set<string>();
+    /** Capability, tool set and preparation cache remain fixed through consolidation. */
+    let fixedAgentConfig: ResolvedAgentConfig | undefined;
+    let preparePictures: PrepareAgentPictures | undefined;
+    let preparedTurn: UserTurn | undefined;
+    let requestPictureFacts: AgentPicture[] = [];
     /** Where the stretch of thinking now open began, if one is. */
     let thinkingOpenedAt: number | undefined;
     /** How long the turn has thought so far, summed over closed stretches. */
@@ -352,11 +363,16 @@ export class MainAgent {
     /** What a tool answered, for calls whose result chunk never got read. */
     const whatToolAnswered = new Map<string, unknown>();
 
-    // What the reply row keeps of what was sent (`for_model`). Each finished
-    // step's messages, in order; a step went out as it is once a later request
-    // carried it. The hash is of the request the turn's first call sent; the
-    // provider's counts size the turn for the fold.
+    // Durable protocol facts for the reply row (`for_model`): each finished
+    // step's messages in order, plus the prefix hash of each generation.
+    // Picture projection can change later requests without rewriting these
+    // facts. Provider counts size the turn only while their coverage holds.
     const steps: ModelMessage[][] = [];
+    const generationSteps: AgentGenerationStep[] = [];
+    let generationPrefix = "";
+    let lastRequest: ModelMessage[] = [];
+    let prefixChangedDuringTurn = false;
+    let completeUsage = true;
     // True while the last finished step ended on a provider error and no later
     // request has started: that step is partial and went nowhere.
     let lastStepUnsent = false;
@@ -365,7 +381,7 @@ export class MainAgent {
     let sent: Assembly | undefined;
 
     /**
-     * What the reply row keeps of what was sent: the finished steps, the step
+     * The reply's durable protocol facts: the finished steps, the step
      * the turn ended inside, and a note when it did not end on its own.
      * @param ended - How the turn ended and what it left behind.
      * @param ended.exit - How the turn ended.
@@ -414,9 +430,26 @@ export class MainAgent {
         ...unfinished,
         ...(note === undefined ? [] : [{ role: "assistant" as const, content: note }]),
       ];
+      const keptSteps = generationSteps.slice(0, sentOn.length);
+      const pictureFacts = steps.flat().flatMap((message) => message.role === "tool" ? message.content.flatMap((part) =>
+        part.type === "tool-result" ? agentPictureOutputOf(part.output)?.pictures ?? [] : [],
+      ) : []);
+      const complete = ended.exit === "completed" && !lastStepUnsent && completeUsage && !prefixChangedDuringTurn &&
+        unfinished.length === 0 && note === undefined && messages.at(-1)?.role === "assistant" &&
+        reported.firstInput !== undefined && reported.lastInput !== undefined && reported.lastOutput !== undefined;
+      const sentSegment = expandAgentPictures([...sent.userKept.messages, ...messages.slice(own.length)]);
       return {
         messages,
         prefixHash: prefixHash(sent.agentConfig, ahead),
+        steps: keptSteps,
+        ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
+        countCoverage: {
+          version: 1,
+          ...(complete ? {
+            turnHash: prefixHash(sent.agentConfig, sentSegment),
+            endHash: prefixHash(sent.agentConfig, [...ahead, ...expandAgentPictures(messages)]),
+          } : {}),
+        },
         ...(opening.kind === "answer" && sent.userKept.snapshot !== undefined ? { snapshot: sent.userKept.snapshot } : {}),
         ...replyTokens(reported, {
           user: measureMessages(sent.userKept.messages),
@@ -459,13 +492,41 @@ export class MainAgent {
       }
       const storage = await getStorageAdapter();
 
+      if (preparePictures === undefined) {
+        turnStudioId = await assetService.resolveOwnerStudioId(projectId);
+        preparePictures = picturePreparerFor({ projectId, userId, studioId: turnStudioId });
+      }
+
       // One factory decides model, instructions and tools — see
       // domain/agent/agent-config.ts for why nothing else may assemble them.
-      const agentConfig: ResolvedAgentConfig = buildAgentConfig({
-        basePrompt: buildSystemPrompt(),
-        memoryContext,
-        toolContext: { mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url) },
+      const firstAssembly = fixedAgentConfig === undefined;
+      fixedAgentConfig ??= await buildAgentConfig({
+        basePrompt: buildSystemPrompt(), memoryContext,
+        ...(signal === undefined ? {} : { signal }),
+        toolContext: {
+          mediaUrlAllowed: (url) => storage.keyFromUrl(url) !== null || vouchedMedia.has(url),
+          preparePictures,
+        },
       });
+      const agentConfig: ResolvedAgentConfig = firstAssembly ? fixedAgentConfig : {
+        ...fixedAgentConfig,
+        instructions: instructionsForAgentMemory(fixedAgentConfig.instructions.base, memoryContext),
+      };
+      if (opening.kind === "message" && preparedTurn === undefined) {
+        const prepared = agentConfig.seesPictures
+          ? await preparePictures(pictureSourcesForTurn(opening.turn.chips), signal)
+          : [];
+        signal?.throwIfAborted();
+        preparedTurn = {
+          ...opening.turn,
+          pictures: prepared.flatMap((one) => one.status === "ready" ? [{
+            label: one.label, sourceUrl: one.sourceUrl, url: one.url, sizeBytes: one.sizeBytes, mediaType: one.mediaType,
+          }] : []),
+          pictureFailures: prepared.flatMap((one) => one.status === "unavailable" ? [{
+            label: one.label, sourceUrl: one.sourceUrl, reason: one.reason,
+          }] : []),
+        };
+      }
 
       // The open Space goes as one line while it is what the history,
       // folded as it is now, last sent of it in full.
@@ -476,21 +537,29 @@ export class MainAgent {
         role: "user",
         content:
           opening.kind === "message"
-            ? userMessageForModel(opening.clockNote, opening.turn, unchanged)
+            ? userMessageForModel(opening.clockNote, preparedTurn ?? opening.turn, unchanged)
             : continuationMessageForModel(opening.clockNote, opening.space, unchanged),
       };
-      const replayed = replayRows(history, agentConfig);
-      // Kept as it is so what is stored is what went out.
+      requestPictureFacts = [...pictureFactsOfRows(history), ...(preparedTurn?.pictures ?? [])];
+      const replayed = replayRows(history, agentConfig, { messages: [userMessage], pictures: preparedTurn?.pictures ?? [] });
+      // Keep logical facts before projection so a later turn can reselect pictures.
       const userKept: UserForModel = {
         messages: [userMessage],
+        ...((preparedTurn?.pictures?.length ?? 0) === 0 ? {} : { pictures: [...preparedTurn!.pictures!] }),
         ...(open === undefined ? {} : { snapshot: { ...open, full: !unchanged } }),
       };
+      const logical = [...replayed.flatMap((one) => one.logicalMessages ?? one.messages), userMessage];
+      const projection = agentConfig.picturePolicy === undefined ? undefined : projectAgentRequest({
+        messages: logical, pictures: requestPictureFacts, policy: agentConfig.picturePolicy, phase: "initial",
+      });
+      if ((projection?.changedMessageIndices.length ?? 0) > 0) prefixChangedDuringTurn = true;
       return {
         agentConfig,
         replayed,
         watermark,
         userKept,
-        messages: [...replayed.flatMap((one) => one.messages), userMessage],
+        messages: projection?.messages ?? logical,
+        logicalMessages: projection?.logicalMessages ?? logical,
       };
     };
 
@@ -577,8 +646,10 @@ export class MainAgent {
       });
       calls = watch;
 
+      const mainModel = getModel(agentConfig.modelId);
+      if (typeof mainModel === "string") throw new TypeError("The main agent requires an instantiated language model.");
       const result = streamTextRetry({
-        model: getModel(agentConfig.modelId),
+        model: wrapLanguageModel({ model: mainModel, middleware: pictureMiddleware }),
         // Chat is the one call site that asks for reasoning: it plans,
         // searches and decides between tools, and shows its working. It is
         // also the one whose prefix repeats -- every step of a turn and every
@@ -590,6 +661,28 @@ export class MainAgent {
         }),
         system: systemFor(agentConfig.modelId, agentConfig.instructions, agentCfg.prompt_cache_ttl),
         messages,
+        prepareStep: ({ messages: stepMessages }) => {
+          signal?.throwIfAborted();
+          // The SDK carries the previous projected request plus the new step.
+          // Keep its omissions for this run; raw response steps remain separate
+          // so the next turn can reconstruct all original picture facts.
+          const logical = stepMessages;
+          const offset = (assembly.logicalMessages ?? messages).length;
+          const activeSteps = generationSteps.map((step) => ({
+            ...step,
+            messageStart: offset + step.messageStart - (opening.kind === "answer" ? assembly.userKept.messages.length : 0),
+            messageEnd: offset + step.messageEnd - (opening.kind === "answer" ? assembly.userKept.messages.length : 0),
+          }));
+          const projected = agentConfig.picturePolicy === undefined ? undefined : projectAgentRequest({
+            messages: logical, pictures: requestPictureFacts, policy: agentConfig.picturePolicy, phase: "step",
+            steps: activeSteps, prefixHash: (prefix) => prefixHash(agentConfig, prefix),
+          });
+          const actual = projected?.messages ?? logical;
+          if (lastRequest.length > 0 && JSON.stringify(actual.slice(0, lastRequest.length)) !== JSON.stringify(lastRequest)) prefixChangedDuringTurn = true;
+          lastRequest = structuredClone(actual);
+          generationPrefix = prefixHash(agentConfig, actual);
+          return { messages: actual };
+        },
         tools: agentConfig.tools,
         // The paying tools record their calls on this turn's recorder, the
         // save stores for this project and reader, the canvas proposal check
@@ -656,6 +749,7 @@ export class MainAgent {
         onLanguageModelCallEnd: (event) => {
           watch.callEnded(event);
           reported = noteUsage(reported, event.usage);
+          if (event.usage.inputTokens === undefined || event.usage.outputTokens === undefined) completeUsage = false;
         },
         // Fires as each request is about to go out, after the previous
         // step's onStepFinish: the request carries that step as it is.
@@ -663,6 +757,9 @@ export class MainAgent {
           lastStepUnsent = false;
         },
         onStepFinish: (step) => {
+          const own = opening.kind === "answer" ? assembly.userKept.messages.length : 0;
+          const messageStart = own + steps.flat().length;
+          generationSteps.push({ messageStart, messageEnd: messageStart + step.response.messages.length, prefixHash: generationPrefix });
           steps.push(step.response.messages);
           lastStepUnsent = step.finishReason === "error";
         },
@@ -784,7 +881,15 @@ export class MainAgent {
         if (opening.kind === "message") {
           for (const toolCallId of opening.closedAsks) writer.write({ type: "data-ask-replied", data: { toolCallId } });
         }
-        writer.merge(await askTheModel(writer));
+        try {
+          writer.merge(await askTheModel(writer));
+        } catch (err) {
+          // Before a model stream exists, the SDK cannot emit its own abort.
+          // Pass the same stop through its wire protocol; ordinary failures
+          // still reach the single application error logger below.
+          if (signal?.aborted === true && err === signal.reason) writer.write({ type: "abort" });
+          else throw err;
+        }
       },
       // The one place a failed turn is noticed, whichever way it failed: the
       // SDK hands this callback both an error chunk arriving on the stream

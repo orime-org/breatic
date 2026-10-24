@@ -17,10 +17,10 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 | Endpoint | Who calls it |
 |---|---|
 | `POST /uploads`, `POST /fetch`, `PUT` part, `POST` finish | The upload path: the browser opens an upload and sends parts, our services pull a source URL (`/fetch`) and finish |
-| `POST /media` | Our worker: read width, height and duration of a stored object whose finish skipped that read, or an audio object's peaks |
+| `POST /media` | Our services: read stored media numbers, audio peaks, display previews or the Agent's static JPEG |
 | `POST /jobs`, `GET /jobs/{class}/{id}` | Our worker: submit and poll container mini-tool jobs (`src/jobs/`) |
 
-**`POST /media` is not read-only: with `wantPreview: true` the Worker writes the preview the container cut to `<key>.preview.webp`, and with `wantPeaks: true` the peaks the container read to `<key>.peaks.json`.** The finish decides the preview itself from the stored type; a peaks read whose file already stands answers `existing` without starting a container, because its only callers read nothing else.
+**`POST /media` writes only derivatives of its authorized source: `wantPreview` requests the display WebP, `wantPeaks` requests audio peaks, and `agentPicture` requests a separately versioned static JPEG.** Agent JPEG creation is conditional: an existing object is never overwritten, and both a cache hit and a lost creation race return the stored winner's actual size and MIME. Reads of standing peaks alone or a standing Agent JPEG alone omit the container. The contracts and key ownership are described in [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
 **A finish with `deferMediaRead: true` skips the media read, except for still images with EXIF orientation 2 to 8, which still go through the container to be turned upright.**
 

@@ -78,6 +78,10 @@ export type UnavailableKind =
 
 /** What is known about why it could not be had, by kind. */
 export interface UnavailableDetail {
+  /** One-based position in a batch, when an item could not be read. */
+  itemIndex?: number;
+  /** The source address of that batch item. */
+  url?: string;
   /** The status the far side answered with. */
   status?: number;
   /** Why it could not be had, in words: the layer underneath's, or ours. */
@@ -98,6 +102,10 @@ export interface UnavailableDetail {
 
 /** An address that could not be turned into media, and why. */
 export class MediaUnavailable extends Error {
+  /** One-based position in a batch, when known. */
+  readonly itemIndex?: number;
+  /** The source address of the failed item, when known. */
+  readonly url?: string;
   /** Which of the five ways it failed. */
   readonly kind: UnavailableKind;
   /** The status the far side answered with. */
@@ -117,7 +125,7 @@ export class MediaUnavailable extends Error {
    * @param about - What is known about it.
    */
   constructor(kind: UnavailableKind, about: UnavailableDetail = {}) {
-    super(`media unavailable (${kind})`);
+    super(`${about.itemIndex === undefined ? "" : `Item ${String(about.itemIndex)} (${about.url ?? "unknown address"}): `}media unavailable (${kind})`);
     this.name = "MediaUnavailable";
     this.kind = kind;
     this.status = about.status;
@@ -125,6 +133,8 @@ export class MediaUnavailable extends Error {
     this.declaredType = about.declaredType;
     this.bytes = about.bytes;
     this.limit = about.limit;
+    this.itemIndex = about.itemIndex;
+    this.url = about.url;
   }
 }
 
@@ -144,7 +154,7 @@ export class MediaUnavailable extends Error {
  * about something else.
  */
 export type RefusalKind =
-  /** About the media that was sent, and the same bytes fare the same again. */
+  /** The media request was refused; service facts determine what failed. */
   | "media"
   /** About the address we handed over: the backend could not fetch it. */
   | "unfetchable"
@@ -154,6 +164,9 @@ export type RefusalKind =
   | "transient"
   /** About the question: the model declined it, and rewording can clear it. */
   | "content-filter";
+
+/** How a batch travels, without attributing an inline failure to an image URL. */
+export type MediaTransport = "address" | "inline" | "mixed";
 
 /**
  * What is known about a call the service would not answer.
@@ -176,8 +189,8 @@ export interface RefusalFacts {
     | "body"
     /** A sentence of ours about a body that said nothing. */
     | "ours";
-  /** Whether the media travelled as an address for the backend to fetch. */
-  sentAsAddress: boolean;
+  /** Whether all media are addresses, all are inline, or the request mixes both. */
+  transport: MediaTransport;
 }
 
 /**
@@ -223,7 +236,7 @@ export class UnderstandRefused extends Error {
 /** What one understanding call needs to know. */
 export interface UnderstandRequest {
   /** The media to look at, listen to, or watch. */
-  media: Media;
+  media: readonly Media[];
   /** What to ask about it. */
   question: string;
   /** The model to call, named the way the service names models. */
@@ -263,6 +276,8 @@ export interface FetchMediaRequest {
   url: string;
   /** The largest file this caller will take. */
   maxBytes: number;
+  /** Remaining total AV download allowance; images retain their own limit. */
+  remainingDownloadBytes?: number;
   /** How long one delivery may take, up to the response headers. */
   fetchTimeoutMs: number;
   /** The rate a body is expected to arrive at, which sets the read budget. */
@@ -293,7 +308,11 @@ export interface FetchMediaRequest {
  * `timeoutMs` is the model call's, beside `fetchTimeoutMs` which is the
  * fetch's.
  */
-export type UnderstandAt = FetchMediaRequest & Omit<UnderstandRequest, "media">;
+export type UnderstandAt = Omit<FetchMediaRequest, "url" | "ledgerType" | "remainingDownloadBytes"> &
+  Omit<UnderstandRequest, "media"> & {
+    /** Ordered source addresses, each carrying its own optional ledger type. */
+    items: ReadonlyArray<Pick<FetchMediaRequest, "url" | "ledgerType">>;
+  };
 
 /**
  * Who answers a reading, pinned.

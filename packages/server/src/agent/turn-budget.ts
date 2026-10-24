@@ -28,10 +28,12 @@ export interface Assembly {
   replayed: ReplayedRow[];
   /** How far the conversation was folded when this was read. */
   watermark: number;
-  /** This turn's message as it is sent, and the Space it sent in full. */
+  /** This turn's logical message, picture facts and Space snapshot before projection. */
   userKept: UserForModel;
   /** The history and this turn's question, as they will be sent. */
   messages: ModelMessage[];
+  /** Initial selected logical facts, reused without restoring omissions within the SDK loop. */
+  logicalMessages?: ModelMessage[];
 }
 
 /** Who is asking, and whether they are still there. */

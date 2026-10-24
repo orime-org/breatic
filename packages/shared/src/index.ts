@@ -745,6 +745,13 @@ export {
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
+export {
+  agentPictureKeyFor,
+  agentPictureSpecSchema,
+  type AgentPictureSpec,
+  type AgentPictureRead,
+} from "@shared/upload/agent-picture.js";
+
 // Sending bytes to the ingest Worker. Whoever holds them sends them: the
 // browser for a file a person picked, our own backend for what it produced
 // itself -- one implementation, so "every asset reaches R2 through the ingest

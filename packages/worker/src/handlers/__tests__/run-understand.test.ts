@@ -119,6 +119,7 @@ describe("running one understand task", () => {
       text: "A red bicycle against a brick wall.",
       finishReason: "stop",
       kind: "image",
+      kinds: ["image"],
     });
   });
 
@@ -130,7 +131,7 @@ describe("running one understand task", () => {
     await runUnderstand({ ...PARAMS, source_mime_type: "image/png" }, recorder(), DEADLINE_AT);
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
-      expect.objectContaining({ ledgerType: "image/png" }),
+      expect.objectContaining({ items: [{ url: PARAMS.source_url, ledgerType: "image/png" }] }),
     );
   });
 
@@ -140,7 +141,7 @@ describe("running one understand task", () => {
     await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
 
     const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
-    expect(args).not.toHaveProperty("ledgerType");
+    expect(args?.items).toEqual([{ url: PARAMS.source_url }]);
   });
 
   it("hands the address and the ceilings to the shared capability", async () => {
@@ -155,7 +156,7 @@ describe("running one understand task", () => {
     expect(args?.signal).toBeInstanceOf(AbortSignal);
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: PARAMS.source_url,
+        items: [{ url: PARAMS.source_url }],
         maxBytes: expect.any(Number),
         maxOutputTokens: expect.any(Number),
         question: expect.any(String),
@@ -182,6 +183,7 @@ describe("running one understand task", () => {
       text: "",
       finishReason: "stop",
       kind: "image",
+      kinds: ["image"],
     });
 
     await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toThrow();
@@ -332,7 +334,7 @@ describe("running one transcription", () => {
    * @param finishReason - Why it stopped.
    */
   function answers(text: string, finishReason: string): void {
-    vi.mocked(understandMediaAt).mockResolvedValue({ text, finishReason, kind: "audio" });
+    vi.mocked(understandMediaAt).mockResolvedValue({ text, finishReason, kind: "audio", kinds: ["audio"] });
   }
 
   beforeEach(() => {

@@ -120,7 +120,7 @@ describe("a consolidation that lands", () => {
     // two into the instructions a turn is sent with. Stopping at the context
     // object leaves that hop unguarded, and it is a hop this task edited.
     const { buildAgentConfig } = await import("@breatic/domain");
-    const { instructions } = buildAgentConfig({
+    const { instructions } = await buildAgentConfig({
       basePrompt: "system",
       memoryContext: context,
     });
