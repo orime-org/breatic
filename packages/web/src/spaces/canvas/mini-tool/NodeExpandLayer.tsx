@@ -19,7 +19,7 @@ interface NodeExpandLayerProps {
 
 /**
  * The expand tool's part in the node (inner#1303 §6.3): it covers the node's
- * own picture, which stays put while its copy moves in the frame, and records
+ * own picture, whose fixed copy is drawn over the frame fill, and records
  * where the node shows the picture. The frame itself is `ExpandFrameOverlay`, drawn in the canvas's
  * viewport so it outlives the node going off screen.
  * @param root0 - Component props.
@@ -46,7 +46,7 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   if (expand === null || geometry === null) return null;
   const { box, at } = geometry;
   return (
-    // The node's own picture stays put while its copy moves in the frame.
+    // The viewport overlay draws the source at this same fixed location.
     <div
       data-testid='mini-tool-expand-cover'
       className='pointer-events-none absolute'

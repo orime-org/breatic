@@ -17,7 +17,7 @@ import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
 import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   isExpanded,
-  moveSource,
+  moveFrame,
   resizeFrame,
   type ExpandFrame,
   type ExpandRatio,
@@ -68,9 +68,9 @@ export function expandFillStyle(scale: number, from: { x: number; y: number }): 
  * would vanish while its visible part is still on screen. It is placed from
  * the node's position and where the node last showed the picture.
  *
- * The frame stays put on the canvas: its handles grow it past the picture, and
- * once it is grown the picture can be dragged inside it, shown as a copy over
- * the frame's fill so the card's clip does not cut it. A drag ends on release,
+ * The source stays at its node while the background and frame move around it.
+ * The source is shown over the frame's fill at its original position.
+ * A drag ends on release,
  * on cancel, or when the frame is written by anyone else (a ratio preset, a
  * reset). Pointers are read in canvas pixels, without the grid nodes snap to,
  * so a zoom mid-drag keeps the grabbed point under the pointer. A right-click
@@ -113,7 +113,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     gesture.current = null;
   }
   if (!drawn) return null;
-  const { frame, ratio, shift } = expand;
+  const { frame, ratio } = expand;
   const { box } = view;
   // The picture's corner on the canvas: the node's place plus where it shows it.
   const origin = {
@@ -131,27 +131,24 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     screenToFlowPosition({ x: e.clientX, y: e.clientY }, { snapToGrid: false });
 
   /**
-   * A canvas point as shares of the picture where its copy is drawn now.
+   * A canvas point as shares of the fixed source.
    * @param at - The point in canvas pixels.
    * @param at.x - Across.
    * @param at.y - Down.
    * @returns The point.
    */
   const toShare = (at: { x: number; y: number }): { x: number; y: number } => ({
-    x: (at.x - origin.x) / box.width - shift.x,
-    y: (at.y - origin.y) / box.height - shift.y,
+    x: (at.x - origin.x) / box.width,
+    y: (at.y - origin.y) / box.height,
   });
 
   /**
    * Write the frame and remember it as this drag's own.
    * @param next - The frame.
-   * @param nextShift - How far the picture has moved.
-   * @param nextShift.x - Across, as a share of it.
-   * @param nextShift.y - Down, as a share of it.
    */
-  const write = (next: ExpandFrame, nextShift: { x: number; y: number }): void => {
+  const write = (next: ExpandFrame): void => {
     if (gesture.current !== null) gesture.current.last = next;
-    store.getState().setExpand({ frame: next, ratio, shift: nextShift });
+    store.getState().setExpand({ frame: next, ratio });
   };
 
   /**
@@ -177,13 +174,12 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     const held = gesture.current;
     if (held === null || e.pointerId !== held.pointerId) return;
     if (held.type === 'resize') {
-      write(resizeFrame(held.frame, held.handle, toShare(onCanvas(e)), held.ratio, sourceSize, cap), shift);
+      write(resizeFrame(held.frame, held.handle, toShare(onCanvas(e)), held.ratio, sourceSize, cap));
       return;
     }
     const at = onCanvas(e);
     const delta = { x: (at.x - held.start.x) / box.width, y: (at.y - held.start.y) / box.height };
-    const next = moveSource(held.frame, delta);
-    write(next, { x: shift.x + (frame.x - next.x), y: shift.y + (frame.y - next.y) });
+    write(moveFrame(held.frame, delta));
   };
 
   /**
@@ -201,17 +197,20 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     <div
       data-testid='mini-tool-expand-frame'
       // `pointer-events-auto` because the viewport hands pointer events back per node only.
-      className={`${TOOL_LAYER_CLASS} pointer-events-auto absolute touch-none border-solid border-background outline outline-foreground`}
+      className={`${TOOL_LAYER_CLASS} pointer-events-auto absolute touch-none border-solid border-background outline outline-foreground ${grown && !exporting ? 'cursor-move' : ''}`}
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget && grown) begin(e, { type: 'move', start: onCanvas(e) });
+      }}
       onClick={stopNodeClick}
       style={{
-        left: origin.x + (frame.x + shift.x) * box.width,
-        top: origin.y + (frame.y + shift.y) * box.height,
+        left: origin.x + frame.x * box.width,
+        top: origin.y + frame.y * box.height,
         width: frame.width * box.width,
         height: frame.height * box.height,
         borderWidth: scale,
         outlineWidth: scale,
         // The background starts inside the border.
-        ...expandFillStyle(scale, { x: -(frame.x + shift.x) * box.width - scale, y: -(frame.y + shift.y) * box.height - scale }),
+        ...expandFillStyle(scale, { x: -frame.x * box.width - scale, y: -frame.y * box.height - scale }),
       }}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -227,7 +226,8 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
           src={view.src}
           alt=''
           draggable={false}
-          className={`absolute select-none ${grown && !exporting ? 'cursor-move' : ''}`}
+          // The frame's border must not shrink the source through Preflight's max-width.
+          className='absolute max-w-none cursor-default select-none'
           // Placed from inside the frame's border, so the border is taken off
           // to keep the copy at the picture's own place.
           style={{
@@ -235,9 +235,6 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
             top: -frame.y * box.height - scale,
             width: box.width,
             height: box.height,
-          }}
-          onPointerDown={(e) => {
-            if (grown) begin(e, { type: 'move', start: onCanvas(e) });
           }}
         />
       )}
