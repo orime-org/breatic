@@ -7,18 +7,31 @@ import type * as Y from "yjs";
 export const SCENE_FORMAT_VERSION = 1;
 
 /**
- * Initialize a new 3D Space document without replacing existing scene data.
+ * Bind a scene root and validate its map-only content structure.
+ * @param doc - The Space's scene document.
+ * @param name - Root defined by the scene format.
+ * @returns The validated root map.
+ * @throws {Error} When the root has an incompatible type or sequence content.
+ */
+export function getSceneRootMap(doc: Y.Doc, name: "scene" | "objects"): Y.Map<unknown> {
+  const root = doc.getMap<unknown>(name);
+  // Decoded roots acquire their constructor on getMap; sequence content survives that binding.
+  if (root._start !== null) throw new Error(`Scene root ${name} contains sequence content`);
+  return root;
+}
+
+/**
+ * Initialize version metadata on an empty 3D Space document.
  *
  * Empty root maps are declared locally: Yjs encodes their entries, not an
  * empty root declaration. Readers bind the same named maps after decoding.
- * Existing content is retained, including data with missing version metadata.
- * This initializer is not an upgrader.
+ * Existing entries and version metadata remain intact.
  * @param doc - The Space's scene document.
- * @throws {Error} When a named root already has an incompatible shared type.
+ * @throws {Error} When a named root contains incompatible shared content.
  */
 export function initializeSceneDocument(doc: Y.Doc): void {
-  const scene = doc.getMap<unknown>("scene");
-  const objects = doc.getMap<unknown>("objects");
+  const scene = getSceneRootMap(doc, "scene");
+  const objects = getSceneRootMap(doc, "objects");
   if (scene.size > 0 || objects.size > 0) return;
   doc.transact(() => {
     scene.set("formatVersion", SCENE_FORMAT_VERSION);

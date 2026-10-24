@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { z } from 'zod';
 
 import {
-  SCENE_EDITABLE_FIELDS, SCENE_FORMAT_VERSION, SceneObjectSchema, SceneObjectValuesSchema,
+  SCENE_EDITABLE_FIELDS, SCENE_FORMAT_VERSION, SceneObjectSchema, SceneObjectValuesSchema, getSceneRootMap,
   type SceneEditableField, type SceneObject, type SceneObjectValues,
 } from '@breatic/shared';
 
@@ -71,8 +71,8 @@ export function readSceneDocument(doc: Y.Doc): SceneDocumentSnapshot {
   let version: unknown;
   let records: Y.Map<unknown>;
   try {
-    version = doc.getMap('scene').get('formatVersion');
-    records = doc.getMap('objects');
+    version = getSceneRootMap(doc, 'scene').get('formatVersion');
+    records = getSceneRootMap(doc, 'objects');
   } catch (error) {
     return { status: 'unsupported', version, objects: [], invalidObjects: [
       { id: 'scene', error: String(error) },
@@ -100,8 +100,8 @@ export function readSceneDocument(doc: Y.Doc): SceneDocumentSnapshot {
  * @throws {Error} When root types or format metadata are invalid.
  */
 export function validateSceneRecovery(doc: Y.Doc): void {
-  const scene = doc.getMap('scene');
-  const objects = doc.getMap('objects');
+  const scene = getSceneRootMap(doc, 'scene');
+  const objects = getSceneRootMap(doc, 'objects');
   const version: unknown = scene.get('formatVersion');
   if (version !== undefined && (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1)) {
     throw new Error('Invalid scene format version');
