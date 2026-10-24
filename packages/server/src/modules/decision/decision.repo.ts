@@ -70,7 +70,7 @@ const SOURCES = [
  * @returns SQL that evaluates to the row's `failed_reason`.
  */
 export function failedReasonAtNow(expiresAt: AnyPgColumn): SQL<RequestFailedReason> {
-  return sql<RequestFailedReason>`CASE WHEN ${expiresAt} <= now() THEN 'expired' ELSE 'invalidated' END`;
+  return sql<RequestFailedReason>`CASE WHEN ${expiresAt} <= clock_timestamp() THEN 'expired' ELSE 'invalidated' END`;
 }
 
 /**
@@ -94,7 +94,9 @@ export async function resolveByToken(
         status: source.table.status,
         failedReason: source.table.failedReason,
         deletedAt: source.table.deletedAt,
-        createdAt: source.table.createdAt,
+        createdAt: "claimedAt" in source.table
+          ? sql<Date>`coalesce(${source.table.claimedAt}, ${source.table.createdAt})`.mapWith(source.table.createdAt)
+          : source.table.createdAt,
         expiresAt: source.table.expiresAt,
       })
       .from(source.table)
@@ -128,7 +130,7 @@ export interface RequestDetail {
   /** Who set it in motion. */
   actorUserId: string;
   /** Who is being asked. */
-  recipientUserId: string;
+  recipientUserId: string | null;
   role: string | null;
   message: string | null;
 }

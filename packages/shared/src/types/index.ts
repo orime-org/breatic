@@ -211,6 +211,7 @@ export type {
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
+  SignupInvitationPreview,
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";

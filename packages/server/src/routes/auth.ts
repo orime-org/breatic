@@ -18,7 +18,7 @@ import { registerSchema, signupVerifySchema, loginSchema, setupStudioSchema } fr
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService, signupCodeService, studioService } from "@server/modules";
+import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
 import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -37,6 +37,15 @@ import { logMailResult } from "@server/utils/log-mail.js";
 import { runAfterReply } from "@server/utils/after-reply.js";
 
 const auth = new Hono<{ Variables: AuthVariables }>();
+
+/** Public registration invitation preview query. */
+const invitationPreviewSchema = z.object({ token: z.string().min(1).max(64) });
+
+auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invitationPreviewSchema), async (c) => {
+  const { token } = c.req.valid("query");
+  const data = await invitationService.getInvitationPreview(token);
+  return c.json({ data });
+});
 
 /**
  * Project a studio row onto the wire shape every `/auth/*` response uses
@@ -198,6 +207,7 @@ auth.post(
       parseAttribution(attribution),
     );
     clearSignupTicketCookie(c);
+    if (user.emailVerified) await invitationService.claimEmailInvitations(user);
     setSessionCookie(c, await authService.createSession(user.id));
     logger.info({ userId: user.id, email: user.email }, "user_registered");
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");

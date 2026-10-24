@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { authApi } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
@@ -19,6 +19,7 @@ import {
   useSlugAvailability,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wait-for-slug-check';
+import { safeNextPath } from '@web/lib/safe-next-path';
 
 /**
  * Onboarding step two: pick a slug, which the server uses to create the
@@ -37,7 +38,7 @@ import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wai
  * line, and one that beats the live check waits for it.
  *
  * On success the new personal studio is written into the current-user store
- * (lifting the onboarding gate), then the page navigates to `/studio`. This
+ * (lifting the onboarding gate), then the page navigates to its app destination. This
  * page is NOT subject to the personal-studio gate (its route uses
  * `requirePersonalStudio={false}`) — otherwise it would redirect to itself.
  * @returns the onboarding slug form.
@@ -45,6 +46,8 @@ import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wai
 export default function SlugSetupPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = safeNextPath(params.get('next'));
   const queryClient = useQueryClient();
   const user = useCurrentUserStore((s) => s.user);
   const setUser = useCurrentUserStore((s) => s.setUser);
@@ -79,7 +82,7 @@ export default function SlugSetupPage(): React.JSX.Element {
       if (user) {
         setUser(applyPersonalStudio(user, personalStudio));
       }
-      navigate('/studio', { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       // The field stays on the page holding the submitted slug (it is locked
       // while submitting), so a slug taken in the meantime is always its to

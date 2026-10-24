@@ -34,7 +34,9 @@ export type ProjectInvitationStatus =
  */
 export interface PendingProjectInvitationSummary {
   invitationId: string;
-  invitedUserId: string;
+  invitedUserId: string | null;
+  /** Whether this recipient still needs to register and verify their email. */
+  awaitingSignup: boolean;
   /** The invitee's display name (their personal-studio name; email fallback). */
   name: string;
   email: string;
@@ -45,4 +47,17 @@ export interface PendingProjectInvitationSummary {
   /** ISO-8601 expiry timestamp (`project_invitations.expiresAt`). */
   expiresAt: string;
 }
+
+/** Public information carried by an invitation registration link. */
+export type SignupInvitationPreview =
+  | { state: "claimed" }
+  | { state: "closed" }
+  | {
+    state: "open";
+    email: string;
+    inviterName: string;
+    kind: "project" | "studio";
+    targetName: string;
+    role: string;
+  };
 

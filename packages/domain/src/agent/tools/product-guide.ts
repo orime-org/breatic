@@ -170,9 +170,22 @@ export function renderProductGuide(): string {
       `${quoted(t("share.inviteSection"))}: type an address in ${quoted(t("share.invitePlaceholder"))}, pick ` +
       `${quoted(t("share.role.view"))} or ${quoted(t("share.role.edit"))} and press ` +
       `${quoted(t("share.inviteButton"))}; an address that is not one shows ${quoted(t("share.invalidEmail"))} ` +
-      "Only someone who already has an account can be invited, and they join only once they accept, from " +
-      "their bell or the email. Otherwise the invitation is refused with a message such as " +
-      `${quoted(t("server.project.email_not_registered"))} ${quoted(t("server.project.already_member"))} or ` +
+      "Someone who already has an account receives an invitation in their bell and, when email is enabled, " +
+      "by email. An unregistered address receives an email linking to registration; after that same address " +
+      "is verified, its invitations appear in the new account's bell. Registration from the email pre-fills " +
+      "the address and leads to the invitation's decision page. Neither path adds a member until they accept. " +
+      "Below the form, " +
+      `${quoted(t("share.pendingTitle"))} lists outstanding invitations: a registered person's name and email ` +
+      "with a role and an awaiting-response badge, or an unregistered address with its role and " +
+      `${quoted(t("share.awaitingSignup"))}. Each row has ${quoted(t("share.revoke"))}, which withdraws ` +
+      "that invitation. Hover the recipient identity or focus it with Tab to read the full email address; " +
+      "Tab then reaches that row's withdraw button. The list disappears when no invitations remain. Email invitations expire after " +
+      "seven days; verification starts a fresh seven-day period for acceptance. Revocation or project " +
+      "archival prevents an outstanding email invitation from becoming an account invitation. " +
+      "With email disabled an unregistered address is refused with " +
+      `${quoted(t("server.project.email_not_registered_no_mail"))} A delivery failure says ` +
+      `${quoted(t("server.project.invite_mail_failed"))} Other refusals include ` +
+      `${quoted(t("server.project.already_member"))} or ` +
       `${quoted(t("server.project.already_invited"))} (a full project says how many collaborators its plan ` +
       "allows: the plan of the studio's admin, so only their upgrade raises it). Last is a " +
       `bell, with a red dot while anything in it is unread, which opens ${quoted(t("notifications.title"))}. ` +

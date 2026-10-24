@@ -62,7 +62,9 @@
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
-      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends."
+      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends.",
+      "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
+      "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -81,7 +83,9 @@
       "not_found": "Project not found",
       "archived": "This project is archived and can only be viewed.",
       "copy_name": "Copy of {name}",
-      "leave_owner": "The owner has to transfer ownership before leaving."
+      "leave_owner": "The owner has to transfer ownership before leaving.",
+      "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
+      "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -236,6 +240,16 @@
         "subject": "Your verification code",
         "lead": "Enter this code on the sign-up page to finish creating your account.",
         "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} invited you to join {project}",
+        "lead": "<b>{inviter}</b> invited you to collaborate on the project <b>{project}</b> as <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>.",
+        "action": "Register and join"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} invited you to join {studio}",
+        "lead": "<b>{inviter}</b> invited you to join the studio <b>{studio}</b> as <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>.",
+        "action": "Register and join"
       }
     },
     "mini_tool": {
@@ -1386,7 +1400,10 @@
         "resendIn": "Resend in {seconds}s",
         "changeEmail": "Use a different email",
         "newCodeSent": "We sent you a new code."
-      }
+      },
+      "invitedBanner": "{inviterName} invited you to join {targetName}",
+      "invitedEmailMismatch": "This invitation is for {email}. Registering with another email will not receive it.",
+      "inviteClosed": "This invitation is no longer available."
     },
     "onboarding": {
       "title": "Pick your Slug",
@@ -1826,7 +1843,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} is not registered yet. We sent an email inviting them to register.",
+    "awaitingSignup": "Waiting for registration",
+    "pendingTitle": "Pending invitations",
+    "pendingBadge": "{role} · Awaiting response",
+    "revoke": "Revoke",
+    "revokeSuccess": "Invitation revoked.",
+    "revokeFailed": "Could not revoke the invitation."
   },
   "notifications": {
     "title": "Notifications",
@@ -2065,7 +2089,9 @@
         "pendingBadge": "{role} · pending",
         "revoke": "Revoke",
         "revokeSuccess": "Invitation revoked.",
-        "inviteSent": "Invitation sent."
+        "inviteSent": "Invitation sent.",
+        "inviteSentPendingSignup": "{email} is not registered yet. We sent an email inviting them to register.",
+        "awaitingSignup": "Waiting for registration"
       },
       "settings": {
         "basicTitle": "Basic info",

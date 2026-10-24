@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { normalizeEmail } from '@breatic/shared';
+import type { SignupInvitationPreview } from '@breatic/shared';
 
 import { authApi, type AuthUser, type SignupCodeSent } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
@@ -18,6 +21,7 @@ import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
 import { SignupCodeStep } from '@web/pages/auth/SignupCodeStep';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
+import { safeNextPath } from '@web/lib/safe-next-path';
 
 /**
  * Email + password registration — step one of the two-step sign-up.
@@ -40,9 +44,28 @@ import { looksLikeEmail } from '@web/lib/looks-like-email';
 export default function RegisterPage(): React.JSX.Element {
   const t = useTranslation();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const inviteToken = params.get('invite') || null;
+  const decisionPath = inviteToken ? `/decision?token=${encodeURIComponent(inviteToken)}` : null;
+  const next = decisionPath ?? safeNextPath(params.get('next'));
+  const carriesNext = decisionPath !== null || params.has('next');
+  const slugPath = carriesNext ? `/choose-slug?next=${encodeURIComponent(next)}` : '/choose-slug';
+  const loginPath = carriesNext ? `/login?next=${encodeURIComponent(next)}` : '/login';
   const setUser = useCurrentUserStore((s) => s.setUser);
 
-  const [email, setEmail] = React.useState('');
+  const invitation = useQuery({
+    queryKey: ['auth', 'invitation', inviteToken],
+    queryFn: () => authApi.invitation(inviteToken ?? ''),
+    enabled: inviteToken !== null,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const preview: SignupInvitationPreview | undefined = invitation.data;
+  const openInvitation = preview?.state === 'open' ? preview : null;
+  const [emailDraft, setEmailDraft] = React.useState<{ token: string | null; value: string } | null>(null);
+  const email = emailDraft && emailDraft.token === inviteToken
+    ? emailDraft.value
+    : openInvitation?.email ?? '';
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<{
@@ -51,6 +74,47 @@ export default function RegisterPage(): React.JSX.Element {
   }>({});
   const [formError, setFormError] = React.useState<string | null>(null);
   const [codeSent, setCodeSent] = React.useState<SignupCodeSent | null>(null);
+
+  const previewClosed = invitation.data?.state === 'closed'
+    || (invitation.error instanceof ApiException && invitation.error.status === 404);
+  const previewFailed = invitation.isError && !previewClosed;
+  const previewPending = inviteToken !== null && invitation.isPending;
+  const banner = openInvitation ? t('auth.register.invitedBanner', {
+    inviterName: openInvitation.inviterName,
+    targetName: openInvitation.targetName,
+  }) : null;
+  const closedMessage = t('auth.register.inviteClosed');
+  const loadingMessage = t('common.loading');
+  const previewError = invitation.error instanceof ApiException && invitation.error.fromServer
+    ? invitation.error.message
+    : t('common.pageUnavailable.message');
+  const retryLabel = t('common.pageUnavailable.action');
+  const { refetch } = invitation;
+
+  /** Reload the invitation preview while retaining the current form values. */
+  const retryInvitation = React.useCallback((): void => {
+    void refetch();
+  }, [refetch]);
+
+  const intro = React.useMemo((): React.ReactNode => {
+    if (inviteToken === null) return null;
+    if (previewFailed) {
+      return (
+        <div className='mb-4 flex flex-col gap-2'>
+          <FieldError>{previewError}</FieldError>
+          <Button type='button' variant='outline' onClick={retryInvitation}>
+            {retryLabel}
+          </Button>
+        </div>
+      );
+    }
+    const message = previewPending ? loadingMessage : previewClosed ? closedMessage : banner;
+    return message ? (
+      <div className='mb-4 rounded-content-sm border border-border bg-muted px-3 py-2.5 text-sm'>
+        {message}
+      </div>
+    ) : null;
+  }, [inviteToken, previewFailed, previewError, retryInvitation, retryLabel, previewPending, loadingMessage, previewClosed, closedMessage, banner]);
 
   /**
    * Send the form's email and password and follow the answer.
@@ -72,7 +136,7 @@ export default function RegisterPage(): React.JSX.Element {
         setUser(toCurrentUser(answer.user));
         reportConversion('signup', `signup:${answer.user.id}`);
         navigate('/recovery-code', {
-          state: { code: answer.recoveryCode, next: '/choose-slug' },
+          state: { code: answer.recoveryCode, next: slugPath },
           replace: true,
         });
         return null;
@@ -83,7 +147,7 @@ export default function RegisterPage(): React.JSX.Element {
         return null;
       }
     },
-    [password, setUser, navigate, t],
+    [password, setUser, navigate, slugPath, t],
   );
 
   const restart = React.useCallback(
@@ -95,9 +159,9 @@ export default function RegisterPage(): React.JSX.Element {
     (user: AuthUser): void => {
       setUser(toCurrentUser(user));
       reportConversion('signup', `signup:${user.id}`);
-      navigate('/choose-slug', { replace: true });
+      navigate(slugPath, { replace: true });
     },
-    [setUser, navigate],
+    [setUser, navigate, slugPath],
   );
 
   const handleChangeEmail = React.useCallback((): void => {
@@ -122,6 +186,7 @@ export default function RegisterPage(): React.JSX.Element {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    setEmailDraft({ token: inviteToken, value: trimmedEmail });
     setSubmitting(true);
     trackEvent('signup_started', { method: 'email' });
     try {
@@ -129,6 +194,10 @@ export default function RegisterPage(): React.JSX.Element {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (invitation.data?.state === 'claimed' && decisionPath) {
+    return <Navigate to={decisionPath} replace />;
   }
 
   if (codeSent) {
@@ -150,10 +219,11 @@ export default function RegisterPage(): React.JSX.Element {
         title={t('auth.register.title')}
         notice={<TermsNotice />}
         subtitle={t('auth.register.subtitle')}
+        intro={intro}
         footer={
           <>
             {t('auth.register.haveAccount')}{' '}
-            <AuthLink to='/login'>{t('auth.register.signIn')}</AuthLink>
+            <AuthLink to={loginPath}>{t('auth.register.signIn')}</AuthLink>
           </>
         }
       >
@@ -166,7 +236,7 @@ export default function RegisterPage(): React.JSX.Element {
               autoComplete='email'
               value={email}
               onChange={(e) => {
-                setEmail(e.target.value);
+                setEmailDraft({ token: inviteToken, value: e.target.value });
                 if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
               }}
               readOnly={submitting}
@@ -175,6 +245,11 @@ export default function RegisterPage(): React.JSX.Element {
             />
             {errors.email ? (
               <FieldError id='register-email-error'>{errors.email}</FieldError>
+            ) : null}
+            {openInvitation && normalizeEmail(email) !== normalizeEmail(openInvitation.email) ? (
+              <p className='text-xs text-muted-foreground'>
+                {t('auth.register.invitedEmailMismatch', { email: openInvitation.email })}
+              </p>
             ) : null}
           </div>
 

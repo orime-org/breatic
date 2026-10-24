@@ -109,6 +109,40 @@ export function buildProjectInvitationMail(
   });
 }
 
+/**
+ * Build the primary registration email for a Project mailbox invitation.
+ * @param input - Inviter locale, recipient, target, role and registration link.
+ * @returns The rendered email carrying the original invitation token.
+ * @throws {Error} When rendering fails.
+ */
+export function buildProjectSignupInvitationMail(input: ProjectInvitationMailInput): Promise<RenderedMail> {
+  const names = { inviter: input.inviterName, project: input.projectName };
+  return renderMail(input.locale, {
+    to: input.inviteeEmail,
+    subject: { key: "server.mail.project_signup_invite.subject", params: names },
+    body: [{ key: "server.mail.project_signup_invite.lead", params: { ...names, role: input.role } }],
+    action: { label: { key: "server.mail.project_signup_invite.action" }, href: input.inviteLink },
+    note: expiryNote("invitation"),
+  });
+}
+
+/**
+ * Build the primary registration email for a Studio mailbox invitation.
+ * @param input - Inviter locale, recipient, target, role and registration link.
+ * @returns The rendered email carrying the original invitation token.
+ * @throws {Error} When rendering fails.
+ */
+export function buildStudioSignupInvitationMail(input: StudioInvitationMailInput): Promise<RenderedMail> {
+  const names = { inviter: input.inviterName, studio: input.studioName };
+  return renderMail(input.locale, {
+    to: input.inviteeEmail,
+    subject: { key: "server.mail.studio_signup_invite.subject", params: names },
+    body: [{ key: "server.mail.studio_signup_invite.lead", params: { ...names, role: input.role } }],
+    action: { label: { key: "server.mail.studio_signup_invite.action" }, href: input.inviteLink },
+    note: expiryNote("invitation"),
+  });
+}
+
 /** Fields for the studio transfer-admin email. */
 export interface StudioTransferMailInput {
   /** The recipient's language. */

@@ -2,22 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Project invite-confirmation handshake service (2026-06-18, #1337).
+ * Project invite-confirmation handshake service.
  *
- * The direct mirror of the studio invite service for the project membership
- * layer. Replaces the old `share_links` model (a link consumer joined on click,
- * with no decline state and no invitee-side handshake): an owner's invite now
- * creates a PENDING `project_invitations` row + an actionable bell notification;
- * the invitee becomes a real `project_members` row only when they confirm (via
- * the bell or the email link). The source of truth is the `project_invitations`
- * row (so the owner can see "invited (pending)"), not the notification.
+ * An owner invites an existing account or an unregistered mailbox. The shared
+ * invitation service arbitrates recipients under the target lock and settles
+ * mail delivery. Account invitations receive a bell notification immediately;
+ * mailbox invitations receive signup mail and become account invitations,
+ * with a notification, after matching email verification. The original row
+ * and share token survive that conversion. Membership starts only on confirm.
  *
- * Five operations:
- *   - `createInvite`: owner invites a registered user. Validates, then in ONE
- *     tx creates the pending row + the `project.invite_request` notification +
- *     links them. Returns the invitee + invitation id so the route layer can
- *     send the (optional) email. A second LIVE pending for the same
- *     (project, invitee) hits the partial unique → ConflictError.
+ * Four operations:
+ *   - `createInvite`: delegates creation, recipient arbitration, notification
+ *     and mail settlement to the shared invitation service. Duplicate live
+ *     invitations for the same recipient are rejected across both forms.
  *   - `confirmInvite`: the invitee accepts. In ONE tx: take the project's row
  *     (refusing if it is gone), the accept CAS (the serialization point —
  *     concurrent confirms apply EXACTLY ONCE), the collaborator ceiling behind
@@ -36,188 +33,54 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
+import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
-import { buildProjectInvitationMail } from "@server/utils/notification-mail.js";
-import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
 import * as projectJoinRequestService from "@server/modules/project-join-request/projectJoinRequest.service.js";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { projectMembersRepo } from "@breatic/core";
 import { type ProjectRole, t } from "@breatic/shared";
-import { decisionLink } from "@server/utils/decision-link.js";
 import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
-import {
-  getDecisionWindowMs,
-} from "@server/config/limits.js";
 
 /**
- * Invite a registered user into a project — creates a PENDING invite (it does
- * NOT take effect until the invitee confirms) plus the actionable bell
- * notification, atomically.
- *
- * Resolves the project by id, looks the invitee up by email (unregistered →
- * NotFound), and refuses re-inviting a user who already has an active
- * `project_members` row (owner / editor / viewer). Mints the request's share
- * token here; the bell (from the notification payload) and the email both build
- * the same `/decision?token=` link from it. The token is
- * a NOT NULL column written by the same insert, so a rollback takes row and
- * token together — there is nothing to orphan. The
- * `project_invitations_one_pending` partial unique maps a duplicate LIVE
- * pending to a ConflictError.
- * @param projectId - The project the user is being invited into
- * @param inviterUserId - The acting owner (becomes `invitedBy`; name in payload)
- * @param email - The invitee's email; must belong to a registered user
- * @param role - The granted project role (editor | viewer; never owner)
- * @param origin - Request Origin; when set, the best-effort invite email is sent
- *   here (link built from the shared token). Omit to skip it.
- * @returns The new invitation id, the invitee's id + email, and the project /
- *   inviter names + role
- * @throws {NotFoundError} project not found, or no user with that email
- * @throws {ConflictError} the user already has access to the project, or already
- *   has a live pending invite to it
+ * Invite an account or mailbox to a Project through recipient arbitration.
+ * @param projectId - The Project whose owner is inviting.
+ * @param inviterUserId - The acting owner.
+ * @param email - Recipient mailbox.
+ * @param role - Granted membership role.
+ * @param origin - Trusted frontend origin for invitation links.
+ * @returns The committed invitation and its recipient delivery state.
+ * @throws {NotFoundError} When the target or invitation is closed.
+ * @throws {ConflictError} When duplicate, full, already a member or undelivered.
+ * @throws {Error} When persistence fails.
  */
 export async function createInvite(
-  projectId: string,
-  inviterUserId: string,
-  email: string,
-  role: InvitableProjectRole,
-  origin?: string,
+  projectId: string, inviterUserId: string, email: string, role: InvitableProjectRole, origin?: string,
 ): Promise<{
   invitationId: string;
-  inviteeUserId: string;
+  inviteeUserId: string | null;
   inviteeEmail: string;
   projectName: string;
   inviterName: string;
   role: InvitableProjectRole;
+  pendingSignup: boolean;
 }> {
-  const project = await projectRepo.getProjectById(projectId);
-  if (!project) throw new NotFoundError(t("server.error.not_found"));
-  const invitee = await usersRepo.getUserByEmail(email);
-  if (!invitee) throw new NotFoundError(t("server.project.email_not_registered"));
-  const existingRole = await projectMembersRepo.getRole(projectId, invitee.id);
-  if (existingRole) throw new ConflictError(t("server.project.already_member"));
-
-  // The collaborator ceiling belongs to the studio this project lives in —
-  // more precisely to whoever currently administers that studio, who need not
-  // be the person inviting. Counts every member but the owner. Failing EARLY
-  // here is a courtesy to the inviter; the gate is in `confirmInvite`, and
-  // only that one runs behind a row lock.
-  const { project_members: collaboratorLimit } = await getLimitsForStudio(
-    project.studioId,
-  );
-  const collaboratorCount = await projectMembersRepo.countCollaborators(projectId);
-  if (collaboratorCount >= collaboratorLimit) {
-    throw new ConflictError(
-      t("server.project.collaborator_limit_reached", {
-        limit: collaboratorLimit,
-      }),
-    );
-  }
-
-  const profiles = await studioRepo.getPersonalProfilesByCreators([
-    inviterUserId,
-  ]);
-  const inviter = profiles.get(inviterUserId);
-  const inviterName = inviter?.name ?? "";
-  const expiresAt = new Date(Date.now() + getDecisionWindowMs());
-
-  let invitationId = "";
-  // The bell row builds its link from this, same as the email.
-  let shareToken = "";
-  try {
-    await db.transaction(async (tx) => {
-      // The project row comes FIRST, before anything in `project_invitations`,
-      // and that order is not a preference: `archiveProject` takes this row and
-      // only then sweeps the invitations of this project, so a path that took
-      // the two the other way round would close an AB/BA cycle with it. The
-      // loser of a deadlock gets 40P01 — neither an `AppError` nor an
-      // `HTTPException`, so a 500. Pinned by `invite-lock-order.integration.test.ts`.
-      //
-      // The lock also refuses when the project is gone or archived: without it
-      // the insert below would commit after the archive had swept this table,
-      // leaving a live pending invite on an archived project.
-      if (!(await projectRepo.lockLiveProject(projectId, tx))) {
-        throw new NotFoundError(t("server.error.not_found"));
-      }
-      // Reap any expired-but-still-'pending' invite for this (project, invitee):
-      // the one-pending partial unique index ignores expiry (a partial
-      // predicate can't reference now()), so a timed-out invite would otherwise
-      // trip it and reject the re-invite with a spurious "already invited"
-      // (#1769). Same transaction → freeing the slot and taking it are atomic.
-      await invitesRepo.expireStalePending(projectId, invitee.id, tx);
-      ({ id: invitationId, shareToken } = await invitesRepo.createPending({
-        projectId,
-        invitedUserId: invitee.id,
-        role,
-        invitedBy: inviterUserId,
-        expiresAt,
-        tx,
-      }));
-      const notif = await notificationService.createProjectInviteRequest({
-        userId: invitee.id,
-        projectId,
-        payload: {
-          invitationId,
-          projectId,
-          projectName: project.name,
-          inviterUserId,
-          inviterName,
-          role,
-          shareToken,
-        },
-        expiresAt,
-        tx,
-      });
-      await invitesRepo.attachNotification(invitationId, notif.id, tx);
-    });
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw new ConflictError(t("server.project.already_invited"));
-    }
-    throw err;
-  }
-
-  // Best-effort invite email — the bell notification is the always-delivered
-  // path; this only fires when an SMTP backend is configured and the caller
-  // passed an origin. A send failure must NOT fail the request.
-  if (origin) {
-    // The token was already minted in the tx above, so this factory only
-    // builds the mail.
-    await sendBestEffortMail(
-      async () =>
-        buildProjectInvitationMail({
-          locale: invitee.locale,
-          inviteeEmail: email,
-          inviterName,
-          projectName: project.name,
-          role,
-          inviteLink: decisionLink(origin, shareToken),
-        }),
-      { userId: invitee.id, subject: "project_invite" },
-    );
-  }
-
+  const result = await createInvitation("project", projectId, inviterUserId, email, role, origin);
   trackServerEvent("member_invited", {
     userId: inviterUserId,
-    insertId: `invite:${invitationId}`,
-    properties: { studio_id: project.studioId, project_id: projectId, scope: "project", role, invitation_id: invitationId },
+    insertId: `invite:${result.invitationId}`,
+    properties: { studio_id: result.studioId, project_id: projectId, scope: "project", role, invitation_id: result.invitationId },
   });
   return {
-    invitationId,
-    inviteeUserId: invitee.id,
-    inviteeEmail: email,
-    projectName: project.name,
-    inviterName,
-    role,
+    invitationId: result.invitationId, inviteeUserId: result.inviteeUserId, inviteeEmail: result.inviteeEmail,
+    projectName: result.targetName, inviterName: result.inviterName, role, pendingSignup: result.pendingSignup,
   };
 }
 
@@ -414,13 +277,14 @@ export async function revokeInvite(
   invitationId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
+    if (!await projectRepo.lockLiveProject(projectId, tx)) throw new NotFoundError(t("server.error.not_found"));
     const revoked = await invitesRepo.revokeIfPending(
       invitationId,
       projectId,
       tx,
     );
     if (!revoked) throw new NotFoundError(t("server.error.not_found"));
-    if (revoked.notificationId) {
+    if (revoked.notificationId && revoked.invitedUserId) {
       await notificationRepo.markRead(
         revoked.notificationId,
         revoked.invitedUserId,

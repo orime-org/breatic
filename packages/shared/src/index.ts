@@ -111,6 +111,7 @@ export type {
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
+  SignupInvitationPreview,
   SpaceType,
   Space,
   ActivityNewControlEvent,

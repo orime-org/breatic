@@ -1,10 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type * as MockModule0 from '@web/data/api/auth';
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import RegisterPage from '@web/pages/auth/RegisterPage';
 import RecoveryCodePage from '@web/pages/auth/RecoveryCodePage';
@@ -15,12 +18,12 @@ import { useCurrentUserStore } from '@web/stores';
 // Mock only the network-touching calls; keep types + deriveDisplayName real.
 vi.mock('@web/data/api/auth', async () => {
   const actual =
-    await vi.importActual<typeof import('@web/data/api/auth')>(
+    await vi.importActual<typeof MockModule0>(
       '@web/data/api/auth',
     );
   return {
     ...actual,
-    authApi: { register: vi.fn(), verifySignupCode: vi.fn(), resendSignupCode: vi.fn() },
+    authApi: { ...actual.authApi, register: vi.fn(), verifySignupCode: vi.fn(), resendSignupCode: vi.fn() },
   };
 });
 
@@ -28,18 +31,21 @@ const USER = { id: 'u1', email: 'foo@bar.com', personalStudio: null, membershipT
 const CODE_SENT = { status: 'code_sent', expiresInSeconds: 600, resendAfterSeconds: 60 } as const;
 
 function setup() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={['/register']}>
-      <Routes>
-        <Route path='/register' element={<RegisterPage />} />
-        <Route path='/recovery-code' element={<RecoveryCodePage />} />
-        <Route
-          path='/choose-slug'
-          element={<div data-testid='onboarding-page' />}
-        />
-        <Route path='/studio' element={<div data-testid='studio-page' />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/register']}>
+        <Routes>
+          <Route path='/register' element={<RegisterPage />} />
+          <Route path='/recovery-code' element={<RecoveryCodePage />} />
+          <Route
+            path='/choose-slug'
+            element={<div data-testid='onboarding-page' />}
+          />
+          <Route path='/studio' element={<div data-testid='studio-page' />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
