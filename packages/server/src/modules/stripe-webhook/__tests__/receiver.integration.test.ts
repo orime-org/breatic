@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { randomUUID } from "node:crypto";
+import { fork } from "node:child_process";
+import { once } from "node:events";
+import { fileURLToPath } from "node:url";
 import Stripe from "stripe";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { initCore, loadLocales } from "@breatic/core";
 import { httpRequest } from "@breatic/shared";
 import { serveOnLoopback, type RunningApp } from "@server/__tests__/integration/internal-api-harness.js";
@@ -50,6 +53,53 @@ function deliver(value: Record<string, unknown>, signingSecret = secret): Promis
 }
 
 describe("Stripe attempt receiver over HTTP and PostgreSQL", () => {
+  it("retains an unfinished start when its receiver process dies during business", async () => {
+    const child = fork(fileURLToPath(new URL("./receiver-child.ts", import.meta.url)), [], {
+      execArgv: ["--import", "tsx"],
+      env: { ...process.env, TSX_TSCONFIG_PATH: fileURLToPath(new URL("../../../../tsconfig.json", import.meta.url)),
+        PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_recording_suite", STRIPE_WEBHOOK_SECRET: secret },
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    });
+    let release: (() => void) | undefined;
+    let hold: Promise<unknown> | undefined;
+    let response: Promise<unknown> | undefined;
+    const exited = once(child, "exit");
+    try {
+      const [message] = await once(child, "message", { signal: AbortSignal.timeout(15_000) });
+      const port = (message as { port: number }).port;
+      let locked: (() => void) | undefined;
+      const ready = new Promise<void>(resolve => { locked = resolve; });
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      hold = sql.begin(async tx => {
+        await tx`lock table stripe_webhook_events in access exclusive mode`;
+        locked!();
+        await gate;
+      });
+      await ready;
+      const input = event("refund.failed", { id: "re_process_death", payment_intent: null });
+      const payload = JSON.stringify(input);
+      response = httpRequest(`http://127.0.0.1:${port}/api/v1/payment/webhook`, {
+        method: "POST", headers: { "content-type": "application/json", "stripe-signature": signer.webhooks.generateTestHeaderString({ payload, secret }) }, body: payload,
+      }, { replaySafe: false, timeoutMs: 15_000 }).catch(error => error);
+      await vi.waitFor(async () => {
+        expect(await sql`select id from stripe_webhook_attempts where event_id = ${String(input.id)}`).toHaveLength(1);
+      });
+      expect(child.kill("SIGKILL")).toBe(true);
+      await exited;
+      release!();
+      await hold;
+      await response;
+      expect(await sql`select result, response_status, finished_at from stripe_webhook_attempts where event_id = ${String(input.id)}`).toEqual([{ result: null, response_status: null, finished_at: null }]);
+      expect(await sql`select event_id from stripe_webhook_events where event_id = ${String(input.id)}`).toHaveLength(0);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await exited;
+      release?.();
+      await hold;
+      await response;
+    }
+  });
+
   it("saves every ignored delivery with controlled source fields and no ledger claim", async () => {
     const input = event("charge.updated", { id: "ch_attempt", object: "charge" });
     for (let index = 0; index < 2; index++) {

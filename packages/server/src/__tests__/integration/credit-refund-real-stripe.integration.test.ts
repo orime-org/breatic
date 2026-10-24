@@ -674,6 +674,25 @@ describe("the three refund webhooks, forwarded by the Stripe CLI", () => {
           expect(typesOf(pendingRefundId)).toEqual(expect.arrayContaining(["refund.created", "refund.updated"]));
           expect(typesOf(failedRefundId)).toEqual(expect.arrayContaining(["refund.created", "refund.failed"]));
           expect(await claimedEvents(sent.map((e) => e.id))).toEqual(Object.fromEntries(sent.map((e) => [e.id, e.type])));
+          const attempts = await suite.sql`
+            SELECT event_id, event_type, account_id, endpoint_id, livemode,
+              connected_account_id, response_status, result, finished_at IS NOT NULL AS finished
+            FROM stripe_webhook_attempts WHERE event_id IN ${suite.sql(sent.map(e => e.id))} AND deleted_at IS NULL
+          `;
+          const account = await stripe.accounts.retrieve();
+          expect(process.env.STRIPE_WEBHOOK_ACCOUNT_ID).toBe(account.id);
+          for (const event of sent) {
+            expect(attempts).toContainEqual({
+              event_id: event.id, event_type: event.type, account_id: account.id,
+              endpoint_id: null, livemode: false, connected_account_id: null,
+              response_status: 200, result: "refund_synced", finished: true,
+            });
+          }
+          console.info(`@needs-payments attempt recording observed: ${JSON.stringify({
+            eventTypes: [...new Set(sent.map(event => event.type))].sort(),
+            eventCount: sent.length, completedAttempts: attempts.filter(attempt => attempt.finished).length,
+            mode: "test", endpoint: "unknown_cli_forwarding", responseStatus: 200, result: "refund_synced",
+          })}`);
         },
         { timeout: 60_000, interval: 3_000 },
       );
