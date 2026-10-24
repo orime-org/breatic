@@ -1,6 +1,6 @@
 # Agent Configuration
 # Controls MainAgent behavior, memory system, tools, and worker limits.
-# These values can be overridden by environment variables (uppercase, e.g. MAX_TOOL_ITERATIONS=50).
+# Values are read from this YAML file and cached for the process lifetime.
 
 # ── Agent Loop ────────────────────────────────────────────
 # Maximum number of tool-call round-trips the agent loop will execute.
@@ -147,14 +147,10 @@ web_search_timeout_ms: 10000
 # and the schema is built before any configuration is loaded.
 image_search_timeout_ms: 10000
 
-# The largest file understand_media will take, in bytes, for images, video and
-# audio alike. What this server will carry, not what the endpoint would accept:
-# video and audio are downloaded here, base64'd and held inside a JSON body, so
-# one call at this ceiling occupies several times it in memory and the upload
-# runs about 60 seconds on a home connection.
-# The endpoint's own ceilings are higher and both measured — 31,457,280 bytes
-# for an image it fetches itself, 100,000,000 bytes of request body for inline
-# media, which a file of N bytes reaches as ceil(N/3)*4.
+# Maximum bytes for each image and for all downloaded audio/video in one batch.
+# Audio/video share the download budget before base64 encoding; images retain
+# individual size checks and are passed to the model as URLs. Base64 encoding
+# and the JSON request body require additional memory.
 understand_media_max_bytes: 20000000
 
 # How long ONE DELIVERY of the media fetch may take, in milliseconds.

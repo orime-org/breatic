@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Media understanding — give it an address and a question, get an answer.
+ * Media understanding — ask one question about an ordered batch of media addresses.
  *
  * One way in. Getting the media and asking about it are two steps with an
  * order and a set of limits between them, and that order is part of the
  * capability rather than something each caller reassembles: the agent tool
- * today, the worker's canvas task and whatever follows would otherwise each
+ * and the worker's canvas tasks would otherwise each
  * carry a copy of it, and each copy would classify failures its own way.
  *
  * Everything about who to ask is an input — the model, the backend, the
- * credential and the address — so this package reads no model catalog and no
+ * credential and the source addresses — so this package reads no model catalog and no
  * configuration of its own.
  */
 

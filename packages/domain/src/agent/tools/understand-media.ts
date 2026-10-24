@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Media understanding tool — look at an image, watch a video, listen to audio.
+ * Media understanding tool — ask one question about ordered images, video and audio.
  *
- * The model gets an address from whoever it is talking to and asks this what
- * is in it. Everything about who to ask lives here: the model, the backend and
- * the credential, all handed to a capability that reads no configuration of
- * its own.
+ * The model supplies source addresses in input order. This tool selects the
+ * model, backend and credential for the shared understanding capability.
  *
  * Nothing here interprets a failure into a retry. A call that came back empty
  * says so and says what stopped it, and a file that is too large says how large
