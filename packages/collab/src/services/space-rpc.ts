@@ -56,6 +56,7 @@ import * as Y from "yjs";
 
 import {
   createLogger,
+  getTimelineConfig,
   projectActivitiesRepo,
   writeSpaceEntry,
   type NewProjectActivity,
@@ -720,7 +721,7 @@ async function runCreate(
       // content document carries no name of its own. What it does carry is
       // whatever that kind's initial content is: one empty paragraph for a
       // document, nothing for the other two.
-      encodeInitialSpaceContent(type),
+      encodeInitialSpaceContent(type, type === "timeline" ? getTimelineConfig().defaults : undefined),
     );
   } catch (seedError) {
     logger.error(

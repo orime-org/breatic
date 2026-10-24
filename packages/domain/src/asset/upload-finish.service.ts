@@ -61,7 +61,8 @@ export interface UploadFinishResult {
  * @param extra - The cause or the refused type, for the log.
  * @param extra.cause - The error the Worker call ended in.
  * @param extra.contentType - The type the bytes turned out to be.
- * @returns The result naming the refusal.
+ * @returns The committed result, naming a refusal only when it did not recover success.
+ * @throws {Error} When the committed terminal cannot be recovered or published.
  */
 async function refuse(
   storageKey: string,
@@ -73,7 +74,24 @@ async function refuse(
     outcome: "aborted",
     reason,
   });
+  if (outcome.status === "registered" || outcome.status === "already_registered") return { outcome };
   return { outcome, refused: { reason, ...extra } };
+}
+
+/**
+ * Queue media reads for a canonical result, including a recovered completion.
+ * @param result - The outcome selected by the committed upload terminal.
+ * @param assetSource - The grant's attribution controlling deferred media reads.
+ * @returns The result with any media-read queue failure preserved for logging.
+ * @throws {never} Never.
+ */
+async function finishResult(result: UploadFinishResult, assetSource: StudioAssetEntity["source"] | null): Promise<UploadFinishResult> {
+  try {
+    await mediaReadService.scheduleMediaRead(result.outcome, assetSource);
+  } catch (err) {
+    return { ...result, mediaReadNotQueued: err };
+  }
+  return result;
 }
 
 /**
@@ -114,14 +132,14 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
     // describe something this upload never had.
     const reason =
       err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : "aborted";
-    return refuse(storageKey, reason, { cause: err });
+    return finishResult(await refuse(storageKey, reason, { cause: err }), job.assetSource);
   }
 
   // The ticket named a picture; this is what the bytes that landed are. A
   // cover or an avatar that turns out to be anything else is refused the way
   // a format we do not take is, before a row is written for it.
   if (!mediaReadService.storedTypeAccepted(job.assetSource, answered.contentType)) {
-    return refuse(storageKey, "unsupported_type", { contentType: answered.contentType });
+    return finishResult(await refuse(storageKey, "unsupported_type", { contentType: answered.contentType }), job.assetSource);
   }
 
   const outcome = await ingestReportService.applyIngestReport({
@@ -130,12 +148,5 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
     ...answered,
   });
 
-  // The row stands either way; a read that could not be queued leaves it
-  // without numbers, which is how a read that failed leaves it too.
-  try {
-    await mediaReadService.scheduleMediaRead(outcome, job.assetSource);
-  } catch (err) {
-    return { outcome, mediaReadNotQueued: err };
-  }
-  return { outcome };
+  return finishResult({ outcome }, job.assetSource);
 }

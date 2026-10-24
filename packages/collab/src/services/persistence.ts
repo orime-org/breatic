@@ -27,8 +27,8 @@ import type * as Y from "yjs";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { encodeStateAsUpdate } from "yjs";
 import { applyUpdate } from "yjs";
-import { createLogger } from "@breatic/core";
-import { parseDocName } from "@breatic/shared";
+import { createLogger, getTimelineConfig } from "@breatic/core";
+import { encodeInitialSpaceContent, parseDocName } from "@breatic/shared";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 import { lazySeedMeta, type SeedOpener } from "@collab/services/lazy-seed.js";
@@ -57,6 +57,7 @@ const logger = createLogger("collab-persistence");
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
  * @param args.opener - The loading connection's handshake, for the seeded Space's event.
  * @returns The stored (or freshly lazy-seeded) Yjs bytes, or null.
+ * @throws {Error} When configuration, decoding or persistence cannot load the content.
  */
 export async function fetchDoc({
   documentName,
@@ -65,7 +66,10 @@ export async function fetchDoc({
   documentName: string;
   opener?: SeedOpener;
 }): Promise<Uint8Array | null> {
-  const existing = await yjsDocumentsRepo.fetchDocData(documentName);
+  const parsed = parseDocName(documentName);
+  const existing = parsed?.kind === "timeline"
+    ? await yjsDocumentsRepo.loadTimelineDocData(documentName, encodeInitialSpaceContent("timeline", getTimelineConfig().defaults))
+    : await yjsDocumentsRepo.fetchDocData(documentName);
   if (existing) return existing;
   return lazySeedMeta(documentName, opener);
 }

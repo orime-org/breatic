@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * #904 验收 S5 的 shared 一半：document 的种子是一个空段落，另两种仍是空文档。
- * 权威定稿：BlockNote 迁移设计（2026-09-02，私有工程文档）§5.4。
+ * Document content seeds contain one empty paragraph; Canvas and Timeline do
+ * not use the document body fragment. Timeline receives explicit settings.
  *
- * 这里只验字节结构。「这份字节挂上真实编辑器之后一个字节都不变」那一半在
- * web 侧，因为 shared 不能依赖编辑器 —— 而 schema API 验不出真实的失败形态：
- * 后端写错时没有任何异常，第一个连上的客户端会把它不认识的东西删掉、再把
- * 这次删除当成自己的编辑广播出去。
- *
- * TDD：红灯阶段在旧世界（三种 kind 都种空文档）确认过 document 一项失败。
+ * These tests verify the stored structure. Real-editor fidelity belongs in
+ * web: a client can delete an unrecognized seed without a server-side error
+ * and broadcast that deletion as an ordinary edit.
  */
 
 import { describe, it, expect } from "vitest";
@@ -21,29 +18,31 @@ import {
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 
-describe("S5 内容种子", () => {
+describe("Space content seeds", () => {
   it.each(["canvas", "timeline"] as const)(
-    "%s 的种子应用后 content fragment 为空",
+    "%s seeds leave the document body fragment empty",
     (kind) => {
       const doc = new Y.Doc();
-      Y.applyUpdate(doc, encodeInitialSpaceContent(kind));
+      Y.applyUpdate(doc, encodeInitialSpaceContent(kind, kind === "timeline"
+        ? { width: 1920, height: 1080, fps: { num: 24, den: 1 } }
+        : undefined));
       expect(documentBodyFragment(doc).length).toBe(0);
       doc.destroy();
     },
   );
 
-  it("document 的种子是一个 blockContainer，里面一个空段落", () => {
+  it("seeds a document with one block container holding an empty paragraph", () => {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, encodeInitialSpaceContent("document"));
     const fragment = documentBodyFragment(doc);
 
-    // 顶层恰好一个 blockGroup —— doc 的内容规则是 `blockGroup`（单数），
-    // 两个顶层 group 会让第一个连上的客户端删掉一个并广播那次删除。
+    // The editor accepts one top-level blockGroup. It would delete a second
+    // group and broadcast that deletion to its peers.
     expect(fragment.length).toBe(1);
     const group = fragment.get(0) as Y.XmlElement;
     expect(group.nodeName).toBe("blockGroup");
 
-    // 一个块，里面一个空段落。
+    // One block holding one empty paragraph.
     expect(group.length).toBe(1);
     const container = group.get(0) as Y.XmlElement;
     expect(container.nodeName).toBe("blockContainer");
@@ -57,15 +56,14 @@ describe("S5 内容种子", () => {
     doc.destroy();
   });
 
-  it("节点名是驼峰的", () => {
+  it("preserves the editor's camel-case node names", () => {
     const doc = new Y.Doc();
     Y.applyUpdate(doc, encodeInitialSpaceContent("document"));
     const group = documentBodyFragment(doc).get(0) as Y.XmlElement;
     const container = group.get(0) as Y.XmlElement;
 
-    // `toString()` 会把节点名小写化（`yjs.cjs:8073`），所以这里读
-    // `nodeName` 而不是 XML 文本 —— 真实的名字是 `blockGroup` /
-    // `blockContainer`，写成小写的种子会被编辑器当成不认识的元素。
+    // XML serialization lowercases names, so inspect nodeName directly.
+    // Lower-case stored names would be unknown to the editor's schema.
     expect([group.nodeName, container.nodeName]).toEqual([
       "blockGroup",
       "blockContainer",

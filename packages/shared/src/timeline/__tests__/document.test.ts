@@ -147,6 +147,29 @@ describe("Timeline document ownership and schema", () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(updates).not.toHaveBeenCalled();
   });
+
+  it("does not seed a document holding only a pending delete set and no structs", () => {
+    const origin = trackedDoc();
+    origin.getMap("legacy").set("removed", "retained deletion");
+    const knownStructs = Y.encodeStateVector(origin);
+    origin.getMap("legacy").delete("removed");
+    const deletionOnly = Y.encodeStateAsUpdate(origin, knownStructs);
+    expect(Y.decodeUpdate(deletionOnly).structs).toEqual([]);
+    expect(Y.decodeUpdate(deletionOnly).ds.clients.size).toBe(1);
+    const receiver = trackedDoc();
+    Y.applyUpdate(receiver, deletionOnly);
+    const before = Y.encodeStateAsUpdate(receiver);
+    expect(Y.decodeUpdate(before).structs).toEqual([]);
+    expect(Y.decodeUpdate(before).ds.clients.size).toBe(1);
+    expect([...receiver.share.keys()]).toEqual([]);
+    try {
+      initializeTimelineDocument(receiver, settings);
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+    }
+    expect(Y.encodeStateAsUpdate(receiver)).toEqual(before);
+    expect([...receiver.share.keys()]).toEqual([]);
+  });
 });
 
 describe("Timeline native edit transactions", () => {

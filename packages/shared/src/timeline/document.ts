@@ -48,7 +48,8 @@ function freezeRecord<T>(value: T): T {
  * @throws {Error} When nonempty content would be overwritten or settings are invalid.
  */
 export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSettings): void {
-  if (Y.decodeUpdate(Y.encodeStateAsUpdate(doc)).structs.length > 0) throw new Error("Timeline initialization requires empty content");
+  const held = Y.decodeUpdate(Y.encodeStateAsUpdate(doc));
+  if (held.structs.length !== 0 || held.ds.clients.size !== 0) throw new Error("Timeline initialization requires empty content");
   const normalized = freezeRecord(TimelineSettingsSchema.parse(settings));
   doc.transact(() => {
     const timeline = doc.getMap("timeline");

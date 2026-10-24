@@ -21,8 +21,8 @@
  *     finished
  *   - nothing landed at all  → void the grant, and tell the node it failed
  *     (zero bytes)              when the grant names one
- *   - any of those, on a key → say nothing: the delivery that registered it
- *     already registered        already told the node
+ *   - any of those, on a key → replay the committed terminal using the fixed
+ *     already terminal          registered asset identity or stored refusal
  *
  * A node starts counting a task before the first byte moves, and the event
  * carrying that task's outcome is what stops it. A node whose event never got
@@ -49,6 +49,7 @@ import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/sh
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
 import type {
   UploadGrant,
   FinalizeClaim,
@@ -56,8 +57,6 @@ import type {
 
 const {
   findGrantByKey,
-  consumeGrant,
-  voidGrant,
   claimFinalize: claimFinalizeGrant,
 } = uploadGrantRepo;
 
@@ -217,7 +216,7 @@ export type IngestReportOutcome = IngestSideEffects &
     } & RegisteredMedia)
   | ({
       status: "already_registered";
-      /** The row this key registered, found by the hash the Worker sent. */
+      /** The fixed registered identity stored on this key's consumed grant. */
       assetId: string;
       fileUrl: string;
       kind: string;
@@ -228,8 +227,7 @@ export type IngestReportOutcome = IngestSideEffects &
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
   /**
-   * Nothing for this report to answer with: a failure for an upload another
-   * delivery already registered, or a repeat whose ledger row is gone.
+   * Nothing to answer with when the consumed grant's original asset is gone.
    */
     | { status: "stale" });
 
@@ -562,10 +560,88 @@ export async function settleDedupedCover(
 }
 
 /**
+ * Write or recover the keyed history that a registered upload owes its node.
+ * @param grant - The immutable upload scope and attribution.
+ * @param asset - The canonical registered media.
+ * @param coverUrl - The current registered video cover.
+ * @param metadata - The original measured file metadata, on first completion.
+ * @param metadata.size - The byte size the ingest Worker measured.
+ * @param metadata.mimeType - The content type the ingest Worker identified.
+ * @returns The stable history identity and whether this call inserted it.
+ * @throws {Error} When the history cannot be accepted.
+ */
+async function recordRegisteredUploadHistory(
+  grant: UploadGrant,
+  asset: StudioAssetEntity,
+  coverUrl: string | null,
+  metadata?: { size: number; mimeType: string },
+): Promise<{ entryId?: string; inserted: boolean }> {
+  if (grant.nodeId === null || grant.projectId === null) return { inserted: true };
+  const recorded = await nodeHistoryService.recordUpload({
+    projectId: grant.projectId,
+    nodeId: grant.nodeId,
+    userId: grant.userId,
+    content: asset.fileUrl,
+    storageKey: grant.storageKey,
+    metadata: {
+      ...(grant.filename !== null && { filename: grant.filename }),
+      ...(asset.sizeBytes !== null && { size: asset.sizeBytes }),
+      ...(asset.mimeType !== null && { mimeType: asset.mimeType }),
+      ...metadata,
+      ...(grant.source === "mini_tool" && grant.toolName !== null && { toolId: grant.toolName }),
+    },
+    ...(coverUrl !== null && { thumbnailUrl: coverUrl }),
+    media: resultOf(asset, coverUrl),
+  });
+  return { entryId: recorded.entry.id, inserted: recorded.inserted };
+}
+
+/**
+ * Publish and answer exclusively from the committed upload terminal.
+ * @param terminal - The result of serialized database arbitration.
+ * @param sideEffects - Best-effort work whose failures the caller must log.
+ * @returns The same canonical result for completions and their later replays.
+ * @throws {Error} When history recovery or success publication cannot finish.
+ */
+async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
+  const { grant } = terminal;
+  if (terminal.state === "void") {
+    const reason = grant.failureReason ?? "aborted";
+    const countsPublishFailed = await announceFailure(grant, reason);
+    const refusal: IngestReportOutcome = reason === "empty" || reason === "over_cap"
+      ? { status: "rejected", reason }
+      : { status: "voided" };
+    return { ...refusal, ...sideEffects, ...(countsPublishFailed && { countsPublishFailed }) };
+  }
+  const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
+  if (asset === null) return { status: "stale", ...sideEffects };
+  const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
+  const coverUrl = cover?.fileUrl ?? null;
+  const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
+  const countsPublishFailed = await announceSuccess(grant, resultOf(asset, coverUrl), history.entryId);
+  return withPeaksQueued({
+    status: terminal.newlyConsumed ? "registered" : "already_registered",
+    assetId: asset.id,
+    fileUrl: asset.fileUrl,
+    kind: asset.kind,
+    ownRow: isOwnKey(asset.storageKey, grant),
+    coverUrl,
+    width: asset.width,
+    height: asset.height,
+    durationSeconds: asset.durationSeconds,
+    mimeType: asset.mimeType,
+    sizeBytes: asset.sizeBytes,
+    ...sideEffects,
+    ...(countsPublishFailed && { countsPublishFailed }),
+  });
+}
+
+/**
  * Apply one report from the ingest Worker.
  * @param report - What happened to this upload.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
+ * @throws {Error} When registration, association, terminal commitment or success publication fails.
  */
 export async function applyIngestReport(
   report: IngestReport,
@@ -573,69 +649,17 @@ export async function applyIngestReport(
   const grant = await findGrantByKey(report.storageKey);
   if (grant === null) throw new NotFoundError(t("server.error.not_found"));
 
-  // What the report says happened is the first question, because a failure
-  // never settles anything as done. A key that is already registered got that
-  // way through an earlier delivery of this same upload, and what it wrote
-  // stands: this report carries no hash to find the registered row by, so
-  // anything it announced would name a URL built from the key — and dedup
-  // means the registered URL can name an object under an entirely different
-  // one.
+  if (grant.consumedAt !== null || grant.voidedAt !== null) {
+    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "replay" }));
+  }
   if (report.outcome === "aborted") {
-    if (grant.consumedAt !== null) return { status: "stale" };
-    // Every call on an upload's chain is cut at its deadline, so a failure
-    // that arrives past it ends the upload the way the deadline does.
     const expired = failureOutcome(await uploadDeadline(grant)) === "expired";
     const reason = expired ? "expired" : (report.reason ?? "aborted");
-    await voidGrant(grant.storageKey, reason);
-    const countsPublishFailed = await announceFailure(grant, reason);
-    return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
+    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason }));
   }
 
   const adapter = await getStorageAdapter();
   const contentType = report.contentType;
-
-  // A repeat: the queue ran this finish again after a try failed or its worker
-  // went away, so the same upload reports again. Publishing again is the
-  // point — collab applies these last-write-wins, so a duplicate costs
-  // nothing while a lost one leaves the node spinning.
-  if (grant.consumedAt !== null) {
-    const existing = await assetRepo.findByStudioAndHash(
-      grant.studioId,
-      report.sha256,
-    );
-    // A studio that no longer holds a row for this content has no canonical
-    // url to answer with, and the key on the grant is not one: within a studio
-    // the same content dedups to a single row, so this key may be the loser
-    // the reclaim job is about to remove (storage rule ②).
-    if (existing === null) return { status: "stale" };
-    const fileUrl = existing.fileUrl;
-    const settledKind = existing.kind;
-    // Everything the node is told comes off the row that already stands, never
-    // off this report: within a studio the same content is one row however
-    // many uploads reached it, and this key may be the loser the reclaim job
-    // is about to remove.
-    const existingCover =
-      settledKind === "video" ? await assetRepo.findCoverOf(existing.id) : null;
-    const countsPublishFailed = await announceSuccess(
-      grant,
-      resultOf(existing, existingCover?.fileUrl ?? null),
-    );
-    const repeated: IngestReportOutcome = {
-      status: "already_registered",
-      assetId: existing.id,
-      fileUrl,
-      kind: settledKind,
-      ownRow: isOwnKey(existing.storageKey, grant),
-      coverUrl: existingCover?.fileUrl ?? null,
-      width: existing.width,
-      height: existing.height,
-      durationSeconds: existing.durationSeconds,
-      mimeType: existing.mimeType,
-      sizeBytes: existing.sizeBytes,
-      ...(countsPublishFailed && { countsPublishFailed }),
-    };
-    return withPeaksQueued(repeated);
-  }
 
   // The declared size got the ticket issued; this is the first time anyone has
   // measured what actually arrived. The object is already in storage, so this
@@ -643,13 +667,7 @@ export async function applyIngestReport(
   const { upload } = getStorageConfig();
   const sizeBytes = report.sizeBytes;
   if (sizeBytes > upload.max_upload_bytes) {
-    await voidGrant(grant.storageKey, "over_cap");
-    const countsPublishFailed = await announceFailure(grant, "over_cap");
-    return {
-      status: "rejected",
-      reason: "over_cap",
-      ...(countsPublishFailed && { countsPublishFailed }),
-    };
+    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: "over_cap" }));
   }
 
   // Nothing arrived. A provider that answers 200 with no body, or a transport
@@ -662,13 +680,7 @@ export async function applyIngestReport(
   // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
   // the ordinary way.
   if (sizeBytes === 0) {
-    await voidGrant(grant.storageKey, "empty");
-    const countsPublishFailed = await announceFailure(grant, "empty");
-    return {
-      status: "rejected",
-      reason: "empty",
-      ...(countsPublishFailed && { countsPublishFailed }),
-    };
+    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: "empty" }));
   }
 
   const kind = assetService.detectAssetKind(contentType);
@@ -722,40 +734,12 @@ export async function applyIngestReport(
   // the reclaim job's list rather than lost (storage rule ①).
   const settled = deduped ? await settleDedupedCover(asset, cover) : null;
   const coverUrl = settled === null ? cover.url : settled.url;
-  const result = resultOf(asset, coverUrl);
-
-  // Whether the node history row is new. It gates the feed write below, which
-  // has no key of its own. A retry does reach here — the grant is consumed at
-  // the very end — and so does the video job, which writes the same two
-  // downstreams; reading the flag keeps one rule instead of two.
-  let historyIsNew = true;
-  /** The history row this pass wrote or found, which the task row points at. */
-  let historyEntryId: string | undefined;
-  if (grant.nodeId !== null && grant.projectId !== null) {
-    const recorded = await nodeHistoryService.recordUpload({
-      projectId: grant.projectId,
-      nodeId: grant.nodeId,
-      userId: grant.userId,
-      content: asset.fileUrl,
-      storageKey: grant.storageKey,
-      metadata: {
-        ...(grant.filename !== null && { filename: grant.filename }),
-        // What the node holds, which for a picture turned upright is its copy.
-        size: filed.sizeBytes,
-        mimeType: contentType,
-        // The row is named by the browser tool that made the file, as its
-        // task row is (inner#888 A20).
-        ...(grant.source === "mini_tool" && grant.toolName !== null && { toolId: grant.toolName }),
-      },
-      // The panel reads a video's preview off this row and nothing else, and
-      // restoring an entry writes what it holds back onto the node — so an
-      // entry with no thumbnail takes the node's cover away when restored.
-      ...(coverUrl !== null && { thumbnailUrl: coverUrl }),
-      media: result,
-    });
-    historyIsNew = recorded.inserted;
-    historyEntryId = recorded.entry.id;
-  }
+  await referenceUploadAsset(grant, asset.id);
+  const history = await recordRegisteredUploadHistory(grant, asset, coverUrl, {
+    size: filed.sizeBytes,
+    mimeType: contentType,
+  });
+  const historyIsNew = history.inserted;
 
   // The project feed. A byproduct — today a focus crop — is in the ledger for
   // attribution and dedup, and is not an event anyone watching the project
@@ -789,39 +773,11 @@ export async function applyIngestReport(
     }
   }
 
-  const countsPublishFailed = await announceSuccess(grant, result, historyEntryId);
-
-  // Last, because the grant is what tells a repeat report from a first one: an
-  // interruption anywhere above leaves it unconsumed, and the retry runs the
-  // whole stretch again. Every step in it is safe to repeat — the ledger row
-  // dedups onto itself, the history row is keyed, the feed row is gated on
-  // that key, and the event is applied last-write-wins.
-  // The answer is a CAS: false means another delivery of this same report got
-  // there first, and both did the same work against one registered asset — so
-  // the loser has nothing to undo and nothing to say.
-  await consumeGrant({
-    storageKey: grant.storageKey,
-    userId: grant.userId,
-    assetId: asset.id,
-  });
-  return withPeaksQueued({
-    status: "registered",
-    assetId: asset.id,
-    fileUrl: asset.fileUrl,
-    kind: asset.kind,
-    ownRow: isOwnKey(asset.storageKey, grant),
-    coverUrl,
-    width: asset.width,
-    height: asset.height,
-    durationSeconds: asset.durationSeconds,
-    mimeType: asset.mimeType,
-    sizeBytes: asset.sizeBytes,
-    ...(countsPublishFailed && { countsPublishFailed }),
+  const terminal = await settleUploadTerminal(grant.storageKey, { kind: "completed", assetId: asset.id });
+  return announceUploadTerminal(terminal, {
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),
-    ...((cover.failed || settled?.failed === true) && {
-      coverRegisterFailed: true,
-    }),
+    ...((cover.failed || settled?.failed === true) && { coverRegisterFailed: true }),
   });
 }
 

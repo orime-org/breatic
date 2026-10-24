@@ -24,7 +24,7 @@
  */
 
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { mergeUpdates } from "yjs";
+import { decodeUpdate, mergeUpdates } from "yjs";
 import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
 import { parseDocName, projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
 
@@ -44,6 +44,30 @@ export async function fetchDocData(name: string): Promise<Uint8Array | null> {
     .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
     .limit(1);
   return rows[0]?.data ?? null;
+}
+
+/**
+ * Read the persisted Timeline content at its initialization boundary.
+ * @param name - The immutable content document name.
+ * @param initialState - The service's configured V1 seed.
+ * @returns The committed live winner, upgrading only a truly empty row.
+ * @throws {Error} When decoding or the database transaction fails.
+ */
+export async function loadTimelineDocData(name: string, initialState: Uint8Array): Promise<Uint8Array | null> {
+  return yjsDb.transaction(async (tx) => {
+    const [row] = await tx.select({ data: yjsDocuments.data })
+      .from(yjsDocuments)
+      .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+      .for("update")
+      .limit(1);
+    if (row === undefined) return null;
+    const decoded = decodeUpdate(row.data);
+    if (decoded.structs.length !== 0 || decoded.ds.clients.size !== 0) return row.data;
+    await tx.update(yjsDocuments)
+      .set({ data: Buffer.from(initialState), updatedAt: sql`now()` })
+      .where(eq(yjsDocuments.name, name));
+    return initialState;
+  });
 }
 
 /**
@@ -255,10 +279,13 @@ export async function restoreByName(name: string): Promise<boolean> {
  * full duplicate UX is reworked when the Studio page is built properly.
  * @param sourceId - Project being duplicated
  * @param newId - Freshly created destination project id
+ * @param beforePublishContent - Accept the locked target bytes before making their meta visible.
+ * @throws {Error} When copying or accepting the actual target content fails.
  */
 export async function duplicateByProjectPrefix(
   sourceId: string,
   newId: string,
+  beforePublishContent?: (rows: readonly { name: string; data: Uint8Array }[]) => Promise<void>,
 ): Promise<void> {
   const oldPrefix = `project-${sourceId}/`;
   const newPrefix = `project-${newId}/`;
@@ -287,6 +314,15 @@ export async function duplicateByProjectPrefix(
         WHERE ${inArray(yjsDocuments.name, listed)}
         ON CONFLICT (name) DO NOTHING
       `);
+      if (beforePublishContent !== undefined) {
+        const targets = listed.map((name) => `${newPrefix}${name.slice(oldPrefix.length)}`);
+        const rows = await tx.select({ name: yjsDocuments.name, data: yjsDocuments.data })
+          .from(yjsDocuments)
+          .where(inArray(yjsDocuments.name, targets))
+          .orderBy(yjsDocuments.name)
+          .for("update");
+        await beforePublishContent(rows);
+      }
     }
     // Meta doc last, from the bytes read above, and it WINS over a racing
     // lazy-seed default so the copy reflects the source's Spaces.
