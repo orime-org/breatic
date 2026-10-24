@@ -1,6 +1,6 @@
 # @breatic/core
 
-The backend shared kernel. These rules apply when you change anything under `packages/core/`.
+The backend shared kernel, including the reusable Redis stream consumer-group machinery. These rules apply when you change anything under `packages/core/`.
 
 ## Database
 

@@ -1,6 +1,6 @@
 # @breatic/collab
 
-The Hocuspocus process: Yjs document sync, persistence to the yjs Postgres database, cross-instance coordination over Redis, and the consumer that writes task events from Redis Streams onto canvas nodes. It is the only backend package that knows Hocuspocus.
+The Hocuspocus process: Yjs document sync, persistence to the yjs Postgres database, cross-instance coordination over Redis, and the consumer that writes task events from Redis Streams onto canvas nodes using core's shared consumer-group machinery. It is the only backend package that knows Hocuspocus.
 
 Read [Canvas collaboration in docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration) before changing presence, seats, persistence, Space lifecycle or the hook order. Mechanism details live there and in each module's TSDoc; this file holds the rules you would get wrong without being told.
 
