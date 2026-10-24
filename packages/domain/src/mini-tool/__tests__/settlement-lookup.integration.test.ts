@@ -115,6 +115,71 @@ async function confirm(f: Fixture, current: Claim, costUsd = 0.000055): Promise<
 }
 
 describe("persistent mini-tool lookup cycles", () => {
+  it("ignores a wake for an absent task", async () => {
+    expect(await invoke("claimMiniToolSettlement", { taskId: crypto.randomUUID(), settlementVersion: 7 })).toBeNull();
+  });
+
+  it.each(["legacy", "settled"])("leaves an unrelated %s wake unchanged", async (kind) => {
+    const f = await seed();
+    if (kind === "legacy") await pg`UPDATE tasks SET result=${pg.json({ manifest: MANIFEST })} WHERE id=${f.taskId}`;
+    else {
+      const current = (await claim(f))!;
+      await confirm(f, current);
+      await domain.recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim });
+      await domain.settleMiniToolCharge(f.taskId);
+    }
+    const before = await snapshot(f); expect(await claim(f)).toBeNull(); expect(await snapshot(f)).toEqual(before);
+  });
+
+  it.each(["known", "recorded"] as const)("selects only outstanding consumption when the first fact is %s", async (state) => {
+    const f = await seed();
+    const fact = { ...f.fact, state, costUsd: 0.000055, costSource: "generation_lookup", raw: { deductUsd: 0.000055, refundUsd: 0 }, credits: state === "recorded" ? 0.011 : null };
+    await pg`UPDATE task_upstream_steps SET output=${pg.json({ miniToolConsumption: fact })} WHERE id=${f.stepId}`;
+    if (state === "recorded") await setPeriod(f, { pendingConsumptionKeys: [] });
+    const current = await claim(f);
+    expect(current!.nextConsumption).toEqual(state === "known" ? { stepId: f.stepId, consumption: fact } : null);
+    expect((await snapshot(f)).usage).toBe(0);
+  });
+
+  it("rejects a provider expense attributed to the container cost source", async () => {
+    const f = await seed(); const current = (await claim(f))!; const before = await snapshot(f);
+    await expect(invoke("confirmMiniToolConsumption", { taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim, costUsd: 0.000055, costSource: "computed", raw: { wallMs: 1000 } })).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it("rolls back confirmation when its step write waits beyond the SQL lease", async () => {
+    const f = await seed(); const current = (await claim(f))!;
+    const advisoryKey = crypto.randomInt(1, 2 ** 30);
+    let release!: () => void; let start!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const locked = new Promise<void>((resolve) => { start = resolve; });
+    const held = pg.begin(async (tx) => { await tx`SELECT pg_advisory_xact_lock(${advisoryKey})`; start(); await gate; });
+    await locked;
+    await pg.unsafe(`CREATE OR REPLACE FUNCTION block_lookup_confirmation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id = '${f.stepId}'::uuid THEN PERFORM pg_advisory_xact_lock(${advisoryKey}); END IF; RETURN NEW; END $$`);
+    await pg.unsafe("CREATE TRIGGER block_lookup_confirmation BEFORE UPDATE ON task_upstream_steps FOR EACH ROW EXECUTE FUNCTION block_lookup_confirmation()");
+    await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,leaseUntil}',to_jsonb(to_char((clock_timestamp()+interval '2 seconds') AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))) WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
+    const [stepBefore] = await pg`SELECT updated_at::text FROM task_upstream_steps WHERE id=${f.stepId}`;
+    const confirmation = confirm(f, current);
+    // Attach immediately; the original promise is still asserted below.
+    void confirmation.catch(() => undefined);
+    try {
+      try {
+        await waitUntilBlockedOn(pg, ["task_upstream_steps", "update"], 1);
+        await pg`SELECT pg_sleep(greatest(0,extract(epoch FROM (result->'settlement'->>'leaseUntil')::timestamptz-clock_timestamp()))+0.01) FROM tasks WHERE id=${f.taskId}`;
+      } finally { release(); }
+      await held;
+      await expect(confirmation).rejects.toThrow();
+      expect(await snapshot(f)).toEqual(before);
+      const [stepAfter] = await pg`SELECT updated_at::text FROM task_upstream_steps WHERE id=${f.stepId}`;
+      expect(stepAfter).toEqual(stepBefore);
+    } finally {
+      release(); await held; await confirmation.catch(() => undefined);
+      await pg.unsafe("DROP TRIGGER block_lookup_confirmation ON task_upstream_steps");
+      await pg.unsafe("DROP FUNCTION block_lookup_confirmation()");
+    }
+  });
+
   it("claims one due cycle without incrementing its version or touching computation", async () => {
     const f = await seed(); const before = await snapshot(f);
     const [clock] = await pg<{ at: string }[]>`SELECT clock_timestamp()::text AS at`;
