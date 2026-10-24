@@ -193,7 +193,7 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
 }
 
 /**
- * Apply a freshly validated command; each complete user operation creates one undo item.
+ * Apply a validated command; a command that appends field values creates one undo item.
  * @param doc - Live collaborative scene document.
  * @param command - User operation to validate against current committed scene data.
  * @param origin - Origin tracked only by this local command history.
