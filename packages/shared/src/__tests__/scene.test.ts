@@ -35,20 +35,20 @@ describe("scene value schemas", () => {
     expect(schema("SceneVectorSchema").parse([-2.5, 0, 7])).toEqual([-2.5, 0, 7]);
   });
 
-  it.each([[0, 0], [0, 0, 0, 0], [Infinity, 0, 0], [0, NaN, 0], [0, 0, -Infinity], ["0", 0, 0]])(
-    "rejects an incomplete or nonfinite position %j", (position) => {
+  it.each([[0, 0], [0, 0, 0, 0], [Infinity, 0, 0], [0, NaN, 0], [0, 0, -Infinity], ["0", 0, 0]].map((position) => ({ position })))(
+    "rejects an incomplete or nonfinite position $position", ({ position }) => {
       expect(schema("SceneVectorSchema").safeParse(position).success).toBe(false);
     },
   );
 
-  it.each([[0, 0, 0, 1], [0, 1, 0, 0], [0.5, 0.5, 0.5, 0.5]])(
-    "accepts a normalized XYZW rotation %j", (rotation) => {
+  it.each([[0, 0, 0, 1], [0, 1, 0, 0], [0.5, 0.5, 0.5, 0.5]].map((rotation) => ({ rotation })))(
+    "accepts a normalized XYZW rotation $rotation", ({ rotation }) => {
       expect(schema("SceneRotationSchema").parse(rotation)).toEqual(rotation);
     },
   );
 
-  it.each([[0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 1], [0, 0, 0, 1, 0], [Infinity, 0, 0, 1], [0, NaN, 0, 1]])(
-    "rejects a nonunit or malformed rotation %j", (rotation) => {
+  it.each([[0, 0, 0, 0], [0, 0, 0, 2], [0, 0, 1], [0, 0, 0, 1, 0], [Infinity, 0, 0, 1], [0, NaN, 0, 1]].map((rotation) => ({ rotation })))(
+    "rejects a nonunit or malformed rotation $rotation", ({ rotation }) => {
       expect(schema("SceneRotationSchema").safeParse(rotation).success).toBe(false);
     },
   );
@@ -57,8 +57,8 @@ describe("scene value schemas", () => {
     expect(schema("SceneScaleSchema").parse([0.25, 2, 3])).toEqual([0.25, 2, 3]);
   });
 
-  it.each([[0, 1, 1], [1, -1, 1], [1, 1, Infinity], [1, NaN, 1], [1, 1], [1, 1, 1, 1]])(
-    "rejects a nonpositive or malformed scale %j", (scale) => {
+  it.each([[0, 1, 1], [1, -1, 1], [1, 1, Infinity], [1, NaN, 1], [1, 1], [1, 1, 1, 1]].map((scale) => ({ scale })))(
+    "rejects a nonpositive or malformed scale $scale", ({ scale }) => {
       expect(schema("SceneScaleSchema").safeParse(scale).success).toBe(false);
     },
   );
