@@ -27,7 +27,7 @@ import type { IncomingMessage } from "node:http";
 const { loggerWarnMock } = vi.hoisted(() => ({ loggerWarnMock: vi.fn() }));
 
 vi.mock("@breatic/core", async (importOriginal) => ({
-  decideClientIdentity: (await importOriginal<typeof CoreModule>()).decideClientIdentity,
+  ...(await importOriginal<typeof CoreModule>()),
   createLogger: () => ({
     info: vi.fn(),
     warn: loggerWarnMock,
@@ -428,6 +428,76 @@ describe("connection gate — failed authentication", () => {
     await gate.recordFailedAuth(connectPayload(upgrade.request.headers as Record<string, string>));
 
     expect(throttle.count).not.toHaveBeenCalled();
+  });
+});
+
+describe("connection gate — failed upgrade", () => {
+  it("adds one failed-session attempt to the initial WebSocket attempt", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({ "x-real-ip": "203.0.113.9" }, "172.18.0.4");
+    await gate.onUpgrade(upgrade);
+    await gate.recordFailedUpgrade(upgrade.request);
+    expect(throttle.count.mock.calls).toEqual([["203.0.113.9"], ["203.0.113.9"]]);
+  });
+
+  it("reads the normalized exemption from the native request", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({ "x-real-ip": "203.0.113.9", "x-breatic-connection-verdict": "count" }, "127.0.0.1");
+    await gate.onUpgrade(upgrade);
+    await gate.recordFailedUpgrade(upgrade.request);
+    expect(upgrade.request.headers["x-real-ip"]).toBe("127.0.0.1");
+    expect(upgrade.request.headers["x-breatic-connection-verdict"]).toBe("exempt");
+    expect(throttle.count).not.toHaveBeenCalled();
+  });
+
+  it("overwrites a forged exemption before failed-upgrade accounting", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({
+      "x-real-ip": "203.0.113.9",
+      "x-breatic-connection-verdict": "exempt",
+      "x-forwarded-for": "127.0.0.1",
+    }, "172.18.0.4");
+    await gate.onUpgrade(upgrade);
+    await gate.recordFailedUpgrade(upgrade.request);
+    expect(upgrade.request.headers["x-forwarded-for"]).toBeUndefined();
+    expect(upgrade.request.headers["x-breatic-connection-verdict"]).toBe("count");
+    expect(throttle.count.mock.calls).toEqual([["203.0.113.9"], ["203.0.113.9"]]);
+  });
+
+  it("preserves the shared first-failure and document-ceiling rule", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({ "x-real-ip": "203.0.113.9" }, "172.18.0.4");
+    await gate.onUpgrade(upgrade);
+    for (let index = 0; index < DOCUMENTS_PER_SOCKET; index += 1) await gate.recordFailedUpgrade(upgrade.request);
+    expect(throttle.count).toHaveBeenCalledTimes(2);
+    await gate.recordFailedUpgrade(upgrade.request);
+    await gate.recordFailedUpgrade(upgrade.request);
+    expect(throttle.count).toHaveBeenCalledTimes(4);
+  });
+
+  it("counts separate physical upgrade requests independently", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    for (let index = 0; index < 2; index += 1) {
+      const upgrade = fakeUpgradeRequest({ "x-real-ip": "203.0.113.9" }, "172.18.0.4");
+      await gate.onUpgrade(upgrade);
+      await gate.recordFailedUpgrade(upgrade.request);
+    }
+    expect(throttle.count.mock.calls).toEqual(Array.from({ length: 4 }, () => ["203.0.113.9"]));
+  });
+
+  it("records the same throttle diagnostic when upgrade failure crosses the limit", async () => {
+    const throttle = fakeThrottle();
+    const gate = createConnectionGate(throttle);
+    const upgrade = fakeUpgradeRequest({ "x-real-ip": "203.0.113.9" }, "172.18.0.4");
+    await gate.onUpgrade(upgrade);
+    throttle.count.mockResolvedValue(false);
+    await gate.recordFailedUpgrade(upgrade.request);
+    expect(loggerWarnMock).toHaveBeenCalledWith({ identity: "203.0.113.9" }, "collab_failed_auth_throttled");
   });
 });
 

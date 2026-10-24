@@ -22,12 +22,15 @@
     "@hocuspocus/server": "catalog:",
     "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
+    "@types/ws": "^8.18.1",
     "ai": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
+    "lib0": "catalog:",
     "postgres": "catalog:",
     "testcontainers": "catalog:",
     "vitest": "catalog:",
+    "ws": "^8.21.3",
     "yjs": "catalog:"
   }
 }

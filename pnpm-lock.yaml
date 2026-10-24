@@ -582,6 +582,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.1
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       ai:
         specifier: 'catalog:'
         version: 7.0.68(zod@4.4.3)
@@ -591,6 +594,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@cloudflare/workers-types@5.20260830.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+      lib0:
+        specifier: 'catalog:'
+        version: 0.2.117
       postgres:
         specifier: 'catalog:'
         version: 3.4.9
@@ -600,6 +606,9 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(@vitest/ui@4.1.10)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0)
+      ws:
+        specifier: ^8.21.3
+        version: 8.21.3
       yjs:
         specifier: 'catalog:'
         version: 13.6.32
