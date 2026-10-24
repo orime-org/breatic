@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { ProjectAssetPage, ProjectAssetReferenceEntity, ProjectRegisteredAsset } from "@breatic/shared";
+import type { ProjectAssetPage, ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity } from "@breatic/shared";
 import { t } from "@breatic/shared";
+import { z } from "zod";
 import { AppError, ForbiddenError, NotFoundError } from "@core/app-errors.js";
 import * as assetRepo from "@core/asset/asset.repo.js";
 import { decodeActivityCursor, encodeActivityCursor } from "@core/activity/project-activities.repo.js";
@@ -10,6 +11,7 @@ import { loadProjectRole } from "@core/auth/projectAuth.service.js";
 import { getTimelineConfig } from "@core/config/timeline.js";
 import { db, type DbTx } from "@core/db/client.js";
 import { findLiveOwnerStudioId } from "@core/project/projects.repo.js";
+import { getStorageAdapter } from "@core/infra/storage/index.js";
 
 /** Registered identities to associate after the Project has accepted their use. */
 export interface RecordProjectAssetReferencesInput {
@@ -23,6 +25,90 @@ export interface ResolveProjectAssetInput { projectId: string; assetId: string; 
 
 /** A keyset read of one Project's registered videos. */
 export interface ListProjectVideosInput { projectId: string; userId: string; cursor?: string; limit?: number }
+
+/** Explicit media identities captured from an accepted Space or provider result. */
+export interface ReferenceRegisteredProjectMediaInput { projectId: string; assetIds?: readonly string[]; urls?: readonly string[] }
+
+/** Classification preserves input identities while returning only canonical rows. */
+export interface RegisteredProjectMediaResolution {
+  resolved: { kind: "assetId" | "url"; reference: string; asset: StudioAssetEntity }[];
+  unavailable: { kind: "assetId" | "url"; reference: string; reason: "external" | "unregistered" | "foreign_studio" }[];
+}
+
+/** A declared identity whose storage classification needs no database access. */
+type MediaReference = { kind: "assetId"; reference: string } | { kind: "url"; reference: string; storageKey: string | null };
+
+const assetIdentitySchema = z.uuid();
+
+/**
+ * Accept registered media and classify unavailable identities without rewriting content.
+ * @param input - The accepting Project and semantic media references.
+ * @param tx - An enclosing business transaction, when supplied.
+ * @returns Canonical registered rows and unavailable classifications.
+ * @throws {Error} When the owning scope or valid-reference acceptance fails.
+ */
+export async function referenceRegisteredProjectMedia(input: ReferenceRegisteredProjectMediaInput, tx?: DbTx): Promise<RegisteredProjectMediaResolution> {
+  const assetIds = [...new Set((input.assetIds ?? []).map((id) => id.toLowerCase()))].sort();
+  const urls = [...new Set(input.urls ?? [])].sort();
+  const adapter = urls.length === 0 ? undefined : await getStorageAdapter();
+  const references: MediaReference[] = [
+    ...assetIds.map((reference): MediaReference => ({ kind: "assetId", reference })),
+    ...urls.map((reference): MediaReference => ({ kind: "url", reference, storageKey: adapter?.keyFromUrl(reference) ?? null })),
+  ];
+  if (tx !== undefined) return acceptMediaInTransaction(input.projectId, references, tx);
+  return db.transaction((transaction) => acceptMediaInTransaction(input.projectId, references, transaction));
+}
+
+/**
+ * Classify one captured reference set and accept its valid canonical identities.
+ * @param projectId - The Project accepting these semantic references.
+ * @param references - Stable input identities and precomputed storage keys.
+ * @param tx - The actual association transaction.
+ * @returns Resolved rows only after their associations have been accepted.
+ * @throws {NotFoundError} When the Project's live owning scope is absent.
+ * @throws {Error} When reading or accepting valid references fails.
+ */
+async function acceptMediaInTransaction(projectId: string, references: readonly MediaReference[], tx: DbTx): Promise<RegisteredProjectMediaResolution> {
+  const studioId = await findLiveOwnerStudioId(projectId, tx);
+  if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
+  const ids = references.filter((item) => item.kind === "assetId" && assetIdentitySchema.safeParse(item.reference).success).map((item) => item.reference);
+  const keys = references.flatMap((item) => item.kind === "url" && item.storageKey !== null ? [item.storageKey] : []);
+  const assets = await assetRepo.findLiveMediaIdentities(ids, keys, tx);
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const byKey = new Map(assets.map((asset) => [asset.storageKey, asset]));
+  const result: RegisteredProjectMediaResolution = { resolved: [], unavailable: [] };
+  for (const item of references) {
+    const identity = { kind: item.kind, reference: item.reference };
+    if (item.kind === "url" && item.storageKey === null) {
+      result.unavailable.push({ ...identity, reason: "external" });
+      continue;
+    }
+    const asset = item.kind === "assetId" ? byId.get(item.reference) : byKey.get(item.storageKey ?? "");
+    if (asset === undefined) result.unavailable.push({ ...identity, reason: "unregistered" });
+    else if (asset.studioId !== studioId) result.unavailable.push({ ...identity, reason: "foreign_studio" });
+    else result.resolved.push({ ...identity, asset });
+  }
+  const accepted = [...new Set(result.resolved.map((item) => item.asset.id))].sort();
+  await recordInTransaction(projectId, accepted, {}, tx);
+  return result;
+}
+
+/**
+ * Copy known live asset relationships inside the Project's business transaction.
+ * @param sourceProjectId - The authorized source Project.
+ * @param targetProjectId - The new Project in the same Studio.
+ * @param tx - The caller's actual Project-copy transaction.
+ * @returns Independent target references, retaining any existing target identities.
+ * @throws {Error} When the owning scope or association transaction fails.
+ */
+export async function copyProjectAssetReferences(sourceProjectId: string, targetProjectId: string, tx: DbTx): Promise<ProjectAssetReferenceEntity[]> {
+  const sourceStudioId = await findLiveOwnerStudioId(sourceProjectId, tx);
+  const targetStudioId = await findLiveOwnerStudioId(targetProjectId, tx);
+  if (sourceStudioId === undefined || targetStudioId === undefined || sourceStudioId !== targetStudioId) throw new NotFoundError(t("server.error.not_found"));
+  const references = await assetRepo.readLiveProjectReferences(sourceProjectId, sourceStudioId, tx);
+  const names = Object.fromEntries(references.flatMap((item) => item.displayName === null ? [] : [[item.assetId, item.displayName]]));
+  return recordInTransaction(targetProjectId, references.map((item) => item.assetId), names, tx);
+}
 
 /**
  * Persist accepted Project-to-asset relationships in the caller's transaction.

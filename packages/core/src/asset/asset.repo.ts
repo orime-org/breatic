@@ -12,7 +12,7 @@
  * (asset.service.resolveOwnerStudioId); this repo is attribution-agnostic.
  */
 
-import { and, desc, eq, isNull, inArray, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, studioAssets } from "@core/db/schema.js";
@@ -428,6 +428,26 @@ export async function findLiveManyInStudio(studioId: string, assetIds: readonly 
 }
 
 /**
+ * Resolve declared identities in bulk so the service can classify their scope.
+ * @param assetIds - Valid UUID identities explicitly stored as media sources.
+ * @param storageKeys - Keys resolved by the existing storage URL classifier.
+ * @param tx - An enclosing business transaction, when supplied.
+ * @returns Live canonical ledger rows, including foreign rows for classification only.
+ * @throws {Error} When the database read fails.
+ */
+export async function findLiveMediaIdentities(assetIds: readonly string[], storageKeys: readonly string[], tx?: DbTx): Promise<StudioAssetEntity[]> {
+  if (assetIds.length === 0 && storageKeys.length === 0) return [];
+  const rows = await (tx ?? db).select().from(studioAssets).where(and(
+    isNull(studioAssets.deletedAt),
+    or(
+      assetIds.length === 0 ? undefined : inArray(studioAssets.id, [...assetIds]),
+      storageKeys.length === 0 ? undefined : inArray(studioAssets.storageKey, [...storageKeys]),
+    ),
+  ));
+  return rows.map(toEntity);
+}
+
+/**
  * Map a physical association row without exporting Drizzle-inferred types.
  * @param row - The stored association row.
  * @returns The handwritten Project reference entity.
@@ -438,6 +458,24 @@ function toReferenceEntity(row: typeof projectAssetRefs.$inferSelect): ProjectAs
     id: row.id, projectId: row.projectId, assetId: row.assetId, displayName: row.displayName,
     createdAt: row.createdAt, updatedAt: row.updatedAt, deletedAt: row.deletedAt,
   };
+}
+
+/**
+ * Read copyable live references through the canonical owning ledger.
+ * @param projectId - The authorized source Project.
+ * @param studioId - Its current live owning Studio.
+ * @param tx - The caller's Project-copy transaction.
+ * @returns Only live source references to live assets in that Studio.
+ * @throws {Error} When the database read fails.
+ */
+export async function readLiveProjectReferences(projectId: string, studioId: string, tx: DbTx): Promise<ProjectAssetReferenceEntity[]> {
+  const rows = await tx.select({ reference: projectAssetRefs }).from(projectAssetRefs)
+    .innerJoin(studioAssets, eq(studioAssets.id, projectAssetRefs.assetId))
+    .where(and(
+      eq(projectAssetRefs.projectId, projectId), isNull(projectAssetRefs.deletedAt),
+      eq(studioAssets.studioId, studioId), isNull(studioAssets.deletedAt),
+    )).orderBy(projectAssetRefs.assetId);
+  return rows.map((row) => toReferenceEntity(row.reference));
 }
 
 /**

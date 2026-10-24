@@ -11,15 +11,18 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import fc from "fast-check";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
 import {
   createPgClient,
   db,
   ForbiddenError,
+  getStorageAdapter,
   initCore,
   loadLocales,
   NotFoundError,
   projectAssetReferenceService,
+  schema,
 } from "@breatic/core";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
@@ -167,9 +170,12 @@ async function seedAsset(
   const id = randomUUID();
   const kind = options.kind ?? "video";
   const storageKey = `test-media/${id}.${kind === "video" ? "mp4" : "png"}`;
+  const adapter = await getStorageAdapter();
+  const fileUrl = adapter.publicUrl(storageKey);
+  expect(adapter.keyFromUrl(fileUrl)).toBe(storageKey);
   const asset: AssetFixture = {
     id,
-    fileUrl: `https://assets.test.invalid/${storageKey}`,
+    fileUrl,
     kind,
     width: options.width === undefined ? 1920 : options.width,
     height: options.height === undefined ? 1080 : options.height,
@@ -199,6 +205,33 @@ async function liveReferences(projectId: string): Promise<ReferenceRow[]> {
     FROM project_asset_refs
     WHERE project_id = ${projectId} AND deleted_at IS NULL
     ORDER BY id`;
+}
+
+/**
+ * Refuse one Project's association writes through an actual database trigger.
+ * @returns After the operation and trigger cleanup have completed.
+ * @throws {Error} When setup, the operation, or cleanup fails.
+ */
+async function withReferenceWriteFailure(projectId: string, run: () => Promise<void>): Promise<void> {
+  const name = `timeline_media_ref_fault_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
+  await sql.unsafe(`CREATE FUNCTION ${name}() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.project_id = '${projectId}'::uuid THEN
+        RAISE EXCEPTION 'injected media reference failure';
+      END IF;
+      RETURN NEW;
+    END $$ LANGUAGE plpgsql`);
+  try {
+    await sql.unsafe(`CREATE TRIGGER ${name} BEFORE INSERT OR UPDATE ON project_asset_refs
+      FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+    try {
+      await run();
+    } finally {
+      await sql.unsafe(`DROP TRIGGER IF EXISTS ${name} ON project_asset_refs`);
+    }
+  } finally {
+    await sql.unsafe(`DROP FUNCTION IF EXISTS ${name}()`);
+  }
 }
 
 describe("Project registered asset references", () => {
@@ -526,5 +559,311 @@ describe("Project registered asset references", () => {
     }
     expect(seen).toEqual(ordered.map((entry) => entry.asset.id));
     expect(new Set(seen).size).toBe(4);
+  });
+});
+
+describe("Registered Project media identity and Project copies", () => {
+  it("resolves a view-only URL to the canonical ledger URL and metadata before returning it", async () => {
+    const fixture = await seedFixture();
+    const asset = await seedAsset(fixture);
+    const canonical = new URL(asset.fileUrl);
+    canonical.searchParams.set("registered", "canonical");
+    await sql`UPDATE studio_assets SET file_url = ${canonical.href}, width = 1280,
+      height = 720, duration_seconds = 8.375 WHERE id = ${asset.id}`;
+    const supplied = new URL(asset.fileUrl);
+    supplied.searchParams.set("download", "1");
+    supplied.hash = "preview";
+    const adapter = await getStorageAdapter();
+    expect(adapter.keyFromUrl(supplied.href)).toBe(adapter.keyFromUrl(asset.fileUrl));
+    const result = await projectAssetReferenceService.referenceRegisteredProjectMedia({
+      projectId: fixture.projectId, urls: [supplied.href],
+    });
+    expect(result.unavailable).toEqual([]);
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]).toMatchObject({
+      kind: "url", reference: supplied.href,
+      asset: {
+        id: asset.id, studioId: fixture.studioId, fileUrl: canonical.href,
+        kind: "video", mimeType: "video/mp4", sizeBytes: 8192,
+        width: 1280, height: 720, durationSeconds: 8.375,
+      },
+    });
+    expect((await liveReferences(fixture.projectId)).map((row) => row.asset_id)).toEqual([asset.id]);
+  });
+
+  it("sorts and deduplicates input identities while retaining valid members of a mixed batch", async () => {
+    const fixture = await seedFixture();
+    const foreign = await seedFixture();
+    const first = await seedAsset(fixture);
+    const second = await seedAsset(fixture);
+    const foreignAsset = await seedAsset(foreign);
+    const adapter = await getStorageAdapter();
+    const unknownId = randomUUID();
+    const unknownUrl = adapter.publicUrl(`unregistered/${randomUUID()}.mp4`);
+    const externalUrl = "https://outside.test.invalid/video.mp4";
+    const before = await sql<{ n: string }[]>`SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${fixture.studioId}`;
+    const result = await projectAssetReferenceService.referenceRegisteredProjectMedia({
+      projectId: fixture.projectId,
+      assetIds: [second.id, foreignAsset.id, first.id, second.id, unknownId],
+      urls: [unknownUrl, second.fileUrl, foreignAsset.fileUrl, externalUrl, first.fileUrl, second.fileUrl],
+    });
+    const expectedResolved = [
+      { kind: "assetId", reference: first.id, assetId: first.id },
+      { kind: "assetId", reference: second.id, assetId: second.id },
+      { kind: "url", reference: first.fileUrl, assetId: first.id },
+      { kind: "url", reference: second.fileUrl, assetId: second.id },
+    ].sort((left, right) => `${left.kind}:${left.reference}` < `${right.kind}:${right.reference}` ? -1 : 1);
+    const expectedUnavailable = [
+      { kind: "assetId", reference: foreignAsset.id, reason: "foreign_studio" },
+      { kind: "assetId", reference: unknownId, reason: "unregistered" },
+      { kind: "url", reference: unknownUrl, reason: "unregistered" },
+      { kind: "url", reference: foreignAsset.fileUrl, reason: "foreign_studio" },
+      { kind: "url", reference: externalUrl, reason: "external" },
+    ].sort((left, right) => `${left.kind}:${left.reference}` < `${right.kind}:${right.reference}` ? -1 : 1);
+    expect(result.resolved.map((item) => ({ kind: item.kind, reference: item.reference, assetId: item.asset.id }))).toEqual(expectedResolved);
+    expect(result.unavailable).toEqual(expectedUnavailable);
+    expect((await liveReferences(fixture.projectId)).map((row) => row.asset_id).sort()).toEqual([first.id, second.id].sort());
+    expect(await sql<{ n: string }[]>`SELECT count(*) AS n FROM studio_assets WHERE studio_id = ${fixture.studioId}`).toEqual(before);
+  });
+
+  it("classifies deleted and unknown asset identities as unregistered without making associations", async () => {
+    const fixture = await seedFixture();
+    const deleted = await seedAsset(fixture);
+    const unknownId = randomUUID();
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${deleted.id}`;
+    const result = await projectAssetReferenceService.referenceRegisteredProjectMedia({
+      projectId: fixture.projectId, assetIds: [unknownId, deleted.id], urls: [deleted.fileUrl],
+    });
+    expect(result.resolved).toEqual([]);
+    expect(result.unavailable).toEqual([
+      ...[unknownId, deleted.id].sort().map((reference) => ({ kind: "assetId", reference, reason: "unregistered" })),
+      { kind: "url", reference: deleted.fileUrl, reason: "unregistered" },
+    ]);
+    expect(await liveReferences(fixture.projectId)).toEqual([]);
+  });
+
+  it("does not report resolved media when its association SQL fails", async () => {
+    const fixture = await seedFixture();
+    const asset = await seedAsset(fixture);
+    await withReferenceWriteFailure(fixture.projectId, async () => {
+      await expect(db.transaction((tx) => projectAssetReferenceService.referenceRegisteredProjectMedia({
+        projectId: fixture.projectId, assetIds: [asset.id], urls: [asset.fileUrl],
+      }, tx))).rejects.toBeInstanceOf(Error);
+    });
+    expect(await liveReferences(fixture.projectId)).toEqual([]);
+  });
+
+  it("joins the caller transaction when accepting registered media identities", async () => {
+    const fixture = await seedFixture();
+    const asset = await seedAsset(fixture);
+    const rollback = new Error("rollback accepted media fixture");
+    await expect(db.transaction(async (tx) => {
+      const result = await projectAssetReferenceService.referenceRegisteredProjectMedia({
+        projectId: fixture.projectId, urls: [asset.fileUrl],
+      }, tx);
+      expect(result.resolved.map((item) => item.asset.id)).toEqual([asset.id]);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect(await liveReferences(fixture.projectId)).toEqual([]);
+  });
+
+  it("copies source names to independent target references without changing the source", async () => {
+    const source = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const asset = await seedAsset(source);
+    const sourceRefs = await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: source.projectId, assetIds: [asset.id], displayNames: { [asset.id]: "Source name.mp4" },
+    });
+    const before = await liveReferences(source.projectId);
+    const copied = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toMatchObject({ projectId: targetId, assetId: asset.id, displayName: "Source name.mp4" });
+    expect(copied[0]!.id).not.toBe(sourceRefs[0]!.id);
+    expect((await liveReferences(targetId)).map((row) => ({ id: row.id, assetId: row.asset_id, name: row.display_name }))).toEqual([
+      { id: copied[0]!.id, assetId: asset.id, name: "Source name.mp4" },
+    ]);
+    expect(await liveReferences(source.projectId)).toEqual(before);
+  });
+
+  it("copies into the target Project created within the same uncommitted business transaction", async () => {
+    const source = await seedFixture();
+    const asset = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: source.projectId, assetIds: [asset.id], displayNames: { [asset.id]: "Transactional copy.mp4" },
+    });
+    const targetId = randomUUID();
+    owned.projects.push(targetId);
+    const copied = await db.transaction(async (tx) => {
+      await tx.insert(schema.projects).values({
+        id: targetId, studioId: source.studioId, createdByUserId: source.ownerId,
+        name: "Transactional target", slug: `media-${targetId}`,
+      });
+      await tx.insert(schema.projectMembers).values({
+        projectId: targetId, userId: source.ownerId, role: "owner", addedBy: null,
+      });
+      return projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx);
+    });
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toMatchObject({ projectId: targetId, assetId: asset.id, displayName: "Transactional copy.mp4" });
+    expect((await liveReferences(targetId)).map((row) => row.asset_id)).toEqual([asset.id]);
+  });
+
+  it("keeps an existing target reference identity, timestamp, and first name on repeated copy", async () => {
+    const source = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const asset = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: source.projectId, assetIds: [asset.id], displayNames: { [asset.id]: "Source name.mp4" },
+    });
+    await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: targetId, assetIds: [asset.id], displayNames: { [asset.id]: "Existing target.mp4" },
+    });
+    const before = await liveReferences(targetId);
+    const first = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+    const second = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+    expect(first.map((entry) => entry.id)).toEqual([before[0]!.id]);
+    expect(second.map((entry) => entry.id)).toEqual([before[0]!.id]);
+    expect(second[0]!.displayName).toBe("Existing target.mp4");
+    expect(await liveReferences(targetId)).toEqual(before);
+  });
+
+  it("copies only live source references to live assets in the source owning Studio", async () => {
+    const source = await seedFixture();
+    const foreign = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const valid = await seedAsset(source);
+    const deletedRef = await seedAsset(source);
+    const deletedAsset = await seedAsset(source);
+    const foreignAsset = await seedAsset(foreign);
+    await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: source.projectId, assetIds: [valid.id, deletedRef.id, deletedAsset.id],
+    });
+    await sql`UPDATE project_asset_refs SET deleted_at = now()
+      WHERE project_id = ${source.projectId} AND asset_id = ${deletedRef.id}`;
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${deletedAsset.id}`;
+    await sql`INSERT INTO project_asset_refs (id, project_id, asset_id)
+      VALUES (${randomUUID()}, ${source.projectId}, ${foreignAsset.id})`;
+    const copied = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+    expect(copied.map((entry) => entry.assetId)).toEqual([valid.id]);
+    expect((await liveReferences(targetId)).map((row) => row.asset_id)).toEqual([valid.id]);
+  });
+
+  it("refuses to copy associations into a different Studio", async () => {
+    const source = await seedFixture();
+    const target = await seedFixture();
+    const asset = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({ projectId: source.projectId, assetIds: [asset.id] });
+    await expect(db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, target.projectId, tx))).rejects.toBeInstanceOf(NotFoundError);
+    expect(await liveReferences(target.projectId)).toEqual([]);
+  });
+
+  it.each(["source_project", "target_project", "studio"] as const)("refuses a copy with a deleted %s", async (deleted) => {
+    const source = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const asset = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({ projectId: source.projectId, assetIds: [asset.id] });
+    if (deleted === "studio") await sql`UPDATE studios SET deleted_at = now() WHERE id = ${source.studioId}`;
+    else await sql`UPDATE projects SET deleted_at = now() WHERE id = ${deleted === "source_project" ? source.projectId : targetId}`;
+    await expect(db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx))).rejects.toBeInstanceOf(NotFoundError);
+    expect(await liveReferences(targetId)).toEqual([]);
+  });
+
+  it("rolls back copied associations with the original business transaction", async () => {
+    const source = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const asset = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({ projectId: source.projectId, assetIds: [asset.id] });
+    const sourceBefore = await liveReferences(source.projectId);
+    const rollback = new Error("rollback Project copy fixture");
+    await expect(db.transaction(async (tx) => {
+      const copied = await projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx);
+      expect(copied.map((entry) => entry.assetId)).toEqual([asset.id]);
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect(await liveReferences(targetId)).toEqual([]);
+    expect(await liveReferences(source.projectId)).toEqual(sourceBefore);
+  });
+
+  it("leaves no target references when the actual copy association write fails", async () => {
+    const source = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const first = await seedAsset(source);
+    const second = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({ projectId: source.projectId, assetIds: [first.id, second.id] });
+    const before = await liveReferences(source.projectId);
+    await withReferenceWriteFailure(targetId, async () => {
+      await expect(db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx))).rejects.toBeInstanceOf(Error);
+    });
+    expect(await liveReferences(targetId)).toEqual([]);
+    expect(await liveReferences(source.projectId)).toEqual(before);
+  });
+
+  it("preserves scoped unique source and independent target references over generated acceptance orders", async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.array(fc.constantFrom(...([
+        "valid_a", "valid_b", "foreign", "unknown",
+        "valid_a_url", "valid_b_url", "foreign_url", "unknown_url", "external_url",
+      ] as const)), { minLength: 0, maxLength: 20 }),
+      async (choices) => {
+        const source = await seedFixture();
+        const foreign = await seedFixture();
+        const firstAsset = await seedAsset(source);
+        const secondAsset = await seedAsset(source);
+        const foreignAsset = await seedAsset(foreign);
+        const unknownId = randomUUID();
+        const adapter = await getStorageAdapter();
+        const identities = {
+          valid_a: { kind: "assetId", reference: firstAsset.id },
+          valid_b: { kind: "assetId", reference: secondAsset.id },
+          foreign: { kind: "assetId", reference: foreignAsset.id },
+          unknown: { kind: "assetId", reference: unknownId },
+          valid_a_url: { kind: "url", reference: firstAsset.fileUrl },
+          valid_b_url: { kind: "url", reference: secondAsset.fileUrl },
+          foreign_url: { kind: "url", reference: foreignAsset.fileUrl },
+          unknown_url: { kind: "url", reference: adapter.publicUrl(`unknown/${unknownId}.mp4`) },
+          external_url: { kind: "url", reference: "https://outside.test.invalid/generated.mp4" },
+        } as const;
+        const selected = [identities.valid_a, ...choices.map((choice) => identities[choice])];
+        const assetIds = selected.filter((item) => item.kind === "assetId").map((item) => item.reference);
+        const urls = selected.filter((item) => item.kind === "url").map((item) => item.reference);
+        const expectedAssetIds = [
+          firstAsset.id,
+          ...(choices.some((choice) => choice === "valid_b" || choice === "valid_b_url") ? [secondAsset.id] : []),
+        ].sort();
+        await projectAssetReferenceService.recordProjectAssetReferences({
+          projectId: source.projectId, assetIds: [firstAsset.id],
+          displayNames: { [firstAsset.id]: "Verified source name.mp4" },
+        });
+        const accepted = await projectAssetReferenceService.referenceRegisteredProjectMedia({
+          projectId: source.projectId, assetIds, urls,
+        });
+        const sourceBeforeRepeat = await liveReferences(source.projectId);
+        expect(sourceBeforeRepeat.map((row) => row.asset_id).sort()).toEqual(expectedAssetIds);
+        expect(sourceBeforeRepeat.find((row) => row.asset_id === firstAsset.id)?.display_name).toBe("Verified source name.mp4");
+        expect(new Set(sourceBeforeRepeat.map((row) => row.asset_id)).size).toBe(expectedAssetIds.length);
+        const repeated = await projectAssetReferenceService.referenceRegisteredProjectMedia({
+          projectId: source.projectId,
+          assetIds: [...assetIds].reverse().concat(assetIds),
+          urls: [...urls].reverse().concat(urls),
+        });
+        expect(repeated).toEqual(accepted);
+        expect(await liveReferences(source.projectId)).toEqual(sourceBeforeRepeat);
+
+        const targetId = await seedProject(source.studioId, source.ownerId);
+        const copied = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+        const targetBeforeRepeat = await liveReferences(targetId);
+        expect(targetBeforeRepeat.map((row) => row.asset_id).sort()).toEqual(expectedAssetIds);
+        expect(copied.map((entry) => entry.id).sort()).toEqual(targetBeforeRepeat.map((row) => row.id).sort());
+        for (const row of targetBeforeRepeat) {
+          const original = sourceBeforeRepeat.find((entry) => entry.asset_id === row.asset_id)!;
+          expect(row.id).not.toBe(original.id);
+          expect(row.display_name).toBe(original.display_name);
+        }
+        const copiedAgain = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+        expect(copiedAgain.map((entry) => entry.id).sort()).toEqual(copied.map((entry) => entry.id).sort());
+        expect(await liveReferences(targetId)).toEqual(targetBeforeRepeat);
+        expect(await liveReferences(source.projectId)).toEqual(sourceBeforeRepeat);
+      },
+    ), { numRuns: 8 });
   });
 });
