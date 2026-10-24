@@ -10,6 +10,7 @@
     "types": ["node"],
     "baseUrl": "..",
     "paths": {
+      "@ingest/container/*": ["./container/*"],
       "@ingest/*": ["./src/*"],
       "@shared/*": ["../shared/src/*"]
     }
@@ -21,6 +22,7 @@
   // not in the list — it describes workerd, which this environment is not.
   "include": [
     "*.ts",
+    "./analysis-frame-reader.ts",
     "../src/probe-answer.ts",
     "../src/probe-command.ts",
     "../src/media-metadata.ts",

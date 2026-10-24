@@ -48,7 +48,9 @@ export async function* readAnalysisFrames(request: AnalysisFrameReadRequest): As
     let frame: Buffer | null = null;
     let filled = 0;
     let frameIndex = 0;
-    for await (const chunk of source) {
+    // This owner closes the pipe in finally. The default iterator destroys it
+    // with AbortError on an early return, masking a ledger failure upstream.
+    for await (const chunk of source.iterator({ destroyOnReturn: false })) {
       assertActive(signal);
       if (!(chunk instanceof Uint8Array)) throw new TypeError("Analysis pipe must contain binary BGR bytes");
       let offset = 0;

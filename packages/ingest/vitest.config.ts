@@ -24,6 +24,7 @@ import { resolve } from "node:path";
 
 /** Where both projects find this package's and shared's sources. */
 const alias = {
+  "@ingest/container": resolve(__dirname, "./container"),
   "@ingest": resolve(__dirname, "./src"),
   "@shared": resolve(__dirname, "../shared/src"),
 };
