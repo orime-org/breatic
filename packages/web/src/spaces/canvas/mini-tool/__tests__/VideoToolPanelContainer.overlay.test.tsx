@@ -75,7 +75,7 @@ describe('Run with a trusted frame table and an unknown presented frame', () => 
     const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...source.mediaInfo } };
     const frameTable = { frames: [{ frameIndex: 0, pts: 0 }, { frameIndex: 1, pts: 0.04 }, { frameIndex: 2, pts: 0.12 }, { frameIndex: 3, pts: 0.2 }], videoEnd: 0.28 };
     const onRun = vi.fn().mockResolvedValue(undefined);
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} onRunVideo={onRun} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 3, presentedTime: null as unknown as number }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} onRunVideo={onRun} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 3, presentedTime: null }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
     const run = screen.getByTestId('mini-tool-run');
     if (mode === 'current') {
       expect(run).toBeDisabled();

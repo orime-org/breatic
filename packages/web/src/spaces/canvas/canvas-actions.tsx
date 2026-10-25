@@ -4,7 +4,8 @@
 import * as React from 'react';
 
 import type { Modality } from '@web/data/yjs/node-view';
-import type { MediaSurfaceSnapshot, PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 /**
  * Canvas mutations a node body can trigger but cannot perform itself: the
@@ -15,7 +16,7 @@ import type { MediaSurfaceSnapshot, PresentedMediaFrame } from '@web/spaces/canv
  */
 export interface CanvasActions {
   /** Receives the actual effect-owned video attachment; never persisted. */
-  onVideoBinding?: (nodeId: string, canonicalURL: string, snapshot: MediaSurfaceSnapshot) => void;
+  onVideoBinding?: (nodeId: string, canonicalURL: string, snapshot: MediaPlayerVideoSnapshot) => void;
   /** Consumes the just-presented canonical frame before its drawing buffer clears. */
   onVideoFrame?: (nodeId: string, canonicalURL: string, frame: PresentedMediaFrame) => void;
   /**

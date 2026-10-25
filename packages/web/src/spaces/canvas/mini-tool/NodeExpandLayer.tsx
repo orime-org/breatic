@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
+import { useVideoDisplayGeometry } from '@web/spaces/canvas/video-presentation/video-display-geometry';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
 import { expandFillStyle } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
@@ -31,7 +32,10 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
   const store = useCanvasSessionStore();
   const draft = useCanvasSession(miniToolOpenOn(nodeId));
   const expand = draft?.expand ?? null;
-  const geometry = useMediaGeometry(wrapper, expand !== null);
+  const video = draft?.toolId === 'video.expand';
+  const picture = useMediaGeometry(wrapper, expand !== null && !video);
+  const display = useVideoDisplayGeometry(wrapper, expand !== null && video);
+  const geometry = video ? display : picture;
   // Read only while the tool is open, so a zoom does not re-render every node.
   const zoom = useStore((s) => (expand === null ? 1 : s.transform[2]));
 
@@ -43,7 +47,7 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
     store.getState().setExpandView({ at: geometry.at, box: geometry.box, src: geometry.src });
   }, [geometry, expand, store]);
 
-  if (expand === null || geometry === null) return null;
+  if (video || expand === null || geometry === null) return null;
   const { box, at } = geometry;
   return (
     // The viewport overlay draws the source at this same fixed location.

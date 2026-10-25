@@ -225,6 +225,10 @@ import { downloadAsset } from '@web/lib/download';
 import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
+import { CanonicalTimelineDecoder } from '@web/spaces/canvas/video-presentation/CanonicalTimelineDecoder';
+import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
+import { CanvasVideoExpandBridge } from '@web/spaces/canvas/video-presentation/CanvasVideoExpandBridge';
+import { useCanvasVideoBindings } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
@@ -4135,8 +4139,26 @@ function CanvasSpaceInner({
   );
 
 
+  const videoHost = miniToolDraft === null ? null : panelHostId;
+  const videoNode = nodes.find((node) => node.id === videoHost);
+  const videoSource = videoNode && 'content' in videoNode.data ? videoNode.data.content : null;
+  const videoExpansion = miniToolDraft?.toolId === 'video.expand' && videoHost !== null && typeof videoSource === 'string';
+  const videoRuntime = useCanvasVideoBindings(videoHost, typeof videoSource === 'string' ? videoSource : null);
+
+  /**
+   * Uses the same canonical presentation owner for both composition decode slots.
+   * @param input - Copied registered input.
+   * @param onBinding - Actual transport consumer.
+   * @param onPresentedFrame - Synchronous stable-texture consumer.
+   * @returns The independently owned source decoder.
+   * @throws {never} Errors enter the existing preview recovery state.
+   */
+  const renderVideoDecoder = React.useCallback<VideoTimelineDecoderRenderer>((input, onBinding, onPresentedFrame) => <CanonicalTimelineDecoder input={input} onBinding={onBinding} onPresentedFrame={onPresentedFrame} />, []);
+
   const actions = React.useMemo<CanvasActions>(
     () => ({
+      onVideoBinding: videoRuntime.onVideoBinding,
+      onVideoFrame: videoRuntime.onVideoFrame,
       renameNode: (nodeId: string, name: string): void =>
         setNodeName(projectId, spaceId, nodeId, name),
       deleteEdge: (edgeId: string): void => {
@@ -4299,6 +4321,8 @@ function CanvasSpaceInner({
       gesture,
       t,
       commitGuardedDelete,
+      videoRuntime.onVideoBinding,
+      videoRuntime.onVideoFrame,
     ],
   );
 
@@ -4717,8 +4741,8 @@ function CanvasSpaceInner({
               unmounts while its own box is off screen; drawn here, over every
               node like the new-note box, it stays while any part is visible. */}
             <ViewportPortal>
-              <div className='absolute top-0 left-0' style={{ zIndex: VIEWPORT_TOP_Z }}>
-                <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />
+              <div className='absolute top-0 left-0' style={{ zIndex: videoExpansion ? undefined : VIEWPORT_TOP_Z }}>
+                {videoExpansion ? <CanvasVideoExpandBridge nodeId={videoHost} canonicalURL={videoSource} locked={videoNode?.data.locked === true} snapshot={videoRuntime.bindings.get(videoHost)} onNodeContextMenu={onNodeContextMenu} /> : <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />}
               </div>
             </ViewportPortal>
             {composerAt === null ? null : (
@@ -4828,6 +4852,9 @@ function CanvasSpaceInner({
               nodes={nodes}
               getLastWriteWasLocal={getLastWriteWasLocal}
               onRun={runMiniTool}
+              videoPresentation={videoRuntime.presentations}
+              videoBindings={videoRuntime.bindings}
+              renderVideoDecoder={renderVideoDecoder}
             />
             {/* The transcribe panel (inner#856), in the same slot. */}
             <TranscribePanelContainer nodes={nodes} onRun={runTranscribe} />

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import type { VideoPresentationSource, MediaSurfaceSnapshot, PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import type { VideoPresentationSourceBinding } from '@breatic/shared';
+import type { VideoPresentationSource, MediaSurfaceSnapshot, PresentedMediaFrame, MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
+import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
+import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { Slider } from '@web/components/ui/slider';
@@ -20,13 +23,16 @@ import type { NodeResolution } from '@web/spaces/canvas/nodes/_shared/NodeResolu
 import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-player';
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 
-interface MediaPlayerProps {
+/** Actual resource notice plus an independently React-owned overlay host. */
+export interface MediaPlayerVideoSnapshot extends MediaSurfaceSnapshot { overlayTarget: HTMLElement | null; sourceBinding?: VideoPresentationSourceBinding }
+
+export interface MediaPlayerProps {
   /** Resolved canonical video; null waits for trusted classification. */
   videoSource?: VideoPresentationSource | null;
   /** Whether this resource is currently displayed. */
   active?: boolean;
   /** Actual source transport lifecycle, never persisted in node data. */
-  onVideoBinding?: (snapshot: MediaSurfaceSnapshot) => void;
+  onVideoBinding?: (snapshot: MediaPlayerVideoSnapshot) => void;
   /** Synchronous actual-frame consumer. */
   onPresentedFrame?: (frame: PresentedMediaFrame) => void;
   /** Existing tool overlays sharing the displayed canonical box. */
@@ -128,6 +134,11 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * rather than the node.
  * Zero third-party player dependency.
  * @param root0 - Component props.
+ * @param root0.videoSource - Resolved canonical presentation; null remains unknown.
+ * @param root0.active - Whether this resource is displayed.
+ * @param root0.onVideoBinding - Actual resource and independent overlay target.
+ * @param root0.onPresentedFrame - Synchronous canonical frame consumer.
+ * @param root0.children - Tool overlays in the same canonical display box.
  * @param root0.modality - `'audio'` or `'video'`.
  * @param root0.src - Media source URL.
  * @param root0.poster - Poster image (video only).
@@ -142,6 +153,11 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
 export function MediaPlayer({
   modality,
   src,
+  videoSource,
+  active = true,
+  onVideoBinding,
+  onPresentedFrame,
+  children,
   poster,
   fullPoster = false,
   size,
@@ -151,8 +167,65 @@ export function MediaPlayer({
   controlsHidden = false,
 }: MediaPlayerProps): React.JSX.Element {
   const ref = React.useRef<HTMLMediaElement>(null);
-  const p = useMediaPlayer(ref, duration);
   const isVideo = modality === 'video';
+  const ownsVideo = isVideo && videoSource !== undefined;
+  const key = videoSource ? JSON.stringify([videoSource.canonicalURL, videoSource.sourceFingerprint]) : JSON.stringify([src, null]);
+  const wanted = React.useRef({ key, active });
+  wanted.current = { key, active };
+  const consumers = React.useRef({ onVideoBinding, onPresentedFrame, onDimensions });
+  consumers.current = { onVideoBinding, onPresentedFrame, onDimensions };
+  const overlayHost = React.useRef<HTMLDivElement>(null);
+  const previousElement = React.useRef<HTMLVideoElement | null>(null);
+  const adapted = React.useRef<{ original: MediaSurfaceBinding; binding: MediaSurfaceBinding } | null>(null);
+  const [notice, setNotice] = React.useState<{ key: string; value: MediaSurfaceSnapshot } | null>(null);
+  /**
+   * Adapts only the current actual owner and preserves the node's native sound settings.
+   * @param value - Current effect-owned presentation state.
+   * @throws {never} Never.
+   */
+  const acceptBinding = React.useCallback((value: MediaSurfaceSnapshot): void => {
+    if (wanted.current.key !== key) return;
+    if (value.binding !== null && (!wanted.current.active || value.binding.sourceKey !== key)) return;
+    let binding: MediaSurfaceBinding | null = null;
+    if (value.binding !== null) {
+      const original = value.binding;
+      if (previousElement.current !== original.element) {
+        if (previousElement.current !== null) { original.element.volume = previousElement.current.volume; original.element.muted = previousElement.current.muted; }
+        previousElement.current = original.element;
+      }
+      original.surface.setAttribute('data-canonical-video-display', src);
+      original.surface.setAttribute('data-testid', 'media-element');
+      if (adapted.current?.original !== original) {
+        const owned: MediaSurfaceBinding = {
+          ...original,
+          seek: (time) => {
+            if (adapted.current?.original !== original || wanted.current.key !== key) return;
+            original.seek(time);
+            consumers.current.onVideoBinding?.({ status: 'ready', binding: owned, error: null, overlayTarget: overlayHost.current });
+          },
+        };
+        adapted.current = { original, binding: owned };
+      }
+      binding = adapted.current.binding;
+      consumers.current.onDimensions?.({ width: original.original.width, height: original.original.height });
+    } else adapted.current = null;
+    const next = { ...value, binding };
+    setNotice((before) => before?.key === key && before.value.status === next.status && before.value.binding === next.binding && before.value.error === next.error ? before : { key, value: next });
+    consumers.current.onVideoBinding?.({ ...next, overlayTarget: overlayHost.current });
+  }, [key, src]);
+  /**
+   * Delivers just-drawn pixels before the renderer's buffer can clear.
+   * @param frame - Actual current source and seek frame.
+   * @throws {never} Consumers own pixel-read failures.
+   */
+  const acceptFrame = React.useCallback((frame: PresentedMediaFrame): void => {
+    if (wanted.current.active && frame.sourceKey === wanted.current.key) consumers.current.onPresentedFrame?.(frame);
+  }, []);
+  const snapshot = notice?.key === key && active ? notice.value : null;
+  const binding = snapshot?.binding ?? null;
+  const p = useMediaPlayer(ref, duration, ownsVideo ? binding : undefined);
+  const unavailable = ownsVideo && binding === null;
+  const t = useTranslation();
   // Zoomed past the cover preview, the original cover is loaded off-screen (a
   // poster has no load or error event of its own). Until it arrives the
   // stretched preview is hidden under the skeleton; a cover that fails gives
@@ -209,6 +282,7 @@ export function MediaPlayer({
       variant={null}
       size={null}
       onClick={p.togglePlay}
+      disabled={unavailable}
       aria-label={p.playing ? 'Pause' : 'Play'}
       data-testid='play-toggle'
       className={btnCls}
@@ -224,6 +298,7 @@ export function MediaPlayer({
           type='button'
           variant={null}
           size={null}
+          disabled={unavailable}
           aria-label={p.muted ? 'Unmute' : 'Mute'}
           data-testid='volume-button'
           className={btnCls}
@@ -259,6 +334,70 @@ export function MediaPlayer({
       </PopoverContent>
     </Popover>
   );
+
+  const videoControls = (
+    <div
+      data-testid='controls'
+      inert={controlsHidden}
+      className={`nodrag absolute z-10 inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${
+            controlsHidden ? 'translate-y-full' : ''
+          }`}
+    >
+      {playButton}
+      <span
+        data-testid='time-current'
+        className={timeCls}
+      >
+        {formatSeconds(p.currentTime)}
+      </span>
+      <Slider
+        data-testid='seek'
+        disabled={unavailable}
+        aria-label='Seek'
+        min={0}
+        max={100}
+        step={0.1}
+        value={[p.progress * 100]}
+        onValueChange={([v]) => p.seekFraction(v / 100)}
+        className='nokey min-w-0 flex-1'
+      />
+      <span
+        data-testid='time-total'
+        className={timeCls}
+      >
+        {formatSeconds(p.duration)}
+      </span>
+      {showVolume ? <span className='hidden @min-[11rem]:contents'>{volumeControl}</span> : null}
+      {showFullscreen ? (
+        <Button
+          type='button'
+          variant={null}
+          size={null}
+          onClick={p.requestFullscreen}
+          disabled={unavailable}
+          aria-label='Fullscreen'
+          data-testid='fullscreen'
+          className={btnCls}
+        >
+          <Maximize className='h-4 w-4' />
+        </Button>
+      ) : null}
+    </div>
+  );
+
+  if (ownsVideo) {
+    const original = videoSource?.presentation.original ?? size;
+    const loadingOwner = snapshot?.status !== 'ready';
+    return <div className={cn('@container relative', original === undefined && 'min-h-48')} data-testid='media-player' style={original === undefined ? undefined : { aspectRatio: `${original.width}/${original.height}` }}>
+      <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame}>
+        {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
+        {loadingOwner && !posterLoaded ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
+        {videoControls}
+        <div ref={overlayHost} data-testid='video-tool-overlay-host' className='pointer-events-none absolute inset-0'>{children}</div>
+        {snapshot?.status === 'failed' ? <p className='pointer-events-none absolute inset-0 grid place-content-center bg-card p-3 text-center text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
+      </VideoPresentationSurface>
+    </div>;
+  }
 
   if (isVideo) {
     return (
@@ -296,51 +435,7 @@ export function MediaPlayer({
             className='pointer-events-none absolute inset-0 rounded-none'
           />
         ) : null}
-        <div
-          data-testid='controls'
-          inert={controlsHidden}
-          className={`nodrag absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-2 pb-1.5 pt-6 text-white transition-transform ${
-            controlsHidden ? 'translate-y-full' : ''
-          }`}
-        >
-          {playButton}
-          <span
-            data-testid='time-current'
-            className={timeCls}
-          >
-            {formatSeconds(p.currentTime)}
-          </span>
-          <Slider
-            data-testid='seek'
-            aria-label='Seek'
-            min={0}
-            max={100}
-            step={0.1}
-            value={[p.progress * 100]}
-            onValueChange={([v]) => p.seekFraction(v / 100)}
-            className='nokey min-w-0 flex-1'
-          />
-          <span
-            data-testid='time-total'
-            className={timeCls}
-          >
-            {formatSeconds(p.duration)}
-          </span>
-          {showVolume ? <span className='hidden @min-[11rem]:contents'>{volumeControl}</span> : null}
-          {showFullscreen ? (
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              onClick={p.requestFullscreen}
-              aria-label='Fullscreen'
-              data-testid='fullscreen'
-              className={btnCls}
-            >
-              <Maximize className='h-4 w-4' />
-            </Button>
-          ) : null}
-        </div>
+        {videoControls}
       </div>
     );
   }

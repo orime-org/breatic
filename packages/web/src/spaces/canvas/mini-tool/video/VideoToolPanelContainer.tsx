@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import type { MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
+import { createPortal } from 'react-dom';
+import { VideoToolNodeOverlay } from '@web/spaces/canvas/mini-tool/video/VideoToolNodeOverlay';
+import type { PresentedMediaFrame, MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { CANVAS_NODES_KEY, newId } from '@breatic/shared';
+import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, planVideoFrames, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type VideoFrameTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
@@ -43,7 +45,9 @@ function analysisRecords(queries: readonly UseQueryResult<MiniToolAnalysisRecord
 /** Authoritative presentation facts supplied by the video node owner. */
 export interface VideoToolPresentation {
   frameTable: VideoFrameTable | null;
-  presentedTime: number;
+  presentedTime: number | null;
+  /** Reads the owner's current frame at a press, independently of React preview cadence. */
+  getPresentedFrame?: () => PresentedMediaFrame | null;
   status: 'loading' | 'ready' | 'failed';
   sourceURL: string;
   sourceEpoch: number;
@@ -51,11 +55,28 @@ export interface VideoToolPresentation {
   onSeek?: (time: number) => void;
 }
 
+/**
+ * Reads only an actual frame from this source and seek lifetime.
+ * @param presentation - Facts published by the current node owner.
+ * @returns Actual presented media time, or explicit unknown.
+ * @throws {never} Never.
+ */
+function presentedTimeOf(presentation: VideoToolPresentation | undefined): number | null {
+  if (!presentation) return null;
+  if (presentation.getPresentedFrame) {
+    const frame = presentation.getPresentedFrame();
+    return frame && frame.sourceEpoch === presentation.sourceEpoch && frame.seekEpoch === presentation.seekEpoch ? frame.mediaTime : null;
+  }
+  return presentation.presentedTime !== null && Number.isFinite(presentation.presentedTime) ? presentation.presentedTime : null;
+}
+
 export interface VideoToolCostText { execution: string; analysis?: string }
 
 export interface VideoToolPanelContainerProps {
   /** Actual canonical display box supplied by the node's presentation owner. */
   overlayTarget?: HTMLElement | null;
+  /** Registry identity and nullable metadata from the authorized source query. */
+  sourceBinding?: VideoPresentationSourceBinding;
   /** Actual transport identity and frame-clock epoch for overlay invalidation. */
   binding?: MediaSurfaceBinding | null;
   costs?: VideoToolCostText;
@@ -103,7 +124,7 @@ function useAnalysisRefs(projectId: string, spaceId: string, nodeId: string): Re
  * @returns The current value derived from these inputs.
  */
 export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): React.JSX.Element | null {
-  const { nodeId, toolId, node, nodes, presentation, onRunVideo, costs, renderTimelineDecoder } = props;
+  const { nodeId, toolId, node, nodes, presentation, onRunVideo, costs, renderTimelineDecoder, overlayTarget, binding, sourceBinding } = props;
   const { projectId, spaceId, readOnly } = useCanvasContext();
   const t = useTranslation();
   const store = useCanvasSessionStore();
@@ -116,9 +137,15 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = node.data as Record<string, unknown>;
   const source = React.useMemo(() => {
-    const parsed = videoToolSourceRefSchema.safeParse({ nodeId, canonicalURL: data.content, mediaInfo: { width: data.width, height: data.height, duration: data.duration, mimeType: data.mimeType } });
+    const registered = sourceBinding && sourceBinding.canonicalURL === data.content ? sourceBinding.mediaInfo : undefined;
+    const parsed = videoToolSourceRefSchema.safeParse({ nodeId, canonicalURL: data.content, mediaInfo: {
+      width: registered?.width ?? binding?.original.width ?? data.width,
+      height: registered?.height ?? binding?.original.height ?? data.height,
+      duration: registered?.duration ?? binding?.original.duration ?? data.duration,
+      mimeType: registered?.mimeType ?? data.mimeType,
+    } });
     return parsed.success ? parsed.data : null;
-  }, [data, nodeId]);
+  }, [data, nodeId, sourceBinding, binding]);
   const initial = React.useMemo(() => {
     if (source === null) return null;
     const draft = createVideoToolDraft(toolId, source);
@@ -223,15 +250,17 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
    */
   const analyse = React.useCallback((kind: MiniToolAnalysisKind): void => {
     if (current === null || disabled || presentation?.status !== 'ready' || presentation.frameTable === null || presentation.sourceURL !== current.source.canonicalURL) return;
-    const frame = planVideoFrames(presentation.frameTable, { mode: 'current', currentTime: presentation.presentedTime })[0];
-    if (frame === undefined) return;
-    const anchor = { frameIndex: frame.frameIndex, pts: frame.pts };
-    const frozen = kind === 'people' && toolId === 'video.lip-sync' ? { ...current, params: { ...(current as VideoToolDraftById['video.lip-sync']).params, anchor, dialogues: resetDialoguePeople((current as VideoToolDraftById['video.lip-sync']).params.dialogues) } } : kind === 'tracked_mask' ? { ...current, params: { ...(current as VideoToolDraftById['video.erase']).params, anchor } } : current;
+    const actualTime = presentedTimeOf(presentation);
+    if (kind !== 'scene_cuts' && actualTime === null) return;
+    const frame = actualTime === null ? undefined : planVideoFrames(presentation.frameTable, { mode: 'current', currentTime: actualTime })[0];
+    if (kind !== 'scene_cuts' && frame === undefined) return;
+    const anchor = frame === undefined ? undefined : { frameIndex: frame.frameIndex, pts: frame.pts };
+    const frozen = kind === 'people' && toolId === 'video.lip-sync' ? { ...current, params: { ...(current as VideoToolDraftById['video.lip-sync']).params, anchor: anchor!, dialogues: resetDialoguePeople((current as VideoToolDraftById['video.lip-sync']).params.dialogues) } } : kind === 'tracked_mask' ? { ...current, params: { ...(current as VideoToolDraftById['video.erase']).params, anchor: anchor! } } : current;
     if (!change(frozen)) return;
     const held = readVideoToolDraft(doc, nodeId, toolId);
     if (held.state !== 'supported') return;
     const base = { analysisRunId: newId(), projectId, spaceId, hostNodeId: nodeId, draftId: held.draft.draftId, revision: held.draft.revision, source: held.draft.source };
-    const request: MiniToolAnalysisRequest = kind === 'people' ? { ...base, kind, params: { anchor } } : kind === 'scene_cuts' ? { ...base, kind, params: { range: { start: 0, end: held.draft.source.mediaInfo.duration } } } : { ...base, kind, params: (held.draft as VideoToolDraftById['video.erase']).params };
+    const request: MiniToolAnalysisRequest = kind === 'people' ? { ...base, kind, params: { anchor: anchor! } } : kind === 'scene_cuts' ? { ...base, kind, params: { range: { start: 0, end: held.draft.source.mediaInfo.duration } } } : { ...base, kind, params: (held.draft as VideoToolDraftById['video.erase']).params };
     if (request.kind === 'tracked_mask') request.params = { range: request.params.range, anchor: request.params.anchor, region: request.params.region, trackingPrompt: request.params.trackingPrompt };
     void runOnce(intent, { scope: 'mini-tool', prepare: () => request, send: (key, body) => miniToolAnalysesApi.start(body, key), onDone: (record) => {
       queryClient.setQueryData(miniToolAnalysisQuery(record.analysisRunId).queryKey, record);
@@ -267,7 +296,9 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const visiblePeople = latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'people' && record.status === 'completed' && !record.artifactUnavailable))?.result;
   const hasDialogue = toolId !== 'video.lip-sync' || (current as VideoToolDraftById['video.lip-sync']).params.dialogues.length > 0 && (current as VideoToolDraftById['video.lip-sync']).params.dialogues.every((row) => row.audioInputId !== null && visiblePeople?.kind === 'people' && row.analysisRunId === visiblePeople.analysisRunId && visiblePeople.people.some((person) => person.personId === row.personId));
   const readyTool = toolId === 'video.expand' ? isExpanded((current as VideoToolDraftById['video.expand']).params.frame, current.source.mediaInfo) : toolId === 'video.erase' ? matchingRecords.some((record) => record.kind === 'tracked_mask' && record.status === 'completed' && !record.artifactUnavailable) : toolId === 'video.transitions' ? (current as VideoToolDraftById['video.transitions']).params.clips.length > 0 : true;
-  const canRun = !readOnly && validSource && invalidFields.size === 0 && hasDialogue && readyTool && onRunVideo !== undefined;
+  const selectedTime = presentedTimeOf(presentation);
+  const needsCurrent = toolId === 'video.extract-frames' && (current as VideoToolDraftById['video.extract-frames']).params.mode === 'current';
+  const canRun = !readOnly && (!needsCurrent || selectedTime !== null) && validSource && invalidFields.size === 0 && hasDialogue && readyTool && onRunVideo !== undefined;
   /**
    * Freezes exactly the visible source frame at the press before execution.
    * @throws {never} The execution callback owns request failures.
@@ -279,9 +310,11 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     store.getState().endPick();
     if (current === null) return;
     let frozen: VideoToolDraft = current;
-    if (toolId === 'video.extract-frames' && presentation !== undefined) {
+    if (toolId === 'video.extract-frames' && presentation !== undefined && (current as VideoToolDraftById['video.extract-frames']).params.mode === 'current') {
+      const actualTime = presentedTimeOf(presentation);
+      if (actualTime === null) return;
       const frames = current as VideoToolDraftById['video.extract-frames'];
-      const next = { ...frames, params: { ...frames.params, currentTime: presentation.presentedTime } };
+      const next = { ...frames, params: { ...frames.params, currentTime: actualTime } };
       if (!change(next)) return;
       const committed = readVideoToolDraft(doc, nodeId, toolId);
       if (committed.state !== 'supported') return;
@@ -289,5 +322,23 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     }
     void onRunVideo(nodeId, toolId, frozen, matchingRecords);
   }
-  return <><NodePanelMount nodeId={nodeId} drop={drop}><MiniToolPanel customWide={toolId === 'video.lip-sync'} spec={spec} modelControls={undefined} modelEntry={undefined} params={{}} onParams={() => undefined} source={{ url: source.canonicalURL, ...source.mediaInfo }} sizeTiers={[]} slots={{}} slotCaps={{}} pickingSlot={null} onPickSlot={() => undefined} onClearSlot={() => undefined} prompt='' onPrompt={() => undefined} creditText={costs?.execution ?? t(toolId === 'video.extract-frames' || toolId === 'video.transitions' || toolId === 'video.split' ? 'canvas.miniTool.panel.free' : 'canvas.miniTool.panel.usage')} refusal={running ? 'exporting' : canRun ? null : 'slotMissing'} onRun={run} onClose={close} customBody={<>{analysisReadings.failed ? <div className='flex items-center justify-between gap-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.analysisFailed')}</span><Button variant='outline' size='compact' loading={analysisReadings.fetching} onClick={() => { for (const reference of refs) void queryClient.invalidateQueries({ queryKey: miniToolAnalysisQuery(reference.analysisRunId).queryKey }); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}<VideoToolControls toolId={toolId} draft={current} onChange={change} analyses={matchingRecords} frameTable={validSource ? presentation.frameTable : null} presentedTime={presentation?.presentedTime ?? 0} disabled={disabled} pickingSlot={pick?.purpose === 'miniToolSlot' ? pick.slotKey ?? null : null} inputNames={names} onPick={(key) => { if (disabled) return; if (pick?.purpose === 'miniToolSlot' && pick.slotKey === key) store.getState().endPick(); else store.getState().startMiniToolSlotPick(nodeId, key); }} onAnalyse={analyse} analysing={analysing} analysisCreditText={costs?.analysis} onSeek={presentation?.onSeek} sourceEpoch={presentation?.sourceEpoch ?? 0} seekEpoch={presentation?.seekEpoch ?? 0} onEditTimeline={() => setTimelineOpen(true)} onInvalidChange={invalidChange} regionSelection={session?.params.videoRegionMode === 'point' ? 'point' : 'rectangle'} onRegionSelection={(mode) => store.getState().setMiniToolParam('videoRegionMode', mode)} onEndPick={() => store.getState().endPick()} onActiveDialogue={(id) => store.getState().setMiniToolParam('activeDialogueId', id)} />{invalidFields.size === 0 ? null : <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.invalidNumber')}</p>}{validSource ? null : <p className='text-xs text-muted-foreground'>{t(presentation?.status === 'failed' ? 'canvas.miniTool.videoUI.mediaError' : 'canvas.miniTool.videoUI.loadingFrames')}</p>}</>} /></NodePanelMount>{toolId === 'video.transitions' ? <VideoTimelineDialog renderDecoder={renderTimelineDecoder} open={timelineOpen} onOpenChange={setTimelineOpen} draft={current as VideoToolDraftById['video.transitions']} onChange={change} inputNames={names} disabled={disabled} onRun={run} /> : null}</>;
+  const activeRow = toolId === 'video.lip-sync' ? (current as VideoToolDraftById['video.lip-sync']).params.dialogues.find((row) => row.dialogueId === session?.params.activeDialogueId) : undefined;
+  const frame = binding?.getPresentedFrame() ?? null;
+  const currentFrame = frame !== null && frame.sourceKey === binding?.sourceKey && frame.sourceEpoch === binding.sourceEpoch && frame.seekEpoch === binding.getSeekEpoch();
+  const overlay = overlayTarget && binding && (toolId === 'video.erase' || toolId === 'video.lip-sync') ? createPortal(<VideoToolNodeOverlay
+    region={toolId === 'video.erase' ? (current as VideoToolDraftById['video.erase']).params.region : undefined}
+    selection={session?.params.videoRegionMode === 'point' ? 'point' : 'rectangle'}
+    people={visiblePeople?.kind === 'people' ? visiblePeople : undefined}
+    activePersonId={activeRow?.personId}
+    onRegion={(region) => { if (toolId === 'video.erase') change({ ...current as VideoToolDraftById['video.erase'], params: { ...(current as VideoToolDraftById['video.erase']).params, region } }); }}
+    onPerson={(personId) => {
+      if (toolId !== 'video.lip-sync' || visiblePeople?.kind !== 'people') return;
+      const draft = current as VideoToolDraftById['video.lip-sync'];
+      const id = activeRow?.dialogueId ?? draft.params.dialogues[0]?.dialogueId;
+      if (id !== undefined) change({ ...draft, params: { ...draft.params, dialogues: draft.params.dialogues.map((row) => row.dialogueId === id ? { ...row, personId, analysisRunId: visiblePeople.analysisRunId } : row) } });
+    }}
+    disabled={disabled || !currentFrame}
+    revision={current.revision} sourceEpoch={binding.sourceEpoch} seekEpoch={binding.getSeekEpoch()}
+  />, overlayTarget) : null;
+  return <>{overlay}<NodePanelMount nodeId={nodeId} drop={drop}><MiniToolPanel customWide={toolId === 'video.lip-sync'} spec={spec} modelControls={undefined} modelEntry={undefined} params={{}} onParams={() => undefined} source={{ url: source.canonicalURL, ...source.mediaInfo }} sizeTiers={[]} slots={{}} slotCaps={{}} pickingSlot={null} onPickSlot={() => undefined} onClearSlot={() => undefined} prompt='' onPrompt={() => undefined} creditText={costs?.execution ?? t(toolId === 'video.extract-frames' || toolId === 'video.transitions' || toolId === 'video.split' ? 'canvas.miniTool.panel.free' : 'canvas.miniTool.panel.usage')} refusal={running ? 'exporting' : canRun ? null : 'slotMissing'} onRun={run} onClose={close} customBody={<>{analysisReadings.failed ? <div className='flex items-center justify-between gap-2 text-xs text-status-error-foreground'><span>{t('canvas.miniTool.videoUI.analysisFailed')}</span><Button variant='outline' size='compact' loading={analysisReadings.fetching} onClick={() => { for (const reference of refs) void queryClient.invalidateQueries({ queryKey: miniToolAnalysisQuery(reference.analysisRunId).queryKey }); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}<VideoToolControls toolId={toolId} draft={current} onChange={change} analyses={matchingRecords} frameTable={validSource ? presentation.frameTable : null} presentedTime={selectedTime} disabled={disabled} pickingSlot={pick?.purpose === 'miniToolSlot' ? pick.slotKey ?? null : null} inputNames={names} onPick={(key) => { if (disabled) return; if (pick?.purpose === 'miniToolSlot' && pick.slotKey === key) store.getState().endPick(); else store.getState().startMiniToolSlotPick(nodeId, key); }} onAnalyse={analyse} analysing={analysing} analysisCreditText={costs?.analysis} onSeek={presentation?.onSeek} sourceEpoch={presentation?.sourceEpoch ?? 0} seekEpoch={presentation?.seekEpoch ?? 0} onEditTimeline={() => setTimelineOpen(true)} onInvalidChange={invalidChange} regionSelection={session?.params.videoRegionMode === 'point' ? 'point' : 'rectangle'} onRegionSelection={(mode) => store.getState().setMiniToolParam('videoRegionMode', mode)} onEndPick={() => store.getState().endPick()} onActiveDialogue={(id) => store.getState().setMiniToolParam('activeDialogueId', id)} />{invalidFields.size === 0 ? null : <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.invalidNumber')}</p>}{validSource ? null : <p className='text-xs text-muted-foreground'>{t(presentation?.status === 'failed' ? 'canvas.miniTool.videoUI.mediaError' : 'canvas.miniTool.videoUI.loadingFrames')}</p>}</>} /></NodePanelMount>{toolId === 'video.transitions' ? <VideoTimelineDialog renderDecoder={renderTimelineDecoder} open={timelineOpen} onOpenChange={setTimelineOpen} draft={current as VideoToolDraftById['video.transitions']} onChange={change} inputNames={names} disabled={disabled} onRun={run} /> : null}</>;
 }

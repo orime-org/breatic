@@ -18,15 +18,14 @@ const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], f
 
 describe('explicit unknown presented frame', () => {
   it('disables only Current when no actual frame exists and keeps the real-table modes reachable', () => {
-    // The baseline numeric signature is intentionally exercised with the upcoming nullable contract.
-    render(<VideoToolControls {...common} presentedTime={null as unknown as number} onChange={vi.fn()} />);
+    render(<VideoToolControls {...common} presentedTime={null} onChange={vi.fn()} />);
     expect(screen.getByTestId('video-frame-mode-current')).toBeDisabled();
     for (const mode of ['first', 'last', 'interval']) expect(screen.getByTestId(`video-frame-mode-${mode}`)).not.toBeDisabled();
   });
 
   it('never persists a fabricated zero or null Current time while selecting a table-only mode', () => {
     const onChange = vi.fn();
-    render(<VideoToolControls {...common} presentedTime={null as unknown as number} onChange={onChange} />);
+    render(<VideoToolControls {...common} presentedTime={null} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('video-frame-mode-last'));
     expect(onChange).toHaveBeenCalledWith({ ...draft, params: { ...draft.params, mode: 'last' } });
   });

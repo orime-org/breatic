@@ -1359,6 +1359,7 @@
         "chooseDialogueAudio": "選択",
         "choosePerson": "人物を選択",
         "current": "現在",
+        "currentFrameUnavailable": "現在のフレームを取得できません",
         "cutPoint": "カット位置",
         "detectScenes": "再検出",
         "dialogueAudio": "セリフ音声",

@@ -1359,6 +1359,7 @@
         "chooseDialogueAudio": "Choose",
         "choosePerson": "Choose",
         "current": "Current frame",
+        "currentFrameUnavailable": "Current frame unavailable",
         "cutPoint": "Cut point",
         "detectScenes": "Detect again",
         "dialogueAudio": "Dialogue audio",

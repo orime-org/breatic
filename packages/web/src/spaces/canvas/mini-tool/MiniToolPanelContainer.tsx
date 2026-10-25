@@ -4,6 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useStore } from '@xyflow/react';
 import * as React from 'react';
+import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 
 import {
   VIDEO_TOOL_IDS,
@@ -60,6 +61,7 @@ export interface MiniToolPanelContainerProps {
   nodes: readonly CanvasNodeView[];
   onRunVideo?: VideoToolPanelContainerProps['onRunVideo'];
   videoPresentation?: ReadonlyMap<string, VideoToolPresentation>;
+  videoBindings?: ReadonlyMap<string, MediaPlayerVideoSnapshot>;
   videoCosts?: ReadonlyMap<string, VideoToolCostText>;
   renderVideoDecoder?: VideoToolPanelContainerProps['renderTimelineDecoder'];
   /** Whether the last write to the document was this reader's. */
@@ -127,6 +129,7 @@ function useShownSize(
  * @param root0.getLastWriteWasLocal - Whether the last document write was this reader's.
  * @param root0.onRun - Run the tool on a snapshot.
  * @param root0.onRunVideo - Runs the complete persisted video draft.
+ * @param root0.videoBindings - Actual node attachment and independent overlay host.
  * @param root0.videoPresentation - The node owner's authoritative source presentation facts.
  * @param root0.videoCosts - Execution and analysis cost text from the typed plan quote.
  * @param root0.renderVideoDecoder - The owner-provided native or alpha decoder adapter.
@@ -138,6 +141,7 @@ export function MiniToolPanelContainer({
   onRun,
   onRunVideo,
   videoPresentation,
+  videoBindings,
   videoCosts,
   renderVideoDecoder,
 }: MiniToolPanelContainerProps): React.JSX.Element | null {
@@ -148,7 +152,7 @@ export function MiniToolPanelContainer({
   const spec = miniToolById(draft.toolId);
   const node = nodes.find((n) => n.id === host);
   if (spec === undefined || node === undefined) return null;
-  if ((VIDEO_TOOL_IDS as readonly string[]).includes(spec.id)) return <VideoToolPanelContainer key={`${host}:${spec.id}`} nodeId={host} toolId={spec.id as VideoToolId} node={node} nodes={nodes} presentation={videoPresentation?.get(host)} costs={videoCosts?.get(host)} renderTimelineDecoder={renderVideoDecoder} onRunVideo={onRunVideo} />;
+  if ((VIDEO_TOOL_IDS as readonly string[]).includes(spec.id)) return <VideoToolPanelContainer key={`${host}:${spec.id}`} nodeId={host} toolId={spec.id as VideoToolId} node={node} nodes={nodes} presentation={videoPresentation?.get(host)} binding={videoBindings?.get(host)?.binding} overlayTarget={videoBindings?.get(host)?.overlayTarget} sourceBinding={videoBindings?.get(host)?.sourceBinding} costs={videoCosts?.get(host)} renderTimelineDecoder={renderVideoDecoder} onRunVideo={onRunVideo} />;
   return (
     <OpenMiniToolPanel
       key={`${host}:${spec.id}`}

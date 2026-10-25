@@ -10,6 +10,7 @@ import { catalogEntryOf, isModelTool, miniToolById } from '@breatic/shared/mini-
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 import { VideoExpandSurface, type VideoExpansionSurface } from '@web/spaces/canvas/mini-tool/video/VideoExpandSurface';
 import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
@@ -37,6 +38,9 @@ type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio; last
 export interface ExpandFrameOverlayProps {
   /** Keep the actual canonical video and controls visible inside their node. */
   videoLiveSource?: boolean;
+  videoCanonicalURL?: string;
+  videoSourceEpoch?: number;
+  videoSeekEpoch?: number;
   videoSource?: VideoExpansionSurface;
   videoRevision?: string;
   videoDisabled?: boolean;
@@ -86,13 +90,17 @@ export function expandFillStyle(scale: number, from: { x: number; y: number }): 
  * `ViewportPortal`.
  * @param root0 - Component props.
  * @param root0.onNodeContextMenu - The canvas's node menu.
+ * @param root0.videoLiveSource - Keep the actual canonical video and controls live in the node.
+ * @param root0.videoCanonicalURL - Current persisted source for stale geometry rejection.
+ * @param root0.videoSourceEpoch - Actual live resource lifetime, when attached.
+ * @param root0.videoSeekEpoch - Actual current seek lifetime.
  * @param root0.videoSource - The actual decoded video surface and its epochs.
  * @param root0.videoRevision - The authoritative draft revision at gesture start.
  * @param root0.videoDisabled - Whether video geometry editing is currently unavailable.
  * @param root0.onVideoFrameCommit - Commits one completed video-frame gesture.
  * @returns The frame, or null when no expand tool is open.
  */
-export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevision, videoDisabled, onVideoFrameCommit }: ExpandFrameOverlayProps): React.JSX.Element | null {
+export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoLiveSource, videoCanonicalURL, videoSourceEpoch, videoSeekEpoch, videoRevision, videoDisabled, onVideoFrameCommit }: ExpandFrameOverlayProps): React.JSX.Element | null {
   const store = useCanvasSessionStore();
   const hostId = useCanvasSession((s) => s.panelHostId);
   const draft = useCanvasSession(miniToolOpenOn(hostId));
@@ -122,6 +130,9 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
     window.addEventListener('blur', cancel);
     return () => window.removeEventListener('blur', cancel);
   }, [store, videoRevision]);
+  const liveVideo = videoLiveSource === true && draft?.toolId === 'video.expand';
+  const sourceEpoch = videoSource?.sourceEpoch ?? videoSourceEpoch;
+  const seekEpoch = videoSource?.seekEpoch ?? videoSeekEpoch;
   const sourceSize = draft?.sourceSize ?? null;
   const view = expand?.view ?? null;
   // The handles stop at the pinned model's longest side, read off its catalog.
@@ -131,7 +142,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
     catalog !== undefined && spec !== undefined && isModelTool(spec) ? catalogEntryOf(catalog, spec.run.model) : undefined;
   const cap = spec?.id === 'video.expand' ? Infinity : entry === undefined ? null : expandCapOf(entry);
   const drawn =
-    expand !== null && view !== null && sourceSize !== null && cap !== null && draft !== null && node !== undefined;
+    expand !== null && view !== null && sourceSize !== null && cap !== null && draft !== null && node !== undefined && (!liveVideo || videoCanonicalURL === undefined || view.src === videoCanonicalURL);
   // A frame not drawn holds no handle to release a drag on: a panel closed
   // under it, a host gone, a source reset. A new opening starts with no view
   // and no source size, so it ends a drag begun in the one before. Nor is it
@@ -140,7 +151,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
     gesture.current !== null &&
     (!drawn ||
       videoDisabled === true ||
-      (draft?.toolId === 'video.expand' && (gesture.current.revision !== videoRevision || gesture.current.sourceEpoch !== videoSource?.sourceEpoch || gesture.current.seekEpoch !== videoSource?.seekEpoch)) ||
+      (draft?.toolId === 'video.expand' && (gesture.current.revision !== videoRevision || gesture.current.sourceEpoch !== sourceEpoch || gesture.current.seekEpoch !== seekEpoch)) ||
       expand.ratio !== gesture.current.ratio ||
       JSON.stringify(expand.frame) !== JSON.stringify(gesture.current.last))
   ) {
@@ -198,7 +209,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
     if (e.button !== 0 || gesture.current !== null || exporting || videoDisabled === true) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    gesture.current = { pointerId: e.pointerId, frame, ratio, last: frame, revision: videoRevision, sourceEpoch: videoSource?.sourceEpoch, seekEpoch: videoSource?.seekEpoch, ...start };
+    gesture.current = { pointerId: e.pointerId, frame, ratio, last: frame, revision: videoRevision, sourceEpoch: sourceEpoch, seekEpoch: seekEpoch, ...start };
   };
 
   /**
@@ -233,12 +244,20 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
 
   const scale = handleScale(zoom);
   const grown = isExpanded(frame, sourceSize);
+  const sourceLeft = -frame.x * box.width - scale; const sourceTop = -frame.y * box.height - scale;
+  const innerWidth = frame.width * box.width - 2 * scale; const innerHeight = frame.height * box.height - 2 * scale;
+  const bands = [
+    { side: 'top', left: 0, top: 0, width: innerWidth, height: sourceTop },
+    { side: 'bottom', left: 0, top: sourceTop + box.height, width: innerWidth, height: innerHeight - sourceTop - box.height },
+    { side: 'left', left: 0, top: sourceTop, width: sourceLeft, height: box.height },
+    { side: 'right', left: sourceLeft + box.width, top: sourceTop, width: innerWidth - sourceLeft - box.width, height: box.height },
+  ];
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the canvas
     <div
       data-testid='mini-tool-expand-frame'
       // `pointer-events-auto` because the viewport hands pointer events back per node only.
-      className={`${TOOL_LAYER_CLASS} pointer-events-auto absolute touch-none border-solid border-background outline outline-foreground ${grown && !exporting ? 'cursor-move' : ''}`}
+      className={`${TOOL_LAYER_CLASS} ${liveVideo ? 'pointer-events-none' : 'pointer-events-auto'} absolute touch-none border-solid border-background outline outline-foreground ${grown && !exporting ? 'cursor-move' : ''}`}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget && grown) begin(e, { type: 'move', start: onCanvas(e) });
       }}
@@ -251,7 +270,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
         borderWidth: scale,
         outlineWidth: scale,
         // The background starts inside the border.
-        ...expandFillStyle(scale, { x: -frame.x * box.width - scale, y: -frame.y * box.height - scale }),
+        ...(liveVideo ? { borderColor: 'transparent', outlineStyle: 'none' as const } : expandFillStyle(scale, { x: -frame.x * box.width - scale, y: -frame.y * box.height - scale })),
       }}
       onPointerMove={onMove}
       onPointerUp={onUp}
@@ -261,7 +280,11 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
         onNodeContextMenu(e, node.internals.userNode);
       }}
     >
-      {spec?.id === 'video.expand' ? videoSource === undefined ? null : <VideoExpandSurface source={videoSource} style={{ left: -frame.x * box.width - scale, top: -frame.y * box.height - scale, width: box.width, height: box.height }} /> : view.src === null ? null : (
+      {liveVideo ? <>
+        <div className='pointer-events-none absolute border-solid border-background outline outline-foreground' style={{ left: -scale, top: -scale, width: frame.width * box.width, height: frame.height * box.height, borderWidth: scale, outlineWidth: scale, zIndex: VIEWPORT_TOP_Z }} />
+        {bands.filter((band) => band.width > 0 && band.height > 0).map(({ side, ...band }) => <div key={side} data-testid={`video-expand-background-${side}`} className={`pointer-events-auto absolute ${grown && !exporting ? 'cursor-move' : ''}`} style={{ ...band, zIndex: node.internals.z - 1, ...expandFillStyle(scale, { x: sourceLeft - band.left, y: sourceTop - band.top }) }} onPointerDown={(event) => { if (grown) begin(event, { type: 'move', start: onCanvas(event) }); }} />)}
+      </> : null}
+      {liveVideo ? null : spec?.id === 'video.expand' ? videoSource === undefined ? null : <VideoExpandSurface source={videoSource} style={{ left: -frame.x * box.width - scale, top: -frame.y * box.height - scale, width: box.width, height: box.height }} /> : view.src === null ? null : (
         <img
           data-testid='mini-tool-expand-source'
           src={view.src}
@@ -279,14 +302,14 @@ export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevisi
           }}
         />
       )}
-      {spec?.id === 'video.expand' ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left' }}>{expandLayout(frame, sourceSize).width} × {expandLayout(frame, sourceSize).height}</span> : null}
+      {spec?.id === 'video.expand' ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left', zIndex: liveVideo ? VIEWPORT_TOP_Z : undefined }}>{expandLayout(frame, sourceSize).width} × {expandLayout(frame, sourceSize).height}</span> : null}
       {CROP_HANDLES.map(({ id, className }) => (
         <div
           key={id}
           data-testid={`mini-tool-expand-handle-${id}`}
           // Round while the frame is free, square while a ratio holds it.
-          className={`absolute h-2 w-2 border border-foreground bg-background ${ratio === 'free' ? 'rounded-full ' : ''}${className}`}
-          style={{ scale: String(scale) }}
+          className={`pointer-events-auto absolute h-2 w-2 border border-foreground bg-background ${ratio === 'free' ? 'rounded-full ' : ''}${className}`}
+          style={{ scale: String(scale), zIndex: liveVideo ? VIEWPORT_TOP_Z : undefined }}
           onPointerDown={(e) => begin(e, { type: 'resize', handle: id })}
         />
       ))}

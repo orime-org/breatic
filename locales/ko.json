@@ -1359,6 +1359,7 @@
         "chooseDialogueAudio": "선택",
         "choosePerson": "인물 선택",
         "current": "현재 프레임",
+        "currentFrameUnavailable": "현재 프레임을 가져올 수 없습니다",
         "cutPoint": "분할 지점",
         "detectScenes": "다시 감지",
         "dialogueAudio": "대사 오디오",

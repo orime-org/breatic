@@ -1359,6 +1359,7 @@
         "chooseDialogueAudio": "選擇",
         "choosePerson": "選擇人物",
         "current": "目前影格",
+        "currentFrameUnavailable": "目前影格無法使用",
         "cutPoint": "切點",
         "detectScenes": "重新偵測",
         "dialogueAudio": "對白音訊",
