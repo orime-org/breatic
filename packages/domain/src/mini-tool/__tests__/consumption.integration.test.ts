@@ -73,7 +73,7 @@ interface Snapshot {
     result: { manifest: unknown; settlement: Settlement; preserved: unknown };
     params: unknown; completed_at: string | null; created_at: string; updated_at: string;
   };
-  step: { status: string; prediction_id: string | null; created_at: string; updated_at: string; output: { miniToolConsumption: Consumption; preservedOutput: unknown } };
+  step: { status: string; prediction_id: string | null; created_at: string; updated_at: string; output: { miniToolConsumption: Consumption; preservedOutput: unknown; miniToolPlanJob?: unknown } };
   node: { started_at: string; budget_ms: number; status: string; settled_at: string | null; updated_at: string };
   usage: { operation_key: string; feature: string; source: string; provider: string; cost_usd: string; credits: string; cost_source: string }[];
 }
@@ -142,6 +142,140 @@ async function seedUnopened(): Promise<{ fixture: Fixture; input: OpenInput }> {
     chargeTo: "user", creditMultiplier: 2, containerPricing: fixture.consumption.containerPricing,
   } };
 }
+
+interface OpenPlanInput {
+  taskId: string;
+  stepId: string;
+  chunkIndex: number;
+  chargeTo: "user" | "platform";
+  request: Record<string, unknown>;
+}
+interface OpenPlanResult { request: Record<string, unknown>; consumption: Consumption }
+
+/**
+ * Construct a valid indexed request independently from the future persistence entry.
+ * @param fixture - The original owning task and step.
+ * @param storageKey - A newly issued candidate output key.
+ * @returns The exact proposed first request.
+ */
+function plannedRequest(fixture: Fixture, storageKey = "issued/frame-8.png"): Record<string, unknown> {
+  const inputId = "20000000-0000-4000-8000-000000000001";
+  return {
+    schemaVersion: 2, jobId: `task:${fixture.taskId}:chunk:0`, containerClass: "MediaContainer",
+    deadlineAt: 1792920000000,
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
+    inputs: [{ inputId, storageKey: "frozen/source.mp4" }],
+    outputs: [{ outputIndex: 8, storageKey, contentType: "image/png", recipe: { kind: "frame", inputId, frameIndex: 42 } }],
+  };
+}
+
+/**
+ * Exercise the real transactional job opening through the public worker-facing entry.
+ * @param input - An owned step and a candidate complete request.
+ * @returns The first stored request and its paired consumption.
+ * @throws {Error} When the entry is absent or rejects the operation.
+ */
+async function openPlan(input: OpenPlanInput): Promise<OpenPlanResult> {
+  const entry: unknown = Reflect.get(domain, "openMiniToolPlanJob");
+  expect(entry, "domain exports openMiniToolPlanJob").toBeTypeOf("function");
+  return (entry as (request: OpenPlanInput) => Promise<OpenPlanResult>)(input);
+}
+
+describe("planned job and pending consumption share one durable opening", () => {
+  it("freezes the complete request and its priced pending identity in the same task period", async () => {
+    const { fixture } = await seedUnopened();
+    const request = plannedRequest(fixture);
+    const result = await openPlan({ taskId: fixture.taskId, stepId: fixture.stepId, chunkIndex: 0, chargeTo: "user", request });
+    expect(result.request).toEqual(request);
+    expect(result.consumption).toMatchObject({
+      identity: { kind: "container", containerClass: "MediaContainer", jobId: request.jobId, chunkIndex: 0 },
+      state: "pending", chargeTo: "user", creditMultiplier: 9, costUsd: null, credits: null,
+      containerPricing: { size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 } },
+    });
+    const after = await snapshot(fixture);
+    expect(after.step.output.miniToolPlanJob).toEqual(request);
+    expect(after.step.output.miniToolConsumption).toEqual(result.consumption);
+    expect(after.task.result.settlement.pendingConsumptionKeys).toEqual([result.consumption.consumptionKey]);
+    expect(after.usage).toEqual([]);
+    const [usageCount] = await rawPg<{ count: number }[]>`SELECT count(*)::int AS count FROM agent_usage_records WHERE actor_user_id = ${fixture.userId}`;
+    expect(usageCount?.count).toBe(0);
+    expect(after.task.result.manifest).toEqual(MANIFEST);
+  });
+
+  it("returns the first keys, deadline, limits and policy after a retry proposes newly allocated keys", async () => {
+    const { fixture } = await seedUnopened();
+    const input: OpenPlanInput = { taskId: fixture.taskId, stepId: fixture.stepId, chunkIndex: 0, chargeTo: "platform", request: plannedRequest(fixture) };
+    const first = await openPlan(input);
+    const before = await snapshot(fixture);
+    expect(await openPlan({ ...input, chargeTo: "user", request: {
+      ...plannedRequest(fixture, "unused/retry.png"), deadlineAt: 1792927200000,
+      limits: { probeStdoutBytes: 100, analysisStdoutBytes: 100, stderrTailBytes: 100 },
+    } })).toEqual(first);
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("recovers its frozen job after parent failure without opening a new call", async () => {
+    const { fixture } = await seedUnopened();
+    const input: OpenPlanInput = { taskId: fixture.taskId, stepId: fixture.stepId, chunkIndex: 0, chargeTo: "user", request: plannedRequest(fixture) };
+    const first = await openPlan(input);
+    await rawPg`UPDATE tasks SET status = 'failed', completed_at = now() WHERE id = ${fixture.taskId}`;
+    const before = await snapshot(fixture);
+    expect(await openPlan(input)).toEqual(first);
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it.each(["jobId", "chunkIndex"])("refuses replacement %s on the same stored step", async (field) => {
+    const { fixture } = await seedUnopened();
+    const input: OpenPlanInput = { taskId: fixture.taskId, stepId: fixture.stepId, chunkIndex: 0, chargeTo: "user", request: plannedRequest(fixture) };
+    await openPlan(input);
+    const before = await snapshot(fixture);
+    await expect(openPlan(field === "jobId" ? { ...input, request: { ...input.request, jobId: "replacement" } } : { ...input, chunkIndex: 1 })).rejects.toThrow();
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("rolls back the request and pending consumption together when the parent period fails to write", async () => {
+    const { fixture } = await seedUnopened();
+    const before = await snapshot(fixture);
+    const triggerName = `fail_plan_${crypto.randomUUID().replaceAll("-", "")}`;
+    await rawPg.unsafe(`CREATE FUNCTION ${triggerName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.id = '${fixture.taskId}'::uuid THEN RAISE EXCEPTION 'forced plan opening failure'; END IF;
+      RETURN NEW; END $$`);
+    await rawPg.unsafe(`CREATE TRIGGER ${triggerName} BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION ${triggerName}()`);
+    try {
+      await expect(openPlan({ taskId: fixture.taskId, stepId: fixture.stepId, chunkIndex: 0, chargeTo: "user", request: plannedRequest(fixture) }))
+        .rejects.toMatchObject({ cause: { message: "forced plan opening failure" } });
+      expect(await snapshot(fixture)).toEqual(before);
+    } finally {
+      await rawPg.unsafe(`DROP TRIGGER ${triggerName} ON tasks`);
+      await rawPg.unsafe(`DROP FUNCTION ${triggerName}()`);
+    }
+  });
+
+  it("serializes concurrent first proposals before choosing one persistent request", async () => {
+    const { fixture } = await seedUnopened();
+    const input: OpenPlanInput = { taskId: fixture.taskId, stepId: fixture.stepId, chunkIndex: 0, chargeTo: "user", request: plannedRequest(fixture) };
+    const gate = await rawPg.reserve();
+    const running: Promise<OpenPlanResult>[] = [];
+    await gate`BEGIN`;
+    try {
+      await gate`SELECT id FROM tasks WHERE id = ${fixture.taskId} FOR UPDATE`;
+      running.push(openPlan(input));
+      void running[0]!.catch(() => undefined);
+      await waitUntilBlockedOn(rawPg, ["tasks", "for update"], 1);
+      running.push(openPlan({ ...input, request: plannedRequest(fixture, "unused/concurrent.png") }));
+      void running[1]!.catch(() => undefined);
+      await waitUntilBlockedOn(rawPg, ["tasks", "for update"], 2);
+    } finally {
+      await gate`ROLLBACK`;
+      gate.release();
+    }
+    const [first, second] = await Promise.all(running);
+    expect(first).toEqual(second);
+    const after = await snapshot(fixture);
+    expect(after.task.result.settlement).toMatchObject({ version: 1, pendingConsumptionKeys: [first!.consumption.consumptionKey] });
+    expect(after.step.output.miniToolPlanJob).toEqual(first!.request);
+  });
+});
 
 describe("mini-tool consumption producer persistence", () => {
   it("persists pending identity and a due period before any cost is known", async () => {
