@@ -76,6 +76,13 @@ export const openMiniToolConsumptionInputSchema = recordMiniToolConsumptionInput
 });
 export type OpenMiniToolConsumptionInput = z.infer<typeof openMiniToolConsumptionInputSchema>;
 
+/** Stable discovery position; the database's UTC microseconds stay as text. */
+export interface MiniToolSettlementCursor { taskId: string; dueAt: string }
+/** A wake identity discovered from SQL rather than a queue's retention state. */
+export interface DueMiniToolSettlement extends MiniToolSettlementCursor { settlementVersion: number }
+/** One ordered discovery page, without acquiring a lookup lease. */
+export interface DueMiniToolSettlementPage { items: DueMiniToolSettlement[]; nextCursor: MiniToolSettlementCursor | null }
+
 /** Confirmed lookup amounts carry their original lease and no replacement pricing. */
 export const confirmMiniToolConsumptionInputSchema = recordMiniToolConsumptionInputSchema.extend({
   claim: miniToolSettlementClaimSchema,

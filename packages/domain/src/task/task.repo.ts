@@ -12,7 +12,7 @@ import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
-import type { MiniToolSettlement, MiniToolSettlementClaim } from "@domain/mini-tool/consumption.types.js";
+import type { DueMiniToolSettlement, DueMiniToolSettlementPage, MiniToolSettlement, MiniToolSettlementClaim, MiniToolSettlementCursor } from "@domain/mini-tool/consumption.types.js";
 
 /** Parent facts read while serializing one task's consumption writes. */
 export interface LockedMiniToolConsumptionTask {
@@ -143,6 +143,37 @@ export async function storeMiniToolSettlement(taskId: string, settlement: MiniTo
     updatedAt: sql`clock_timestamp()`,
   }).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
   if (rows.length !== 1) throw new Error("Consumption task no longer exists");
+}
+
+/**
+ * Discover due periods, including expenses hidden from user-facing task history.
+ * @param limit - The validated positive page size, leaving room for one lookahead row.
+ * @param cursor - The preceding full-precision SQL position, never passed through Date.
+ * @returns Current period identities in effective due-time and task UUID order.
+ * @throws {Error} When the database read fails.
+ */
+export async function listDueMiniToolSettlements(limit: number, cursor?: MiniToolSettlementCursor): Promise<DueMiniToolSettlementPage> {
+  const dueAt = sql`CASE ${tasks.result}->'settlement'->>'state'
+    WHEN 'waiting' THEN (${tasks.result}->'settlement'->>'nextAttemptAt')::timestamptz
+    WHEN 'checking' THEN (${tasks.result}->'settlement'->>'leaseUntil')::timestamptz END`;
+  const after = cursor === undefined ? sql`` : sql`AND
+    (${dueAt} > ${cursor.dueAt}::timestamptz OR
+      (${dueAt} = ${cursor.dueAt}::timestamptz AND ${tasks.id} > ${cursor.taskId}::uuid))`;
+  const rows = await db.execute<DueMiniToolSettlement & Record<string, unknown>>(sql`
+    SELECT ${tasks.id} AS "taskId", (${tasks.result}->'settlement'->>'version')::float8 AS "settlementVersion",
+      to_char(${dueAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "dueAt"
+    FROM ${tasks}
+    WHERE ${tasks.source} = 'mini_tool' AND ${tasks.billedAt} IS NULL
+      AND jsonb_typeof(${tasks.result}->'settlement'->'version') = 'number'
+      AND ${dueAt} <= clock_timestamp() ${after}
+    ORDER BY ${dueAt}, ${tasks.id}
+    LIMIT ${limit + 1}
+  `);
+  const items: DueMiniToolSettlement[] = rows.slice(0, limit).map((row) => ({
+    taskId: row.taskId, settlementVersion: row.settlementVersion, dueAt: row.dueAt,
+  }));
+  const last = items.at(-1);
+  return { items, nextCursor: rows.length > limit && last !== undefined ? { taskId: last.taskId, dueAt: last.dueAt } : null };
 }
 
 /** Durable admission fields, with the database instant kept outside Date. */

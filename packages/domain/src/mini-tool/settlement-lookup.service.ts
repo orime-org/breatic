@@ -9,10 +9,26 @@ import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import {
   miniToolConsumptionRecordSchema, miniToolSettlementClaimSchema, miniToolSettlementSchema,
   type MiniToolConsumptionRecord, type MiniToolSettlementClaim,
+  type DueMiniToolSettlementPage,
 } from "@domain/mini-tool/consumption.types.js";
 
 const claimInputSchema = z.strictObject({ taskId: z.string().uuid(), settlementVersion: z.number().int().nonnegative() });
 const deferInputSchema = z.strictObject({ taskId: z.string().uuid(), claim: miniToolSettlementClaimSchema, lastError: z.string() });
+const discoveryInputSchema = z.strictObject({
+  limit: z.number().int().positive().refine((limit) => Number.isSafeInteger(limit + 1)),
+  cursor: z.strictObject({ taskId: z.uuid(), dueAt: z.iso.datetime({ precision: 6 }) }).optional(),
+});
+
+/**
+ * Find durable periods missed by queue delivery, process restarts or expired leases.
+ * @param input - A page size and the preceding unchanged SQL cursor.
+ * @returns Due identities without claiming, querying upstream or modifying computation.
+ * @throws {Error} When input validation or the database read fails.
+ */
+export async function listDueMiniToolSettlements(input: z.infer<typeof discoveryInputSchema>): Promise<DueMiniToolSettlementPage> {
+  const request = discoveryInputSchema.parse(input);
+  return taskRepo.listDueMiniToolSettlements(request.limit, request.cursor);
+}
 
 /** Committed lookup ownership and one original expense, never a replacement quote. */
 export interface ClaimedMiniToolSettlement {

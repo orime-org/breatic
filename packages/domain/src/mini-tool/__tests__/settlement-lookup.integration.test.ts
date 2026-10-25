@@ -43,11 +43,12 @@ async function invoke<T>(name: string, input: unknown): Promise<T> {
 
 /**
  * Seed the independent oracle's failed parent and one actual provider identity.
+ * @param taskId - Optional fixed identity for the independent cursor tie-break cases.
  * @returns Its original persistent facts.
  * @throws {Error} When fixture insertion fails.
  */
-async function seed(): Promise<Fixture> {
-  const taskId = crypto.randomUUID(); const stepId = crypto.randomUUID();
+async function seed(taskId: string = crypto.randomUUID()): Promise<Fixture> {
+  const stepId = crypto.randomUUID();
   const userId = crypto.randomUUID(); const studioId = crypto.randomUUID(); const projectId = crypto.randomUUID();
   const identity = { kind: "provider", provider: "wavespeed", predictionId: `prediction-${taskId}` } as const;
   const fact: MiniToolConsumptionRecord = {
@@ -113,6 +114,114 @@ async function claim(f: Fixture, version = 7): Promise<Claim | null> {
 async function confirm(f: Fixture, current: Claim, costUsd = 0.000055): Promise<MiniToolConsumptionRecord> {
   return invoke("confirmMiniToolConsumption", { taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim, costUsd, costSource: "generation_lookup", raw: { deductUsd: costUsd, refundUsd: 0 } });
 }
+
+interface DueCursor { taskId: string; dueAt: string }
+interface DueItem extends DueCursor { settlementVersion: number }
+interface DuePage { items: DueItem[]; nextCursor: DueCursor | null }
+
+/**
+ * Ask the real repository for due SQL periods, without claiming any work.
+ * @param limit - The independent page size.
+ * @param cursor - An unmodified full-precision cursor from a previous page.
+ * @returns Its due work and stable continuation.
+ * @throws {Error} When the discovery entry is absent or rejects the request.
+ */
+async function due(limit: number, cursor?: DueCursor): Promise<DuePage> {
+  return invoke("listDueMiniToolSettlements", { limit, ...(cursor === undefined ? {} : { cursor }) });
+}
+
+describe("restart discovery reads durable mini-tool settlement periods", () => {
+  it("finds waiting, expired claims and unbilled terminal periods without changing their facts", async () => {
+    const waiting = await seed();
+    const checking = await seed();
+    const emptyTerminal = await seed();
+    const future = await seed();
+    const liveClaim = await seed();
+    const idle = await seed();
+    const settled = await seed();
+    const billed = await seed();
+    const legacy = await seed();
+    const otherSource = await seed();
+    for (const f of [waiting, checking, emptyTerminal, future, liveClaim, idle, settled, billed, otherSource]) {
+      await setPeriod(f, { nextAttemptAt: "1990-01-01T00:00:00.100001Z" });
+    }
+    await setPeriod(checking, { state: "checking", nextAttemptAt: FUTURE, leaseToken: "expired", leaseUntil: "1990-01-01T00:00:00.100002Z" });
+    await setPeriod(emptyTerminal, { nextAttemptAt: "1990-01-01T00:00:00.100003Z", pendingConsumptionKeys: [] });
+    await pg`UPDATE tasks SET status='completed' WHERE id=${emptyTerminal.taskId}`;
+    await setPeriod(future, { nextAttemptAt: FUTURE });
+    await setPeriod(liveClaim, { state: "checking", leaseToken: "live", leaseUntil: FUTURE });
+    await setPeriod(idle, { state: "idle", nextAttemptAt: null, pendingConsumptionKeys: [] });
+    await setPeriod(settled, { state: "settled", nextAttemptAt: null, pendingConsumptionKeys: [] });
+    await pg`UPDATE tasks SET billed_at=now(),billed_credits=0 WHERE id=${billed.taskId}`;
+    await pg`UPDATE tasks SET result=${pg.json({ manifest: MANIFEST })} WHERE id=${legacy.taskId}`;
+    await pg`UPDATE tasks SET source='user' WHERE id=${otherSource.taskId}`;
+    const fixtures = [waiting, checking, emptyTerminal, future, liveClaim, idle, settled, billed, legacy, otherSource];
+    const before = await Promise.all(fixtures.map(snapshot));
+    const page = await due(1000);
+    const ours = new Map(page.items.map((item) => [item.taskId, item]));
+    expect(ours.get(waiting.taskId)).toEqual({ taskId: waiting.taskId, settlementVersion: 7, dueAt: "1990-01-01T00:00:00.100001Z" });
+    expect(ours.get(checking.taskId)).toEqual({ taskId: checking.taskId, settlementVersion: 7, dueAt: "1990-01-01T00:00:00.100002Z" });
+    expect(ours.get(emptyTerminal.taskId)).toEqual({ taskId: emptyTerminal.taskId, settlementVersion: 7, dueAt: "1990-01-01T00:00:00.100003Z" });
+    for (const f of [future, liveClaim, idle, settled, billed, legacy, otherSource]) expect(ours.has(f.taskId)).toBe(false);
+    expect(await Promise.all(fixtures.map(snapshot))).toEqual(before);
+  });
+
+  it("preserves SQL microseconds and the task UUID tie-break across limit-two pages", async () => {
+    const ids = [1, 2, 3, 4].map((n) => `a0000000-0000-4000-8000-00000000000${n}`);
+    const fixtures = [];
+    for (const id of ids) fixtures.push(await seed(id));
+    const instants = ["1980-01-01T00:00:00.100001Z", "1980-01-01T00:00:00.100001Z", "1980-01-01T00:00:00.100002Z", "1980-01-01T00:00:00.100003Z"];
+    for (const [index, f] of fixtures.entries()) await setPeriod(f, { version: index + 10, nextAttemptAt: instants[index]! });
+    const first = await due(2);
+    expect(first.items).toEqual(ids.slice(0, 2).map((taskId, index) => ({ taskId, settlementVersion: index + 10, dueAt: instants[index] })));
+    expect(first.nextCursor).toEqual({ taskId: ids[1], dueAt: instants[1] });
+    const second = await due(2, first.nextCursor!);
+    expect(second.items).toEqual(ids.slice(2).map((taskId, index) => ({ taskId, settlementVersion: index + 12, dueAt: instants[index + 2] })));
+  });
+
+  it("continues collecting an expense even when its task is hidden from user history", async () => {
+    const f = await seed();
+    await setPeriod(f, { nextAttemptAt: "1990-01-02T00:00:00.100001Z" });
+    await pg`UPDATE tasks SET deleted_at=now() WHERE id=${f.taskId}`;
+    expect((await due(1000)).items.some((item) => item.taskId === f.taskId)).toBe(true);
+  });
+
+  it("rejects invalid limits and lossy or malformed cursors before querying", async () => {
+    const valid = { taskId: crypto.randomUUID(), dueAt: "1980-01-01T00:00:00.100001Z" };
+    for (const input of [
+      { limit: 0 }, { limit: -1 }, { limit: 1.5 }, { limit: Number.NaN },
+      { limit: 1, cursor: { ...valid, taskId: "not-a-uuid" } },
+      { limit: 1, cursor: { ...valid, dueAt: "1980-01-01" } },
+      { limit: 1, cursor: { ...valid, dueAt: "1980-01-01T00:00:00.100Z" } },
+    ]) await expect(invoke("listDueMiniToolSettlements", input)).rejects.toThrow();
+  });
+
+  it("retains generated equal-millisecond instants and UUID ties through different page sizes", async () => {
+    await fc.assert(fc.asyncProperty(fc.array(fc.integer({ min: 1, max: 9 }), { minLength: 4, maxLength: 4 }), fc.integer({ min: 1, max: 3 }), async (micros, limit) => {
+      const fixtures: Fixture[] = [];
+      try {
+        for (const micro of micros) {
+          const f = await seed(); fixtures.push(f);
+          await setPeriod(f, { nextAttemptAt: `1900-01-01T00:00:00.10000${micro}Z` });
+        }
+        const expected = fixtures.map((f, index) => ({ taskId: f.taskId, dueAt: `1900-01-01T00:00:00.10000${micros[index]}Z`, settlementVersion: 7 }))
+          .sort((a, b) => a.dueAt < b.dueAt ? -1 : a.dueAt > b.dueAt ? 1 : a.taskId < b.taskId ? -1 : a.taskId > b.taskId ? 1 : 0);
+        const ours = new Set(fixtures.map((f) => f.taskId));
+        const found: DueItem[] = [];
+        let cursor: DueCursor | undefined;
+        for (let pageIndex = 0; pageIndex < 10 && found.length < expected.length; pageIndex += 1) {
+          const page = await due(limit, cursor);
+          found.push(...page.items.filter((item) => ours.has(item.taskId)));
+          if (page.nextCursor === null) break;
+          cursor = page.nextCursor;
+        }
+        expect(found).toEqual(expected);
+      } finally {
+        for (const f of fixtures) await setPeriod(f, { state: "idle", nextAttemptAt: null, pendingConsumptionKeys: [] });
+      }
+    }), { numRuns: 8 });
+  });
+});
 
 describe("persistent mini-tool lookup cycles", () => {
   it("ignores a wake for an absent task", async () => {
