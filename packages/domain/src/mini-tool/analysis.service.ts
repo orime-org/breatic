@@ -66,6 +66,23 @@ export interface FinishedMiniToolAnalysis {
   context: { taskId: string; userId: string; projectId: string; spaceId: string; hostNodeId: string };
 }
 
+/** The accepted execution inputs and current outcome read from their original SQL owner. */
+export interface MiniToolAnalysisExecution extends FinishedMiniToolAnalysis {
+  params: MiniToolAnalysisTaskParams;
+}
+
+/**
+ * Enter an accepted analysis using its original inputs and current computation state.
+ * @param taskId - The immutable accepted analysis task.
+ * @param jobId - The queue job picking up this original task.
+ * @returns The current record, original parameters and notification destination.
+ * @throws {Error} When the task, accepted identity or persistent transition is invalid.
+ */
+export async function startMiniToolAnalysisExecution(taskId: string, jobId: string): Promise<MiniToolAnalysisExecution> {
+  void taskId; void jobId;
+  throw new Error("Analysis execution entry awaits independent RED");
+}
+
 /**
  * Commit a computation outcome and its proven call-set closure under one task lock.
  * @param taskId - The original accepted analysis.

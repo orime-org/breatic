@@ -132,6 +132,104 @@ function people(f: Fixture): PeopleResult {
   return structuredClone(f.result);
 }
 
+describe("accepted analysis execution entry", () => {
+  it.each(["people", "scene_cuts", "tracked_mask"] as const)("starts the original pending %s analysis with its SQL identity", async (kind) => {
+    const f = await seed(kind, "pending", "2026-10-25T01:02:03.123456Z");
+    const before = await snapshot(f);
+    const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-original");
+    expect(execution.record).toEqual({ ...f.initial, status: "running" });
+    expect(execution.record.acceptedAt).toBe("2026-10-25T01:02:03.123456Z");
+    expect(execution.params).toEqual(before.task.params);
+    const frozen = domain.miniToolAnalysisService.miniToolFrozenAnalysisSchema.parse(execution.params.analysis);
+    expect(execution.context).toEqual({ taskId: f.taskId, userId: f.userId, projectId: frozen.projectId, spaceId: frozen.spaceId, hostNodeId: frozen.hostNodeId });
+    const after = await snapshot(f);
+    expect(after.task.status).toBe("running"); expect(after.task.completed_at).toBeNull(); assertPreserved(before, after);
+    const [started] = await pg`SELECT arq_job_id, started_at::text FROM tasks WHERE id=${f.taskId}`;
+    expect(started?.arq_job_id).toBe("analysis-job-original"); expect(started?.started_at).toEqual(expect.any(String));
+  });
+
+  it("retains the first start and all accepted dependencies across a repeated pickup", async () => {
+    const f = await seed("scene_cuts", "running");
+    await pg`UPDATE tasks SET arq_job_id='analysis-job-original',started_at='2026-10-24T09:03:03.100001Z'::timestamptz WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
+    const first = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-original");
+    const replay = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-original");
+    expect(replay).toEqual(first); expect(first.params).toEqual(before.task.params); expect(first.record).toEqual(f.initial);
+    const [started] = await pg`SELECT to_char(started_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS first_start FROM tasks WHERE id=${f.taskId}`;
+    expect(started?.first_start).toBe("2026-10-24T09:03:03.100001Z"); assertPreserved(before, await snapshot(f));
+  });
+
+  it.each(["completed", "failed", "cancelled"] as const)("reads the original %s outcome with all execution facts preserved", async (status) => {
+    const f = await seed("scene_cuts", status); const before = await snapshot(f);
+    const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-replay");
+    expect(execution.record).toEqual(f.initial); expect(execution.params).toEqual(before.task.params);
+    expect(await snapshot(f)).toEqual(before);
+    const [started] = await pg`SELECT arq_job_id, started_at FROM tasks WHERE id=${f.taskId}`;
+    expect(started).toEqual({ arq_job_id: null, started_at: null });
+  });
+
+  it("continues an accepted analysis hidden from user history using the original source", async () => {
+    const f = await seed("people", "pending");
+    await pg`UPDATE tasks SET deleted_at='2026-10-25T01:02:03.123456Z'::timestamptz WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
+    const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-hidden");
+    expect(execution.record).toEqual({ ...f.initial, status: "running" }); expect(execution.params).toEqual(before.task.params);
+    const [hidden] = await pg`SELECT deleted_at::text AS hidden_at FROM tasks WHERE id=${f.taskId}`;
+    expect(hidden?.hidden_at).toContain("2026-10-25"); assertPreserved(before, await snapshot(f));
+  });
+
+  it.each(["source", "task_type", "source_key", "run", "project", "space"] as const)("rejects the invalid persisted %s before changing execution state", async (field) => {
+    const f = await seed("people", "pending");
+    if (field === "source") await pg`UPDATE tasks SET source='task' WHERE id=${f.taskId}`;
+    else if (field === "task_type") await pg`UPDATE tasks SET task_type='image' WHERE id=${f.taskId}`;
+    else if (field === "source_key") await pg`UPDATE tasks SET params=params-'sourceKey' WHERE id=${f.taskId}`;
+    else {
+      const key = field === "run" ? "analysisRunId" : field === "project" ? "projectId" : "spaceId";
+      await pg`UPDATE tasks SET params=jsonb_set(params,ARRAY['analysis',${key}],${pg.json(crypto.randomUUID())}) WHERE id=${f.taskId}`;
+    }
+    const before = await snapshot(f);
+    await expect(domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-invalid")).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
+    const [started] = await pg`SELECT arq_job_id, started_at FROM tasks WHERE id=${f.taskId}`;
+    expect(started).toEqual({ arq_job_id: null, started_at: null });
+  });
+
+  it("rejects an absent task and an empty queue identity", async () => {
+    const f = await seed("people", "pending"); const before = await snapshot(f);
+    await expect(domain.miniToolAnalysisService.startMiniToolAnalysisExecution(crypto.randomUUID(), "analysis-job-absent")).rejects.toThrow();
+    await expect(domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "")).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it("rolls back the execution start when its SQL write fails", async () => {
+    const f = await seed("scene_cuts", "pending"); const before = await snapshot(f);
+    await pg.unsafe(`CREATE FUNCTION reject_analysis_start() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.status='running' THEN RAISE EXCEPTION 'fixture_analysis_start_failed'; END IF; RETURN NEW; END $$`);
+    await pg.unsafe("CREATE TRIGGER reject_analysis_start BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_analysis_start()");
+    try {
+      await expect(domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-rollback")).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_analysis_start_failed") } });
+      expect(await snapshot(f)).toEqual(before);
+    } finally { await pg.unsafe("DROP TRIGGER reject_analysis_start ON tasks"); await pg.unsafe("DROP FUNCTION reject_analysis_start()"); }
+  });
+
+  it("observes a competing completed outcome after waiting for the original task lock", async () => {
+    const f = await seed("scene_cuts", "pending"); const completed = { ...f.initial, status: "completed", result: f.result };
+    let release!: () => void; let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const owner = pg.begin(async (tx) => {
+      await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; entered(); await gate;
+      await tx`UPDATE tasks SET status='completed',result=result || ${tx.json({ analysis: completed })},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
+    });
+    await ready;
+    const pickup = domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-old-pickup");
+    const observed = pickup.catch(() => undefined);
+    try { await Promise.race([waitUntilBlockedOn(pg, ["tasks", "for update"], 1), pickup.then(() => { throw new Error("Execution entry bypassed the task lock"); })]); }
+    finally { release(); await owner; await observed; }
+    expect((await pickup).record).toEqual(completed);
+    const [started] = await pg`SELECT status, arq_job_id, started_at FROM tasks WHERE id=${f.taskId}`;
+    expect(started).toEqual({ status: "completed", arq_job_id: null, started_at: null });
+  });
+});
+
 describe("atomic analysis computation completion", () => {
   it.each(["people", "scene_cuts", "tracked_mask"] as const)("commits %s metadata and proven identities together", async (kind) => {
     const f = await seed(kind); const before = await snapshot(f);
