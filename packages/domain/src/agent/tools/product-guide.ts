@@ -890,8 +890,10 @@ export function renderProductGuide(): string {
       "The bin at the end of a dialogue row removes it. Times use the source video's clock and retain silence " +
       `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap.`,
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
-      "offers First, Last, Current and Interval. Current uses the frame actually shown by the player; Interval " +
-      `uses ${quoted(t("canvas.miniTool.videoUI.interval"))} in seconds. Preview cards are centred below the settings. ` +
+      `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))}, ` +
+      `${quoted(t("canvas.miniTool.videoUI.current"))} and ${quoted(t("canvas.miniTool.videoUI.interval"))}. ` +
+      "The current-frame mode uses the frame actually shown by the player; the interval mode takes seconds " +
+      "between requests. Preview cards are centred below the settings. " +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
       "finds candidate cut points within this same tool. Drag a cut handle on its filmstrip or edit its seconds " +
       `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +

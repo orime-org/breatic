@@ -37,7 +37,7 @@ export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unk
   const reading = readVideoToolDraft(doc, nodeId, 'video.split');
   if (data === null || data.get('locked') === true || reading.state !== 'supported') return false;
   const draft = reading.draft;
-  if (draft.draftId !== accepted.draftId || draft.revision !== accepted.revision || draft.source.canonicalURL !== accepted.binding.canonicalURL) return false;
+  if (draft.draftId !== accepted.draftId || draft.revision !== accepted.revision || draft.source.canonicalURL !== accepted.binding.canonicalURL || data.get('content') !== draft.source.canonicalURL) return false;
   const references = videoToolAnalysisRefs(Object.fromEntries(data.entries()));
   if (!references.some((reference) => reference.toolId === 'video.split' && reference.draftId === draft.draftId && reference.analysisRunId === accepted.analysisRunId && reference.inputFingerprint === accepted.inputFingerprint)) return false;
   const key = `${SCENE_ANALYSIS_APPLIED_PREFIX}${accepted.analysisRunId}`;
