@@ -3,7 +3,8 @@
 
 import * as Y from "yjs";
 import { createLogger, projectAssetReferenceService } from "@breatic/core";
-import { parseDocName, readSpaceMediaReferences } from "@breatic/shared";
+import { parseDocName } from "@breatic/shared";
+import { readSpaceMediaReferences } from "@breatic/shared/space-content";
 
 const logger = createLogger("space-media-acceptance");
 

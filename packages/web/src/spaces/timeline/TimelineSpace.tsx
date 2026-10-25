@@ -5,7 +5,8 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 import { Film, Pause, Play, Plus } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { applyTimelineEdit, resolveTimelineArrangement, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { resolveTimelineArrangement, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { applyTimelineEdit } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';

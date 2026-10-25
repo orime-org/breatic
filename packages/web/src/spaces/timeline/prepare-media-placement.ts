@@ -3,7 +3,8 @@
 
 import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset, TimelineEditCommand } from '@breatic/shared';
-import { durationToFrames, prepareTimelineEdit, readTimelineDocument, TimelineEditCommandSchema } from '@breatic/shared';
+import { durationToFrames, TimelineEditCommandSchema } from '@breatic/shared';
+import { prepareTimelineEdit, readTimelineDocument } from '@breatic/shared/space-content';
 
 /** A user-confirmed placement draft whose track, frame and identities stay fixed. */
 export interface TimelineMediaPlacementInput {

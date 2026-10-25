@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";
+
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
@@ -424,7 +424,7 @@ export type {
 } from "@shared/timeline/schema.js";
 export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
 export type { TimelineRangeValidation } from "@shared/timeline/time.js";
-export { initializeTimelineDocument, readTimelineDocument, prepareTimelineEdit, applyTimelineEdit } from "@shared/timeline/document.js";
+
 export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
 export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";

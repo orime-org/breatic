@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ProjectMediaBackfillCandidate, ProjectMediaBackfillSource } from "@breatic/core";
-import { parseDocName, readSpaceMediaReferences } from "@breatic/shared";
+import { parseDocName } from "@breatic/shared";
+import { readSpaceMediaReferences } from "@breatic/shared/space-content";
 import * as Y from "yjs";
 import { z } from "zod";
 import { scanMediaBackfillDocuments, type MediaBackfillDocument } from "@collab/services/yjs-documents.repo.js";

@@ -6,13 +6,8 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import {
-  applyTimelineEdit,
-  initializeTimelineDocument,
-  type TimelineDocumentV1,
-  type TimelineVideoClip,
-  type TimelineVideoSource,
-} from '@breatic/shared';
+import { type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import { applyTimelineEdit, initializeTimelineDocument } from '@breatic/shared/space-content';
 
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 

@@ -3,7 +3,8 @@
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { readTimelineDocument, type TimelineDocumentV1 } from '@breatic/shared';
+import { type TimelineDocumentV1 } from '@breatic/shared';
+import { readTimelineDocument } from '@breatic/shared/space-content';
 
 /** The current supported content or the format error reported by its reader. */
 export interface TimelineDocumentState {

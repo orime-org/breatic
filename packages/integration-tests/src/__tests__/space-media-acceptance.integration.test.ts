@@ -14,15 +14,8 @@ import {
   loadLocales,
   projectAssetReferenceService,
 } from "@breatic/core";
-import {
-  CANVAS_NODES_KEY,
-  canvasSpaceDocName,
-  documentBodyFragment,
-  documentSpaceDocName,
-  initializeTimelineDocument,
-  projectMetaDocName,
-  timelineSpaceDocName,
-} from "@breatic/shared";
+import { CANVAS_NODES_KEY, canvasSpaceDocName, documentBodyFragment, documentSpaceDocName, projectMetaDocName, timelineSpaceDocName } from "@breatic/shared";
+import { initializeTimelineDocument } from "@breatic/shared/space-content";
 import type { SpaceType } from "@breatic/shared";
 import { fetchDoc, storeDoc } from "@collab/services/persistence.js";
 import { handleLifecycleEvent } from "@collab/services/lifecycle-listener.js";

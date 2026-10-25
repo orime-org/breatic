@@ -4,13 +4,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import {
-  applyTimelineEdit,
-  durationToFrames,
-  initializeTimelineDocument,
-  readTimelineDocument,
-  TimelineEditCommandSchema,
-} from '@breatic/shared';
+import { durationToFrames, TimelineEditCommandSchema } from '@breatic/shared';
+import { applyTimelineEdit, initializeTimelineDocument, readTimelineDocument } from '@breatic/shared/space-content';
 import type {
   ProjectRegisteredAsset,
   TimelineEditCommand,

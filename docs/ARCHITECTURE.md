@@ -35,7 +35,7 @@ Frontend stack: see [Tech stack (frontend)](#tech-stack-frontend).
 
 ```
 packages/
-├── shared/   # Zod schema + 类型 + 常量 (零依赖)
+├── shared/   # 浏览器安全的 Zod schema、类型、常量和共享协议；space-content 子路径承载 Timeline Yjs 操作与 Space 媒体引用提取
 ├── core/     # 后端共享内核 barrel (@breatic/core) — 纯地基,零 AIGC 业务
 │              auth/(共享鉴权内核:projectMembers.repo + projectAuth.service〔loadProjectRole〕,collab+server 共用) ·
 │              db/(schema.ts 52 表) · i18n/(node 适配器 loadLocales/runWithLocale) · activity/(project-activities.repo) · asset/(asset.repo〔资产账本与 Project 素材关系的唯一 SQL owner〕/project-asset-reference.service〔登记媒体解析、关联与授权读取〕/project-media-backfill〔历史来源分页协调〕) · project/(projects.repo / project-edits.repo) · infra/(redis〔含 pub/sub〕/queue/storage/session-store/control-events/rate-limiter〔多道额度一次判定的 Lua 滑窗〕/client-identity〔server 限流和 collab 连接准入共用的来源判定:回环豁免、取 nginx 的 x-real-ip、IPv6 归并到 /64〕/event-stream〔任务事件总线的 Redis Streams 发布〕/member-change-listener〔`project_members` 触发器通知的 LISTEN〕/connectivity-check〔启动时的 PG/Redis 连通检查〕/health-server〔`/healthz`〕/graceful-shutdown〔先放监听端口再整体限时收尾〕/logger/mailer〔`sendMail`〕/request-context〔AsyncLocalStorage 请求上下文〕/retry〔BullMQ 重试策略〕/idle-socket-dispatcher〔任务链上 Node `fetch` 的 undici dispatcher〕/errors〔跨 library/application 边界的类型化错误〕) · config/ · app-errors

@@ -4,10 +4,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import * as Y from "yjs";
-import {
-  CANVAS_NODES_KEY, canvasSpaceDocName, documentBodyFragment, documentSpaceDocName,
-  initializeTimelineDocument, projectMetaDocName, timelineSpaceDocName,
-} from "@breatic/shared";
+import { CANVAS_NODES_KEY, canvasSpaceDocName, documentBodyFragment, documentSpaceDocName, projectMetaDocName, timelineSpaceDocName } from "@breatic/shared";
+import { initializeTimelineDocument } from "@breatic/shared/space-content";
 import * as documents from "../yjs-documents.repo.js";
 import { createSpaceProjectMediaBackfillSource } from "../project-media-backfill.js";
 
