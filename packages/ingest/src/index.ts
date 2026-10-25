@@ -41,6 +41,12 @@ import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
+  LONG_MEDIA_JOB_PATH,
+  readLongMediaJob,
+  submitLongMediaJob,
+  type LongMediaRoutesEnv,
+} from "@ingest/jobs/long-media-routes.js";
+import {
   monitoringOptions,
   noted,
   noteFailure,
@@ -77,6 +83,8 @@ import {
 export { ContainerProxy } from "@cloudflare/containers";
 export { MediaContainer } from "@ingest/media-container.js";
 export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
+export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
+export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -97,7 +105,7 @@ const ALLOWED_METHODS = "POST, PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv, MonitoringEnv, JobsEnv {
+export interface Env extends MediaEnv, MonitoringEnv, JobsEnv, LongMediaRoutesEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -123,6 +131,7 @@ const REQUIRED_SETTINGS = [
   "MEDIA",
   "MINI_TOOL_STD1",
   "MINI_TOOL_STD4",
+  "LONG_MEDIA",
 ] as const;
 
 /**
@@ -1387,6 +1396,15 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/jobs") {
     return submitJob(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/long-media/jobs") {
+    return submitLongMediaJob(request, env);
+  }
+
+  const longMediaJob = LONG_MEDIA_JOB_PATH.exec(pathname);
+  if (request.method === "GET" && longMediaJob) {
+    return readLongMediaJob(request, env, longMediaJob[1] ?? "");
   }
 
   const job = JOB_PATH.exec(pathname);
