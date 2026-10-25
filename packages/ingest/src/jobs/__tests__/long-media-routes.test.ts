@@ -283,4 +283,40 @@ describe("POST /long-media/jobs", () => {
     const response = await call("/long-media/jobs", { method: "POST", body: await requestBody(expired) });
     expect(response.status).toBe(410);
   });
+
+  it("persists a planned segment and fences competing lifecycle updates", async () => {
+    const segmentPayload = { ...payload, jobId: "operation-segment:source-0", operationId: "operation-segment" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(segmentPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(segmentPayload.jobId));
+    await stub.startAttempt("segment-probe", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "segment-probe", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("segment-probe", 1, probeReport, Date.now());
+    const segments = [0, 1].map((audioChannelIndex) => ({
+      id: `audio-0-${audioChannelIndex}:0:10000000`,
+      mediaInputId: `audio-0-${audioChannelIndex}`,
+      descriptor: { inputKind: "audio_channel" as const, audioStreamIndex: 0, audioChannelIndex },
+      core: { startUs: "0", endUs: "10000000" },
+      decode: { startUs: "0", endUs: "10000000" },
+    }));
+
+    await expect(stub.seedSegmentPlan(segments.slice(0, 1), 0)).resolves.toEqual({ kind: "invalid" });
+    await expect(stub.seedSegmentPlan(segments, 0)).resolves.toMatchObject({ kind: "accepted", revision: 1 });
+    await expect(stub.seedSegmentPlan(segments, 0)).resolves.toMatchObject({ kind: "replayed", revision: 1 });
+    await expect(stub.readSegments()).resolves.toMatchObject(segments.map((segment) => ({ ...segment, status: "planned", version: 0 })));
+    await expect(stub.applySegmentEvent(segments[0]!.id, 0, { type: "run" })).resolves.toMatchObject({
+      kind: "accepted",
+      status: "encoding",
+      version: 1,
+    });
+    await expect(stub.applySegmentEvent(segments[0]!.id, 0, { type: "measured" })).resolves.toEqual({ kind: "stale" });
+    await expect(stub.applySegmentEvent(segments[0]!.id, 1, { type: "measured" })).resolves.toMatchObject({
+      kind: "accepted",
+      status: "stored",
+      version: 2,
+    });
+    await expect(stub.readSegments()).resolves.toMatchObject([
+      { ...segments[0], status: "stored", version: 2 },
+      { ...segments[1], status: "planned", version: 0 },
+    ]);
+  });
 });

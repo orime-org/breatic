@@ -18,6 +18,8 @@ import {
   type LongMediaJobRequest,
   type LongMediaProbeReport,
 } from "@breatic/shared";
+import type { LongMediaSegmentPlan, LongMediaSegmentStatus, LongMediaSegmentEvent } from "@ingest/jobs/long-media-segment.js";
+import { transitionLongMediaSegment } from "@ingest/jobs/long-media-segment.js";
 import {
   transitionLongMediaAttempt,
   type LongMediaAttemptEffect,
@@ -102,6 +104,19 @@ interface LongMediaProbeRow extends Record<string, SqlStorageValue> {
   report_json: string;
 }
 
+/** One persisted logical media leaf. */
+interface LongMediaSegmentRow extends Record<string, SqlStorageValue> {
+  segment_id: string;
+  media_input_id: string;
+  descriptor_json: string;
+  core_start_us: string;
+  core_end_us: string;
+  decode_start_us: string;
+  decode_end_us: string;
+  status: string;
+  version: number;
+}
+
 /** Result of attempting to commit current-attempt source probe facts. */
 export type LongMediaProbeApplyResult =
   | { kind: "accepted" | "replayed"; report: LongMediaProbeReport; lifecycle: LongMediaTransitionResult }
@@ -167,6 +182,26 @@ const PROBE_TABLE = `
     attempt_id TEXT NOT NULL,
     report_json TEXT NOT NULL,
     created_at INTEGER NOT NULL
+  )
+`;
+
+const SEGMENT_TABLES = `
+  CREATE TABLE IF NOT EXISTS long_media_segment_plans (
+    job_id TEXT PRIMARY KEY NOT NULL,
+    revision INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS long_media_segments (
+    job_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    media_input_id TEXT NOT NULL,
+    descriptor_json TEXT NOT NULL,
+    core_start_us TEXT NOT NULL,
+    core_end_us TEXT NOT NULL,
+    decode_start_us TEXT NOT NULL,
+    decode_end_us TEXT NOT NULL,
+    status TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    PRIMARY KEY (job_id, segment_id)
   )
 `;
 
@@ -275,6 +310,39 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    */
   acknowledgeAttemptEffect(epoch: number, attemptId: string, effect: LongMediaAttemptEffect): boolean {
     return this.jobStore.acknowledgeAttemptEffect(epoch, attemptId, effect);
+  }
+
+  /**
+   * Persist the first source-time plan after checking its complete probe coverage.
+   * @param segments - The proposed required-input leaves.
+   * @param expectedRevision - The manifest revision the planner observed.
+   * @returns The accepted plan revision or a stale/invalid result.
+   */
+  seedSegmentPlan(segments: readonly LongMediaSegmentPlan[], expectedRevision: number): LongMediaSegmentPlanResult {
+    return this.jobStore.seedSegmentPlan(segments, expectedRevision);
+  }
+
+  /**
+   * Read the durable segment leaves in stable source order.
+   * @returns The persisted plan and each leaf's current lifecycle state.
+   */
+  readSegments(): LongMediaSegmentSnapshot[] {
+    return this.jobStore.readSegments();
+  }
+
+  /**
+   * Compare-and-set one segment lifecycle event by its expected revision.
+   * @param segmentId - The durable segment id.
+   * @param expectedVersion - The version the event was based on.
+   * @param event - The validated event to apply.
+   * @returns The new state or a stale/invalid result.
+   */
+  applySegmentEvent(
+    segmentId: string,
+    expectedVersion: number,
+    event: LongMediaSegmentEvent,
+  ): LongMediaSegmentEventResult {
+    return this.jobStore.applySegmentEvent(segmentId, expectedVersion, event);
   }
 
   /**
@@ -508,6 +576,39 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Persist the first source-time plan after checking its complete probe coverage.
+   * @param segments - The proposed required-input leaves.
+   * @param expectedRevision - The manifest revision the planner observed.
+   * @returns The accepted plan revision or a stale/invalid result.
+   */
+  seedSegmentPlan(segments: readonly LongMediaSegmentPlan[], expectedRevision: number): LongMediaSegmentPlanResult {
+    return this.jobStore.seedSegmentPlan(segments, expectedRevision);
+  }
+
+  /**
+   * Read the durable segment leaves in stable source order.
+   * @returns The persisted plan and each leaf's current lifecycle state.
+   */
+  readSegments(): LongMediaSegmentSnapshot[] {
+    return this.jobStore.readSegments();
+  }
+
+  /**
+   * Compare-and-set one segment lifecycle event by its expected revision.
+   * @param segmentId - The durable segment id.
+   * @param expectedVersion - The version the event was based on.
+   * @param event - The validated event to apply.
+   * @returns The new state or a stale/invalid result.
+   */
+  applySegmentEvent(
+    segmentId: string,
+    expectedVersion: number,
+    event: LongMediaSegmentEvent,
+  ): LongMediaSegmentEventResult {
+    return this.jobStore.applySegmentEvent(segmentId, expectedVersion, event);
+  }
+
+  /**
    * Validate and atomically persist probe facts from the current Container attempt.
    * @param attemptId - The Container attempt that produced the report.
    * @param epoch - The attempt fencing epoch.
@@ -567,6 +668,22 @@ export interface LongMediaAttemptEffectRecord {
   effect: LongMediaAttemptEffect;
 }
 
+/** A segment leaf together with its durable transition version. */
+export interface LongMediaSegmentSnapshot extends LongMediaSegmentPlan {
+  status: LongMediaSegmentStatus;
+  version: number;
+}
+
+/** Result of seeding the initial complete source-time plan. */
+export type LongMediaSegmentPlanResult =
+  | { kind: "accepted" | "replayed"; revision: number }
+  | { kind: "stale" | "invalid" };
+
+/** Result of applying an expected-version segment lifecycle event. */
+export type LongMediaSegmentEventResult =
+  | { kind: "accepted"; status: LongMediaSegmentStatus; version: number }
+  | { kind: "stale" | "invalid" };
+
 /** Durable SQL facts shared by production and workerd test DOs. */
 class LongMediaJobStore {
   private readonly ctx: LongMediaState;
@@ -581,6 +698,7 @@ class LongMediaJobStore {
     this.ctx.storage.sql.exec(EFFECT_TABLE);
     this.ctx.storage.sql.exec(ATTEMPT_TABLES);
     this.ctx.storage.sql.exec(PROBE_TABLE);
+    this.ctx.storage.sql.exec(SEGMENT_TABLES);
   }
 
   /**
@@ -660,6 +778,122 @@ class LongMediaJobStore {
       throw new Error("The long media job durable identity is inconsistent");
     }
     return request;
+  }
+
+  /**
+   * Atomically persist the initial segment plan when it covers every measured input.
+   * @param segments - The proposed plan.
+   * @param expectedRevision - The manifest revision observed by the planner.
+   * @returns The accepted revision or a stale/invalid result.
+   */
+  seedSegmentPlan(
+    segments: readonly LongMediaSegmentPlan[],
+    expectedRevision: number,
+  ): LongMediaSegmentPlanResult {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      const jobState = job === undefined ? null : stateOf(job);
+      if (job === undefined || jobState?.phase !== "planning" || Date.now() >= jobState.deadlineAt) return { kind: "stale" };
+      const prior = this.ctx.storage.sql.exec<{ revision: number } & Record<string, SqlStorageValue>>(
+        "SELECT revision FROM long_media_segment_plans WHERE job_id = ?",
+        job.job_id,
+      ).toArray()[0];
+      if (prior !== undefined) {
+        const rows = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+          "SELECT * FROM long_media_segments WHERE job_id = ? ORDER BY media_input_id, core_start_us",
+          job.job_id,
+        ).toArray();
+        return sameSegmentPlan(rows, segments) ? { kind: "replayed", revision: prior.revision } : { kind: "stale" };
+      }
+      if (expectedRevision !== 0) return { kind: "stale" };
+      const probe = this.ctx.storage.sql.exec<LongMediaProbeRow>(
+        "SELECT * FROM long_media_probe_facts WHERE job_id = ?",
+        job.job_id,
+      ).toArray()[0];
+      if (probe === undefined) return { kind: "invalid" };
+      const report = readLongMediaProbeReport(JSON.parse(probe.report_json) as unknown);
+      const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+      if (!isCompleteLongMediaPlan(segments, report, request.limitsSnapshot.maxActiveLeaves)) return { kind: "invalid" };
+
+      this.ctx.storage.sql.exec("INSERT INTO long_media_segment_plans (job_id, revision) VALUES (?, 1)", job.job_id);
+      for (const segment of segments) {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO long_media_segments (
+            job_id, segment_id, media_input_id, descriptor_json, core_start_us, core_end_us,
+            decode_start_us, decode_end_us, status, version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', 0)`,
+          job.job_id,
+          segment.id,
+          segment.mediaInputId,
+          JSON.stringify(segment.descriptor),
+          segment.core.startUs,
+          segment.core.endUs,
+          segment.decode.startUs,
+          segment.decode.endUs,
+        );
+      }
+      return { kind: "accepted", revision: 1 };
+    });
+  }
+
+  /**
+   * Read planned leaves in stable source order.
+   * @returns The plan with current states.
+   */
+  readSegments(): LongMediaSegmentSnapshot[] {
+    const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT job_id FROM long_media_jobs LIMIT 1").toArray()[0];
+    if (job === undefined) return [];
+    const rows = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+      "SELECT * FROM long_media_segments WHERE job_id = ? ORDER BY media_input_id, core_start_us",
+      job.job_id,
+    ).toArray();
+    return rows.map((row) => ({
+      id: row.segment_id,
+      mediaInputId: row.media_input_id,
+      descriptor: JSON.parse(row.descriptor_json) as Record<string, unknown>,
+      core: { startUs: row.core_start_us, endUs: row.core_end_us },
+      decode: { startUs: row.decode_start_us, endUs: row.decode_end_us },
+      status: readLongMediaSegmentStatus(row.status),
+      version: row.version,
+    }));
+  }
+
+  /**
+   * Compare-and-set one segment event inside a Durable Object transaction.
+   * @param segmentId - The durable segment identity.
+   * @param expectedVersion - The version the caller observed.
+   * @param event - The lifecycle event.
+   * @returns The committed state or a stale/invalid result.
+   */
+  applySegmentEvent(
+    segmentId: string,
+    expectedVersion: number,
+    event: LongMediaSegmentEvent,
+  ): LongMediaSegmentEventResult {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      const row = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        "SELECT * FROM long_media_segments WHERE job_id = ? AND segment_id = ?",
+        job?.job_id ?? "",
+        segmentId,
+      ).toArray()[0];
+      if (job === undefined || row === undefined || row.version !== expectedVersion) return { kind: "stale" };
+      const jobState = stateOf(job);
+      if ((jobState.phase !== "planning" && jobState.phase !== "running") || Date.now() >= jobState.deadlineAt) {
+        return { kind: "stale" };
+      }
+      const current = readLongMediaSegmentStatus(row.status);
+      const next = transitionLongMediaSegment(current, event);
+      if (next === current) return { kind: "invalid" };
+      this.ctx.storage.sql.exec(
+        "UPDATE long_media_segments SET status = ?, version = version + 1 WHERE job_id = ? AND segment_id = ? AND version = ?",
+        next,
+        job.job_id,
+        segmentId,
+        expectedVersion,
+      );
+      return { kind: "accepted", status: next, version: expectedVersion + 1 };
+    });
   }
 
   /**
@@ -1148,6 +1382,74 @@ function stateOf(row: LongMediaJobRow): LongMediaJobState {
     terminalIntent: readTerminalIntent(row.terminal_intent),
     activeContainer: row.active_container === 1,
   };
+}
+
+/**
+ * Verify that planned leaves exactly and contiguously cover every probed input.
+ * @param segments - The proposed segment rows.
+ * @param report - The persisted probe authority.
+ * @param maxActiveLeaves - The operation-wide leaf ceiling.
+ * @returns Whether the plan is complete, bounded, and tied to measured descriptors.
+ */
+function isCompleteLongMediaPlan(
+  segments: readonly LongMediaSegmentPlan[],
+  report: LongMediaProbeReport,
+  maxActiveLeaves: number,
+): boolean {
+  if (segments.length === 0 || segments.length > maxActiveLeaves) return false;
+  const ids = new Set<string>();
+  for (const segment of segments) {
+    if (segment.id.length === 0 || ids.has(segment.id)) return false;
+    ids.add(segment.id);
+    if (!/^(0|-?[1-9]\d*)$/.test(segment.core.startUs) || !/^(0|-?[1-9]\d*)$/.test(segment.core.endUs) ||
+        !/^(0|-?[1-9]\d*)$/.test(segment.decode.startUs) || !/^(0|-?[1-9]\d*)$/.test(segment.decode.endUs)) return false;
+    const coreStart = BigInt(segment.core.startUs);
+    const coreEnd = BigInt(segment.core.endUs);
+    if (BigInt(segment.decode.startUs) > coreStart || coreStart >= coreEnd || coreEnd > BigInt(segment.decode.endUs)) return false;
+  }
+
+  return report.mediaInputs.every((input) => {
+    const leaves = segments.filter((segment) => segment.mediaInputId === input.mediaInputId)
+      .toSorted((left, right) => BigInt(left.core.startUs) < BigInt(right.core.startUs) ? -1 : 1);
+    if (leaves.length === 0) return false;
+    let cursor = BigInt(input.sourceRange.startUs);
+    for (const leaf of leaves) {
+      if (JSON.stringify(leaf.descriptor) !== JSON.stringify(input.descriptor) || BigInt(leaf.core.startUs) !== cursor ||
+          BigInt(leaf.decode.startUs) < BigInt(input.sourceRange.startUs) ||
+          BigInt(leaf.decode.endUs) > BigInt(input.sourceRange.endUs)) return false;
+      cursor = BigInt(leaf.core.endUs);
+    }
+    return cursor === BigInt(input.sourceRange.endUs);
+  }) && segments.every((segment) => report.mediaInputs.some((input) => input.mediaInputId === segment.mediaInputId));
+}
+
+/**
+ * Compare a durable plan with the exact request being replayed.
+ * @param rows - The persisted leaves.
+ * @param segments - The replayed plan.
+ * @returns Whether both plans contain the same ordered leaf facts.
+ */
+function sameSegmentPlan(rows: readonly LongMediaSegmentRow[], segments: readonly LongMediaSegmentPlan[]): boolean {
+  if (rows.length !== segments.length) return false;
+  return rows.every((row, index) => {
+    const segment = segments[index];
+    return segment !== undefined && row.segment_id === segment.id && row.media_input_id === segment.mediaInputId &&
+      row.descriptor_json === JSON.stringify(segment.descriptor) && row.core_start_us === segment.core.startUs &&
+      row.core_end_us === segment.core.endUs && row.decode_start_us === segment.decode.startUs &&
+      row.decode_end_us === segment.decode.endUs;
+  });
+}
+
+/**
+ * Read a persisted segment lifecycle state.
+ * @param value - The SQL value.
+ * @returns The recognized lifecycle state.
+ * @throws {Error} When the durable value is unknown.
+ */
+function readLongMediaSegmentStatus(value: string): LongMediaSegmentStatus {
+  if (value === "planned" || value === "encoding" || value === "oversize" || value === "stored" || value === "ready" ||
+      value === "superseded" || value === "paused" || value === "failed") return value;
+  throw new Error("The long media segment state is invalid");
 }
 
 /**

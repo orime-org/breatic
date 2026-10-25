@@ -12,6 +12,15 @@ export type LongMediaSegmentStatus =
   | "paused"
   | "failed";
 
+/** One immutable core and decode interval in a planned source-time leaf. */
+export interface LongMediaSegmentPlan {
+  id: string;
+  mediaInputId: string;
+  descriptor: Record<string, unknown>;
+  core: { startUs: string; endUs: string };
+  decode: { startUs: string; endUs: string };
+}
+
 /** An already validated segment lifecycle event. */
 export type LongMediaSegmentEvent =
   | { type: "run" | "oversize" | "measured" | "registered" | "split" | "transient" | "fatal" | "stop" | "adopt" | "length-repartition" }
