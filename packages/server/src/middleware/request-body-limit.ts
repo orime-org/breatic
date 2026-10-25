@@ -84,22 +84,6 @@ async function refuse(c: Context, maxSize: number): Promise<Response> {
   return payloadTooLarge(c, maxSize);
 }
 
-/** The limit and the counting limiter, built on the first request that needs them. */
-let built: { maxSize: number; counting: MiddlewareHandler } | undefined;
-
-/**
- * The limit and the counting limiter, read and built on first use, so
- * importing the app reads no configuration.
- * @returns Both.
- */
-function limiter(): { maxSize: number; counting: MiddlewareHandler } {
-  if (built === undefined) {
-    const maxSize = getRequestBodyMaxBytes();
-    built = { maxSize, counting: bodyLimit({ maxSize, onError: (c) => refuse(c, maxSize) }) };
-  }
-  return built;
-}
-
 /**
  * Refuse any request body larger than `request_body_max_bytes` with 413.
  *
@@ -119,9 +103,10 @@ export const requestBodyLimit: MiddlewareHandler = async (c, next) => {
   const declared = c.req.header("content-length");
   const chunked = c.req.header("transfer-encoding") !== undefined;
   if (declared !== undefined && !chunked) {
-    const { maxSize } = limiter();
+    const maxSize = getRequestBodyMaxBytes();
     return Number.parseInt(declared, 10) > maxSize ? refuse(c, maxSize) : next();
   }
   if (!chunked && !c.req.raw.body) return next();
-  return limiter().counting(c, next);
+  const limit = getRequestBodyMaxBytes();
+  return bodyLimit({ maxSize: limit, onError: (ctx) => refuse(ctx, limit) })(c, next);
 };
