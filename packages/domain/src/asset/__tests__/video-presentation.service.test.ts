@@ -96,6 +96,18 @@ describe('platform presentation queue consumption (inner#1306 §6.20)', () => {
   });
 });
 
+describe('partial registered presentation measurements (inner#1306)', () => {
+  it('retains a known width in internal admission while missing measurements stay null', async () => {
+    findById.mockResolvedValue({ ...asset, width: 95 });
+    const accepted = { jobId: 'partial-registered', deadlineAt: 1900000000000, status: 'accepted', usage: null };
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: accepted });
+    await ensureVideoPresentation({ assetId: asset.id });
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({
+      action: 'accept', original: null, registeredMetadata: { width: 95, height: null, duration: null },
+    }));
+  });
+});
+
 describe('registered presentation source authorization (inner#1306 §6.20)', () => {
   it('checks membership before consulting a source or presentation', async () => {
     await expect(resolveVideoPresentation(input)).rejects.toMatchObject({ statusCode: 404 });

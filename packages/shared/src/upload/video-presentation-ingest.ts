@@ -7,8 +7,9 @@ import { z } from 'zod';
 import { alphaManifestSchema, videoPresentationOriginalSchema, videoPresentationSchema } from '@shared/upload/video-presentation.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
 import { untilDeadline } from '@shared/http/deadline.js';
-import type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
+import type { VideoPresentationProcessLimits, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
+export type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 /** Actual configured instance size and rates captured before compute starts. */
 export interface VideoPresentationPricing {
   containerClass: string;
@@ -48,6 +49,7 @@ export type VideoPresentationIngestRequest = {
   jobId?: string;
   deadlineAt?: number;
   original?: VideoPresentation['original'] | null;
+  registeredMetadata?: VideoPresentationRegisteredMetadata;
   contentType?: string;
   knownAlpha?: boolean;
   repair?: boolean;
@@ -76,6 +78,7 @@ export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIn
   action: z.enum(['read', 'accept', 'run', 'expire', 'ack_usage']), storageKey: z.string().min(1).max(500), sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   jobId: z.string().min(1).max(200).optional(), deadlineAt: z.number().int().positive().optional(),
   original: videoPresentationOriginalSchema.nullable().optional(),
+  registeredMetadata: z.strictObject({ width: z.number().int().positive().nullable(), height: z.number().int().positive().nullable(), duration: z.number().finite().positive().nullable() }).optional(),
   contentType: z.string().min(1).optional(), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
   limits: videoPresentationProcessLimitsSchema.optional(), pricing: videoPresentationPricingSchema.optional(), actorUserId: z.uuid().optional(),
   projectId: z.uuid().nullable().optional(), packedURL: z.url().optional(), manifestURL: z.url().optional(),

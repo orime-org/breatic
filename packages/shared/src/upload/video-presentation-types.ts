@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/** Known registered constraints remain present while other source facts are unknown. */
+export interface VideoPresentationRegisteredMetadata { width: number | null; height: number | null; duration: number | null }
+
 /** Owned pixel rectangle, independent of renderer configuration. */
 export interface VideoPresentationRect { x: number; y: number; width: number; height: number }
 /** Owned canonical classification and presentation readiness. */

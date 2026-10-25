@@ -30,6 +30,7 @@ export async function videoPresentationRoute(request: Request, env: VideoPresent
       if (source === null) return new Response('Source missing', { status: 404 });
       const admission: VideoPresentationAdmission = { storageKey: body.storageKey, sourceFingerprint: body.sourceFingerprint,
         jobId: body.jobId!, deadlineAt: body.deadlineAt!, original: body.original!, contentType: body.contentType!,
+        registeredMetadata: body.registeredMetadata,
         limits: body.limits!, pricing: body.pricing!, actorUserId: body.actorUserId!, projectId: body.projectId!,
         packedURL: body.packedURL!, manifestURL: body.manifestURL!, knownAlpha: body.knownAlpha, repair: body.repair };
       return Response.json(await instance.acceptPresentation(admission));

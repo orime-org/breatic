@@ -5,12 +5,14 @@ import { alphaManifestKeyFor, alphaManifestMatchesPresentation, alphaManifestSch
   type AlphaManifest, type VideoPresentation, type VideoPresentationIngestSnapshot, type VideoPresentationPricing, type VideoPresentationProcessLimits } from '@breatic/shared';
 import { advanceVideoPresentation, type AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
 import type { AlphaPresentationReport, AlphaProbeEvidence } from '@ingest/alpha-run-contract.js';
+import type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 
 /** Backend-authorized admission of one canonical source's auxiliary work. */
 export interface VideoPresentationAdmission extends AcceptedVideoPresentationAttempt {
   storageKey: string;
   contentType: string;
   original: VideoPresentation['original'] | null;
+  registeredMetadata?: VideoPresentationRegisteredMetadata;
   knownAlpha?: boolean;
   repair?: boolean;
   limits?: VideoPresentationProcessLimits;

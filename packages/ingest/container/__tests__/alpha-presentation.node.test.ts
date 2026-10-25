@@ -49,4 +49,10 @@ describe('actual native classification orchestration (inner#1306)', () => {
     expect(reports).toEqual([expect.objectContaining({ kind: 'finished', error: 'classification_unknown' })]);
     expect(put).not.toHaveBeenCalled();
   });
+
+  it('retains the actual Matroska ALPHA_MODE tag in the classification provenance', async () => {
+    command.mockResolvedValue(Buffer.from(JSON.stringify({ ...raw, streams: [{ ...raw.streams[0], codec_name: 'vp9', tags: { ALPHA_MODE: '1' } }], format: { format_name: 'matroska,webm', duration: '2' } })));
+    await runAlphaPresentation({ ...job, jobId: 'alpha-provenance' });
+    expect(reports[0]).toMatchObject({ kind: 'probe', classification: 'confirmed_alpha', evidence: { pixelFormat: 'yuv420p', pixelAlpha: 0, alphaMode: '1' } });
+  });
 });

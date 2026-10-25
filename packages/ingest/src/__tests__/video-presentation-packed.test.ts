@@ -142,3 +142,35 @@ describe('packed pre-write authorization and physical publication (inner#1306)',
     expect((await value.owner.snapshotFor(value.identity)).usageFact).toMatchObject({ jobId: value.identity.jobId, usage: { wallMs: 250, cpuUsec: 10 } });
   });
 });
+
+describe('registered metadata constraints before truthful presentation (inner#1306)', () => {
+  it('refuses a partial known display width that contradicts the trusted probe', async () => {
+    const value = await fixture(false);
+    const current = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
+    await value.owner.advance(value.identity, { ...current.presentation!, state: 'failed', error: 'expired' });
+    const admission = { ...value.admission, original: null, registeredMetadata: { width: 95, height: null, duration: null }, repair: true, jobId: crypto.randomUUID() };
+    await value.owner.accept(admission);
+    const prepared = await value.owner.prepare(admission);
+    const identity = { sourceFingerprint: admission.sourceFingerprint, jobId: admission.jobId, deadlineAt: admission.deadlineAt, token: prepared.token! };
+    await value.owner.report({ ...identity, kind: 'probe', classification: 'confirmed_opaque', original: { width: 96, height: 63, duration: 2.4 },
+      evidence: { codecName: 'h264', pixelFormat: 'yuv420p', pixelAlpha: 0, alphaMode: null, formatName: 'mov', videoStreamIndex: 0 } });
+    const snapshot = await value.owner.read(admission.storageKey, admission.sourceFingerprint);
+    expect(snapshot.presentation).toBe(null);
+    expect(snapshot.attempt).toMatchObject({ status: 'failed', error: 'metadata_mismatch' });
+  });
+
+  it.each([[1.323333, 'native'], [1.324333, 'failed']] as const)('compares trusted duration %s with numeric(12,3) registered 1.323', async (duration, state) => {
+    const value = await fixture(false);
+    const current = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
+    await value.owner.advance(value.identity, { ...current.presentation!, state: 'failed', error: 'expired' });
+    const admission = { ...value.admission, original: { ...original, duration: 1.323 }, registeredMetadata: { width: 95, height: 63, duration: 1.323 }, repair: true, jobId: crypto.randomUUID() };
+    await value.owner.accept(admission);
+    const prepared = await value.owner.prepare(admission);
+    const identity = { sourceFingerprint: admission.sourceFingerprint, jobId: admission.jobId, deadlineAt: admission.deadlineAt, token: prepared.token! };
+    await value.owner.report({ ...identity, kind: 'probe', classification: 'confirmed_opaque', original: { ...original, duration },
+      evidence: { codecName: 'h264', pixelFormat: 'yuv420p', pixelAlpha: 0, alphaMode: null, formatName: 'mov', videoStreamIndex: 0 } });
+    const snapshot = await value.owner.read(admission.storageKey, admission.sourceFingerprint);
+    expect(snapshot.presentation?.state).toBe(state);
+    expect(snapshot.attempt?.status).toBe(state === 'native' ? 'completed' : 'failed');
+  });
+});
