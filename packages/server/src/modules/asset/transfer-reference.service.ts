@@ -128,28 +128,39 @@ async function readLocked(route: TransferRoute, key: string, userId: string): Pr
   if ((await getRedis().exists(refKey(key))) === 1) return rejected("already_used");
 
   const cap = Math.min(transfer.route_max_bytes[route], grant.declaredSize);
+  const outcome = await readBody(key, cap);
+  // Only a read that succeeded or failed on the file's own content uses the
+  // reference up; the others leave it usable.
+  const claims =
+    outcome.kind === "ok" ||
+    outcome.kind === "too_large" ||
+    (outcome.kind === "rejected" && (outcome.reason === "bad_format" || outcome.reason === "bad_encoding"));
+  if (claims && !(await claim(key, transfer.reference_ttl_seconds))) return rejected("already_used");
+  return outcome;
+}
+
+/**
+ * Read and decode the transfer file, without claiming it.
+ * @param key - The transfer's storage key.
+ * @param cap - The most bytes to read.
+ * @returns The body, or why it could not be had.
+ * @throws {Error} When decoding fails for a reason other than the file's content.
+ */
+async function readBody(key: string, cap: number): Promise<TransferReadResult> {
   let bytes: Uint8Array;
   try {
     bytes = await (await getStorageAdapter()).read(key, cap);
   } catch (err) {
     if (err instanceof ObjectMissing) return rejected("expired");
-    if (err instanceof ObjectTooLarge) {
-      if (!(await claim(key, transfer.reference_ttl_seconds))) return rejected("already_used");
-      return { kind: "too_large", cap };
-    }
+    if (err instanceof ObjectTooLarge) return { kind: "too_large", cap };
     return { kind: "read_failed", err };
   }
-
-  let text: string;
   try {
-    text = decodeTransferBody(bytes);
+    return { kind: "ok", text: decodeTransferBody(bytes) };
   } catch (err) {
     if (!(err instanceof TransferDecodeError)) throw err;
-    if (!(await claim(key, transfer.reference_ttl_seconds))) return rejected("already_used");
     return rejected(err.reason);
   }
-  if (!(await claim(key, transfer.reference_ttl_seconds))) return rejected("already_used");
-  return { kind: "ok", text };
 }
 
 /**
