@@ -104,12 +104,19 @@ export async function openMiniToolConsumption(input: OpenMiniToolConsumptionInpu
 /**
  * Close a terminal computation's call set without guessing its unresolved costs.
  * @param taskId - The immutable parent after computation has ended.
+ * @param transaction - The transaction committing the computation's terminal outcome.
  * @returns The committed period, unchanged for an already closed set.
  * @throws {Error} When the parent is absent, still computing or cannot be persisted.
  */
-export async function completeMiniToolConsumptionSet(taskId: string): Promise<MiniToolSettlement> {
+export async function completeMiniToolConsumptionSet(taskId: string, transaction?: DbTx): Promise<MiniToolSettlement> {
   const id = z.string().uuid().parse(taskId);
-  return db.transaction(async (tx) => {
+  /**
+   * Close the call set while sharing its computation owner's parent lock.
+   * @param tx - The transaction holding or acquiring the original task lock.
+   * @returns The preserved or newly closed settlement period.
+   * @throws {Error} When ownership, terminal state or persistence is invalid.
+   */
+  const execute = async (tx: DbTx): Promise<MiniToolSettlement> => {
     const task = await taskRepo.lockMiniToolConsumptionTask(id, tx);
     if (!task || task.source !== "mini_tool") throw new Error("Mini-tool consumption has no owning task");
     const previous = currentPeriod(task.result);
@@ -128,5 +135,6 @@ export async function completeMiniToolConsumptionSet(taskId: string): Promise<Mi
       });
     await taskRepo.storeMiniToolSettlement(id, next, tx);
     return next;
-  });
+  };
+  return transaction === undefined ? db.transaction(execute) : execute(transaction);
 }

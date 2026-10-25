@@ -53,10 +53,14 @@ import {
 } from "@worker/handlers/dispatch.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { isTranscription } from "@worker/handlers/transcribe-question.js";
+import type { MiniToolAnalysisJob } from "@breatic/domain";
+import { MINI_TOOL_ANALYSIS_JOB } from "@breatic/shared/mini-tools";
+import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
-  data: TaskJobData;
+  data: TaskJobData | MiniToolAnalysisJob;
+  name?: string;
   /**
    * Terminal-completion timestamp (epoch ms). BullMQ sets `finishedOn` for
    * EVERY terminal failure and ONLY terminal failures — verified against
@@ -97,6 +101,14 @@ export async function cleanupFailedJobNodes(
   // primary case this net targets — moves to failed WITHOUT incrementing
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
+
+  if (job.name === MINI_TOOL_ANALYSIS_JOB) {
+    await finishMiniToolAnalysisAndNotify(job.data.taskId, {
+      kind: "error", error: { code: "analysis_failed", message: reason }, consumptionSet: "uncertain",
+    }, streamRedis);
+    return 1;
+  }
+  if ("hostNodeId" in job.data) throw new Error("Analysis recovery requires its execution discriminator");
 
   // The run is over whatever it was, so what was held for it is free again
   // (inner#1611). Released before the canvas checks below, which only decide

@@ -5,6 +5,9 @@ import { z } from "zod";
 import { miniToolAnalysisInputSchema } from "@shared/mini-tools/analysis-input.js";
 import { videoToolSourceRefSchema } from "@shared/mini-tools/video-draft.js";
 
+/** The existing tasks lane's discriminator for analysis execution and recovery. */
+export const MINI_TOOL_ANALYSIS_JOB = "execute-mini-tool-analysis";
+
 const requestIdentity = {
   analysisRunId: z.string().uuid(), projectId: z.string().uuid(), spaceId: z.string().uuid(),
   hostNodeId: z.string().uuid(), draftId: z.string().uuid(), revision: z.string().uuid(),

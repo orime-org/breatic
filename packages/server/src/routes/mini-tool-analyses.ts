@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { ConflictError, createQueue, currentConsent, defaultJobOpts, logger } from "@breatic/core";
 import { miniToolAnalysisService, type MiniToolAnalysisJob } from "@breatic/domain";
-import { miniToolAnalysisRequestSchema } from "@breatic/shared/mini-tools";
+import { MINI_TOOL_ANALYSIS_JOB, miniToolAnalysisRequestSchema } from "@breatic/shared/mini-tools";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { validate } from "@server/middleware/validate.js";
@@ -38,7 +38,7 @@ analyses.post(
           taskId: job.taskId, projectId: job.projectId, spaceId: job.spaceId,
           nodeIds: [job.hostNodeId], userId: job.userId, action: "mini_tool",
           label: body.kind, credits: () => Promise.resolve(accepted.params.credits),
-          enqueue: () => tasksQueue.add("execute-mini-tool-analysis", job, { ...defaultJobOpts(), jobId: job.taskId }),
+          enqueue: () => tasksQueue.add(MINI_TOOL_ANALYSIS_JOB, job, { ...defaultJobOpts(), jobId: job.taskId }),
           settleFailure: async (reason) => {
             const record = await miniToolAnalysisService.failMiniToolAnalysisAdmission(job.taskId, { code: reason });
             return record.status === "completed" ? "completed" : "failed";

@@ -231,6 +231,15 @@ describe("atomic analysis computation completion", () => {
     expect(await snapshot(f)).toEqual(before);
   });
 
+  it.each(["result", "error"] as const)("rejects a foreign task source before its uncertain %s transition", async (kind) => {
+    const f = await seed("scene_cuts");
+    await pg`UPDATE tasks SET source='task' WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
+    const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
+    await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion)).rejects.toBeInstanceOf(Error);
+    expect(await snapshot(f)).toEqual(before);
+  });
+
   it("reads current state after waiting for a competing terminal writer", async () => {
     const f = await seed("scene_cuts");
     const committed = { ...f.initial, status: "completed", result: f.result };

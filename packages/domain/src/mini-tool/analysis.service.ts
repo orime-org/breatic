@@ -12,6 +12,7 @@ import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
+import { completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 
 export { miniToolAnalysisRequestSchema, type MiniToolAnalysisRequest } from "@breatic/shared/mini-tools";
 
@@ -73,8 +74,22 @@ export interface FinishedMiniToolAnalysis {
  * @throws {Error} When validation, ownership or either persistent transition fails.
  */
 export async function finishMiniToolAnalysis(taskId: string, completion: MiniToolAnalysisCompletion): Promise<FinishedMiniToolAnalysis> {
-  void taskId; void completion;
-  throw new Error("Atomic analysis completion awaits independent RED");
+  const outcome = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("result"), result: miniToolAnalysisResultSchema, consumptionSet: z.enum(["complete", "uncertain"]) }),
+    z.strictObject({ kind: z.literal("error"), error: z.record(z.string(), z.json()), consumptionSet: z.enum(["complete", "uncertain"]) }),
+  ]).parse(completion);
+  return db.transaction(async (tx) => {
+    const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
+    if (task === null || task.source !== "mini_tool") throw new NotFoundError(t("server.error.not_found"));
+    identityFromTask(task);
+    const frozen = miniToolFrozenAnalysisSchema.parse(task.params.analysis);
+    const record = outcome.kind === "result" ? await recordLockedAnalysis(task, outcome.result, tx) : await failLockedAnalysis(task, outcome.error, tx);
+    if (outcome.consumptionSet === "complete") await completeMiniToolConsumptionSet(task.id, tx);
+    return {
+      record,
+      context: { taskId: task.id, userId: task.userId, projectId: frozen.projectId, spaceId: frozen.spaceId, hostNodeId: frozen.hostNodeId },
+    };
+  });
 }
 
 /** The accepted identity shared by public records and typed detector results. */
@@ -321,24 +336,36 @@ export async function recordMiniToolAnalysis(taskId: string, result: unknown): P
   return db.transaction(async (tx) => {
     const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
     if (task === null) throw new NotFoundError(t("server.error.not_found"));
-    const identity = identityFromTask(task);
-    if (mismatchedIdentity(identity, incoming) !== null) throw new ConflictError(t("server.idempotency.mismatch"));
-    const current = recordFromTask(task);
-    if (current.result !== null) {
-      if (canonicalMiniToolValue(current.result) !== canonicalMiniToolValue(incoming)) throw new ConflictError(t("server.idempotency.mismatch"));
-      return current;
-    }
-    const status = task.status === "cancelled" ? "cancelled" : current.status === "failed" ? "failed" : "completed";
-    const analysis = miniToolAnalysisRecordSchema.parse({
-      ...current, status: status === "cancelled" ? "failed" : status, result: incoming,
-      error: status === "completed" ? null : current.error,
-    });
-    const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
-      analysis, status, errorMessage: status === "completed" ? null : task.errorMessage,
-      finish: current.status === "pending" || current.status === "running",
-    }, tx);
-    return recordFromTask(updated);
+    return recordLockedAnalysis(task, incoming, tx);
   });
+}
+
+/**
+ * Apply matching result metadata while the shared completion owner holds its task lock.
+ * @param task - Current accepted facts under the parent lock.
+ * @param incoming - The validated detector result.
+ * @param tx - The transaction that owns the metadata transition.
+ * @returns The committed or preserved analysis record.
+ * @throws {Error} When identity, immutable result or persistence conflicts.
+ */
+async function recordLockedAnalysis(task: taskRepo.AnalysisTaskRow, incoming: MiniToolAnalysisResult, tx: DbTx): Promise<MiniToolAnalysisRecord> {
+  const identity = identityFromTask(task);
+  if (mismatchedIdentity(identity, incoming) !== null) throw new ConflictError(t("server.idempotency.mismatch"));
+  const current = recordFromTask(task);
+  if (current.result !== null) {
+    if (canonicalMiniToolValue(current.result) !== canonicalMiniToolValue(incoming)) throw new ConflictError(t("server.idempotency.mismatch"));
+    return current;
+  }
+  const status = task.status === "cancelled" ? "cancelled" : current.status === "failed" ? "failed" : "completed";
+  const analysis = miniToolAnalysisRecordSchema.parse({
+    ...current, status: status === "cancelled" ? "failed" : status, result: incoming,
+    error: status === "completed" ? null : current.error,
+  });
+  const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
+    analysis, status, errorMessage: status === "completed" ? null : task.errorMessage,
+    finish: current.status === "pending" || current.status === "running",
+  }, tx);
+  return recordFromTask(updated);
 }
 
 /**
