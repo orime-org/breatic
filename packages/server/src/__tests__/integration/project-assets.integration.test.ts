@@ -218,10 +218,6 @@ describe("Project registered media HTTP reads", () => {
     expect(await readData<unknown>(limitsPath!, cookie)).toEqual({
       defaults: { width: config.defaults.width, height: config.defaults.height, fps: config.defaults.fps },
       assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
-      persistence: {
-        batchSize: config.persistence.batch_size, pollIntervalMs: config.persistence.poll_interval_ms,
-        rpcTimeoutMs: config.persistence.rpc_timeout_ms, retryMinIntervalMs: config.persistence.retry_min_interval_ms,
-      },
     });
   });
 

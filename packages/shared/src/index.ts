@@ -410,7 +410,6 @@ export {
   TimelineVideoSourceSchema,
   TimelineVideoClipSchema,
   TimelineEditCommandSchema,
-  NativeEditRecordSchema,
   TimelineDocumentV1Schema,
 } from "@shared/timeline/schema.js";
 export type {
@@ -420,16 +419,13 @@ export type {
   TimelineVideoSource,
   TimelineVideoClip,
   TimelineEditCommand,
-  NativeEditRecord,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
 export { durationToFrames, timelineSourceSeconds, validateTimelineRange } from "@shared/timeline/time.js";
 export type { TimelineRangeValidation } from "@shared/timeline/time.js";
-export { initializeTimelineDocument, readTimelineDocument, applyTimelineEdit } from "@shared/timeline/document.js";
+export { initializeTimelineDocument, readTimelineDocument, prepareTimelineEdit, applyTimelineEdit } from "@shared/timeline/document.js";
 export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
 export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
-export { TimelinePersistenceRequestSchema, TimelinePersistenceResponseSchema, sameNativeEditRecord } from "@shared/timeline/persistence.js";
-export type { TimelinePersistenceRequest, TimelinePersistenceResponse, TimelineStoreAttempt } from "@shared/timeline/persistence.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
 export type { TimelineClientLimits } from "@shared/timeline/api.js";
 

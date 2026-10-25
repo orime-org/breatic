@@ -3,8 +3,8 @@
 
 import * as Y from "yjs";
 import {
-  NativeEditRecordSchema, TimelineDocumentV1Schema, TimelineEditCommandSchema, TimelineSettingsSchema,
-  type NativeEditRecord, type TimelineDocumentV1, type TimelineEditCommand, type TimelineSettings,
+  TimelineDocumentV1Schema, TimelineEditCommandSchema, TimelineSettingsSchema,
+  type TimelineDocumentV1, type TimelineEditCommand, type TimelineSettings,
   type TimelineVideoClip, type TimelineVideoSource,
 } from "@shared/timeline/schema.js";
 import { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
@@ -58,7 +58,6 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
     attachRecord(doc.getMap("tracks"), "visual-1", { id: "visual-1", kind: "visual", order: 0 });
     doc.getMap("clips");
     doc.getMap("sources");
-    doc.getMap("nativeEdits");
   });
 }
 
@@ -77,7 +76,6 @@ export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {
     tracks: doc.getMap("tracks").toJSON(),
     clips: doc.getMap("clips").toJSON(),
     sources: doc.getMap("sources").toJSON(),
-    nativeEdits: doc.getMap("nativeEdits").toJSON(),
   });
 }
 
@@ -88,15 +86,16 @@ export function readTimelineDocument(doc: Y.Doc): TimelineDocumentV1 {
  * @returns Its target and either an applicable clip/source or a stable reason.
  * @throws {Error} When the current document or command is invalid.
  */
-function prepareEdit(doc: Y.Doc, command: TimelineEditCommand): {
+export function prepareTimelineEdit(doc: Y.Doc, command: TimelineEditCommand): {
   clipId: string;
   clip?: TimelineVideoClip;
   source?: TimelineVideoSource;
-  reason?: NativeEditRecord["notAppliedReason"];
+  reason?: "target_missing" | "invalid_range" | "overlap" | "source_unavailable";
 } {
   const current = readTimelineDocument(doc);
   const clipId = command.operation === "add_video" ? command.parameters.clip.id : command.parameters.clipId;
   const existing = current.clips[clipId];
+  if (command.operation === "add_video" && existing !== undefined) return { clipId, reason: "target_missing" };
   if (command.operation === "set_start" && existing === undefined) return { clipId, reason: "target_missing" };
   const clip = command.operation === "add_video"
     ? command.parameters.clip
@@ -115,38 +114,27 @@ function prepareEdit(doc: Y.Doc, command: TimelineEditCommand): {
 }
 
 /**
- * Record one native effect together with its layout in a Yjs transaction.
+ * Apply a valid layout edit atomically to the shared Y.Doc.
  * @param doc - The current content document.
- * @param command - The user-confirmed edit with its stable action id.
- * @returns The original immutable record when the action is replayed.
+ * @param command - The user-confirmed layout edit.
+ * @returns Whether the current layout accepted the edit.
  * @throws {Error} When the document or command is structurally invalid.
  */
-export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand): NativeEditRecord {
+export function applyTimelineEdit(doc: Y.Doc, command: TimelineEditCommand): boolean {
   const normalized = TimelineEditCommandSchema.parse(command);
-  const edits = doc.getMap<unknown>("nativeEdits");
-  const existing = edits.get(normalized.actionId);
-  if (existing !== undefined) return freezeRecord(NativeEditRecordSchema.parse(existing));
-  const prepared = prepareEdit(doc, normalized);
-  const record = freezeRecord(NativeEditRecordSchema.parse({
-    version: 1,
-    ...normalized,
-    effect: prepared.reason === undefined ? "applied" : "not_applied",
-    targetClipIds: [prepared.clipId],
-    ...(prepared.reason !== undefined && { notAppliedReason: prepared.reason }),
-  }));
+  const prepared = prepareTimelineEdit(doc, normalized);
+  const { clip, source } = prepared;
+  if (prepared.reason !== undefined || clip === undefined || source === undefined) return false;
   doc.transact(() => {
-    if (prepared.clip !== undefined && prepared.source !== undefined && prepared.reason === undefined) {
-      const clips = doc.getMap<unknown>("clips");
-      if (normalized.operation === "add_video") {
-        if (!doc.getMap("sources").has(prepared.source.id)) doc.getMap("sources").set(prepared.source.id, freezeRecord(prepared.source));
-        attachRecord(clips, prepared.clip.id, prepared.clip);
-      } else {
-        const clip = clips.get(prepared.clip.id);
-        if (!(clip instanceof Y.Map)) throw new Error("Timeline clip is not an attached map");
-        clip.set("startFrame", prepared.clip.startFrame);
-      }
+    const clips = doc.getMap<unknown>("clips");
+    if (normalized.operation === "add_video") {
+      if (!doc.getMap("sources").has(source.id)) doc.getMap("sources").set(source.id, freezeRecord(source));
+      attachRecord(clips, clip.id, clip);
+    } else {
+      const target = clips.get(clip.id);
+      if (!(target instanceof Y.Map)) throw new Error("Timeline clip is not an attached map");
+      target.set("startFrame", clip.startFrame);
     }
-    edits.set(normalized.actionId, record);
   }, EDIT_ORIGIN);
-  return record;
+  return true;
 }

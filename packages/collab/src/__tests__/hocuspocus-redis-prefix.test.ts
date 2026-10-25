@@ -28,12 +28,9 @@
  * is read for real (it is a pure file read).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TimelinePersistenceResponseSchema } from "@breatic/shared";
-import type { TimelinePersistenceRequest, TimelinePersistenceResponse } from "@breatic/shared";
 
 import type * as ConnectionRegistryModuleShape from "@collab/services/connection-registry.js";
 import type * as HocuspocusServerModule from "@hocuspocus/server";
-import type * as TimelinePersistenceModule from "@collab/services/timeline-persistence.js";
 import type * as ConnectionGateModuleShape from "@collab/infra/connection-gate.js";
 
 /** The real module, so the mock can keep everything it does not replace. */
@@ -125,14 +122,6 @@ vi.mock("@collab/services/space-rpc.js", () => ({
   })),
 }));
 
-vi.mock("@collab/services/timeline-persistence.js", async (importOriginal) => {
-  const real = await importOriginal<typeof TimelinePersistenceModule>();
-  return {
-    ...real,
-    handleTimelinePersistenceRpc: vi.fn<typeof real.handleTimelinePersistenceRpc>(),
-  };
-});
-
 vi.mock("@collab/infra/connection-gate.js", async () => {
   const real = await vi.importActual<typeof ConnectionGateModuleShape>(
     "@collab/infra/connection-gate.js",
@@ -175,8 +164,6 @@ import { createCollabServer } from "../hocuspocus.js";
 import { getConnectionTimings } from "../config.js";
 import { readPresence } from "../hooks/presence.js";
 import { SOCKET_CEILINGS } from "../infra/socket-ceilings.js";
-import { handleSpaceRpc } from "../services/space-rpc.js";
-import { handleTimelinePersistenceRpc } from "../services/timeline-persistence.js";
 
 /**
  * Read the `prefix` the Redis extension was constructed with.
@@ -610,242 +597,6 @@ describe("createCollabServer — a connection re-reads its role once registered"
     });
     expect(loadProjectRoleStub).toHaveBeenCalledWith("u-1", "11111111-1111-4111-8111-111111111111");
     expect(close).toHaveBeenCalledWith({ code: 4403, reason: "Permission changed, please reconnect" });
-  });
-});
-
-describe("createCollabServer — Timeline persistence dispatcher", () => {
-  const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
-  const SPACE_ID = "22222222-2222-4222-9222-222222222222";
-  const ACTION_ID = "33333333-3333-4333-8333-333333333333";
-  const TIMELINE = `project-${PROJECT_ID}/timeline-${SPACE_ID}`;
-  const REQUEST: TimelinePersistenceRequest = {
-    version: 1,
-    id: "timeline-request",
-    type: "timeline:persistence:query",
-    payload: { actionIds: [ACTION_ID] },
-  };
-  const RESPONSE: TimelinePersistenceResponse = {
-    version: 1,
-    id: REQUEST.id,
-    type: "timeline:persistence:result",
-    ok: true,
-    result: { documentVersion: 1, persistedRecords: [], missingActionIds: [ACTION_ID] },
-  };
-
-  interface StatelessInput {
-    documentName: string;
-    payload: string;
-    document: { broadcastStateless: (message: string) => void };
-    connection: {
-      context?: { user?: { id?: string; role?: "owner" | "editor" | "viewer" } };
-      readOnly: boolean;
-      sendStateless: (message: string) => void;
-    };
-  }
-
-  type StatelessHook = (input: StatelessInput) => Promise<void>;
-  type Factory = Awaited<ReturnType<typeof createCollabServer>>;
-
-  beforeEach(() => {
-    serverSpy.mockClear();
-    vi.mocked(handleSpaceRpc).mockClear();
-    vi.mocked(handleTimelinePersistenceRpc).mockReset();
-    vi.mocked(handleTimelinePersistenceRpc).mockResolvedValue(RESPONSE);
-  });
-
-  /**
-   * Exercise the actual factory-installed hook and release its owned resources.
-   * @param check - Assertions using the captured production hook and factory.
-   * @returns Once the assertions and resource cleanup finish.
-   * @throws {Error} When factory creation, assertions or cleanup fails.
-   */
-  async function withStatelessHook(check: (hook: StatelessHook, factory: Factory) => Promise<void>): Promise<void> {
-    const factory = await createCollabServer({
-      collabRedisUrl: "redis://localhost:6379/3",
-      port: 1234,
-      redisKeyPrefix: "timeline-wiring",
-      shutdownDeadline: () => undefined,
-    });
-    try {
-      expect(serverSpy).toHaveBeenCalledTimes(1);
-      const config = serverSpy.mock.calls[0]?.[0] as { onStateless: StatelessHook };
-      await check(config.onStateless, factory);
-    } finally {
-      factory.storeLoop.stop();
-      await factory.seatHandover.stop();
-    }
-  }
-
-  it.each([
-    { type: "timeline:persistence:query" as const, readOnly: true, role: "owner" as const },
-    { type: "timeline:persistence:retry" as const, readOnly: false, role: "viewer" as const },
-  ])("routes $type with actual connection readOnly=$readOnly and the factory store loop", async ({ type, readOnly, role }) => {
-    await withStatelessHook(async (hook, factory) => {
-      const sendStateless = vi.fn();
-      const broadcastStateless = vi.fn();
-      const requestStore = vi.spyOn(factory.storeLoop, "requestStore").mockResolvedValue("stored");
-      try {
-        const request = { ...REQUEST, type, payload: { actionIds: [ACTION_ID, ACTION_ID] } };
-        await hook({
-          documentName: TIMELINE,
-          payload: JSON.stringify(request),
-          document: { broadcastStateless },
-          connection: { context: { user: { id: "connected-user", role } }, readOnly, sendStateless },
-        });
-
-        expect(handleTimelinePersistenceRpc).toHaveBeenCalledTimes(1);
-        const delegated = vi.mocked(handleTimelinePersistenceRpc).mock.calls[0];
-        expect(delegated?.[0]).toEqual({
-          documentName: TIMELINE,
-          userId: "connected-user",
-          readOnly,
-          requestStore: expect.any(Function),
-        });
-        // Deduplication is the real shared schema's transform, not a mocked parser.
-        expect(delegated?.[1]).toEqual({ ...REQUEST, type });
-        expect(sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify(RESPONSE));
-        expect(broadcastStateless).not.toHaveBeenCalled();
-        expect(handleSpaceRpc).not.toHaveBeenCalled();
-        expect(requestStore).not.toHaveBeenCalled();
-
-        const context = delegated?.[0];
-        expect(context).toBeDefined();
-        expect(await context?.requestStore(TIMELINE)).toBe("stored");
-        expect(requestStore).toHaveBeenCalledExactlyOnceWith(TIMELINE);
-      } finally {
-        requestStore.mockRestore();
-      }
-    });
-  });
-
-  it("delegates authenticated users without requiring a cached role", async () => {
-    await withStatelessHook(async (hook) => {
-      const sendStateless = vi.fn();
-      await hook({
-        documentName: TIMELINE,
-        payload: JSON.stringify(REQUEST),
-        document: { broadcastStateless: vi.fn() },
-        connection: { context: { user: { id: "current-member" } }, readOnly: true, sendStateless },
-      });
-      expect(handleTimelinePersistenceRpc).toHaveBeenCalledTimes(1);
-      expect(vi.mocked(handleTimelinePersistenceRpc).mock.calls[0]?.[0]).toEqual({
-        documentName: TIMELINE,
-        userId: "current-member",
-        readOnly: true,
-        requestStore: expect.any(Function),
-      });
-      expect(sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify(RESPONSE));
-    });
-  });
-
-  it("returns a correlated protocol refusal when authenticated user identity is absent", async () => {
-    await withStatelessHook(async (hook) => {
-      for (const context of [undefined, {}, { user: { role: "owner" as const } }]) {
-        const sendStateless = vi.fn<(message: string) => void>();
-        const broadcastStateless = vi.fn();
-        await hook({
-          documentName: TIMELINE,
-          payload: JSON.stringify(REQUEST),
-          document: { broadcastStateless },
-          connection: { ...(context !== undefined && { context }), readOnly: false, sendStateless },
-        });
-        expect(sendStateless).toHaveBeenCalledTimes(1);
-        const encoded = sendStateless.mock.calls[0]?.[0];
-        expect(typeof encoded).toBe("string");
-        const response = TimelinePersistenceResponseSchema.parse(JSON.parse(encoded ?? "null"));
-        expect(response).toEqual({
-          version: 1,
-          id: REQUEST.id,
-          type: "timeline:persistence:result",
-          ok: false,
-          error: { code: "FORBIDDEN", message: expect.any(String) },
-        });
-        expect(broadcastStateless).not.toHaveBeenCalled();
-      }
-      expect(handleTimelinePersistenceRpc).not.toHaveBeenCalled();
-      expect(handleSpaceRpc).not.toHaveBeenCalled();
-    });
-  });
-
-  it("ignores malformed and strict-schema-invalid messages including caller-supplied identity", async () => {
-    await withStatelessHook(async (hook) => {
-      const sendStateless = vi.fn();
-      const broadcastStateless = vi.fn();
-      const invalidMessages = [
-        "{",
-        "null",
-        JSON.stringify({ ...REQUEST, version: 2 }),
-        JSON.stringify({ ...REQUEST, payload: { actionIds: ["not-a-uuid"] } }),
-        ...["projectId", "documentName", "docName", "userId", "readOnly"].flatMap((field) => [
-          JSON.stringify({ ...REQUEST, [field]: "attacker-selected" }),
-          JSON.stringify({ ...REQUEST, payload: { ...REQUEST.payload, [field]: "attacker-selected" } }),
-        ]),
-      ];
-      for (const payload of invalidMessages) {
-        await hook({
-          documentName: TIMELINE,
-          payload,
-          document: { broadcastStateless },
-          connection: { context: { user: { id: "connected-user", role: "owner" } }, readOnly: false, sendStateless },
-        });
-      }
-      expect(handleTimelinePersistenceRpc).not.toHaveBeenCalled();
-      expect(handleSpaceRpc).not.toHaveBeenCalled();
-      expect(sendStateless).not.toHaveBeenCalled();
-      expect(broadcastStateless).not.toHaveBeenCalled();
-    });
-  });
-
-  it("does not route Timeline messages from other document namespaces", async () => {
-    await withStatelessHook(async (hook) => {
-      const sendStateless = vi.fn();
-      const broadcastStateless = vi.fn();
-      for (const documentName of [
-        `project-${PROJECT_ID}/canvas-${SPACE_ID}`,
-        `project-${PROJECT_ID}/document-${SPACE_ID}`,
-        `project-${PROJECT_ID}/meta`,
-        "invalid-document-name",
-      ]) {
-        await hook({
-          documentName,
-          payload: JSON.stringify(REQUEST),
-          document: { broadcastStateless },
-          connection: { context: { user: { id: "connected-user", role: "owner" } }, readOnly: false, sendStateless },
-        });
-      }
-      expect(handleTimelinePersistenceRpc).not.toHaveBeenCalled();
-      expect(handleSpaceRpc).not.toHaveBeenCalled();
-      expect(sendStateless).not.toHaveBeenCalled();
-      expect(broadcastStateless).not.toHaveBeenCalled();
-    });
-  });
-
-  it("retains independent meta Space RPC routing and ignores Space RPC on Timeline content", async () => {
-    await withStatelessHook(async (hook, factory) => {
-      const sendStateless = vi.fn();
-      const broadcastStateless = vi.fn();
-      const request = { id: "space-request", type: "space:delete", payload: { spaceId: SPACE_ID } };
-      const input: StatelessInput = {
-        documentName: TIMELINE,
-        payload: JSON.stringify(request),
-        document: { broadcastStateless },
-        connection: { context: { user: { id: "connected-user", role: "owner" } }, readOnly: false, sendStateless },
-      };
-      await hook(input);
-      expect(handleSpaceRpc).not.toHaveBeenCalled();
-      expect(sendStateless).not.toHaveBeenCalled();
-
-      await hook({ ...input, documentName: `project-${PROJECT_ID}/meta` });
-      expect(handleSpaceRpc).toHaveBeenCalledExactlyOnceWith(
-        { hocuspocus: factory.hocuspocus },
-        PROJECT_ID,
-        { userId: "connected-user", role: "owner" },
-        request,
-      );
-      expect(sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ id: request.id, ok: true, result: {} }));
-      expect(handleTimelinePersistenceRpc).not.toHaveBeenCalled();
-      expect(broadcastStateless).not.toHaveBeenCalled();
-    });
   });
 });
 

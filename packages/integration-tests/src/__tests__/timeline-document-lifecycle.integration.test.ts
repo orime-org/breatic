@@ -121,11 +121,9 @@ describe("Timeline initialization in the real Yjs database", () => {
     expect(readTimelineDocument(decode(loaded))).toEqual({
       schemaVersion: 1, settings: SETTINGS,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
-      clips: {}, sources: {}, nativeEdits: {},
+      clips: {}, sources: {},
     });
     expect(Array.from(present(await yjsRepo.fetchDocData(name)))).toEqual(Array.from(loaded));
-    await yjsRepo.upsertDocData(name, empty);
-    expect(readTimelineDocument(decode(present(await yjsRepo.fetchDocData(name)))).settings).toEqual(SETTINGS);
   });
 
   it("keeps a delete-only update even though it has no structs or visible content", async () => {

@@ -24,9 +24,9 @@
  */
 
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import { decodeUpdate, mergeUpdates } from "yjs";
+import { decodeUpdate } from "yjs";
 import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
-import { parseDocName, projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
+import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.
@@ -81,16 +81,12 @@ export async function loadTimelineDocData(name: string, initialState: Uint8Array
  * brings back the latest edits.
  * @param name - Full doc name (e.g. `project-{pid}/canvas-{sid}`)
  * @param data - Encoded Yjs update bytes to persist
- * @throws {Error} When the database write or update decoding fails.
+ * @throws {Error} When the database write fails.
  */
 export async function upsertDocData(
   name: string,
   data: Uint8Array,
 ): Promise<void> {
-  if (parseDocName(name)?.kind === "timeline") {
-    await mergeTimelineDocData(name, data);
-    return;
-  }
   const buf = Buffer.from(data);
   await yjsDb
     .insert(yjsDocuments)
@@ -99,38 +95,6 @@ export async function upsertDocData(
       target: yjsDocuments.name,
       set: { data: buf, updatedAt: sql`now()` },
     });
-}
-
-/**
- * Keep every confirmed Timeline update when another instance stores late.
- *
- * The Redis store lock serializes attempts, but a later snapshot can still
- * predate a peer's edit. Merge against the locked database row so additions
- * and delete sets already stored remain part of every subsequent snapshot
- * (inner#1707). The row's deletion marker is deliberately left untouched.
- * @param name - The immutable Timeline document name.
- * @param data - This instance's captured full update.
- * @returns Resolves after the merged snapshot commits.
- * @throws {Error} When the row cannot be locked, decoded or written.
- */
-async function mergeTimelineDocData(name: string, data: Uint8Array): Promise<void> {
-  await yjsDb.transaction(async (tx) => {
-    await tx.insert(yjsDocuments)
-      .values({ name, data: Buffer.from(data) })
-      .onConflictDoNothing({ target: yjsDocuments.name });
-
-    const [stored] = await tx.select({ data: yjsDocuments.data })
-      .from(yjsDocuments)
-      .where(eq(yjsDocuments.name, name))
-      .for("update")
-      .limit(1);
-    if (stored === undefined) throw new Error("Timeline row missing after conflict-safe insert");
-
-    const merged = mergeUpdates([stored.data, data]);
-    await tx.update(yjsDocuments)
-      .set({ data: Buffer.from(merged), updatedAt: sql`now()` })
-      .where(eq(yjsDocuments.name, name));
-  });
 }
 
 /**

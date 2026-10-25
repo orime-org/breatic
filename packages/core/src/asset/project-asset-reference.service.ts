@@ -164,7 +164,7 @@ async function studioForMember(projectId: string, userId: string): Promise<strin
  * Read the public Timeline configuration after checking current Project access.
  * @param projectId - The Project being opened.
  * @param userId - The authenticated current member.
- * @returns Only the defaults and client transport settings.
+ * @returns Only the creation defaults and Project media limits.
  * @throws {ForbiddenError} When current Project access is absent.
  * @throws {Error} When configuration or authorization cannot be read.
  */
@@ -174,12 +174,6 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
   return {
     defaults: { width: config.defaults.width, height: config.defaults.height, fps: { ...config.defaults.fps } },
     assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
-    persistence: {
-      batchSize: config.persistence.batch_size,
-      pollIntervalMs: config.persistence.poll_interval_ms,
-      rpcTimeoutMs: config.persistence.rpc_timeout_ms,
-      retryMinIntervalMs: config.persistence.retry_min_interval_ms,
-    },
   };
 }
 

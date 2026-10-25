@@ -20,7 +20,6 @@
  */
 
 import { createLogger } from "@breatic/core";
-import type { TimelineStoreAttempt } from "@breatic/shared";
 import {
   armTimedStore,
   hasUnsavedContent,
@@ -63,8 +62,6 @@ export interface StoreLoopDeps {
 
 /** A running (or startable) timed store loop. */
 export interface StoreLoop {
-  /** Request or await the same actual per-document attempt as the timed loop. */
-  requestStore(documentName: string): Promise<TimelineStoreAttempt>;
   /** Begin running a round every interval. */
   start(): void;
   /** Stop running rounds. Does not interrupt a round already in flight. */
@@ -99,15 +96,14 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
    * document beside it was stored zero times, and every later round returned
    * immediately.
    */
-  const storing = new Map<string, Promise<TimelineStoreAttempt>>();
+  const storing = new Set<string>();
 
   /**
    * Store one document and record what became of the attempt.
    * @param entry - The document to store.
-   * @returns The actual attempt outcome, separately from persisted record inclusion.
-   * @throws {never} Store failures are logged and returned as refused.
+   * @returns Resolves when the store has answered, whatever it answered.
    */
-  async function storeOne(entry: StoreLoopEntry): Promise<TimelineStoreAttempt> {
+  async function storeOne(entry: StoreLoopEntry): Promise<void> {
     // Arm immediately before the call: the persistence extension returns
     // without writing anything when it finds no arm.
     const arm = armTimedStore(entry.name);
@@ -167,38 +163,6 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
         "collab_store_round_document_unconfirmed",
       );
     }
-    if (!stillLoaded || result.reason === "gone") return "gone";
-    if (storeError !== undefined) return "refused";
-    return result.outcome ?? "deferred";
-  }
-
-  /**
-   * Share one physical attempt between timer rounds and explicit requests.
-   * @param entry - The currently loaded document.
-   * @returns The existing or newly started attempt.
-   * @throws {never} The physical attempt reports its failures as outcomes.
-   */
-  function startStore(entry: StoreLoopEntry): Promise<TimelineStoreAttempt> {
-    const existing = storing.get(entry.name);
-    if (existing !== undefined) return existing;
-    const attempt = storeOne(entry).finally(() => storing.delete(entry.name));
-    storing.set(entry.name, attempt);
-    return attempt;
-  }
-
-  /**
-   * Request an attempt without overlapping a timed or requested write.
-   * @param documentName - The authenticated content document's name.
-   * @returns The same in-flight outcome, or a factual no-attempt state.
-   * @throws {never} The physical attempt reports its failures as outcomes.
-   */
-  function requestStore(documentName: string): Promise<TimelineStoreAttempt> {
-    const existing = storing.get(documentName);
-    if (existing !== undefined) return existing;
-    const entry = [...deps.listDocuments()].find((item) => item.name === documentName);
-    if (entry === undefined) return Promise.resolve("gone");
-    if (!hasUnsavedContent(documentName)) return Promise.resolve("deferred");
-    return startStore(entry);
   }
 
   /**
@@ -206,11 +170,12 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
    * @returns Resolves when every store this round started has come back.
    */
   async function runOnce(): Promise<void> {
-    const started: Array<Promise<TimelineStoreAttempt>> = [];
+    const started: Array<Promise<void>> = [];
     for (const entry of deps.listDocuments()) {
       if (!hasUnsavedContent(entry.name)) continue;
       if (storing.has(entry.name)) continue;
-      started.push(startStore(entry));
+      storing.add(entry.name);
+      started.push(storeOne(entry).finally(() => storing.delete(entry.name)));
     }
     // Concurrently. They are independent writes of independent rows and the
     // pool queues them, so the round costs one slow database rather than one
@@ -220,7 +185,6 @@ export function createStoreLoop(deps: StoreLoopDeps): StoreLoop {
   }
 
   return {
-    requestStore,
     start: (): void => {
       if (timer) return;
       timer = setInterval(() => {

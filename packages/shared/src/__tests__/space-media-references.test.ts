@@ -257,7 +257,7 @@ describe("semantic Space media references", () => {
     const assetId = "20000000-0000-4000-8000-000000000001";
     timelineSource(doc, "10000000-0000-4000-8000-000000000001", assetId);
     timelineSource(doc, "10000000-0000-4000-8000-000000000002", assetId);
-    doc.getMap("nativeEdits").set("unrelated", { assetId: "20000000-0000-4000-8000-000000000002", url: "https://cdn.example/record-text.mp4" });
+    doc.getMap("unrelatedMetadata").set("unrelated", { assetId: "20000000-0000-4000-8000-000000000002", url: "https://cdn.example/record-text.mp4" });
     doc.getMap("clips").set("unknown", { assetId: "20000000-0000-4000-8000-000000000003", content: "https://cdn.example/clip-text.mp4" });
     expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
   });

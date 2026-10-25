@@ -8,8 +8,3 @@ assets:
   page_size: 50
   page_max: 100
   backfill_batch_size: 200
-persistence:
-  batch_size: 64
-  poll_interval_ms: 1500
-  rpc_timeout_ms: 10000
-  retry_min_interval_ms: 1000

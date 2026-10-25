@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import * as Y from "yjs";
 
-import { applyTimelineEdit, initializeTimelineDocument, readTimelineDocument } from "../document.js";
+import { applyTimelineEdit, initializeTimelineDocument, prepareTimelineEdit, readTimelineDocument } from "../document.js";
 import { TimelineDocumentV1Schema } from "../schema.js";
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
@@ -32,7 +32,6 @@ const clip = {
   transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 const add = {
-  actionId: "40000000-0000-4000-8000-000000000001",
   operation: "add_video" as const,
   parameters: { source, clip },
 };
@@ -75,8 +74,8 @@ describe("Timeline document ownership and schema", () => {
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
       clips: {},
       sources: {},
-      nativeEdits: {},
     });
+    expect([...doc.share.keys()].sort()).toEqual(["clips", "sources", "timeline", "tracks"]);
     expect(doc.getMap("tracks").get("visual-1")).toBeInstanceOf(Y.Map);
     expect(TimelineDocumentV1Schema.parse(readTimelineDocument(doc))).toEqual(readTimelineDocument(doc));
   });
@@ -173,29 +172,31 @@ describe("Timeline document ownership and schema", () => {
 });
 
 describe("Timeline native edit transactions", () => {
-  it("writes the source, attached clip and immutable edit record in one transaction", () => {
+  it("prepares a valid edit without writing source or layout", () => {
+    const doc = seededDoc();
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(prepareTimelineEdit(doc, add)).toEqual({ clipId: clip.id, clip, source });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(readTimelineDocument(doc).clips).toEqual({});
+    expect(readTimelineDocument(doc).sources).toEqual({});
+  });
+
+  it("writes the source and attached clip in one transaction", () => {
     const doc = seededDoc();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const snapshots: ReturnType<typeof readTimelineDocument>[] = [];
     doc.on("afterTransaction", () => snapshots.push(readTimelineDocument(doc)));
-    const record = applyTimelineEdit(doc, add);
-    expect(record).toEqual({
-      version: 1,
-      ...add,
-      effect: "applied",
-      targetClipIds: [clip.id],
-    });
+    expect(applyTimelineEdit(doc, add)).toBe(true);
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]).toMatchObject({
       clips: { [clip.id]: clip },
       sources: { [source.id]: source },
-      nativeEdits: { [add.actionId]: record },
     });
     expect(doc.getMap("clips").get(clip.id)).toBeInstanceOf(Y.Map);
     expect(warn.mock.calls.filter((args) => args.some((arg) => String(arg).includes("Invalid access")))).toEqual([]);
   });
 
-  it("reopens the exact document parameters, placement and recorded effect", () => {
+  it("reopens the exact document parameters, source and placement", () => {
     const doc = seededDoc();
     applyTimelineEdit(doc, add);
     const reopened = trackedDoc(Y.encodeStateAsUpdate(doc));
@@ -204,37 +205,27 @@ describe("Timeline native edit transactions", () => {
     expect(readTimelineDocument(reopened).clips[clip.id]).toEqual(clip);
   });
 
-  it("changes only the current clip start and writes a new record", () => {
+  it("changes only the current clip start while preserving its source", () => {
     const doc = seededDoc();
-    const original = applyTimelineEdit(doc, add);
+    expect(applyTimelineEdit(doc, add)).toBe(true);
     const command = {
-      actionId: "40000000-0000-4000-8000-000000000002",
       operation: "set_start" as const,
       parameters: { clipId: clip.id, startFrame: 144 },
     };
-    const changed = applyTimelineEdit(doc, command);
-    expect(changed).toEqual({ version: 1, ...command, effect: "applied", targetClipIds: [clip.id] });
+    expect(applyTimelineEdit(doc, command)).toBe(true);
     expect(readTimelineDocument(doc).clips[clip.id]).toEqual({ ...clip, startFrame: 144 });
     expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
-    expect(readTimelineDocument(doc).nativeEdits[add.actionId]).toEqual(original);
   });
 
-  it("keeps the stored immutable edit unchanged when callers mutate inputs or returned records", () => {
+  it("keeps stored source and clip snapshots unchanged when callers mutate their command inputs", () => {
     const doc = seededDoc();
     const command = structuredClone(add);
-    const expected = { version: 1, ...structuredClone(command), effect: "applied", targetClipIds: [clip.id] };
-    const returned = applyTimelineEdit(doc, command);
-    expect(returned).toEqual(expected);
-    const returnedParameters = returned.parameters as typeof add.parameters;
+    expect(applyTimelineEdit(doc, command)).toBe(true);
     const before = Y.encodeStateAsUpdate(doc);
     for (const mutate of [
       () => Reflect.set(command.parameters.source, "durationSeconds", "9"),
       () => Reflect.set(command.parameters.clip, "startFrame", 144),
       () => Reflect.set(command.parameters.clip.transform, "x", 17),
-      () => Reflect.set(returned, "effect", "not_applied"),
-      () => Reflect.set(returned.targetClipIds, "0", "30000000-0000-4000-8000-000000000002"),
-      () => Reflect.set(returnedParameters.source, "durationSeconds", "7"),
-      () => Reflect.set(returnedParameters.clip.transform, "scaleX", 2),
     ]) {
       try {
         mutate();
@@ -243,57 +234,73 @@ describe("Timeline native edit transactions", () => {
       }
     }
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readTimelineDocument(doc).nativeEdits[add.actionId]).toEqual(expected);
     expect(readTimelineDocument(doc).sources[source.id]).toEqual(source);
     expect(readTimelineDocument(doc).clips[clip.id]).toEqual(clip);
   });
 
-  it("records an overlapping addition without replacing the occupied clip or its source", () => {
+  it("refuses an overlapping addition without changing document bytes or its occupied clip", () => {
     const doc = seededDoc();
-    const original = applyTimelineEdit(doc, add);
+    expect(applyTimelineEdit(doc, add)).toBe(true);
     const nextSource = { ...source, id: "10000000-0000-4000-8000-000000000002" };
     const nextClip = { ...clip, id: "30000000-0000-4000-8000-000000000002", sourceId: nextSource.id, startFrame: 24 };
     const command = {
-      actionId: "40000000-0000-4000-8000-000000000006",
       operation: "add_video" as const,
       parameters: { source: nextSource, clip: nextClip },
     };
-    const rejected = applyTimelineEdit(doc, command);
-    expect(rejected).toEqual({ version: 1, ...command, effect: "not_applied", targetClipIds: [nextClip.id], notAppliedReason: "overlap" });
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(prepareTimelineEdit(doc, command)).toEqual({ clipId: nextClip.id, reason: "overlap" });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(applyTimelineEdit(doc, command)).toBe(false);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(readTimelineDocument(doc).clips).toEqual({ [clip.id]: clip });
-    expect(readTimelineDocument(doc).sources[source.id]).toEqual(source);
-    expect(readTimelineDocument(doc).nativeEdits).toEqual({ [add.actionId]: original, [command.actionId]: rejected });
+    expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
   });
 
-  it("records a missing target without inventing layout and never retries its effect", () => {
+  it("refuses a missing target without writing and can edit it once the clip exists", () => {
     const doc = seededDoc();
     const missing = {
-      actionId: "40000000-0000-4000-8000-000000000003",
       operation: "set_start" as const,
       parameters: { clipId: clip.id, startFrame: 144 },
     };
-    const record = applyTimelineEdit(doc, missing);
-    expect(record).toEqual({ version: 1, ...missing, effect: "not_applied", targetClipIds: [clip.id], notAppliedReason: "target_missing" });
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(prepareTimelineEdit(doc, missing)).toEqual({ clipId: clip.id, reason: "target_missing" });
+    expect(applyTimelineEdit(doc, missing)).toBe(false);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(readTimelineDocument(doc).clips).toEqual({});
     expect(readTimelineDocument(doc).sources).toEqual({});
-    applyTimelineEdit(doc, add);
-    expect(applyTimelineEdit(doc, missing)).toEqual(record);
-    expect(readTimelineDocument(doc).clips[clip.id]).toEqual(clip);
+    expect(applyTimelineEdit(doc, add)).toBe(true);
+    expect(applyTimelineEdit(doc, missing)).toBe(true);
+    expect(readTimelineDocument(doc).clips[clip.id]).toEqual({ ...clip, startFrame: 144 });
   });
 
-  it("keeps records outside the layout UndoManager scope", () => {
+  it("refuses an addition whose clip identity already exists without replacing its layout or source", () => {
     const doc = seededDoc();
-    const undo = new Y.UndoManager([doc.getMap("clips"), doc.getMap("tracks")]);
-    doc.on("beforeTransaction", (transaction) => undo.trackedOrigins.add(transaction.origin));
-    try {
-      const record = applyTimelineEdit(doc, add);
-      undo.undo();
-      expect(readTimelineDocument(doc).clips).toEqual({});
-      expect(readTimelineDocument(doc).nativeEdits).toEqual({ [add.actionId]: record });
-      expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
-    } finally {
-      undo.destroy();
-    }
+    expect(applyTimelineEdit(doc, add)).toBe(true);
+    const nextSource = { ...source, id: "10000000-0000-4000-8000-000000000002" };
+    const reused = { operation: "add_video" as const, parameters: {
+      source: nextSource, clip: { ...clip, sourceId: nextSource.id, startFrame: 144 },
+    } };
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(prepareTimelineEdit(doc, reused)).toEqual({ clipId: clip.id, reason: "target_missing" });
+    expect(applyTimelineEdit(doc, reused)).toBe(false);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(readTimelineDocument(doc).clips).toEqual({ [clip.id]: clip });
+    expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
+  });
+
+  it.each([
+    { sourceInFrame: 1 },
+    { durationFrames: 49 },
+    { startFrame: Number.MAX_SAFE_INTEGER },
+  ])("refuses a semantically invalid range without writing: %s", (changedFields) => {
+    const doc = seededDoc();
+    const command = { operation: "add_video" as const, parameters: { source, clip: { ...clip, ...changedFields } } };
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(prepareTimelineEdit(doc, command)).toEqual({ clipId: clip.id, reason: "invalid_range" });
+    expect(applyTimelineEdit(doc, command)).toBe(false);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(readTimelineDocument(doc).clips).toEqual({});
+    expect(readTimelineDocument(doc).sources).toEqual({});
   });
 
   it("keeps independent fields of a nested clip when clients merge", () => {
@@ -303,7 +310,6 @@ describe("Timeline native edit transactions", () => {
     const first = trackedDoc(bytes);
     const second = trackedDoc(bytes);
     applyTimelineEdit(first, {
-      actionId: "40000000-0000-4000-8000-000000000004",
       operation: "set_start",
       parameters: { clipId: clip.id, startFrame: 96 },
     });
@@ -314,20 +320,20 @@ describe("Timeline native edit transactions", () => {
     expect(readTimelineDocument(first).clips[clip.id]).toEqual({ ...clip, startFrame: 96, gain: 0.5 });
   });
 
-  it("applies each action at most once for any repeated submission count", () => {
+  it("refuses repeated additions of the same clip identity without changing accepted bytes", () => {
     fc.assert(fc.property(fc.integer({ min: 1, max: 20 }), fc.integer({ min: 0, max: 10000 }), (count, startFrame) => {
       const doc = seededDoc();
       const command = { ...add, parameters: { source, clip: { ...clip, startFrame } } };
-      const first = applyTimelineEdit(doc, command);
+      expect(applyTimelineEdit(doc, command)).toBe(true);
       const bytes = Y.encodeStateAsUpdate(doc);
-      for (let attempt = 0; attempt < count; attempt += 1) expect(applyTimelineEdit(doc, command)).toEqual(first);
+      for (let attempt = 0; attempt < count; attempt += 1) expect(applyTimelineEdit(doc, command)).toBe(false);
       expect(Object.keys(readTimelineDocument(doc).clips)).toEqual([clip.id]);
-      expect(Object.keys(readTimelineDocument(doc).nativeEdits)).toEqual([add.actionId]);
+      expect(readTimelineDocument(doc).sources).toEqual({ [source.id]: source });
       expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
     }));
   });
 
-  it("preserves both locally accepted clips and records in either merge order", () => {
+  it("preserves both locally accepted clips and sources in either merge order", () => {
     fc.assert(fc.property(fc.integer({ min: 0, max: 1000 }), (startFrame) => {
       const initial = Y.encodeStateAsUpdate(seededDoc());
       const first = trackedDoc(initial);
@@ -335,14 +341,14 @@ describe("Timeline native edit transactions", () => {
       const secondSource = { ...source, id: "10000000-0000-4000-8000-000000000002" };
       const secondClip = { ...clip, id: "30000000-0000-4000-8000-000000000002", sourceId: secondSource.id, startFrame };
       applyTimelineEdit(first, { ...add, parameters: { source, clip: { ...clip, startFrame } } });
-      applyTimelineEdit(second, { actionId: "40000000-0000-4000-8000-000000000005", operation: "add_video", parameters: { source: secondSource, clip: secondClip } });
+      applyTimelineEdit(second, { operation: "add_video", parameters: { source: secondSource, clip: secondClip } });
       const firstBytes = Y.encodeStateAsUpdate(first);
       const secondBytes = Y.encodeStateAsUpdate(second);
       Y.applyUpdate(first, secondBytes);
       Y.applyUpdate(second, firstBytes);
       expect(readTimelineDocument(first)).toEqual(readTimelineDocument(second));
-      expect(Object.keys(readTimelineDocument(first).clips).sort()).toEqual([clip.id, secondClip.id]);
-      expect(Object.keys(readTimelineDocument(first).nativeEdits).sort()).toEqual([add.actionId, "40000000-0000-4000-8000-000000000005"]);
+      expect(readTimelineDocument(first).clips).toEqual({ [clip.id]: { ...clip, startFrame }, [secondClip.id]: secondClip });
+      expect(readTimelineDocument(first).sources).toEqual({ [source.id]: source, [secondSource.id]: secondSource });
       expect(TimelineDocumentV1Schema.safeParse(readTimelineDocument(first)).success).toBe(true);
     }));
   });

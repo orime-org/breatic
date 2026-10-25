@@ -39,23 +39,13 @@ export interface TimelineVideoClip {
   transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
 }
 
-/** A user-confirmed native edit with a stable id across save retries. */
+/** An edit to the Timeline's collaborative layout. */
 export type TimelineEditCommand = {
-  actionId: string;
   operation: "add_video";
   parameters: { source: TimelineVideoSource; clip: TimelineVideoClip };
 } | {
-  actionId: string;
   operation: "set_start";
   parameters: { clipId: string; startFrame: number };
-};
-
-/** The immutable effect recorded with its corresponding layout transaction. */
-export type NativeEditRecord = TimelineEditCommand & {
-  version: 1;
-  effect: "applied" | "not_applied";
-  targetClipIds: string[];
-  notAppliedReason?: "target_missing" | "invalid_range" | "overlap" | "source_unavailable";
 };
 
 /** Our persisted integer-frame format, independent of any editor library. */
@@ -65,7 +55,6 @@ export interface TimelineDocumentV1 {
   tracks: Record<string, TimelineTrack>;
   clips: Record<string, TimelineVideoClip>;
   sources: Record<string, TimelineVideoSource>;
-  nativeEdits: Record<string, NativeEditRecord>;
 }
 
 const safeFrame = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -117,38 +106,16 @@ export const TimelineVideoClipSchema = z.object({
 }).strict();
 
 const addCommand = z.object({
-  actionId: identity,
   operation: z.literal("add_video"),
   parameters: z.object({ source: TimelineVideoSourceSchema, clip: TimelineVideoClipSchema }).strict(),
 }).strict();
 const startCommand = z.object({
-  actionId: identity,
   operation: z.literal("set_start"),
   parameters: z.object({ clipId: identity, startFrame: safeFrame }).strict(),
 }).strict();
 
 /** A normalized user-confirmed native edit. */
 export const TimelineEditCommandSchema = z.discriminatedUnion("operation", [addCommand, startCommand]);
-
-const recordFields = {
-  version: z.literal(1),
-  effect: z.enum(["applied", "not_applied"]),
-  targetClipIds: z.array(identity).length(1),
-  notAppliedReason: z.enum(["target_missing", "invalid_range", "overlap", "source_unavailable"]).optional(),
-};
-
-/** The complete immutable action receipt written with its layout transaction. */
-export const NativeEditRecordSchema = z.discriminatedUnion("operation", [
-  addCommand.extend(recordFields), startCommand.extend(recordFields),
-]).superRefine((record, ctx) => {
-  if ((record.effect === "not_applied") !== (record.notAppliedReason !== undefined)) {
-    ctx.addIssue({ code: "custom", path: ["notAppliedReason"], message: "The edit effect and reason disagree" });
-  }
-  const clipId = record.operation === "add_video" ? record.parameters.clip.id : record.parameters.clipId;
-  if (record.targetClipIds[0] !== clipId) {
-    ctx.addIssue({ code: "custom", path: ["targetClipIds"], message: "The recorded target does not match the command" });
-  }
-});
 
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({
@@ -157,5 +124,4 @@ export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object(
   tracks: z.record(z.string(), TimelineTrackSchema),
   clips: z.record(z.string(), TimelineVideoClipSchema),
   sources: z.record(z.string(), TimelineVideoSourceSchema),
-  nativeEdits: z.record(z.string(), NativeEditRecordSchema),
 }).strict();
