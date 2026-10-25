@@ -34,8 +34,17 @@ export const LONG_MEDIA_SEGMENTS_PATH = /^\/long-media\/jobs\/([^/]+)\/segments$
 /** `/long-media/jobs/{id}/plan`. */
 export const LONG_MEDIA_PLAN_PATH = /^\/long-media\/jobs\/([^/]+)\/plan$/;
 
+/** `/long-media/jobs/{id}/run`. */
+export const LONG_MEDIA_RUN_PATH = /^\/long-media\/jobs\/([^/]+)\/run$/;
+
 /** The hostname used only by the Container's report callback. */
 export const LONG_MEDIA_REPORT_HOST = "long-media.local";
+
+/** The hostname used only by Container segment-output uploads. */
+export const LONG_MEDIA_SEGMENT_OUTPUT_HOST = "long-media-output.local";
+
+/** The hostname used only by Container segment-result callbacks. */
+export const LONG_MEDIA_SEGMENT_REPORT_HOST = "long-media-segment-report.local";
 
 /** Trusted identity persisted in the Container's outbound callback route. */
 export interface LongMediaProbeCallbackContext {
@@ -192,6 +201,38 @@ export async function applyLongMediaPlan(
 }
 
 /**
+ * Start execution of a persisted, complete long-media segment plan.
+ * @param request - The backend start request.
+ * @param env - The Worker's bindings.
+ * @param jobId - The URL-encoded job identity.
+ * @returns 202 with the durable state, 401 without backend auth, or 404 before job creation.
+ */
+export async function runLongMediaSegments(
+  request: Request,
+  env: LongMediaRoutesEnv,
+  jobId: string,
+): Promise<Response> {
+  if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
+  let decodedJobId: string;
+  try {
+    decodedJobId = decodeURIComponent(jobId);
+  } catch {
+    return new Response("No such job", { status: 404 });
+  }
+  const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId));
+  if (await stub.report() === null) return new Response("No such job", { status: 404 });
+  try {
+    const snapshot = await stub.startMediaSegments();
+    return snapshot === null
+      ? new Response("No runnable segment plan", { status: 409 })
+      : Response.json(snapshot, { status: 202 });
+  } catch (err) {
+    noteFailure("ingest_long_media_segment_start_failed", { jobId: decodedJobId }, err);
+    throw err;
+  }
+}
+
+/**
  * Validate and persist one Container probe callback against its fenced attempt.
  * @param request - The raw ffprobe report from the intercepted Container host.
  * @param env - The Worker's Durable Object namespace.
@@ -295,7 +336,7 @@ export async function writeLongMediaSegment(
     return new Response("Invalid output key", { status: 400 });
   }
   const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(context.params.jobId));
-  const permit = await stub.segmentWritePermit(storageKey);
+  const permit = await stub.claimSegmentWritePermit(storageKey);
   if (permit === null) return new Response("Not this output", { status: 403 });
   return storeAuthorizedLongMediaSegment(request, env.BUCKET, stub, permit, context.params.jobId);
 }

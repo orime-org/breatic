@@ -414,6 +414,29 @@ describe("POST /long-media/jobs", () => {
     await expect(stub.readSegments()).resolves.toHaveLength(1);
   });
 
+  it("starts the planned segment run only for the backend", async () => {
+    const runPayload = { ...payload, jobId: "operation-start-segments:source-0", operationId: "operation-start-segments" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(runPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(runPayload.jobId));
+    await stub.startAttempt("start-segments-probe", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "start-segments-probe", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("start-segments-probe", 1, probeReport, Date.now());
+    const plan = await rootInputPlan(0, 0);
+    await expect(stub.applyLongMediaPlan(plan)).resolves.toMatchObject({ kind: "accepted", complete: true });
+
+    const path = `/long-media/jobs/${encodeURIComponent(runPayload.jobId)}/run`;
+    const unauthorized = await call(path, { method: "POST" }, false);
+    const response = await call(path, { method: "POST" });
+
+    expect(unauthorized.status).toBe(401);
+    expect(response.status).toBe(202);
+    await expect(stub.readSegments()).resolves.toMatchObject(plan.intervals.map((segment) => ({
+      id: segment.id,
+      status: "encoding",
+      version: 1,
+    })));
+  });
+
   it("replaces only an oversize parent with an exact same-input child partition", async () => {
     const splitPayload = { ...payload, jobId: "operation-split-plan:source-0", operationId: "operation-split-plan" };
     await call("/long-media/jobs", { method: "POST", body: await requestBody(splitPayload) });

@@ -8,11 +8,13 @@ import {
   acceptLongMediaProbeReport,
   acceptLongMediaSegmentReport,
   LONG_MEDIA_REPORT_HOST,
+  LONG_MEDIA_SEGMENT_OUTPUT_HOST,
+  LONG_MEDIA_SEGMENT_REPORT_HOST,
   serveLongMediaSource,
   writeLongMediaSegment,
 } from "@ingest/jobs/long-media-routes.js";
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js";
-import { LONG_MEDIA_PROBE_PATH, PROBE_PORT } from "@ingest/probe-answer.js";
+import { LONG_MEDIA_PROBE_PATH, LONG_MEDIA_SEGMENT_PATH, PROBE_PORT } from "@ingest/probe-answer.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
 import {
   computeLongMediaInputsDigest,
@@ -30,6 +32,7 @@ import type {
   LongMediaSegmentEvent,
 } from "@ingest/jobs/long-media-segment.js";
 import { transitionLongMediaSegment } from "@ingest/jobs/long-media-segment.js";
+import { longMediaSegmentContainerRequest } from "@ingest/jobs/long-media-segment-request.js";
 import {
   transitionLongMediaAttempt,
   type LongMediaAttemptEffect,
@@ -412,6 +415,15 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   }
 
   /**
+   * Atomically consume one exact-key write grant before accepting output bytes.
+   * @param storageKey - The Container-requested output key.
+   * @returns The claimed grant, or null when absent, stale, or already claimed.
+   */
+  claimSegmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
+    return this.jobStore.claimSegmentWritePermit(storageKey);
+  }
+
+  /**
    * Compare-and-set one segment lifecycle event by its expected revision.
    * @param segmentId - The durable segment id.
    * @param expectedVersion - The version the event was based on.
@@ -434,6 +446,89 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    */
   applyCurrentSegmentEvent(segmentId: string, event: LongMediaSegmentEvent): LongMediaSegmentEventResult {
     return this.jobStore.applyCurrentSegmentEvent(segmentId, event);
+  }
+
+  /**
+   * Start or continue encoding every currently planned source-time segment.
+   * @returns The current job snapshot, or null when its plan is not runnable.
+   * @throws {Error} When the Container or any segment request cannot be started.
+   */
+  async startMediaSegments(): Promise<LongMediaJobSnapshot | null> {
+    const transition = this.jobStore.transition({ type: "planAck", hasRunnableSegments: true }, Date.now());
+    if (transition === null || transition.snapshot.phase !== "running") return this.jobStore.report();
+    const job = this.jobStore.request();
+    if (job === null) return null;
+    const planned = this.jobStore.readSegments().some((segment) =>
+      segment.storageKey !== null && (segment.status === "planned" || segment.status === "paused"));
+    if (!planned) return this.jobStore.report();
+
+    let attempt = this.jobStore.latestAttempt();
+    let startedRevision: number | null = null;
+    const needsContainer = attempt?.phase !== "running";
+    if (attempt === null || attempt.phase === "stopped" || attempt.phase === "lost") {
+      const start = this.jobStore.startAttempt(crypto.randomUUID(), Date.now());
+      if (start === null) return this.jobStore.report();
+      attempt = start.state;
+      startedRevision = transition.snapshot.version;
+    }
+    if (attempt === null || attempt.phase === "stopping") return this.jobStore.report();
+
+    try {
+      await this.setOutboundByHosts({
+        [MEDIA_OBJECT_HOST]: {
+          method: "serveLongMediaSource",
+          params: { key: job.source.key, sizeBytes: job.source.sizeBytes },
+        },
+        [LONG_MEDIA_SEGMENT_OUTPUT_HOST]: {
+          method: "writeLongMediaSegment",
+          params: { jobId: job.jobId },
+        },
+        [LONG_MEDIA_SEGMENT_REPORT_HOST]: {
+          method: "acceptLongMediaSegmentReport",
+          params: { jobId: job.jobId },
+        },
+      });
+      if (needsContainer) {
+        await this.start();
+        if (attempt.phase === "starting") {
+          this.jobStore.applyAttemptEvent({
+            type: "accepted",
+            attemptId: attempt.attemptId,
+            epoch: attempt.epoch,
+          }, Date.now());
+          this.jobStore.acknowledgeAttemptEffect(attempt.epoch, attempt.attemptId, "start");
+          this.jobStore.transition({ type: "containerStarted" }, Date.now());
+        }
+      }
+
+      const runnable = this.jobStore.markPlannedSegmentsEncoding();
+      for (const segment of runnable) {
+        const request = longMediaSegmentContainerRequest(job, segment, {
+          output: LONG_MEDIA_SEGMENT_OUTPUT_HOST,
+          report: LONG_MEDIA_SEGMENT_REPORT_HOST,
+        });
+        const response = await this.containerFetch(new Request(`http://long-media${LONG_MEDIA_SEGMENT_PATH}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        }), PROBE_PORT);
+        await response.body?.cancel();
+        if (response.status !== 202) throw new Error(`The long media segment was answered ${response.status}`);
+      }
+      if (startedRevision !== null) this.jobStore.acknowledgeEffect(startedRevision, "startMediaAttempt");
+      return this.jobStore.report();
+    } catch (err) {
+      this.jobStore.applyAttemptEvent({ type: "failure", attemptId: attempt.attemptId, epoch: attempt.epoch }, Date.now());
+      this.jobStore.transition({ type: "fatal" }, Date.now());
+      if (startedRevision !== null) this.jobStore.acknowledgeEffect(startedRevision, "startMediaAttempt");
+      try {
+        await this.destroy();
+      } catch (stopError) {
+        noteFailure("ingest_long_media_segment_cleanup_failed", { jobId: job.jobId }, stopError);
+      }
+      noteFailure("ingest_long_media_segment_container_start_failed", { jobId: job.jobId }, err);
+      throw err;
+    }
   }
 
   /**
@@ -702,12 +797,61 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Move grant-backed planned or paused segments into encoding under the current plan.
+   * @returns The segments whose output requests may be sent to the Container.
+   */
+  markPlannedSegmentsEncoding(): LongMediaSegmentSnapshot[] {
+    return this.jobStore.markPlannedSegmentsEncoding();
+  }
+
+  /**
    * Read a pending exact-key write authorization for one running segment.
    * @param storageKey - The candidate output key named by the Container.
    * @returns Its current write permit, or null when the key is not authorized.
    */
   segmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
     return this.jobStore.segmentWritePermit(storageKey);
+  }
+
+  /**
+   * Atomically claim one pending output permit so concurrent PUTs cannot race on its R2 key.
+   * @param storageKey - The exact authorized output key.
+   * @returns The grant only to the caller that changed it from pending to writing.
+   */
+  claimSegmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      if (job === undefined) return null;
+      const state = stateOf(job);
+      if ((state.phase !== "planning" && state.phase !== "running") || Date.now() >= state.deadlineAt) return null;
+      const row = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        `SELECT segment.* FROM long_media_segments AS segment
+         JOIN long_media_write_permits AS permit
+           ON permit.job_id = segment.job_id AND permit.segment_id = segment.segment_id
+         WHERE segment.job_id = ? AND segment.storage_key = ?
+           AND segment.status = 'encoding' AND permit.status = 'pending'`,
+        job.job_id, storageKey,
+      ).toArray()[0];
+      if (row === undefined || row.storage_key === null) return null;
+      const descriptor = JSON.parse(row.descriptor_json) as Record<string, unknown>;
+      if (descriptor.mediaKind !== "audio" && descriptor.mediaKind !== "video") {
+        throw new Error("The persisted long media segment has an invalid media kind");
+      }
+      const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+      const changed = this.ctx.storage.sql.exec(
+        `UPDATE long_media_write_permits SET status = 'writing'
+         WHERE job_id = (SELECT job_id FROM long_media_jobs LIMIT 1)
+           AND segment_id = ? AND status = 'pending'`,
+        row.segment_id,
+      );
+      return changed.rowsWritten === 1 ? {
+        segmentId: row.segment_id,
+        storageKey: row.storage_key,
+        expectedVersion: row.version,
+        maxBytes: request.limitsSnapshot.maxSegmentBytes,
+        mediaKind: descriptor.mediaKind,
+      } : null;
+    });
   }
 
   /**
@@ -765,6 +909,17 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
    */
   startProbe(): LongMediaTransitionResult | null {
     return this.jobStore.transition({ type: "start" }, Date.now());
+  }
+
+  /**
+   * Exercise the durable segment-run transition without launching a platform Container.
+   * @returns The updated job snapshot, or null when no complete plan is runnable.
+   */
+  startMediaSegments(): LongMediaJobSnapshot | null {
+    const transition = this.jobStore.transition({ type: "planAck", hasRunnableSegments: true }, Date.now());
+    if (transition === null || transition.snapshot.phase !== "running") return this.jobStore.report();
+    this.jobStore.markPlannedSegmentsEncoding();
+    return this.jobStore.report();
   }
 }
 
@@ -1201,6 +1356,29 @@ class LongMediaJobStore {
   }
 
   /**
+   * Move grant-backed planned or paused segments into encoding under the current plan.
+   * @returns The segments whose output requests may be sent to the Container.
+   */
+  markPlannedSegmentsEncoding(): LongMediaSegmentSnapshot[] {
+    const started: LongMediaSegmentSnapshot[] = [];
+    for (const segment of this.readSegments()) {
+      if (segment.storageKey === null || (segment.status !== "planned" && segment.status !== "paused")) continue;
+      let current = segment;
+      if (current.status === "paused") {
+        const resumed = this.applySegmentEvent(current.id, current.version, { type: "resume", checkpoint: "planned" });
+        if (resumed.kind !== "accepted") continue;
+        current = this.readSegments().find((item) => item.id === segment.id) ?? current;
+      }
+      if (current.status !== "planned") continue;
+      const result = this.applySegmentEvent(current.id, current.version, { type: "run" });
+      if (result.kind !== "accepted") continue;
+      const encoding = this.readSegments().find((item) => item.id === segment.id);
+      if (encoding !== undefined && encoding.status === "encoding") started.push(encoding);
+    }
+    return started;
+  }
+
+  /**
    * Read a pending exact-key write authorization for one running segment.
    * @param storageKey - The candidate output key named by the Container.
    * @returns Its current write permit, or null when the key is not authorized.
@@ -1237,6 +1415,46 @@ class LongMediaJobStore {
   }
 
   /**
+   * Atomically claim one pending output permit so concurrent PUTs cannot race on its R2 key.
+   * @param storageKey - The exact authorized output key.
+   * @returns The grant only to the caller that changed it from pending to writing.
+   */
+  claimSegmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      if (job === undefined) return null;
+      const state = stateOf(job);
+      if ((state.phase !== "planning" && state.phase !== "running") || Date.now() >= state.deadlineAt) return null;
+      const row = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        `SELECT segment.* FROM long_media_segments AS segment
+         JOIN long_media_write_permits AS permit
+           ON permit.job_id = segment.job_id AND permit.segment_id = segment.segment_id
+         WHERE segment.job_id = ? AND segment.storage_key = ?
+           AND segment.status = 'encoding' AND permit.status = 'pending'`,
+        job.job_id, storageKey,
+      ).toArray()[0];
+      if (row === undefined || row.storage_key === null) return null;
+      const descriptor = JSON.parse(row.descriptor_json) as Record<string, unknown>;
+      if (descriptor.mediaKind !== "audio" && descriptor.mediaKind !== "video") {
+        throw new Error("The persisted long media segment has an invalid media kind");
+      }
+      const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+      const changed = this.ctx.storage.sql.exec(
+        `UPDATE long_media_write_permits SET status = 'writing'
+         WHERE job_id = ? AND segment_id = ? AND status = 'pending'`,
+        job.job_id, row.segment_id,
+      );
+      return changed.rowsWritten === 1 ? {
+        segmentId: row.segment_id,
+        storageKey: row.storage_key,
+        expectedVersion: row.version,
+        maxBytes: request.limitsSnapshot.maxSegmentBytes,
+        mediaKind: descriptor.mediaKind,
+      } : null;
+    });
+  }
+
+  /**
    * Compare-and-set one segment event inside a Durable Object transaction.
    * @param segmentId - The durable segment identity.
    * @param expectedVersion - The version the caller observed.
@@ -1267,7 +1485,7 @@ class LongMediaJobStore {
           job.job_id,
           segmentId,
         ).toArray()[0];
-        if (permit?.status !== "pending") return { kind: "invalid" };
+        if (permit?.status !== "writing") return { kind: "invalid" };
       }
       if (event.type === "measured" && (!/^[a-f0-9]{64}$/u.test(event.measured.sha256) ||
           !Number.isSafeInteger(event.measured.sizeBytes) || event.measured.sizeBytes < 1 ||
@@ -1288,7 +1506,7 @@ class LongMediaJobStore {
           job.job_id, segmentId, event.measured.sha256, event.measured.sizeBytes, event.measured.contentType,
         );
         this.ctx.storage.sql.exec(
-          "UPDATE long_media_write_permits SET status = 'written' WHERE job_id = ? AND segment_id = ? AND status = 'pending'",
+          "UPDATE long_media_write_permits SET status = 'written' WHERE job_id = ? AND segment_id = ? AND status = 'writing'",
           job.job_id,
           segmentId,
         );
