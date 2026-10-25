@@ -45,6 +45,9 @@ export const PROBE_PATH = "/probe";
 /** The container endpoint that measures one source for a long-media job. */
 export const LONG_MEDIA_PROBE_PATH = "/long-media/probe";
 
+/** The container endpoint that encodes and registers one source-time segment. */
+export const LONG_MEDIA_SEGMENT_PATH = "/long-media/segment";
+
 /** What one run is asked to do. */
 export interface ProbeRequest {
   /** Static JPEG to generate independently of the display preview. */

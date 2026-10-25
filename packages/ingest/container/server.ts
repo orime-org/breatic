@@ -34,6 +34,7 @@ import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
   LONG_MEDIA_PROBE_PATH,
+  LONG_MEDIA_SEGMENT_PATH,
   PROBE_PATH,
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
@@ -59,6 +60,7 @@ import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
+import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
 
 /**
  * The most a cover frame may weigh.
@@ -250,6 +252,29 @@ function send(res: ServerResponse, answer: Response): void {
 }
 
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === LONG_MEDIA_SEGMENT_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let segment: unknown;
+      try {
+        segment = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const parsed = readLongMediaSegmentRunRequest(segment);
+      if (parsed === null) {
+        res.writeHead(400).end();
+        return;
+      }
+      res.writeHead(202).end();
+      await runLongMediaSegment(parsed).catch((err: unknown) => {
+        console.error("long_media_segment_failed", { err: err instanceof Error ? err.message : String(err) });
+      });
+    })();
+    return;
+  }
   if (req.method === "POST" && req.url === LONG_MEDIA_PROBE_PATH) {
     void (async () => {
       const chunks: Buffer[] = [];

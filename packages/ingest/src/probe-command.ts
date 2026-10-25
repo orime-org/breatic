@@ -13,6 +13,7 @@
 
 import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
 import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
+import type { LongMediaJobRequest } from "@shared/media/long-media-job.js";
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
@@ -33,6 +34,68 @@ const PROTOCOLS = "http,tcp";
  * nothing else; it never names a network address.
  */
 export type ReadFrom = "object" | "own-file";
+
+/**
+ * Build the bounded one-file transcode for a planned long-media interval.
+ * @param objectUrl - The exact immutable R2 source URL served by the Worker.
+ * @param mediaKind - The source file's probed audio or video kind.
+ * @param interval - The half-open source-time interval to encode.
+ * @param profile - The encoding parameters frozen into this media job.
+ * @returns FFmpeg arguments that write one fragmented MP4 file to stdout.
+ * @throws {RangeError} When the source-time interval is invalid.
+ */
+export function longMediaSegmentArgs(
+  objectUrl: string,
+  mediaKind: "audio" | "video",
+  interval: { startUs: string; endUs: string },
+  profile: LongMediaJobRequest["encodingProfile"],
+): string[] {
+  const startUs = BigInt(interval.startUs);
+  const durationUs = BigInt(interval.endUs) - startUs;
+  if (durationUs <= 0n) throw new RangeError("A long-media segment interval must have positive duration.");
+  const args = [
+    "-v", "error",
+    "-protocol_whitelist", PROTOCOLS,
+    "-seek_timestamp", "1",
+    "-ss", ffmpegSeconds(startUs),
+    "-i", objectUrl,
+    "-t", ffmpegSeconds(durationUs),
+  ];
+  if (mediaKind === "video") {
+    args.push(
+      "-map", "0:v?",
+      "-map", "0:a?",
+      "-c:v", profile.videoCodec,
+      "-crf", String(profile.videoCrf),
+      "-c:a", profile.videoAudioCodec,
+      "-b:a", profile.videoAudioBitrate,
+    );
+  } else {
+    args.push(
+      "-map", "0:a?",
+      "-vn",
+      "-c:a", profile.audioCodec,
+      "-b:a", profile.audioBitrate,
+    );
+  }
+  args.push(
+    "-sn",
+    "-dn",
+    "-movflags", "+frag_keyframe+empty_moov",
+    "-f", "mp4",
+    "pipe:1",
+  );
+  return args;
+}
+
+/** Format integer microseconds without converting source timestamps to floating point. */
+function ffmpegSeconds(microseconds: bigint): string {
+  const sign = microseconds < 0n ? "-" : "";
+  const absolute = microseconds < 0n ? -microseconds : microseconds;
+  const whole = absolute / 1_000_000n;
+  const fraction = String(absolute % 1_000_000n).padStart(6, "0");
+  return `${sign}${whole}.${fraction}`;
+}
 
 /**
  * The protocols a command may open for what it reads.
