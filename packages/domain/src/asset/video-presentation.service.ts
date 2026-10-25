@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
 import { alphaManifestKeyFor, alphaPackedKeyFor, t, videoPresentationAtIngest, videoPresentationResponseSchema, videoPresentationSourceBindingSchema,
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationAttempt, type VideoPresentationIngestRequest,
-  type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
+  type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding, type VideoPresentationRepairResponse } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
 
 /** An authorized read of a canonical registered video. */
@@ -15,7 +15,7 @@ export interface RepairVideoPresentationInput extends ResolveVideoPresentationIn
 /** An automatic registration or first-read metadata preparation. */
 export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineAt?: number; knownAlpha?: boolean }
 /** Repair answers the current canonical identity and the fixed accepted work. */
-export interface VideoPresentationRepairResponse extends VideoPresentationResponse { attempt: VideoPresentationAttempt | null }
+export type { VideoPresentationRepairResponse } from '@breatic/shared';
 /** The queue retains the accepted source identity and original deadline on retry. */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string; deadlineAt: number }
 /** Internal admission context; explicit repairs retain their actual requester. */

@@ -24,6 +24,8 @@ export interface VideoPresentationResponse {
 
 /** Accepted independently funded metadata work, unchanged on replay. */
 export interface VideoPresentationAttempt { jobId: string; deadlineAt: number }
+/** A repair returns the fixed work identity as well as the current source facts. */
+export interface VideoPresentationRepairResponse extends VideoPresentationResponse { attempt: VideoPresentationAttempt | null }
 /** Auxiliary admission can exist before a valid measured descriptor exists. */
 export interface VideoPresentationPreparation {
   status: 'accepted' | 'running' | 'completed' | 'failed';
@@ -74,4 +76,10 @@ export const videoPresentationResponseSchema: z.ZodType<VideoPresentationRespons
   if (pending !== (value.pollAfterMs !== null)) {
     ctx.addIssue({ code: 'custom', path: ['pollAfterMs'], message: 'Only accepted pending work carries a polling interval' });
   }
+});
+
+/** Repair uses the same validated source contract and one accepted work identity. */
+export const videoPresentationRepairResponseSchema: z.ZodType<VideoPresentationRepairResponse> = z.object({ attempt: attempt.nullable() }).passthrough().transform((value) => {
+  const { attempt: accepted, ...base } = value;
+  return { ...videoPresentationResponseSchema.parse(base), attempt: accepted };
 });

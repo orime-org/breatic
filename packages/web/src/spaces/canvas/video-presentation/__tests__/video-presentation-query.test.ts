@@ -3,10 +3,12 @@
 
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { videoPresentationQuery } from '../video-presentation-query';
+import { videoPresentationQuery, repairVideoPresentation } from '../video-presentation-query';
+import { ApiException } from '@web/data/api/types';
 
-const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
-vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet }));
+const { apiGet, apiPost, toastError } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn(), toastError: vi.fn() }));
+vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet, apiPost }));
+vi.mock('@web/lib/toast', async (original) => ({ ...await original<Record<string, unknown>>(), toast: { error: toastError } }));
 const input = { projectId: 'project-a', canonicalURL: 'https://assets.example.test/canonical.webm', active: true };
 const binding = { assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', contentHash: 'a'.repeat(64), canonicalURL: input.canonicalURL,
   kind: 'video', mediaInfo: { width: null, height: null, duration: null, mimeType: 'video/webm' } };
@@ -16,6 +18,8 @@ let client: QueryClient;
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   apiGet.mockReset().mockResolvedValue(unknown);
+  apiPost.mockReset();
+  toastError.mockReset();
 });
 afterEach(() => { client.clear(); vi.useRealTimers(); });
 
@@ -66,5 +70,23 @@ describe('canonical presentation query (inner#1306 Canvas §17)', () => {
     const signal = apiGet.mock.calls[0][1].signal as AbortSignal;
     expect(signal.aborted).toBe(true);
     expect(client.getQueryState(videoPresentationQuery(input).queryKey)?.fetchStatus).toBe('idle');
+  });
+
+  it('repairs the registered canonical source with the same idempotent press identity', async () => {
+    const attempt = { jobId: 'accepted-repair', deadlineAt: 1900000000000 };
+    const answer = { ...unknown, attempt, preparation: { status: 'accepted', attempt }, pollAfterMs: 5000 };
+    apiPost.mockResolvedValue(answer);
+    expect(await repairVideoPresentation({ ...input, sourceFingerprint: binding.contentHash }, 'repair-press')).toEqual(answer);
+    expect(apiPost).toHaveBeenCalledWith(`/projects/${input.projectId}/assets/video-presentation/repair`, {
+      canonicalURL: input.canonicalURL, sourceFingerprint: binding.contentHash,
+    }, expect.objectContaining({ headers: { 'Idempotency-Key': 'repair-press' }, timeout: 0 }));
+  });
+
+  it('reports a source conflict before propagating the same repair failure', async () => {
+    const failure = new ApiException({ status: 409, message: 'The source changed.', fromServer: true });
+    apiPost.mockRejectedValue(failure);
+    await expect(repairVideoPresentation({ ...input, sourceFingerprint: binding.contentHash }, 'repair-press')).rejects.toBe(failure);
+    expect(toastError).toHaveBeenCalledWith('The source changed.');
+    expect(apiGet).not.toHaveBeenCalled();
   });
 });

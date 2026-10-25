@@ -945,8 +945,10 @@ export {
 export {
   videoPresentationSourceBindingSchema,
   videoPresentationResponseSchema,
+  videoPresentationRepairResponseSchema,
   type VideoPresentationSourceBinding,
   type VideoPresentationResponse,
+  type VideoPresentationRepairResponse,
   type VideoPresentationAttempt,
   type VideoPresentationPreparation,
 } from "@shared/upload/video-presentation-response.js";
