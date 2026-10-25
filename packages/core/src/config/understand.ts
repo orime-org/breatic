@@ -24,6 +24,45 @@ const understandConfigSchema = z.object({
   max_output_tokens: z.number().int().positive().default(8_192),
   transcribe_max_output_tokens: z.number().int().positive().default(65_536),
   max_concurrent: z.number().int().positive().default(5),
+  long_media: z.object({
+    max_source_bytes: z.number().int().positive().default(2_147_483_648),
+    max_sources: z.number().int().positive().default(10),
+    max_segment_bytes: z.number().int().positive().default(20_000_000),
+    audio_core_seconds: z.number().int().positive().default(300),
+    video_core_seconds: z.number().int().positive().default(60),
+    overlap_seconds: z.number().int().nonnegative().default(2),
+    max_active_leaves: z.number().int().positive().default(512),
+    delivery_concurrency: z.number().int().positive().default(2),
+    per_operation_delivery_concurrency: z.number().int().positive().default(1),
+    container_class: z.literal("LongMediaContainerStd4").default("LongMediaContainerStd4"),
+    container_max_instances: z.number().int().positive().default(2),
+    profile_version: z.string().min(1).max(64).default("channel-v1"),
+    audio_codec: z.string().min(1).max(32).default("libmp3lame"),
+    audio_bitrate: z.string().min(1).max(16).default("128k"),
+    video_codec: z.string().min(1).max(32).default("libx264"),
+    video_crf: z.number().int().min(0).max(51).default(23),
+    video_audio_codec: z.string().min(1).max(32).default("aac"),
+    video_audio_bitrate: z.string().min(1).max(16).default("128k"),
+  }).strict().default({
+    max_source_bytes: 2_147_483_648,
+    max_sources: 10,
+    max_segment_bytes: 20_000_000,
+    audio_core_seconds: 300,
+    video_core_seconds: 60,
+    overlap_seconds: 2,
+    max_active_leaves: 512,
+    delivery_concurrency: 2,
+    per_operation_delivery_concurrency: 1,
+    container_class: "LongMediaContainerStd4",
+    container_max_instances: 2,
+    profile_version: "channel-v1",
+    audio_codec: "libmp3lame",
+    audio_bitrate: "128k",
+    video_codec: "libx264",
+    video_crf: 23,
+    video_audio_codec: "aac",
+    video_audio_bitrate: "128k",
+  }),
 });
 
 /** Validated understand configuration. */
@@ -43,6 +82,7 @@ export function getUnderstandConfig(): Readonly<UnderstandConfig> {
     resolve(MONOREPO_ROOT, "config/understand.yaml"),
     "utf-8",
   );
-  _cached = Object.freeze(understandConfigSchema.parse(parse(raw) as unknown));
+  const parsed = understandConfigSchema.parse(parse(raw) as unknown);
+  _cached = Object.freeze({ ...parsed, long_media: Object.freeze(parsed.long_media) });
   return _cached;
 }

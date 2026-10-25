@@ -35,3 +35,25 @@ transcribe_max_output_tokens: 65536
 # to max_media_bytes several times over. A reading that finds every place
 # taken goes back to the queue and comes back one poll interval later.
 max_concurrent: 5
+
+# Long audio/video readings share one operation across Agent and canvas. The
+# values frozen on an operation are copied into each Cloudflare media job.
+long_media:
+  max_source_bytes: 2147483648
+  max_sources: 10
+  max_segment_bytes: 20000000
+  audio_core_seconds: 300
+  video_core_seconds: 60
+  overlap_seconds: 2
+  max_active_leaves: 512
+  delivery_concurrency: 2
+  per_operation_delivery_concurrency: 1
+  container_class: LongMediaContainerStd4
+  container_max_instances: 2
+  profile_version: channel-v1
+  audio_codec: libmp3lame
+  audio_bitrate: 128k
+  video_codec: libx264
+  video_crf: 23
+  video_audio_codec: aac
+  video_audio_bitrate: 128k

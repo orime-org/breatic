@@ -31,6 +31,29 @@ describe("worker concurrency", () => {
   it("holds at most five media readings in memory at once", () => {
     expect(getUnderstandConfig().max_concurrent).toBe(5);
   });
+
+  it("loads the approved long-media limits and versioned channel-preserving profile", () => {
+    expect(getUnderstandConfig().long_media).toEqual({
+      max_source_bytes: 2_147_483_648,
+      max_sources: 10,
+      max_segment_bytes: 20_000_000,
+      audio_core_seconds: 300,
+      video_core_seconds: 60,
+      overlap_seconds: 2,
+      max_active_leaves: 512,
+      delivery_concurrency: 2,
+      per_operation_delivery_concurrency: 1,
+      container_class: "LongMediaContainerStd4",
+      container_max_instances: 2,
+      profile_version: "channel-v1",
+      audio_codec: "libmp3lame",
+      audio_bitrate: "128k",
+      video_codec: "libx264",
+      video_crf: 23,
+      video_audio_codec: "aac",
+      video_audio_bitrate: "128k",
+    });
+  });
 });
 
 // A misspelt queue name would leave that queue at the default without a word.
