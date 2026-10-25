@@ -82,6 +82,19 @@ describe("POST /long-media/jobs", () => {
     await expect(second.json()).resolves.toMatchObject({ jobId: replayPayload.jobId, phase: "accepted", version: 0 });
   });
 
+  it("persists lifecycle changes and their recoverable effects atomically", async () => {
+    const lifecyclePayload = { ...payload, jobId: "operation-lifecycle:source-0", operationId: "operation-lifecycle" };
+    const accepted = await call("/long-media/jobs", { method: "POST", body: await requestBody(lifecyclePayload) });
+    expect(accepted.status).toBe(202);
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(lifecyclePayload.jobId));
+
+    await expect(stub.transition({ type: "start" }, Date.now())).resolves.toMatchObject({
+      snapshot: { phase: "probing", version: 1 },
+      effects: ["startProbe"],
+    });
+    await expect(stub.pendingEffects()).resolves.toEqual(["startProbe"]);
+  });
+
   it("rejects a job whose absolute deadline has already passed", async () => {
     const expired = { ...payload, jobId: "operation-expired:source-0", operationId: "operation-expired", deadlineAt: Date.now() - 1 };
     const response = await call("/long-media/jobs", { method: "POST", body: await requestBody(expired) });

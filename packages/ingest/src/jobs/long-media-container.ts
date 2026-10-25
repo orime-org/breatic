@@ -5,7 +5,13 @@ import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
 import { readLongMediaJobRequest, type LongMediaJobRequest } from "@breatic/shared";
 
-import type { LongMediaJobPhase, LongMediaJobState } from "@ingest/jobs/long-media-transition.js";
+import {
+  transitionLongMediaJob,
+  type LongMediaJobEvent,
+  type LongMediaJobEffect,
+  type LongMediaJobPhase,
+  type LongMediaJobState,
+} from "@ingest/jobs/long-media-transition.js";
 
 /** The container bindings needed by one long media Durable Object. */
 export interface LongMediaEnv {
@@ -43,6 +49,12 @@ interface LongMediaJobRow extends Record<string, SqlStorageValue> {
   version: number;
   deadline_at: number;
   terminal_intent: string | null;
+  active_container: number;
+}
+
+/** One recoverable side effect still waiting to be performed. */
+interface LongMediaEffectRow extends Record<string, SqlStorageValue> {
+  effect: string;
 }
 
 const JOB_TABLE = `
@@ -56,8 +68,19 @@ const JOB_TABLE = `
     version INTEGER NOT NULL,
     deadline_at INTEGER NOT NULL,
     terminal_intent TEXT,
+    active_container INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
+  )
+`;
+
+const EFFECT_TABLE = `
+  CREATE TABLE IF NOT EXISTS long_media_effects (
+    job_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    effect TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (job_id, revision, effect)
   )
 `;
 
@@ -85,8 +108,7 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    * Create or replay a job whose identity is bound to its immutable digest.
    * @param request - The validated job request.
    * @returns The durable job summary and whether this was a replay.
-   * @throws {LongMediaJobConflict} When the same id carries a different digest.
-   * @throws {LongMediaJobExpired} When the request deadline has passed.
+   * @throws {Error} When the stored request identity is corrupt.
    */
   submit(request: LongMediaJobRequest): LongMediaJobSubmitResult {
     return this.jobStore.submit(request);
@@ -99,6 +121,25 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    */
   report(): LongMediaJobSnapshot | null {
     return this.jobStore.report();
+  }
+
+  /**
+   * Apply one lifecycle event to this durable job.
+   * @param event - The lifecycle event.
+   * @param now - The event's epoch milliseconds.
+   * @returns The committed state and effects, or null if no job exists.
+   * @throws {RangeError} When the lifecycle revision cannot advance safely.
+   */
+  transition(event: LongMediaJobEvent, now: number): LongMediaTransitionResult | null {
+    return this.jobStore.transition(event, now);
+  }
+
+  /**
+   * List effect records that have not been acknowledged.
+   * @returns Pending effects in insertion order.
+   */
+  pendingEffects(): LongMediaJobEffect[] {
+    return this.jobStore.pendingEffects();
   }
 }
 
@@ -120,8 +161,7 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
    * Create or replay a job whose identity is bound to its immutable digest.
    * @param request - The validated job request.
    * @returns The durable job summary and whether this was a replay.
-   * @throws {LongMediaJobConflict} When the same id carries a different digest.
-   * @throws {LongMediaJobExpired} When the request deadline has passed.
+   * @throws {Error} When the stored request identity is corrupt.
    */
   submit(request: LongMediaJobRequest): LongMediaJobSubmitResult {
     return this.jobStore.submit(request);
@@ -135,6 +175,31 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   report(): LongMediaJobSnapshot | null {
     return this.jobStore.report();
   }
+
+  /**
+   * Apply one lifecycle event to this durable job.
+   * @param event - The lifecycle event.
+   * @param now - The event's epoch milliseconds.
+   * @returns The committed state and effects, or null if no job exists.
+   * @throws {RangeError} When the lifecycle revision cannot advance safely.
+   */
+  transition(event: LongMediaJobEvent, now: number): LongMediaTransitionResult | null {
+    return this.jobStore.transition(event, now);
+  }
+
+  /**
+   * List effect records that have not been acknowledged.
+   * @returns Pending effects in insertion order.
+   */
+  pendingEffects(): LongMediaJobEffect[] {
+    return this.jobStore.pendingEffects();
+  }
+}
+
+/** The committed lifecycle snapshot and requested effects. */
+export interface LongMediaTransitionResult {
+  snapshot: LongMediaJobSnapshot;
+  effects: LongMediaJobEffect[];
 }
 
 /** Durable SQL facts shared by production and workerd test DOs. */
@@ -148,19 +213,17 @@ class LongMediaJobStore {
   constructor(ctx: LongMediaState) {
     this.ctx = ctx;
     this.ctx.storage.sql.exec(JOB_TABLE);
+    this.ctx.storage.sql.exec(EFFECT_TABLE);
   }
 
   /**
    * Create or replay a job whose identity is bound to its immutable digest.
    * @param request - The validated job request.
    * @returns The durable job summary and whether this was a replay.
-   * @throws {LongMediaJobConflict} When the same id carries a different digest.
-   * @throws {LongMediaJobExpired} When the request deadline has passed.
+   * @throws {Error} When the stored request identity is corrupt.
    */
   submit(request: LongMediaJobRequest): LongMediaJobSubmitResult {
     const now = Date.now();
-    if (request.deadlineAt <= now) return { kind: "expired" };
-
     const result = this.ctx.storage.transactionSync(() => {
       const held = this.ctx.storage.sql
         .exec<LongMediaJobRow>("SELECT * FROM long_media_jobs WHERE job_id = ?", request.jobId)
@@ -169,8 +232,9 @@ class LongMediaJobStore {
         if (held.request_digest !== request.requestDigest) {
           return { row: null, replayed: false };
         }
-      return { row: held, replayed: true };
+        return { row: held, replayed: true };
       }
+      if (request.deadlineAt <= now) return { row: null, replayed: false, expired: true };
 
       const state: LongMediaJobState = {
         phase: "accepted",
@@ -202,7 +266,7 @@ class LongMediaJobStore {
       return { row: created, replayed: false };
     });
 
-    if (result.row === null) return { kind: "conflict" };
+    if (result.row === null) return { kind: result.expired === true ? "expired" : "conflict" };
     return { kind: result.replayed ? "replayed" : "accepted", snapshot: snapshotOf(result.row) };
   }
 
@@ -215,6 +279,98 @@ class LongMediaJobStore {
     const row = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
     return row === undefined ? null : snapshotOf(row);
   }
+
+  /**
+   * Apply one event and atomically record its requested external effects.
+   * @param event - The lifecycle event.
+   * @param now - The event's epoch milliseconds.
+   * @returns The committed state and effects, or null when no job exists.
+   * @throws {RangeError} When the lifecycle revision cannot advance safely.
+   */
+  transition(event: LongMediaJobEvent, now: number): LongMediaTransitionResult | null {
+    return this.ctx.storage.transactionSync(() => {
+      const row = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      if (row === undefined) return null;
+      const current = stateOf(row);
+      const next = transitionLongMediaJob(current, event, now);
+      if (next.state.version !== current.version) {
+        this.ctx.storage.sql.exec(
+          `UPDATE long_media_jobs SET phase = ?, version = ?, terminal_intent = ?, active_container = ?, updated_at = ? WHERE job_id = ?`,
+          next.state.phase,
+          next.state.version,
+          next.state.terminalIntent,
+          next.state.activeContainer ? 1 : 0,
+          now,
+          row.job_id,
+        );
+      }
+      for (const effect of next.effects) {
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO long_media_effects (job_id, revision, effect, status) VALUES (?, ?, ?, 'pending')",
+          row.job_id,
+          next.state.version,
+          effect,
+        );
+      }
+      return {
+        snapshot: {
+          jobId: row.job_id,
+          operationId: row.operation_id,
+          sourceIndex: row.source_index,
+          phase: next.state.phase,
+          version: next.state.version,
+          deadlineAt: next.state.deadlineAt,
+          terminalIntent: next.state.terminalIntent,
+        },
+        effects: next.effects,
+      };
+    });
+  }
+
+  /**
+   * Read all unacknowledged external effects for this job.
+   * @returns Pending effects in insertion order.
+   * @throws {Error} When a persisted effect name is invalid.
+   */
+  pendingEffects(): LongMediaJobEffect[] {
+    const rows = this.ctx.storage.sql
+      .exec<LongMediaEffectRow>("SELECT effect FROM long_media_effects WHERE status = 'pending' ORDER BY revision, effect")
+      .toArray();
+    return rows.map((row) => readEffect(row.effect));
+  }
+}
+
+/**
+ * Validate a persisted effect name.
+ * @param value - The SQL value.
+ * @returns A known long media effect.
+ * @throws {Error} When the effect name is unknown.
+ */
+function readEffect(value: string): LongMediaJobEffect {
+  const effects: readonly LongMediaJobEffect[] = [
+    "startProbe", "startMediaAttempt", "stopContainer", "checkContainerStopped", "revokePermits", "cancelDeadline",
+  ];
+  if (!effects.includes(value as LongMediaJobEffect)) throw new Error("The long media effect is invalid");
+  return value as LongMediaJobEffect;
+}
+
+/**
+ * Convert a durable job header into lifecycle reducer state.
+ * @param row - The stored job row.
+ * @returns The reducer state.
+ * @throws {Error} When a persisted state value is invalid.
+ */
+function stateOf(row: LongMediaJobRow): LongMediaJobState {
+  if (row.active_container !== 0 && row.active_container !== 1) {
+    throw new Error("The long media active container flag is invalid");
+  }
+  return {
+    phase: readPhase(row.phase),
+    version: row.version,
+    deadlineAt: row.deadline_at,
+    terminalIntent: readTerminalIntent(row.terminal_intent),
+    activeContainer: row.active_container === 1,
+  };
 }
 
 /**
