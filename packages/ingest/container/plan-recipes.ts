@@ -107,6 +107,42 @@ async function analyze(request: PlanRecipeRequest, selection: string, expectedFr
 }
 
 /**
+ * Find the positive greatest common divisor without floating-point overflow.
+ * @param left - A positive clock integer.
+ * @param right - Another positive clock integer.
+ * @returns Their greatest common divisor.
+ * @throws {never} Never.
+ */
+function clockGcd(left: bigint, right: bigint): bigint {
+  while (right !== 0n) [left, right] = [right, left % right];
+  return left;
+}
+
+/**
+ * Represent actual source clocks exactly in MP4 movie edit-list ticks.
+ * @param facts - Complete source facts, including the actual audio sample rate.
+ * @returns The smallest exact positive movie timescale accepted by this muxer.
+ * @throws {RangeError} When source clocks are unknown or exceed FFmpeg's signed integer domain.
+ * @throws {SyntaxError} When the validated source time base is malformed.
+ */
+function movieTimescale(facts: PlanSource): string {
+  const [numeratorText, denominatorText] = facts.source.timeBase.split("/");
+  const numerator = BigInt(numeratorText!);
+  const denominator = BigInt(denominatorText!);
+  if (numerator <= 0n || denominator <= 0n) throw new RangeError("Expected a positive source clock");
+  let scale = denominator / clockGcd(numerator, denominator);
+  if (facts.source.hasAudio) {
+    const rate = readProbeOutput(JSON.stringify({ streams: facts.raw.streams })).streams.find((stream) => stream.codecType === "audio")?.sampleRate;
+    if (rate === undefined || !Number.isSafeInteger(rate) || rate <= 0) throw new RangeError("Unknown actual audio sample clock");
+    const audioClock = BigInt(rate);
+    scale = scale / clockGcd(scale, audioClock) * audioClock;
+  }
+  // The installed MP4 muxer's movie_timescale option accepts 1..INT_MAX.
+  if (scale > 2147483647n) throw new RangeError("Source clocks exceed the exact MP4 movie timescale domain");
+  return String(scale);
+}
+
+/**
  * Execute one repository-owned recipe against its frozen source clock.
  * @param request - Its input, exact recipe, output and original lifetime.
  * @returns The produced object's actual metadata.
@@ -152,12 +188,13 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       // actual PTS defines interior display durations; the frozen range boundary
       // defines the last one, rather than a nominal fps or stale packet duration.
       const timing = `setts=pts=PTS:dts=DTS:duration='if(eq(N,${count - 1}),${recipe.range.end - start}/TB-PTS,NEXT_PTS-PTS)'`;
+      const timescale = movieTimescale(facts);
       const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-noautorotate", "-copyts", "-i", input, "-map", "0:v:0",
         "-vf", `trim=start=${start}:end=${recipe.range.end},setpts=PTS-${start}/TB`, "-fps_mode", "passthrough", "-enc_time_base:v", "demux", "-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-bsf:v", timing];
       if (facts.source.hasAudio && (recipe.audioEnd ?? recipe.range.end) > start) {
         args.push("-map", "0:a:0", "-af", `atrim=start=${start}:end=${recipe.audioEnd ?? recipe.range.end},asetpts=PTS-${start}/TB`, "-c:a", "aac");
       } else args.push("-an");
-      args.push("-movflags", "+faststart", "-f", "mp4", output);
+      args.push("-movie_timescale", timescale, "-movflags", "+faststart", "-f", "mp4", output);
       await runPlanCommand("ffmpeg", args, options);
       const metadata = pickMediaMetadata(readProbeOutput((await runPlanCommand("ffprobe", probeArgs(output, "own-file"), options)).toString("utf8")));
       if (metadata.width === null || metadata.height === null || metadata.durationSeconds === null) throw new Error("Segment recipe produced no complete video metadata");
