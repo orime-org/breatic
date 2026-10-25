@@ -13,8 +13,25 @@
 import { describe, expect, it } from 'vitest';
 
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
+import type { LocaleTag } from '@web/test-utils/locale-catalogs';
 
-describe.each(LOCALE_CATALOGS)('%s', (_tag, catalog) => {
+/** What both sentences say is too large, as the server's sentence words it. */
+const SUBJECT: Record<LocaleTag, string> = {
+  en: 'This request is',
+  'zh-CN': '请求内容',
+  'zh-TW': '請求內容',
+  ja: 'リクエストの内容',
+  ko: '요청 내용',
+};
+
+describe.each(LOCALE_CATALOGS)('%s', (tag, catalog) => {
+  it('says both sentences about the same subject', () => {
+    expect(readPath(catalog, 'server.error.payload_too_large') as string).toMatch(new RegExp(`^${SUBJECT[tag]}`));
+    expect(readPath(catalog, 'canvas.generatePanel.errorTooLargeNoLimit') as string).toMatch(
+      new RegExp(`^${SUBJECT[tag]}`),
+    );
+  });
+
   it('has payload_too_large, carrying the {limit} placeholder', () => {
     const message = readPath(catalog, 'server.error.payload_too_large');
     expect(typeof message).toBe('string');
