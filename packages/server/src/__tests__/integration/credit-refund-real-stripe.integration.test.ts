@@ -817,9 +817,12 @@ describe("#98 four one-shot previews and final refusals against real Stripe", ()
         })]);
       } else {
         expect(await readLot(suite.sql, lot.lotId)).toEqual({
-          lifecycle: kind === "reject" ? "active" : "refund_pending", remaining: `${CREDITS}.000000`, attempts: 0,
+          lifecycle: kind === "reject" ? "active" : "refund_pending", remaining: `${CREDITS}.000000`,
+          attempts: kind === "reject" ? 1 : 0,
         });
-        expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(ledgerBefore);
+        expect(await ledgerOf(suite.sql, lot.lotId)).toEqual(kind === "reject" ? [
+          ...ledgerBefore, { entry_type: "refund_rejected", amount: "0.000000", reference_id: opId },
+        ] : ledgerBefore);
         expect(await copiesOf(suite.sql, lot.lotId)).toEqual([]);
       }
       if (attentionId) expect(await readOp(suite.sql, attentionId)).toMatchObject({ attention_closed_by: opId });
