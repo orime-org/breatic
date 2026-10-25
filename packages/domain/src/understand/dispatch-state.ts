@@ -56,14 +56,14 @@ export function reduceUnderstandDispatch(
   if ((event.type === "lease-lost" || event.type === "step-ended" || event.type === "approved-handoff") && !Number.isFinite(event.nextDueAtMs)) {
     throw new RangeError("The next operation wake time is invalid.");
   }
-  if (state.status === "retired") return state;
+  if (state.status === "retired" && event.type !== "approved-handoff") return state;
 
   switch (event.type) {
     case "dispatch":
       if (state.status !== "pending") return state;
       return next(state, { status: "sent", jobId: `lm_${event.operationId}_${state.sequence}` });
     case "send-failure":
-      if (state.status !== "sent") return state;
+      if (state.status !== "sent" && state.status !== "pending") return state;
       return next(state, { status: "pending", dueAtMs: event.retryAtMs, jobId: undefined });
     case "claim":
       if (state.status === "pending" || state.status === "sent") return next(state, { status: "claimed" });
@@ -71,7 +71,7 @@ export function reduceUnderstandDispatch(
     case "lease-lost":
     case "step-ended":
     case "approved-handoff":
-      if (state.status !== "claimed") return state;
+      if (state.status !== "claimed" && event.type !== "approved-handoff") return state;
       return next(state, {
         status: "pending",
         sequence: incrementSequence(state.sequence),
@@ -95,7 +95,9 @@ function next(
   patch: Partial<UnderstandDispatchState>,
 ): UnderstandDispatchState {
   if (state.revision === Number.MAX_SAFE_INTEGER) throw new RangeError("The operation revision cannot increase safely.");
-  return { ...state, ...patch, revision: state.revision + 1 };
+  const updated = { ...state, ...patch, revision: state.revision + 1 };
+  if (patch.jobId === undefined) delete updated.jobId;
+  return updated;
 }
 
 /**

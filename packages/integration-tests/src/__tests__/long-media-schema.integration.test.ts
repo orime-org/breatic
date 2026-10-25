@@ -180,4 +180,38 @@ describe("long-media persistence migration", () => {
       revision: 4,
     });
   });
+
+  it("refuses an approved handoff after the operation has closed", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-closed-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const opened = await openUnderstandOperation({
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn",
+      originKey: `turn:${randomUUID()}`,
+      requestDigest: "sha256:closed-operation",
+      sources: [{ sourceIndex: 0, assetId: randomUUID() }],
+      question: "Describe the recording.",
+      mode: "understand",
+      locale: "en",
+      model: "test-model",
+      promptVersion: "test-v1",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+      recoveryGroupId: randomUUID(),
+      logicalRequestId: randomUUID(),
+      userActionId: randomUUID(),
+    });
+    await applyUnderstandOperationEvent(opened.id, {
+      type: "cancel-applied",
+      expectedRevision: 1,
+      atMs: Date.now(),
+    });
+
+    await expect(applyUnderstandDispatchEvent(opened.id, {
+      type: "approved-handoff",
+      expectedRevision: 2,
+      nextDueAtMs: Date.now() + 5_000,
+    })).rejects.toThrow("closed operation");
+  });
 });

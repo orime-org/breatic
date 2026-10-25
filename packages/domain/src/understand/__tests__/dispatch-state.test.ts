@@ -58,6 +58,18 @@ describe("reduceUnderstandDispatch", () => {
     });
   });
 
+  it("records a retry time when a pending wake could not be sent", () => {
+    expect(reduceUnderstandDispatch(pending, {
+      type: "send-failure", expectedRevision: 7, retryAtMs: 3_000,
+    })).toEqual({ ...pending, revision: 8, dueAtMs: 3_000 });
+  });
+
+  it("creates a new wake from a retired delivery after an approved open-operation handoff", () => {
+    expect(reduceUnderstandDispatch({ ...pending, status: "retired" }, {
+      type: "approved-handoff", expectedRevision: 7, nextDueAtMs: 4_000,
+    })).toEqual({ status: "pending", sequence: 5, revision: 8, dueAtMs: 4_000 });
+  });
+
   it("rejects stale writes and never creates work after a terminal operation", () => {
     expect(() => reduceUnderstandDispatch(pending, {
       type: "dispatch", expectedRevision: 6, operationId: "op-1", atMs: 1_000,

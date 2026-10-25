@@ -121,7 +121,6 @@ export async function applyUnderstandOperationEvent(
       .limit(1);
     const current = rows[0];
     if (!current) throw new Error("The media-understanding operation does not exist.");
-
     const clockRows = await tx.execute(sql`SELECT clock_timestamp() AS now`);
     if (!clockRows[0]) throw new Error("The database clock could not be read.");
     const now = new Date(String(clockRows[0].now));
@@ -166,6 +165,12 @@ export async function applyUnderstandDispatchEvent(
       .limit(1);
     const current = rows[0];
     if (!current) throw new Error("The media-understanding operation does not exist.");
+    const operationClosed = current.status === "ready" || current.status === "partial" || current.status === "failed" ||
+      current.status === "cancelled" || current.status === "expired";
+    if (operationClosed && event.type === "approved-handoff") {
+      throw new Error("Cannot create an approved handoff for a closed operation.");
+    }
+    if (operationClosed && event.type !== "operation-ended") return current;
 
     const clockRows = await tx.execute(sql`SELECT clock_timestamp() AS now`);
     if (!clockRows[0]) throw new Error("The database clock could not be read.");
