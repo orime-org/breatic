@@ -11,8 +11,9 @@
 
 import type { MiddlewareHandler } from "hono";
 import { logger } from "@breatic/core";
-import { formatBytes, t } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { payloadTooLarge } from "@server/middleware/request-body-limit.js";
 import { transferReferenceService } from "@server/modules";
 
 /**
@@ -64,10 +65,7 @@ export function acceptTransferBody(
         return c.json({ error: { code: 400, message: t("server.error.transfer_invalid") } }, 400);
       case "too_large":
         logger.warn({ ...ctx, cap: read.cap }, "transfer_too_large");
-        return c.json(
-          { error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(read.cap) }) } },
-          413,
-        );
+        return payloadTooLarge(c, read.cap);
       case "read_failed":
         logger.error({ err: read.err, key, userId }, "transfer_read_failed");
         return c.json({ error: { code: 502, message: t("server.error.internal") } }, 502);

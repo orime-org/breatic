@@ -49,6 +49,19 @@ async function sessionUserId(c: Context): Promise<string | null> {
 }
 
 /**
+ * The 413 answer for a body over a limit, naming the limit.
+ * @param c - The request context.
+ * @param limitBytes - The limit in bytes.
+ * @returns The 413 answer.
+ */
+export function payloadTooLarge(c: Context, limitBytes: number): Response {
+  return c.json(
+    { error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(limitBytes) }) } },
+    413,
+  );
+}
+
+/**
  * Refuse a body over the limit: log who sent it and answer 413 with the reason.
  * @param c - The request context.
  * @param maxSize - The limit in bytes.
@@ -68,10 +81,7 @@ async function refuse(c: Context, maxSize: number): Promise<Response> {
     },
     "request_body_too_large",
   );
-  return c.json(
-    { error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(maxSize) }) } },
-    413,
-  );
+  return payloadTooLarge(c, maxSize);
 }
 
 /** The limit and the counting limiter, built on the first request that needs them. */
