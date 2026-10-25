@@ -49,48 +49,69 @@ async function sessionUserId(c: Context): Promise<string | null> {
 }
 
 /**
- * The hono limiter for one limit, answering 413 with the reason and logging
- * who sent it.
+ * Refuse a body over the limit: log who sent it and answer 413 with the reason.
+ * @param c - The request context.
  * @param maxSize - The limit in bytes.
- * @returns The limiter.
+ * @returns The 413 answer.
  */
-function limiterFor(maxSize: number): MiddlewareHandler {
-  return bodyLimit({
-    maxSize,
-    onError: async (c) => {
-      logger.warn(
-        {
-          path: c.req.path,
-          method: c.req.method,
-          declaredBytes: declaredLength(c),
-          client: decideClientIdentity({
-            peerAddress: getConnInfo(c).remote.address,
-            realIpHeader: c.req.header("x-real-ip"),
-          }),
-          userId: await sessionUserId(c),
-        },
-        "request_body_too_large",
-      );
-      return c.json(
-        { error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(maxSize) }) } },
-        413,
-      );
+async function refuse(c: Context, maxSize: number): Promise<Response> {
+  logger.warn(
+    {
+      path: c.req.path,
+      method: c.req.method,
+      declaredBytes: declaredLength(c),
+      client: decideClientIdentity({
+        peerAddress: getConnInfo(c).remote.address,
+        realIpHeader: c.req.header("x-real-ip"),
+      }),
+      userId: await sessionUserId(c),
     },
-  });
+    "request_body_too_large",
+  );
+  return c.json(
+    { error: { code: 413, message: t("server.error.payload_too_large", { limit: formatBytes(maxSize) }) } },
+    413,
+  );
 }
 
-let limiter: MiddlewareHandler | undefined;
+/** The limit and the counting limiter, built on the first request that needs them. */
+let built: { maxSize: number; counting: MiddlewareHandler } | undefined;
 
 /**
- * Refuse any request body larger than `request_body_max_bytes` with 413. The
- * limit is read on the first request that carries a body, so importing the
- * app reads no configuration.
+ * The limit and the counting limiter, read and built on first use, so
+ * importing the app reads no configuration.
+ * @returns Both.
+ */
+function limiter(): { maxSize: number; counting: MiddlewareHandler } {
+  if (built === undefined) {
+    const maxSize = getRequestBodyMaxBytes();
+    built = { maxSize, counting: bodyLimit({ maxSize, onError: (c) => refuse(c, maxSize) }) };
+  }
+  return built;
+}
+
+/**
+ * Refuse any request body larger than `request_body_max_bytes` with 413.
+ *
+ * A declared length is judged from the header alone and the body is left
+ * untouched: in `@hono/node-server`, reading `c.req.raw.body` wraps the socket
+ * in a web stream, and a body then left unread (a route that refuses before
+ * reading it) keeps the socket paused, so the adapter's drain gives up and
+ * destroys the connection the client reuses next. A chunked body has no
+ * declared length and is counted as it arrives, through hono's `bodyLimit`;
+ * so is a body handed in as a stream with neither header, which only an
+ * in-process `Request` can carry (over HTTP/1.1 such a request has no body).
  * @param c - The request context.
  * @param next - The rest of the chain, reached only for a body within the limit.
  * @returns The 413 answer, or nothing once the chain has run.
  */
 export const requestBodyLimit: MiddlewareHandler = async (c, next) => {
-  if (!c.req.raw.body) return next();
-  limiter ??= limiterFor(getRequestBodyMaxBytes());
-  return limiter(c, next);
+  const declared = c.req.header("content-length");
+  const chunked = c.req.header("transfer-encoding") !== undefined;
+  if (declared !== undefined && !chunked) {
+    const { maxSize } = limiter();
+    return Number.parseInt(declared, 10) > maxSize ? refuse(c, maxSize) : next();
+  }
+  if (!chunked && !c.req.raw.body) return next();
+  return limiter().counting(c, next);
 };
