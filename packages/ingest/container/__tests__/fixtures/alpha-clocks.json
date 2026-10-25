@@ -73,7 +73,9 @@
           "duration": "2048"
         }
       ],
-      "audio": []
+      "audio": [],
+      "videoStartPts": "0",
+      "videoDuration": "34816"
     }
   },
   {
@@ -122,7 +124,9 @@
           "sampleRate": 48000,
           "channels": 1
         }
-      ]
+      ],
+      "videoStartPts": "0",
+      "videoDuration": "84992"
     }
   },
   {
@@ -199,7 +203,9 @@
           "duration": "2048"
         }
       ],
-      "audio": []
+      "audio": [],
+      "videoStartPts": "4096",
+      "videoDuration": "34816"
     }
   },
   {
@@ -284,7 +290,9 @@
           "sampleRate": 48000,
           "channels": 1
         }
-      ]
+      ],
+      "videoStartPts": "0",
+      "videoDuration": "34816"
     }
   },
   {
@@ -369,7 +377,9 @@
           "sampleRate": 48000,
           "channels": 1
         }
-      ]
+      ],
+      "videoStartPts": "4096",
+      "videoDuration": "34816"
     }
   }
 ]

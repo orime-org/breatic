@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import { verifyAlphaPackedClock, type AlphaPresentationClock } from '../alpha-clock.js';
 import fixtures from './fixtures/alpha-clocks.json';
 
@@ -25,8 +26,22 @@ describe('independent canonical alpha clocks (inner#1306)', () => {
     const packed: AlphaPresentationClock = structuredClone(vfr);
     const [numerator, denominator] = packed.videoTimeBase.split('/');
     packed.videoTimeBase = `${numerator}/${BigInt(denominator!) * 2n}`;
+    packed.videoStartPts = String(BigInt(packed.videoStartPts) * 2n);
+    packed.videoDuration = String(BigInt(packed.videoDuration) * 2n);
     packed.frames = packed.frames.map(frame => ({ pts: String(BigInt(frame.pts) * 2n), duration: String(BigInt(frame.duration) * 2n) }));
     expect(verifyAlphaPackedClock(vfr, packed)).toBe(true);
+  });
+
+  it('preserves the clock invariant for every exact positive timescale expansion', () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10000 }), (factor) => {
+      const packed = structuredClone(vfr);
+      const [numerator, denominator] = packed.videoTimeBase.split('/');
+      packed.videoTimeBase = `${numerator}/${BigInt(denominator!) * BigInt(factor)}`;
+      packed.videoStartPts = String(BigInt(packed.videoStartPts) * BigInt(factor));
+      packed.videoDuration = String(BigInt(packed.videoDuration) * BigInt(factor));
+      packed.frames = packed.frames.map(frame => ({ pts: String(BigInt(frame.pts) * BigInt(factor)), duration: String(BigInt(frame.duration) * BigInt(factor)) }));
+      expect(verifyAlphaPackedClock(vfr, packed)).toBe(true);
+    }));
   });
 
   it('rejects the measured H264 default last-duration change even when every PTS matches', () => {
@@ -47,5 +62,18 @@ describe('independent canonical alpha clocks (inner#1306)', () => {
     const packed = structuredClone(source);
     packed.audio[0]!.startPts = '0';
     expect(verifyAlphaPackedClock(source, packed)).toBe(false);
+  });
+
+  it('rejects a changed declared video start even when all decoded frames remain identical', () => {
+    const source = fixtures.find((fixture) => fixture.name === 'positive-start')!.clock;
+    const packed = structuredClone(source);
+    packed.videoStartPts = '0';
+    expect(verifyAlphaPackedClock(source, packed)).toBe(false);
+  });
+
+  it('rejects a shortened declared video duration even when the last decoded frame was retained', () => {
+    const packed = structuredClone(vfr);
+    packed.videoDuration = '81920';
+    expect(verifyAlphaPackedClock(vfr, packed)).toBe(false);
   });
 });
