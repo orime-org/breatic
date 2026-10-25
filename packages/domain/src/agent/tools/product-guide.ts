@@ -223,9 +223,9 @@ export function renderProductGuide(): string {
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
-      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))} or ` +
-      `${quoted(t("spaces.kind.document"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens; ` +
-      `a third, greyed card is marked ${quoted(t("spaces.create.notAvailable"))}), type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
+      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ` +
+      `${quoted(t("spaces.kind.document"))} or ${quoted(t("spaces.kind.timeline"))} card ` +
+      `(${quoted(t("spaces.kind.canvas"))} is selected when it opens), type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
       `${quoted(t("spaces.create.cancel"))}. While it is made the page shows ` +
@@ -1155,6 +1155,28 @@ export function renderProductGuide(): string {
       "rewrite or an insert lands only when its address is in our storage; outside links are left out, and " +
       "when nothing else is left nothing lands and the card keeps its buttons; a toast says how many, such as " +
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
+    "",
+    "## Timeline spaces",
+    `The central video preview sits above ${quoted(t("timeline.tracks"))}, with the ` +
+      `${quoted(t("timeline.visualTrack"))} track below. ${quoted(t("timeline.play"))} and ` +
+      `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
+      "Selecting a clip shows its source name, start and duration in the bottom properties row and keeps the preview frame. " +
+      `${quoted(t("timeline.editStart"))} opens ${quoted(t("timeline.startFrame"))}; enter a whole frame ` +
+      `and press ${quoted(t("timeline.apply"))}. Clips marked ${quoted(t("timeline.conflict"))} also ` +
+      `appear in a selectable conflict list. ${quoted(t("timeline.conflictHelp"))}`,
+    `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
+      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
+      `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
+      `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
+      `${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
+      `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time. ` +
+      `A local file uploads at that captured position; its file and position stay in the form after a failure. ` +
+      `A permission change requires another confirmation after editing is available. ` +
+      `${quoted(t("timeline.cancel"))} ends the current material selection; a registered upload remains in Project videos. ` +
+      "Switching to another Space retains the upload and its target. Closing the Space uses the existing upload warning. " +
+      "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
+    `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
+      `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +

@@ -2654,5 +2654,62 @@
       "description": "This page is out of date and the last action did not go through. Refresh to continue.",
       "refresh": "Update"
     }
+  },
+  "timeline": {
+    "loading": "Loading Timeline…",
+    "unavailable": "Timeline is unavailable.",
+    "incompatible": "This Timeline content cannot be opened.",
+    "empty": "Add a video to start your Timeline.",
+    "video": "Video",
+    "conflict": "Conflict",
+    "conflictHelp": "Clips overlap. Select a clip and change its start frame.",
+    "loadingMedia": "Loading video…",
+    "mediaUnavailable": "This video is unavailable.",
+    "retry": "Retry",
+    "play": "Play",
+    "pause": "Pause",
+    "seek": "Preview frame",
+    "framePosition": "Frame {frame} / {total}",
+    "tracks": "Tracks",
+    "addMedia": "Add media",
+    "visualTrack": "Visual 1",
+    "selectClip": "Select a clip to view its properties.",
+    "clipFrames": "Start {start} · Duration {duration} frames",
+    "editStart": "Change start frame",
+    "startFrame": "Start frame",
+    "apply": "Apply",
+    "cancel": "Cancel",
+    "transport": {
+      "paused": "Paused",
+      "playing": "Playing",
+      "waiting": "Buffering…",
+      "failed": "Playback failed"
+    },
+    "material": {
+      "description": "Choose a video and confirm its position.",
+      "project": "Project videos",
+      "local": "Local upload",
+      "duration": "{seconds} seconds",
+      "durationPending": "Duration pending",
+      "loading": "Loading Project videos…",
+      "listError": "Project videos could not be loaded.",
+      "empty": "This Project has no videos yet.",
+      "more": "Load more",
+      "chooseFile": "Choose video",
+      "fileEmpty": "Choose a local video file.",
+      "preparing": "Preparing video…",
+      "progress": "Uploading {progress}%",
+      "confirm": "Add to Timeline"
+    },
+    "errors": {
+      "readonly": "Editing is unavailable for your current role.",
+      "source_unavailable": "This video is unavailable. Choose another or retry.",
+      "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
+      "invalid_range": "Enter a valid start frame.",
+      "overlap": "This position overlaps another clip. Change the start frame.",
+      "target_missing": "The target has changed. Check the position and retry.",
+      "upload": "Upload failed. Retry with the selected file.",
+      "permission_changed": "Editing permission changed. Confirm again to add this video."
+    }
   }
 }

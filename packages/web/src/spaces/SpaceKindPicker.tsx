@@ -33,13 +33,6 @@ interface TypeCardMeta {
     | 'spaces.kind.canvasSub'
     | 'spaces.kind.documentSub'
     | 'spaces.kind.timelineSub';
-  /**
-   * Whether the type can be picked. Canvas and document ship; timeline is
-   * visually present but disabled with a "not available" label, so the product
-   * direction stays legible (decision D, 2026-05-21). It is already plumbed
-   * end-to-end on the backend, so enabling it is this flag plus its editor.
-   */
-  available: boolean;
 }
 
 const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
@@ -48,21 +41,18 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
     icon: Palette,
     titleKey: 'spaces.kind.canvas',
     subtitleKey: 'spaces.kind.canvasSub',
-    available: true,
   },
   {
     type: 'document',
     icon: FileText,
     titleKey: 'spaces.kind.document',
     subtitleKey: 'spaces.kind.documentSub',
-    available: true,
   },
   {
     type: 'timeline',
     icon: Clock,
     titleKey: 'spaces.kind.timeline',
     subtitleKey: 'spaces.kind.timelineSub',
-    available: false,
   },
 ];
 
@@ -73,10 +63,7 @@ const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
  * use it (project-page `NewSpaceDialog`, studio-page `NewItemDialog`) stay
  * separate components and only embed this one widget.
  *
- * All three cards stay visible so the product roadmap is legible, and a card
- * is selectable once that type's editor ships — canvas and document are, and
- * timeline is still disabled with "not available". Each card's `type` is a
- * `SpaceType` — what `SpaceTypeSchema` validates against on the API — so a
+ * Each card's `type` is a `SpaceType`, validated by `SpaceTypeSchema` on the API, so a
  * card naming a type the system does not accept fails to compile.
  *
  * Mock alignment: mirrors the chrome-baseline mock `.type-segmented` — a flex
@@ -119,9 +106,7 @@ export function SpaceKindPicker({
               type='button'
               role='radio'
               aria-checked={selected}
-              aria-disabled={!card.available}
-              disabled={!card.available}
-              onClick={() => card.available && onChange(card.type)}
+              onClick={() => onChange(card.type)}
               data-testid={`${idPrefix}-${card.type}`}
               className={cn(
                 'flex flex-1 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',
@@ -131,11 +116,7 @@ export function SpaceKindPicker({
                 // The picked card keeps its own fill under the pointer: plain
                 // hover outranks it and would drop it to the fill the other
                 // two take, leaving the three reading alike.
-                card.available
-                  ? selected
-                    ? 'hover:bg-accent-strong'
-                    : 'hover:bg-accent'
-                  : 'cursor-not-allowed opacity-50',
+                selected ? 'hover-enabled:bg-accent-strong' : 'hover-enabled:bg-accent',
               )}
             >
               <Icon
@@ -148,11 +129,6 @@ export function SpaceKindPicker({
               <span className='text-2xs text-muted-foreground'>
                 {t(card.subtitleKey)}
               </span>
-              {!card.available ? (
-                <span className='rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-                  {t('spaces.create.notAvailable')}
-                </span>
-              ) : null}
             </Button>
           );
         })}

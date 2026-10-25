@@ -2654,5 +2654,62 @@
       "description": "当前页面是旧版本，这次操作没有完成。刷新后即可继续。",
       "refresh": "更新"
     }
+  },
+  "timeline": {
+    "loading": "正在加载 Timeline…",
+    "unavailable": "Timeline 不可用。",
+    "incompatible": "无法打开此 Timeline 内容。",
+    "empty": "添加视频，开始编排 Timeline。",
+    "video": "视频",
+    "conflict": "冲突",
+    "conflictHelp": "片段重叠。请选择片段并调整开始帧。",
+    "loadingMedia": "正在加载视频…",
+    "mediaUnavailable": "此视频不可用。",
+    "retry": "重试",
+    "play": "播放",
+    "pause": "暂停",
+    "seek": "预览帧",
+    "framePosition": "第 {frame} 帧 / 共 {total} 帧",
+    "tracks": "轨道",
+    "addMedia": "添加素材",
+    "visualTrack": "画面 1",
+    "selectClip": "选择片段以查看属性。",
+    "clipFrames": "开始 {start} · 时长 {duration} 帧",
+    "editStart": "修改开始帧",
+    "startFrame": "开始帧",
+    "apply": "应用",
+    "cancel": "取消",
+    "transport": {
+      "paused": "已暂停",
+      "playing": "播放中",
+      "waiting": "缓冲中…",
+      "failed": "播放失败"
+    },
+    "material": {
+      "description": "选择视频并确认添加位置。",
+      "project": "Project 视频",
+      "local": "本地上传",
+      "duration": "{seconds} 秒",
+      "durationPending": "时长待获取",
+      "loading": "正在加载 Project 视频…",
+      "listError": "无法加载 Project 视频。",
+      "empty": "此 Project 暂无视频。",
+      "more": "加载更多",
+      "chooseFile": "选择视频",
+      "fileEmpty": "选择本地视频文件。",
+      "preparing": "正在准备视频…",
+      "progress": "正在上传 {progress}%",
+      "confirm": "添加到 Timeline"
+    },
+    "errors": {
+      "readonly": "当前角色无法编辑。",
+      "source_unavailable": "此视频不可用。请选择其他视频或重试。",
+      "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",
+      "invalid_range": "请输入有效的开始帧。",
+      "overlap": "此位置与其他片段重叠。请调整开始帧。",
+      "target_missing": "目标已变化。请检查位置后重试。",
+      "upload": "上传失败。可以使用已选文件重试。",
+      "permission_changed": "编辑权限已变化。请再次确认添加此视频。"
+    }
   }
 }
