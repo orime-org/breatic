@@ -83,4 +83,16 @@ describe('durable presentation attempt admission (inner#1306 §6.20)', () => {
     expect(result.presentation).toEqual(accepted.presentation);
     expect(await (await env.BUCKET.get(videoPresentationKeyFor(input.storageKey)))!.json()).toEqual(accepted.presentation);
   });
+
+  it('fails a native descriptor that disappeared instead of serving a cached native claim', async () => {
+    const { owner, input } = await fixture({ width: 95, height: 63, duration: 2.4 });
+    const accepted = await owner.accept(input);
+    const native = await owner.advance(input, { ...accepted.presentation!, state: 'native' });
+    expect(native.presentation?.state).toBe('native');
+    await env.BUCKET.delete(videoPresentationKeyFor(input.storageKey));
+    const read = await owner.read(input.storageKey, input.sourceFingerprint);
+    expect(read.presentation).toMatchObject({ state: 'failed', sourceFingerprint: input.sourceFingerprint, original: input.original });
+    expect(read.attempt?.status).toBe('failed');
+    expect(Array.from(new Uint8Array(await (await env.BUCKET.get(input.storageKey))!.arrayBuffer()))).toEqual([1, 2, 3, 4]);
+  });
 });
