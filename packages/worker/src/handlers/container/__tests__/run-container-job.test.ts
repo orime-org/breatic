@@ -31,7 +31,8 @@ vi.mock("node:timers/promises", () => ({
   },
 }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
   env: { INGEST_BASE_URL: "https://ingest.test", INGEST_SHARED_SECRET: "s", CREDIT_MULTIPLIER: 2 },
   logger: { warn: vi.fn(), error: vi.fn() },
   getMiniToolsConfig: () => ({
