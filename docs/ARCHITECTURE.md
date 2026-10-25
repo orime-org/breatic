@@ -105,17 +105,17 @@ config/ locales/ (git-tracked)
 
 两层都限于用户自己:项目记忆按成员分行,一个成员归纳出来的东西不会进另一个成员的提示词。
 
-**每一轮装载给模型的量由四道闸各管一段**,全部在 `config/agent.yaml`:
+**每一轮装载给模型的量由下面几道闸各管一段**,全部在 `config/agent.yaml`:
 
 | 闸 | 键 | 默认 | 管什么 |
 |---|---|---|---|
 | 输入 | `user_message_max_chars` | 15,000 | 一条用户消息进得来多长(浏览器同一道闸在 10,000 字先拦一次,后端这道是真判据) |
 | 输出 | `max_output_tokens` | 16,384 | **一次模型调用**答得出多长 —— 一轮可以调很多次(上限 `max_tool_iterations`),每次各受它约束;撞上它这一轮标 `truncated` |
-| 归纳线 | `memory_budget_tokens` | 850,000 | 装配后的请求超过它(token),这一轮回复之前先归纳 |
-| 归纳后 | `memory_keep_tokens` | 500,000 | 归纳取到剩余落在它以下(token) |
+| 归纳线 | 主模型窗口 − `max_output_tokens` | 窗口取 OpenRouter 各端点 `context_length` 最小值,拿不到用 `context_window_fallback_tokens`(1,000,000) | provider 报回的上一次调用输入 + 输出到了这条线,发下一次调用之前先归纳;provider 报上下文超限,也归纳 |
+| 归纳后 | `memory_keep_tokens` | 500,000 | 归纳取到剩余落在 min(它, 窗口 − `max_output_tokens`) − 记忆预留以下(token) |
 
 
-- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。归纳跑在回复之前,判据是装配后的请求超过 `memory_budget_tokens`(默认 850,000),从最老的一端按整轮取到剩余落在 `memory_keep_tokens`(默认 500,000)**再减去这次归纳自己可能写回去的量**以下(`effectiveKeepTokens`,预留 = 两个记忆上限之和的两倍,一个码元按一个 token 算)。**请求有多大,用 provider 报回来的计数**(`request-size.ts`):最新一条原样发回的回复行存着那一轮结束时整个会话的 token 数,再加上它之后的消息。**没有这个计数时**(请求前缀变了:本会话归纳过、同一用户在本 project 另一条会话里的归纳改写了项目记忆、工具或模型换了;或这条没存),按系统提示和工具 + 每一轮 + 这一轮的提问相加,**拿不到计数的部分按一个字符一个 token 估**(`payload-size.ts`),字符估只会让归纳提前、不会推迟。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
+- **Turn 机制**:每条消息带 `turnIndex`(`role=user` 时递增)。**请求原样发,只有 provider 说放不下才归纳**(`turn-budget.ts`):每次调用主模型之前(回合开头、回合中途每一步,从问卷处接着跑的那一段也一样),剩余 = 窗口 − `max_output_tokens` − 已知 token 数,≤ 0 就先归纳。已知 token 数只信 provider 报的:回合中途是这一回合上一次调用的输入 + 输出;回合开头是最新一条回复行的 `endTokens`,且它标着 `endTokensFrom: "provider"`、它记的「最后一次请求」前缀哈希(`lastRequest`)跟这次重放出的同一段前缀一致;没有已知数就不检查,归纳之后已知数作废到下一次调用报回为止。调用被 provider 以上下文超限拒绝(`context-overflow.ts`,识别清单搬自 OpenCode,先拆 `RetryError`,只认 400)时不转给前端:归纳后用重组的消息加这一回合已完成各步(去掉思考)另开一个流接在同一条回复后面,步数合计不超过 `max_tool_iterations`;一回合超限归纳最多 `overflow_folds_per_turn`(2)次,能拿的全拿走也放不下或没有可拿的整轮,以 `failed` 零件带 `reason: "too_long"` 结束(不发 error 帧);超限归纳 `untouched` 或任何归纳之后重组失败,以普通 `failed` 结束。归纳规划(`planConsolidation`)只有一条规则:从这一回合之前最老的整轮起至少拿一轮,剩下 > 目标线就接着拿;目标线 = min(`memory_keep_tokens`, 窗口 − `max_output_tokens`) − 记忆预留(`memoryReserveTokens`,两个记忆上限之和的两倍);拿多少用 `costPerTurn`(有效覆盖的行用 provider 数,其余按字符)。归纳调用自己超限时归纳器砍半重发(先按整轮,只剩一轮时整段文字),最多 `consolidation_shrink_attempts`(6)次,用完走现有的丢弃。**回复要说清它答的是哪一轮**(`MessageInput` 分两支,assistant 那支必填 `turnIndex`):存储层去读表里的最大回合号,只在「提问之后什么都没发生过」时才等于正确答案 —— 两个标签页各发一句、或者一轮比下一个提问慢,那条回复就落到别人的问题下面,而它真正答的那一轮读起来像从没被回答过
 - **历史回放**：`conversation_messages.for_model` 保留模型消息的逻辑事实；文字、工具调用及其结果按已存内容重放，图片按本次能力、张数和字节预算投影。`history-replay.ts` 先确定图片，再逐行或逐步骤检查实际生成前缀及自身内容，决定思考是否保留；计量覆盖见 [Agent picture requests](#agent-picture-requests)。没有 `for_model` 的旧行从零件渲染，不隐式导入外链图片。中断时尚未被后续请求带出的步骤由 `reply-for-model.ts` 的 `inProgressStep` 重建并清除思考；以 provider 报错结束的最后一步，只有 SDK 发起下一请求后才算已送出。打开的 Space 与最新完整快照的 Space id、哈希相同时，只发未变化说明。归纳按整轮取，历史必须保留 `turnIndex`，水位线才能表示正确边界。
 - **消息存储**:`conversation_messages` 表,**一条消息一行**;`parts` JSONB 装这条消息内部的各个零件(`text` / `reasoning` / `tool` / `interrupted` / `failed` / `truncated`)。**一次工具调用连同它的结果是一个零件**,靠 `status` 说它停在哪儿 —— 调用和结果是同一件发生过的事,拆成两个零件就要再按 id 配对回去;线上那一侧 SDK 的部件名是 `tool-<工具名>`,跟存储这边不是同一套名字。**成功的工具零件另存一份这一轮交给模型的结果**(`forModel`,只收 `text` / `json`,不发给前端):落库前由 `packages/server/src/agent/stored-model-output.ts` 的 `withModelOutputs` 按 SDK 自己的规则算出;回放只在这一行没有可用的 `for_model`、要从零件渲染时才读它。没有这一份的旧行,字符串结果原样交回,结构化结果换成一句「这条结果已经拿不到,需要就再调一次」—— 回灌从不拿当前的工具代码去读旧版本写下的结构化答复,工具答复以后加减字段,存下的会话照常能聊。顺序即 `(turn_index, seq)`,唯一索引 `conversation_messages_turn_seq_key` 建在 `(conversation_id, turn_index, seq)` 上兜底(同一会话内一个槽位只能有一条消息)。**`role=user` 的消息**在事务内锁会话父行后取最大回合号加一(它是计费幂等键的一半,不能撞车也不能倒退),同一回合内的 assistant / tool 沿用该回合号、靠 `seq` 往后排。FK 是 `restrict`,数据库不级联,删会话时由 service 层把消息一起软删。原始消息不删除,归纳只生成摘要
 
@@ -332,7 +332,7 @@ Agent 里没有选模板的控件,它按用户的需求自己调用。**提示�
 | `.env` | 运行时配置(从 `.env.dev` 或 `.env.docker` 复制) |
 | `.env.dev` | 本地开发模板(localhost URLs) |
 | `.env.docker` | Docker 部署模板(容器名 URLs) |
-| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、四道闸(输入 15,000 字 / 输出 16,384 token / 归纳线 850,000 token / 归纳后留 500,000 token)、提示词缓存时长(`prompt_cache_ttl` 1h)|
+| `config/agent.yaml` | Agent 模型、归纳模型、loop 次数、闸与归纳(输入 15,000 字 / 输出 16,384 token / 归纳后留 500,000 token / 窗口回退值 1,000,000 token / 每回合超限归纳 2 次 / 归纳调用砍半 6 次)、提示词缓存时长(`prompt_cache_ttl` 1h)|
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/understand.yaml` | 画布理解与转写共用的素材大小、并发上限,以及各自的输出 token 上限 |
 | `config/worker.yaml` | Worker 并发(按队列:`tasks`、`upload-finish`、`url-ingest`、`media-read` 50,`audio-peaks` 2,其余 5)、重试、问结果的间隔 |
