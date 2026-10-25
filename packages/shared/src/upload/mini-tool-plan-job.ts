@@ -7,6 +7,9 @@ import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { CONTAINER_FAILURES } from "@shared/mini-tools/types.js";
 import { ingestMeasurements } from "@shared/upload/ingest-client.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
+import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+
+export type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
 const inputId = z.uuid();
 const storageKey = z.string().min(1).max(500);
@@ -15,6 +18,13 @@ const range = z.strictObject({ start: z.number().nonnegative(), end: z.number().
   .refine((value) => value.end > value.start);
 const profile = miniToolAnalysisInputSchema.options[0].shape.profile;
 
+/** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
+export const miniToolPlanLimitsSchema = z.strictObject({
+  probeStdoutBytes: z.number().int().positive(),
+  analysisStdoutBytes: z.number().int().positive(),
+  stderrTailBytes: z.number().int().positive(),
+});
+
 /** The versioned per-output media recipes admitted by the planned job lane. */
 export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspect_video"), inputId }),
@@ -22,9 +32,7 @@ export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("segment"), inputId, range, audioEnd: z.number().positive().optional() }),
   z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile }),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, range, profile }),
-]);
-
-export type MiniToolPlanRecipe = z.infer<typeof miniToolPlanRecipeSchema>;
+]) satisfies z.ZodType<MiniToolPlanRecipe>;
 
 /** The request holding a complete chunk's input and output identities. */
 export const miniToolPlanJobRequestSchema = z.strictObject({
@@ -32,6 +40,7 @@ export const miniToolPlanJobRequestSchema = z.strictObject({
   jobId: z.string().min(1).max(200),
   containerClass: z.string().min(1).max(100),
   deadlineAt: z.number().int().positive(),
+  limits: miniToolPlanLimitsSchema,
   inputs: z.array(z.strictObject({ inputId, storageKey })).min(1),
   outputs: z.array(z.strictObject({
     outputIndex: index,

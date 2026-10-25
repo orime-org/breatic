@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
 import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
+import { miniToolPlanLimitsSchema } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const classSchema = z.object({
@@ -44,6 +45,11 @@ const analysisConfigSchema = z.strictObject({
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
+    plan_limits: miniToolPlanLimitsSchema.extend({
+      probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
+      analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),
+      stderrTailBytes: miniToolPlanLimitsSchema.shape.stderrTailBytes.default(65_536),
+    }).default({ probeStdoutBytes: 268_435_456, analysisStdoutBytes: 16_777_216, stderrTailBytes: 65_536 }),
     settlement: z.strictObject({
       lease_ms: z.number().int().positive().default(60_000),
       retry_ms: z.number().int().positive().default(30_000),

@@ -9,6 +9,12 @@
 # How often the worker asks the ingest Worker how a job is doing.
 poll_interval_ms: 5000
 
+# Frozen into each planned job; oversized output fails without truncating its ledger.
+plan_limits:
+  probeStdoutBytes: 268435456
+  analysisStdoutBytes: 16777216
+  stderrTailBytes: 65536
+
 # A billing lookup lease and retry delay; neither changes the node task budget.
 settlement:
   lease_ms: 60000

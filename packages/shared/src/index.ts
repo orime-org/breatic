@@ -781,6 +781,7 @@ export {
 } from "@shared/upload/mini-tool-job.js";
 export {
   miniToolPlanRecipeSchema,
+  miniToolPlanLimitsSchema,
   miniToolPlanJobRequestSchema,
   miniToolPlanJobReportSchema,
   miniToolPlanAccess,
