@@ -36,7 +36,8 @@ export function normalizeEmail(email: string): string {
 }
 
 /** An email address field, returned in its normalized form. */
-export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email());
+/** RFC 3696 erratum 1690: an address is at most 254 characters. */
+export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().max(254));
 
 /**
  * Campaign source a browser recorded before sign-up (inner#1442 §4.5). Left
@@ -192,8 +193,8 @@ export const chatAttachedChipSchema = z.object({
   /** Made up for the item: from the picked node ids, or fresh for a file. */
   id: z.string().max(ATTACHED_CHIP_ID_MAX),
   type: z.enum(["canvas", "image", "video", "audio", "text"]),
-  /** Display name for the chip; LLM context renders this as the section title. */
-  name: z.string(),
+  /** Display name for the chip; LLM context renders this as the section title. Same cap as an upload's file name. */
+  name: z.string().max(255),
   /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
@@ -355,8 +356,10 @@ export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" 
 
 export const taskCreateSchema = z
   .object({
-    task_type: z.string(),
-    model: z.string().optional(),
+    /** `tasks.task_type` is varchar(50). */
+    task_type: z.string().max(50),
+    /** `tasks.model` is varchar(100). */
+    model: z.string().max(100).optional(),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).
@@ -561,7 +564,8 @@ export const projectCreateSchema = z.object({
    * change.
    */
   spaceType: SpaceTypeSchema.default("canvas"),
-  description: z.string().optional(),
+  /** Same cap as editing the project's description. */
+  description: z.string().max(2000).optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 
