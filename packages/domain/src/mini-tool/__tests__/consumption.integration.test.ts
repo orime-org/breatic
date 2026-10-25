@@ -229,6 +229,95 @@ describe("mini-tool consumption producer persistence", () => {
     expect(before.task.result.settlement.pendingConsumptionKeys).toEqual([]);
   });
 
+  it("preserves a current lookup lease when computation ends with the same pending keys", async () => {
+    const { fixture, input } = await seedUnopened();
+    await openConsumption(input);
+    const token = crypto.randomUUID();
+    await rawPg`UPDATE tasks SET result = jsonb_set(result, '{settlement}', ${rawPg.json({
+      version: 1, state: "checking", pendingConsumptionKeys: [fixture.consumption.consumptionKey],
+      nextAttemptAt: T0, leaseToken: token, leaseUntil: "2099-01-01T00:00:00.000000Z",
+      lastError: null, consumptionSetComplete: false,
+    })}), status = 'failed', completed_at = now() WHERE id = ${fixture.taskId}`;
+    const closed = await closeConsumptionSet(fixture.taskId);
+    expect(closed).toMatchObject({
+      version: 1, state: "checking", leaseToken: token, leaseUntil: "2099-01-01T00:00:00.000000Z",
+      pendingConsumptionKeys: [fixture.consumption.consumptionKey], consumptionSetComplete: true,
+    });
+    expect((await snapshot(fixture)).usage).toEqual([]);
+  });
+
+  it("invalidates an old lookup lease when another actual identity joins the call set", async () => {
+    const { fixture, input } = await seedUnopened();
+    await openConsumption(input);
+    await rawPg`UPDATE tasks SET result = jsonb_set(result, '{settlement}', ${rawPg.json({
+      version: 1, state: "checking", pendingConsumptionKeys: [fixture.consumption.consumptionKey],
+      nextAttemptAt: T0, leaseToken: "old-owner", leaseUntil: "2099-01-01T00:00:00.000000Z",
+      lastError: null, consumptionSetComplete: false,
+    })}) WHERE id = ${fixture.taskId}`;
+    const stepId = crypto.randomUUID();
+    const identity = { kind: "container", containerClass: "MediaContainer", jobId: "chunk-1", chunkIndex: 1 } as const;
+    await rawPg`INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, output)
+      VALUES (${stepId}, ${fixture.taskId}, 1, 'container_job', 'MediaContainer', 'pending', '{}'::jsonb)`;
+    const second = await openConsumption({ ...input, stepId, identity });
+    const after = await snapshot(fixture);
+    expect(after.task.result.settlement).toMatchObject({
+      version: 2, state: "waiting", leaseToken: null, leaseUntil: null, consumptionSetComplete: false,
+      pendingConsumptionKeys: [fixture.consumption.consumptionKey, second.consumptionKey],
+    });
+  });
+
+  it.each(["pending", "running"])("opens platform-funded work without inventing a known zero on a %s parent", async (status) => {
+    const { fixture, input } = await seedUnopened();
+    await rawPg`UPDATE tasks SET status = ${status} WHERE id = ${fixture.taskId}`;
+    const fact = await openConsumption({ ...input, chargeTo: "platform" });
+    expect(fact).toMatchObject({ state: "pending", chargeTo: "platform", creditMultiplier: 2, costUsd: null, credits: null });
+    expect((await snapshot(fixture)).usage).toEqual([]);
+  });
+
+  it("replays an already recorded identity after parent completion without rewriting a period", async () => {
+    const fixture = await seed({ state: "recorded", parentStatus: "completed" });
+    const before = await snapshot(fixture);
+    expect(await openConsumption({ taskId: fixture.taskId, stepId: fixture.stepId, identity: fixture.identity,
+      chargeTo: "platform", creditMultiplier: 9, containerPricing: null })).toEqual(fixture.consumption);
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("closes an explicitly empty terminal set and permits the existing zero settlement", async () => {
+    const { fixture } = await seedUnopened();
+    await rawPg`UPDATE tasks SET status = 'completed', completed_at = now() WHERE id = ${fixture.taskId}`;
+    expect(await closeConsumptionSet(fixture.taskId)).toMatchObject({ consumptionSetComplete: true, pendingConsumptionKeys: [] });
+    const settle: unknown = Reflect.get(domain, "settleMiniToolCharge");
+    expect(await (settle as (id: string) => Promise<unknown>)(fixture.taskId)).toMatchObject({ state: "settled", credits: 0, first: true });
+    const after = await snapshot(fixture);
+    expect(after.task.billed_at).not.toBeNull();
+    expect(Number(after.task.billed_credits)).toBe(0);
+    expect(after.usage).toEqual([]);
+  });
+
+  it.each(["wrong-source", "wrong-class", "missing-price", "closed-set", "already-billed", "corrupt-period"])("refuses unsafe opening %s without a partial consumption write", async (scenario) => {
+    const { fixture, input } = await seedUnopened();
+    if (scenario === "wrong-source") await rawPg`UPDATE tasks SET source = 'user' WHERE id = ${fixture.taskId}`;
+    if (scenario === "wrong-class") await rawPg`UPDATE task_upstream_steps SET endpoint = 'AnotherContainer' WHERE id = ${fixture.stepId}`;
+    if (scenario === "closed-set" || scenario === "corrupt-period") {
+      const period = scenario === "closed-set" ? { ...fixture.settlement, consumptionSetComplete: true } : { version: "bad" };
+      await rawPg`UPDATE tasks SET result = jsonb_set(result, '{settlement}', ${rawPg.json(period)}) WHERE id = ${fixture.taskId}`;
+    }
+    if (scenario === "already-billed") await rawPg`UPDATE tasks SET billed_at = now(), billed_credits = 0 WHERE id = ${fixture.taskId}`;
+    const before = await snapshot(fixture);
+    await expect(openConsumption(scenario === "missing-price" ? { ...input, containerPricing: null } : input)).rejects.toThrow();
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("preserves generated first policies across repeat admissions", async () => {
+    await fc.assert(fc.asyncProperty(fc.boolean(), fc.integer({ min: 0, max: 20 }), async (platform, multiplier) => {
+      const { fixture, input } = await seedUnopened();
+      const first = await openConsumption({ ...input, chargeTo: platform ? "platform" : "user", creditMultiplier: multiplier });
+      expect(first).toMatchObject({ state: "pending", chargeTo: platform ? "platform" : "user", creditMultiplier: multiplier, costUsd: null });
+      expect(await openConsumption({ ...input, creditMultiplier: multiplier + 1 })).toEqual(first);
+      expect((await snapshot(fixture)).task.result.settlement.pendingConsumptionKeys).toEqual([first.consumptionKey]);
+    }), { numRuns: 8 });
+  });
+
   it("serializes first writers on the immutable task row before reading the step", async () => {
     const { fixture, input } = await seedUnopened();
     const gate = await rawPg.reserve();
