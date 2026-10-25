@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { miniToolAnalysisInputSchema, miniToolAnchorSchema, type MiniToolAnalysisKind } from "@shared/mini-tools/analysis-input.js";
 import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
+import { videoToolAnalysisRefSchema } from "@shared/mini-tools/video-draft.js";
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
 const timeBaseSchema = z.strictObject({ numerator: z.number().int().positive(), denominator: z.number().int().positive() });
@@ -116,18 +117,26 @@ function newer(record: MiniToolAnalysisRecord, held: MiniToolAnalysisRecord | nu
  * @param query.draftId - The draft being edited.
  * @param query.kind - The requested analysis kind.
  * @param query.inputFingerprint - Its dependency fingerprint.
+ * @param query.references - Local references rebound by an authorized same-project copy.
  * @returns Independent progress and reusable-result selections.
  */
 export function selectMiniToolAnalyses(
   records: readonly unknown[],
-  query: { draftId: string; kind: MiniToolAnalysisKind; inputFingerprint: string },
+  query: { draftId: string; kind: MiniToolAnalysisKind; inputFingerprint: string; references?: readonly unknown[] },
 ): MiniToolAnalysisSelection {
   const selection: MiniToolAnalysisSelection = { latestAccepted: null, latestSuccessful: null };
+  const referencedRuns = new Set<string>();
+  for (const value of query.references ?? []) {
+    const reference = videoToolAnalysisRefSchema.safeParse(value);
+    if (reference.success && reference.data.draftId === query.draftId && reference.data.kind === query.kind && reference.data.inputFingerprint === query.inputFingerprint) {
+      referencedRuns.add(reference.data.analysisRunId);
+    }
+  }
   for (const value of records) {
     const parsed = miniToolAnalysisRecordSchema.safeParse(value);
     if (!parsed.success) continue;
     const record = parsed.data;
-    if (record.draftId !== query.draftId || record.kind !== query.kind || record.inputFingerprint !== query.inputFingerprint) continue;
+    if ((record.draftId !== query.draftId && !referencedRuns.has(record.analysisRunId)) || record.kind !== query.kind || record.inputFingerprint !== query.inputFingerprint) continue;
     if (newer(record, selection.latestAccepted)) selection.latestAccepted = record;
     if (record.status === "completed" && !record.artifactUnavailable && newer(record, selection.latestSuccessful)) selection.latestSuccessful = record;
   }

@@ -864,6 +864,53 @@ export function renderProductGuide(): string {
       "its right with every tool for that kind of node, each an icon and a name. Text, 3D and web nodes, groups and " +
       "notes have no such row. The tools are:",
     ...miniToolLines(),
+    "Video tools keep their settings when their panel is closed and reopened; undo and redo restore parameter edits. " +
+      `A saved setting that cannot be read shows ${quoted(t("canvas.miniTool.videoUI.unsupportedDraft"))} with ` +
+      `${quoted(t("canvas.miniTool.videoUI.rebuildDraft"))}. A changed source shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
+      "review the settings after switching to the current source. A source that cannot be read shows " +
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}.`,
+    `In ${quoted(t("canvas.miniTool.video.erase.label"))}, choose ${quoted(t("canvas.miniTool.videoUI.rectangle"))} or ` +
+      `${quoted(t("canvas.miniTool.videoUI.point"))} under ${quoted(t("canvas.miniTool.videoUI.selection"))} and mark ` +
+      "the target on the video itself. Set the range with " +
+      `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}, then ` +
+      `${quoted(t("canvas.miniTool.videoUI.trackObject"))} tracks that selection. The tracking result and the ` +
+      "description of what should replace it are separate settings. Video expansion uses the frame around the " +
+      "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion.",
+    `In ${quoted(t("canvas.miniTool.video.lip-sync.label"))}, ${quoted(t("canvas.miniTool.videoUI.dialoguePairs"))} ` +
+      `has one compact row per dialogue: ${quoted(t("canvas.miniTool.videoUI.targetPerson"))} on the left, ` +
+      `${quoted(t("canvas.miniTool.videoUI.dialogueAudio"))} in the middle and ` +
+      `${quoted(t("canvas.miniTool.videoUI.dialogueStartTime"))} in seconds on the right. The dropdown and slot initially say ` +
+      `${quoted(t("canvas.miniTool.videoUI.choosePerson"))} and ${quoted(t("canvas.miniTool.videoUI.chooseDialogueAudio"))}. ` +
+      `${quoted(t("canvas.miniTool.videoUI.redetectPeople"))} identifies people again; choose a person for each row. ` +
+      "Pick an audio slot, then an audio node on the canvas. Pressing the same slot again leaves selection; " +
+      "Escape also leaves selection, keeping its current audio, and the top-right X clears that audio. " +
+      "A filled slot shows its truncated filename; hover it to listen in the preview. " +
+      `${quoted(t("canvas.miniTool.videoUI.addDialogue"))} adds a row, including another dialogue for the same person. ` +
+      "The bin at the end of a dialogue row removes it. Times use the source video's clock and retain silence " +
+      `inside each audio. ${quoted(t("canvas.miniTool.videoUI.syncMode"))} offers Cut off, Silence, Loop, Bounce and Remap.`,
+    `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
+      "offers First, Last, Current and Interval. Current uses the frame actually shown by the player; Interval " +
+      `uses ${quoted(t("canvas.miniTool.videoUI.interval"))} in seconds. Preview cards are centred below the settings. ` +
+      `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
+      "finds candidate cut points within this same tool. Drag a cut handle on its filmstrip or edit its seconds " +
+      `below; ${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds one at the player cursor, and the bin beside ` +
+      "a cut removes it. The segment count reflects the complete split plan.",
+    `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, fill ${quoted(t("canvas.miniTool.videoUI.videoInputs"))} ` +
+      `with ${quoted(t("canvas.miniTool.videoUI.addVideoSlot"))}, then open ${quoted(t("canvas.miniTool.videoUI.editTimeline"))}. ` +
+      `The dialog has ${quoted(t("canvas.miniTool.videoUI.timelineAssets"))} on the left, ` +
+      `${quoted(t("canvas.miniTool.videoUI.timelineComposition"))} in the middle and ` +
+      `${quoted(t("canvas.miniTool.videoUI.timelineProperties"))} on the right. ` +
+      `${quoted(t("canvas.miniTool.videoUI.addToTimeline"))} adds footage to the composition. Select a clip and edit ` +
+      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}; ` +
+      `${quoted(t("canvas.miniTool.videoUI.earlier"))} and ${quoted(t("canvas.miniTool.videoUI.later"))} change its order, ` +
+      `${quoted(t("canvas.miniTool.videoUI.duplicateClip"))} repeats it and ${quoted(t("canvas.miniTool.videoUI.removeClip"))} ` +
+      `removes it. Set ${quoted(t("canvas.miniTool.videoUI.transition"))} and ` +
+      `${quoted(t("canvas.miniTool.videoUI.transitionDuration"))} between adjacent clips. ` +
+      `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the composition and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
+      `pauses it; ${quoted(t("canvas.miniTool.videoUI.export"))} runs the complete composition.`,
+    `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      "Removing a video's background keeps the transparent source available for download and downstream tools.",
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +

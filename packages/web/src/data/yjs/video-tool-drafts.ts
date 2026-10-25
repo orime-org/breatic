@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type * as Y from 'yjs';
+import { newId } from '@breatic/shared';
 import {
+  miniToolAnalysisRecordSchema,
   readVideoToolDraft as readStoredVideoToolDraft,
   videoToolAnalysisRefSchema,
   videoToolAnalysisRefs,
@@ -14,6 +16,7 @@ import {
 } from '@breatic/shared/mini-tools';
 
 import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
+import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
 
 const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
 
@@ -23,11 +26,28 @@ const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
  * @param nodeId - The host video node.
  * @param record - The immutable accepted result.
  * @returns Whether one guarded parameter edit was committed.
- * @throws {never} Never while the scene application lane is unimplemented.
+ * @throws {never} Invalid or superseded records leave the document unchanged.
  */
 export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unknown): boolean {
-  void doc; void nodeId; void record;
-  return false;
+  const parsed = miniToolAnalysisRecordSchema.safeParse(record);
+  if (!parsed.success) return false;
+  const accepted = parsed.data;
+  if (accepted.kind !== 'scene_cuts' || accepted.status !== 'completed' || accepted.artifactUnavailable || accepted.result?.kind !== 'scene_cuts') return false;
+  const data = nodeDataMap(doc, nodeId);
+  const reading = readVideoToolDraft(doc, nodeId, 'video.split');
+  if (data === null || data.get('locked') === true || reading.state !== 'supported') return false;
+  const draft = reading.draft;
+  if (draft.draftId !== accepted.draftId || draft.revision !== accepted.revision || draft.source.canonicalURL !== accepted.binding.canonicalURL) return false;
+  const references = videoToolAnalysisRefs(Object.fromEntries(data.entries()));
+  if (!references.some((reference) => reference.toolId === 'video.split' && reference.draftId === draft.draftId && reference.analysisRunId === accepted.analysisRunId && reference.inputFingerprint === accepted.inputFingerprint)) return false;
+  const key = `${SCENE_ANALYSIS_APPLIED_PREFIX}${accepted.analysisRunId}`;
+  if (data.get(key) === true) return false;
+  const next = videoToolDraftSchema('video.split').parse({ ...draft, revision: newId(), params: { ...draft.params, cuts: accepted.result.cuts.map((cut) => cut.pts) } });
+  doc.transact(() => {
+    data.set(key, true);
+    data.set('miniToolDraft:video.split', next);
+  }, CANVAS_UNDO);
+  return true;
 }
 
 /**

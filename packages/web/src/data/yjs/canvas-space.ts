@@ -20,6 +20,7 @@ import {
 import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
 import {
   usableUrls,
   writeNodeMedia,
@@ -216,6 +217,7 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
         trackedOrigins: new Set([CANVAS_UNDO]),
         captureTimeout: 0,
         captureTransaction: (tr) => !tr.meta.has(CANVAS_ROLLED_BACK),
+        deleteFilter: (item) => typeof item.parentSub !== 'string' || !item.parentSub.startsWith(SCENE_ANALYSIS_APPLIED_PREFIX),
       }),
   );
   undoManager.on('stack-item-added', () => {

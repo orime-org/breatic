@@ -10,7 +10,7 @@ import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { nodeDataMap, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { commitVideoToolAnalysisRef, commitVideoToolDraft, clearVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { commitVideoSceneAnalysis, commitVideoToolAnalysisRef, commitVideoToolDraft, clearVideoToolDraft, readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
 import { useVideoToolDraft } from '@web/data/yjs/use-video-tool-draft';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -146,12 +146,12 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     const input = projectMiniToolAnalysisInput({ kind: latest.kind, source: current.source, params, profile: latest.analysisInput.profile });
     void fingerprintMiniToolAnalysisInput(input).then((fingerprint) => {
       if (!active) return;
-      const selection = selectMiniToolAnalyses(records, { draftId: current.draftId, kind: latest.kind, inputFingerprint: fingerprint });
-      setSelection({ key: dependencyKey, records: records.filter((record) => record.draftId === current.draftId && record.kind === latest.kind && record.inputFingerprint === fingerprint && (selection.latestAccepted !== null || selection.latestSuccessful !== null)) });
+      const query = { draftId: current.draftId, kind: latest.kind, inputFingerprint: fingerprint, references: refs };
+      setSelection({ key: dependencyKey, records: records.filter((record) => selectMiniToolAnalyses([record], query).latestAccepted !== null) });
     }, () => { if (active) setSelection({ key: dependencyKey, records: [] }); });
 
     return () => { active = false; };
-  }, [records, current, dependencyKey]);
+  }, [records, current, dependencyKey, refs]);
   const locked = evaluateNodeGate({ locked: node.data.locked ?? false });
   const disabled = readOnly || locked !== null;
   const initialized = React.useRef(false);
@@ -240,15 +240,12 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     autoPeople.current = current.draftId;
     analyse('people');
   }, [toolId, current, disabled, presentation, refs, analyse]);
-  const lastAppliedScene = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (toolId !== 'video.split' || current === null || disabled) return;
     const success = latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'scene_cuts' && record.status === 'completed' && record.result?.kind === 'scene_cuts'));
-    if (success?.result?.kind !== 'scene_cuts' || lastAppliedScene.current === success.analysisRunId || success.revision !== current.revision) return;
-    lastAppliedScene.current = success.analysisRunId;
-    const draft = current as VideoToolDraftById['video.split'];
-    change({ ...draft, params: { ...draft.params, cuts: success.result.cuts.map((cut) => cut.pts) } });
-  }, [matchingRecords, current, disabled, toolId, change]);
+    if (success?.result?.kind !== 'scene_cuts') return;
+    commitVideoSceneAnalysis(doc, nodeId, success);
+  }, [matchingRecords, current, disabled, toolId, doc, nodeId]);
   /**
    * Marks transient invalid text without putting it in the persisted schema.
    * @throws {never} Never.
