@@ -41,7 +41,7 @@ let providerCalls = 0;
 let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfOverBudget = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The usage rows the turn wrote. */
 const usageRows: DomainModule.UsageRow[] = [];

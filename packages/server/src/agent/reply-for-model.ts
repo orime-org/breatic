@@ -160,17 +160,17 @@ export interface MeasuredChars {
  * token: never fewer than the tokens, so a fold can only come early.
  * @param usage - What the provider reported.
  * @param chars - Character counts to fall back on.
- * @returns The two figures the reply row keeps.
+ * @returns The two figures the reply row keeps, and where `endTokens` came from.
  * @throws {never} Never.
  */
 export function replyTokens(
   usage: ReportedUsage,
   chars: MeasuredChars,
-): { turnTokens: number; endTokens: number } {
+): { turnTokens: number; endTokens: number; endTokensFrom: "provider" | "chars" } {
   const { firstInput, lastInput, lastOutput } = usage;
   if (firstInput === undefined || lastInput === undefined || lastOutput === undefined) {
-    return { turnTokens: chars.user + chars.reply, endTokens: chars.request + chars.reply };
+    return { turnTokens: chars.user + chars.reply, endTokens: chars.request + chars.reply, endTokensFrom: "chars" };
   }
   const endTokens = lastInput + lastOutput;
-  return { turnTokens: endTokens - firstInput + chars.user, endTokens };
+  return { turnTokens: endTokens - firstInput + chars.user, endTokens, endTokensFrom: "provider" };
 }

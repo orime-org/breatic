@@ -109,7 +109,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
 }));
 
 vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget: vi.fn(async () => false),
+  foldIfOverBudget: vi.fn(async () => "none"),
 }));
 
 vi.mock("@server/agent/context.js", () => ({

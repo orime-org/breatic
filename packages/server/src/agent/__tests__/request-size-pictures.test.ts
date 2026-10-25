@@ -42,7 +42,7 @@ function row(turnIndex: number, role: "user" | "assistant", messages: ModelMessa
 /** The actual assembly whose last message is this turn's question. */
 function assembly(replayed: ReplayedRow[]): Assembly {
   return {
-    agentConfig: { ...PREFIX, seesPictures: false },
+    agentConfig: { ...PREFIX, seesPictures: false, contextWindow: 1_000_000 },
     replayed,
     watermark: 0,
     userKept: { messages: [QUESTION] },

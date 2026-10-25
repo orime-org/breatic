@@ -2,22 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The budget a turn is held to, and what it does when it goes over.
+ * When a turn folds its oldest history into memory, and how far back it goes
+ * (inner#1567, design 6.2 and 6.4).
  *
- * Between the assembly and the model call: the request is whole here, so this
- * is the one place its whole length is knowable. What is over the line is
- * folded into memory before the model is asked anything, and the caller
- * assembles again — the fold moved the watermark, so the first assembly is
- * holding turns that are no longer part of the history.
+ * The request goes as it is unless the provider has said it does not fit.
+ * Two things say so: the count the provider reported for the previous call
+ * (input plus output) leaving no room under the main model's window less the
+ * output reserve, checked before each call; and the provider turning a call
+ * away as over its window. Nothing not yet sent is estimated to decide this:
+ * characters overstate DeepSeek's tokens two to three times.
+ *
+ * Both triggers size the fold the same way (`planConsolidation`) and fold
+ * through the same `consolidateWindow`; what happens after it is the caller's.
  */
 
 import type { ModelMessage } from "ai";
-import { effectiveKeepTokens, getAgentConfig } from "@breatic/core";
+import { getAgentConfig, logger, memoryReserveTokens } from "@breatic/core";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
+import type { ContextOverflow } from "@server/agent/context-overflow.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
 import { stripThinking } from "@server/agent/history-replay.js";
 import type { ReplayedRow, UserForModel } from "@server/agent/history-replay.js";
+import { measureMessages } from "@server/agent/payload-size.js";
 import { costPerTurn, requestTokens } from "@server/agent/request-size.js";
 
 /** One reading of everything a turn sends, and what it was built from. */
@@ -41,6 +48,8 @@ export interface TurnIdentity {
   userId: string;
   conversationId: string;
   projectId: string;
+  /** The turn being answered; only turns before it may be folded. */
+  turnIndex: number;
   /** Raised when the reader stopped the turn or the client went away. */
   signal?: AbortSignal;
   /**
@@ -52,32 +61,126 @@ export interface TurnIdentity {
   onStart?: () => void;
 }
 
+/** What set a fold off. */
+export type FoldTrigger =
+  /** About to call: `known` is the provider's last reported count, when there is one to trust. */
+  | { kind: "precheck"; at: "start" | "step"; known: number | undefined }
+  /** The provider turned the call away as over its window. */
+  | { kind: "overflow"; overflow: ContextOverflow; known: number | undefined; attempt: number; provider: unknown };
+
 /**
- * Fold the oldest part of the conversation when the request is over budget.
- * @param assembly - What this turn would send as it stands.
+ * How a fold check ended.
+ *
+ * - `none`: no fold ran; send as it stands.
+ * - `moved`: the watermark moved (`written`, `superseded`, `discarded`); assemble again.
+ * - `untouched`: the fold could not start or record anything.
+ * - `aborted`: the reader left during the fold.
+ * - `too_long`: an overflow that no fold can fix; end the turn as too long.
+ */
+export type FoldResult = "none" | "moved" | "untouched" | "aborted" | "too_long";
+
+/**
+ * The line a fold runs down to: the lower of the keep line and the room the
+ * window leaves, less the room memory itself takes.
+ * @param lines - The four figures, in tokens.
+ * @param lines.keep - `memory_keep_tokens`.
+ * @param lines.window - The main model's context window.
+ * @param lines.maxOutput - `max_output_tokens`.
+ * @param lines.reserve - The room held back for the memory a fold writes.
+ * @returns The target, in tokens.
+ * @throws {never} Never.
+ */
+export function foldTarget(lines: { keep: number; window: number; maxOutput: number; reserve: number }): number {
+  return Math.min(lines.keep, lines.window - lines.maxOutput) - lines.reserve;
+}
+
+/**
+ * Whether the provider's last count leaves no room for the next call.
+ * @param room - The window, the output reserve, and the known count.
+ * @param room.window - The main model's context window.
+ * @param room.maxOutput - `max_output_tokens`.
+ * @param room.known - Input plus output the provider reported last; absent, nothing is checked.
+ * @returns True when the turn must fold before it sends.
+ * @throws {never} Never.
+ */
+export function needsFold(room: { window: number; maxOutput: number; known: number | undefined }): boolean {
+  return room.known !== undefined && room.window - room.maxOutput - room.known <= 0;
+}
+
+/**
+ * How big the request is, for sizing a fold: the largest count in hand.
+ * @param counts - The provider's last count, the size an overflow stated,
+ *   and the estimate, which can always be worked out.
+ * @param counts.known - The provider's last reported count.
+ * @param counts.reported - The prompt size the overflow error stated.
+ * @param counts.estimate - The request and this turn's finished steps, estimated.
+ * @returns The size, in tokens.
+ * @throws {never} Never.
+ */
+export function foldSize(counts: { known?: number; reported?: number; estimate: number }): number {
+  return Math.max(counts.estimate, counts.known ?? 0, counts.reported ?? 0);
+}
+
+/**
+ * Fold the oldest part of the conversation when the provider says the request
+ * does not fit.
+ * @param assembly - What this turn sends as it stands.
+ * @param steps - This turn's finished steps, as they go back to the model.
  * @param who - Who is asking, and whether they are still there.
- * @returns True when the caller must assemble again.
+ * @param trigger - What set it off.
+ * @returns How it ended; see {@link FoldResult}.
+ * @throws {never} Never; a fold that fails ends as one of its outcomes.
  */
 export async function foldIfOverBudget(
   assembly: Assembly,
+  steps: readonly ModelMessage[],
   who: TurnIdentity,
-): Promise<boolean> {
+  trigger: FoldTrigger,
+): Promise<FoldResult> {
   const config = getAgentConfig();
+  const window = assembly.agentConfig.contextWindow;
+  const maxOutput = config.max_output_tokens;
+  if (trigger.kind === "precheck" && !needsFold({ window, maxOutput, known: trigger.known })) return "none";
+
   const turns = costPerTurn(assembly.replayed);
-  const assembled = requestTokens(assembly, turns);
-  // The planner asks this again and is the authority on it.
-  if (assembled <= config.memory_budget_tokens) return false;
+  const takeable = turns.filter((turn) => turn.turnIndex < who.turnIndex);
+  const where = {
+    userId: who.userId,
+    conversationId: who.conversationId,
+    projectId: who.projectId,
+    turnIndex: who.turnIndex,
+    model: assembly.agentConfig.modelId,
+    window,
+    known: trigger.known,
+  };
+
+  if (trigger.kind === "overflow") {
+    const stated = trigger.overflow.tokens;
+    const overflowAt = { ...where, provider: trigger.provider, reported: stated, lowerBound: trigger.overflow.lowerBound, attempt: trigger.attempt };
+    // Taking every earlier turn would still leave it over the window: this
+    // turn's own content does not fit, and a fold would be paid for in vain.
+    const takeableTokens = takeable.reduce((sum, turn) => sum + turn.tokens, 0);
+    if (takeable.length === 0 || (stated !== undefined && stated - takeableTokens > window - maxOutput)) {
+      logger.warn({ ...overflowAt, takeableTurns: takeable.length, takeableTokens }, "agent_turn_too_long");
+      return "too_long";
+    }
+    logger.warn(overflowAt, "agent_fold_on_overflow");
+  }
 
   const plan = planConsolidation({
-    assembled,
     turns,
-    budget: config.memory_budget_tokens,
-    // The keep line a pass runs to: the configured line less the room the
-    // fold is about to add, from the one place that arithmetic lives.
-    keep: effectiveKeepTokens(config),
+    assembled: foldSize({
+      ...(trigger.known === undefined ? {} : { known: trigger.known }),
+      ...(trigger.kind === "overflow" && trigger.overflow.tokens !== undefined ? { reported: trigger.overflow.tokens } : {}),
+      estimate: requestTokens(assembly, turns) + measureMessages(steps),
+    }),
+    target: foldTarget({ keep: config.memory_keep_tokens, window, maxOutput, reserve: memoryReserveTokens(config) }),
+    currentTurn: who.turnIndex,
   });
   const newWatermark = plan.newWatermark;
-  if (newWatermark === null) return false;
+  // A precheck with nothing to take sends as it stands; the provider decides.
+  if (newWatermark === null) return "none";
+  if (trigger.kind === "precheck") logger.info({ ...where, at: trigger.at, newWatermark }, "agent_fold_on_precheck");
 
   who.onStart?.();
 
@@ -85,18 +188,20 @@ export async function foldIfOverBudget(
     userId: who.userId,
     conversationId: who.conversationId,
     projectId: who.projectId,
-    // The window as the model was sent it, less the model's own working.
-    transcript: stripThinking(
-      assembly.replayed.filter((one) => one.row.turnIndex <= newWatermark).flatMap((one) => one.messages),
-    ),
+    // The window as the model was sent it, turn by turn, less its own working.
+    turns: takeable
+      .filter((turn) => turn.turnIndex <= newWatermark)
+      .map((turn) => ({
+        turnIndex: turn.turnIndex,
+        messages: stripThinking(
+          assembly.replayed.filter((one) => one.row.turnIndex === turn.turnIndex).flatMap((one) => one.messages),
+        ),
+      })),
     watermarkBefore: assembly.watermark,
     newWatermark,
     ...(who.signal ? { signal: who.signal } : {}),
   });
 
-  // Reassemble when the watermark moved. These three leave it further along,
-  // so this assembly is holding turns the history no longer has; the endings
-  // left out of the list are the ones that changed nothing at all, and
-  // reading again would return the same thing at the cost of the queries.
-  return outcome === "written" || outcome === "superseded" || outcome === "discarded";
+  if (outcome === "written" || outcome === "superseded" || outcome === "discarded") return "moved";
+  return outcome;
 }

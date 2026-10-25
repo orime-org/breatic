@@ -25,7 +25,7 @@ import { FINISHED, finishedSpending, finishing } from "../helpers/model-double.j
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfOverBudget = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 const buildAgentConfig = vi.hoisted(() => vi.fn());
 

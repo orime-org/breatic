@@ -208,7 +208,7 @@ export function asks(toolCallId: string, input = 100, output = 10, thinks = fals
  * The provider metadata a signed thinking block rides on.
  * @returns The metadata.
  */
-function signed(): Record<string, Record<string, unknown>> {
+function signed(): { openrouter: { reasoning_details: Array<{ type: string; data: string }> } } {
   return { openrouter: { reasoning_details: [{ type: "reasoning.encrypted", data: SIGNATURE }] } };
 }
 

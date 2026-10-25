@@ -504,7 +504,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     MONOREPO_ROOT: "/tmp",
     // The real config underneath, so every field the code reads exists; only
     // the values these suites depend on are set here.
-    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_tokens: 850000, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({

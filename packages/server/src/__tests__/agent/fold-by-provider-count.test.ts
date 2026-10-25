@@ -2,7 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A fold is decided and sized by the provider's own count (inner#1549, A15).
+ * A fold is decided and sized by the provider's own count (inner#1549, A15;
+ * inner#1567).
+ *
+ * Deciding: the newest reply's `endTokens`, when the provider reported it and
+ * its last request is still the prefix this turn replays, is checked against
+ * the window less the output reserve. Sizing: the turns are priced by what
+ * each added, here on a fold an overflow set off with no stated size.
  *
  * Replayed thinking counts toward the window and is billed as input, and what
  * is stored of it is a summary, so characters undercount it. The last reply
@@ -17,7 +23,7 @@ import type * as CoreModule from "@breatic/core";
 import type { ReplayRow, RequestPrefix } from "@server/agent/history-replay.js";
 import type { Assembly } from "@server/agent/turn-budget.js";
 
-const LINES = vi.hoisted(() => ({ budget: 1000, keep: 400 }));
+const LINES = vi.hoisted(() => ({ window: 1100, maxOutput: 100, keep: 400 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
@@ -25,10 +31,12 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ...actual,
     getAgentConfig: () => ({
       ...actual.getAgentConfig(),
-      memory_budget_tokens: LINES.budget,
+      max_output_tokens: LINES.maxOutput,
       memory_keep_tokens: LINES.keep,
     }),
-    effectiveKeepTokens: () => LINES.keep,
+    memoryReserveTokens: () => 0,
+    // The fold's own log lines (inner#1567, A8); this suite reads the fold.
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 });
 
@@ -36,7 +44,7 @@ const consolidateWindow = vi.fn(async (_request: { newWatermark: number }) => "w
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
 const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
-const { requestTokens } = await import("@server/agent/request-size.js");
+const { knownTokensAtStart, requestTokens } = await import("@server/agent/request-size.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 
 const AGENT: RequestPrefix = { instructions: { base: "s" }, tools: {}, modelId: "test" };
@@ -74,6 +82,8 @@ function keptTurn(
         messages: [{ role: "assistant", content: LONG }],
         prefixHash: prefixHash(prefix, [...before, asked]),
         ...sizes,
+        endTokensFrom: "provider",
+        lastRequest: { hash: prefixHash(prefix, [...before, asked]), messages: 0 },
       },
     },
   ];
@@ -87,7 +97,7 @@ function keptTurn(
 function assembled(history: ReplayRow[]): Assembly {
   const replayed = replayRows(history, AGENT);
   return {
-    agentConfig: { ...AGENT, seesPictures: false },
+    agentConfig: { ...AGENT, seesPictures: false, contextWindow: LINES.window },
     replayed,
     watermark: 0,
     userKept: { messages: [QUESTION] },
@@ -96,15 +106,35 @@ function assembled(history: ReplayRow[]): Assembly {
 }
 
 /**
- * Run the fold check on a history, assembled the way a turn assembles it.
+ * Run the check a turn makes before its first call, on a history assembled
+ * the way a turn assembles it.
  * @param history - The rows since the watermark.
- * @returns Whether the turn must assemble again.
+ * @returns How the check ended.
  */
-async function check(history: ReplayRow[]): Promise<boolean> {
-  return foldIfOverBudget(
-    assembled(history),
-    { userId: "u", conversationId: "c", projectId: "p" },
-  );
+async function check(history: ReplayRow[]): Promise<string> {
+  const assembly = assembled(history);
+  const turnIndex = Math.max(0, ...history.map((row) => row.turnIndex)) + 1;
+  return foldIfOverBudget(assembly, [], { userId: "u", conversationId: "c", projectId: "p", turnIndex }, {
+    kind: "precheck",
+    at: "start",
+    known: knownTokensAtStart(assembly.replayed),
+  });
+}
+
+/**
+ * Fold for a call the provider turned away without saying how big it was.
+ * @param history - The rows since the watermark.
+ * @returns How the fold ended.
+ */
+async function overflow(history: ReplayRow[]): Promise<string> {
+  const turnIndex = Math.max(0, ...history.map((row) => row.turnIndex)) + 1;
+  return foldIfOverBudget(assembled(history), [], { userId: "u", conversationId: "c", projectId: "p", turnIndex }, {
+    kind: "overflow",
+    overflow: { lowerBound: false },
+    known: undefined,
+    attempt: 1,
+    provider: undefined,
+  });
 }
 
 beforeEach(() => {
@@ -112,23 +142,23 @@ beforeEach(() => {
 });
 
 describe("deciding to fold", () => {
-  it("leaves a conversation alone that the provider counts under the budget, however long its text", async () => {
+  it("leaves a conversation alone that the provider counts under the window, however long its text", async () => {
     // 5,000 characters of answer, but the provider counted the conversation
-    // at 900 tokens when the turn ended.
-    expect(await check(keptTurn(1, [], { turnTokens: 900, endTokens: 900 }))).toBe(false);
+    // at 900 tokens when the turn ended, under the 1,000 the window leaves.
+    expect(await check(keptTurn(1, [], { turnTokens: 900, endTokens: 900 }))).toBe("none");
     expect(consolidateWindow).not.toHaveBeenCalled();
   });
 
-  it("folds once what the provider counted, with this turn's question, is over the budget", async () => {
+  it("folds once what the provider counted leaves no room under the window", async () => {
     const history = [
       ...keptTurn(1, [], { turnTokens: 600, endTokens: 600 }),
       ...keptTurn(2, [{ role: "user", content: "question 1" }, { role: "assistant", content: LONG }], {
-        turnTokens: 395,
-        endTokens: 995,
+        turnTokens: 400,
+        endTokens: 1000,
       }),
     ];
 
-    expect(await check(history)).toBe(true);
+    expect(await check(history)).toBe("moved");
   });
 
   it("does not read the size off a reply that no longer goes out as it was sent", async () => {
@@ -137,17 +167,16 @@ describe("deciding to fold", () => {
     // added.
     const history = keptTurn(3, [], { turnTokens: 300, endTokens: 50_000 }, { ...AGENT, instructions: { base: "before the fold" } });
 
-    expect(await check(history)).toBe(false);
+    expect(await check(history)).toBe("none");
+    expect(consolidateWindow).not.toHaveBeenCalled();
   });
 });
 
 describe("sizing a fold", () => {
   it("takes the oldest turns by what each added until what is left is under the keep line", async () => {
     // Every reply went out under an older system prompt, so the size is what
-    // the turns added: 1 + 300 + 300 + 300 + the question, about 909, under
-    // the budget of 1,000 and over it once the budget is lowered to 800. Taking turn 1 leaves about 600, turn 2
-    // about 300, under the keep line of 400.
-    LINES.budget = 800;
+    // the turns added: 1 + 300 + 300 + 300 + the question, about 909. Taking
+    // turn 1 leaves about 600, turn 2 about 300, under the keep line of 400.
     const old = { ...AGENT, instructions: { base: "older" } };
     const history = [
       ...keptTurn(1, [], { turnTokens: 300, endTokens: 300 }, old),
@@ -155,8 +184,7 @@ describe("sizing a fold", () => {
       ...keptTurn(3, [], { turnTokens: 300, endTokens: 900 }, old),
     ];
 
-    await check(history);
-    LINES.budget = 1000;
+    await overflow(history);
 
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
     expect(consolidateWindow.mock.calls[0]?.[0].newWatermark).toBe(2);
@@ -171,7 +199,7 @@ describe("sizing a fold", () => {
     const folded: ModelMessage[] = [{ role: "user", content: "question 1" }, { role: "user", content: "question 2" }];
     const history = [3, 4, 5, 6].flatMap((turn) => keptTurn(turn, folded, { turnTokens: 300, endTokens: 300 * turn }));
 
-    await check(history);
+    await overflow(history);
 
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
     expect(consolidateWindow.mock.calls[0]?.[0].newWatermark).toBe(5);

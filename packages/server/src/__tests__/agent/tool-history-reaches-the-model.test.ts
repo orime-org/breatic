@@ -13,7 +13,7 @@ import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfOverBudget = vi.fn(async () => "none");
 const streamTextRetry = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({

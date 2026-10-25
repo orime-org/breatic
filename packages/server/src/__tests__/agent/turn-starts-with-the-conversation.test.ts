@@ -22,7 +22,7 @@ import { saying } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 7);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfOverBudget = vi.fn(async () => "none");
 
 /** What the model produces this case. */
 const modelSays = vi.hoisted(() => ({ parts: [] as unknown[] }));

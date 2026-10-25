@@ -4,20 +4,26 @@
 /**
  * Memory consolidator — folds the oldest part of a conversation into memory.
  *
- * It runs in front of the reply, on the turn whose assembled request went over
- * the budget: the caller works out which turns to take, hands them over as the
- * messages the model would have been sent, and reassembles once this returns.
+ * It runs when a turn's request did not fit: the provider's own count left no
+ * room, or the provider turned the request away as too long (inner#1567).
+ * The caller works out which turns to take, hands them over turn by turn as
+ * the messages the model would have been sent, and reassembles once this
+ * returns. A reassembly that fails after it ends the turn as failed; nothing
+ * here decides whether the turn goes on.
  *
- * The turn goes out however this ends: the reply is what is promised, and a
- * fold is what keeps the request small enough to make one and the earlier
- * conversation represented rather than simply dropped.
- *
- * So a fold that does not produce an answer gives its window up — three
+ * A fold that does not produce an answer gives its window up — three
  * failed calls, an answer that is not the JSON it asked for, a write that
- * cannot land. The watermark moves, nothing is written, the error is logged
- * and the reply goes out. Holding the window instead would send the same
- * input on the next turn and every turn after it, since the history only
- * grows and the call asks for `temperature: 0` wherever the model takes it.
+ * cannot land. The watermark moves, nothing is written and the error is
+ * logged. Holding the window instead would send the same input on the next
+ * turn and every turn after it, since the history only grows and the call
+ * asks for `temperature: 0` wherever the model takes it.
+ *
+ * The one failure that is not given up at once is the consolidation call
+ * itself being turned away as too long: how many tokens the window is cannot
+ * be known before it is sent, so the window is halved and sent again —
+ * whole turns while there are several, then the one turn's text — at most
+ * `consolidation_shrink_attempts` times, after which it is given up like any
+ * other failure.
  *
  * The one ending that keeps the window is the reader leaving: they come back
  * to a conversation that folds it again, and the charge is already keyed so
@@ -38,6 +44,7 @@ import {
 import type { UsageRecorder } from "@breatic/domain";
 import { getAgentConfig, logger } from "@breatic/core";
 import { memoryService } from "@server/modules";
+import { readContextOverflow } from "@server/agent/context-overflow.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are a memory consolidator for an AI creative assistant. Your job is to analyze conversation messages and extract key information into a structured memory update.
@@ -73,13 +80,14 @@ export interface ConsolidationWindow {
   /** The project it belongs to. */
   projectId: string;
   /**
-   * The window, as the model would have been sent it.
+   * The window turn by turn, oldest first, as the model would have been sent
+   * it, less the model's own working.
    *
-   * The assembled messages rather than the stored rows: the summary covers
-   * what the model was given, in the form it was given it, less the model's
-   * own working.
+   * Grouped by turn rather than flat because halving keeps whole turns, and a
+   * turn's boundary cannot be read off its messages: a segment resumed after a
+   * questionnaire puts a second user message inside one turn.
    */
-  transcript: readonly ModelMessage[];
+  turns: ReadonlyArray<{ turnIndex: number; messages: readonly ModelMessage[] }>;
   /** Where the watermark stood before this window was taken. */
   watermarkBefore: number;
   /** The turn the window ends on. */
@@ -142,11 +150,15 @@ function partText(part: unknown): string | null {
 
 /**
  * Render the window the way the prompt reads it.
- * @param transcript - The window, as assembled messages.
+ * @param turns - The window, turn by turn.
+ * @param maxChars - Cut the text to this many characters, saying how many
+ *   were left out; absent, the whole text.
  * @returns One block of text, speaker by speaker.
+ * @throws {never} Never.
  */
-function transcribe(transcript: readonly ModelMessage[]): string {
-  return transcript
+function transcribe(turns: ConsolidationWindow["turns"], maxChars?: number): string {
+  const text = turns
+    .flatMap((turn) => turn.messages)
     .map((message) => {
       const said =
         typeof message.content === "string"
@@ -155,6 +167,8 @@ function transcribe(transcript: readonly ModelMessage[]): string {
       return `[${message.role}]: ${said}`;
     })
     .join("\n\n");
+  if (maxChars === undefined || text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n\n[${String(text.length - maxChars)} characters omitted]`;
 }
 
 /**
@@ -274,18 +288,20 @@ export async function consolidateWindow(
     userId,
     conversationId,
     projectId,
-    transcript,
     watermarkBefore,
-    newWatermark,
     signal,
   } = window;
+  // What this attempt sends; a call turned away as too long halves it.
+  let turns = window.turns;
+  let newWatermark = window.newWatermark;
+  let maxChars: number | undefined;
 
   // A model call with a bill on it and nobody left to read what it produces.
   // The watermark stays where it is, so the next turn folds the same window.
   if (signal?.aborted) return "aborted";
 
   /** Which window this is, on every line written about it. */
-  const where = { userId, conversationId, projectId, watermarkBefore, newWatermark };
+  const where = { userId, conversationId, projectId, watermarkBefore, newWatermark: window.newWatermark };
 
   /**
    * Whether the reader left, said so on the way out.
@@ -313,7 +329,7 @@ export async function consolidateWindow(
   // missing key both surface later, from the call itself. A read that failed
   // here costs this turn its fold and nothing else: the fold never started,
   // so the window is still whole and the next turn folds it again.
-  let prompt: string;
+  let promptFor: () => string;
   let model: ReturnType<typeof getModel>;
   try {
     // The same two layers a turn is given, through the same door. Read
@@ -332,18 +348,20 @@ export async function consolidateWindow(
     // replacement reads `$&` and its siblings in the inserted text as
     // patterns, which anyone who pasted a regex into the conversation has.
     // A replacer function is handed the text and returns it as it is.
-    const values: Record<string, string> = {
-      conversation_memory: conversationMemory || "(empty)",
-      project_memory: projectMemory || "(empty)",
-      // The ceiling the answer will actually be read through: a longer answer
-      // is written, stored, paid for, and then cut where the ceiling falls.
-      max_chars: String(config.memory_conversation_max_size),
-      messages: transcribe(transcript),
+    promptFor = (): string => {
+      const values: Record<string, string> = {
+        conversation_memory: conversationMemory || "(empty)",
+        project_memory: projectMemory || "(empty)",
+        // The ceiling the answer will actually be read through: a longer answer
+        // is written, stored, paid for, and then cut where the ceiling falls.
+        max_chars: String(config.memory_conversation_max_size),
+        messages: transcribe(turns, maxChars),
+      };
+      return CONSOLIDATION_PROMPT.replace(
+        /\{(conversation_memory|project_memory|max_chars|messages)\}/g,
+        (_whole, key: string) => values[key] ?? "",
+      );
     };
-    prompt = CONSOLIDATION_PROMPT.replace(
-      /\{(conversation_memory|project_memory|max_chars|messages)\}/g,
-      (_whole, key: string) => values[key] ?? "",
-    );
 
     model = getModel(config.consolidation_model);
   } catch (err) {
@@ -360,20 +378,43 @@ export async function consolidateWindow(
   try {
     // One call, and the retrying happens inside it: `generateTextRetry` is
     // handed `llm_max_retries`, so this is one original and two retries.
-    const result = await generateTextRetry({
-      model,
-      messages: [{ role: "user" as const, content: prompt }],
-      stopWhen: stepCountIs(1),
-      // Folding a transcript into a summary has no reasoning step in it, and
-      // asks for a fixed temperature of 0. Which of the two each model takes,
-      // and how, is settled in the routing table: Claude, for one, accepts
-      // neither and is sent neither.
-      ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
-      // Conversation memory is rewritten whole by this call, so an answer
-      // with no ceiling is a segment with no ceiling in every later prompt.
-      maxOutputTokens: config.max_output_tokens,
-      ...(signal ? { abortSignal: signal } : {}),
-    });
+    // Turned away as too long, it is sent again with half the window, up to
+    // `consolidation_shrink_attempts` times.
+    let result: Awaited<ReturnType<typeof generateTextRetry>>;
+    for (let shrinks = 0; ; shrinks += 1) {
+      try {
+        result = await generateTextRetry({
+          model,
+          messages: [{ role: "user" as const, content: promptFor() }],
+          stopWhen: stepCountIs(1),
+          // Folding a transcript into a summary has no reasoning step in it, and
+          // asks for a fixed temperature of 0. Which of the two each model takes,
+          // and how, is settled in the routing table: Claude, for one, accepts
+          // neither and is sent neither.
+          ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
+          // Conversation memory is rewritten whole by this call, so an answer
+          // with no ceiling is a segment with no ceiling in every later prompt.
+          maxOutputTokens: config.max_output_tokens,
+          ...(signal ? { abortSignal: signal } : {}),
+        });
+        break;
+      } catch (err) {
+        // A rejected call reports no usage and is not charged; only the
+        // call that comes back is.
+        if (readContextOverflow(err) === undefined || shrinks >= config.consolidation_shrink_attempts) {
+          if (shrinks > 0) logger.error({ err, ...where, shrinks }, "memory_consolidation_shrinks_exhausted");
+          throw err;
+        }
+        if (turns.length > 1) {
+          // The older half of the whole turns, and the watermark back to match.
+          turns = turns.slice(0, Math.floor(turns.length / 2));
+          newWatermark = turns.at(-1)?.turnIndex ?? newWatermark;
+        } else {
+          maxChars = Math.floor((maxChars ?? transcribe(turns).length) / 2);
+        }
+        logger.warn({ err, ...where, attempt: shrinks + 1, keptTurns: turns.length, maxChars }, "memory_consolidation_shrunk");
+      }
+    }
 
     // Billed the moment the call comes back, which is the moment the tokens
     // are gone. What becomes of the answer after this has several endings,
@@ -450,7 +491,8 @@ export async function consolidateWindow(
 
     let lost: boolean;
     try {
-      lost = await memoryService.discardConsolidation(conversationId, newWatermark);
+      // The whole window passes, not the halved one: it is given up whole.
+      lost = await memoryService.discardConsolidation(conversationId, window.newWatermark);
     } catch (discardErr) {
       // The discard is itself a write, and whatever failed above is often the
       // reason this fails too. Both errors go in the line: the one that lost
