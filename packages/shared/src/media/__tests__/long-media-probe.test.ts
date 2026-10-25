@@ -33,11 +33,13 @@ const stereoReport: LongMediaProbeReport = {
       mediaInputId: "source-audio-2-channel-0",
       descriptor: { inputKind: "audio_channel", audioStreamIndex: 2, audioChannelIndex: 0 },
       sourceRange: { startUs: "100000", endUs: "5100000" },
+      audioRange: { startUs: "100000", endUs: "5100000" },
     },
     {
       mediaInputId: "source-audio-2-channel-1",
       descriptor: { inputKind: "audio_channel", audioStreamIndex: 2, audioChannelIndex: 1 },
       sourceRange: { startUs: "100000", endUs: "5100000" },
+      audioRange: { startUs: "100000", endUs: "5100000" },
     },
   ],
 };
@@ -115,6 +117,7 @@ describe("readLongMediaProbeReport", () => {
         mediaInputId: "video-0",
         descriptor: { inputKind: "video_silent", videoStreamIndex: 0 },
         sourceRange: { startUs: "0", endUs: "10000000" },
+        videoRange: { startUs: "0", endUs: "10000000" },
       }],
     };
 
@@ -133,6 +136,57 @@ describe("readLongMediaProbeReport", () => {
     });
 
     expect(() => readLongMediaProbeReport(ignoredVideo)).toThrow(/selected video/i);
+  });
+
+  it("preserves separate video and channel audio ranges inside their source envelope", () => {
+    const videoChannelReport: unknown = {
+      version: 1,
+      sourceFingerprint: "c".repeat(64),
+      selectedVideoStreamIndex: 0,
+      streams: [
+        {
+          index: 0,
+          kind: "video",
+          codec: "h264",
+          width: 1920,
+          height: 1080,
+          startUs: "0",
+          endUs: "12000000",
+          timeBase: { numerator: "1", denominator: "90000" },
+        },
+        {
+          index: 1,
+          kind: "audio",
+          codec: "aac",
+          channels: 1,
+          channelLayout: "mono",
+          channelMembers: [{ channelIndex: 0, member: "FC" }],
+          sampleRate: 48000,
+          startUs: "2000000",
+          endUs: "8000000",
+          timeBase: { numerator: "1", denominator: "48000" },
+        },
+      ],
+      mediaInputs: [{
+        mediaInputId: "video-0-audio-1-channel-0",
+        descriptor: { inputKind: "video_channel", videoStreamIndex: 0, audioStreamIndex: 1, audioChannelIndex: 0 },
+        sourceRange: { startUs: "0", endUs: "12000000" },
+        videoRange: { startUs: "0", endUs: "12000000" },
+        audioRange: { startUs: "2000000", endUs: "8000000" },
+      }],
+    };
+
+    expect(readLongMediaProbeReport(videoChannelReport)).toEqual(videoChannelReport);
+
+    const invalidEnvelope = {
+      ...(videoChannelReport as Record<string, unknown>),
+      mediaInputs: [{
+        ...((videoChannelReport as { mediaInputs: Record<string, unknown>[] }).mediaInputs[0]),
+        sourceRange: { startUs: "2000000", endUs: "8000000" },
+      }],
+    };
+
+    expect(() => readLongMediaProbeReport(invalidEnvelope)).toThrow(/envelope/i);
   });
 
   it("rejects non-positive source ranges and imprecise numeric timestamps", () => {

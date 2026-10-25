@@ -36,6 +36,10 @@ describe("what ffprobe is asked", () => {
     // in the same run comes out the other way round.
     expect(entries).toContain("stream_side_data=rotation");
     expect(entries).toContain("format=duration");
+    expect(entries).toContain("start_pts");
+    expect(entries).toContain("duration_ts");
+    expect(entries).toContain("time_base");
+    expect(entries).toContain("channel_layout");
     // The first frame carries the EXIF orientation of a JPEG, which the stream
     // section does not report.
     expect(entries).toContain("frame=stream_index");
@@ -167,6 +171,75 @@ describe("what vips is asked for the preview", () => {
 });
 
 describe("reading ffprobe's answer", () => {
+  it("builds stable per-channel video inputs from measured stream timestamps", async () => {
+    const { buildLongMediaProbeReport } = await import("@ingest/long-media-probe-report.js");
+    const probeOutput = JSON.stringify({
+      streams: [
+        {
+          index: 0,
+          codec_type: "video",
+          codec_name: "h264",
+          width: 1920,
+          height: 1080,
+          start_pts: "0",
+          duration_ts: "1080000",
+          time_base: "1/90000",
+          disposition: { attached_pic: 0 },
+        },
+        {
+          index: 1,
+          codec_type: "audio",
+          codec_name: "aac",
+          channels: 2,
+          channel_layout: "stereo",
+          sample_rate: "48000",
+          start_pts: "96000",
+          duration_ts: "288000",
+          time_base: "1/48000",
+        },
+      ],
+    });
+    const report = buildLongMediaProbeReport(probeOutput, "a".repeat(64), "channel-v1");
+    const replay = buildLongMediaProbeReport(probeOutput, "a".repeat(64), "channel-v1");
+
+    expect(report).toMatchObject({
+      version: 1,
+      sourceFingerprint: "a".repeat(64),
+      selectedVideoStreamIndex: 0,
+      mediaInputs: [
+        {
+          descriptor: { inputKind: "video_channel", videoStreamIndex: 0, audioStreamIndex: 1, audioChannelIndex: 0 },
+          videoRange: { startUs: "0", endUs: "12000000" },
+          audioRange: { startUs: "2000000", endUs: "8000000" },
+          sourceRange: { startUs: "0", endUs: "12000000" },
+        },
+        {
+          descriptor: { inputKind: "video_channel", videoStreamIndex: 0, audioStreamIndex: 1, audioChannelIndex: 1 },
+        },
+      ],
+    });
+    expect(report.mediaInputs.map((input) => input.mediaInputId)).toEqual(replay.mediaInputs.map((input) => input.mediaInputId));
+    expect(report.mediaInputs[0]?.mediaInputId).not.toBe(report.mediaInputs[1]?.mediaInputId);
+  });
+
+  it("refuses stream times that lack PTS or duration ticks", async () => {
+    const { buildLongMediaProbeReport } = await import("@ingest/long-media-probe-report.js");
+
+    expect(() => buildLongMediaProbeReport(JSON.stringify({
+      streams: [{
+        index: 0,
+        codec_type: "audio",
+        codec_name: "aac",
+        channels: 1,
+        channel_layout: "mono",
+        sample_rate: "48000",
+        start_pts: "N/A",
+        duration_ts: "N/A",
+        time_base: "1/48000",
+      }],
+    }), "b".repeat(64), "channel-v1")).toThrow(/stream time is not measured/i);
+  });
+
   it("normalises the streams and the duration", () => {
     const out = readProbeOutput(
       JSON.stringify({

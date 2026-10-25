@@ -67,7 +67,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -242,6 +242,10 @@ interface RawStream {
   color_space?: string;
   sample_rate?: string;
   channels?: number;
+  channel_layout?: string;
+  start_pts?: string;
+  duration_ts?: string;
+  time_base?: string;
 }
 
 /**

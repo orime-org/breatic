@@ -55,6 +55,7 @@ const probeReport = {
     mediaInputId: `audio-0-${audioChannelIndex}`,
     descriptor: { inputKind: "audio_channel" as const, audioStreamIndex: 0, audioChannelIndex },
     sourceRange: { startUs: "0", endUs: "10000000" },
+    audioRange: { startUs: "0", endUs: "10000000" },
   })),
 };
 

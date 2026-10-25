@@ -44,6 +44,8 @@ const mediaInput = z.object({
   mediaInputId: z.string().min(1),
   descriptor: MediaInputDescriptorSchema,
   sourceRange: timeRange,
+  videoRange: timeRange.optional(),
+  audioRange: timeRange.optional(),
 }).strict();
 
 /** Probe facts needed to freeze all required media inputs for one immutable source. */
@@ -95,6 +97,14 @@ export const LongMediaProbeReportSchema = z.object({
       if (video?.kind !== "video" || descriptor.videoStreamIndex !== report.selectedVideoStreamIndex || report.streams.some((item) => item.kind === "audio")) {
         context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "descriptor"], message: "Invalid silent video stream" });
       }
+      if (input.videoRange === undefined || input.audioRange !== undefined) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex], message: "Silent video requires only a video range" });
+      } else if (video?.kind === "video" && (input.videoRange.startUs !== video.startUs || input.videoRange.endUs !== video.endUs)) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "videoRange"], message: "Video range does not match the probed stream" });
+      }
+      if (input.videoRange !== undefined && !sameRange(input.sourceRange, input.videoRange)) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "sourceRange"], message: "Source range must equal the video range envelope" });
+      }
       continue;
     }
 
@@ -113,13 +123,37 @@ export const LongMediaProbeReportSchema = z.object({
     if (descriptor.audioChannelIndex >= audio.channels) {
       context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "descriptor", "audioChannelIndex"], message: "Audio channel index exceeds probed channel count" });
     }
+    if (input.audioRange === undefined) {
+      context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "audioRange"], message: "Audio input requires an audio range" });
+    } else if (input.audioRange.startUs !== audio.startUs || input.audioRange.endUs !== audio.endUs) {
+      context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "audioRange"], message: "Audio range does not match the probed stream" });
+    }
     const channelKey = `${descriptor.audioStreamIndex}:${descriptor.audioChannelIndex}`;
     if (mappedChannels.has(channelKey)) {
       context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "descriptor"], message: "Duplicate audio channel mapping" });
     }
     mappedChannels.add(channelKey);
-    if (descriptor.inputKind === "video_channel" && streamsByIndex.get(descriptor.videoStreamIndex)?.kind !== "video") {
-      context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "descriptor", "videoStreamIndex"], message: "Video descriptor references a missing video stream" });
+    if (descriptor.inputKind === "video_channel") {
+      const video = streamsByIndex.get(descriptor.videoStreamIndex);
+      if (video?.kind !== "video") {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "descriptor", "videoStreamIndex"], message: "Video descriptor references a missing video stream" });
+      }
+      if (input.videoRange === undefined) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "videoRange"], message: "Video channel input requires a video range" });
+      } else if (video?.kind === "video" && (input.videoRange.startUs !== video.startUs || input.videoRange.endUs !== video.endUs)) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "videoRange"], message: "Video range does not match the probed stream" });
+      }
+      if (input.videoRange !== undefined && input.audioRange !== undefined &&
+          !sameRange(input.sourceRange, envelopeOf(input.videoRange, input.audioRange))) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "sourceRange"], message: "Source range must equal the video and audio range envelope" });
+      }
+    } else {
+      if (input.videoRange !== undefined) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "videoRange"], message: "Audio-only input cannot carry a video range" });
+      }
+      if (input.audioRange !== undefined && !sameRange(input.sourceRange, input.audioRange)) {
+        context.addIssue({ code: "custom", path: ["mediaInputs", inputIndex, "sourceRange"], message: "Source range must equal the audio range" });
+      }
     }
   }
 
@@ -136,6 +170,29 @@ export const LongMediaProbeReportSchema = z.object({
     context.addIssue({ code: "custom", path: ["mediaInputs"], message: "Missing required silent video input" });
   }
 });
+
+/**
+ * Return the range spanning two measured source ranges.
+ * @param left - The first range.
+ * @param right - The second range.
+ * @returns The minimum start and maximum end.
+ */
+function envelopeOf(left: z.infer<typeof timeRange>, right: z.infer<typeof timeRange>): z.infer<typeof timeRange> {
+  return {
+    startUs: BigInt(left.startUs) < BigInt(right.startUs) ? left.startUs : right.startUs,
+    endUs: BigInt(left.endUs) > BigInt(right.endUs) ? left.endUs : right.endUs,
+  };
+}
+
+/**
+ * Compare two already validated source ranges.
+ * @param left - The first range.
+ * @param right - The second range.
+ * @returns Whether both endpoints match exactly.
+ */
+function sameRange(left: z.infer<typeof timeRange>, right: z.infer<typeof timeRange>): boolean {
+  return left.startUs === right.startUs && left.endUs === right.endUs;
+}
 
 /** A trusted stream and per-channel probe report. */
 export type LongMediaProbeReport = z.infer<typeof LongMediaProbeReportSchema>;
