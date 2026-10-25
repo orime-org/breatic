@@ -57,24 +57,36 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 /** The signals handed to the agent, one per turn started. */
 const handedSignals: Array<AbortSignal | undefined> = [];
+/** How many turns the route read to their end. */
+const turns = { ended: 0 };
 
 vi.mock("@server/agent/main-agent.js", () => {
   /**
-   * A turn that streams forever until someone stops it.
+   * A turn that streams until its signal is raised, then ends the way the
+   * real one does: it says it was stopped and closes, and only a route that
+   * keeps reading gets it to that close, where the real turn writes down what
+   * it said.
    * @param signal - The one the route handed in, kept for the assertion.
    * @returns A stream that never ends on its own.
    */
   function endless(signal?: AbortSignal): ReadableStream<unknown> {
     handedSignals.push(signal);
-    let timer: ReturnType<typeof setInterval>;
+    let saidStopped = false;
     return new ReadableStream<unknown>({
-      start(controller) {
-        timer = setInterval(() => {
-          controller.enqueue({ type: "text-delta", id: "t1", delta: "." });
-        }, 5);
-      },
-      cancel() {
-        clearInterval(timer);
+      async pull(controller) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        if (signal?.aborted === true && !saidStopped) {
+          saidStopped = true;
+          controller.enqueue({ type: "abort" });
+          controller.enqueue({ type: "finish" });
+          return;
+        }
+        if (saidStopped) {
+          controller.close();
+          turns.ended += 1;
+          return;
+        }
+        controller.enqueue({ type: "text-delta", id: "t1", delta: "." });
       },
     });
   }
@@ -107,6 +119,7 @@ const ENTRANCES = [
 
 beforeEach(() => {
   handedSignals.length = 0;
+  turns.ended = 0;
 });
 
 describe("a client that goes away mid-stream", () => {
@@ -137,6 +150,51 @@ describe("a client that goes away mid-stream", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
 
       expect(signal?.aborted).toBe(true);
+    });
+  }
+});
+
+describe("a client that leaves before anything is read", () => {
+  // On Node the response readable's `cancel` only runs once node-server has
+  // started piping the body; a client gone before that is heard on the
+  // request's own signal alone. Nothing reads these responses, so a route
+  // that keeps writing waits on a write that never lands.
+  for (const entrance of ENTRANCES) {
+    it(`stops and finishes the turn of a client already gone, from ${entrance.name}`, async () => {
+      const gone = new AbortController();
+      gone.abort();
+      const app = createApp();
+      const res = await app.request(entrance.path, {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify(entrance.body),
+        signal: gone.signal,
+      });
+      expect(res.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(handedSignals[0]?.aborted).toBe(true);
+      expect(turns.ended).toBe(1);
+    });
+
+    it(`stops and finishes the turn when the request is aborted unread, from ${entrance.name}`, async () => {
+      const leaving = new AbortController();
+      const app = createApp();
+      const res = await app.request(entrance.path, {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify(entrance.body),
+        signal: leaving.signal,
+      });
+      expect(res.status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(handedSignals[0]?.aborted).toBe(false);
+
+      leaving.abort();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(handedSignals[0]?.aborted).toBe(true);
+      expect(turns.ended).toBe(1);
     });
   }
 });
