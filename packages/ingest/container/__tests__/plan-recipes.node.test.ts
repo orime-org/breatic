@@ -98,7 +98,7 @@ describe("owned plan recipe orchestration, with subprocesses mocked", () => {
     expect(analysis.decoder.args[analysis.decoder.args.indexOf("-vf") + 1]).toBe("null");
     expect(options.signal).toBe(request.signal);
     expect(JSON.parse(await readFile(request.output, "utf8"))).toEqual({ schemaVersion: 1, kind: "people", coordinateSpace: "display", anchor,
-      width: 1, height: 1, candidates: [{ detectionIndex: 0, faceBox: { x: 0, y: 0, width: 1, height: 1 } }] });
+      width: 1, height: 1, candidates: [{ detectionIndex: 0, faceBox: { x: 0, y: 0, width: 1, height: 1 }, pixelCrop: { x: 0, y: 0, width: 1, height: 1 } }] });
     expect(request.facts).toEqual(FACTS);
   });
 

@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { VideoSourceFrame } from "@shared/mini-tools/video-frame-table.js";
+import type { MiniToolPlanPixelRect } from "@shared/upload/mini-tool-plan-types.js";
 
 /** A candidate still awaiting registered thumbnail and persistent person identity. */
 export interface AnalysisFaceCandidate {
   detectionIndex: number;
   faceBox: { x: number; y: number; width: number; height: number };
+  pixelCrop?: MiniToolPlanPixelRect;
 }
 /** A cut on the exact source clock, independent of a detector's nominal fps. */
 export interface AnalysisSceneCut extends VideoSourceFrame { detectionScore: number }
@@ -27,10 +29,12 @@ function isFiniteNumber(value: unknown): value is number {
  * @param dimensions - The dimensions of the analyzed BGR frame.
  * @param dimensions.width - Source pixel width.
  * @param dimensions.height - Source pixel height.
+ * @param includePixelCrop - Whether display analysis retains its original integer pixel selection.
  * @returns Intersecting faces in original detection order.
  * @throws {TypeError} When geometry or a detector row is malformed.
  */
-export function readYuNetFaces(detections: unknown, dimensions: { width: number; height: number }): AnalysisFaceCandidate[] {
+export function readYuNetFaces(detections: unknown, dimensions: { width: number; height: number }, includePixelCrop = false): AnalysisFaceCandidate[] {
+  void includePixelCrop;
   const { width, height } = dimensions;
   if (![width, height].every((value) => Number.isSafeInteger(value) && value > 0)) throw new TypeError("Expected positive integral analysis geometry");
   if (detections === null) return [];

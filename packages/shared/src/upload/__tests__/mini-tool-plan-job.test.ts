@@ -94,6 +94,46 @@ describe("planned media job requests", () => {
     expect(sameMiniToolPlanJob(base, display)).toBe(false);
   });
 
+  it.each([
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 3, y: 1, width: 5, height: 3 } },
+    { sourceWidth: 7, sourceHeight: 5, rect: { x: 6, y: 4, width: 1, height: 1 } },
+  ])("retains an integer display crop and its original geometry", (crop) => {
+    const recipe = { kind: "frame", inputId: INPUT_A, frameIndex: 1, orientation: "display", crop };
+    expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
+  });
+
+  it.each([
+    { sourceWidth: 0, sourceHeight: 9, rect: { x: 0, y: 0, width: 1, height: 1 } },
+    { sourceWidth: 11, sourceHeight: 0, rect: { x: 0, y: 0, width: 1, height: 1 } },
+    { sourceWidth: 11.5, sourceHeight: 9, rect: { x: 0, y: 0, width: 1, height: 1 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: -1, y: 0, width: 1, height: 1 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 0, y: -1, width: 1, height: 1 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 0, y: 0, width: 0, height: 1 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 0, y: 0, width: 1, height: 0 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 1.25, y: 1, width: 2, height: 2 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 1, y: 1, width: 2.5, height: 2 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 10, y: 0, width: 2, height: 1 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 0, y: 8, width: 1, height: 2 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 0, y: 0, width: "1", height: 1 } },
+    { sourceWidth: 11, sourceHeight: 9, rect: { x: 0, y: 0, width: Infinity, height: 1 } },
+  ])("refuses invalid saved pixel geometry", (crop) => {
+    expect(miniToolPlanRecipeSchema.safeParse({ kind: "frame", inputId: INPUT_A, frameIndex: 1, orientation: "display", crop }).success).toBe(false);
+  });
+
+  it("requires explicit display orientation when a frame carries a display crop", () => {
+    expect(miniToolPlanRecipeSchema.safeParse({ kind: "frame", inputId: INPUT_A, frameIndex: 1,
+      crop: { sourceWidth: 11, sourceHeight: 9, rect: { x: 3, y: 1, width: 5, height: 3 } } }).success).toBe(false);
+  });
+
+  it("freezes the original pixel selection together with its source geometry", () => {
+    const original = { ...base, outputs: [{ ...outputs[1], recipe: { kind: "frame", inputId: INPUT_A, frameIndex: 1, orientation: "display",
+      crop: { sourceWidth: 11, sourceHeight: 9, rect: { x: 3, y: 1, width: 5, height: 3 } } } }] };
+    const changed = { ...original, outputs: [{ ...original.outputs[0], recipe: { ...original.outputs[0]!.recipe,
+      crop: { sourceWidth: 11, sourceHeight: 9, rect: { x: 3, y: 1, width: 4, height: 3 } } } }] };
+    expect(sameMiniToolPlanJob(original, structuredClone(original))).toBe(true);
+    expect(sameMiniToolPlanJob(original, changed)).toBe(false);
+  });
+
   it("grants exactly the two frozen reads and declared main and cover writes", () => {
     expect(miniToolPlanAccess(base)).toEqual({
       reads: ["fixtures/source-a.mp4", "fixtures/source-b.mp4"],
