@@ -16,8 +16,8 @@ interface RawStream {
   channels?: number;
   channel_layout?: string;
   sample_rate?: string;
-  start_pts?: string;
-  duration_ts?: string;
+  start_pts?: string | number;
+  duration_ts?: string | number;
   time_base?: string;
 }
 
@@ -136,8 +136,9 @@ export function buildLongMediaProbeReport(
  * @throws {Error} When PTS, duration or time base is unavailable.
  */
 function streamTiming(raw: RawStream): StreamTiming {
-  if (raw.start_pts === undefined || !/^-?\d+$/.test(raw.start_pts) ||
-      raw.duration_ts === undefined || !/^\d+$/.test(raw.duration_ts) || BigInt(raw.duration_ts) <= 0n) {
+  const startPts = exactIntegerText(raw.start_pts, true);
+  const durationTicks = exactIntegerText(raw.duration_ts, false);
+  if (startPts === null || durationTicks === null || BigInt(durationTicks) <= 0n) {
     throw new Error("The long media stream time is not measured");
   }
   const parts = raw.time_base?.split("/");
@@ -148,10 +149,26 @@ function streamTiming(raw: RawStream): StreamTiming {
   const numerator = BigInt(parts[0]!);
   const denominator = BigInt(parts[1]!);
   return {
-    startUs: ticksToMicroseconds(BigInt(raw.start_pts), numerator, denominator),
-    endUs: ticksToMicroseconds(BigInt(raw.start_pts) + BigInt(raw.duration_ts), numerator, denominator),
+    startUs: ticksToMicroseconds(BigInt(startPts), numerator, denominator),
+    endUs: ticksToMicroseconds(BigInt(startPts) + BigInt(durationTicks), numerator, denominator),
     timeBase: { numerator: parts[0]!, denominator: parts[1]! },
   };
+}
+
+/**
+ * Preserve an exact integer field from FFprobe's JSON representation.
+ * @param value - The number or decimal text emitted by FFprobe.
+ * @param signed - Whether negative integers are valid.
+ * @returns The exact decimal text, or null when precision is unavailable.
+ * @throws {Error} When a numeric JSON value has already lost integer precision.
+ */
+function exactIntegerText(value: string | number | undefined, signed: boolean): string | null {
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value)) throw new Error("The long media stream timestamp loses JSON precision");
+    return signed || value >= 0 ? String(value) : null;
+  }
+  if (typeof value !== "string") return null;
+  return (signed ? /^-?\d+$/ : /^\d+$/).test(value) ? value : null;
 }
 
 /**

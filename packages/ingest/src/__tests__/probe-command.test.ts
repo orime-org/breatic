@@ -181,8 +181,8 @@ describe("reading ffprobe's answer", () => {
           codec_name: "h264",
           width: 1920,
           height: 1080,
-          start_pts: "0",
-          duration_ts: "1080000",
+          start_pts: 0,
+          duration_ts: 1080000,
           time_base: "1/90000",
           disposition: { attached_pic: 0 },
         },
@@ -193,8 +193,8 @@ describe("reading ffprobe's answer", () => {
           channels: 2,
           channel_layout: "stereo",
           sample_rate: "48000",
-          start_pts: "96000",
-          duration_ts: "288000",
+          start_pts: 96000,
+          duration_ts: 288000,
           time_base: "1/48000",
         },
       ],
@@ -238,6 +238,23 @@ describe("reading ffprobe's answer", () => {
         time_base: "1/48000",
       }],
     }), "b".repeat(64), "channel-v1")).toThrow(/stream time is not measured/i);
+  });
+
+  it("refuses numeric PTS values that JSON cannot represent without precision loss", async () => {
+    const { buildLongMediaProbeReport } = await import("@ingest/long-media-probe-report.js");
+
+    expect(() => buildLongMediaProbeReport(JSON.stringify({
+      streams: [{
+        index: 0,
+        codec_type: "audio",
+        codec_name: "aac",
+        channels: 1,
+        sample_rate: "48000",
+        start_pts: Number.MAX_SAFE_INTEGER + 1,
+        duration_ts: 1,
+        time_base: "1/48000",
+      }],
+    }), "c".repeat(64), "channel-v1")).toThrow(/precision/i);
   });
 
   it("normalises the streams and the duration", () => {

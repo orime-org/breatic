@@ -5,7 +5,7 @@ import { env, createExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { computeLongMediaJobRequestDigest } from "@breatic/shared";
-import { acceptLongMediaProbeReport } from "@ingest/jobs/long-media-routes.js";
+import { acceptLongMediaProbeReport, serveLongMediaSource } from "@ingest/jobs/long-media-routes.js";
 import worker from "@ingest/index.js";
 
 const payload = {
@@ -107,7 +107,7 @@ describe("POST /long-media/jobs", () => {
     const second = await call("/long-media/jobs", { method: "POST", body });
     expect(first.status).toBe(202);
     expect(second.status).toBe(200);
-    await expect(second.json()).resolves.toMatchObject({ jobId: replayPayload.jobId, phase: "accepted", version: 0 });
+    await expect(second.json()).resolves.toMatchObject({ jobId: replayPayload.jobId, phase: "probing", version: 1 });
   });
 
   it("persists lifecycle changes and their recoverable effects atomically", async () => {
@@ -116,10 +116,7 @@ describe("POST /long-media/jobs", () => {
     expect(accepted.status).toBe(202);
     const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(lifecyclePayload.jobId));
 
-    await expect(stub.transition({ type: "start" }, Date.now())).resolves.toMatchObject({
-      snapshot: { phase: "probing", version: 1 },
-      effects: ["startProbe"],
-    });
+    await expect(accepted.json()).resolves.toMatchObject({ phase: "probing", version: 1 });
     await expect(stub.pendingEffects()).resolves.toEqual(["startProbe"]);
   });
 
@@ -148,6 +145,20 @@ describe("POST /long-media/jobs", () => {
       { attemptId: "attempt-1", epoch: 1, effect: "destroy" },
       { attemptId: "attempt-1", epoch: 1, effect: "start" },
     ]);
+  });
+
+  it("acknowledges external start effects only for their durable revision and epoch", async () => {
+    const effectPayload = { ...payload, jobId: "operation-effects:source-0", operationId: "operation-effects" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(effectPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(effectPayload.jobId));
+    const attempt = await stub.startAttempt("effect-attempt", Date.now());
+    expect(attempt?.state).toMatchObject({ epoch: 1, phase: "starting" });
+
+    await expect(stub.acknowledgeEffect(0, "startProbe")).resolves.toBe(false);
+    await expect(stub.acknowledgeEffect(1, "startProbe")).resolves.toBe(true);
+    await expect(stub.acknowledgeAttemptEffect(1, "effect-attempt", "start")).resolves.toBe(true);
+    await expect(stub.pendingEffects()).resolves.toEqual([]);
+    await expect(stub.pendingAttemptEffects()).resolves.toEqual([]);
   });
 
   it("commits validated probe facts only for the current running attempt and advances atomically", async () => {
@@ -215,6 +226,20 @@ describe("POST /long-media/jobs", () => {
 
     expect(response.status).toBe(200);
     await expect(stub.report()).resolves.toMatchObject({ phase: "planning", version: 2 });
+  });
+
+  it("serves only the one source key and measured size authorized for the probe", async () => {
+    const key = "long-media-source-test/source.mp4";
+    await env.BUCKET.put(key, new Uint8Array([1, 2, 3]));
+    const context = { containerId: "source-test", className: "LongMediaContainer", params: { key, sizeBytes: 3 } };
+
+    const refused = await serveLongMediaSource(new Request("http://r2.local/other.mp4"), env, context);
+    const accepted = await serveLongMediaSource(new Request(`http://r2.local/${key}`), env, context);
+
+    expect(refused.status).toBe(403);
+    expect(accepted.status).toBe(200);
+    expect(accepted.headers.get("content-length")).toBe("3");
+    await accepted.body?.cancel();
   });
 
   it("rejects a job whose absolute deadline has already passed", async () => {

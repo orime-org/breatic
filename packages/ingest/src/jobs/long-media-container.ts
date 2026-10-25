@@ -3,7 +3,15 @@
 
 import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
-import { acceptLongMediaProbeReport } from "@ingest/jobs/long-media-routes.js";
+import type { StopParams } from "@cloudflare/containers";
+import {
+  acceptLongMediaProbeReport,
+  LONG_MEDIA_REPORT_HOST,
+  serveLongMediaSource,
+} from "@ingest/jobs/long-media-routes.js";
+import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js";
+import { LONG_MEDIA_PROBE_PATH, PROBE_PORT } from "@ingest/probe-answer.js";
+import { noteFailure } from "@ingest/error-monitoring.js";
 import {
   readLongMediaJobRequest,
   readLongMediaProbeReport,
@@ -67,6 +75,7 @@ interface LongMediaJobRow extends Record<string, SqlStorageValue> {
 
 /** One recoverable side effect still waiting to be performed. */
 interface LongMediaEffectRow extends Record<string, SqlStorageValue> {
+  revision: number;
   effect: string;
 }
 
@@ -160,7 +169,7 @@ const PROBE_TABLE = `
 export class LongMediaContainer extends Container<LongMediaEnv> {
   private readonly jobStore: LongMediaJobStore;
 
-  defaultPort = 8787;
+  defaultPort = PROBE_PORT;
 
   enableInternet = false;
 
@@ -215,6 +224,16 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   }
 
   /**
+   * Acknowledge a lifecycle action after its platform effect completes.
+   * @param revision - The revision that requested the action.
+   * @param effect - The completed effect.
+   * @returns Whether the effect was pending.
+   */
+  acknowledgeEffect(revision: number, effect: LongMediaJobEffect): boolean {
+    return this.jobStore.acknowledgeEffect(revision, effect);
+  }
+
+  /**
    * Start a new durable Container attempt when the job is live and idle.
    * @param attemptId - Stable id allocated by the caller for this attempt.
    * @param now - The allocation time in epoch milliseconds.
@@ -243,6 +262,17 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   }
 
   /**
+   * Acknowledge a Container action after its platform effect completes.
+   * @param epoch - The attempt epoch.
+   * @param attemptId - The attempt identity.
+   * @param effect - The completed effect.
+   * @returns Whether the effect was pending.
+   */
+  acknowledgeAttemptEffect(epoch: number, attemptId: string, effect: LongMediaAttemptEffect): boolean {
+    return this.jobStore.acknowledgeAttemptEffect(epoch, attemptId, effect);
+  }
+
+  /**
    * Validate and atomically persist probe facts from the current Container attempt.
    * @param attemptId - The Container attempt that produced the report.
    * @param epoch - The attempt fencing epoch.
@@ -251,8 +281,108 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    * @returns The persisted report and lifecycle transition, or the rejection reason.
    * @throws {Error} When the probe report is malformed or durable state is corrupt.
    */
-  applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): LongMediaProbeApplyResult {
-    return this.jobStore.applyProbeReport(attemptId, epoch, report, now);
+  async applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): Promise<LongMediaProbeApplyResult> {
+    const result = this.jobStore.applyProbeReport(attemptId, epoch, report, now);
+    if (result.kind === "accepted" && result.lifecycle.effects.includes("stopContainer")) {
+      await this.destroy();
+    }
+    return result;
+  }
+
+  /**
+   * Start the current durable job's source probe in its Cloudflare Container.
+   * @returns The latest job summary, or null when no job exists.
+   * @throws {Error} When the source, Container or probe request cannot be started.
+   */
+  async startProbe(): Promise<LongMediaJobSnapshot | null> {
+    let snapshot = this.jobStore.report();
+    const request = this.jobStore.request();
+    if (snapshot === null || request === null) return null;
+    let startRevision: number | null = null;
+    if (snapshot.phase === "accepted") {
+      startRevision = this.jobStore.transition({ type: "start" }, Date.now())?.snapshot.version ?? null;
+      snapshot = this.jobStore.report();
+    }
+    if (snapshot === null || snapshot.phase !== "probing") return snapshot;
+    const now = Date.now();
+    const started = this.jobStore.startAttempt(crypto.randomUUID(), now);
+    if (started === null) return this.jobStore.report();
+
+    try {
+      await this.setOutboundByHosts({
+        [MEDIA_OBJECT_HOST]: {
+          method: "serveLongMediaSource",
+          params: { key: request.source.key, sizeBytes: request.source.sizeBytes },
+        },
+        [LONG_MEDIA_REPORT_HOST]: {
+          method: "acceptLongMediaProbeReport",
+          params: {
+            attemptId: started.state.attemptId,
+            epoch: started.state.epoch,
+            sourceFingerprint: request.source.sha256,
+            profileVersion: request.profileVersion,
+          },
+        },
+      });
+      await this.start();
+      this.jobStore.applyAttemptEvent({
+        type: "accepted",
+        attemptId: started.state.attemptId,
+        epoch: started.state.epoch,
+      }, Date.now());
+      this.jobStore.acknowledgeAttemptEffect(started.state.epoch, started.state.attemptId, "start");
+      this.jobStore.transition({ type: "containerStarted" }, Date.now());
+      const response = await this.containerFetch(new Request(`http://long-media${LONG_MEDIA_PROBE_PATH}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          objectUrl: mediaObjectUrl(request.source.key),
+          reportUrl: `http://${LONG_MEDIA_REPORT_HOST}/probe-report`,
+          deadlineAt: request.deadlineAt,
+        }),
+      }), PROBE_PORT);
+      await response.body?.cancel();
+      if (response.status !== 202) throw new Error(`The long media probe was answered ${response.status}`);
+      if (startRevision !== null) this.jobStore.acknowledgeEffect(startRevision, "startProbe");
+      return this.jobStore.report();
+    } catch (err) {
+      this.jobStore.applyAttemptEvent({
+        type: "failure",
+        attemptId: started.state.attemptId,
+        epoch: started.state.epoch,
+      }, Date.now());
+      this.jobStore.transition({ type: "fatal" }, Date.now());
+      this.jobStore.acknowledgeAttemptEffect(started.state.epoch, started.state.attemptId, "start");
+      if (startRevision !== null) this.jobStore.acknowledgeEffect(startRevision, "startProbe");
+      try {
+        await this.destroy();
+      } catch (stopError) {
+        noteFailure("ingest_long_media_probe_cleanup_failed", { jobId: request.jobId }, stopError);
+      }
+      noteFailure("ingest_long_media_probe_container_start_failed", { jobId: request.jobId }, err);
+      throw err;
+    }
+  }
+
+  /**
+   * Release the persisted container lease after the runtime stops.
+   * @param _params - The platform's stop information.
+   * @returns Nothing.
+   */
+  override async onStop(_params: StopParams): Promise<void> {
+    const attempt = this.jobStore.latestAttempt();
+    if (attempt !== null) {
+      this.jobStore.applyAttemptEvent({ type: "stop" }, Date.now());
+      this.jobStore.applyAttemptEvent({ type: "gone", attemptId: attempt.attemptId, epoch: attempt.epoch }, Date.now());
+      this.jobStore.acknowledgeAttemptEffect(attempt.epoch, attempt.attemptId, "destroy");
+    }
+    for (const effect of this.jobStore.pendingEffectRecords()) {
+      if (effect.effect === "stopContainer" || effect.effect === "checkContainerStopped") {
+        this.jobStore.acknowledgeEffect(effect.revision, effect.effect);
+      }
+    }
+    this.jobStore.transition({ type: "stopped" }, Date.now());
+    await this.setOutboundByHosts({});
   }
 }
 
@@ -309,6 +439,16 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Acknowledge a lifecycle action after its platform effect completes.
+   * @param revision - The revision that requested the action.
+   * @param effect - The completed effect.
+   * @returns Whether the effect was pending.
+   */
+  acknowledgeEffect(revision: number, effect: LongMediaJobEffect): boolean {
+    return this.jobStore.acknowledgeEffect(revision, effect);
+  }
+
+  /**
    * Start a new durable Container attempt when the job is live and idle.
    * @param attemptId - Stable id allocated by the caller for this attempt.
    * @param now - The allocation time in epoch milliseconds.
@@ -337,6 +477,17 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Acknowledge a Container action after its platform effect completes.
+   * @param epoch - The attempt epoch.
+   * @param attemptId - The attempt identity.
+   * @param effect - The completed effect.
+   * @returns Whether the effect was pending.
+   */
+  acknowledgeAttemptEffect(epoch: number, attemptId: string, effect: LongMediaAttemptEffect): boolean {
+    return this.jobStore.acknowledgeAttemptEffect(epoch, attemptId, effect);
+  }
+
+  /**
    * Validate and atomically persist probe facts from the current Container attempt.
    * @param attemptId - The Container attempt that produced the report.
    * @param epoch - The attempt fencing epoch.
@@ -348,14 +499,28 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): LongMediaProbeApplyResult {
     return this.jobStore.applyProbeReport(attemptId, epoch, report, now);
   }
+
+  /**
+   * Mark a submitted job as ready to probe without starting an image in protocol tests.
+   * @returns The state transition created for the probe.
+   */
+  startProbe(): LongMediaTransitionResult | null {
+    return this.jobStore.transition({ type: "start" }, Date.now());
+  }
 }
 
-LongMediaContainer.outboundHandlers = { acceptLongMediaProbeReport };
+LongMediaContainer.outboundHandlers = { acceptLongMediaProbeReport, serveLongMediaSource };
 
 /** The committed lifecycle snapshot and requested effects. */
 export interface LongMediaTransitionResult {
   snapshot: LongMediaJobSnapshot;
   effects: LongMediaJobEffect[];
+}
+
+/** A lifecycle effect tied to the revision that requested it. */
+export interface LongMediaJobEffectRecord {
+  revision: number;
+  effect: LongMediaJobEffect;
 }
 
 /** One committed attempt state and the external actions it requested. */
@@ -452,6 +617,21 @@ class LongMediaJobStore {
   }
 
   /**
+   * Read and verify the immutable request held by this job.
+   * @returns The request, or null when no job exists.
+   * @throws {Error} When its stored identity is corrupt.
+   */
+  request(): LongMediaJobRequest | null {
+    const row = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+    if (row === undefined) return null;
+    const request = readLongMediaJobRequest(JSON.parse(row.request_json) as unknown);
+    if (request.jobId !== row.job_id || request.requestDigest !== row.request_digest) {
+      throw new Error("The long media job durable identity is inconsistent");
+    }
+    return request;
+  }
+
+  /**
    * Apply one event and atomically record its requested external effects.
    * @param event - The lifecycle event.
    * @param now - The event's epoch milliseconds.
@@ -508,6 +688,42 @@ class LongMediaJobStore {
       .exec<LongMediaEffectRow>("SELECT effect FROM long_media_effects WHERE status = 'pending' ORDER BY revision, effect")
       .toArray();
     return rows.map((row) => readEffect(row.effect));
+  }
+
+  /**
+   * Read pending lifecycle effects with their durable revisions.
+   * @returns Pending effects in revision order.
+   */
+  pendingEffectRecords(): LongMediaJobEffectRecord[] {
+    const rows = this.ctx.storage.sql
+      .exec<LongMediaEffectRow>("SELECT revision, effect FROM long_media_effects WHERE status = 'pending' ORDER BY revision, effect")
+      .toArray();
+    return rows.map((row) => ({ revision: row.revision, effect: readEffect(row.effect) }));
+  }
+
+  /**
+   * Acknowledge one lifecycle side effect after the platform action completes.
+   * @param revision - The exact job revision that emitted the effect.
+   * @param effect - The action that completed.
+   * @returns Whether a pending effect was acknowledged.
+   */
+  acknowledgeEffect(revision: number, effect: LongMediaJobEffect): boolean {
+    const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT job_id FROM long_media_jobs LIMIT 1").toArray()[0];
+    if (job === undefined) return false;
+    const row = this.ctx.storage.sql.exec<LongMediaEffectRow>(
+      "SELECT revision, effect FROM long_media_effects WHERE job_id = ? AND revision = ? AND effect = ? AND status = 'pending'",
+      job.job_id,
+      revision,
+      effect,
+    ).toArray()[0];
+    if (row === undefined) return false;
+    this.ctx.storage.sql.exec(
+      "UPDATE long_media_effects SET status = 'done' WHERE job_id = ? AND revision = ? AND effect = ? AND status = 'pending'",
+      job.job_id,
+      revision,
+      effect,
+    );
+    return true;
   }
 
   /**
@@ -612,6 +828,45 @@ class LongMediaJobStore {
       )
       .toArray();
     return rows.map((row) => ({ epoch: row.epoch, attemptId: row.attempt_id, effect: readAttemptEffect(row.effect) }));
+  }
+
+  /**
+   * Acknowledge one platform action for its exact attempt fence.
+   * @param epoch - The attempt epoch.
+   * @param attemptId - The attempt identity.
+   * @param effect - The action that completed.
+   * @returns Whether a pending effect was acknowledged.
+   */
+  acknowledgeAttemptEffect(epoch: number, attemptId: string, effect: LongMediaAttemptEffect): boolean {
+    const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT job_id FROM long_media_jobs LIMIT 1").toArray()[0];
+    if (job === undefined) return false;
+    const row = this.ctx.storage.sql.exec<LongMediaAttemptEffectRow>(
+      "SELECT epoch, attempt_id, effect FROM long_media_attempt_effects WHERE job_id = ? AND epoch = ? AND attempt_id = ? AND effect = ? AND status = 'pending'",
+      job.job_id,
+      epoch,
+      attemptId,
+      effect,
+    ).toArray()[0];
+    if (row === undefined) return false;
+    this.ctx.storage.sql.exec(
+      "UPDATE long_media_attempt_effects SET status = 'done' WHERE job_id = ? AND epoch = ? AND attempt_id = ? AND effect = ? AND status = 'pending'",
+      job.job_id,
+      epoch,
+      attemptId,
+      effect,
+    );
+    return true;
+  }
+
+  /**
+   * Read the newest attempt so a platform stop can close its fence.
+   * @returns The attempt, or null when the job has never started a Container.
+   */
+  latestAttempt(): LongMediaAttemptState | null {
+    const row = this.ctx.storage.sql
+      .exec<LongMediaAttemptRow>("SELECT * FROM long_media_attempts ORDER BY epoch DESC LIMIT 1")
+      .toArray()[0];
+    return row === undefined ? null : attemptStateOf(row);
   }
 
   /**
