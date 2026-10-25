@@ -40,8 +40,15 @@ export interface PlanDisplayFrame { path: string; width: number; height: number;
  * @throws {Error} When the anchor, process or produced PNG is invalid.
  */
 export async function preparePlanDisplayFrame(request: PlanRecipeRequest, anchor: PlanDisplayFrame["anchor"], output: string): Promise<PlanDisplayFrame> {
-  void request; void anchor; void output;
-  throw new Error("Display anchor preparation awaits independent RED");
+  request.signal.throwIfAborted();
+  const sourceFrame = request.facts.source.frameTable.frames[anchor.frameIndex];
+  if (sourceFrame === undefined || sourceFrame.pts !== anchor.pts) throw new Error("Display anchor differs from the original source ledger");
+  await runPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts", "-i", request.input,
+    "-map", "0:v:0", "-vf", `select=eq(n\\,${anchor.frameIndex})`, "-fps_mode", "passthrough", "-frames:v", "1", "-c:v", "png", "-f", "image2", output],
+  { signal: request.signal, stdoutBytes: request.limits.probeStdoutBytes, stderrTailBytes: request.limits.stderrTailBytes });
+  const geometry = pngSize(new Uint8Array(await readFile(output)));
+  if (geometry === null) throw new Error("Display anchor did not produce a complete PNG");
+  return { path: output, ...geometry, anchor };
 }
 
 /** JSON metadata artifacts have no image, video duration or optional cover. */
