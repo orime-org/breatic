@@ -15,7 +15,7 @@
  * four steps (ticket, parts, finish, ending) are stubbed to succeed after a
  * stretch of fake time, and each records the signal it was handed.
  *
- * Test spec: inner engineering/research/2026-10-24-1006-test-spec.md §7.1
+ * Test spec: inner#1006 §7.1
  * W11 (chat), W13, W14 and §7.2 H01-H08.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

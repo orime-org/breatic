@@ -13,7 +13,7 @@
  * `waitForUploadEnding`. Each stub writes its name into `steps`, so the order
  * is asserted as well as the calls.
  *
- * Test spec: inner engineering/research/2026-10-24-1006-test-spec.md §7.1
+ * Test spec: inner#1006 §7.1
  * (W01-W07, W15-W17, P03) and the browser halves of §6.1 S03, S07, S15, S25.
  */
 
