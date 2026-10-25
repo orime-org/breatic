@@ -10,7 +10,8 @@
  *
  * A reference reads only the caller's own finished, fresh transfer, at most
  * once; one user has one read in flight at a time, so "read, then claim"
- * cannot hand one file out twice. A failure the file's own content causes
+ * cannot hand one file out twice. A reference that finds the user's read in
+ * flight waits for it, up to `transfer.read_lock_wait_seconds`. A failure the file's own content causes
  * (too large, not a transfer file, not UTF-8) uses the reference up as well,
  * so the same bad file cannot make us read it again and again; a failure that
  * is not the file's (missing object, storage error) leaves it usable.
@@ -19,6 +20,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import {
   env,
   getRedis,
@@ -53,7 +55,7 @@ export type TransferReadResult =
   | { kind: "rejected"; reason: TransferRejectReason; ownerId?: string }
   /** The file is larger than `cap` bytes; the reference is used up. */
   | { kind: "too_large"; cap: number }
-  /** This user already has a read in flight. */
+  /** This user's read in flight did not end within the wait. */
   | { kind: "busy" }
   /** Storage failed for a reason that is not the file's; the reference stays usable. */
   | { kind: "read_failed"; err: unknown };
@@ -151,6 +153,26 @@ async function readLocked(route: TransferRoute, key: string, userId: string): Pr
 }
 
 /**
+ * Take one user's read lock, waiting for it: try again every
+ * `read_lock_retry_ms` until `read_lock_wait_seconds` have passed, so two
+ * references of one user arriving together are read one after the other.
+ * @param lock - The lock's Redis key.
+ * @param token - This request's token, which the release checks.
+ * @returns True when the lock was taken; false once the wait ran out.
+ * @throws {Error} When Redis fails.
+ */
+async function acquireReadLock(lock: string, token: string): Promise<boolean> {
+  const { read_lock_seconds, read_lock_wait_seconds, read_lock_retry_ms } = getStorageConfig().transfer;
+  const deadline = Date.now() + read_lock_wait_seconds * 1000;
+  for (;;) {
+    if ((await getRedis().set(lock, token, "EX", read_lock_seconds, "NX")) === "OK") return true;
+    const left = deadline - Date.now();
+    if (left <= 0) return false;
+    await sleep(Math.min(read_lock_retry_ms, left));
+  }
+}
+
+/**
  * Check a transfer reference and read the body it names, at most once and
  * with at most one read in flight per user.
  * @param route - Which route's cap applies.
@@ -168,8 +190,7 @@ export async function readTransferReference(
 
   const lock = readLockKey(userId);
   const token = randomUUID();
-  const locked = await getRedis().set(lock, token, "EX", getStorageConfig().transfer.read_lock_seconds, "NX");
-  if (locked !== "OK") return { kind: "busy" };
+  if (!(await acquireReadLock(lock, token))) return { kind: "busy" };
   try {
     return await readLocked(route, key, userId);
   } finally {

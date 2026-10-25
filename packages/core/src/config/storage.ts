@@ -119,6 +119,10 @@ export const storageConfigSchema = z
       reference_ttl_seconds: z.number().int().positive().default(3600),
       /** How long, in seconds, one user's in-flight transfer read holds its lock. */
       read_lock_seconds: z.number().int().positive().default(60),
+      /** How long, in seconds, a reference waits for that lock before answering 429. */
+      read_lock_wait_seconds: z.number().int().positive().default(10),
+      /** How long, in milliseconds, a waiting reference sleeps between tries for the lock. */
+      read_lock_retry_ms: z.number().int().positive().default(100),
     })
     .prefault({}),
   });

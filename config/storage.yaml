@@ -72,3 +72,9 @@ transfer:
   reference_ttl_seconds: 3600
   # How long one user's in-flight transfer read holds its lock.
   read_lock_seconds: 60
+  # A reference that finds the lock held tries again every read_lock_retry_ms
+  # milliseconds, for up to read_lock_wait_seconds, before answering 429; two
+  # large operations of one user arriving together are then read one after
+  # the other instead of the second being refused.
+  read_lock_wait_seconds: 10
+  read_lock_retry_ms: 100
