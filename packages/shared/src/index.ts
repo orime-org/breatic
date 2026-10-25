@@ -942,3 +942,17 @@ export {
   type AlphaManifest,
   type VideoPresentationRect,
 } from "@shared/upload/video-presentation.js";
+export {
+  videoPresentationSourceBindingSchema,
+  videoPresentationResponseSchema,
+  type VideoPresentationSourceBinding,
+  type VideoPresentationResponse,
+  type VideoPresentationAttempt,
+  type VideoPresentationPreparation,
+} from "@shared/upload/video-presentation-response.js";
+export {
+  videoPresentationAtIngest,
+  type VideoPresentationIngestRequest,
+  type VideoPresentationIngestSnapshot,
+  type VideoPresentationIngestAttempt,
+} from "@shared/upload/video-presentation-ingest.js";
