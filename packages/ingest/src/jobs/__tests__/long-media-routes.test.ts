@@ -418,6 +418,18 @@ describe("POST /long-media/jobs", () => {
       measured: { sizeBytes: head("m4a").byteLength, contentType: "audio/mp4" },
     }]);
     await expect(stub.segmentWritePermit("understand/root-0.mp3")).resolves.toBeNull();
+    const registeredPath = `/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/segments/${encodeURIComponent(segmentId)}/registered`;
+    const unauthorizedRegistration = await call(registeredPath, {
+      method: "POST",
+      body: JSON.stringify({ expectedVersion: 2 }),
+    }, false);
+    const acknowledgedRegistration = await call(registeredPath, {
+      method: "POST",
+      body: JSON.stringify({ expectedVersion: 2 }),
+    });
+    expect(unauthorizedRegistration.status).toBe(401);
+    expect(acknowledgedRegistration.status).toBe(200);
+    await expect(stub.readSegments()).resolves.toMatchObject([{ id: segmentId, status: "ready", version: 3 }]);
     await expect(stub.readSegments()).resolves.toHaveLength(1);
   });
 

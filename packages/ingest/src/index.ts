@@ -45,8 +45,10 @@ import {
   LONG_MEDIA_PLAN_PATH,
   LONG_MEDIA_PROBE_REPORT_PATH,
   LONG_MEDIA_RUN_PATH,
+  LONG_MEDIA_SEGMENT_REGISTERED_PATH,
   LONG_MEDIA_SEGMENTS_PATH,
   applyLongMediaPlan,
+  acknowledgeLongMediaSegmentRegistration,
   readLongMediaJob,
   readLongMediaProbeReport,
   readLongMediaSegments,
@@ -1433,6 +1435,13 @@ async function route(request: Request, env: Env): Promise<Response> {
   const longMediaRun = LONG_MEDIA_RUN_PATH.exec(pathname);
   if (request.method === "POST" && longMediaRun) {
     return runLongMediaSegments(request, env, longMediaRun[1] ?? "");
+  }
+
+  const longMediaSegmentRegistered = LONG_MEDIA_SEGMENT_REGISTERED_PATH.exec(pathname);
+  if (request.method === "POST" && longMediaSegmentRegistered) {
+    return acknowledgeLongMediaSegmentRegistration(
+      request, env, longMediaSegmentRegistered[1] ?? "", longMediaSegmentRegistered[2] ?? "",
+    );
   }
 
   const job = JOB_PATH.exec(pathname);

@@ -37,6 +37,9 @@ export const LONG_MEDIA_PLAN_PATH = /^\/long-media\/jobs\/([^/]+)\/plan$/;
 /** `/long-media/jobs/{id}/run`. */
 export const LONG_MEDIA_RUN_PATH = /^\/long-media\/jobs\/([^/]+)\/run$/;
 
+/** `/long-media/jobs/{id}/segments/{segmentId}/registered`. */
+export const LONG_MEDIA_SEGMENT_REGISTERED_PATH = /^\/long-media\/jobs\/([^/]+)\/segments\/([^/]+)\/registered$/;
+
 /** The hostname used only by the Container's report callback. */
 export const LONG_MEDIA_REPORT_HOST = "long-media.local";
 
@@ -230,6 +233,44 @@ export async function runLongMediaSegments(
     noteFailure("ingest_long_media_segment_start_failed", { jobId: decodedJobId }, err);
     throw err;
   }
+}
+
+/**
+ * Confirm Node has registered one measured segment as a canonical asset.
+ * @param request - The backend acknowledgement with the observed segment version.
+ * @param env - The Worker's Durable Object namespace.
+ * @param jobId - The encoded durable job identity.
+ * @param segmentId - The encoded durable segment identity.
+ * @returns The accepted segment state, or a conflict for stale evidence.
+ */
+export async function acknowledgeLongMediaSegmentRegistration(
+  request: Request,
+  env: Pick<LongMediaRoutesEnv, "INGEST_SHARED_SECRET" | "LONG_MEDIA">,
+  jobId: string,
+  segmentId: string,
+): Promise<Response> {
+  if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
+  let decodedJobId: string;
+  let decodedSegmentId: string;
+  let expectedVersion: number;
+  try {
+    decodedJobId = decodeURIComponent(jobId);
+    decodedSegmentId = decodeURIComponent(segmentId);
+    const value: unknown = await request.json();
+    if (typeof value !== "object" || value === null || Array.isArray(value) ||
+      Object.keys(value).length !== 1 || !Number.isSafeInteger((value as { expectedVersion?: unknown }).expectedVersion) ||
+      ((value as { expectedVersion: number }).expectedVersion < 0)) {
+      return new Response("Invalid segment registration acknowledgement", { status: 400 });
+    }
+    expectedVersion = (value as { expectedVersion: number }).expectedVersion;
+  } catch {
+    return new Response("Invalid segment registration acknowledgement", { status: 400 });
+  }
+  const result = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId))
+    .applySegmentEvent(decodedSegmentId, expectedVersion, { type: "registered" });
+  return result.kind === "accepted"
+    ? Response.json(result)
+    : Response.json(result, { status: 409 });
 }
 
 /**
