@@ -92,7 +92,7 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
     return (
       <EndingLine
         testId='message-bubble-error'
-        text={t('chat.error.turnFailed')}
+        text={t(message.failedReason === 'too_long' ? 'chat.error.turnTooLong' : 'chat.error.turnFailed')}
         tone='error'
         {...(message.failedJustNow === true ? { alert: true } : {})}
       />

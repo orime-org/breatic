@@ -298,6 +298,18 @@ describe('how a stored turn reads when the conversation is reopened', () => {
     expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
   });
 
+  it('says a turn that ended too long to finish so, and not that it should be sent again (inner#1567)', () => {
+    render(
+      <MessageBubble
+        message={toChatMessage({ id: 'm', role: 'assistant', parts: [{ type: 'data-failed', data: { reason: 'too_long' } }] })}
+      />,
+    );
+
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line).toHaveTextContent('This turn had too much to process and could not finish. Try a narrower request.');
+    expect(line).not.toHaveTextContent('Try sending it again');
+  });
+
   it('says a turn that produced nothing produced nothing', () => {
     render(<MessageBubble message={toChatMessage({ id: 'm', role: 'assistant', parts: [] })} />);
 

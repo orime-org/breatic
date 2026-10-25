@@ -358,7 +358,8 @@
     },
     "error": {
       "network": "Network error",
-      "turnFailed": "This reply could not be finished. Try sending it again."
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "turnTooLong": "This turn had too much to process and could not finish. Try a narrower request."
     },
     "message": {
       "interrupted": "Stopped",

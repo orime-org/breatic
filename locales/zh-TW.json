@@ -358,7 +358,8 @@
     },
     "error": {
       "network": "網路錯誤",
-      "turnFailed": "這則回覆沒能完成，可以再發一次。"
+      "turnFailed": "這則回覆沒能完成，可以再發一次。",
+      "turnTooLong": "這次要處理的內容太長，沒能完成。可以縮小範圍再試。"
     },
     "message": {
       "interrupted": "已停止",

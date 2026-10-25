@@ -195,6 +195,12 @@ export interface ChatMessage {
    */
   failed?: true;
   /**
+   * Why the turn failed, when the server said: `too_long` is a turn whose
+   * request could not be made to fit the model's context window, which
+   * sending it again would not change (inner#1567).
+   */
+  failedReason?: 'too_long';
+  /**
    * The turn hit the per-call output ceiling, so this stops mid-sentence.
    *
    * Stored like {@link ChatMessage.interrupted}, and kept apart from it: what
