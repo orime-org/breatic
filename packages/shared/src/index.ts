@@ -952,7 +952,11 @@ export {
 } from "@shared/upload/video-presentation-response.js";
 export {
   videoPresentationAtIngest,
+  videoPresentationIngestSnapshotSchema,
   type VideoPresentationIngestRequest,
   type VideoPresentationIngestSnapshot,
   type VideoPresentationIngestAttempt,
+  type VideoPresentationProcessLimits,
+  type VideoPresentationPricing,
+  type VideoPresentationUsageFact,
 } from "@shared/upload/video-presentation-ingest.js";

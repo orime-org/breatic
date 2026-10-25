@@ -105,6 +105,8 @@ export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
+export * as videoPresentationService from "@domain/asset/video-presentation.service.js";
+export { VIDEO_PRESENTATION_QUEUE, VideoPresentationSourceChanged, type VideoPresentationJob } from "@domain/asset/video-presentation.service.js";
 export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";
 export { isReaderLinkFault, storedTypeOf, TYPE_UNKNOWN, urlIngestFailureLevel } from "@domain/asset/reader-source.js";
 export {
