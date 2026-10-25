@@ -252,8 +252,6 @@ export function SpaceTab({
       }}
     >
       {busy ? (
-        // Space activity leaves navigation enabled; Button loading would swallow tab presses.
-        // eslint-disable-next-line breatic/no-hand-written-button-spinner
         <Loader2
           data-testid={`space-tab-busy-${id}`}
           className='size-3 shrink-0 animate-spin text-status-info-foreground'

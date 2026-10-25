@@ -16,8 +16,41 @@ ruleTester.run("no-hand-written-button-spinner", noHandWrittenButtonSpinner, {
     { code: "export const D = () => <span data-testid='sending'><Loader2 /></span>;" },
     // A name that merely contains the word is another element.
     { code: "export const E = () => <ButtonGroup><Loader2 /></ButtonGroup>;" },
+    // A tab reports activity elsewhere while its navigation stays enabled.
+    { code: 'export const Tab = () => <Button role="tab"><Loader2 /></Button>;' },
+    { code: "export const Tab = () => <Button role={'tab'}><span><Loader2 /></span></Button>;" },
+    { code: 'export const Tab = () => <Button role="tab" icon={<Loader2 />}>Space</Button>;' },
+    { code: 'export const Tab = () => <Button {...props} role="tab"><Loader2 /></Button>;' },
   ],
   invalid: [
+    {
+      code: 'export const Tab = () => <Button role={role}><Loader2 /></Button>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
+    {
+      code: 'export const Action = () => <Button role="button"><Loader2 /></Button>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
+    {
+      code: 'export const Tab = () => <Button role="tab" {...props}><Loader2 /></Button>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
+    {
+      code: 'export const Action = () => <AlertDialogAction role="tab"><Loader2 /></AlertDialogAction>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
+    {
+      code: 'export const Tab = () => <Button role="tab"><Button><Loader2 /></Button></Button>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
+    {
+      code: 'export const Action = () => <Button><Button role="tab"><Loader2 /></Button></Button>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
+    {
+      code: 'export const Action = () => <Button><span role="tab"><Loader2 /></span></Button>;',
+      errors: [{ messageId: "handWrittenSpinner" }],
+    },
     {
       code: "export const F = () => <Button disabled={busy}>{busy ? <Loader2 className='mr-2 h-3.5 w-3.5 animate-spin' /> : null}Pay</Button>;",
       errors: [{ messageId: "handWrittenSpinner", line: 1 }],
