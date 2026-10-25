@@ -44,13 +44,15 @@ const COVER_MAX_BYTES = 10 * 1024 * 1024;
  * Send a local file to the Worker.
  * @param url - Where it goes.
  * @param file - The file.
+ * @param signal - The original planned deadline, when the caller carries one.
  * @returns Nothing.
  * @throws {Error} When the Worker does not take it.
  */
-async function put(url: string, file: string): Promise<void> {
+export async function put(url: string, file: string, signal?: AbortSignal): Promise<void> {
   const size = (await stat(file)).size;
   const answered = await fetch(url, {
     method: "PUT",
+    signal,
     headers: { "content-length": String(size) },
     body: Readable.toWeb(createReadStream(file)) as ReadableStream<Uint8Array>,
     duplex: "half",
@@ -62,12 +64,13 @@ async function put(url: string, file: string): Promise<void> {
  * Download the source into the job's directory, whole, before any run reads it.
  * @param url - Where the Durable Object serves the source.
  * @param file - The local copy to write.
+ * @param signal - The original planned deadline, when the caller carries one.
  * @throws {Error} When the answer is not 200 or fewer bytes arrive than it announced.
  */
-async function download(url: string, file: string): Promise<void> {
-  const answered = await fetch(url);
+export async function download(url: string, file: string, signal?: AbortSignal): Promise<void> {
+  const answered = await fetch(url, { signal });
   if (!answered.ok || answered.body === null) throw new Error(`the read of ${url} was answered ${answered.status}`);
-  await pipeline(Readable.fromWeb(answered.body as NodeReadableStream<Uint8Array>), createWriteStream(file));
+  await pipeline(Readable.fromWeb(answered.body as NodeReadableStream<Uint8Array>), createWriteStream(file), { signal });
   const announced = Number(answered.headers.get("content-length"));
   const arrived = (await stat(file)).size;
   if (Number.isFinite(announced) && announced > 0 && arrived !== announced) {
@@ -79,7 +82,7 @@ async function download(url: string, file: string): Promise<void> {
  * The CPU time the container's cgroup has counted.
  * @returns Microseconds, or null when the file is not there to read.
  */
-async function cpuUsec(): Promise<number | null> {
+export async function cpuUsec(): Promise<number | null> {
   const stats = await readFile("/sys/fs/cgroup/cpu.stat", "utf8").catch(() => null);
   const line = stats?.split("\n").find((entry) => entry.startsWith("usage_usec "));
   const value = line === undefined ? NaN : Number(line.split(" ")[1]);
