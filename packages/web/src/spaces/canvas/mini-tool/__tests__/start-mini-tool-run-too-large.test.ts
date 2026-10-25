@@ -137,13 +137,13 @@ beforeEach(async () => {
 });
 
 describe('a mini-tool run refused with 413', () => {
-  it('E05 nginx\'s 413: the nodes say errorTooLarge with the configured limit', async () => {
+  it('E05 nginx\'s 413: the nodes say the server\'s payload_too_large sentence with the configured limit', async () => {
     api.run.mockRejectedValue(new ApiException({ status: 413, message: '<html>413</html>', fromServer: false }));
 
     await startMiniToolRun(press());
 
     expect(failedMessage()).toEqual({
-      key: 'canvas.generatePanel.errorTooLarge',
+      key: 'server.error.payload_too_large',
       params: { limit: '2 MiB' },
     });
   });

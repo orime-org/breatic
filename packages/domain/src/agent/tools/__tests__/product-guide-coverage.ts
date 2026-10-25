@@ -146,7 +146,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.errorNoReferenceMention": { described: /A video model that needs one says what is still missing/ },
   "canvas.generatePanel.errorNoRightAudio": { described: /A required slot left empty stops the run with a message naming it/ },
   "canvas.generatePanel.errorNoSourceVideo": { described: /A required slot left empty stops the run with a message naming it/ },
-  "canvas.generatePanel.errorTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.generatePanel.errorTooLargeNoLimit": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.generatePanel.errorTooManyReferences": { described: /takes at most so many mentions of a kind; past that, pressing generate says the limit/ },
   "canvas.generatePanel.execute": { excluded: REASONS.SCREEN_READER, look: /press the round button with an upward arrow at the right end/ },

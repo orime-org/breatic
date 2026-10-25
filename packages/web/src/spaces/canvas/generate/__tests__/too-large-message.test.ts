@@ -12,7 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { t, type TaskCreateInput } from '@breatic/shared';
+import { setLocale, t, type TaskCreateInput } from '@breatic/shared';
 import type * as RequestModule from '@web/data/api/request';
 
 vi.mock('@web/data/api/request', async (importOriginal) => ({
@@ -87,21 +87,22 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  setLocale('en');
   resetRunOnceForTests();
   canvasSessions.clear();
   assetsApi.resetUploadConfigCache();
 });
 
 describe('executeErrorMessage on 413 (E01, E02)', () => {
-  it('E01 asks for errorTooLarge with the configured limit, and returns what it got', () => {
+  it('E01 asks for the server\'s payload_too_large sentence with the configured limit, and returns what it got', () => {
     const translate = vi.fn((key: string, params?: Record<string, string | number>) =>
       `${key}:${JSON.stringify(params)}`,
     );
 
     const message = executeErrorMessage(413, translate);
 
-    expect(translate.mock.calls).toEqual([['canvas.generatePanel.errorTooLarge', { limit: '2 MiB' }]]);
-    expect(message).toBe('canvas.generatePanel.errorTooLarge:{"limit":"2 MiB"}');
+    expect(translate.mock.calls).toEqual([['server.error.payload_too_large', { limit: '2 MiB' }]]);
+    expect(message).toBe('server.error.payload_too_large:{"limit":"2 MiB"}');
   });
 
   it.each([
@@ -137,12 +138,15 @@ describe('a Generate press refused with 413 (E03, E04)', () => {
   it.each([
     ['nginx, with no sentence of ours', new ApiException({ status: 413, message: '<html>413</html>', fromServer: false })],
     ['our server, with its own sentence', new ApiException({ status: 413, message: SERVER_SENTENCE, fromServer: true })],
-  ])('says errorTooLarge with the configured limit when refused by %s', async (_case, refusal) => {
+  ])('says the server\'s payload_too_large sentence with the configured limit when refused by %s', async (_case, refusal) => {
+    // Read in zh-CN, where this sentence is worded apart from every other
+    // one; in English the old Generate copy said the same words.
+    setLocale('zh-CN');
     vi.mocked(canvasApi.createTask).mockRejectedValueOnce(refusal);
 
     await pressAndFail();
 
-    const expected = t('canvas.generatePanel.errorTooLarge', { limit: '2 MiB' });
+    const expected = t('server.error.payload_too_large', { limit: '2 MiB' });
     expect(vi.mocked(toast.error).mock.calls).toEqual([[expected]]);
     expect(expected).toContain('2 MiB');
   });

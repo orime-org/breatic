@@ -5,12 +5,12 @@
  * Understand and Transcribe refused with 413 (inner#1006 design §5, test
  * spec §7.4 E07-E09 and the reading entry of E10). Our server's 413 carries
  * its own sentence and is shown as it is; nginx's carries none, so the press
- * says errorTooLarge with the limit from the session's cached upload config
+ * says the server's payload_too_large sentence with the limit from the session's cached upload config
  * (2 MiB here, not the default) instead of "could not start".
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { t } from '@breatic/shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLocale, t } from '@breatic/shared';
 import type * as RequestModule from '@web/data/api/request';
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
@@ -98,23 +98,33 @@ beforeEach(async () => {
 });
 
 describe('a reading refused with 413', () => {
-  it('E07 Understand, nginx\'s 413: errorTooLarge with the configured limit', async () => {
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it('E07 Understand, nginx\'s 413: the server\'s payload_too_large sentence with the configured limit', async () => {
+    // zh-CN words this sentence apart from the old Generate copy, which
+    // English does not.
+    setLocale('zh-CN');
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(NGINX_413());
 
     await startUnderstandRun(RUN);
 
-    const expected = t('canvas.generatePanel.errorTooLarge', { limit: '2 MiB' });
+    const expected = t('server.error.payload_too_large', { limit: '2 MiB' });
     expect(vi.mocked(toast.error).mock.calls).toEqual([[expected]]);
     expect(expected).toContain('2 MiB');
     expect(expected).not.toBe(t('canvas.understand.couldNotStart'));
   });
 
-  it('E08 Transcribe, nginx\'s 413: errorTooLarge with the configured limit', async () => {
+  it('E08 Transcribe, nginx\'s 413: the server\'s payload_too_large sentence with the configured limit', async () => {
+    // zh-CN words this sentence apart from the old Generate copy, which
+    // English does not.
+    setLocale('zh-CN');
     vi.mocked(canvasApi.transcribe).mockRejectedValueOnce(NGINX_413());
 
     await startTranscribeRun({ ...RUN, source: AUDIO, keepFillers: false });
 
-    const expected = t('canvas.generatePanel.errorTooLarge', { limit: '2 MiB' });
+    const expected = t('server.error.payload_too_large', { limit: '2 MiB' });
     expect(vi.mocked(toast.error).mock.calls).toEqual([[expected]]);
     expect(expected).toContain('2 MiB');
     expect(expected).not.toBe(t('canvas.transcribe.couldNotStart'));
