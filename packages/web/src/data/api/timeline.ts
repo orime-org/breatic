@@ -28,7 +28,7 @@ export const timelineApi = {
     return apiGet(`/projects/${projectId}/assets/${assetId}`, { signal });
   },
   /**
-   * Read authorized creation defaults and bounded persistence transport settings.
+   * Read authorized creation defaults and asset paging settings.
    * @param projectId - The Project being opened.
    * @param signal - Cancellation for this read.
    * @returns Only public Timeline configuration.
