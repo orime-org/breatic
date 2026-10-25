@@ -520,7 +520,7 @@ export interface ProjectReferenceAcceptance {
  * Ensure a validated batch and distinguish actual inserts from existing rows.
  * @param projectId - The Project accepting the assets.
  * @param assetIds - Canonical, unique asset identities in stable order.
- * @param displayNames - Verified original names for new relationships.
+ * @param displayNames - Verified original names, when known.
  * @param tx - The transaction containing validation and association writes.
  * @returns Live relationships and identities returned by PostgreSQL's insert.
  * @throws {Error} When the database insert or read fails.
@@ -538,6 +538,17 @@ export async function ensureProjectReferencesDetailed(
     target: [projectAssetRefs.projectId, projectAssetRefs.assetId],
     where: sql`deleted_at IS NULL`,
   }).returning({ assetId: projectAssetRefs.assetId });
+  // A Space can accept a URL before an upload supplies its first verified name.
+  for (const assetId of assetIds) {
+    const displayName = displayNames[assetId];
+    if (!displayName) continue;
+    await tx.update(projectAssetRefs).set({
+      displayName, updatedAt: sql`${projectAssetRefs.updatedAt}`,
+    }).where(and(
+      eq(projectAssetRefs.projectId, projectId), eq(projectAssetRefs.assetId, assetId),
+      isNull(projectAssetRefs.deletedAt), isNull(projectAssetRefs.displayName),
+    ));
+  }
   return {
     references: await findLiveProjectReferences(projectId, assetIds, tx),
     insertedAssetIds: inserted.map((row) => row.assetId).sort(),
