@@ -47,3 +47,28 @@ ingest:
   # EXIF orientation is turned upright on ingest (1-100). Turning a JPEG
   # re-encodes it; PNG and lossless WebP stay lossless.
   upright_jpeg_quality: 90
+
+# Transfer uploads (inner#1006): a JSON request body larger than
+# limits.yaml `request_body_max_bytes` is written to storage as a transfer file
+# and the route is sent a reference to it instead. Stored under `transfer/`,
+# never registered as an asset; an R2 lifecycle rule deletes it after a day.
+transfer:
+  # Largest transfer file, per route that accepts one. Counted over the
+  # whole file, signature line included; the ticket's size and the read
+  # cap use the same count.
+  # chat_message: the agent.yaml caps summed (user_message_max_chars plus
+  #   reference markers, attachment_max_chars, current_space_max_chars x2
+  #   for content and blocks) at up to 6 bytes a character once
+  #   JSON.stringify escapes it, plus block metadata and the space list:
+  #   about 3.3 MB, rounded up.
+  # canvas_paste / node_history_snapshot: a 10 MB document
+  #   (collab.yaml max_document_bytes) whose quotes, backslashes and line
+  #   breaks JSON.stringify doubles, with margin.
+  route_max_bytes:
+    chat_message: 4194304
+    canvas_paste: 25165824
+    node_history_snapshot: 25165824
+  # A finished transfer can be referenced only this long, and only once.
+  reference_ttl_seconds: 3600
+  # How long one user's in-flight transfer read holds its lock.
+  read_lock_seconds: 60
