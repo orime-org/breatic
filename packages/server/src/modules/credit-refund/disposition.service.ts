@@ -396,16 +396,17 @@ async function loadTarget(lotId: string): Promise<{ lot: CreditLotEntity; paymen
 }
 
 /**
- * Read a purchased lot and payment, locking the lot inside a key decision.
+ * Read a live purchased lot and payment, locking the live target inside a
+ * key decision. Preparation and final judgement share this availability rule.
  * @param lotId - The logical target.
  * @param tx - The key decision transaction, if present.
- * @returns The target or null when either required record is absent.
+ * @returns The target or null when the lot is soft-deleted or either record is absent.
  */
 async function findTarget(
   lotId: string,
   tx?: DbTx,
 ): Promise<{ lot: CreditLotEntity; payment: PaymentEntity } | null> {
-  const lot = tx ? await creditLotRepo.lockLot(lotId, tx) : await creditLotRepo.findLotById(lotId);
+  const lot = tx ? await creditLotRepo.lockLiveLot(lotId, tx) : await creditLotRepo.findLotById(lotId);
   const payment = lot && isPurchased(lot.sourceKind) ? await paymentRepo.getPaymentById(lot.sourceId, tx) : null;
   return lot && payment ? { lot, payment } : null;
 }
