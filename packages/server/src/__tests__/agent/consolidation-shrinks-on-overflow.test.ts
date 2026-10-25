@@ -129,7 +129,7 @@ async function consolidate(): Promise<string> {
     turns: [5, 6, 7, 8].map(group),
     watermarkBefore: 4,
     newWatermark: 8,
-  } as Parameters<typeof consolidateWindow>[0]);
+  });
 }
 
 /**
