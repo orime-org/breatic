@@ -17,7 +17,7 @@ const ID = "20000000-0000-4000-8000-000000000001";
 const LIMITS = { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 };
 const FRAMES = [{ frameIndex: 0, pts: 0 }, { frameIndex: 1, pts: 0.25 }, { frameIndex: 2, pts: 0.55 }, { frameIndex: 3, pts: 0.9 }];
 const RAW = {
-  streams: [{ index: 0, codec_type: "video", width: 400, height: 200, time_base: "1/1000", side_data_list: [{ rotation: 90 }] }, { index: 1, codec_type: "audio" }],
+  streams: [{ index: 0, codec_type: "video", width: 400, height: 200, time_base: "1/1000", side_data_list: [{ rotation: 90 }] }, { index: 1, codec_type: "audio", sample_rate: "48000" }],
   frames: FRAMES.map((frame) => ({ best_effort_timestamp_time: String(frame.pts), duration_time: "0.2" })),
   format: { duration: "1.1" },
 };
@@ -137,6 +137,27 @@ describe("owned plan recipe orchestration, with subprocesses mocked", () => {
       expect(scale % denominator).toBe(0);
       expect(scale % rate).toBe(0);
     }), { numRuns: 20 });
+  });
+
+
+  it("retains non-unit source time-base numerators when reducing its clock divisor", async () => {
+    const facts: PlanSource = { ...FACTS, source: { ...FACTS.source, timeBase: "2/96000" } };
+    vi.mocked(runPlanCommand).mockResolvedValue(Buffer.from(JSON.stringify({ streams: [{ codec_type: "video", width: 400, height: 200 }], format: { duration: "0.65" } })));
+    await executePlanRecipe({ ...request, facts, recipe: { kind: "segment", inputId: ID, range: { start: 0.25, end: 0.9 } } });
+    const [, args] = vi.mocked(runPlanCommand).mock.calls[0]!;
+    expect(args[args.indexOf("-movie_timescale") + 1]).toBe("48000");
+  });
+
+  it("refuses unknown actual audio sample clocks before execution", async () => {
+    const facts: PlanSource = { ...FACTS, raw: { ...RAW, streams: [{ ...RAW.streams[0] }, { index: 1, codec_type: "audio" }] } };
+    await expect(executePlanRecipe({ ...request, facts, recipe: { kind: "segment", inputId: ID, range: { start: 0.25, end: 0.9 } } })).rejects.toThrow(/sample/i);
+    expect(runPlanCommand).not.toHaveBeenCalled();
+  });
+
+  it("refuses movie clocks exceeding the actual muxer integer domain without clamping", async () => {
+    const facts: PlanSource = { ...FACTS, source: { ...FACTS.source, timeBase: "1/2147483647" } };
+    await expect(executePlanRecipe({ ...request, facts, recipe: { kind: "segment", inputId: ID, range: { start: 0.25, end: 0.9 } } })).rejects.toThrow(/clock|scale/i);
+    expect(runPlanCommand).not.toHaveBeenCalled();
   });
 
 });
