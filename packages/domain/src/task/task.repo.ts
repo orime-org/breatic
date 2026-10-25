@@ -153,19 +153,18 @@ export async function storeMiniToolSettlement(taskId: string, settlement: MiniTo
  * @throws {Error} When the database read fails.
  */
 export async function listDueMiniToolSettlements(limit: number, cursor?: MiniToolSettlementCursor): Promise<DueMiniToolSettlementPage> {
-  const dueAt = sql`CASE ${tasks.result}->'settlement'->>'state'
-    WHEN 'waiting' THEN (${tasks.result}->'settlement'->>'nextAttemptAt')::timestamptz
-    WHEN 'checking' THEN (${tasks.result}->'settlement'->>'leaseUntil')::timestamptz END`;
+  const dueAt = sql`mini_tool_settlement_due_at(${tasks.result})`;
   const after = cursor === undefined ? sql`` : sql`AND
-    (${dueAt} > ${cursor.dueAt}::timestamptz OR
-      (${dueAt} = ${cursor.dueAt}::timestamptz AND ${tasks.id} > ${cursor.taskId}::uuid))`;
+    (${dueAt}, ${tasks.id}) > (${cursor.dueAt}::timestamptz, ${cursor.taskId}::uuid)`;
   const rows = await db.execute<DueMiniToolSettlement & Record<string, unknown>>(sql`
+    WITH discovery_clock AS MATERIALIZED (SELECT clock_timestamp() AS at)
     SELECT ${tasks.id} AS "taskId", (${tasks.result}->'settlement'->>'version')::float8 AS "settlementVersion",
       to_char(${dueAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "dueAt"
     FROM ${tasks}
     WHERE ${tasks.source} = 'mini_tool' AND ${tasks.billedAt} IS NULL
       AND jsonb_typeof(${tasks.result}->'settlement'->'version') = 'number'
-      AND ${dueAt} <= clock_timestamp() ${after}
+      AND ${tasks.result}->'settlement'->>'state' IN ('waiting', 'checking')
+      AND ${dueAt} <= (SELECT at FROM discovery_clock) ${after}
     ORDER BY ${dueAt}, ${tasks.id}
     LIMIT ${limit + 1}
   `);

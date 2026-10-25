@@ -151,6 +151,7 @@ describe("immutable UTC settlement index semantics", () => {
 
   it.each([null, "now", "today", "tomorrow", "epoch", "infinity", "-infinity", "2026-10-24T09:03:03+00:00", "2026-10-24T17:03:03+08:00",
     "2026-10-24T09:03:03", "2026-10-24t09:03:03z", " 2026-10-24T09:03:03Z", "2026-10-24T09:03:03Z ", "2026-02-30T09:03:03Z",
+    "2026-10-24T24:00:00Z", "2026-10-24T09:60:00Z", "2026-10-24T09:03:60Z", "2026-10-24T09:03:03.Z",
   ])("never indexes relative, local or invalid date input %s", async (input) => {
     const [row] = await pg`SELECT mini_tool_settlement_due_at(${pg.json({ settlement: { state: "waiting", nextAttemptAt: input } })}) AS at`;
     expect(row).toEqual({ at: null });

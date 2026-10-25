@@ -616,6 +616,11 @@ export const tasks = pgTable(
     index("tasks_project_space_idx").on(table.projectId, table.spaceId),
     index("tasks_task_type_idx").on(table.taskType),
     index("tasks_status_idx").on(table.status),
+    index("tasks_mini_tool_settlement_due_idx")
+      .on(sql`mini_tool_settlement_due_at(${table.result})`, table.id)
+      .where(sql`${table.source} = 'mini_tool' AND ${table.billedAt} IS NULL
+        AND jsonb_typeof(${table.result}->'settlement'->'version') = 'number'
+        AND ${table.result}->'settlement'->>'state' IN ('waiting', 'checking')`),
   ],
 );
 

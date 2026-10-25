@@ -161,6 +161,10 @@ config/ locales/ (git-tracked)
 
 `claimMiniToolSettlement` 先以数据库时钟认领当前到期版本；`confirmMiniToolConsumption` 在版本、token、原消费身份及租约仍有效时先保存实际费用，再交共同 usage 事务。只读上游查询在 SQL 事务外进行。缺费用或查询失败经 `deferMiniToolSettlement` 保存新到期版本；过期租约也推进版本，使迟到答复失效。`config/mini-tools.yaml` 的 `settlement.lease_ms` 与 `retry_ms` 只管理费用查询，不改变节点任务的两小时预算。
 
+`listDueMiniToolSettlements` 从 SQL 发现到期 waiting 和过期 checking，包含已结束或从用户历史隐藏的任务。JSON 是续查事实的唯一来源；数据库的受限 UTC 解析函数和 partial expression index 只派生有效到期键。索引按到期时刻、task UUID 排序；查询单次取数据库时钟，用完整微秒文本和 UUID 继续分页。解析保留合法 ISO 小数的原生 PostgreSQL 舍入，固定解析配置并拒绝相对时间，不依赖调用连接的时区或日期格式。
+
+worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单或原容器完整计划报告。已确认事实直接返回；费用尚缺、分页未完整或容器缺 CPU 实测时保留 pending。完整扣费与退款按原十进制金额求和，明确的零费用仍是 known；容器按首次保存的 class 大小和单价计算，不读取当前报价，也不重启原任务。
+
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
 `worker/src/handlers/dispatch.ts` 里一个任务从投递到结束的顺序。**碰 worker 任何一步之前先定位「我在第几步」—— 同一个失败在第 3 步和第 5 步的后果完全相反**:
