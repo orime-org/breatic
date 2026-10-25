@@ -19,8 +19,8 @@
  *      gone. Spelling this out per query is how the two halves drift apart and
  *      an account starts showing a number it cannot spend.
  *
- *   2. A lot is locked by `id` alone, and everything that decides whether it
- *      may be charged is re-read after the lock is held. Postgres re-evaluates
+ *   2. The general-purpose `lockLot` locks by `id` alone. Everything deciding
+ *      whether it may be charged is re-read after the lock is held. Postgres re-evaluates
  *      a `FOR UPDATE` predicate against the row as it stands once the lock is
  *      granted and skips the row if it no longer matches — so putting
  *      `lifecycle` or `designated_studio_id` in the locking predicate makes the
@@ -264,6 +264,28 @@ export async function lockLot(
     .select()
     .from(creditLots)
     .where(eq(creditLots.id, lotId))
+    .for("update");
+  return rows[0] ? toLotEntity(rows[0]) : null;
+}
+
+/**
+ * Lock a live lot for a new request's target decision.
+ *
+ * Unlike the historical-row lock used for financial completion, a deleted
+ * row is unavailable here. PostgreSQL re-checking this deletion predicate
+ * after waiting must return null when the target was deleted meanwhile.
+ * @param lotId - The live target to lock.
+ * @param tx - The transaction holding the request key's lock.
+ * @returns The locked live lot, or null if absent or soft-deleted.
+ */
+export async function lockLiveLot(
+  lotId: string,
+  tx: DbTx,
+): Promise<CreditLotEntity | null> {
+  const rows = await tx
+    .select()
+    .from(creditLots)
+    .where(and(eq(creditLots.id, lotId), isNull(creditLots.deletedAt)))
     .for("update");
   return rows[0] ? toLotEntity(rows[0]) : null;
 }

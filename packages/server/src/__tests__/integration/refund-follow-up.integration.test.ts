@@ -145,7 +145,7 @@ describe("the dispositions that book a refund report it after they commit", () =
     const refund = refundObject(reId("booked"), "succeeded", PAID_CENTS, approve.id);
     await suite.sql`UPDATE credit_refund_operations SET stripe_refund_id = ${refund.id} WHERE id = ${approve.id}`;
     fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refund]);
-    expect(await handleRefundEvent(refundEvent("refund.updated", refund, lot.paymentIntentId) as unknown as RefundEvent)).toBe("handled");
+    expect(await handleRefundEvent(refundEvent("refund.updated", refund, lot.paymentIntentId) as unknown as RefundEvent)).toBe("synced");
     await expectReported(lot);
   });
 });

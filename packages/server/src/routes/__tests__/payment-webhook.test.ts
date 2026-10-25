@@ -23,7 +23,7 @@ const { verifyWebhookSignature, handleSubscriptionEvent, paymentService } =
   vi.hoisted(() => ({
     verifyWebhookSignature: vi.fn(),
     handleSubscriptionEvent: vi.fn(),
-    paymentService: { fulfillPayment: vi.fn() },
+    paymentService: { fulfillPayment: vi.fn(), handlePaymentFailed: vi.fn() },
   }));
 
 vi.mock("@server/infra/stripe.js", () => ({ verifyWebhookSignature }));
@@ -31,13 +31,20 @@ vi.mock("@server/infra/stripe.js", () => ({ verifyWebhookSignature }));
 vi.mock("@server/modules/subscription/subscription-events.js", () => ({
   handleSubscriptionEvent,
 }));
+vi.mock("@server/modules/payment/payment.service.js", () => paymentService);
 
 // Only the two the route reaches. `authService` comes along because the auth
 // middleware imports the same barrel, and the routes beside the webhook are
 // wired to it.
-vi.mock("@server/modules", () => ({
+vi.mock("@server/modules", async () => ({
   paymentService,
   authService: { verifySession: vi.fn() },
+  stripeWebhookRecordingService: {
+    parseWebhookIdentity: (await import("@server/modules/stripe-webhook/recording.service.js")).parseWebhookIdentity,
+    startWebhookAttempt: vi.fn(async () => {}),
+    finishWebhookAttempt: vi.fn(async () => "recorded"),
+  },
+  stripeWebhookDispatchService: await import("@server/modules/stripe-webhook/dispatch.service.js"),
 }));
 
 import { initLogger } from "@breatic/core";
@@ -48,8 +55,8 @@ import { paymentRoute as payment } from "@server/routes/payment.js";
  * @param event - What signature verification will hand back.
  * @returns The route's response.
  */
-async function post(event: unknown): Promise<Response> {
-  verifyWebhookSignature.mockReturnValue(event);
+async function post(event: Record<string, unknown>): Promise<Response> {
+  verifyWebhookSignature.mockReturnValue({ livemode: false, ...event });
   return payment.request("/webhook", {
     method: "POST",
     headers: { "stripe-signature": "t=1,v1=whatever" },
@@ -112,6 +119,7 @@ describe("POST /payment/webhook — 分流与状态码", () => {
     // 钱的人拿到 500，而 Stripe 会一直重投同一个必然失败的事件。
     handleSubscriptionEvent.mockResolvedValue({
       status: "noop",
+      reasonCode: "no_account",
       reason: "no account claims Stripe customer cus_x",
     });
 

@@ -182,14 +182,14 @@ export interface PreviewInput {
 
 /**
  * What the confirmation page shows: the create operation the lot's state
- * allows and what it would do now, and whether restoring credits holds now,
- * judged by the endpoint's own rule with the current unresolved refunds.
+ * allows and what it would do now, plus all four one-shot actions and the
+ * restore answer, each judged by its endpoint rule on the current facts.
  * @param input - The facts, without any confirmation.
- * @returns The kind and its answer (or no kind), and the restore answer.
+ * @returns The create answer, four complete one-shot answers, and the restore answer.
  */
 export function assessRefundPreview(
   input: PreviewInput,
-): ({ kind: RefundCreateKind; result: AssessResult } | { kind: null }) & { restoreCredits: OneShotResult } {
+): ({ kind: RefundCreateKind; result: AssessResult } | { kind: null }) & { restoreCredits: OneShotResult; oneShot: Record<Exclude<OneShotKind, "restore_credits">, OneShotResult> } {
   const restoreCredits = assessOneShot({
     kind: "restore_credits",
     lot: input.lot,
@@ -200,10 +200,19 @@ export function assessRefundPreview(
     disputed: input.disputed,
     failedRefundIds: input.unresolvedFailedRefunds.map((r) => r.stripeRefundId),
   });
+  const oneShot = Object.fromEntries(
+    (["reject", "settle", "send_back", "resolve_outside"] as const).map((kind) => [kind, assessOneShot({
+      ...input,
+      kind,
+      paidCents: input.payment?.paidCents ?? 0,
+      confirmedSucceededCents: succeededCents(input.refunds),
+      failedRefundIds: input.unresolvedFailedRefunds.map((r) => r.stripeRefundId),
+    })]),
+  ) as Record<Exclude<OneShotKind, "restore_credits">, OneShotResult>;
   const kind = previewKind(input.lot.lifecycle);
-  if (kind === null) return { kind: null, restoreCredits };
+  if (kind === null) return { kind: null, restoreCredits, oneShot };
   const result = judge({ ...input, kind, confirmedRefundIds: [] }, true);
-  return { kind, result, restoreCredits };
+  return { kind, result, restoreCredits, oneShot };
 }
 
 /** The five dispositions that finish in their request (§5.3). */

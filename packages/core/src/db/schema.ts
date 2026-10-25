@@ -18,6 +18,7 @@ import {
   doublePrecision,
   numeric,
   integer,
+  smallint,
   bigint,
   timestamp,
   json,
@@ -40,7 +41,8 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
-import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
+import type { StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -1213,6 +1215,33 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
     .notNull(),
 });
 
+/** Each verified HTTP request has an independent recording lifecycle. */
+export const stripeWebhookAttempts = pgTable("stripe_webhook_attempts", {
+  id: uuid("id").primaryKey(),
+  eventId: varchar("event_id", { length: 255 }).notNull(),
+  eventType: varchar("event_type", { length: 80 }).notNull(),
+  livemode: boolean("livemode").notNull(),
+  accountId: varchar("account_id", { length: 255 }),
+  endpointId: varchar("endpoint_id", { length: 255 }),
+  connectedAccountId: varchar("connected_account_id", { length: 255 }),
+  environment: text("environment").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  responseStatus: smallint("response_status"),
+  result: varchar("result", { length: 80 }).$type<StripeWebhookResult>(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  check("stripe_webhook_attempts_completion", sql`
+    (${table.finishedAt} is null and ${table.responseStatus} is null and ${table.result} is null)
+    or (${table.finishedAt} is not null and ${table.responseStatus} is not null and ${table.result} is not null
+      and ${table.responseStatus} between 100 and 599
+      and ${table.result} in (${sql.raw(STRIPE_WEBHOOK_RESULTS.map((result) => `'${result}'`).join(", "))}))
+  `),
+  index("stripe_webhook_attempts_received_idx").on(desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+  index("stripe_webhook_attempts_event_idx").on(table.eventId, desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+]);
+
 // ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
 /**
@@ -1498,6 +1527,26 @@ export const creditRefundOperations = pgTable(
       .where(sql`${table.status} IN ('started', 'awaiting_stripe')`),
   ],
 );
+
+/**
+ * Final internal-API refusals retain their request key and literal response.
+ * Targets deliberately have no foreign key: a missing target is recordable.
+ * Contract CHECKs live in migration 0104_credit_refund_refusals.
+ */
+export const creditRefundRefusals = pgTable("credit_refund_refusals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestKind: varchar("request_kind", { length: 20 }).notNull(),
+  targetKind: varchar("target_kind", { length: 20 }).notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestReason: text("request_reason").notNull(),
+  responseStatus: smallint("response_status").notNull(),
+  responseBody: jsonb("response_body").$type<{ code: string; detail?: string; reason?: string }>().notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
 
 /**
  * Every step of every disposition, appended in the same transaction as the

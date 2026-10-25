@@ -3,9 +3,9 @@
 
 /**
  * Idempotency of the internal write endpoints (inner#1410 §4.6): one key
- * space over dispositions and resend mail rows, looked up when the request
+ * space over dispositions, resend mail rows and final refusals, looked up when the request
  * arrives and again inside the write transaction, after the key's advisory
- * lock and the lot's row lock.
+ * lock, before checking the target.
  */
 
 import { createHash } from "node:crypto";
@@ -14,10 +14,12 @@ import * as operationRepo from "@server/modules/credit-refund/operation.repo.js"
 import type { CreditRefundOperation } from "@server/modules/credit-refund/operation.repo.js";
 import * as refundMailRepo from "@server/modules/credit-refund/refund-mail.repo.js";
 import type { RefundMail } from "@server/modules/credit-refund/refund-mail.repo.js";
+import * as refusalRepo from "@server/modules/credit-refund/refusal.repo.js";
+import type { StoredRefusal } from "@server/modules/credit-refund/refusal.repo.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 
 /** What an earlier request under the same key left. */
-export type Replay = { kind: "operation"; op: CreditRefundOperation } | { kind: "mail"; mail: RefundMail };
+export type Replay = { kind: "operation"; op: CreditRefundOperation } | { kind: "mail"; mail: RefundMail } | { kind: "refusal"; refusal: StoredRefusal };
 
 /**
  * JSON with every object's keys sorted, so field order does not make two
@@ -56,7 +58,7 @@ export function fingerprint(
 }
 
 /**
- * Look the key up in both tables and apply the §4.6 rules.
+ * Look the key up in all three tables and apply the §4.6 rules.
  * @param key - The `Idempotency-Key`.
  * @param hash - This request's fingerprint.
  * @param tx - The write transaction, for the second lookup.
@@ -75,6 +77,11 @@ export async function lookupKey(key: string, hash: string, tx?: DbTx): Promise<R
     if (mail.requestHash !== hash) throw reused();
     if (mail.mail.status === "sending") throw inProgress();
     return { kind: "mail", mail: mail.mail };
+  }
+  const refusal = await refusalRepo.findByKey(key, tx);
+  if (refusal) {
+    if (refusal.requestHash !== hash) throw reused();
+    return { kind: "refusal", refusal };
   }
   return null;
 }
