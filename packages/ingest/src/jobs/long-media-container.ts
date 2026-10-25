@@ -6,8 +6,10 @@ import { DurableObject } from "cloudflare:workers";
 import type { StopParams } from "@cloudflare/containers";
 import {
   acceptLongMediaProbeReport,
+  acceptLongMediaSegmentReport,
   LONG_MEDIA_REPORT_HOST,
   serveLongMediaSource,
+  writeLongMediaSegment,
 } from "@ingest/jobs/long-media-routes.js";
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js";
 import { LONG_MEDIA_PROBE_PATH, PROBE_PORT } from "@ingest/probe-answer.js";
@@ -21,7 +23,12 @@ import {
   type LongMediaProbeReport,
   type LongMediaPlanRequest,
 } from "@breatic/shared";
-import type { LongMediaSegmentPlan, LongMediaSegmentStatus, LongMediaSegmentEvent } from "@ingest/jobs/long-media-segment.js";
+import type {
+  LongMediaSegmentMeasurement,
+  LongMediaSegmentPlan,
+  LongMediaSegmentStatus,
+  LongMediaSegmentEvent,
+} from "@ingest/jobs/long-media-segment.js";
 import { transitionLongMediaSegment } from "@ingest/jobs/long-media-segment.js";
 import {
   transitionLongMediaAttempt,
@@ -242,6 +249,14 @@ const SEGMENT_TABLES = `
     PRIMARY KEY (job_id, candidate_id),
     UNIQUE (job_id, grant_id),
     UNIQUE (job_id, storage_key)
+  );
+  CREATE TABLE IF NOT EXISTS long_media_segment_measurements (
+    job_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    content_type TEXT NOT NULL,
+    PRIMARY KEY (job_id, segment_id)
   )
 `;
 
@@ -380,6 +395,15 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   }
 
   /**
+   * Read a pending exact-key write authorization for one running segment.
+   * @param storageKey - The candidate output key named by the Container.
+   * @returns Its current write permit, or null when the key is not authorized.
+   */
+  segmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
+    return this.jobStore.segmentWritePermit(storageKey);
+  }
+
+  /**
    * Compare-and-set one segment lifecycle event by its expected revision.
    * @param segmentId - The durable segment id.
    * @param expectedVersion - The version the event was based on.
@@ -392,6 +416,16 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
     event: LongMediaSegmentEvent,
   ): LongMediaSegmentEventResult {
     return this.jobStore.applySegmentEvent(segmentId, expectedVersion, event);
+  }
+
+  /**
+   * Apply a callback to one segment at its current persisted revision.
+   * @param segmentId - The durable segment identity.
+   * @param event - The lifecycle event.
+   * @returns The committed state or stale/invalid result.
+   */
+  applyCurrentSegmentEvent(segmentId: string, event: LongMediaSegmentEvent): LongMediaSegmentEventResult {
+    return this.jobStore.applyCurrentSegmentEvent(segmentId, event);
   }
 
   /**
@@ -652,6 +686,15 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Read a pending exact-key write authorization for one running segment.
+   * @param storageKey - The candidate output key named by the Container.
+   * @returns Its current write permit, or null when the key is not authorized.
+   */
+  segmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
+    return this.jobStore.segmentWritePermit(storageKey);
+  }
+
+  /**
    * Compare-and-set one segment lifecycle event by its expected revision.
    * @param segmentId - The durable segment id.
    * @param expectedVersion - The version the event was based on.
@@ -664,6 +707,16 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
     event: LongMediaSegmentEvent,
   ): LongMediaSegmentEventResult {
     return this.jobStore.applySegmentEvent(segmentId, expectedVersion, event);
+  }
+
+  /**
+   * Apply a callback to one segment at its current persisted revision.
+   * @param segmentId - The durable segment identity.
+   * @param event - The lifecycle event.
+   * @returns The committed state or stale/invalid result.
+   */
+  applyCurrentSegmentEvent(segmentId: string, event: LongMediaSegmentEvent): LongMediaSegmentEventResult {
+    return this.jobStore.applyCurrentSegmentEvent(segmentId, event);
   }
 
   /**
@@ -699,7 +752,12 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 }
 
-LongMediaContainer.outboundHandlers = { acceptLongMediaProbeReport, serveLongMediaSource };
+LongMediaContainer.outboundHandlers = {
+  acceptLongMediaProbeReport,
+  acceptLongMediaSegmentReport,
+  serveLongMediaSource,
+  writeLongMediaSegment,
+};
 
 /** The committed lifecycle snapshot and requested effects. */
 export interface LongMediaTransitionResult {
@@ -728,8 +786,20 @@ export interface LongMediaAttemptEffectRecord {
 
 /** A segment leaf together with its durable transition version. */
 export interface LongMediaSegmentSnapshot extends LongMediaSegmentPlan {
+  grantId: string | null;
+  storageKey: string | null;
+  measured: LongMediaSegmentMeasurement | null;
   status: LongMediaSegmentStatus;
   version: number;
+}
+
+/** Exact durable authorization for a Container segment output write. */
+export interface LongMediaSegmentWritePermit {
+  segmentId: string;
+  storageKey: string;
+  expectedVersion: number;
+  maxBytes: number;
+  mediaKind: "audio" | "video";
 }
 
 /** Result of seeding the initial complete source-time plan. */
@@ -1066,15 +1136,68 @@ class LongMediaJobStore {
       "SELECT * FROM long_media_segments WHERE job_id = ? ORDER BY media_input_id, core_start_us",
       job.job_id,
     ).toArray();
-    return rows.map((row) => ({
+    const measurements = this.ctx.storage.sql.exec<{
+      segment_id: string; sha256: string; size_bytes: number; content_type: string;
+    } & Record<string, SqlStorageValue>>(
+      "SELECT segment_id, sha256, size_bytes, content_type FROM long_media_segment_measurements WHERE job_id = ?",
+      job.job_id,
+    ).toArray();
+    const bySegment = new Map(measurements.map((row) => [row.segment_id, row]));
+    return rows.map((row) => {
+      const measured = bySegment.get(row.segment_id);
+      return ({
       id: row.segment_id,
       mediaInputId: row.media_input_id,
       descriptor: JSON.parse(row.descriptor_json) as Record<string, unknown>,
       core: { startUs: row.core_start_us, endUs: row.core_end_us },
       decode: { startUs: row.decode_start_us, endUs: row.decode_end_us },
+      grantId: row.grant_id,
+      storageKey: row.storage_key,
+      measured: measured === undefined ? null : {
+        sha256: measured.sha256,
+        sizeBytes: measured.size_bytes,
+        contentType: measured.content_type,
+      },
       status: readLongMediaSegmentStatus(row.status),
       version: row.version,
-    }));
+      });
+    });
+  }
+
+  /**
+   * Read a pending exact-key write authorization for one running segment.
+   * @param storageKey - The candidate output key named by the Container.
+   * @returns Its current write permit, or null when the key is not authorized.
+   */
+  segmentWritePermit(storageKey: string): LongMediaSegmentWritePermit | null {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      if (job === undefined) return null;
+      const state = stateOf(job);
+      if ((state.phase !== "planning" && state.phase !== "running") || Date.now() >= state.deadlineAt) return null;
+      const row = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        `SELECT segment.* FROM long_media_segments AS segment
+         JOIN long_media_write_permits AS permit
+           ON permit.job_id = segment.job_id AND permit.segment_id = segment.segment_id
+         WHERE segment.job_id = ? AND segment.storage_key = ?
+           AND segment.status = 'encoding' AND permit.status = 'pending'`,
+        job.job_id,
+        storageKey,
+      ).toArray()[0];
+      if (row === undefined) return null;
+      const descriptor = JSON.parse(row.descriptor_json) as Record<string, unknown>;
+      if (descriptor.mediaKind !== "audio" && descriptor.mediaKind !== "video") {
+        throw new Error("The persisted long media segment has an invalid media kind");
+      }
+      const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+      return {
+        segmentId: row.segment_id,
+        storageKey: row.storage_key ?? storageKey,
+        expectedVersion: row.version,
+        maxBytes: request.limitsSnapshot.maxSegmentBytes,
+        mediaKind: descriptor.mediaKind,
+      };
+    });
   }
 
   /**
@@ -1102,6 +1225,17 @@ class LongMediaJobStore {
         return { kind: "stale" };
       }
       const current = readLongMediaSegmentStatus(row.status);
+      if (event.type === "measured") {
+        const permit = this.ctx.storage.sql.exec<{ status: string } & Record<string, SqlStorageValue>>(
+          "SELECT status FROM long_media_write_permits WHERE job_id = ? AND segment_id = ?",
+          job.job_id,
+          segmentId,
+        ).toArray()[0];
+        if (permit?.status !== "pending") return { kind: "invalid" };
+      }
+      if (event.type === "measured" && (!/^[a-f0-9]{64}$/u.test(event.measured.sha256) ||
+          !Number.isSafeInteger(event.measured.sizeBytes) || event.measured.sizeBytes < 1 ||
+          !/^(audio|video)\/[a-z0-9.+-]+$/u.test(event.measured.contentType))) return { kind: "invalid" };
       const next = transitionLongMediaSegment(current, event);
       if (next === current) return { kind: "invalid" };
       this.ctx.storage.sql.exec(
@@ -1111,8 +1245,33 @@ class LongMediaJobStore {
         segmentId,
         expectedVersion,
       );
+      if (event.type === "measured") {
+        this.ctx.storage.sql.exec(
+          `INSERT INTO long_media_segment_measurements (job_id, segment_id, sha256, size_bytes, content_type)
+           VALUES (?, ?, ?, ?, ?)`,
+          job.job_id, segmentId, event.measured.sha256, event.measured.sizeBytes, event.measured.contentType,
+        );
+        this.ctx.storage.sql.exec(
+          "UPDATE long_media_write_permits SET status = 'written' WHERE job_id = ? AND segment_id = ? AND status = 'pending'",
+          job.job_id,
+          segmentId,
+        );
+      }
       return { kind: "accepted", status: next, version: expectedVersion + 1 };
     });
+  }
+
+  /**
+   * Apply a callback to one segment at its current persisted revision.
+   * @param segmentId - The durable segment identity.
+   * @param event - The lifecycle event.
+   * @returns The committed state or stale/invalid result.
+   */
+  applyCurrentSegmentEvent(segmentId: string, event: LongMediaSegmentEvent): LongMediaSegmentEventResult {
+    const segment = this.readSegments().find((item) => item.id === segmentId);
+    return segment === undefined
+      ? { kind: "stale" }
+      : this.applySegmentEvent(segmentId, segment.version, event);
   }
 
   /**

@@ -5,7 +5,13 @@ import { env, createExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { computeLongMediaInputsDigest, computeLongMediaJobRequestDigest, type LongMediaPlanRequest } from "@breatic/shared";
-import { acceptLongMediaProbeReport, serveLongMediaSource } from "@ingest/jobs/long-media-routes.js";
+import {
+  acceptLongMediaProbeReport,
+  acceptLongMediaSegmentReport,
+  serveLongMediaSource,
+  writeLongMediaSegment,
+} from "@ingest/jobs/long-media-routes.js";
+import { head } from "@ingest/__tests__/helpers/encoder-heads.js";
 import worker from "@ingest/index.js";
 
 const payload = {
@@ -17,17 +23,23 @@ const payload = {
     key: "media/source.mp4",
     sha256: "a".repeat(64),
     sizeBytes: 1_000_000,
-    etag: "etag-route-test",
   },
-  profileId: "channel-v1",
-  profileVersion: "channel-v1",
+  profileId: "source-file-v1",
+  profileVersion: "source-file-v1",
+  encodingProfile: {
+    audioCodec: "libmp3lame",
+    audioBitrate: "128k",
+    videoCodec: "libx264",
+    videoCrf: 23,
+    videoAudioCodec: "aac",
+    videoAudioBitrate: "128k",
+  },
   limitsSnapshot: {
     maxSourceBytes: 2_147_483_648,
     maxSources: 10,
     maxSegmentBytes: 20_000_000,
     audioCoreSeconds: 300,
     videoCoreSeconds: 60,
-    overlapSeconds: 2,
     maxActiveLeaves: 512,
   },
   deadlineAt: Date.now() + 60_000,
@@ -40,24 +52,14 @@ const probeReport = {
   streams: [{
     index: 0,
     kind: "audio" as const,
-    codec: "aac",
-    channels: 2,
-    channelLayout: "stereo",
-    channelMembers: [
-      { channelIndex: 0, member: "FL" },
-      { channelIndex: 1, member: "FR" },
-    ],
-    sampleRate: 48000,
     startUs: "0",
     endUs: "10000000",
-    timeBase: { numerator: "1", denominator: "48000" },
   }],
-  mediaInputs: [0, 1].map((audioChannelIndex) => ({
-    mediaInputId: `audio-0-${audioChannelIndex}`,
-    descriptor: { inputKind: "audio_channel" as const, audioStreamIndex: 0, audioChannelIndex },
+  mediaInputs: [{
+    mediaInputId: "source-audio-0",
+    descriptor: { inputKind: "source_file" as const, mediaKind: "audio" as const },
     sourceRange: { startUs: "0", endUs: "10000000" },
-    audioRange: { startUs: "0", endUs: "10000000" },
-  })),
+  }],
 };
 
 /** Send one authenticated long media request to the Worker. */
@@ -95,7 +97,7 @@ describe("POST /long-media/jobs", () => {
     const first = await call("/long-media/jobs", { method: "POST", body: await requestBody(conflictPayload) });
     expect(first.status).toBe(202);
 
-    const changed = { ...conflictPayload, source: { ...payload.source, etag: "etag-changed" } };
+    const changed = { ...conflictPayload, source: { ...payload.source, sha256: "c".repeat(64) } };
     const second = await call("/long-media/jobs", { method: "POST", body: await requestBody(changed) });
     expect(second.status).toBe(409);
   });
@@ -172,7 +174,7 @@ describe("POST /long-media/jobs", () => {
     const accepted = await stub.applyProbeReport("probe-attempt-1", 1, probeReport, Date.now());
     expect(accepted).toMatchObject({
       kind: "accepted",
-      report: { mediaInputs: [{ descriptor: { audioChannelIndex: 0 } }, { descriptor: { audioChannelIndex: 1 } }] },
+      report: { mediaInputs: [{ descriptor: { inputKind: "source_file", mediaKind: "audio" } }] },
       lifecycle: { snapshot: { phase: "planning", version: 2 } },
     });
 
@@ -292,15 +294,14 @@ describe("POST /long-media/jobs", () => {
     await stub.applyAttemptEvent({ type: "accepted", attemptId: "segment-probe", epoch: 1 }, Date.now());
     await stub.applyProbeReport("segment-probe", 1, probeReport, Date.now());
     await expect(stub.transition({ type: "planAck", hasRunnableSegments: true }, Date.now())).resolves.toBeNull();
-    const segments = [0, 1].map((audioChannelIndex) => ({
-      id: `audio-0-${audioChannelIndex}:0:10000000`,
-      mediaInputId: `audio-0-${audioChannelIndex}`,
-      descriptor: { inputKind: "audio_channel" as const, audioStreamIndex: 0, audioChannelIndex },
+    const segments = [{
+      id: `source-audio-0:0:10000000`,
+      mediaInputId: "source-audio-0",
+      descriptor: { inputKind: "source_file" as const, mediaKind: "audio" as const },
       core: { startUs: "0", endUs: "10000000" },
       decode: { startUs: "0", endUs: "10000000" },
-    }));
+    }];
 
-    await expect(stub.seedSegmentPlan(segments.slice(0, 1), 0)).resolves.toEqual({ kind: "invalid" });
     await expect(stub.seedSegmentPlan(segments, 0)).resolves.toMatchObject({ kind: "accepted", revision: 1 });
     await expect(stub.seedSegmentPlan(segments, 0)).resolves.toMatchObject({ kind: "replayed", revision: 1 });
     await expect(stub.readSegments()).resolves.toMatchObject(segments.map((segment) => ({ ...segment, status: "planned", version: 0 })));
@@ -313,47 +314,75 @@ describe("POST /long-media/jobs", () => {
       status: "encoding",
       version: 1,
     });
-    await expect(stub.applySegmentEvent(segments[0]!.id, 0, { type: "measured" })).resolves.toEqual({ kind: "stale" });
-    await expect(stub.applySegmentEvent(segments[0]!.id, 1, { type: "measured" })).resolves.toMatchObject({
-      kind: "accepted",
-      status: "stored",
-      version: 2,
-    });
+    const measured = { sha256: "b".repeat(64), sizeBytes: 4321, contentType: "audio/mpeg" };
+    await expect(stub.applySegmentEvent(segments[0]!.id, 0, { type: "measured", measured })).resolves.toEqual({ kind: "stale" });
+    await expect(stub.applySegmentEvent(segments[0]!.id, 1, { type: "measured", measured })).resolves.toEqual({ kind: "invalid" });
     await expect(stub.readSegments()).resolves.toMatchObject([
-      { ...segments[0], status: "stored", version: 2 },
-      { ...segments[1], status: "planned", version: 0 },
+      { ...segments[0], status: "encoding", version: 1, measured: null },
     ]);
   });
 
-  it("assembles one complete root plan from versioned per-input mutations", async () => {
+  it("accepts one complete root plan for the source file timeline", async () => {
     const rootPayload = { ...payload, jobId: "operation-root-plan:source-0", operationId: "operation-root-plan" };
     await call("/long-media/jobs", { method: "POST", body: await requestBody(rootPayload) });
     const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(rootPayload.jobId));
     await stub.startAttempt("root-plan-probe", Date.now());
     await stub.applyAttemptEvent({ type: "accepted", attemptId: "root-plan-probe", epoch: 1 }, Date.now());
     await stub.applyProbeReport("root-plan-probe", 1, probeReport, Date.now());
-    const left = await rootInputPlan(0, 0);
-    const right = await rootInputPlan(1, 1);
+    const root = await rootInputPlan(0, 0);
 
     const unauthorized = await call(`/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/plan`, {
       method: "PUT",
-      body: JSON.stringify(left),
+      body: JSON.stringify(root),
     }, false);
     expect(unauthorized.status).toBe(401);
     const firstMutation = await call(`/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/plan`, {
       method: "PUT",
-      body: JSON.stringify(left),
+      body: JSON.stringify(root),
     });
     expect(firstMutation.status).toBe(200);
-    await expect(firstMutation.json()).resolves.toMatchObject({ kind: "accepted", revision: 1, complete: false });
-    await expect(stub.transition({ type: "planAck", hasRunnableSegments: true }, Date.now())).resolves.toBeNull();
-    await expect(stub.applyLongMediaPlan(right)).resolves.toMatchObject({ kind: "accepted", revision: 2 });
-    await expect(stub.applyLongMediaPlan(right)).resolves.toMatchObject({ kind: "replayed", revision: 2 });
+    await expect(firstMutation.json()).resolves.toMatchObject({ kind: "accepted", revision: 1, complete: true });
+    await expect(stub.applyLongMediaPlan(root)).resolves.toMatchObject({ kind: "replayed", revision: 1 });
     await expect(stub.transition({ type: "planAck", hasRunnableSegments: false }, Date.now())).resolves.toMatchObject({
       snapshot: { phase: "running" },
       effects: ["startMediaAttempt"],
     });
-    await expect(stub.readSegments()).resolves.toHaveLength(2);
+    await expect(stub.segmentWritePermit("understand/root-0.mp3")).resolves.toBeNull();
+    const segmentId = root.intervals[0]?.id;
+    if (segmentId === undefined) throw new Error("The root segment is missing");
+    await expect(stub.applySegmentEvent(segmentId, 0, { type: "run" })).resolves.toMatchObject({ status: "encoding" });
+    await expect(stub.segmentWritePermit("understand/root-0.mp3")).resolves.toEqual({
+      segmentId,
+      storageKey: "understand/root-0.mp3",
+      expectedVersion: 1,
+      maxBytes: payload.limitsSnapshot.maxSegmentBytes,
+      mediaKind: "audio",
+    });
+    const context = {
+      className: "LongMediaContainer",
+      containerId: env.LONG_MEDIA.idFromName(rootPayload.jobId).toString(),
+      params: { jobId: rootPayload.jobId },
+    };
+    const refusedWrite = await writeLongMediaSegment(
+      new Request("http://long-media-output.local/not-granted.mp4", { method: "PUT", body: head("m4a") }),
+      env,
+      context,
+    );
+    expect(refusedWrite.status).toBe(403);
+    const acceptedWrite = await writeLongMediaSegment(
+      new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("m4a") }),
+      env,
+      context,
+    );
+    expect(acceptedWrite.status).toBe(200);
+    await expect(stub.readSegments()).resolves.toMatchObject([{
+      id: segmentId,
+      status: "stored",
+      version: 2,
+      measured: { sizeBytes: head("m4a").byteLength, contentType: "audio/mp4" },
+    }]);
+    await expect(stub.segmentWritePermit("understand/root-0.mp3")).resolves.toBeNull();
+    await expect(stub.readSegments()).resolves.toHaveLength(1);
   });
 
   it("replaces only an oversize parent with an exact same-input child partition", async () => {
@@ -407,13 +436,52 @@ describe("POST /long-media/jobs", () => {
     await expect(stub.applyLongMediaPlan(replacement)).resolves.toMatchObject({
       kind: "accepted",
       revision: 2,
-      complete: false,
+      complete: true,
     });
     await expect(stub.readSegments()).resolves.toMatchObject([
       { id: parentId, status: "superseded", version: 3 },
       { id: left.id, status: "planned", version: 0 },
       { id: right.id, status: "planned", version: 0 },
     ]);
+  });
+
+  it("marks only the current encoding segment failed from a Container report", async () => {
+    const reportPayload = { ...payload, jobId: "operation-segment-report:source-0", operationId: "operation-segment-report" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(reportPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(reportPayload.jobId));
+    await stub.startAttempt("segment-report-probe", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "segment-report-probe", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("segment-report-probe", 1, probeReport, Date.now());
+    const plan = await rootInputPlan(0, 0);
+    await stub.applyLongMediaPlan(plan);
+    await stub.transition({ type: "planAck", hasRunnableSegments: true }, Date.now());
+    const segmentId = plan.intervals[0]?.id;
+    if (segmentId === undefined) throw new Error("The root segment is missing");
+    await stub.applySegmentEvent(segmentId, 0, { type: "run" });
+    const context = {
+      className: "LongMediaContainer",
+      containerId: env.LONG_MEDIA.idFromName(reportPayload.jobId).toString(),
+      params: { jobId: reportPayload.jobId },
+    };
+    const malformed = await acceptLongMediaSegmentReport(
+      new Request(`http://long-media.local/segment-report/${encodeURIComponent(segmentId)}`, {
+        method: "POST",
+        body: JSON.stringify({ outcome: "partial" }),
+      }),
+      env,
+      context,
+    );
+    expect(malformed.status).toBe(400);
+    const reported = await acceptLongMediaSegmentReport(
+      new Request(`http://long-media.local/segment-report/${encodeURIComponent(segmentId)}`, {
+        method: "POST",
+        body: JSON.stringify({ outcome: "failed" }),
+      }),
+      env,
+      context,
+    );
+    expect(reported.status).toBe(200);
+    await expect(stub.readSegments()).resolves.toMatchObject([{ id: segmentId, status: "failed", version: 2 }]);
   });
 });
 

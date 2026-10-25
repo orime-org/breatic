@@ -9,9 +9,11 @@ import { noteFailure } from "@ingest/error-monitoring.js";
 import { buildLongMediaProbeReport } from "@ingest/long-media-probe-report.js";
 import { askedKey } from "@ingest/object-url.js";
 import { serveOneObject } from "@ingest/media-object-route.js";
+import { hashStoredObject, sniffStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 import type {
   LongMediaContainer,
   LongMediaEnv,
+  LongMediaSegmentWritePermit,
 } from "@ingest/jobs/long-media-container.js";
 
 /** The namespace and secret required by long media job routes. */
@@ -42,6 +44,14 @@ export interface LongMediaSourceContext {
   key: string;
   sizeBytes: number;
 }
+
+/** Trusted identity for writes from one long-media Container. */
+export interface LongMediaSegmentOutputContext {
+  jobId: string;
+}
+
+/** The R2 multipart size used for one bounded long-media output. */
+const LONG_MEDIA_SEGMENT_PART_SIZE = 32 * 1024 * 1024;
 
 /**
  * Accept a validated long media job or return its existing durable state.
@@ -209,4 +219,122 @@ export async function serveLongMediaSource(
   if (head === null) return new Response("No such object", { status: 404 });
   if (head.size !== context.params.sizeBytes) return new Response("Source size changed", { status: 409 });
   return serveOneObject(request, env.BUCKET, context.params.key);
+}
+
+/**
+ * Write and measure one segment only when its exact durable grant is running.
+ * @param request - The Container's output PUT request.
+ * @param env - The Worker's R2 bucket and Durable Object namespace.
+ * @param context - The job identity bound to the outbound Container route.
+ * @returns 200 after measurement, 403 for an ungranted key, 409 for stale state,
+ *   413 when the encoded bytes exceed the frozen limit, or 415 for wrong media.
+ */
+export async function writeLongMediaSegment(
+  request: Request,
+  env: Pick<LongMediaEnv, "BUCKET" | "LONG_MEDIA">,
+  context: OutboundHandlerContext<LongMediaSegmentOutputContext>,
+): Promise<Response> {
+  if (request.method !== "PUT" || request.body === null) return new Response("Not allowed", { status: 405 });
+  let storageKey: string;
+  try {
+    storageKey = askedKey(request);
+  } catch {
+    return new Response("Invalid output key", { status: 400 });
+  }
+  const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(context.params.jobId));
+  const permit = await stub.segmentWritePermit(storageKey);
+  if (permit === null) return new Response("Not this output", { status: 403 });
+  return storeAuthorizedLongMediaSegment(request, env.BUCKET, stub, permit, context.params.jobId);
+}
+
+/**
+ * Accept one Container encoding result against the current segment revision.
+ * @param request - The segment result callback.
+ * @param env - The job namespace.
+ * @param context - The job identity bound to the outbound Container route.
+ * @returns 200 when the current segment was updated, 409 for stale state, or
+ *   400 for an invalid callback.
+ */
+export async function acceptLongMediaSegmentReport(
+  request: Request,
+  env: Pick<LongMediaEnv, "LONG_MEDIA">,
+  context: OutboundHandlerContext<LongMediaSegmentOutputContext>,
+): Promise<Response> {
+  if (request.method !== "POST") return new Response("Not allowed", { status: 405 });
+  const segmentMatch = /^\/segment-report\/([^/]+)$/u.exec(new URL(request.url).pathname);
+  if (segmentMatch === null) return new Response("Invalid segment report path", { status: 400 });
+  let segmentId: string;
+  let outcome: "oversize" | "failed";
+  try {
+    segmentId = decodeURIComponent(segmentMatch[1] ?? "");
+    const value: unknown = await request.json();
+    if (typeof value !== "object" || value === null || Array.isArray(value) || Object.keys(value).length !== 1) {
+      return new Response("Invalid segment report", { status: 400 });
+    }
+    const received = (value as Record<string, unknown>).outcome;
+    if (received !== "oversize" && received !== "failed") return new Response("Invalid segment report", { status: 400 });
+    outcome = received;
+  } catch {
+    return new Response("Invalid segment report", { status: 400 });
+  }
+  const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(context.params.jobId));
+  if (outcome === "failed") {
+    noteFailure("ingest_long_media_segment_encode_failed", {
+      jobId: context.params.jobId,
+      segmentId,
+    });
+  }
+  const event = outcome === "oversize" ? { type: "oversize" as const } : { type: "fatal" as const };
+  const result = await stub.applyCurrentSegmentEvent(segmentId, event);
+  return result.kind === "accepted"
+    ? new Response(null, { status: 200 })
+    : new Response("Stale segment report", { status: 409 });
+}
+
+/**
+ * Persist one bounded segment and its measurement under the exact current grant.
+ * @param request - The Container's complete output stream.
+ * @param bucket - R2 storage.
+ * @param stub - The Durable Object holding the segment lifecycle.
+ * @param permit - The current exact-key output authority.
+ * @param jobId - The durable job identity for failure records.
+ * @returns The write outcome acknowledged to the Container.
+ */
+async function storeAuthorizedLongMediaSegment(
+  request: Request,
+  bucket: R2Bucket,
+  stub: DurableObjectStub<LongMediaContainer>,
+  permit: LongMediaSegmentWritePermit,
+  jobId: string,
+): Promise<Response> {
+  const contentType = permit.mediaKind === "audio" ? "audio/mp4" : "video/mp4";
+  try {
+    const stored = await writeStreamedObject(bucket, permit.storageKey, request.body!, {
+      contentType,
+      partSize: LONG_MEDIA_SEGMENT_PART_SIZE,
+      maxBytes: permit.maxBytes,
+    });
+    if (stored === "over_cap") {
+      const result = await stub.applySegmentEvent(permit.segmentId, permit.expectedVersion, { type: "oversize" });
+      return result.kind === "accepted" ? new Response("Too large", { status: 413 }) : new Response("Stale output", { status: 409 });
+    }
+    const measuredContentType = await sniffStoredObject(bucket, permit.storageKey);
+    if (!measuredContentType.startsWith(`${permit.mediaKind}/`)) {
+      await stub.applySegmentEvent(permit.segmentId, permit.expectedVersion, { type: "fatal" });
+      return new Response("Output media kind mismatch", { status: 415 });
+    }
+    const measured = {
+      sha256: await hashStoredObject(bucket, permit.storageKey),
+      sizeBytes: stored.sizeBytes,
+      contentType: measuredContentType,
+    };
+    const result = await stub.applySegmentEvent(permit.segmentId, permit.expectedVersion, { type: "measured", measured });
+    return result.kind === "accepted" ? new Response(null, { status: 200 }) : new Response("Stale output", { status: 409 });
+  } catch (err) {
+    noteFailure("ingest_long_media_segment_write_failed", { jobId, segmentId: permit.segmentId }, err);
+    await stub.applySegmentEvent(permit.segmentId, permit.expectedVersion, { type: "fatal" }).catch((recordError: unknown) => {
+      noteFailure("ingest_long_media_segment_failure_record_failed", { jobId, segmentId: permit.segmentId }, recordError);
+    });
+    return new Response("Segment write failed", { status: 500 });
+  }
 }
