@@ -104,6 +104,33 @@ describe('packed pre-write authorization and physical publication (inner#1306)',
     expect(Array.from(new Uint8Array(await (await env.BUCKET.get(admission.storageKey))!.arrayBuffer()))).toEqual([1, 2, 3, 4]);
   });
 
+  it('fails ready presentation when its actual packed receipt changes despite the same MIME and byte count', async () => {
+    const { owner, admission, identity } = await fixture();
+    expect(await writeAlphaPacked({ bucket: env.BUCKET, owner, identity, body: stream(bytes), byteLength: bytes.length })).toEqual({ ok: true, status: 200 });
+    const key = alphaPackedKeyFor(admission.storageKey);
+    const previous = await env.BUCKET.head(key);
+    const changed = bytes.slice();
+    changed[changed.length - 1] = changed[changed.length - 1]! ^ 1;
+    const overwritten = await env.BUCKET.put(key, changed, { httpMetadata: { contentType: 'video/mp4' } });
+    expect(overwritten.etag).not.toBe(previous!.etag);
+    expect(overwritten.size).toBe(previous!.size);
+    const current = await owner.read(admission.storageKey, identity.sourceFingerprint);
+    expect(current.presentation).toMatchObject({ state: 'failed', error: 'presentation_missing', original });
+    expect(current.attempt).toMatchObject({ status: 'failed', error: 'presentation_missing' });
+    expect(current.manifest).toBeUndefined();
+    expect(Array.from(new Uint8Array(await (await env.BUCKET.get(admission.storageKey))!.arrayBuffer()))).toEqual([1, 2, 3, 4]);
+  });
+
+  it.each(['jobId', 'sourceFingerprint', 'deadlineAt', 'token'] as const)('refuses altered %s before reserving a writer', async (field) => {
+    const { owner, admission, identity } = await fixture();
+    const altered = { ...identity, [field]: field === 'deadlineAt' ? identity.deadlineAt + 1 : field === 'sourceFingerprint' ? 'b'.repeat(64) : 'not-the-accepted-owner' };
+    const before = await owner.read(admission.storageKey, identity.sourceFingerprint);
+    expect(await owner.claimPacked(altered, bytes.length)).toBe(null);
+    expect(await owner.read(admission.storageKey, identity.sourceFingerprint)).toEqual(before);
+    expect(await env.BUCKET.get(alphaPackedKeyFor(admission.storageKey))).toBe(null);
+    expect(await owner.claimPacked(identity, bytes.length)).not.toBe(null);
+  });
+
   it('refuses truncated streams without publishing a manifest or readiness', async () => {
     const { owner, admission, identity } = await fixture();
     await expect(writeAlphaPacked({ bucket: env.BUCKET, owner, identity, body: stream(bytes.slice(0, 4)), byteLength: bytes.length })).rejects.toThrow();
