@@ -6,7 +6,7 @@ import { stream } from "hono/streaming";
 import type { StreamingApi } from "hono/utils/stream";
 
 /**
- * Open a streaming response whose work stops when the client goes away.
+ * Open an SSE response whose work stops when the client goes away.
  *
  * On Node, hono hears a client leave only through the response body's
  * `cancel`, which `@hono/node-server` wires up once it starts sending the body.
@@ -18,13 +18,16 @@ import type { StreamingApi } from "hono/utils/stream";
  * @param c - The request being answered.
  * @param run - Writes the stream. Hand `signal` to whatever produces it.
  * @param onError - Called with an error `run` throws.
- * @returns The streaming response.
+ * @returns The SSE response.
  */
 export function streamUntilClientLeaves(
   c: Context,
   run: (s: StreamingApi, signal: AbortSignal) => Promise<void>,
   onError?: (err: Error, s: StreamingApi) => Promise<void>,
 ): Response {
+  c.header("Content-Type", "text/event-stream");
+  c.header("Cache-Control", "no-cache");
+  c.header("Connection", "keep-alive");
   return stream(
     c,
     async (s) => {

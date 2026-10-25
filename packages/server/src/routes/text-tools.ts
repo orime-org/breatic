@@ -56,11 +56,6 @@ textTools.post(
     // the value that reaches the charge is the one the schema passed.
     const idempotencyKey = c.req.valid("header")["idempotency-key"] ?? newId();
 
-    // Set SSE headers
-    c.header("Content-Type", "text/event-stream");
-    c.header("Cache-Control", "no-cache");
-    c.header("Connection", "keep-alive");
-
     return streamUntilClientLeaves(c, async (s, stopped) => {
       for await (const event of textToolService.executeTextTool(
         user.id,

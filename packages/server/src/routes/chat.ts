@@ -156,10 +156,6 @@ async function streamTurn(
   turn: { userId: string; conversationId: string; projectId: string },
   turnStream: (signal: AbortSignal) => Promise<ReadableStream<UIMessageChunk>>,
 ): Promise<Response> {
-  c.header("Content-Type", "text/event-stream");
-  c.header("Cache-Control", "no-cache");
-  c.header("Connection", "keep-alive");
-
   // `stopped` is the first ring of the stop chain, and the only one that can
   // hear the client leave. It cannot be inferred from the writes:
   // `StreamingApi.write` catches and discards the error a dead socket

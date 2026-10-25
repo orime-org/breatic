@@ -19,6 +19,27 @@ afterEach(async () => {
 });
 
 describe("streamUntilClientLeaves on a real node server", () => {
+  it("answers as an event stream and finishes a run nobody stopped", async () => {
+    const run = { signal: undefined as AbortSignal | undefined };
+    const app = new Hono();
+    app.post("/", (c) =>
+      streamUntilClientLeaves(c, async (s, stopped) => {
+        run.signal = stopped;
+        await s.write("data: 0\n\n");
+      }),
+    );
+    server = serve({ fetch: app.fetch, port: 0, hostname: "127.0.0.1" });
+    await new Promise((resolve) => server?.once("listening", resolve));
+    const { port } = server.address() as AddressInfo;
+
+    const res = await fetch(`http://127.0.0.1:${port}/`, { method: "POST", body: "{}" });
+
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(await res.text()).toBe("data: 0\n\n");
+    expect(run.signal?.aborted).toBe(false);
+  });
+
   it("stops and finishes the run of a client that left before the stream began", async () => {
     const run = { signal: undefined as AbortSignal | undefined, ended: false };
     const app = new Hono();
