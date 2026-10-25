@@ -6,6 +6,7 @@ import { alphaManifestKeyFor, alphaManifestMatchesPresentation, alphaManifestSch
 import { advanceVideoPresentation, type AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
 import type { AlphaPresentationReport, AlphaProbeEvidence } from '@ingest/alpha-run-contract.js';
 import type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
+import { videoDurationsMatch } from '@shared/upload/video-duration.js';
 
 /** Backend-authorized admission of one canonical source's auxiliary work. */
 export interface VideoPresentationAdmission extends AcceptedVideoPresentationAttempt {
@@ -30,6 +31,7 @@ interface PresentationRecord {
   descriptorETag: string | null;
   token: string;
   evidence?: AlphaProbeEvidence;
+  measuredOriginal?: VideoPresentation['original'];
   encoded?: Extract<AlphaPresentationReport, { kind: 'encoded' }>;
   packedReceipt?: { etag: string; size: number; sha256: string };
   writeOwner?: string;
@@ -198,6 +200,7 @@ export class VideoPresentationStore {
    */
   async report(fact: AlphaPresentationReport): Promise<boolean> {
     let proposed: VideoPresentation | null = null;
+    let rejectedProbe = false;
     const accepted = await this.gate(async () => {
       const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
       const record = active?.admission.jobId === fact.jobId ? active : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${fact.jobId}`);
@@ -206,14 +209,20 @@ export class VideoPresentationStore {
       if (fact.kind !== 'finished' && !isActive) return false;
       if (fact.kind === 'probe') {
         if (record.snapshot.presentation?.state === 'native' || record.snapshot.presentation?.state === 'alpha_ready') return true;
-        const original = record.admission.original;
-        if (original !== null && (original.width !== fact.original.width || original.height !== fact.original.height || original.duration !== fact.original.duration)) {
-          proposed = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original, state: 'failed',
+        const original = record.snapshot.presentation?.original ?? record.admission.original;
+        const known = record.admission.registeredMetadata ?? original;
+        if (known !== null && ((known.width !== null && known.width !== fact.original.width) || (known.height !== null && known.height !== fact.original.height) ||
+          (known.duration !== null && !videoDurationsMatch(known.duration, fact.original.duration)))) {
+          rejectedProbe = true;
+          if (record.snapshot.attempt !== null) { record.snapshot.attempt.status = 'failed'; record.snapshot.attempt.error = 'metadata_mismatch'; }
+          if (original !== null) proposed = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original, state: 'failed',
             attempt: { jobId: fact.jobId, deadlineAt: fact.deadlineAt }, error: 'metadata_mismatch' };
         } else {
-          record.admission.original = fact.original;
+          const publishedOriginal = original ?? fact.original;
+          record.admission.original = publishedOriginal;
+          record.measuredOriginal = fact.original;
           record.evidence = fact.evidence;
-          const base: VideoPresentation = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original: fact.original,
+          const base: VideoPresentation = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original: publishedOriginal,
             state: 'classifying', attempt: { jobId: fact.jobId, deadlineAt: fact.deadlineAt } };
           record.snapshot.presentation = base;
           proposed = { ...base, state: fact.classification === 'confirmed_alpha' ? 'alpha_pending' : 'native' };
@@ -234,8 +243,12 @@ export class VideoPresentationStore {
             usage: fact.usage, pricing: record.admission.pricing };
         }
         if (fact.error !== undefined && record.snapshot.presentation?.state !== 'native' && record.snapshot.presentation?.state !== 'alpha_ready') {
-          attempt.status = 'failed'; attempt.error = fact.error;
-          if (record.snapshot.presentation !== null) proposed = { ...record.snapshot.presentation, state: 'failed', error: fact.error };
+          const error = attempt.error ?? fact.error;
+          attempt.status = 'failed'; attempt.error = error;
+          if (record.snapshot.presentation !== null) {
+            record.snapshot.presentation = { ...record.snapshot.presentation, state: 'failed', error };
+            if (isActive) proposed = record.snapshot.presentation;
+          }
         }
       }
       await this.persist(record);
@@ -243,9 +256,9 @@ export class VideoPresentationStore {
     });
     if (accepted && proposed !== null) {
       const snapshot = await this.advance(fact, proposed);
-      return snapshot.attempt?.jobId === fact.jobId && snapshot.presentation?.state !== 'failed';
+      return fact.kind === 'finished' || (snapshot.attempt?.jobId === fact.jobId && snapshot.presentation?.state !== 'failed');
     }
-    return accepted;
+    return accepted && !rejectedProbe;
   }
 
   /**

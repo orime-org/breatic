@@ -126,6 +126,7 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
     jobId: `video-presentation-${options.requestId ?? randomUUID()}`, deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()),
     original: originalOf(row), contentType: row.mimeType, knownAlpha: options.knownAlpha === true, repair: options.repair === true,
+    registeredMetadata: { width: row.width, height: row.height, duration: row.durationSeconds },
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,
     packedURL: storage.publicUrl(alphaPackedKeyFor(row.storageKey)), manifestURL: storage.publicUrl(alphaManifestKeyFor(row.storageKey)),
     limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset },

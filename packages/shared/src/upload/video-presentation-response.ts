@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import { alphaManifestMatchesPresentation, alphaManifestSchema, videoPresentationSchema, type AlphaManifest, type VideoPresentation } from '@shared/upload/video-presentation.js';
+import { videoDurationsMatch } from '@shared/upload/video-duration.js';
 
 /** Registry identity remains available before trusted media measurement. */
 export interface VideoPresentationSourceBinding {
@@ -64,7 +65,7 @@ export const videoPresentationResponseSchema: z.ZodType<VideoPresentationRespons
     }
     for (const field of ['width', 'height', 'duration'] as const) {
       const known = value.sourceBinding.mediaInfo[field];
-      if (known !== null && known !== descriptor.original[field]) {
+      if (known !== null && (field === 'duration' ? !videoDurationsMatch(known, descriptor.original.duration) : known !== descriptor.original[field])) {
         ctx.addIssue({ code: 'custom', path: ['presentation', 'original', field], message: 'Presentation differs from registered measurement' });
       }
     }
