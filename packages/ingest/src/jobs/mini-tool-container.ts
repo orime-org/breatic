@@ -26,7 +26,7 @@ import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
 import { serveJobObjects, type JobObjectAccess } from "@ingest/jobs/job-objects.js";
-import { JOB_RECORD_KEY, type JobWritten as Written, type StoredMiniToolJob as JobRecord } from "@ingest/jobs/job-record.js";
+import { JOB_RECORD_KEY, type JobWritten as Written, type StoredMiniToolJob as JobRecord, type PlannedStartFacts } from "@ingest/jobs/job-record.js";
 import { recordJobWrite, claimJobWrite } from "@ingest/jobs/job-write.js";
 
 /** Where the container reports how its run went. */
@@ -49,6 +49,8 @@ export const CLASS_BINDINGS = {
 export type MiniToolClass = keyof typeof CLASS_BINDINGS;
 
 const RECORD = JOB_RECORD_KEY;
+/** Initial absence of observations does not assert zero consumption or that a VM never ran. */
+const NO_START_FACTS: PlannedStartFacts = { startRequested: false, startResolved: false, runningObserved: false, runDispatchAttempted: false, runAcknowledged: false };
 
 /** The outbound handlers' names. */
 const JOB_OBJECTS = "jobObjects";
@@ -104,9 +106,10 @@ function reportOf(record: JobRecord): MiniToolJobReport | MiniToolPlanJobReport 
         },
       };
     });
-    return readMiniToolPlanJobReport(request, state.phase === "done" && usage !== null
-      ? { schemaVersion: 2, state: "done", outputs, usage }
-      : { schemaVersion: 2, state: "failed", reason: state.reason ?? "tool_failed", outputs, usage });
+    const measured = record.reported === undefined ? null : usage;
+    return readMiniToolPlanJobReport(request, state.phase === "done" && measured !== null
+      ? { schemaVersion: 2, state: "done", outputs, usage: measured }
+      : { schemaVersion: 2, state: "failed", reason: state.reason ?? "tool_failed", outputs, usage: measured });
   }
   if (state.phase === "starting" || state.phase === "running") return { state: state.phase };
   if (state.phase === "failed" || usage === null) return { state: "failed", reason: state.reason ?? "tool_failed", usage };
@@ -169,11 +172,11 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
       reason: null,
     };
     if (now >= request.deadlineAt) {
-      const ended: JobRecord = { state: { ...state, phase: "failed", endedAt: now, reason: "tool_failed" }, request, written: {}, media: {}, cpuUsec: null };
+      const ended: JobRecord = { state: { ...state, phase: "failed", endedAt: now, reason: "tool_failed" }, request, written: {}, media: {}, cpuUsec: null, ...(isPlan(request) ? { startFacts: { ...NO_START_FACTS } } : {}) };
       await this.save(ended);
       return reportOf(ended);
     }
-    await this.save({ state, request, written: {}, media: {}, cpuUsec: null });
+    await this.save({ state, request, written: {}, media: {}, cpuUsec: null, ...(isPlan(request) ? { startFacts: { ...NO_START_FACTS } } : {}) });
     await this.schedule(new Date(request.deadlineAt), "expireJob", { attemptId: state.attemptId });
 
     const writes: Record<string, string> = {};
@@ -190,7 +193,9 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
         [MEDIA_OBJECT_HOST]: { method: JOB_OBJECTS, params: objects },
         [JOB_REPORT_HOST]: planned ? { method: JOB_REPORT, params: objects } : JOB_REPORT,
       });
+      if (planned) await this.observeStart({ startRequested: true });
       await this.start();
+      if (planned) await this.observeStart({ startResolved: true, runningObserved: this.ctx.container?.running === true, runDispatchAttempted: true });
       const answered = await this.containerFetch(
         new Request(`http://job${RUN_PATH}`, {
           method: "POST",
@@ -218,7 +223,9 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
         }),
       );
       if (answered.status !== 202) throw new JobStartFailed(`the run was answered ${answered.status}`);
+      if (planned) await this.observeStart({ runAcknowledged: true });
     } catch (err) {
+      if (planned) await this.observeStart({ runningObserved: this.ctx.container?.running === true });
       await this.apply(planned ? { type: "reported", ok: false, reason: "internal" } : { type: "startFailed" });
       throw err instanceof JobStartFailed ? err : new JobStartFailed(String(err));
     }
@@ -332,6 +339,23 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
     const record = await this.load();
     if (record?.state.phase === "running" || record?.state.phase === "starting") return;
     await this.destroy();
+  }
+
+  /**
+   * Add only positive start observations without resetting claims, identity or terminal state.
+   * @param facts - Application facts observed at a durable dispatch boundary.
+   * @returns Nothing after the atomic monotonic merge.
+   * @throws {Error} When the durable observation cannot be saved.
+   */
+  private async observeStart(facts: Partial<PlannedStartFacts>): Promise<void> {
+    if (!Object.values(facts).some((value) => value === true)) return;
+    await this.ctx.storage.transaction(async (transaction) => {
+      const record = await transaction.get<JobRecord>(RECORD);
+      if (!record || !isPlan(record.request)) return;
+      const next = { ...NO_START_FACTS, ...record.startFacts };
+      for (const key of Object.keys(facts) as (keyof PlannedStartFacts)[]) if (facts[key] === true) next[key] = true;
+      await transaction.put(RECORD, { ...record, startFacts: next });
+    });
   }
 
   /**

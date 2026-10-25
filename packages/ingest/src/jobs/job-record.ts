@@ -9,6 +9,14 @@ import type { JobState } from "@ingest/jobs/transition.js";
 export const JOB_RECORD_KEY = "job";
 /** Byte facts computed from the object stored in R2. */
 export type JobWritten = Pick<IngestMeasurements, "sha256" | "sizeBytes" | "contentType">;
+/** Monotonic application observations, distinct from provider billing or measured usage. */
+export interface PlannedStartFacts {
+  startRequested: boolean;
+  startResolved: boolean;
+  runningObserved: boolean;
+  runDispatchAttempted: boolean;
+  runAcknowledged: boolean;
+}
 /** The persisted job and its immutable byte observations. */
 export interface StoredMiniToolJob {
   state: JobState;
@@ -18,4 +26,5 @@ export interface StoredMiniToolJob {
   media: Record<string, MediaOfOutput>;
   cpuUsec: number | null;
   writeClaims?: Record<string, string>;
+  startFacts?: PlannedStartFacts;
 }
