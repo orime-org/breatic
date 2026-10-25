@@ -232,6 +232,12 @@ export {
   understandMediaAt,
   readingLimitsUntil,
 } from "@domain/understand/index.js";
+export {
+  openUnderstandOperation,
+  getUnderstandOperation,
+  applyUnderstandOperationEvent,
+} from "@domain/understand/operation.repo.js";
+export type { OpenUnderstandOperationInput } from "@domain/understand/operation.repo.js";
 export type {
   MediaKind,
   RefusalKind,
