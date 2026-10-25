@@ -90,10 +90,11 @@ export async function createPayment(
 /**
  * Get a payment by ID.
  * @param id - Payment UUID
+ * @param tx - The caller's transaction, if present.
  * @returns The payment entity, or null if not found
  */
-export async function getPaymentById(id: string): Promise<PaymentEntity | null> {
-  const rows = await db.select().from(payments).where(eq(payments.id, id)).limit(1);
+export async function getPaymentById(id: string, tx?: DbTx): Promise<PaymentEntity | null> {
+  const rows = await (tx ?? db).select().from(payments).where(eq(payments.id, id)).limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
 }
 

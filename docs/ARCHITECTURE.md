@@ -66,6 +66,16 @@ config/ locales/ (git-tracked)
 
 **后台内部接口是 API 进程里的第二个监听**:`INTERNAL_API_ENABLED=true` 才开(默认关),绑 `INTERNAL_API_HOST:INTERNAL_API_PORT`(默认 `127.0.0.1:3002`),跑 `internal-app.ts` 建的第二个 Hono app,它的路由一条也不挂在公开 app 上。调用方只有后台:每个请求带 HMAC 签名(`INTERNAL_API_SECRET`,轮换期间 `INTERNAL_API_SECRET_PREVIOUS` 签的也认)和一次性随机数,授权表没列的方法与路径一律 403;谁连得到这个端口,由端口发布到哪里决定。开着它时,同一进程里还跑积分包退款的定时循环(`startRefundLoop`)。
 
+### Internal refund decisions
+
+The internal refund preview returns `action`, `restoreCredits` and a complete `oneShot` map for `reject`, `settle`, `send_back` and `resolve_outside`. Each one-shot verdict uses `assessOneShot` with the current lot, payment, operations, refund copies, unresolved failures and dispute state. Execution judges the facts again inside the write transaction, including the submitted confirmation amounts and failed-refund identifiers.
+
+All eight signed refund writes share one idempotency-key namespace across `credit_refund_operations`, `refund_mail_outbox` and `credit_refund_refusals`. `lookupKey` checks the tables before target preparation and again after `withKeyDecision` takes the transaction-level advisory lock. A matching fingerprint replays the result; a different fingerprint returns `422 idempotency_key_reused`. Operations and mail retain their existing dynamic snapshots and in-progress responses.
+
+`credit_refund_refusals` belongs to the primary product database. A final `404 not_found`, or a business `409` with `lot_state_changed`, `stripe_blocks`, `operation_in_progress` or `mail_not_resendable`, is returned as a decision before business writes. The key transaction stores its request identity, fingerprint, HTTP status and literal JSON response, then commits. The HTTP reply and later matching requests use that stored response. Authentication, rate-limit, body-validation, key-reuse and infrastructure errors follow their existing error paths. SQL failures propagate and roll back the current transaction.
+
+Refusal key lookups include soft-deleted refusal rows, so their keys remain owned. The seven lot-targeted writes use `findTarget` and `lockLiveLot` to require a live purchased lot and its payment. A missing lot target or resend operation is rechecked under the key lock before its final refusal is stored. Historical key results are replayed before target availability is checked. The refusal's target kind and identifier preserve the original request identity independently of the target's continued existence.
+
 ### Canvas collaboration
 
 - 节点 create/delete + position 由**前端独占**;后端只能改 `data` 字段(taskCounts/content 等)
