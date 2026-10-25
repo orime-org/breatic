@@ -15,6 +15,7 @@
  */
 
 export * as membershipService from "@server/modules/account/membership.service.js";
+export * as enterpriseMembershipService from "@server/modules/enterprise-membership/enterprise-membership.service.js";
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";

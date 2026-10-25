@@ -18,7 +18,7 @@
  * So it hangs on the RESULT: the tier moved, and where it landed is `base`.
  */
 
-import { changeMembershipTier, getUserMembershipTier } from "@breatic/core";
+import { changeMembershipTier, getMembershipReadingForUser } from "@breatic/core";
 import type { DbTx, TierChangeReason } from "@breatic/core";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
 import type { MembershipTier } from "@breatic/shared";
@@ -27,17 +27,8 @@ import * as userRepo from "@server/modules/auth/user.repo.js";
 import { buildMembershipEndedMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
-/**
- * The tiers a subscription is allowed to move an account between.
- *
- * The two it sells, plus the one an account falls back to when it sells it
- * nothing. Every other tier an account can be on got there some other
- * way and goes away some other way.
- */
-const SUBSCRIPTION_GOVERNED_TIERS: ReadonlySet<string> = new Set<string>([
-  "base",
-  ...SUBSCRIBABLE_MEMBERSHIP_TIERS,
-]);
+/** The paid tiers whose actual ending produces the ordinary membership notice. */
+const PAID_TIERS: ReadonlySet<string> = new Set<string>(SUBSCRIBABLE_MEMBERSHIP_TIERS);
 
 /** What one settling of the tier did. */
 export interface SettleTierResult {
@@ -78,14 +69,9 @@ export async function settleTier(input: {
   referenceId?: string;
   tx?: DbTx;
 }): Promise<SettleTierResult> {
-  const stored = await getUserMembershipTier(input.userId, input.tx);
-  if (!SUBSCRIPTION_GOVERNED_TIERS.has(stored)) {
-    // Stripe has no say over this account's tier. `enterprise` is negotiated
-    // and `self_hosted` is a deployment shape; neither was ever sold as a
-    // subscription, so "there is no live subscription" says nothing about
-    // them, and a subscription write must not land `base` on either. The
-    // read side refuses to touch these the same way (`honouredTier`).
-    return { changed: false, fromTier: stored, endedFrom: null };
+  const reading = await getMembershipReadingForUser(input.userId, input.tx);
+  if (reading.settlementProtected) {
+    return { changed: false, fromTier: reading.storedTier, endedFrom: null };
   }
 
   const reason: TierChangeReason =
@@ -99,9 +85,7 @@ export async function settleTier(input: {
     input.tx,
   );
 
-  // Landing on `base` from `base` is not an ending, and neither is moving
-  // between two paid tiers — the account still has a membership.
-  const ended = changed && input.toTier === "base" && fromTier !== "base";
+  const ended = changed && input.toTier === "base" && PAID_TIERS.has(fromTier);
   if (ended) {
     await notificationService.createMembershipEnded({
       userId: input.userId,
