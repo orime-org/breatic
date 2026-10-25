@@ -163,9 +163,7 @@ export interface BackendUploadContext {
  * @throws {Error} When canonical registration fails.
  */
 function registerBackendOutcome(report: Extract<IngestReport, { outcome: 'completed' }>, deadlineAt: number, knownAlpha = false): Promise<IngestReportOutcome> {
-  void deadlineAt;
-  void knownAlpha;
-  return applyIngestReport(report);
+  return report.contentType.startsWith('video/') ? applyIngestReport(report, { presentation: { deadlineAt, knownAlpha } }) : applyIngestReport(report);
 }
 
 /**
