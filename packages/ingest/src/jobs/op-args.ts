@@ -156,7 +156,7 @@ function videoOut(source: ProbeReport): string[] {
  * @param source - The source's probe.
  * @returns The audio arguments.
  */
-function audioOut(source: ProbeReport): string[] {
+export function audioOut(source: ProbeReport): string[] {
   const audio = source.streams.find((stream) => stream.codecType === "audio");
   return audio === undefined || MP4_AUDIO.has(audio.codecName ?? "") ? ["-c:a", "copy"] : AAC;
 }
