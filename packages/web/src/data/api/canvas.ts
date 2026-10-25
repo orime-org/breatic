@@ -268,9 +268,8 @@ export const canvasApi = {
    * @param body.node_id - The node whose words these are.
    * @param body.text - What it says at this moment.
    * @returns The id of the row that now holds them.
-   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 404 / 413 / 429, or when the transfer ticket is refused.
+   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 404 / 413 / 429 / 502, or when the transfer ticket is refused.
    * @throws {Error} When a text over the request limit could not be moved through storage.
-   * @throws {DOMException} `AbortError` when that move is stopped.
    */
   async snapshotNodeText(body: {
     project_id: string;
@@ -288,9 +287,8 @@ export const canvasApi = {
    * write each copy's history (inner#1349).
    * @param body - The project, the addresses the copies name, and their history.
    * @returns Old address → address in this Studio; null for a cover that could not be filed.
-   * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 413 / 429), or when the transfer ticket is refused.
+   * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 413 / 429 / 502), or when the transfer ticket is refused.
    * @throws {Error} When a body over the request limit could not be moved through storage.
-   * @throws {DOMException} `AbortError` when that move is stopped.
    */
   async paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
     // Long text history goes through storage when it is over the request limit (inner#1006).
