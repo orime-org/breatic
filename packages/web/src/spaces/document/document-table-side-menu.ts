@@ -3,7 +3,7 @@
 
 /**
  * Which block the side menu stands for at a table's height (inner#1619
- * design 5.3, "格子里块的手柄、表格手柄").
+ * design 5.3, "Block handles inside cells and the table handle").
  *
  * A cell is a small body: with the pointer anywhere in a cell, the menu is the
  * block in that cell at the pointer's height, or the nearest one. In the
