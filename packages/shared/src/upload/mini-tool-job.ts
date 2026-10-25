@@ -65,6 +65,7 @@ export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
  * object and nothing more.
  */
 export const miniToolJobRequestSchema = z.object({
+  schemaVersion: z.never().optional(),
   jobId: z.string().min(1).max(200),
   containerClass: z.string().min(1).max(100),
   deadlineAt: z.number().int().positive(),
