@@ -154,6 +154,12 @@ describe("original planned job registration", () => {
     expect(h.record).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
   });
 
+  it.each(["starting", "running"])("refuses %s as a stored terminal report", async (state) => {
+    h.advance.mockResolvedValue({ schemaVersion: 2, state });
+    await expect(advanceRegisteredMiniToolPlanJob(input)).rejects.toThrow();
+    expect(h.record).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
+  });
+
   it("stops registration when report persistence fails", async () => {
     const error = new Error("report storage unavailable"); h.record.mockRejectedValue(error);
     await expect(advanceRegisteredMiniToolPlanJob(input)).rejects.toBe(error);
