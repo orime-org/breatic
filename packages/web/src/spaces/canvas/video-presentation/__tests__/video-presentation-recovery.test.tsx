@@ -110,7 +110,7 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
 
   it('rereads source facts after a repair conflict and preserves the same visibly reported error', async () => {
     seed(failed);
-    const failure = new ApiException({ status: 409, code: 'sourceConflict', message: 'The source changed.', fromServer: true });
+    const failure = new ApiException({ status: 409, message: 'The source changed.', fromServer: true });
     platform.apiPost.mockRejectedValue(failure);
     const recovery = createVideoPresentationRecovery(client, input);
     await expect(recovery.recover('source')).rejects.toBe(failure);
