@@ -6,7 +6,7 @@
  *   - take 30–120 seconds to run (container boot + migration + E2E flow)
  *   - must NOT run as part of the default `pnpm test` CI step
  *
- * Run with: pnpm --filter @breatic/server test:integration
+ * Run with: pnpm exec turbo run test:integration --filter=@breatic/server
  */
 
 import type {} from "@breatic/integration-tests/provided-context";

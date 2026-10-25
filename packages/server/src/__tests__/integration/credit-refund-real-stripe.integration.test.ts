@@ -31,7 +31,7 @@
  * Every case is tagged, so the default integration run leaves the file out
  * (`testNamePattern` in vitest.integration.config.ts). Run it on purpose:
  *
- *   STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
+ *   STRIPE_SECRET_KEY=sk_test_… pnpm exec turbo run test:integration --filter=@breatic/server --env-mode=loose -- \
  *     -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
  *
  * The suite refuses any key that is not `sk_test_…`, before the first call.
@@ -51,7 +51,7 @@
  * It prints "Your webhook signing secret is whsec_…". In another:
  *
  *   STRIPE_CLI_FORWARDING=1 STRIPE_WEBHOOK_SECRET=whsec_… STRIPE_SECRET_KEY=sk_test_… \
- *     pnpm --filter @breatic/server test:integration \
+ *     pnpm exec turbo run test:integration --filter=@breatic/server --env-mode=loose -- \
  *     -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
  *
  * Without STRIPE_CLI_FORWARDING=1 the webhook case reports itself skipped;
