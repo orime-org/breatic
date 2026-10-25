@@ -173,9 +173,8 @@ export async function nodeIds(page: Page, projectId: string, spaceId: string): P
  * @throws {Error} When the node is not on screen.
  */
 export async function copyAndPaste(page: Page, nodeId: string): Promise<void> {
-  const box = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).boundingBox();
-  if (box === null) throw new Error(`node ${nodeId} is not on screen`);
-  await page.mouse.click(box.x + box.width / 2, box.y + 6);
+  const at = await uncoveredPoint(page, nodeId);
+  await page.mouse.click(at.x, at.y);
   await expect(visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`)).toHaveClass(/selected/);
   await page.keyboard.press('ControlOrMeta+C');
   await page.keyboard.press('ControlOrMeta+V');
@@ -187,8 +186,47 @@ export async function copyAndPaste(page: Page, nodeId: string): Promise<void> {
  * @param nodeId - The node.
  */
 export async function keepSnapshot(page: Page, nodeId: string): Promise<void> {
-  await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).click({ button: 'right' });
+  await openNodeMenu(page, nodeId);
   await page.getByTestId('node-menu-snapshot').click();
+}
+
+/**
+ * Right-click a node where nothing else covers it, opening its menu.
+ * @param page - A page showing the canvas Space.
+ * @param nodeId - The node.
+ */
+export async function openNodeMenu(page: Page, nodeId: string): Promise<void> {
+  const at = await uncoveredPoint(page, nodeId);
+  await page.mouse.click(at.x, at.y, { button: 'right' });
+}
+
+/**
+ * A point on a node's edge strip that hits the node itself. A pasted copy
+ * lands overlapping its original, so the centre of one can sit under the
+ * other; each candidate is checked with a hit test before it is used.
+ * @param page - A page showing the canvas Space.
+ * @param nodeId - The node.
+ * @returns The point, in page coordinates.
+ * @throws {Error} When the node is off screen or covered at every candidate.
+ */
+async function uncoveredPoint(page: Page, nodeId: string): Promise<{ x: number; y: number }> {
+  const box = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).boundingBox();
+  if (box === null) throw new Error(`node ${nodeId} is not on screen`);
+  const candidates = [
+    { x: box.x + 12, y: box.y + 6 },
+    { x: box.x + box.width / 2, y: box.y + 6 },
+    { x: box.x + box.width - 12, y: box.y + 6 },
+    { x: box.x + 12, y: box.y + box.height - 6 },
+    { x: box.x + 6, y: box.y + box.height / 2 },
+  ];
+  for (const point of candidates) {
+    const hit = await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.react-flow__node')?.getAttribute('data-id') ?? null,
+      point,
+    );
+    if (hit === nodeId) return point;
+  }
+  throw new Error(`node ${nodeId} is covered at every point tried`);
 }
 
 /** One row of a node's history, as the history endpoint answers it. */
