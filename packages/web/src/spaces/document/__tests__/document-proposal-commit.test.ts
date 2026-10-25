@@ -8,7 +8,7 @@
  * table normalization, block writes and undo over real Yjs documents.
  */
 
-import { act } from 'react';
+import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
@@ -191,7 +191,7 @@ describe.each(['root', 'cell', 'header', 'deep'] as const)('proposal output in %
         const tail = rowById(client.editor.prosemirrorState.doc, 'tail')!.node.toJSON();
         let result: Awaited<ReturnType<typeof landProposal>> | undefined;
         await act(async () => {
-          result = await landProposal(client, p, 'write', true);
+          result = await landProposal(client, p, 'write', () => ({ available: true, writeAccess: 'granted' }));
         });
 
         expect(result).toEqual({ outcome: 'applied', how: 'write', blockId: outputId(p, 0) });
@@ -218,7 +218,7 @@ describe.each(['root', 'cell', 'header', 'deep'] as const)('proposal output in %
         expect(landedAt(client, p)).toEqual({ how: 'write', blockId: outputId(p, 0) });
 
         await act(async () => {
-          expect(await landProposal(client, p, 'write', true)).toEqual(result);
+          expect(await landProposal(client, p, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual(result);
         });
         expect(snapshot(client)).toEqual(writtenTree);
         expect(client.undoManager.undoStack).toHaveLength(1);
@@ -246,7 +246,7 @@ describe.each(['insert', 'rewrite'] as const)('%s commit after asynchronous prep
       });
       let pending!: ReturnType<typeof landProposal>;
       await act(async () => {
-        pending = landProposal(client, p, 'write', true);
+        pending = landProposal(client, p, 'write', () => ({ available: true, writeAccess: 'granted' }));
         await entered.wait;
       });
       act(() => {
@@ -284,7 +284,7 @@ describe.each(['insert', 'rewrite'] as const)('%s commit after asynchronous prep
       });
       let pending!: ReturnType<typeof landProposal>;
       await act(async () => {
-        pending = landProposal(client, p, 'write', true);
+        pending = landProposal(client, p, 'write', () => ({ available: true, writeAccess: 'granted' }));
         await entered.wait;
       });
       act(() => {
@@ -332,7 +332,7 @@ describe.each(['insert', 'rewrite'] as const)('%s parsed rich table payload', (k
     vi.spyOn(documentMarkdown, 'markdownBlocks').mockResolvedValue([{ block: parsed as never, text: 'Parsed rich table' }]);
     const before = snapshot(client);
     await act(async () => {
-      expect(await landProposal(client, p, 'write', true)).toEqual({ outcome: 'applied', how: 'write', blockId: outputId(p, 0), leftOut: 1 });
+      expect(await landProposal(client, p, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'applied', how: 'write', blockId: outputId(p, 0), leftOut: 1 });
     });
 
     expect(outputs(client, p, 7).map((block) => ({ type: block.type, text: block.text }))).toEqual([

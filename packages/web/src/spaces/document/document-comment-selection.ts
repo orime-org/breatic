@@ -51,6 +51,7 @@ import {
 } from '@web/spaces/document/document-comment-extension';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
+import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 
 /** The editor surface this plugin needs, past the view. */
 interface CommentSelectionHost {
@@ -75,6 +76,8 @@ interface SelectionState {
   readonly ids: readonly string[];
   /** The thread their pointer is resting on in the panel, if any. */
   readonly hovered: string | null;
+  /** The current explicit viewing command, independent of the selected IDs. */
+  readonly location: ProposalLocation | null;
   /** The deeper colour over every highlight either of those names. */
   readonly decorations: DecorationSet;
 }
@@ -86,6 +89,7 @@ const NOTHING: readonly string[] = [];
 const UNSELECTED: SelectionState = {
   ids: NOTHING,
   hovered: null,
+  location: null,
   decorations: DecorationSet.empty,
 };
 
@@ -180,6 +184,40 @@ function deepened(
  * carrying nothing but the meta.
  */
 const watch = watchPluginState(selectedThreadsIn);
+
+/** The meta that publishes one explicit comment viewing command. */
+const DOCUMENT_COMMENT_LOCATION = new PluginKey('documentCommentLocation');
+
+/**
+ * Reads the current explicit command without changing ordinary selection.
+ * @param state - The editor's current state.
+ * @returns The command, or null after ordinary reading takes over.
+ */
+export function commentLocationIn(state: EditorState): ProposalLocation | null {
+  return DOCUMENT_COMMENT_SELECTION.getState(state)?.location ?? null;
+}
+
+/** Broadcasts command identity even when the selected IDs stay the same. */
+const locationWatch = watchPluginState(commentLocationIn);
+
+/** Hear about explicit viewing commands and their retirement. */
+export const onCommentLocationChange: (listener: () => void) => () => void =
+  locationWatch.onChange;
+
+/**
+ * Publishes a comment command and its selection in one meta-only transaction.
+ * @param editor - The editor that owns the publication.
+ * @param location - The valid result from the pickup's completion outlet.
+ * @throws {Error} If the editor rejects the transaction.
+ */
+export function requestCommentLocation(editor: ToolEditor, location: ProposalLocation): void {
+  if (location.how !== 'comment') return;
+  const view = editor.prosemirrorView;
+  if (view === null) return;
+  view.dispatch(view.state.tr
+    .setMeta(DOCUMENT_COMMENT_SELECTION, [location.threadId])
+    .setMeta(DOCUMENT_COMMENT_LOCATION, location));
+}
 
 /** Hear about every change to which threads are being looked at. */
 export const onSelectedThreadsChange: (listener: () => void) => () => void =
@@ -343,15 +381,20 @@ function buildSelectionPlugin(
             ? current.ids
             : asked;
         const hovered = hoverMeta === undefined ? current.hovered : hoverMeta;
+        const locationMeta = tr.getMeta(DOCUMENT_COMMENT_LOCATION) as ProposalLocation | null | undefined;
+        const location = locationMeta === undefined
+          ? ids === current.ids ? current.location : null
+          : locationMeta;
 
         // Nothing read and nothing pointed at is one state, and handing the
         // same object back is what makes a second clear read as no change.
-        if (ids.length === 0 && hovered === null) return UNSELECTED;
+        if (ids.length === 0 && hovered === null && location === null) return UNSELECTED;
 
         // Nothing asked of it, and nothing moved under what is drawn.
         if (
           ids === current.ids &&
           hovered === current.hovered &&
+          location === current.location &&
           !tr.docChanged
         ) {
           return current;
@@ -370,6 +413,7 @@ function buildSelectionPlugin(
         return {
           ids,
           hovered,
+          location,
           decorations: paintSelected(tr.doc, deepened(ids, hovered)),
         };
       },
@@ -434,6 +478,7 @@ function buildSelectionPlugin(
     // answer already matches.
     view: (view) => {
       const broadcast = watch.view(view);
+      const commandBroadcast = locationWatch.view(view);
       return {
         /**
          * Keeps the library in step, then tells whoever is watching.
@@ -447,10 +492,12 @@ function buildSelectionPlugin(
             selectedThreadsIn(updated.state)[0],
           );
           broadcast.update?.(updated, previous);
+          commandBroadcast.update?.(updated, previous);
         },
         /** Hands the broadcast's own teardown back. */
         destroy: (): void => {
           broadcast.destroy?.();
+          commandBroadcast.destroy?.();
         },
       };
     },

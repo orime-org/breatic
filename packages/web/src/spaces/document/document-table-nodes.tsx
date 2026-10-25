@@ -295,7 +295,7 @@ const keepPastedTablesWhole = new Plugin({
  * @param content - The fragment to unfold.
  * @returns The fragment with table frames removed.
  */
-function unfoldTables(content: Fragment): Fragment {
+export function unfoldTables(content: Fragment): Fragment {
   const blocks: PMNode[] = [];
   content.forEach((node) => {
     if (node.type.name === DOC_TABLE) {

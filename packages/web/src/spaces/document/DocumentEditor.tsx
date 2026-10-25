@@ -39,7 +39,7 @@ import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment
 import { bodyPartMark, recomputeBodyFocus, releaseBodyFocus } from '@web/spaces/document/document-body-focus';
 import { attachBodyScroller, BODY_BLANK } from '@web/spaces/document/document-body-press';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
-import type { Landed } from '@web/spaces/document/document-proposal-landing';
+import { isCurrentProposalLocation, type ProposalLocation } from '@web/spaces/document/document-proposal-location';
 
 interface DocumentEditorProps {
   /** The live editor and its surface, created and owned by the cache. */
@@ -59,7 +59,7 @@ interface DocumentEditorProps {
   /** What takes files into this body; a body without one offers no media entries. */
   uploader?: DocumentUploader | null;
   /** Where an Agent proposal just landed, to show the reader (inner#1509). */
-  landed?: Landed | null;
+  landed?: ProposalLocation | null;
 }
 
 /** How long a block an Agent proposal landed stays marked. */
@@ -82,10 +82,8 @@ const GUTTER_START: React.CSSProperties = { paddingLeft: BODY_GUTTER_START };
 
 /** Where the mark around a landed block is drawn, in the viewport's coordinates. */
 interface LandedBox {
-  top: number;
-  left: number;
-  width: number;
-  height: number;
+  location: ProposalLocation;
+  style: { top: number; left: number; width: number; height: number };
 }
 
 /**
@@ -199,18 +197,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
 
   // Where an Agent proposal landed is shown once per landing: a hidden Space
   // runs its effects again when shown, and the reader may have scrolled away
-  // since. A comment is shown the way the reader's own is, by reading its
-  // thread, which opens the panel on its card; a block written is scrolled to
-  // a third of the way down the viewport and outlined for a moment.
+  // since. Comment selection is issued once by the pickup's command outlet;
+  // the rail consumes its current plugin state. A written block is scrolled
+  // to a third of the way down the viewport and outlined for a moment.
   const [landedBox, setLandedBox] = React.useState<LandedBox | null>(null);
-  const shown = React.useRef<Landed | null>(null);
+  const shown = React.useRef<ProposalLocation | null>(null);
   React.useEffect(() => {
     if (landed === shown.current) return undefined;
-    if (landed?.how === 'comment') {
-      shown.current = landed;
-      selectThreads(handle.editor, [landed.threadId]);
-      return undefined;
-    }
+    if (landed === null || landed.how === 'comment' || !isCurrentProposalLocation(landed, handle.editor)) return undefined;
     const block = landed === null ? null : body.current?.querySelector<HTMLElement>(`[data-id="${CSS.escape(landed.blockId)}"]`);
     if (viewport === null || block === null || block === undefined) return undefined;
     shown.current = landed;
@@ -222,16 +216,21 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
     const top = at.top - frame.top + viewport.scrollTop - gap;
     setLandedBox({
-      top,
-      left: at.left - frame.left + viewport.scrollLeft - gap,
-      width: at.width + gap * 2,
-      height: at.height + gap * 2,
+      location: landed,
+      style: {
+        top,
+        left: at.left - frame.left + viewport.scrollLeft - gap,
+        width: at.width + gap * 2,
+        height: at.height + gap * 2,
+      },
     });
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
-    const timer = window.setTimeout(() => setLandedBox(null), LANDED_MARK_MS);
+    const timer = window.setTimeout(() => {
+      setLandedBox((current) => current?.location === landed ? null : current);
+    }, LANDED_MARK_MS);
     return () => {
       window.clearTimeout(timer);
-      setLandedBox(null);
+      setLandedBox((current) => current?.location === landed ? null : current);
     };
   }, [landed, viewport, handle.editor]);
 
@@ -313,7 +312,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 data-testid='document-proposal-landed'
                 aria-hidden='true'
                 className='pointer-events-none absolute rounded-content-xs border border-content-link animate-out fade-out fill-mode-forwards'
-                style={{ ...landedBox, ...LANDED_MARK_FADE }}
+                style={{ ...landedBox.style, ...LANDED_MARK_FADE }}
               />
             )}
             <div

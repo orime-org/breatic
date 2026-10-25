@@ -18,18 +18,19 @@
 
 import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
 import { Awareness } from 'y-protocols/awareness';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
-import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
+import { requestCommentLocation, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
+import { landedAt, landProposal, type Landed } from '@web/spaces/document/document-proposal-landing';
+import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import {
   _resetDocumentEditorCacheForTests,
   type DocumentEditorHandle,
@@ -43,6 +44,24 @@ describe('DocumentEditor', () => {
   let doc: Y.Doc;
   let awareness: Awareness;
   let handle: DocumentEditorHandle;
+
+  /** Builds a valid publication for the chrome's geometry fixture. */
+  function publication(at: Landed, proposal: DocumentProposal): ProposalLocation {
+    return Object.freeze({ ...at, documentName: NAME, handle, pending: { proposal, action: 'view' as const, order: 0 }, owner: {} });
+  }
+
+  /** Gives the existing first block an actual proposal trace for measurement. */
+  function writtenLocation(): ProposalLocation {
+    const proposalId = '33333333-3333-4333-8333-333333333333';
+    const blockId = deriveId(`document-proposal:${proposalId}:0`);
+    const view = handle.editor.prosemirrorView!;
+    const first = view.state.doc.firstChild!.firstChild!;
+    act(() => view.dispatch(view.state.tr.setNodeMarkup(1, undefined, { ...first.attrs, id: blockId })));
+    return publication({ how: 'write', blockId }, {
+      proposalId, spaceId: 'd1', spaceName: 'Document', kind: 'insert', blockId: null,
+      body: 'Output', title: 'Suggestion', heading: '', original: '', blockType: null, lossy: false,
+    });
+  }
 
   beforeEach(async () => {
     doc = new Y.Doc();
@@ -253,17 +272,18 @@ describe('DocumentEditor', () => {
     const original = HTMLElement.prototype.scrollTo;
     HTMLElement.prototype.scrollTo = scrollTo as typeof HTMLElement.prototype.scrollTo;
     try {
-      const landed = { how: 'write' as const, blockId: (handle.editor.document[0] as { id: string }).id };
-      const at = (mode: 'visible' | 'hidden'): React.JSX.Element => (
+      const at = (mode: 'visible' | 'hidden', landed: ProposalLocation | null): React.JSX.Element => (
         <React.Activity mode={mode}>
           <DocumentEditor handle={handle} uploader={uploader} landed={landed} />
         </React.Activity>
       );
-      const { rerender } = render(at('visible'));
+      const { rerender } = render(at('visible', null));
+      const landed = writtenLocation();
+      rerender(at('visible', landed));
       await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
 
-      rerender(at('hidden'));
-      rerender(at('visible'));
+      rerender(at('hidden', landed));
+      rerender(at('visible', landed));
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       expect(scrollTo).toHaveBeenCalledTimes(1);
@@ -279,7 +299,8 @@ describe('DocumentEditor', () => {
       ? tableBlock({ rows: [{ cells: ['H1', 'H2'] }, { cells: ['A', 'B'] }] })
       : { type: 'paragraph', content: 'Parent', children: [{ type: 'paragraph', content: 'Child' }] },
     ] as never);
-    const blockId = (editor.document[0] as { id: string }).id;
+    const location = writtenLocation();
+    const blockId = location.blockId;
     const block = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
     const own = kind === 'table' ? block : block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
     const nested = block.querySelectorAll<HTMLElement>('.bn-block-content')[kind === 'table' ? 0 : 1]!;
@@ -294,7 +315,7 @@ describe('DocumentEditor', () => {
     viewport.scrollTop = 30;
     viewport.scrollLeft = 5;
     try {
-      rerender(<DocumentEditor handle={handle} landed={{ how: 'write', blockId }} />);
+      rerender(<DocumentEditor handle={handle} landed={location} />);
 
       await waitFor(() => expect(screen.getByTestId('document-proposal-landed')).toHaveStyle({
         top: '92px', left: '27px', width: '316px', height: '176px',
@@ -324,11 +345,14 @@ describe('DocumentEditor', () => {
       blockType: 'paragraph',
       lossy: false,
     };
-    await landProposal(handle, proposal, 'comment', true);
+    await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
     const landed = landedAt(handle, proposal);
     expect(landed?.how).toBe('comment');
 
-    rerender(<DocumentEditor handle={handle} uploader={uploader} landed={landed} />);
+    if (landed === null) throw new Error('The fixture has no landing.');
+    const location = publication(landed, proposal);
+    act(() => requestCommentLocation(editor, location));
+    rerender(<DocumentEditor handle={handle} uploader={uploader} landed={location} />);
 
     await waitFor(() => expect(screen.getByTestId('doc-comment-rail')).toBeInTheDocument());
     expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([landed?.how === 'comment' ? landed.threadId : '']);

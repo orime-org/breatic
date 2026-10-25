@@ -13,6 +13,7 @@ import {
   _resetCollabSocketForTests,
   acquireDocProvider,
   CollabSocketProvider,
+  readDocConnection,
 } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests as resetDocs } from '@web/data/yjs/manager';
 import { useSocket } from '@web/data/yjs/use-socket';
@@ -220,7 +221,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
       pauseConfig(waiting);
       const execute = watchExecution();
       useDocumentProposals.getState().start(proposal(), 'write');
-      const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false));
+      const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
       await waiting.entered;
 
       act(() => {
@@ -247,7 +248,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     pauseConfig(old, fresh);
     const execute = watchExecution();
     useDocumentProposals.getState().start(proposal(), 'write');
-    renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false));
+    renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
     await old.entered;
 
     act(() => {
@@ -272,7 +273,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     pauseConfig(waiting);
     const execute = watchExecution();
     useDocumentProposals.getState().start(proposal(), 'write');
-    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false));
+    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
     await waiting.entered;
     const pending = useDocumentProposals.getState().pending[PROPOSAL_ID];
 
@@ -300,7 +301,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     pauseConfig(waiting);
     const execute = watchExecution();
     useDocumentProposals.getState().start(proposal(), 'write');
-    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false));
+    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
     await waiting.entered;
     const pending = useDocumentProposals.getState().pending[PROPOSAL_ID];
     const replica = replicaOf(transport.providers[0]!.document);
@@ -325,7 +326,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     const execute = watchExecution();
     useDocumentProposals.getState().start(proposal(), 'write');
     const { result, rerender } = renderHook(
-      ({ unbuildable }) => useDocumentProposalPickup(SPACE_ID, handle, 'granted', unbuildable),
+      ({ unbuildable }) => useDocumentProposalPickup(SPACE_ID, handle, 'granted', unbuildable, NAME),
       { initialProps: { unbuildable: false } },
     );
     await waiting.entered;
@@ -356,7 +357,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     const execute = watchExecution();
     useDocumentProposals.getState().start(proposal(), 'write');
     const { rerender } = renderHook(
-      ({ handle }) => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false),
+      ({ handle }) => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME),
       { initialProps: { handle: firstHandle } },
     );
     await first.entered;
@@ -398,7 +399,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     const handle = open();
     vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue(CONFIG);
     useDocumentProposals.getState().start(proposal(), 'write');
-    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false));
+    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
 
     await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
 
@@ -421,7 +422,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
       const fetchConfig = vi.spyOn(assetsApi, 'fetchUploadConfig');
       if (action === 'view') useDocumentProposals.getState().view(proposal(), 'write');
       else useDocumentProposals.getState().start(proposal(), 'write');
-      const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'denied', false));
+      const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'denied', false, NAME));
 
       await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
 
@@ -432,10 +433,34 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
       expect(toast.warning).not.toHaveBeenCalled();
     });
   }
+
+  it('recognizes an existing landing before rejecting an unknown write scope on the same loaded provider', async () => {
+    const handle = open();
+    const blockId = deriveId(`document-proposal:${PROPOSAL_ID}:0`);
+    handle.editor.insertBlocks([
+      { id: blockId, type: 'paragraph', content: 'ALREADY LANDED' },
+    ] as never, 'target', 'after');
+    const provider = transport.providers[0]!;
+    provider.isAuthenticated = false;
+    const fetchConfig = vi.spyOn(assetsApi, 'fetchUploadConfig');
+    const connection = readDocConnection(NAME);
+    expect(connection?.provider).toBe(provider);
+    expect(connection?.hasEverSynced).toBe(true);
+    expect(connection?.writeAccess).toBe('unknown');
+
+    const result = await landing.landProposal(handle, proposal(), 'write', () => ({
+      available: true,
+      writeAccess: readDocConnection(NAME)!.writeAccess,
+    }));
+
+    expect(result).toEqual({ outcome: 'applied', how: 'write', blockId });
+    expect(textOf(handle)).toBe('TARGETALREADY LANDED');
+    expect(fetchConfig).not.toHaveBeenCalled();
+  });
 });
 
 describe('proposal pickup admission while its body is hidden', () => {
-  for (const event of ['readonly', 'unknown', 'refused'] as const) {
+  for (const event of ['granted', 'readonly', 'unknown', 'refused'] as const) {
     it(`uses the registry's current ${event} facts when preparation finishes under Activity`, async () => {
       const handle = open();
       const provider = transport.providers[0]!;
@@ -456,7 +481,7 @@ describe('proposal pickup admission while its body is hidden', () => {
       function Body(): null {
         const connection = useSocket({ name: NAME, doc: provider.document });
         lastBodyAccess = connection.writeAccess;
-        useDocumentProposalPickup(SPACE_ID, handle, connection.writeAccess, false);
+        useDocumentProposalPickup(SPACE_ID, handle, connection.writeAccess, false, NAME);
         return null;
       }
 
@@ -488,12 +513,13 @@ describe('proposal pickup admission while its body is hidden', () => {
         } else if (event === 'unknown') {
           provider.isAuthenticated = false;
           provider.emit('open');
-        } else {
+        } else if (event === 'refused') {
           provider.emit('authenticationFailed', { reason: 'Forbidden' });
           provider.isAuthenticated = false;
         }
       });
-      if (event !== 'unknown') expect(lastKeeperAccess).toBe('denied');
+      if (event === 'readonly' || event === 'refused') expect(lastKeeperAccess).toBe('denied');
+      if (event === 'granted') expect(lastKeeperAccess).toBe('granted');
       // Activity cleanup may render useSocket's local mirror as unknown. The
       // granted request above is still preparing and must read current facts.
       await act(async () => {
@@ -501,11 +527,18 @@ describe('proposal pickup admission while its body is hidden', () => {
         await execute.mock.results[0]!.value;
       });
 
-      expect(textOf(handle)).toBe('TARGET');
-      expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toBeUndefined();
       expect(useDocumentProposals.getState().pending).toEqual({});
-      if (event === 'unknown') expect(toast.error).toHaveBeenCalledWith('Could not insert. Try again.');
-      else expect(toast.warning).toHaveBeenCalledWith('You can only view this Document right now.');
+      if (event === 'granted') {
+        expect(textOf(handle)).toBe('TARGETAGENT OUTPUT');
+        expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toEqual({ state: 'applied', action: 'write' });
+        expect(toast.warning).not.toHaveBeenCalled();
+        expect(toast.error).not.toHaveBeenCalled();
+      } else {
+        expect(textOf(handle)).toBe('TARGET');
+        expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toBeUndefined();
+        if (event === 'unknown') expect(toast.error).toHaveBeenCalledWith('Could not insert. Try again.');
+        else expect(toast.warning).toHaveBeenCalledWith('You can only view this Document right now.');
+      }
     });
   }
 });

@@ -66,7 +66,7 @@ describe('an explicit Agent comment View', () => {
     awareness = new Awareness(doc);
     transport = new HocuspocusProviderWebsocket({
       url: 'ws://localhost',
-      connect: false,
+      autoConnect: false,
     });
     provider = new HocuspocusProvider({
       name: NAME,
@@ -141,7 +141,7 @@ describe('an explicit Agent comment View', () => {
       lossy: false,
     };
     await act(async () => {
-      await landProposal(handle, proposal, 'comment', true);
+      await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
     });
     const at = landedAt(handle, proposal);
     expect(at?.how).toBe('comment');
@@ -232,7 +232,7 @@ describe('an explicit Agent comment View', () => {
       return new DOMRect(0, 0, 300, 120);
     });
     vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(120);
-    const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation((options): void => {
+    const scroll = vi.spyOn(viewport, 'scrollTo').mockImplementation((options: number | ScrollToOptions): void => {
       if (typeof options === 'object' && options.top !== undefined) viewport.scrollTop = options.top;
     });
     await view(proposal);

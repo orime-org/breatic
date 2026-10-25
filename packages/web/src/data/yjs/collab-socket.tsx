@@ -97,6 +97,30 @@ export interface DocFacts {
   authFailure: string | null;
 }
 
+/** Whether the current document connection may send writes to the server. */
+export type WriteAccess = 'unknown' | 'granted' | 'denied';
+
+/** Current connection identity and facts, read without acquiring a provider. */
+export interface DocConnection {
+  readonly provider: HocuspocusProvider;
+  readonly document: Y.Doc;
+  readonly hasEverSynced: boolean;
+  readonly authFailure: string | null;
+  readonly writeAccess: WriteAccess;
+}
+
+/**
+ * Derives current write access from settled provider fields and refusal facts.
+ * @param provider - The current document provider.
+ * @param authFailure - The registry's current refusal, if any.
+ * @returns Refused, granted, or not yet authenticated write access.
+ */
+export function readWriteAccess(provider: HocuspocusProvider, authFailure: string | null): WriteAccess {
+  if (authFailure !== null) return 'denied';
+  if (!provider.isAuthenticated) return 'unknown';
+  return provider.authorizedScope === 'readonly' ? 'denied' : 'granted';
+}
+
 interface DocEntry {
   provider: HocuspocusProvider;
   refcount: number;
@@ -294,6 +318,23 @@ export function readDocFacts(name: string): DocFacts {
   return facts
     ? { ...facts }
     : { hasEverSynced: false, authFailure: null };
+}
+
+/**
+ * Reads the currently held document connection without changing its lifetime.
+ * @param name - The canonical document name.
+ * @returns A fresh snapshot, or null while no consumer holds the connection.
+ */
+export function readDocConnection(name: string): DocConnection | null {
+  const entry = docEntries.get(name);
+  if (entry === undefined || entry.refcount <= 0 || entry.pendingRelease !== null) return null;
+  return {
+    provider: entry.provider,
+    document: entry.provider.document,
+    hasEverSynced: entry.facts.hasEverSynced,
+    authFailure: entry.facts.authFailure,
+    writeAccess: readWriteAccess(entry.provider, entry.facts.authFailure),
+  };
 }
 
 /**

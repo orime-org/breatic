@@ -1053,7 +1053,11 @@ export function renderProductGuide(): string {
       "like any other comment. The card then shows " +
       `${quoted(t("chat.documentProposal.appliedComment"))}, ${quoted(t("chat.documentProposal.appliedRewrite"))} ` +
       `or ${quoted(t("chat.documentProposal.appliedInsert"))} and a ` +
-      `${quoted(t("chat.documentProposal.view"))} button that shows it again. A card reads whether it landed ` +
+      `${quoted(t("chat.documentProposal.view"))} button that shows it again. Viewing an Agent comment selects ` +
+      `${quoted(t("spaces.document.comment.filterAll"))} so its card is visible even after it has been resolved; ` +
+      "a resolved comment's words remain ordinary text. Viewing it again brings the card and its table cell into view. " +
+      "The reader's later choice of comment, filter or closing the panel stays in force when switching Spaces. " +
+      "A card reads whether it landed " +
       "from its document while that document is open, after a reload too, and a rewrite or insert card goes back " +
       "to its buttons once the reader undoes it. With the document closed, a card pressed in this visit keeps " +
       "showing how its press ended; after a reload it shows its buttons, and pressing one opens the document and " +
@@ -1272,7 +1276,7 @@ export function renderProductGuide(): string {
       "characters. If the words are deleted before it is posted, the box turns " +
       `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
       `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
-      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen at first), ` +
+      `${quoted(t("spaces.document.comment.filterOpen"))} (chosen when opening from the document menu), ` +
       `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
       "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
