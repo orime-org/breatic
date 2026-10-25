@@ -3,6 +3,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError, initCore } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type * as DomainModule from "@breatic/domain";
 import type * as CreditPrecheck from "@server/modules/payment/credit-precheck.service.js";
 
@@ -66,5 +67,54 @@ describe("rowed run credit admission", () => {
     expect(releaseHold).toHaveBeenCalledWith("task");
     expect(markFailed).toHaveBeenCalledWith("task", "no_credits");
     expect(settle).toHaveBeenCalledWith({ taskId: "node-row", outcome: "failed", errorMessage: "no_credits" });
+  });
+
+  it.each(["completed", "failed"] as const)("uses a lane's committed %s decision without legacy task or hold cleanup", async (status) => {
+    const settleFailure = vi.fn(async () => status);
+    const result = await startRowedRun({
+      taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
+      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
+      enqueue: async () => { throw new Error("fixture_queue_acknowledgement_failed"); },
+      logTag: "test", settleFailure,
+    });
+    expect(result).toBe(status === "completed" ? "pending" : "failed");
+    expect(settleFailure).toHaveBeenCalledExactlyOnceWith("internal");
+    expect(releaseHold).not.toHaveBeenCalled();
+    expect(markFailed).not.toHaveBeenCalled();
+    if (status === "completed") expect(settle).not.toHaveBeenCalled();
+    else expect(settle).toHaveBeenCalledExactlyOnceWith({ taskId: "node-row", outcome: "failed", errorMessage: "internal" });
+  });
+
+  it("propagates a failed lane transaction without falling back to destructive cleanup", async () => {
+    const queueError = new Error("fixture_queue_failure"); const transactionError = new Error("fixture_transaction_failure");
+    const settleFailure = vi.fn(async () => { throw transactionError; });
+    const result: unknown = await startRowedRun({
+      taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
+      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
+      enqueue: async () => { throw queueError; }, logTag: "test", settleFailure,
+    }).catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(AggregateError);
+    expect((result as AggregateError).errors).toEqual([queueError, transactionError]);
+    expect(settleFailure).toHaveBeenCalledExactlyOnceWith("internal");
+    expect(releaseHold).not.toHaveBeenCalled();
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
+  });
+
+  it("runs the lane failure transaction when opening a node row fails and preserves its existing 503 refusal", async () => {
+    const openError = new Error("fixture_open_failure"); open.mockRejectedValueOnce(openError);
+    const settleFailure = vi.fn(async (): Promise<"failed"> => "failed");
+    const enqueue = vi.fn(async () => ({ id: "job" }));
+    await expect(startRowedRun({
+      taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
+      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
+      enqueue, logTag: "test", settleFailure,
+    })).rejects.toMatchObject({ name: "AppError", statusCode: 503, message: t("canvas.task.couldNotStart") });
+    expect(settleFailure).toHaveBeenCalledExactlyOnceWith("internal");
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(releaseHold).not.toHaveBeenCalled();
+    expect(markFailed).not.toHaveBeenCalled();
+    expect(settle).not.toHaveBeenCalled();
   });
 });

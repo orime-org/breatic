@@ -144,6 +144,8 @@ export async function failOpenedTasks(
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
+ * @param opts.settleFailure - An optional lane-specific task/hold transaction;
+ *   completed skips failure cleanup, failed settles the opened node rows.
  * @returns `"pending"` once queued, `"failed"` when refused after a row opened.
  * @throws {Error} The refusal itself, when no row opened to carry it.
  */
@@ -159,6 +161,7 @@ export async function startRowedRun(opts: {
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
+  settleFailure?: (reason: TaskFailureReason) => Promise<"completed" | "failed">;
 }): Promise<"pending" | "failed"> {
   const { taskId, projectId, spaceId } = opts;
   let rows: OpenedTaskRow[] = [];
@@ -190,11 +193,25 @@ export async function startRowedRun(opts: {
         : err instanceof AppError && err.statusCode === 402
           ? "no_credits"
           : "internal";
+    if (opts.settleFailure !== undefined) {
+      try {
+        if (await opts.settleFailure(reason) === "completed") {
+          logger.error({ err, ctx: { taskId, projectId, ...opts.logContext } }, `${opts.logTag}_acknowledgement_failed_after_completion`);
+          return "pending";
+        }
+      } catch (settleErr) {
+        logger.error({ err, ctx: { taskId, projectId } }, `${opts.logTag}_admission_failed`);
+        logger.error({ err: settleErr, ctx: { taskId, projectId } }, `${opts.logTag}_failure_transaction_failed`);
+        throw new AggregateError([err, settleErr], "Run admission and failure transaction failed");
+      }
+    }
     for (const settle of [
       // Before queueing, so whatever was held for this run is released;
       // a refused admission held nothing, and releasing it does nothing.
-      (): Promise<unknown> => creditHoldService.releaseHold(taskId),
-      (): Promise<unknown> => taskService.markFailed(taskId, reason),
+      ...(opts.settleFailure === undefined ? [
+        (): Promise<unknown> => creditHoldService.releaseHold(taskId),
+        (): Promise<unknown> => taskService.markFailed(taskId, reason),
+      ] : []),
       (): Promise<unknown> => failOpenedTasks(projectId, spaceId, rows, reason),
     ]) {
       try {

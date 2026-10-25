@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import crypto from "node:crypto";
+import { Queue } from "bullmq";
 import type { Hono } from "hono";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { getNodeTaskConfig, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { getMiniToolsConfig, getNodeTaskConfig, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import { miniToolAnalysisRequestSchema, miniToolAnalysisService, taskRepo, taskService } from "@breatic/domain";
-import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
+import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 
 interface AnalysisRequest {
@@ -511,5 +512,88 @@ describe("mini-tool analysis admission and project reads", () => {
     const [stored] = await sql<{ result: { settlement: unknown } }[]>`SELECT result FROM tasks WHERE id = ${record.analysisRunId}`;
     expect(stored?.result.settlement).toEqual(settlement);
     expect(await reading(await get(record.analysisRunId, fixture.viewerCookie))).toEqual(record);
+  });
+
+  it.each([
+    { kind: "people" as const, nodeStatus: "running" },
+    { kind: "people" as const, nodeStatus: "done" },
+    { kind: "scene_cuts" as const, nodeStatus: "running" },
+    { kind: "scene_cuts" as const, nodeStatus: "done" },
+  ])("keeps completed $kind and its $nodeStatus node after a queue acknowledgement error", async ({ kind, nodeStatus }) => {
+    const fixture = await seed(); const body = requestFor(fixture, kind);
+    let committed!: MiniToolAnalysisRecord;
+    let nodeBefore: unknown;
+    const settlement = { version: 7, state: "waiting", pendingConsumptionKeys: ["a".repeat(64)], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: true };
+    const add = vi.spyOn(Queue.prototype, "add").mockImplementationOnce(async () => {
+      const record = await miniToolAnalysisService.get(body.analysisRunId, fixture.userId);
+      await sql`UPDATE tasks SET result=result || ${sql.json({ settlement, preserved: { fixture: true } })} WHERE id=${body.analysisRunId}`;
+      // The public record's transport fields are not detector-result fields.
+      const { status: _status, result: _result, error: _error, usage: _usage, artifactUnavailable: _unavailable, ...identity } = record;
+      const result = kind === "people" ? completedPeople(record, record.acceptedAt).result : {
+        ...identity, kind: "scene_cuts", timeBase: { numerator: 1, denominator: 100 }, frameCount: 20, cuts: [],
+      };
+      committed = await miniToolAnalysisService.recordMiniToolAnalysis(body.analysisRunId, result);
+      if (nodeStatus === "done") await sql`UPDATE node_tasks SET status='done',settled_at=now() WHERE task_id=${body.analysisRunId}`;
+      const [node] = await sql<{ value: unknown }[]>`SELECT to_jsonb(n) AS value FROM node_tasks n WHERE task_id=${body.analysisRunId}`;
+      nodeBefore = node!.value;
+      throw new Error("fixture_queue_acknowledgement_failed");
+    });
+    try {
+      await post(body, fixture.ownerCookie);
+      expect(add).toHaveBeenCalledTimes(1);
+      expect(await reading(await get(body.analysisRunId, fixture.viewerCookie))).toEqual(committed);
+      const [task] = await sql<{ status: string; result: Record<string, unknown> }[]>`SELECT status,result FROM tasks WHERE id=${body.analysisRunId}`;
+      expect(task).toEqual({ status: "completed", result: { analysis: committed, settlement, preserved: { fixture: true } } });
+      const [node] = await sql<{ value: unknown }[]>`SELECT to_jsonb(n) AS value FROM node_tasks n WHERE task_id=${body.analysisRunId}`;
+      expect(node!.value).toEqual(nodeBefore);
+      const holds = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${body.analysisRunId}`;
+      expect([...holds]).toEqual(kind === "people" ? [] : [{ status: "held" }]);
+      expect(await counts(body.analysisRunId)).toEqual({ tasks: 1, rows: 1, holds: kind === "people" ? 0 : 1 });
+    } finally { add.mockRestore(); }
+  });
+
+  it.each(["people", "scene_cuts"] as const)("atomically fails an unsubmitted %s admission and releases its unused hold", async (kind) => {
+    const fixture = await seed(); const body = requestFor(fixture, kind);
+    const add = vi.spyOn(Queue.prototype, "add").mockRejectedValueOnce(new Error("fixture_queue_rejected_before_acceptance"));
+    try {
+      const response = await post(body, fixture.ownerCookie);
+      expect(response.status).toBe(201);
+      const record = await accepted(response);
+      expect(record).toMatchObject({ status: "failed", result: null, error: { code: "internal" } });
+      const [task] = await sql<{ status: string; analysis: unknown }[]>`SELECT status,result->'analysis' AS analysis FROM tasks WHERE id=${body.analysisRunId}`;
+      expect(task).toEqual({ status: "failed", analysis: record });
+      const [node] = await sql<{ status: string; budget_ms: number }[]>`SELECT status,budget_ms FROM node_tasks WHERE task_id=${body.analysisRunId}`;
+      expect(node).toEqual({ status: "failed", budget_ms: getNodeTaskConfig().default_budget_ms });
+      const holds = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${body.analysisRunId}`;
+      expect([...holds]).toEqual(kind === "people" ? [] : [{ status: "released" }]);
+    } finally { add.mockRestore(); }
+  });
+
+  it.each(["pending", "known"] as const)("keeps the hold and %s expense when analysis admission fails after work was submitted", async (state) => {
+    const fixture = await seed(); const body = requestFor(fixture, "scene_cuts"); const stepId = crypto.randomUUID();
+    const config = getMiniToolsConfig(); const containerClass = config.analyses.scene_cuts.container_class;
+    const size = config.classes[containerClass]!;
+    const identity = { kind: "container" as const, containerClass, jobId: body.analysisRunId, chunkIndex: 0 };
+    const key = await miniToolConsumptionKey({ taskId: body.analysisRunId, stepId, identity });
+    const consumption = { schemaVersion: 1, consumptionKey: key, identity, state, creditMultiplier: 1, chargeTo: "user", costUsd: state === "known" ? 0.0001 : null, costSource: state === "known" ? "computed" : null, raw: state === "known" ? { wallMs: 1000, cpuUsec: 1000 } : null, credits: null, containerPricing: { configVersion: "fixture", size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: config.prices } };
+    const settlement = { version: 7, state: "waiting", pendingConsumptionKeys: [key], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: false };
+    const add = vi.spyOn(Queue.prototype, "add").mockImplementationOnce(async () => {
+      await sql`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output)
+        VALUES (${stepId},${body.analysisRunId},0,'container_job','analysis-fixture',${state === "known" ? "done" : "submitted"},${sql.json({ miniToolConsumption: consumption })})`;
+      await sql`UPDATE tasks SET result=result || ${sql.json({ settlement })} WHERE id=${body.analysisRunId}`;
+      throw new Error("fixture_queue_acknowledgement_failed_after_submission");
+    });
+    try {
+      const record = await accepted(await post(body, fixture.ownerCookie));
+      expect(record).toMatchObject({ status: "failed", result: null, error: { code: "internal" } });
+      const [hold] = await sql<{ status: string }[]>`SELECT status FROM credit_holds WHERE reference_id=${body.analysisRunId}`;
+      expect(hold).toEqual({ status: "held" });
+      const [task] = await sql<{ status: string; result: unknown }[]>`SELECT status,result FROM tasks WHERE id=${body.analysisRunId}`;
+      expect(task).toEqual({ status: "failed", result: { analysis: record, settlement } });
+      const [step] = await sql<{ output: unknown }[]>`SELECT output FROM task_upstream_steps WHERE id=${stepId}`;
+      expect(step).toEqual({ output: { miniToolConsumption: consumption } });
+      expect(await accepted(await post(body, fixture.ownerCookie))).toEqual(record);
+      expect(add).toHaveBeenCalledTimes(1);
+    } finally { add.mockRestore(); }
   });
 });

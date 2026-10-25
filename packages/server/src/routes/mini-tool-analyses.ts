@@ -39,6 +39,10 @@ analyses.post(
           nodeIds: [job.hostNodeId], userId: job.userId, action: "mini_tool",
           label: body.kind, credits: () => Promise.resolve(accepted.params.credits),
           enqueue: () => tasksQueue.add("execute-mini-tool-analysis", job, { ...defaultJobOpts(), jobId: job.taskId }),
+          settleFailure: async (reason) => {
+            const record = await miniToolAnalysisService.failMiniToolAnalysisAdmission(job.taskId, { code: reason });
+            return record.status === "completed" ? "completed" : "failed";
+          },
           logTag: "mini_tool_analysis", logContext: { kind: body.kind },
         });
       });

@@ -179,6 +179,48 @@ export async function getAnalysisTask(id: string): Promise<AnalysisTaskRow | nul
 }
 
 /**
+ * Lock the original analysis task before deciding its metadata transition.
+ * @param id - The immutable accepted task, including hidden history.
+ * @param tx - The transaction that will write its status and analysis together.
+ * @returns The current physical row and its original precise acceptance time.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockMiniToolAnalysisTask(id: string, tx: DbTx): Promise<AnalysisTaskRow | null> {
+  const [row] = await tx.select(analysisTaskSelection).from(tasks).where(eq(tasks.id, id)).for("update");
+  return row ? { ...row, params: row.params ?? {} } : null;
+}
+
+/**
+ * Commit analysis metadata and computation status under their existing row lock.
+ * @param id - The locked task identity.
+ * @param update - The validated next record and calculation fields.
+ * @param update.analysis - The complete public analysis record.
+ * @param update.status - The task's next or preserved terminal status.
+ * @param update.errorMessage - The task summary's failure code.
+ * @param update.finish - Whether this write first terminates active computation.
+ * @param tx - The transaction holding the original task lock.
+ * @returns The row written in this transaction, retaining source microseconds.
+ * @throws {Error} When the task disappears or the database update fails.
+ */
+export async function storeMiniToolAnalysisTransition(id: string, update: {
+  analysis: Record<string, unknown>;
+  status: "completed" | "failed" | "cancelled";
+  errorMessage: string | null;
+  finish: boolean;
+}, tx: DbTx): Promise<AnalysisTaskRow> {
+  const patch = sql.param({ analysis: update.analysis }, tasks.result);
+  const [row] = await tx.update(tasks).set({
+    status: update.status,
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`,
+    errorMessage: update.errorMessage,
+    completedAt: update.finish ? sql`coalesce(${tasks.completedAt}, clock_timestamp())` : tasks.completedAt,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(eq(tasks.id, id)).returning(analysisTaskSelection);
+  if (!row) throw new Error("Analysis task no longer exists");
+  return { ...row, params: row.params ?? {} };
+}
+
+/**
  * Claim the durable run UUID before opening any node task or spending credits.
  * @param data - Frozen task inputs and the authenticated actor.
  * @param data.id - The client-generated analysis run UUID.

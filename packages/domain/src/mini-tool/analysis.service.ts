@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
+import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { ceilToCreditCent, extractPromptText, t, type ConsentSnapshot } from "@breatic/shared";
-import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolAnalysisRecordSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
+import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { estimateModelCredits, getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
-import { releaseHold } from "@domain/credit/creditHold.service.js";
+import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 
 export { miniToolAnalysisRequestSchema, type MiniToolAnalysisRequest } from "@breatic/shared/mini-tools";
 
@@ -52,6 +53,9 @@ export interface AcceptedMiniToolAnalysis {
   record: MiniToolAnalysisRecord;
   params: MiniToolAnalysisTaskParams;
 }
+
+/** The accepted identity shared by public records and typed detector results. */
+type AnalysisIdentity = Omit<MiniToolAnalysisRecord, "status" | "result" | "error" | "usage" | "artifactUnavailable">;
 
 /**
  * Require current project membership before admitting or reading any analysis.
@@ -121,6 +125,40 @@ async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecor
 }
 
 /**
+ * Read the immutable identity shared by every representation of this analysis.
+ * @param task - A task read with its original full-precision acceptance instant.
+ * @returns The original accepted identity.
+ * @throws {NotFoundError} When the row is not an analysis.
+ * @throws {Error} When persisted analysis identity is malformed or inconsistent.
+ */
+function identityFromTask(task: taskRepo.AnalysisTaskRow): AnalysisIdentity {
+  if (task.taskType !== "mini_tool_analysis") throw new NotFoundError(t("server.error.not_found"));
+  const frozen = miniToolFrozenAnalysisSchema.parse(task.params.analysis);
+  if (task.id !== frozen.analysisRunId || task.projectId !== frozen.projectId || task.spaceId !== frozen.spaceId) {
+    throw new Error("Analysis identity differs from its owning task");
+  }
+  return {
+    schemaVersion: 1 as const, draftId: frozen.draftId, revision: frozen.revision,
+    analysisRunId: task.id, acceptedAt: task.acceptedAt, kind: frozen.kind,
+    binding: frozen.binding, analysisInput: frozen.analysisInput, inputFingerprint: frozen.inputFingerprint,
+  };
+}
+
+/**
+ * Find a changed frozen fact using the same canonical JSON comparison.
+ * @param identity - Authoritative facts from the locked task.
+ * @param candidate - A validated persisted record or incoming typed result.
+ * @returns The first mismatching identity field, or null.
+ * @throws {TypeError} When a value cannot be represented as canonical JSON.
+ */
+function mismatchedIdentity(identity: AnalysisIdentity, candidate: MiniToolAnalysisRecord | MiniToolAnalysisResult): keyof AnalysisIdentity | null {
+  for (const field of Object.keys(identity) as (keyof AnalysisIdentity)[]) {
+    if (canonicalMiniToolValue(candidate[field]) !== canonicalMiniToolValue(identity[field])) return field;
+  }
+  return null;
+}
+
+/**
  * Map one SQL task to the public record, checking its immutable SQL identity.
  * @param task - A task read with its original full-precision acceptance instant.
  * @returns The common acceptance/read/worker record.
@@ -128,23 +166,11 @@ async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecor
  * @throws {Error} When persisted analysis identity is malformed or inconsistent.
  */
 export function recordFromTask(task: taskRepo.AnalysisTaskRow): MiniToolAnalysisRecord {
-  if (task.taskType !== "mini_tool_analysis") throw new NotFoundError(t("server.error.not_found"));
-  const frozen = miniToolFrozenAnalysisSchema.parse(task.params.analysis);
-  if (task.id !== frozen.analysisRunId || task.projectId !== frozen.projectId || task.spaceId !== frozen.spaceId) {
-    throw new Error("Analysis identity differs from its owning task");
-  }
-  const identity = {
-    schemaVersion: 1 as const, draftId: frozen.draftId, revision: frozen.revision,
-    analysisRunId: task.id, acceptedAt: task.acceptedAt, kind: frozen.kind,
-    binding: frozen.binding, analysisInput: frozen.analysisInput, inputFingerprint: frozen.inputFingerprint,
-  };
+  const identity = identityFromTask(task);
   const stored = task.result?.analysis === undefined ? null : miniToolAnalysisRecordSchema.parse(task.result.analysis);
   if (stored !== null) {
-    for (const field of Object.keys(identity) as (keyof typeof identity)[]) {
-      if (canonicalMiniToolValue(stored[field]) !== canonicalMiniToolValue(identity[field])) {
-        throw new Error(`Persisted analysis ${field} differs from its accepted task`);
-      }
-    }
+    const field = mismatchedIdentity(identity, stored);
+    if (field !== null) throw new Error(`Persisted analysis ${field} differs from its accepted task`);
   }
   const status = task.status === "cancelled" ? "failed" : task.status;
   return miniToolAnalysisRecordSchema.parse({
@@ -229,14 +255,13 @@ export async function accept(
     await taskRepo.storeAnalysisRecord(task.id, record);
     await start({ record, params: taskParams });
   } catch (error) {
-    // A durable claim must not replay silent pending after admission failed.
-    // startRowedRun settles rows it opened; before it runs there are no rows.
-    const cleanup = await Promise.allSettled([
-      taskRepo.updateTaskStatus(body.analysisRunId, "failed", { error: "analysis_start_failed" }),
-      releaseHold(body.analysisRunId),
-    ]);
-    const errors = cleanup.flatMap((item) => item.status === "rejected" ? [item.reason as unknown] : []);
-    if (errors.length > 0) throw new AggregateError([error, ...errors], "Analysis admission and cleanup failed");
+    // Queue acknowledgement may fail after a worker has committed its result.
+    // Decide under the same task lock before releasing a failed admission's hold.
+    try {
+      await failMiniToolAnalysisAdmission(body.analysisRunId, { code: "analysis_start_failed" });
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Analysis admission and cleanup failed");
+    }
     throw error;
   }
   // Once queued, a failed response read must not turn running work into a failure.
@@ -259,4 +284,92 @@ function replay(task: taskRepo.AnalysisTaskRow, body: MiniToolAnalysisRequest, u
     throw new ConflictError(t("server.idempotency.mismatch"));
   }
   return recordFromTask(task);
+}
+
+/**
+ * Persist a matching typed result under the original task identity.
+ * @param taskId - The immutable accepted task.
+ * @param result - The detector result to validate against frozen dependencies.
+ * @returns The committed public analysis record.
+ * @throws {Error} When validation, identity or persistence fails.
+ */
+export async function recordMiniToolAnalysis(taskId: string, result: unknown): Promise<MiniToolAnalysisRecord> {
+  const incoming = miniToolAnalysisResultSchema.parse(result);
+  return db.transaction(async (tx) => {
+    const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
+    if (task === null) throw new NotFoundError(t("server.error.not_found"));
+    const identity = identityFromTask(task);
+    if (mismatchedIdentity(identity, incoming) !== null) throw new ConflictError(t("server.idempotency.mismatch"));
+    const current = recordFromTask(task);
+    if (current.result !== null) {
+      if (canonicalMiniToolValue(current.result) !== canonicalMiniToolValue(incoming)) throw new ConflictError(t("server.idempotency.mismatch"));
+      return current;
+    }
+    const status = task.status === "cancelled" ? "cancelled" : current.status === "failed" ? "failed" : "completed";
+    const analysis = miniToolAnalysisRecordSchema.parse({
+      ...current, status: status === "cancelled" ? "failed" : status, result: incoming,
+      error: status === "completed" ? null : current.error,
+    });
+    const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
+      analysis, status, errorMessage: status === "completed" ? null : task.errorMessage,
+      finish: current.status === "pending" || current.status === "running",
+    }, tx);
+    return recordFromTask(updated);
+  });
+}
+
+/**
+ * Persist an application failure while preserving any committed result.
+ * @param taskId - The immutable accepted task.
+ * @param error - A JSON error reported by the application entry.
+ * @returns The committed public analysis record.
+ * @throws {Error} When validation or persistence fails.
+ */
+export async function failMiniToolAnalysis(taskId: string, error: unknown): Promise<MiniToolAnalysisRecord> {
+  const failure = z.record(z.string(), z.json()).parse(error);
+  return db.transaction(async (tx) => {
+    const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
+    if (task === null) throw new NotFoundError(t("server.error.not_found"));
+    return failLockedAnalysis(task, failure, tx);
+  });
+}
+
+/**
+ * Settle an admission error against current metadata and expense ownership.
+ * @param taskId - The original accepted run.
+ * @param error - The application's JSON admission error.
+ * @returns Its committed record, preserving ready results and pending costs.
+ * @throws {Error} When validation, metadata or hold persistence fails.
+ */
+export async function failMiniToolAnalysisAdmission(taskId: string, error: unknown): Promise<MiniToolAnalysisRecord> {
+  const failure = z.record(z.string(), z.json()).parse(error);
+  return db.transaction(async (tx) => {
+    const task = await taskRepo.lockMiniToolAnalysisTask(taskId, tx);
+    if (task === null) throw new NotFoundError(t("server.error.not_found"));
+    const record = await failLockedAnalysis(task, failure, tx);
+    // Execution registers settlement before submitting paid work under this lock.
+    // Existing expense ownership survives admission/queue acknowledgement errors.
+    if (record.status === "failed" && task.result?.settlement === undefined) {
+      await creditHoldRepo.releaseHold(task.id, tx);
+    }
+    return record;
+  });
+}
+
+/**
+ * Apply the failure table only after acquiring the original task's row lock.
+ * @param task - Current persisted facts read under that lock.
+ * @param failure - Validated JSON application error.
+ * @param tx - The transaction holding the task lock.
+ * @returns The preserved terminal record or newly failed record.
+ * @throws {Error} When persisted identity or the atomic update is invalid.
+ */
+async function failLockedAnalysis(task: taskRepo.AnalysisTaskRow, failure: Record<string, unknown>, tx: DbTx): Promise<MiniToolAnalysisRecord> {
+  const current = recordFromTask(task);
+  if (current.status === "completed" || current.status === "failed") return current;
+  const analysis = miniToolAnalysisRecordSchema.parse({ ...current, status: "failed", error: failure });
+  const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
+    analysis, status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "mini_tool_analysis_failed", finish: true,
+  }, tx);
+  return recordFromTask(updated);
 }
