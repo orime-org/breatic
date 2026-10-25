@@ -6,6 +6,8 @@ import { useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import {
+  VIDEO_TOOL_IDS,
+  type VideoToolId,
   catalogEntryOf,
   defaultParamsOf,
   isModelTool,
@@ -29,6 +31,7 @@ import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
+import { VideoToolPanelContainer, type VideoToolPanelContainerProps, type VideoToolPresentation, type VideoToolCostText } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
@@ -55,6 +58,10 @@ const NO_SLOTS = {} as const;
 
 export interface MiniToolPanelContainerProps {
   nodes: readonly CanvasNodeView[];
+  onRunVideo?: VideoToolPanelContainerProps['onRunVideo'];
+  videoPresentation?: ReadonlyMap<string, VideoToolPresentation>;
+  videoCosts?: ReadonlyMap<string, VideoToolCostText>;
+  renderVideoDecoder?: VideoToolPanelContainerProps['renderTimelineDecoder'];
   /** Whether the last write to the document was this reader's. */
   getLastWriteWasLocal: () => boolean;
   /**
@@ -119,12 +126,20 @@ function useShownSize(
  * @param root0.nodes - The canvas's node views.
  * @param root0.getLastWriteWasLocal - Whether the last document write was this reader's.
  * @param root0.onRun - Run the tool on a snapshot.
+ * @param root0.onRunVideo - Runs the complete persisted video draft.
+ * @param root0.videoPresentation - The node owner's authoritative source presentation facts.
+ * @param root0.videoCosts - Execution and analysis cost text from the typed plan quote.
+ * @param root0.renderVideoDecoder - The owner-provided native or alpha decoder adapter.
  * @returns The panel, or null when no mini-tool panel is open.
  */
 export function MiniToolPanelContainer({
   nodes,
   getLastWriteWasLocal,
   onRun,
+  onRunVideo,
+  videoPresentation,
+  videoCosts,
+  renderVideoDecoder,
 }: MiniToolPanelContainerProps): React.JSX.Element | null {
   const kind = useCanvasSession((s) => s.panelKind);
   const host = useCanvasSession((s) => s.panelHostId);
@@ -133,6 +148,7 @@ export function MiniToolPanelContainer({
   const spec = miniToolById(draft.toolId);
   const node = nodes.find((n) => n.id === host);
   if (spec === undefined || node === undefined) return null;
+  if ((VIDEO_TOOL_IDS as readonly string[]).includes(spec.id)) return <VideoToolPanelContainer key={`${host}:${spec.id}`} nodeId={host} toolId={spec.id as VideoToolId} node={node} nodes={nodes} presentation={videoPresentation?.get(host)} costs={videoCosts?.get(host)} renderTimelineDecoder={renderVideoDecoder} onRunVideo={onRunVideo} />;
   return (
     <OpenMiniToolPanel
       key={`${host}:${spec.id}`}

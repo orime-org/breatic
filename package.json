@@ -77,7 +77,8 @@
       "@radix-ui/react-dialog@1.1.23": "patches/@radix-ui__react-dialog@1.1.23.patch",
       "prosemirror-tables@1.8.5": "patches/prosemirror-tables@1.8.5.patch",
       "prosemirror-view@1.42.6": "patches/prosemirror-view@1.42.6.patch",
-      "@hocuspocus/server@4.6.0": "patches/@hocuspocus__server@4.6.0.patch"
+      "@hocuspocus/server@4.6.0": "patches/@hocuspocus__server@4.6.0.patch",
+      "@xzdarcy/react-timeline-editor@1.0.0": "patches/@xzdarcy__react-timeline-editor@1.0.0.patch"
     }
   }
 }

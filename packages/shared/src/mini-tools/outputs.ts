@@ -47,8 +47,10 @@ export function pickedCellsOf(spec: MiniToolSpec, params: Readonly<Record<string
  * @param spec - The tool.
  * @param params - The run's params.
  * @returns One entry per result node, in order.
+ * @throws {Error} When a planned tool requires its authoritative execution outputs.
  */
 export function outputsOf(spec: MiniToolSpec, params: Readonly<Record<string, unknown>>): readonly MiniToolOutput[] {
+  if (spec.run.kind === "planned") throw new Error(`A complete execution plan is required to count ${spec.id} results`);
   if (spec.outputs !== undefined) return spec.outputs;
   const count = spec.outputCount;
   const n =
@@ -63,6 +65,7 @@ export function outputsOf(spec: MiniToolSpec, params: Readonly<Record<string, un
  * list full. Bounds what one run may ask for at once.
  * @param spec - The tool.
  * @returns The result count at those params.
+ * @throws {Error} When a planned tool has no fixed draft-derived maximum.
  */
 export function mostOutputsOf(spec: MiniToolSpec): number {
   const params: Record<string, unknown> = {};

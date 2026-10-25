@@ -10,6 +10,7 @@ import { catalogEntryOf, isModelTool, miniToolById } from '@breatic/shared/mini-
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { VideoExpandSurface, type VideoExpansionSurface } from '@web/spaces/canvas/mini-tool/video/VideoExpandSurface';
 import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
@@ -17,6 +18,7 @@ import { CROP_HANDLES } from '@web/spaces/canvas/focus/crop-source';
 import { TOOL_LAYER_CLASS, stopNodeClick } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   isExpanded,
+  expandLayout,
   moveFrame,
   resizeFrame,
   type ExpandFrame,
@@ -27,12 +29,16 @@ import {
  * An in-progress drag, with the frame and ratio as they stood when it began
  * and the frame it last wrote: a frame written by anyone else ends the drag.
  */
-type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio; last: ExpandFrame } & (
+type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio; last: ExpandFrame; revision?: string; sourceEpoch?: number; seekEpoch?: number } & (
   | { type: 'resize'; handle: CropHandle }
   | { type: 'move'; start: { x: number; y: number } }
 );
 
-interface ExpandFrameOverlayProps {
+export interface ExpandFrameOverlayProps {
+  videoSource?: VideoExpansionSurface;
+  videoRevision?: string;
+  videoDisabled?: boolean;
+  onVideoFrameCommit?: (nodeId: string, frame: ExpandFrame, ratio: ExpandRatio, revision: string) => void;
   /** The canvas's node menu, which a right-click on the frame opens for the host. */
   onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
 }
@@ -78,9 +84,13 @@ export function expandFillStyle(scale: number, from: { x: number; y: number }): 
  * `ViewportPortal`.
  * @param root0 - Component props.
  * @param root0.onNodeContextMenu - The canvas's node menu.
+ * @param root0.videoSource - The actual decoded video surface and its epochs.
+ * @param root0.videoRevision - The authoritative draft revision at gesture start.
+ * @param root0.videoDisabled - Whether video geometry editing is currently unavailable.
+ * @param root0.onVideoFrameCommit - Commits one completed video-frame gesture.
  * @returns The frame, or null when no expand tool is open.
  */
-export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProps): React.JSX.Element | null {
+export function ExpandFrameOverlay({ onNodeContextMenu, videoSource, videoRevision, videoDisabled, onVideoFrameCommit }: ExpandFrameOverlayProps): React.JSX.Element | null {
   const store = useCanvasSessionStore();
   const hostId = useCanvasSession((s) => s.panelHostId);
   const draft = useCanvasSession(miniToolOpenOn(hostId));
@@ -90,6 +100,26 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const node = useInternalNode(hostId ?? '');
   const { screenToFlowPosition } = useReactFlow();
   const gesture = React.useRef<Gesture | null>(null);
+  const cancelledVideoGesture = React.useRef<Gesture | null>(null);
+  React.useEffect(() => {
+    const cancelled = cancelledVideoGesture.current;
+    cancelledVideoGesture.current = null;
+    if (cancelled !== null && store.getState().miniTool?.toolId === 'video.expand') store.getState().setExpand({ frame: cancelled.frame, ratio: cancelled.ratio });
+  });
+  React.useEffect(() => {
+    /**
+     * Cancels only the current video gesture when its document loses focus.
+     * @throws {never} Never.
+     */
+    function cancel(): void {
+      const held = gesture.current;
+      if (held === null || held.revision === undefined || store.getState().miniTool?.toolId !== 'video.expand') return;
+      gesture.current = null;
+      if (held.revision === videoRevision) store.getState().setExpand({ frame: held.frame, ratio: held.ratio });
+    }
+    window.addEventListener('blur', cancel);
+    return () => window.removeEventListener('blur', cancel);
+  }, [store, videoRevision]);
   const sourceSize = draft?.sourceSize ?? null;
   const view = expand?.view ?? null;
   // The handles stop at the pinned model's longest side, read off its catalog.
@@ -97,7 +127,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   const spec = draft === null ? undefined : miniToolById(draft.toolId);
   const entry =
     catalog !== undefined && spec !== undefined && isModelTool(spec) ? catalogEntryOf(catalog, spec.run.model) : undefined;
-  const cap = entry === undefined ? null : expandCapOf(entry);
+  const cap = spec?.id === 'video.expand' ? Infinity : entry === undefined ? null : expandCapOf(entry);
   const drawn =
     expand !== null && view !== null && sourceSize !== null && cap !== null && draft !== null && node !== undefined;
   // A frame not drawn holds no handle to release a drag on: a panel closed
@@ -107,9 +137,12 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
   if (
     gesture.current !== null &&
     (!drawn ||
+      videoDisabled === true ||
+      (draft?.toolId === 'video.expand' && (gesture.current.revision !== videoRevision || gesture.current.sourceEpoch !== videoSource?.sourceEpoch || gesture.current.seekEpoch !== videoSource?.seekEpoch)) ||
       expand.ratio !== gesture.current.ratio ||
       JSON.stringify(expand.frame) !== JSON.stringify(gesture.current.last))
   ) {
+    if (gesture.current.revision !== undefined && gesture.current.revision === videoRevision) cancelledVideoGesture.current = gesture.current;
     gesture.current = null;
   }
   if (!drawn) return null;
@@ -160,10 +193,10 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
     e: React.PointerEvent,
     start: { type: 'resize'; handle: CropHandle } | { type: 'move'; start: { x: number; y: number } },
   ): void => {
-    if (e.button !== 0 || gesture.current !== null || exporting) return;
+    if (e.button !== 0 || gesture.current !== null || exporting || videoDisabled === true) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    gesture.current = { pointerId: e.pointerId, frame, ratio, last: frame, ...start };
+    gesture.current = { pointerId: e.pointerId, frame, ratio, last: frame, revision: videoRevision, sourceEpoch: videoSource?.sourceEpoch, seekEpoch: videoSource?.seekEpoch, ...start };
   };
 
   /**
@@ -187,7 +220,13 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
    * @param e - The pointer-up or cancel event.
    */
   const onUp = (e: React.PointerEvent): void => {
-    if (gesture.current !== null && e.pointerId === gesture.current.pointerId) gesture.current = null;
+    const held = gesture.current;
+    if (held === null || e.pointerId !== held.pointerId) return;
+    gesture.current = null;
+    if (draft.toolId === 'video.expand') {
+      if (e.type === 'pointercancel') store.getState().setExpand({ frame: held.frame, ratio: held.ratio });
+      else if (held.revision !== undefined && hostId !== null) onVideoFrameCommit?.(hostId, held.last, held.ratio, held.revision);
+    }
   };
 
   const scale = handleScale(zoom);
@@ -220,7 +259,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
         onNodeContextMenu(e, node.internals.userNode);
       }}
     >
-      {view.src === null ? null : (
+      {spec?.id === 'video.expand' ? videoSource === undefined ? null : <VideoExpandSurface source={videoSource} style={{ left: -frame.x * box.width - scale, top: -frame.y * box.height - scale, width: box.width, height: box.height }} /> : view.src === null ? null : (
         <img
           data-testid='mini-tool-expand-source'
           src={view.src}
@@ -238,6 +277,7 @@ export function ExpandFrameOverlay({ onNodeContextMenu }: ExpandFrameOverlayProp
           }}
         />
       )}
+      {spec?.id === 'video.expand' ? <span className='pointer-events-none absolute bottom-full left-0 mb-1 whitespace-nowrap rounded-chrome border border-border bg-popover px-1.5 py-0.5 text-xs tabular-nums text-foreground' style={{ scale: String(scale), transformOrigin: 'bottom left' }}>{expandLayout(frame, sourceSize).width} × {expandLayout(frame, sourceSize).height}</span> : null}
       {CROP_HANDLES.map(({ id, className }) => (
         <div
           key={id}

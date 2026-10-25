@@ -1127,6 +1127,27 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "expand": {
+          "label": "Expand"
+        },
+        "erase": {
+          "label": "Erase"
+        },
+        "lip-sync": {
+          "label": "Lip sync"
+        },
+        "remove-bg": {
+          "label": "Remove background"
+        },
+        "extract-frames": {
+          "label": "Extract frames"
+        },
+        "transitions": {
+          "label": "Transitions"
+        },
+        "split": {
+          "label": "Split"
         }
       },
       "audio": {
@@ -1328,6 +1349,77 @@
         "attack": "Attack",
         "release": "Release",
         "makeup": "Make-up gain"
+      },
+      "videoUI": {
+        "addDialogue": "Add dialogue",
+        "addToTimeline": "Add to timeline",
+        "addVideoSlot": "Add video",
+        "analysisFailed": "Analysis failed. Try again.",
+        "atCursor": "Add at cursor",
+        "chooseDialogueAudio": "Choose",
+        "choosePerson": "Choose",
+        "cutPoint": "Cut point",
+        "detectScenes": "Detect again",
+        "dialogueAudio": "Dialogue audio",
+        "dialoguePairs": "People and dialogue",
+        "dialogueStartTime": "Start time",
+        "drawBox": "Drag to mark an area",
+        "duplicateClip": "Duplicate clip",
+        "earlier": "Earlier",
+        "editTimeline": "Edit timeline",
+        "erasePrompt": "Describe the background after removal",
+        "expandPrompt": "Describe what to fill in, or leave it empty to extend the video naturally",
+        "export": "Export",
+        "frameCount": "{count, plural, one {# frame} other {# frames}}",
+        "frameMode": "Frame selection",
+        "identifyingPeople": "Identifying people…",
+        "inPoint": "In point",
+        "interval": "By interval",
+        "later": "Later",
+        "loadingFrames": "Reading video frames…",
+        "mediaError": "Media unavailable",
+        "outPoint": "Out point",
+        "pause": "Pause",
+        "peopleEmpty": "No suitable person found. Re-detect or choose another source video.",
+        "peopleIdentificationFailed": "Identification failed. Retry to identify the target person.",
+        "peopleIdle": "Identify people to select a target.",
+        "personNumber": "Person {number}",
+        "pickAudio": "Choose an audio node on the Canvas.",
+        "pickVideo": "Click video nodes to fill the slot. Press Escape to finish.",
+        "preview": "Preview",
+        "previewUnavailable": "Preview unavailable. Try again.",
+        "rangeEnd": "End",
+        "rangeStart": "Start",
+        "rebuildDraft": "Reset settings",
+        "redetectPeople": "Re-detect",
+        "removeClip": "Remove clip",
+        "removeCut": "Remove",
+        "removeDialogue": "Remove dialogue",
+        "retryPreview": "Retry preview",
+        "segmentCount": "{count, plural, one {# segment} other {# segments}}",
+        "selectedClipEmpty": "Select a clip to edit its settings.",
+        "sourceUnavailable": "Source video unavailable",
+        "syncMode": "Duration mode",
+        "targetPerson": "Target person",
+        "timelineAssets": "Video assets",
+        "timelineComposition": "Composition",
+        "timelineEmpty": "The timeline is empty",
+        "timelineInstructions": "Select a clip, change its order and trim it. Set transitions between adjacent clips, then play the preview before exporting.",
+        "timelineProperties": "Clip settings",
+        "trackObject": "Track selection",
+        "trackingPrompt": "Describe what to fill in, or leave it empty to extend the video naturally",
+        "transition": "Transition to next clip",
+        "transitionDuration": "Transition duration",
+        "transparentOutput": "Transparent source stays available for download and downstream tools.",
+        "unsupportedDraft": "Saved settings need an update.",
+        "video": "Video",
+        "videoInputs": "Video inputs",
+        "invalidNumber": "Enter a valid number.",
+        "sourceChanged": "The source changed.",
+        "useCurrentSource": "Use current source",
+        "selection": "Selection",
+        "rectangle": "Rectangle",
+        "point": "Point"
       }
     },
     "template": {

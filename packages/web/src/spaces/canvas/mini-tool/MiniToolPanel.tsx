@@ -21,6 +21,7 @@ import {
   pickedCellsOf,
   UPRIGHT,
   type LocalToolSpec,
+  type PlannedToolSpec,
   type MiniToolMedium,
   type MiniToolParam,
   type MiniToolSlotValue,
@@ -71,6 +72,10 @@ type HeldSlot = MiniToolSlotValue | readonly MiniToolSlotValue[] | undefined;
 
 export interface MiniToolPanelProps {
   spec: MiniToolSpec;
+  /** Approved tool-specific content inside the standard panel and footer. */
+  customBody?: React.ReactNode;
+  /** Whether the approved controls need the wide panel. */
+  customWide?: boolean;
   /** A model tool's controls, read from its pinned model. */
   modelControls: readonly ModelControl[] | undefined;
   /** The pinned model's catalog entry, for a model tool. */
@@ -473,58 +478,60 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       closeTestId='mini-tool-panel-close'
       onClose={onClose}
       // The camera sphere lays itself beside its sliders, which takes the wide panel too.
-      wide={columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
+      wide={props.customWide || columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
       testId='mini-tool-panel'
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
-        {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
-        {spec.markup === true ? <MarkControls /> : null}
-        {props.expand !== undefined ? (
-          <ExpandRatioGroup expand={props.expand} />
-        ) : null}
-        {isModelTool(spec) ? (
-          columns ? (
-            <div className='grid grid-cols-2 gap-5'>
-              <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
-                {referenceShown !== undefined ? (
-                  <ReferencePreview
-                    url={referenceShown.url}
-                    note={t('canvas.miniTool.relight.referenceNote')}
-                    title={t('canvas.miniTool.relight.lightTitle')}
-                    source={t('canvas.miniTool.relight.sourceFromReference')}
-                  />
-                ) : (
-                  controlsOf(leftControls)
-                )}
+        {props.customBody ?? <>
+          {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
+          {spec.markup === true ? <MarkControls /> : null}
+          {props.expand !== undefined ? (
+            <ExpandRatioGroup expand={props.expand} />
+          ) : null}
+          {isModelTool(spec) ? (
+            columns ? (
+              <div className='grid grid-cols-2 gap-5'>
+                <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
+                  {referenceShown !== undefined ? (
+                    <ReferencePreview
+                      url={referenceShown.url}
+                      note={t('canvas.miniTool.relight.referenceNote')}
+                      title={t('canvas.miniTool.relight.lightTitle')}
+                      source={t('canvas.miniTool.relight.sourceFromReference')}
+                    />
+                  ) : (
+                    controlsOf(leftControls)
+                  )}
+                </div>
+                <div data-testid='mini-tool-column-right' className='flex flex-col justify-between gap-2.5'>
+                  {modelBody}
+                </div>
               </div>
-              <div data-testid='mini-tool-column-right' className='flex flex-col justify-between gap-2.5'>
-                {modelBody}
-              </div>
-            </div>
+            ) : (
+              modelBody
+            )
           ) : (
-            modelBody
-          )
-        ) : (
-          <>
-            {slotTiles}
-            {spec.params.map((param) => (
-              <LocalParamControl
-                key={param.key}
-                param={param}
-                spec={spec}
-                params={params}
-                onParams={onParams}
-                source={props.source}
-              />
-            ))}
-          </>
-        )}
-        {spec.noteKey === undefined ? null : (
-          <p data-testid='mini-tool-note' className='text-xs text-muted-foreground'>
-            {t(spec.noteKey)}
-          </p>
-        )}
-        {promptFirst ? null : promptBox}
+            <>
+              {slotTiles}
+              {spec.params.map((param) => (
+                <LocalParamControl
+                  key={param.key}
+                  param={param}
+                  spec={spec}
+                  params={params}
+                  onParams={onParams}
+                  source={props.source}
+                />
+              ))}
+            </>
+          )}
+          {spec.noteKey === undefined ? null : (
+            <p data-testid='mini-tool-note' className='text-xs text-muted-foreground'>
+              {t(spec.noteKey)}
+            </p>
+          )}
+          {promptFirst ? null : promptBox}
+        </>}
       </div>
       <PanelRunFooter
         creditText={creditText}
@@ -557,7 +564,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
 
 interface LocalParamControlProps {
   param: MiniToolParam;
-  spec: LocalToolSpec;
+  spec: LocalToolSpec | PlannedToolSpec;
   params: Readonly<Record<string, unknown>>;
   onParams: (partial: Record<string, unknown>) => void;
   source: MiniToolSourceInfo;

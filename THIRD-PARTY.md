@@ -136,6 +136,20 @@ front-end bundle covered by the next section.
 
 ## Packages reachable from the front-end bundle
 
+### Video timeline editing and transitions
+
+| Package | Version | Licence | Source |
+|---|---|---|---|
+| `@xzdarcy/react-timeline-editor` | `1.0.0` | MIT | https://github.com/xzdarcy/react-timeline-editor |
+| `gl-transition` | `2.1.0` | MIT | https://github.com/gre/gl-transition-libs |
+| `gl-format-compiler-error` | `1.0.3` | Unlicense; the WebGL compiler diagnostic formatter reached through `gl-transition` | https://github.com/wwwtyro/gl-format-compiler-error |
+| `gl-transitions` | `1.76.1` | MIT for the shipped fade, wipeLeft and wipeRight shaders | https://github.com/gl-transitions/gl-transitions |
+
+The timeline editor's gesture ownership correction is distributed in
+`patches/@xzdarcy__react-timeline-editor@1.0.0.patch` under its MIT licence.
+The three transition shaders retain their upstream author and licence notices.
+The full dependency notices travel with the generated front-end licence file.
+
 ### Mediabunny
 
 | | |

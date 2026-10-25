@@ -59,3 +59,15 @@ describe('miniToolSlotValue', () => {
     expect(miniToolSlotValue({ type: 'image', data: { content: 'i.png' } })).toEqual({ url: 'i.png' });
   });
 });
+
+describe('video tool independent copied-input slots', () => {
+  it('accepts audio for a stable dialogue identity and ends after one selection', () => {
+    expect(activeMiniToolSlot({ nodeId: 'n', purpose: 'miniToolSlot', slotKey: 'dialogue:pair-2' }, { ...DRAFT, toolId: 'video.lip-sync' })).toEqual({ key: 'dialogue:pair-2', param: 'audio', accepts: 'audio', many: false, bannerKey: 'canvas.miniTool.videoUI.pickAudio' });
+  });
+  it('accepts a single video click for the transitions asset rail', () => {
+    expect(activeMiniToolSlot({ nodeId: 'n', purpose: 'miniToolSlot', slotKey: 'timeline' }, { ...DRAFT, toolId: 'video.transitions' })).toEqual({ key: 'timeline', param: 'video', accepts: 'video', many: false, bannerKey: 'canvas.miniTool.videoUI.pickVideo' });
+  });
+  it('does not reinterpret a dialogue key outside the lip sync tool', () => {
+    expect(activeMiniToolSlot({ nodeId: 'n', purpose: 'miniToolSlot', slotKey: 'dialogue:pair-2' }, DRAFT)).toBeUndefined();
+  });
+});

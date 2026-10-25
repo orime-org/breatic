@@ -1127,6 +1127,27 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "expand": {
+          "label": "外扩"
+        },
+        "erase": {
+          "label": "擦除"
+        },
+        "lip-sync": {
+          "label": "对口型"
+        },
+        "remove-bg": {
+          "label": "去背景"
+        },
+        "extract-frames": {
+          "label": "抽帧"
+        },
+        "transitions": {
+          "label": "转场"
+        },
+        "split": {
+          "label": "分割"
         }
       },
       "audio": {
@@ -1328,6 +1349,77 @@
         "attack": "启动",
         "release": "释放",
         "makeup": "补偿增益"
+      },
+      "videoUI": {
+        "addDialogue": "添加对白",
+        "addToTimeline": "添加到时间线",
+        "addVideoSlot": "添加视频",
+        "analysisFailed": "分析失败，请重试。",
+        "atCursor": "在当前位置添加",
+        "chooseDialogueAudio": "选择",
+        "choosePerson": "选择人物",
+        "cutPoint": "切点",
+        "detectScenes": "重新检测",
+        "dialogueAudio": "对白音频",
+        "dialoguePairs": "人物与对白",
+        "dialogueStartTime": "开始时间",
+        "drawBox": "拖动标记区域",
+        "duplicateClip": "复制片段",
+        "earlier": "前移",
+        "editTimeline": "编辑时间线",
+        "erasePrompt": "描述移除后的背景",
+        "expandPrompt": "写要补画什么，留空就按视频内容自然外扩",
+        "export": "导出",
+        "frameCount": "{count} 帧",
+        "frameMode": "抽帧方式",
+        "identifyingPeople": "正在识别人物…",
+        "inPoint": "入点",
+        "interval": "按间隔",
+        "later": "后移",
+        "loadingFrames": "正在读取视频帧…",
+        "mediaError": "媒体不可用",
+        "outPoint": "出点",
+        "pause": "暂停",
+        "peopleEmpty": "未找到合适人物，可重新识别或更换源视频。",
+        "peopleIdentificationFailed": "人物识别失败，可重新识别目标人物。",
+        "peopleIdle": "识别人物后选择目标。",
+        "personNumber": "人物 {number}",
+        "pickAudio": "在 Canvas 上选择一个音频节点。",
+        "pickVideo": "点击视频节点填入槽位，按 Escape 结束选择。",
+        "preview": "预览",
+        "previewUnavailable": "预览不可用，请重试。",
+        "rangeEnd": "结束",
+        "rangeStart": "开始",
+        "rebuildDraft": "重置设置",
+        "redetectPeople": "重新识别",
+        "removeClip": "移除片段",
+        "removeCut": "移除",
+        "removeDialogue": "移除对白",
+        "retryPreview": "重试预览",
+        "segmentCount": "{count} 段",
+        "selectedClipEmpty": "选择片段以编辑参数。",
+        "sourceUnavailable": "源视频不可用",
+        "syncMode": "时长匹配方式",
+        "targetPerson": "目标人物",
+        "timelineAssets": "视频素材",
+        "timelineComposition": "合成时间线",
+        "timelineEmpty": "时间线为空",
+        "timelineInstructions": "选择片段，调整顺序与入出点，设置相邻片段转场，播放预览后导出。",
+        "timelineProperties": "片段设置",
+        "trackObject": "跟踪选区",
+        "trackingPrompt": "写要补画什么，留空就按视频内容自然外扩",
+        "transition": "与下一片段的转场",
+        "transitionDuration": "转场时长",
+        "transparentOutput": "透明原片用于下载和下游工具。",
+        "unsupportedDraft": "已保存设置需要更新。",
+        "video": "视频",
+        "videoInputs": "视频输入",
+        "invalidNumber": "请输入有效数值。",
+        "sourceChanged": "源素材已更改。",
+        "useCurrentSource": "使用当前素材",
+        "selection": "选区",
+        "rectangle": "矩形",
+        "point": "点选"
       }
     },
     "template": {

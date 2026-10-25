@@ -50,6 +50,7 @@ export type ContainerFailure = (typeof CONTAINER_FAILURES)[number];
 
 /** Where a tool runs. */
 export type MiniToolRun =
+  | { readonly kind: "planned" }
   | { readonly kind: "browser" }
   | { readonly kind: "model"; readonly model: string }
   | { readonly kind: "container"; readonly op: ContainerOp };
@@ -380,5 +381,11 @@ interface LocalToolBase extends MiniToolBase {
 /** A tool run in the browser or in the container. */
 export type LocalToolSpec = LocalToolBase & (FixedOutputs | VariableOutputs);
 
+/** A tool whose immutable execution plan determines inputs and output count. */
+export interface PlannedToolSpec extends MiniToolBase, FixedOutputs {
+  readonly run: { readonly kind: "planned" };
+  readonly params: readonly MiniToolParam[];
+}
+
 /** One mini-tool declaration. */
-export type MiniToolSpec = ModelToolSpec | LocalToolSpec;
+export type MiniToolSpec = ModelToolSpec | LocalToolSpec | PlannedToolSpec;

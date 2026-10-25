@@ -30,6 +30,8 @@ export function activeMiniToolSlot(
   draft: MiniToolDraft | null,
 ): MiniToolSlot | undefined {
   if (session.purpose !== 'miniToolSlot' || draft === null) return undefined;
+  if (draft.toolId === 'video.lip-sync' && session.slotKey?.startsWith('dialogue:')) return { key: session.slotKey, param: 'audio', accepts: 'audio', many: false, bannerKey: 'canvas.miniTool.videoUI.pickAudio' };
+  if (draft.toolId === 'video.transitions' && session.slotKey === 'timeline') return { key: 'timeline', param: 'video', accepts: 'video', many: false, bannerKey: 'canvas.miniTool.videoUI.pickVideo' };
   return miniToolById(draft.toolId)?.slots.find((slot) => slot.key === session.slotKey);
 }
 

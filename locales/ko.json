@@ -1127,6 +1127,27 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "expand": {
+          "label": "확장"
+        },
+        "erase": {
+          "label": "지우기"
+        },
+        "lip-sync": {
+          "label": "립싱크"
+        },
+        "remove-bg": {
+          "label": "배경 제거"
+        },
+        "extract-frames": {
+          "label": "프레임 추출"
+        },
+        "transitions": {
+          "label": "전환"
+        },
+        "split": {
+          "label": "분할"
         }
       },
       "audio": {
@@ -1328,6 +1349,77 @@
         "attack": "어택",
         "release": "릴리스",
         "makeup": "메이크업 게인"
+      },
+      "videoUI": {
+        "addDialogue": "대사 추가",
+        "addToTimeline": "타임라인에 추가",
+        "addVideoSlot": "동영상 추가",
+        "analysisFailed": "분석에 실패했습니다. 다시 시도하세요.",
+        "atCursor": "현재 위치 추가",
+        "chooseDialogueAudio": "선택",
+        "choosePerson": "인물 선택",
+        "cutPoint": "분할 지점",
+        "detectScenes": "다시 감지",
+        "dialogueAudio": "대사 오디오",
+        "dialoguePairs": "인물과 대사",
+        "dialogueStartTime": "시작 시간",
+        "drawBox": "드래그하여 영역 지정",
+        "duplicateClip": "클립 복제",
+        "earlier": "앞으로",
+        "editTimeline": "타임라인 편집",
+        "erasePrompt": "제거 후 배경 입력",
+        "expandPrompt": "채울 내용을 입력하세요. 비워 두면 비디오에 맞게 자연스럽게 넓힙니다",
+        "export": "내보내기",
+        "frameCount": "{count} 프레임",
+        "frameMode": "추출 방식",
+        "identifyingPeople": "인물 식별 중…",
+        "inPoint": "시작 지점",
+        "interval": "간격 지정",
+        "later": "뒤로",
+        "loadingFrames": "비디오 프레임 읽는 중…",
+        "mediaError": "미디어를 사용할 수 없음",
+        "outPoint": "끝 지점",
+        "pause": "일시 정지",
+        "peopleEmpty": "적합한 인물이 없습니다. 다시 감지하거나 다른 원본 동영상을 선택하세요.",
+        "peopleIdentificationFailed": "인물을 감지하지 못했습니다. 다시 시도해 주세요.",
+        "peopleIdle": "인물을 감지한 후 대상을 선택하세요.",
+        "personNumber": "인물 {number}",
+        "pickAudio": "Canvas에서 오디오 노드를 선택하세요.",
+        "pickVideo": "동영상 노드를 클릭해 슬롯에 추가하세요. Escape로 선택을 마칩니다.",
+        "preview": "미리 보기",
+        "previewUnavailable": "미리보기를 사용할 수 없습니다. 다시 시도하세요.",
+        "rangeEnd": "종료",
+        "rangeStart": "시작",
+        "rebuildDraft": "설정 초기화",
+        "redetectPeople": "다시 감지",
+        "removeClip": "클립 제거",
+        "removeCut": "제거",
+        "removeDialogue": "대사 제거",
+        "retryPreview": "미리보기 다시 시도",
+        "segmentCount": "{count} 구간",
+        "selectedClipEmpty": "클립을 선택하여 설정을 편집하세요.",
+        "sourceUnavailable": "원본 비디오를 사용할 수 없습니다",
+        "syncMode": "길이 조정 방식",
+        "targetPerson": "대상 인물",
+        "timelineAssets": "비디오 소스",
+        "timelineComposition": "합성 타임라인",
+        "timelineEmpty": "타임라인이 비어 있습니다",
+        "timelineInstructions": "클립 순서와 구간을 조정하고 인접 클립 간 전환을 설정하세요. 미리보기를 재생한 후 내보내세요.",
+        "timelineProperties": "클립 설정",
+        "trackObject": "선택 영역 추적",
+        "trackingPrompt": "채울 내용을 입력하세요. 비워 두면 비디오에 맞게 자연스럽게 넓힙니다",
+        "transition": "다음 클립으로 전환",
+        "transitionDuration": "전환 길이",
+        "transparentOutput": "투명 원본은 다운로드와 후속 도구에 사용합니다.",
+        "unsupportedDraft": "저장된 설정을 업데이트하세요.",
+        "video": "동영상",
+        "videoInputs": "동영상 입력",
+        "invalidNumber": "올바른 숫자를 입력하세요.",
+        "sourceChanged": "원본 소스가 변경되었습니다.",
+        "useCurrentSource": "현재 소스 사용",
+        "selection": "선택 영역",
+        "rectangle": "사각형",
+        "point": "포인트"
       }
     },
     "template": {
