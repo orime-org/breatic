@@ -64,6 +64,9 @@ export const PROPOSE_DOCUMENT_EDIT = "propose_document_edit";
  */
 export const SAVE_IMAGE = "save_image";
 
+/** Understands one ordered batch of images, video or audio. */
+export const UNDERSTAND_MEDIA = "understand_media";
+
 /**
  * Ask for a judgement over what the model is holding, with the odds (#282).
  *

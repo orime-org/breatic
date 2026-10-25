@@ -21,6 +21,7 @@ import { FAILURE_LINES, type FailureLine } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
+import type { SaveToStorage } from "@domain/agent/tools/save-image.js";
 import {
   AUDIO_FORMAT_NAMES,
   IMAGE_FORMAT_NAMES,
@@ -216,6 +217,15 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
   content_filter: "The rest of this description was withheld by a content filter.",
 };
 
+/** The caller capabilities the media tool may use during one turn. */
+interface UnderstandMediaContext extends UsageContext {
+  saveToStorage?: SaveToStorage;
+}
+
+const understandMediaContextSchema: z.ZodType<UnderstandMediaContext> = usageContextSchema.and(z.object({
+  saveToStorage: z.custom<SaveToStorage>((value) => typeof value === "function", "a save function").optional(),
+}));
+
 /**
  * The media understanding tool, as a turn receives it.
  *
@@ -228,7 +238,7 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
  * @returns The tool.
  * @throws {Error} when the Agent configuration cannot be loaded.
  */
-export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}): Tool<UnderstandMediaInput, string, UsageContext> {
+export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}): Tool<UnderstandMediaInput, string, UnderstandMediaContext> {
   const config = { ...getAgentConfig() };
   const inputSchema = z.object({
     items: z.array(z.object({ url: z.string().url().describe("Address of the image, video or audio") }))
@@ -257,7 +267,7 @@ export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}
       "Pictures omitted from this request's budget can be inspected here using their original source address. " +
       "Wait for this batch's answer before calling again.",
     inputSchema,
-    contextSchema: usageContextSchema,
+    contextSchema: understandMediaContextSchema,
     // What the panel reads about a running call, resolved by the web package.
     metadata: { runningLine: "chat.tool.understanding" },
     execute: async (

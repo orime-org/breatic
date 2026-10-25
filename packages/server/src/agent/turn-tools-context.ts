@@ -18,6 +18,7 @@ import {
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
   usageContextFor,
   type OpenDocument,
   type ProjectRecords,
@@ -46,6 +47,7 @@ export function turnToolsContext(
 ): Record<string, Record<string, unknown>> {
   const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage) };
   if (context[SAVE_IMAGE]) context[SAVE_IMAGE] = { ...context[SAVE_IMAGE], saveToStorage: turn.saveToStorage };
+  if (context[UNDERSTAND_MEDIA]) context[UNDERSTAND_MEDIA] = { ...context[UNDERSTAND_MEDIA], saveToStorage: turn.saveToStorage };
   if (context[PROPOSE_CANVAS_ACTION]) {
     context[PROPOSE_CANVAS_ACTION] = { ...context[PROPOSE_CANVAS_ACTION], studioId: turn.studioId };
   }

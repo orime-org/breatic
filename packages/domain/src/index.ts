@@ -117,6 +117,7 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
   RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
@@ -229,6 +230,7 @@ export {
   MediaUnavailable,
   UNDERSTAND_PINS,
   UnderstandRefused,
+  understandMediaInBatches,
   understandMediaAt,
   readingLimitsUntil,
 } from "@domain/understand/index.js";
@@ -249,11 +251,14 @@ export type {
   UnderstandOperationLeaseMutation,
 } from "@domain/understand/operation.repo.js";
 export type {
+  LongMediaBatchLimits,
+  LongMediaSegmentReference,
   MediaKind,
   RefusalKind,
   UnavailableKind,
   UnderstandAnswer,
   UnderstandAt,
+  UnderstandMediaInBatchesRequest,
 } from "@domain/understand/index.js";
 
 // ── Mail (notification mail sent by the worker) ──
