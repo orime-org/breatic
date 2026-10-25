@@ -908,7 +908,22 @@ class LongMediaJobStore {
       const row = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
       if (row === undefined) return null;
       const current = stateOf(row);
-      const next = transitionLongMediaJob(current, event, now);
+      let validatedEvent = event;
+      if (event.type === "planAck") {
+        const plan = this.ctx.storage.sql.exec<{ revision: number } & Record<string, SqlStorageValue>>(
+          "SELECT revision FROM long_media_segment_plans WHERE job_id = ?",
+          row.job_id,
+        ).toArray()[0];
+        if (plan === undefined) return null;
+        const runnable = this.ctx.storage.sql.exec<{ count: number } & Record<string, SqlStorageValue>>(
+          `SELECT COUNT(*) AS count FROM long_media_segments
+           WHERE job_id = ? AND status IN ('planned', 'encoding', 'oversize', 'stored', 'paused')`,
+          row.job_id,
+        ).one().count;
+        if (runnable === 0) return null;
+        validatedEvent = { type: "planAck", hasRunnableSegments: true };
+      }
+      const next = transitionLongMediaJob(current, validatedEvent, now);
       if (next.state.version !== current.version) {
         this.ctx.storage.sql.exec(
           `UPDATE long_media_jobs SET phase = ?, version = ?, terminal_intent = ?, active_container = ?, updated_at = ? WHERE job_id = ?`,

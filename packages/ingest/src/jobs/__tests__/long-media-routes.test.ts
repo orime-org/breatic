@@ -291,6 +291,7 @@ describe("POST /long-media/jobs", () => {
     await stub.startAttempt("segment-probe", Date.now());
     await stub.applyAttemptEvent({ type: "accepted", attemptId: "segment-probe", epoch: 1 }, Date.now());
     await stub.applyProbeReport("segment-probe", 1, probeReport, Date.now());
+    await expect(stub.transition({ type: "planAck", hasRunnableSegments: true }, Date.now())).resolves.toBeNull();
     const segments = [0, 1].map((audioChannelIndex) => ({
       id: `audio-0-${audioChannelIndex}:0:10000000`,
       mediaInputId: `audio-0-${audioChannelIndex}`,
@@ -303,6 +304,10 @@ describe("POST /long-media/jobs", () => {
     await expect(stub.seedSegmentPlan(segments, 0)).resolves.toMatchObject({ kind: "accepted", revision: 1 });
     await expect(stub.seedSegmentPlan(segments, 0)).resolves.toMatchObject({ kind: "replayed", revision: 1 });
     await expect(stub.readSegments()).resolves.toMatchObject(segments.map((segment) => ({ ...segment, status: "planned", version: 0 })));
+    await expect(stub.transition({ type: "planAck", hasRunnableSegments: false }, Date.now())).resolves.toMatchObject({
+      snapshot: { phase: "running" },
+      effects: ["startMediaAttempt"],
+    });
     await expect(stub.applySegmentEvent(segments[0]!.id, 0, { type: "run" })).resolves.toMatchObject({
       kind: "accepted",
       status: "encoding",
