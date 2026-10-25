@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import type { Modality } from '@web/data/yjs/node-view';
+import type { MediaSurfaceSnapshot, PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 
 /**
  * Canvas mutations a node body can trigger but cannot perform itself: the
@@ -13,6 +14,10 @@ import type { Modality } from '@web/data/yjs/node-view';
  * is the one layer that knows each node's id.
  */
 export interface CanvasActions {
+  /** Receives the actual effect-owned video attachment; never persisted. */
+  onVideoBinding?: (nodeId: string, canonicalURL: string, snapshot: MediaSurfaceSnapshot) => void;
+  /** Consumes the just-presented canonical frame before its drawing buffer clears. */
+  onVideoFrame?: (nodeId: string, canonicalURL: string, frame: PresentedMediaFrame) => void;
   /**
    * Persist a node's new display name to the Yjs doc (frontend-owned write,
    * same pattern as node position / deletion).

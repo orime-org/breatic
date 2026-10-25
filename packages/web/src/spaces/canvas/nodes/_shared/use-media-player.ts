@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import type { MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 
 /** Reactive transport state + imperative actions for a native media element. */
 export interface MediaPlayerApi {
@@ -44,11 +45,13 @@ export interface MediaPlayerApi {
  *   render, because a task can replace the medium on a node that is already
  *   mounted and the new clip's duration arrives in the same write as its
  *   content. The element is what answers for a medium the node knows none of.
+ * @param _owned - An optional actual native or alpha transport owner.
  * @returns Reactive player state plus transport actions.
  */
 export function useMediaPlayer(
   ref: React.RefObject<HTMLMediaElement | null>,
   knownDuration?: number,
+  _owned?: MediaSurfaceBinding | null,
 ): MediaPlayerApi {
   const [playing, setPlaying] = React.useState(false);
   const [currentTime, setCurrentTime] = React.useState(0);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import type { VideoPresentationSource, MediaSurfaceSnapshot, PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 import { Play, Pause, Volume2, VolumeX, Maximize } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
@@ -20,6 +21,16 @@ import { useMediaPlayer } from '@web/spaces/canvas/nodes/_shared/use-media-playe
 import { Waveform } from '@web/spaces/canvas/nodes/_shared/Waveform';
 
 interface MediaPlayerProps {
+  /** Resolved canonical video; null waits for trusted classification. */
+  videoSource?: VideoPresentationSource | null;
+  /** Whether this resource is currently displayed. */
+  active?: boolean;
+  /** Actual source transport lifecycle, never persisted in node data. */
+  onVideoBinding?: (snapshot: MediaSurfaceSnapshot) => void;
+  /** Synchronous actual-frame consumer. */
+  onPresentedFrame?: (frame: PresentedMediaFrame) => void;
+  /** Existing tool overlays sharing the displayed canonical box. */
+  children?: React.ReactNode;
   /** Which media kind to render. */
   modality: 'audio' | 'video';
   /** Media source URL (the permanent public `adapter.publicUrl` value). */
