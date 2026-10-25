@@ -33,6 +33,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import {
   buildProbeAnswer,
+  LONG_MEDIA_PROBE_PATH,
   PROBE_PATH,
   PROBE_PORT,
 } from "@ingest/probe-answer.js";
@@ -57,6 +58,7 @@ import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
+import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
 
 /**
  * The most a cover frame may weigh.
@@ -248,6 +250,29 @@ function send(res: ServerResponse, answer: Response): void {
 }
 
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === LONG_MEDIA_PROBE_PATH) {
+    void (async () => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let probe: LongMediaProbeRunRequest;
+      try {
+        probe = JSON.parse(Buffer.concat(chunks).toString("utf8")) as LongMediaProbeRunRequest;
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      if (typeof probe.objectUrl !== "string" || typeof probe.reportUrl !== "string" ||
+          typeof probe.deadlineAt !== "number" || !Number.isSafeInteger(probe.deadlineAt)) {
+        res.writeHead(400).end();
+        return;
+      }
+      res.writeHead(202).end();
+      await runLongMediaProbe(probe).catch((err: unknown) => {
+        console.error("long_media_probe_failed", { err: err instanceof Error ? err.message : String(err) });
+      });
+    })();
+    return;
+  }
   if (req.method === "POST" && req.url === RUN_PATH) {
     void (async () => {
       const chunks: Buffer[] = [];

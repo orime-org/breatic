@@ -42,6 +42,9 @@ export const PROBE_PORT = 8080;
 /** The one endpoint the container serves. */
 export const PROBE_PATH = "/probe";
 
+/** The container endpoint that measures one source for a long-media job. */
+export const LONG_MEDIA_PROBE_PATH = "/long-media/probe";
+
 /** What one run is asked to do. */
 export interface ProbeRequest {
   /** Static JPEG to generate independently of the display preview. */
