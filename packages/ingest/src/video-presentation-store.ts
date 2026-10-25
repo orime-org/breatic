@@ -34,6 +34,12 @@ interface PresentationRecord {
 }
 /** The physical container receives only the currently accepted admission. */
 export interface PreparedAlphaAdmission { admission: VideoPresentationAdmission | null; token: string | null; snapshot: VideoPresentationIngestSnapshot }
+/** A private accepted capability accompanies bytes without changing public schema. */
+export interface AlphaPackedIdentity extends AcceptedVideoPresentationAttempt { token: string }
+/** The durable pre-write claim supplies the actual previously observed R2 version. */
+export interface AlphaPackedWriteClaim { owner: string; key: string; etag: string | null; byteLength: number }
+/** Facts measured from the complete stored bytes, never from an HTTP caller. */
+export interface AlphaPackedReceipt { etag: string; size: number; sha256: string }
 const RECORD_KEY = 'video-presentation-v1';
 
 /** Durable gate shared by the production container and a storage-only test object. */
@@ -52,6 +58,40 @@ export class VideoPresentationStore {
     private readonly bucket: R2Bucket,
     private readonly gate: PresentationStorageGate,
   ) {}
+
+  /**
+   * Reserve this accepted identity before a packed byte reaches R2.
+   * @param identity - Original accepted private capability.
+   * @param byteLength - Complete stream length to enforce at storage.
+   * @returns One exclusive physical write claim, or a refusal.
+   * @throws {Error} When durable storage or R2 cannot be read.
+   */
+  async claimPacked(identity: AlphaPackedIdentity, byteLength: number): Promise<AlphaPackedWriteClaim | null> {
+    void identity; void byteLength;
+    return null;
+  }
+
+  /**
+   * Publish a verified complete packed receipt and its manifest under the same claim.
+   * @param identity - Originally accepted private capability.
+   * @param owner - Physical pre-write owner.
+   * @param receipt - Actual stored object facts.
+   * @returns Whether the still-current identity committed readiness.
+   * @throws {Error} When persistence fails.
+   */
+  async completePacked(identity: AlphaPackedIdentity, owner: string, receipt: AlphaPackedReceipt): Promise<boolean> {
+    void identity; void owner; void receipt;
+    return false;
+  }
+
+  /**
+   * Release only the failed physical write's own claim.
+   * @param identity - Original accepted private capability.
+   * @param owner - Failed physical writer.
+   * @returns Nothing after the exact owner is released.
+   * @throws {Error} When durable storage cannot be updated.
+   */
+  async releasePacked(identity: AlphaPackedIdentity, owner: string): Promise<void> { void identity; void owner; }
 
   /**
    * Persist the first accepted identity or replay the current one.
