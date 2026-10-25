@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { miniToolConsumptionIdentitySchema } from "@breatic/shared/mini-tools";
+import type { MiniToolPlanJobRequest } from "@breatic/shared";
 
 const containerPricingSchema = z.strictObject({
   configVersion: z.string().min(1),
@@ -91,3 +92,12 @@ export const confirmMiniToolConsumptionInputSchema = recordMiniToolConsumptionIn
   raw: z.json(),
 });
 export type ConfirmMiniToolConsumptionInput = z.infer<typeof confirmMiniToolConsumptionInputSchema>;
+
+/** A read-only answer never interprets an absent price as an actual zero. */
+export const miniToolConsumptionLookupSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("pending"), reason: z.string().min(1) }),
+  z.strictObject({ state: z.literal("known"), costUsd: z.number().nonnegative(), costSource: z.enum(["generation_lookup", "computed"]), raw: z.json() }),
+]);
+export type MiniToolConsumptionLookup = z.infer<typeof miniToolConsumptionLookupSchema>;
+/** Original expense and the immutable authority required to read a container report. */
+export interface MiniToolConsumptionLookupInput { consumption: MiniToolConsumptionRecord; plan?: MiniToolPlanJobRequest }

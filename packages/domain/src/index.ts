@@ -64,6 +64,7 @@ export { openMiniToolConsumption, completeMiniToolConsumptionSet } from "@domain
 export { openMiniToolPlanJob, type OpenMiniToolPlanJobInput, type OpenMiniToolPlanJobResult } from "@domain/mini-tool/planned-job.service.js";
 export { claimMiniToolSettlement, deferMiniToolSettlement, listDueMiniToolSettlements, type ClaimedMiniToolSettlement } from "@domain/mini-tool/settlement-lookup.service.js";
 export { settleMiniToolCharge, type MiniToolChargeResult } from "@domain/mini-tool/settlement.service.js";
+export { runMiniToolSettlement, type MiniToolSettlementRunResult, type MiniToolSettlementLookup } from "@domain/mini-tool/settlement-runner.service.js";
 export {
   miniToolConsumptionRecordSchema,
   miniToolSettlementSchema,
@@ -79,6 +80,9 @@ export {
   type MiniToolSettlementCursor,
   type DueMiniToolSettlement,
   type DueMiniToolSettlementPage,
+  miniToolConsumptionLookupSchema,
+  type MiniToolConsumptionLookup,
+  type MiniToolConsumptionLookupInput,
 } from "@domain/mini-tool/consumption.types.js";
 export {
   miniToolAnalysisRequestSchema,

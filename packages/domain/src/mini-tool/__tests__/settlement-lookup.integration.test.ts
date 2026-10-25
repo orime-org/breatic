@@ -3,7 +3,7 @@
 
 import crypto from "node:crypto";
 import fc from "fast-check";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, getMiniToolsConfig, initCore } from "@breatic/core";
 import { miniToolConsumptionKey } from "@breatic/shared/mini-tools";
 import * as domain from "@domain/index.js";
@@ -460,5 +460,151 @@ describe("persistent mini-tool lookup cycles", () => {
     expect((await snapshot(f)).fact.state).toBe("known"); expect((await snapshot(f)).usage).toBe(0);
     await domain.recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim });
     expect((await snapshot(f)).usage).toBe(1);
+  });
+});
+
+describe("durable expense recovery orchestration", () => {
+  it("ignores a stale wake without querying or writing and returns the current SQL wake", async () => {
+    const f = await seed(); const before = await snapshot(f); const lookup = vi.fn();
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 6 }, lookup);
+    expect(result).toEqual({ charge: null, nextWake: { taskId: f.taskId, settlementVersion: 7, dueAt: PAST } });
+    expect(lookup).not.toHaveBeenCalled(); expect(await snapshot(f)).toEqual(before);
+  });
+
+  it("recovers an expired owner before returning its newly committed version", async () => {
+    const f = await seed(); await setPeriod(f, { state: "checking", leaseToken: "expired", leaseUntil: PAST });
+    const lookup = vi.fn();
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(result.nextWake).toMatchObject({ taskId: f.taskId, settlementVersion: 8, dueAt: expect.any(String) });
+    expect(result.charge).toBeNull(); expect(lookup).not.toHaveBeenCalled();
+    expect((await snapshot(f)).fact).toEqual(f.fact);
+  });
+
+  it("keeps an unpriced answer pending and schedules its persisted retry period", async () => {
+    const f = await seed(); const lookup = vi.fn(async () => ({ state: "pending" as const, reason: "billing-delayed" }));
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(lookup).toHaveBeenCalledExactlyOnceWith({ consumption: f.fact });
+    expect(result).toMatchObject({ charge: null, nextWake: { taskId: f.taskId, settlementVersion: 8, dueAt: expect.any(String) } });
+    const after = await snapshot(f); expect(after.fact).toEqual(f.fact); expect(after.usage).toBe(0);
+    expect(after.task.result.settlement).toMatchObject({ state: "waiting", version: 8, lastError: "billing-delayed", pendingConsumptionKeys: [f.fact.consumptionKey], leaseToken: null });
+    expect(after.task.result.manifest).toEqual(MANIFEST); expect(after.task.status).toBe("failed");
+  });
+
+  it("records a confirmed zero once, then settles the terminal parent in its next cycle", async () => {
+    const f = await seed(); const lookup = vi.fn(async () => ({ state: "known" as const, costUsd: 0, costSource: "generation_lookup" as const, raw: { deduction: 0 } }));
+    const first = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(first).toMatchObject({ charge: null, nextWake: { taskId: f.taskId, settlementVersion: 8 } });
+    const recorded = await snapshot(f); expect(recorded.fact).toMatchObject({ state: "recorded", costUsd: 0, credits: 0 }); expect(recorded.usage).toBe(1);
+    expect(recorded.task.billed_at).toBeNull();
+    const second = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 8 }, lookup);
+    expect(second).toMatchObject({ nextWake: null, charge: { state: "settled", credits: 0, first: true } });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    const settled = await snapshot(f); expect(settled.task.billed_at).not.toBeNull(); expect(settled.task.result.manifest).toEqual(MANIFEST);
+    await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 8 }, lookup);
+    expect(await snapshot(f)).toEqual(settled); expect(lookup).toHaveBeenCalledTimes(1);
+  });
+
+  it("records an already known fact without asking upstream again", async () => {
+    const f = await seed(); const lookup = vi.fn();
+    await pg`UPDATE task_upstream_steps SET output=${pg.json({ miniToolConsumption: { ...f.fact, state: "known", costUsd: 0.000055, costSource: "generation_lookup", raw: { deduction: 0.000055 } } })} WHERE id=${f.stepId}`;
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(lookup).not.toHaveBeenCalled(); expect((await snapshot(f)).usage).toBe(1);
+    expect(result).toMatchObject({ charge: null, nextWake: { taskId: f.taskId, settlementVersion: 8 } });
+  });
+
+  it("retains a lookup failure and its original pending expense for a later cycle", async () => {
+    const f = await seed(); const error = new Error("billing transport unavailable"); const lookup = vi.fn(async () => { throw error; });
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(result.failure).toBe(error); expect(result.nextWake).toMatchObject({ taskId: f.taskId, settlementVersion: 8 });
+    const after = await snapshot(f); expect(after.fact).toEqual(f.fact); expect(after.usage).toBe(0);
+    expect(after.task.result.settlement).toMatchObject({ state: "waiting", version: 8, lastError: error.message });
+  });
+
+  it("commits the lease before external IO and ignores an answer invalidated during that IO", async () => {
+    const f = await seed(); let entered!: () => void; let release!: (answer: domain.MiniToolConsumptionLookup) => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const external = new Promise<domain.MiniToolConsumptionLookup>((resolve) => { release = resolve; });
+    const lookup = vi.fn(async () => { entered(); return external; });
+    const running = domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    void running.catch(() => undefined);
+    await Promise.race([started, running.then(() => { throw new Error("Recovery returned without entering the required lookup"); })]);
+    try {
+      await pg.begin(async (tx) => {
+        await tx.unsafe("SET LOCAL statement_timeout='2s'");
+        await tx`UPDATE tasks SET result=jsonb_set(result,'{settlement}',${tx.json({ ...f.settlement, version: 8 })}) WHERE id=${f.taskId}`;
+      });
+    } finally { release({ state: "known", costUsd: 99, costSource: "generation_lookup", raw: { late: true } }); }
+    const result = await running;
+    expect(lookup).toHaveBeenCalledTimes(1); expect(result.nextWake).toEqual({ taskId: f.taskId, settlementVersion: 8, dueAt: PAST });
+    const after = await snapshot(f); expect(after.fact).toEqual(f.fact); expect(after.usage).toBe(0); expect(after.task.result.manifest).toEqual(MANIFEST);
+  });
+
+  it("retains known cost after usage failure so the next cycle performs no second lookup", async () => {
+    const f = await seed(); const lookup = vi.fn(async () => ({ state: "known" as const, costUsd: 0.000055, costSource: "generation_lookup" as const, raw: { deduction: 0.000055 } }));
+    await pg.unsafe("CREATE OR REPLACE FUNCTION fail_runner_usage() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced runner usage failure'; END $$");
+    await pg.unsafe("CREATE TRIGGER fail_runner_usage BEFORE INSERT ON agent_usage_records FOR EACH ROW EXECUTE FUNCTION fail_runner_usage()");
+    let first: domain.MiniToolSettlementRunResult;
+    try { first = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup); }
+    finally {
+      await pg.unsafe("DROP TRIGGER fail_runner_usage ON agent_usage_records"); await pg.unsafe("DROP FUNCTION fail_runner_usage()");
+    }
+    expect(first.failure).toBeInstanceOf(Error); expect(first.nextWake).toMatchObject({ taskId: f.taskId, settlementVersion: 8 });
+    const known = await snapshot(f); expect(known.fact).toMatchObject({ state: "known", costUsd: 0.000055, credits: null }); expect(known.usage).toBe(0);
+    await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,nextAttemptAt}',to_jsonb(${PAST}::text)) WHERE id=${f.taskId}`;
+    await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 8 }, lookup);
+    expect(lookup).toHaveBeenCalledTimes(1); expect((await snapshot(f)).fact.state).toBe("recorded"); expect((await snapshot(f)).usage).toBe(1);
+  });
+
+  it("does not settle an empty terminal list whose consumption set is not explicitly complete", async () => {
+    const f = await seed(); const lookup = vi.fn();
+    await setPeriod(f, { pendingConsumptionKeys: [], consumptionSetComplete: false });
+    await pg`UPDATE task_upstream_steps SET output='{}'::jsonb WHERE id=${f.stepId}`;
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(result).toMatchObject({ charge: { state: "pending" }, nextWake: { taskId: f.taskId, settlementVersion: 8 } });
+    expect(lookup).not.toHaveBeenCalled();
+    const [task] = await pg`SELECT billed_at,result FROM tasks WHERE id=${f.taskId}`;
+    expect(task!.billed_at).toBeNull(); expect(task!.result.manifest).toEqual(MANIFEST);
+  });
+
+  it("records only one known expense per claim and rounds the complete parent once", async () => {
+    const f = await seed(); const lookup = vi.fn(); const otherStep = crypto.randomUUID();
+    const identity = { kind: "provider", provider: "wavespeed", predictionId: "second-original-prediction" } as const;
+    const secondKey = await miniToolConsumptionKey({ taskId: f.taskId, stepId: otherStep, identity });
+    const first = { ...f.fact, state: "known", costUsd: 0.000055, costSource: "generation_lookup", raw: { deduction: 0.000055 } };
+    const second = { ...first, identity, consumptionKey: secondKey };
+    await pg`UPDATE task_upstream_steps SET output=${pg.json({ miniToolConsumption: first })} WHERE id=${f.stepId}`;
+    await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,prediction_id,output) VALUES
+      (${otherStep},${f.taskId},1,'generate','wavespeed-ai/original','done',${identity.predictionId},${pg.json({ miniToolConsumption: second })})`;
+    await setPeriod(f, { pendingConsumptionKeys: [f.fact.consumptionKey, secondKey] });
+    await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect((await snapshot(f)).task.result.settlement).toMatchObject({ version: 8, pendingConsumptionKeys: [secondKey] });
+    const [untouched] = await pg`SELECT output->'miniToolConsumption' AS fact FROM task_upstream_steps WHERE id=${otherStep}`;
+    expect(untouched!.fact).toEqual(second);
+    await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 8 }, lookup);
+    expect((await snapshot(f)).task.result.settlement).toMatchObject({ version: 9, pendingConsumptionKeys: [] });
+    const last = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 9 }, lookup);
+    expect(last).toMatchObject({ nextWake: null, charge: { state: "settled", credits: 0.03, first: true } });
+    expect(lookup).not.toHaveBeenCalled();
+    const [usage] = await pg`SELECT count(*)::int AS count FROM agent_usage_records WHERE operation_key IN (${f.fact.consumptionKey},${secondKey})`;
+    expect(usage).toEqual({ count: 2 });
+  });
+
+  it("reads a container through its complete original plan after computation ended", async () => {
+    const f = await seed(); const inputId = crypto.randomUUID();
+    const plan = { schemaVersion: 2, jobId: `original:${f.taskId}`, containerClass: "MediaContainer", deadlineAt: Date.parse("2026-10-24T11:03:03.100001Z"),
+      limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
+      inputs: [{ inputId, storageKey: "original/input.mp4" }],
+      outputs: [{ outputIndex: 8, storageKey: "original/frame.png", contentType: "image/png", recipe: { kind: "frame", inputId, frameIndex: 42 } }] };
+    const identity = { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 1 } as const;
+    const fact = { ...f.fact, identity, consumptionKey: await miniToolConsumptionKey({ taskId: f.taskId, stepId: f.stepId, identity }),
+      containerPricing: { configVersion: "first-price", size: { vcpu: 8, memory_gib: 2, disk_gb: 4 }, prices: { vcpu_second_usd: 0.001, memory_gib_second_usd: 0.002, disk_gb_second_usd: 0.003 } } };
+    await pg`UPDATE task_upstream_steps SET kind='container_job',endpoint=${plan.containerClass},prediction_id=NULL,output=${pg.json({ miniToolConsumption: fact, miniToolPlanJob: plan })} WHERE id=${f.stepId}`;
+    await setPeriod(f, { pendingConsumptionKeys: [fact.consumptionKey] });
+    const lookup = vi.fn(async () => ({ state: "known" as const, costUsd: 0.0325, costSource: "computed" as const, raw: { wallMs: 2000, cpuUsec: 500000 } }));
+    const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(lookup).toHaveBeenCalledExactlyOnceWith({ consumption: fact, plan });
+    expect(result).toMatchObject({ charge: null, nextWake: { taskId: f.taskId, settlementVersion: 8 } });
+    const after = await snapshot(f); expect(after.fact).toMatchObject({ state: "recorded", costUsd: 0.0325, containerPricing: fact.containerPricing });
+    expect(after.task.status).toBe("failed"); expect(after.task.result.manifest).toEqual(MANIFEST);
   });
 });
