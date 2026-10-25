@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import { resolveTimelineArrangement, timelineSourceSeconds, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
 import { resolveTimelineMediaTransport, timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 
 /** The current document projection and its authorized preview resource. */
@@ -39,8 +39,13 @@ type PlaybackActions = Pick<TimelinePlayback, 'toggle' | 'seek' | 'retry'>;
  * @throws {never} Never.
  */
 export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayback {
-  const latest = React.useRef(input);
-  latest.current = input;
+  const readyClips = React.useMemo(() => {
+    const clips = Object.values(input.document.clips);
+    const ready = new Set(resolveTimelineArrangement({ tracks: Object.values(input.document.tracks), clips }).readyClipIds);
+    return clips.filter((item) => ready.has(item.id));
+  }, [input.document.clips, input.document.tracks]);
+  const latest = React.useRef({ ...input, readyClips });
+  latest.current = { ...input, readyClips };
   const state = React.useRef<PlaybackState>({ intent: 'pause', state: 'paused' });
   const [snapshot, setSnapshot] = React.useState(state.current);
   const actions = React.useRef<PlaybackActions | null>(null);
@@ -147,7 +152,10 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       if (!active || state.current.intent !== 'play' || state.current.state !== 'playing' || anchor === null) return;
       const end = sequenceEnd();
       const fps = latest.current.document.settings.fps;
-      const next = timelineFrameAt(anchor, now, fps, end);
+      const boundary = clip !== null
+        ? clip.startFrame + clip.durationFrames
+        : Math.min(end, ...latest.current.readyClips.filter((item) => item.startFrame > position).map((item) => item.startFrame));
+      const next = Math.min(boundary, timelineFrameAt(anchor, now, fps, end));
       if (next >= end) {
         showFrame(Math.max(0, end - 1));
         media?.pause();
@@ -156,10 +164,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
         publish('pause', 'paused');
         return;
       }
-      const boundary = clip !== null
-        ? clip.startFrame + clip.durationFrames
-        : Math.min(end, ...Object.values(latest.current.document.clips).filter((item) => item.startFrame > position).map((item) => item.startFrame));
-      showFrame(Math.min(next, boundary));
+      showFrame(next);
       if (next >= boundary) {
         anchor = null;
         return;
@@ -265,6 +270,7 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
       } else {
         media?.pause();
         publish(state.current.intent, state.current.intent === 'play' ? 'waiting' : 'paused');
+        if (clip === null) evaluate();
       }
     }
 
@@ -294,18 +300,35 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
      * @throws {never} Never.
      */
     function retry(): void {
+      if (media?.error) {
+        try {
+          media.load();
+          configureMedia();
+        } catch {
+          fail();
+          return;
+        }
+      }
       seek(position);
       publish('play', 'waiting');
       evaluate();
     }
 
-    if (clip !== null && source !== null) {
-      targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position);
-      if (media !== null) {
+    /**
+     * Apply the current placement's native settings after attachment or reload.
+     * @throws {DOMException} When the browser rejects a media setting.
+     */
+    function configureMedia(): void {
+      if (media !== null && clip !== null) {
         media.playbackRate = clip.rate.num / clip.rate.den;
         media.volume = Math.min(1, clip.gain);
         media.muted = clip.mute;
       }
+    }
+
+    if (clip !== null && source !== null) {
+      targetSeconds = timelineSourceSeconds(clip, source, latest.current.document.settings.fps, position);
+      configureMedia();
     }
     const events = ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'play', 'pause', 'waiting', 'stalled', 'seeked', 'seeking', 'timeupdate', 'ended', 'error'];
     for (const event of events) media?.addEventListener(event, evaluate);

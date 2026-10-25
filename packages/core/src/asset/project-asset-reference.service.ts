@@ -167,7 +167,8 @@ async function classifyMediaInTransaction(projectId: string, references: readonl
   const keys = references.flatMap((item) => item.kind === "url" && item.storageKey !== null ? [item.storageKey] : []);
   const assets = await assetRepo.findLiveMediaIdentities(ids, keys, tx);
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
-  const byKey = new Map(assets.map((asset) => [asset.storageKey, asset]));
+  const byKey = new Map(assets.filter((asset) => asset.studioId === studioId).map((asset) => [asset.storageKey, asset]));
+  const knownKeys = new Set(assets.map((asset) => asset.storageKey));
   const result: RegisteredProjectMediaResolution = { resolved: [], unavailable: [] };
   for (const item of references) {
     const identity = { kind: item.kind, reference: item.reference };
@@ -176,7 +177,7 @@ async function classifyMediaInTransaction(projectId: string, references: readonl
       continue;
     }
     const asset = item.kind === "assetId" ? byId.get(item.reference) : byKey.get(item.storageKey ?? "");
-    if (asset === undefined) result.unavailable.push({ ...identity, reason: "unregistered" });
+    if (asset === undefined) result.unavailable.push({ ...identity, reason: item.kind === "url" && knownKeys.has(item.storageKey ?? "") ? "foreign_studio" : "unregistered" });
     else if (asset.studioId !== studioId) result.unavailable.push({ ...identity, reason: "foreign_studio" });
     else result.resolved.push({ ...identity, asset });
   }

@@ -887,6 +887,45 @@ describe('useTimelinePlayback review regressions', () => {
     expect(hook.result.current.frame).toBe(54);
   });
 
+  it('keeps a thrown native load failed until another explicit retry completes the readiness barriers', async () => {
+    const nativeError = { code: 2, message: 'Network failed' } as MediaError;
+    const media = mediaFixture({ readyState: 0, error: nativeError });
+    media.load.mockImplementationOnce(() => { throw new DOMException('Reload unavailable', 'NotSupportedError'); });
+    const hook = renderPlayback(media, { initialFrame: 48 });
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(1);
+    expect(media.facts.error).toBe(nativeError);
+    expect(hook.result.current.state).toBe('failed');
+    expect(hook.result.current.intent).toBe('pause');
+    expect(media.facts.paused).toBe(true);
+    expect(queuedFrames.size).toBe(0);
+    tick(1000);
+    expect(hook.result.current.frame).toBe(48);
+    expect(hook.observedFrames).toEqual([]);
+    expect(media.play).toHaveBeenCalledTimes(0);
+
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(2);
+    expect(media.facts.error).toBeNull();
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('waiting');
+    tick(4000);
+    expect(hook.result.current.frame).toBe(48);
+    mediaEvent(media, 'loadedmetadata', { readyState: 1, duration: 10 });
+    expect(media.facts.currentTime).toBe(2);
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: true });
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'seeked', { readyState: 2, seeking: false });
+    expect(hook.result.current.state).toBe('waiting');
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'canplay', { readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(media.play).toHaveBeenCalledTimes(1);
+    tick(4250);
+    expect(hook.result.current.frame).toBe(54);
+  });
+
   it('preserves a user pause through metadata and seek completion after an errored-element reload', async () => {
     const media = mediaFixture({ readyState: 0, error: { code: 2, message: 'Network failed' } as MediaError });
     const hook = renderPlayback(media, { initialFrame: 48 });
