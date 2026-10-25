@@ -69,8 +69,19 @@ export class VideoPresentationStore {
    * @throws {Error} When durable storage or R2 cannot be read.
    */
   async claimPacked(identity: AlphaPackedIdentity, byteLength: number): Promise<AlphaPackedWriteClaim | null> {
-    void identity; void byteLength;
-    return null;
+    return this.gate(async () => {
+      const record = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      if (record === undefined || record.token !== identity.token || record.admission.jobId !== identity.jobId ||
+        record.admission.sourceFingerprint !== identity.sourceFingerprint || record.admission.deadlineAt !== identity.deadlineAt ||
+        identity.deadlineAt <= Date.now() || record.snapshot.presentation?.state !== 'alpha_pending' || record.encoded === undefined || record.writeOwner !== undefined ||
+        !Number.isSafeInteger(byteLength) || byteLength <= 0 || record.admission.limits === undefined || byteLength > record.admission.limits.maxPackedBytes) return null;
+      const key = alphaPackedKeyFor(record.admission.storageKey);
+      const head = await this.bucket.head(key);
+      const owner = crypto.randomUUID();
+      record.writeOwner = owner;
+      await this.persist(record);
+      return { owner, key, etag: head?.etag ?? null, byteLength };
+    });
   }
 
   /**
@@ -82,8 +93,34 @@ export class VideoPresentationStore {
    * @throws {Error} When persistence fails.
    */
   async completePacked(identity: AlphaPackedIdentity, owner: string, receipt: AlphaPackedReceipt): Promise<boolean> {
-    void identity; void owner; void receipt;
-    return false;
+    let proposed: VideoPresentation | null = null;
+    const accepted = await this.gate(async () => {
+      const record = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      if (record === undefined || record.token !== identity.token || record.admission.jobId !== identity.jobId ||
+        record.admission.sourceFingerprint !== identity.sourceFingerprint || record.admission.deadlineAt !== identity.deadlineAt || record.writeOwner !== owner ||
+        record.encoded === undefined || record.snapshot.presentation === null || record.admission.limits === undefined || record.admission.manifestURL === undefined ||
+        record.snapshot.presentation.state === 'native' || record.snapshot.presentation.state === 'alpha_ready' || !/^[a-f0-9]{64}$/.test(receipt.sha256)) return false;
+      const packed = await this.bucket.head(alphaPackedKeyFor(record.admission.storageKey));
+      if (packed === null || packed.etag !== receipt.etag || packed.size !== receipt.size || receipt.size <= 0 || receipt.size > record.admission.limits.maxPackedBytes || packed.httpMetadata?.contentType !== 'video/mp4') return false;
+      const manifest = alphaManifestSchema.safeParse({ schemaVersion: 1, sourceFingerprint: identity.sourceFingerprint, packedURL: record.admission.packedURL,
+        packedWidth: record.encoded.packedWidth, packedHeight: record.encoded.packedHeight, colorRect: record.encoded.colorRect, alphaRect: record.encoded.alphaRect });
+      if (!manifest.success || !alphaManifestMatchesPresentation(manifest.data, record.snapshot.presentation)) return false;
+      const key = alphaManifestKeyFor(record.admission.storageKey);
+      const prior = await this.bucket.head(key);
+      const written = await this.bucket.put(key, JSON.stringify(manifest.data), {
+        onlyIf: prior === null ? { etagDoesNotMatch: '*' } : { etagMatches: prior.etag }, httpMetadata: { contentType: 'application/json' },
+      });
+      if (written === null) return false;
+      record.packedReceipt = receipt;
+      delete record.writeOwner;
+      await this.persist(record);
+      proposed = { ...record.snapshot.presentation, state: 'alpha_ready', alpha: { manifestURL: record.admission.manifestURL } };
+      delete proposed.error;
+      return true;
+    });
+    if (!accepted || proposed === null) return false;
+    const snapshot = await this.advance(identity, proposed);
+    return snapshot.attempt?.jobId === identity.jobId && snapshot.presentation?.state === 'alpha_ready';
   }
 
   /**
@@ -93,7 +130,15 @@ export class VideoPresentationStore {
    * @returns Nothing after the exact owner is released.
    * @throws {Error} When durable storage cannot be updated.
    */
-  async releasePacked(identity: AlphaPackedIdentity, owner: string): Promise<void> { void identity; void owner; }
+  async releasePacked(identity: AlphaPackedIdentity, owner: string): Promise<void> {
+    await this.gate(async () => {
+      const current = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      const record = current?.admission.jobId === identity.jobId ? current : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${identity.jobId}`);
+      if (record === undefined || record.token !== identity.token || record.admission.sourceFingerprint !== identity.sourceFingerprint || record.admission.deadlineAt !== identity.deadlineAt || record.writeOwner !== owner) return;
+      delete record.writeOwner;
+      await this.persist(record);
+    });
+  }
 
   /**
    * Persist the first accepted identity or replay the current one.
@@ -288,8 +333,9 @@ export class VideoPresentationStore {
       if (next.state === 'alpha_ready' && manifest === null) return current.snapshot;
       const status = next.state === 'failed' ? 'failed' : next.state === 'native' || next.state === 'alpha_ready' ? 'completed' : 'running';
       const snapshot: VideoPresentationIngestSnapshot = { presentation: next,
+        ...(current.snapshot.usageFact === undefined ? {} : { usageFact: current.snapshot.usageFact }),
         ...(manifest === null ? {} : { manifest }), attempt: { jobId: accepted.jobId, deadlineAt: accepted.deadlineAt,
-          status, usage: current.snapshot.attempt?.usage ?? null, ...(next.state === 'failed' ? { error: next.error } : {}) },
+          status, usage: current.snapshot.attempt?.usage ?? null, ...(current.snapshot.attempt?.usageRecorded === true ? { usageRecorded: true } : {}), ...(next.state === 'failed' ? { error: next.error } : {}) },
       };
       if (!await this.writeDescriptor(current, next)) return current.snapshot;
       current.snapshot = snapshot;
