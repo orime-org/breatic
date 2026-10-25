@@ -8,6 +8,8 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
+      "payload_too_large": "リクエストの内容が {limit} を超えています。プロンプトか参照しているテキストを短くしてください。",
+      "transfer_invalid": "アップロードした内容を使用できませんでした。もう一度お試しください。",
       "internal": "内部サーバーエラー"
     },
     "credit": {
@@ -658,6 +660,8 @@
       "errorCredits": "クレジットが不足しているため生成できません。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
+      "errorTooLarge": "内容が {limit} を超えています。プロンプトか参照しているテキストを短くしてください。",
+      "errorTooLargeNoLimit": "内容が大きすぎます。プロンプトか参照しているテキストを短くしてください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "errorTooManyReferences": "このモデルは参考{kind, select, video {動画を最大 {limit} 本} audio {音声を最大 {limit} 本} other {画像を最大 {limit} 枚}}まで受け付けます —— いくつか削除してから生成してください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
