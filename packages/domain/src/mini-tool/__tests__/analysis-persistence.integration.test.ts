@@ -255,8 +255,7 @@ describe("atomic analysis computation completion", () => {
     const observed = failure.catch(() => undefined);
     try {
       await Promise.race([waitUntilBlockedOn(pg, ["tasks", "for update"], 1), failure.then(() => { throw new Error("Completion bypassed the task lock"); })]);
-    } finally { release(); await owner; }
-    await observed;
+    } finally { release(); await owner; await observed; }
     const finished = await failure;
     expect(finished.record).toEqual(committed);
     expect((await snapshot(f)).task.result.settlement).toMatchObject({ consumptionSetComplete: true });
