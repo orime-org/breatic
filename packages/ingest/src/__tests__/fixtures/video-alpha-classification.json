@@ -9055,6 +9055,232 @@
         }
       },
       "expected": "unknown"
+    },
+    {
+      "name": "alpha-vp8.webm",
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp8",
+            "codec_long_name": "On2 VP8",
+            "profile": "0",
+            "codec_type": "video",
+            "codec_tag_string": "[0][0][0][0]",
+            "codec_tag": "0x0000",
+            "width": 64,
+            "height": 48,
+            "coded_width": 64,
+            "coded_height": 48,
+            "has_b_frames": 0,
+            "sample_aspect_ratio": "1:1",
+            "display_aspect_ratio": "4:3",
+            "pix_fmt": "yuv420p",
+            "level": -99,
+            "color_range": "tv",
+            "field_order": "progressive",
+            "refs": 1,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "time_base": "1/1000",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "disposition": {
+              "default": 0,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0,
+              "multilayer": 0
+            },
+            "tags": {
+              "alpha_mode": "1",
+              "ENCODER": "Lavc62.11.100 libvpx",
+              "DURATION": "00:00:00.200000000"
+            }
+          }
+        ],
+        "format": {
+          "filename": "/tmp/alpha-vp8.webm",
+          "nb_streams": 1,
+          "nb_programs": 0,
+          "nb_stream_groups": 0,
+          "format_name": "matroska,webm",
+          "format_long_name": "Matroska / WebM",
+          "start_time": "0.000000",
+          "duration": "0.200000",
+          "size": "969",
+          "bit_rate": "38760",
+          "probe_score": 100,
+          "tags": {
+            "ENCODER": "Lavf62.3.100"
+          }
+        }
+      },
+      "expected": "confirmed_alpha"
+    },
+    {
+      "name": "opaque-vp8.webm",
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp8",
+            "codec_long_name": "On2 VP8",
+            "profile": "0",
+            "codec_type": "video",
+            "codec_tag_string": "[0][0][0][0]",
+            "codec_tag": "0x0000",
+            "width": 64,
+            "height": 48,
+            "coded_width": 64,
+            "coded_height": 48,
+            "has_b_frames": 0,
+            "sample_aspect_ratio": "1:1",
+            "display_aspect_ratio": "4:3",
+            "pix_fmt": "yuv420p",
+            "level": -99,
+            "color_range": "tv",
+            "field_order": "progressive",
+            "refs": 1,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "time_base": "1/1000",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "disposition": {
+              "default": 0,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0,
+              "multilayer": 0
+            },
+            "tags": {
+              "ENCODER": "Lavc62.11.100 libvpx",
+              "DURATION": "00:00:00.200000000"
+            }
+          }
+        ],
+        "format": {
+          "filename": "/tmp/opaque-vp8.webm",
+          "nb_streams": 1,
+          "nb_programs": 0,
+          "nb_stream_groups": 0,
+          "format_name": "matroska,webm",
+          "format_long_name": "Matroska / WebM",
+          "start_time": "0.000000",
+          "duration": "0.200000",
+          "size": "2252",
+          "bit_rate": "90080",
+          "probe_score": 100,
+          "tags": {
+            "ENCODER": "Lavf62.3.100"
+          }
+        }
+      },
+      "expected": "confirmed_opaque"
+    },
+    {
+      "name": "opaque-vp9.webm",
+      "probe": {
+        "streams": [
+          {
+            "index": 0,
+            "codec_name": "vp9",
+            "codec_long_name": "Google VP9",
+            "profile": "Profile 0",
+            "codec_type": "video",
+            "codec_tag_string": "[0][0][0][0]",
+            "codec_tag": "0x0000",
+            "width": 64,
+            "height": 48,
+            "coded_width": 64,
+            "coded_height": 48,
+            "has_b_frames": 0,
+            "sample_aspect_ratio": "1:1",
+            "display_aspect_ratio": "4:3",
+            "pix_fmt": "yuv420p",
+            "level": -99,
+            "color_range": "tv",
+            "field_order": "progressive",
+            "refs": 1,
+            "r_frame_rate": "25/1",
+            "avg_frame_rate": "25/1",
+            "time_base": "1/1000",
+            "start_pts": 0,
+            "start_time": "0.000000",
+            "disposition": {
+              "default": 0,
+              "dub": 0,
+              "original": 0,
+              "comment": 0,
+              "lyrics": 0,
+              "karaoke": 0,
+              "forced": 0,
+              "hearing_impaired": 0,
+              "visual_impaired": 0,
+              "clean_effects": 0,
+              "attached_pic": 0,
+              "timed_thumbnails": 0,
+              "non_diegetic": 0,
+              "captions": 0,
+              "descriptions": 0,
+              "metadata": 0,
+              "dependent": 0,
+              "still_image": 0,
+              "multilayer": 0
+            },
+            "tags": {
+              "ENCODER": "Lavc62.11.100 libvpx-vp9",
+              "DURATION": "00:00:00.200000000"
+            }
+          }
+        ],
+        "format": {
+          "filename": "/tmp/opaque-vp9.webm",
+          "nb_streams": 1,
+          "nb_programs": 0,
+          "nb_stream_groups": 0,
+          "format_name": "matroska,webm",
+          "format_long_name": "Matroska / WebM",
+          "start_time": "0.000000",
+          "duration": "0.200000",
+          "size": "1791",
+          "bit_rate": "71640",
+          "probe_score": 100,
+          "tags": {
+            "ENCODER": "Lavf62.3.100"
+          }
+        }
+      },
+      "expected": "confirmed_opaque"
     }
   ]
 }
