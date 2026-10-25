@@ -10,17 +10,26 @@ const runtime = vi.hoisted(() => ({
   outbound: [] as Record<string, unknown>[],
   schedules: [] as { at: Date; payload: unknown }[],
   starts: 0,
+  startError: null as Error | null,
+  fetchError: null as Error | null,
+  outboundError: null as Error | null,
+  fetchStatus: 202,
+  runningAfterStart: true,
 }));
 
 vi.mock("@cloudflare/containers", () => ({
   Container: class {
     constructor(readonly ctx: unknown, readonly env: unknown) {}
-    async start(): Promise<void> { runtime.starts += 1; }
-    async destroy(): Promise<void> {}
-    async setOutboundByHosts(value: Record<string, unknown>): Promise<void> { runtime.outbound.push(value); }
+    async start(): Promise<void> {
+      runtime.starts += 1;
+      (this.ctx as { container: { running: boolean } }).container.running = runtime.runningAfterStart;
+      if (runtime.startError !== null) throw runtime.startError;
+    }
+    async destroy(): Promise<void> { (this.ctx as { container: { running: boolean } }).container.running = false; }
+    async setOutboundByHosts(value: Record<string, unknown>): Promise<void> { runtime.outbound.push(value); if (runtime.outboundError !== null) throw runtime.outboundError; }
     async schedule(at: Date, _name: string, payload: unknown): Promise<void> { runtime.schedules.push({ at, payload }); }
     deleteSchedules(): void {}
-    async containerFetch(request: Request): Promise<Response> { runtime.sent.push(request); return new Response(null, { status: 202 }); }
+    async containerFetch(request: Request): Promise<Response> { runtime.sent.push(request); if (runtime.fetchError !== null) throw runtime.fetchError; return new Response(null, { status: runtime.fetchStatus }); }
   },
 }));
 
@@ -42,13 +51,14 @@ const MEDIA = { width: 960, height: 448, durationSeconds: null, cover: null };
 
 /**
  * Make only the storage and lifecycle stand-in used by this Node unit suite.
+ * @param running - The fixture's initial observed runtime flag.
  * @returns A DO whose Cloudflare container base is mocked, never a real image.
  * @throws {never} Never.
  */
-function owner(): { object: MiniToolContainerStd1; storage: Map<string, unknown> } {
+function owner(running = true): { object: MiniToolContainerStd1; storage: Map<string, unknown> } {
   const storage = new Map<string, unknown>();
   const ctx = {
-    id: { toString: () => "unit-only-object" }, container: { running: true },
+    id: { toString: () => "unit-only-object" }, container: { running },
     storage: {
       get: async (key: string) => storage.get(key),
       put: async (key: string, value: unknown) => { storage.set(key, value); },
@@ -65,6 +75,11 @@ beforeEach(() => {
   runtime.outbound.length = 0;
   runtime.schedules.length = 0;
   runtime.starts = 0;
+  runtime.startError = null;
+  runtime.fetchError = null;
+  runtime.outboundError = null;
+  runtime.fetchStatus = 202;
+  runtime.runningAfterStart = true;
 });
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -159,5 +174,81 @@ describe("planned DO state with a mocked container base, not an image", () => {
       await expect(object.noteReported(body)).rejects.toThrow();
       expect(storage.get("job")).toEqual(held);
     }
+  });
+});
+
+
+const NO_START_FACTS = { startRequested: false, startResolved: false, runningObserved: false, runDispatchAttempted: false, runAcknowledged: false };
+
+describe("planned startup facts preserve unknown consumption, with only the container base mocked", () => {
+  it("preserves a failed start with running false and reports unknown usage without restarting on replay", async () => {
+    const { object, storage } = owner(false);
+    runtime.runningAfterStart = false;
+    runtime.startError = new Error("start command outcome is unknown");
+    await expect(object.submit(PLAN)).rejects.toThrow();
+    const held = structuredClone(storage.get("job"));
+    expect(await object.report()).toMatchObject({ schemaVersion: 2, state: "failed", usage: null, outputs: [] });
+    expect(held).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true } });
+    const attemptId = (held as { state: { attemptId: string } }).state.attemptId;
+    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect((storage.get("job") as { state: { attemptId: string } }).state.attemptId).toBe(attemptId);
+    expect(storage.get("job")).toEqual(held);
+    expect(runtime.starts).toBe(1);
+    expect(runtime.sent).toHaveLength(0);
+  });
+
+  it("preserves observed running after a throwing start without turning that flag into measured usage", async () => {
+    const { object, storage } = owner(false);
+    runtime.startError = new Error("start reply was lost after the runtime became running");
+    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.report()).toMatchObject({ state: "failed", usage: null });
+    expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, runningObserved: true } });
+    const held = structuredClone(storage.get("job"));
+    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(storage.get("job")).toEqual(held);
+    expect(runtime.starts).toBe(1);
+  });
+
+  it("keeps the original attempt and unknown usage when the run request reply is lost", async () => {
+    const { object, storage } = owner(false);
+    runtime.fetchError = new Error("container run acknowledgement was lost");
+    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.report()).toMatchObject({ state: "failed", usage: null });
+    expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, startResolved: true, runningObserved: true, runDispatchAttempted: true } });
+    const held = structuredClone(storage.get("job"));
+    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(storage.get("job")).toEqual(held);
+    expect(runtime.starts).toBe(1);
+    expect(runtime.sent).toHaveLength(1);
+  });
+
+  it("does not infer a meter from a non-202 run response after start resolved", async () => {
+    const { object, storage } = owner(false);
+    runtime.fetchStatus = 503;
+    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.report()).toMatchObject({ state: "failed", usage: null });
+    expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, startResolved: true, runningObserved: true, runDispatchAttempted: true } });
+  });
+
+  it("retains the accepted request when outbound setup fails before any start call", async () => {
+    const { object, storage } = owner(false);
+    runtime.outboundError = new Error("outbound capability setup failed");
+    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.report()).toMatchObject({ state: "failed", usage: null });
+    expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: NO_START_FACTS });
+    expect(runtime.starts).toBe(0);
+    expect(runtime.sent).toHaveLength(0);
+  });
+
+  it("does not fabricate known usage from a later stop callback without any run meter", async () => {
+    const { object, storage } = owner(false);
+    runtime.fetchError = new Error("run response was lost");
+    await expect(object.submit(PLAN)).rejects.toThrow();
+    const held = structuredClone(storage.get("job"));
+    await object.onStop({ exitCode: 0, reason: "exit" });
+    expect(await object.report()).toMatchObject({ state: "failed", usage: null });
+    expect((storage.get("job") as { state: unknown }).state).toEqual((held as { state: unknown }).state);
+    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(runtime.starts).toBe(1);
   });
 });
