@@ -24,7 +24,7 @@ const asset: StudioAssetEntity = {
   contentHash: "b".repeat(64), storageKey: "original-winner/people.txt", fileUrl: "https://assets.test.invalid/original-winner/people.txt",
   sizeBytes: new TextEncoder().encode(body).byteLength, mimeType: "text/plain", kind: "document", source: "upload",
   producedByUserId: "30000000-0000-4000-8000-000000000001", generationTaskId: null,
-  width: null, height: null, durationSeconds: null, createdAt: "2026-10-24T00:00:00Z", deletedAt: null,
+  width: null, height: null, durationSeconds: null, createdAt: new Date("2026-10-24T00:00:00Z"), deletedAt: null,
 };
 const deadlineAt = h.now + 30000;
 
@@ -44,7 +44,7 @@ describe("registered analysis JSON delivery", () => {
       expect.objectContaining({ replaySafe: true, timeoutMs: 30000, signal: expect.any(AbortSignal) }));
   });
 
-  it.each([null, { ...asset, deletedAt: "2026-10-25T00:00:00Z" }])("refuses an unavailable registration before HTTP", async (row) => {
+  it.each([null, { ...asset, deletedAt: new Date("2026-10-25T00:00:00Z") }])("refuses an unavailable registration before HTTP", async (row) => {
     h.find.mockResolvedValue(row);
     await expect(readMiniToolAnalysisJson(asset.id, deadlineAt)).rejects.toThrow("Registered analysis artifact is unavailable");
     expect(h.request).not.toHaveBeenCalled();
