@@ -43,8 +43,10 @@ import {
 import {
   issueUploadTicket,
   issueUploadTicketBatch,
+  transferTicketMaxBytes,
   type TicketOutcome,
 } from "@server/modules/asset/upload-ticket.service.js";
+import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -100,6 +102,9 @@ assets.get("/upload-config", requireAuth, async (c) => {
       uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
       uploadStatusPollSeconds: upload.upload_status_poll_seconds,
       assetUrlPrefix: store.publicUrl(""),
+      // The largest body a route reads (inner#1006); past it the browser
+      // moves the body through a transfer upload, on the routes that take one.
+      maxRequestBodyBytes: getRequestBodyMaxBytes(),
     },
   });
 });
@@ -376,6 +381,52 @@ assets.post(
       return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
     }
     return c.json({ data: ticketBody(outcome) }, outcome.kind === "alreadyExists" ? 200 : 201);
+  },
+);
+
+// ── Transfer ticket (inner#1006) ────────────────────────────────────
+
+/**
+ * What the browser sends for a transfer ticket: the project the request is
+ * for and the transfer file's whole size. Anything else it sends is ignored;
+ * the type, the file name and the key are the server's.
+ */
+const transferTicketSchema = z.object({
+  project_id: z.string().uuid(),
+  size: z
+    .number()
+    .int()
+    .positive()
+    .refine((size) => size <= transferTicketMaxBytes(), "size is over the transfer cap"),
+});
+
+/**
+ * `POST /assets/transfer-ticket` — the ticket for a request body too large
+ * for the API (inner#1006): the browser writes it as a transfer file, sends
+ * it to the ingest Worker like any upload, and then hands the route that
+ * body was for a reference instead. Its own rate limit, so moving a big paste
+ * never eats the media-upload allowance; the same editor check as the three
+ * routes that take a reference.
+ */
+assets.post(
+  "/transfer-ticket",
+  requireAuth,
+  rateLimitFor("transfer-ticket", "user"),
+  validate("json", transferTicketSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+    const studioId = await assetService.resolveOwnerStudioId(body.project_id);
+    const outcome = await issueUploadTicket(
+      { userId: user.id, studioId, projectId: body.project_id },
+      { purpose: "transfer", size: body.size },
+      async () => true,
+    );
+    if (outcome.kind === "refused") {
+      return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
+    }
+    return c.json({ data: ticketBody(outcome) }, 201);
   },
 );
 
