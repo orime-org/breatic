@@ -48,6 +48,12 @@ function equal(left: string, leftBase: string, right: string, rightBase: string)
  */
 export function verifyAlphaPackedClock(source: AlphaPresentationClock, packed: AlphaPresentationClock): boolean {
   if (source.frames.length === 0 || source.frames.length !== packed.frames.length || source.audio.length !== packed.audio.length) return false;
+  const declaredDuration = fraction(source.videoDuration, source.videoTimeBase);
+  if (declaredDuration === null || declaredDuration[0] <= 0n ||
+    !equal(source.videoStartPts, source.videoTimeBase, packed.videoStartPts, packed.videoTimeBase) ||
+    !equal(source.videoDuration, source.videoTimeBase, packed.videoDuration, packed.videoTimeBase) ||
+    !equal(String(BigInt(source.videoStartPts) + BigInt(source.videoDuration)), source.videoTimeBase,
+      String(BigInt(packed.videoStartPts) + BigInt(packed.videoDuration)), packed.videoTimeBase)) return false;
   const videoMatches = source.frames.every((frame, index) => {
     const actual = packed.frames[index]!;
     const duration = fraction(frame.duration, source.videoTimeBase);
