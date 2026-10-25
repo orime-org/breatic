@@ -673,7 +673,6 @@
       "errorCredits": "Not enough credits to generate.",
       "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
       "errorFailed": "Couldn't start generation. Please try again.",
-      "errorTooLarge": "This request is larger than {limit}. Shorten the prompt or the text it refers to.",
       "errorTooLargeNoLimit": "This request is too large. Shorten the prompt or the text it refers to.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference {kind, select, video {videos} audio {audio clips} other {images}} — remove some to generate.",

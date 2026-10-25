@@ -660,7 +660,6 @@
       "errorCredits": "积分不足，无法生成。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
-      "errorTooLarge": "内容超过 {limit}，请缩短提示词或减少引用的文字。",
       "errorTooLargeNoLimit": "内容过大，请缩短提示词或减少引用的文字。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
       "errorTooManyReferences": "该模型最多接受 {limit} {kind, select, video {段参考视频} audio {段参考音频} other {张参考图}} —— 移除一些再生成。",

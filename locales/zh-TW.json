@@ -660,7 +660,6 @@
       "errorCredits": "點數不足，無法生成。",
       "errorUnavailable": "生成服務暫時無法使用，請稍後重試。",
       "errorFailed": "生成啟動失敗，請重試。",
-      "errorTooLarge": "內容超過 {limit}，請縮短提示詞或減少引用的文字。",
       "errorTooLargeNoLimit": "內容過大，請縮短提示詞或減少引用的文字。",
       "errorNoSourceImage": "此模型需要來源圖 —— 在提示詞裡輸入 @ 選擇一張已連線的圖。",
       "errorTooManyReferences": "此模型最多接受 {limit} {kind, select, video {段參考影片} audio {段參考音訊} other {張參考圖}} —— 移除一些再生成。",

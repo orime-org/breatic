@@ -17,8 +17,9 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 
 /**
  * What a request refused as too large says (inner#1006), as a key and its
- * values: the limit the server named in this session's upload knobs, or the
- * sentence with no number when the page has none. Shared by every canvas run
+ * values: the server's own sentence with the limit it named in this
+ * session's upload knobs, so a refusal reads the same whether nginx or our
+ * server sent it, or a sentence with no number when the page has none. Shared by every canvas run
  * a 413 can refuse.
  * @returns The message key, with the limit when there is one.
  */
@@ -26,7 +27,7 @@ export function tooLargeMessage(): { key: string; params?: { limit: string } } {
   const limit = requestBodyLimitOf(assetsApi.cachedUploadConfig());
   return limit === null
     ? { key: 'canvas.generatePanel.errorTooLargeNoLimit' }
-    : { key: 'canvas.generatePanel.errorTooLarge', params: { limit: formatBytes(limit) } };
+    : { key: 'server.error.payload_too_large', params: { limit: formatBytes(limit) } };
 }
 
 /**
