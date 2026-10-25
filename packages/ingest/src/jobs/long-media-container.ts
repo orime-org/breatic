@@ -4,6 +4,12 @@
 import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
 import { readLongMediaJobRequest, type LongMediaJobRequest } from "@breatic/shared";
+import {
+  transitionLongMediaAttempt,
+  type LongMediaAttemptEffect,
+  type LongMediaAttemptEvent,
+  type LongMediaAttemptState,
+} from "@ingest/jobs/long-media-attempt.js";
 
 import {
   transitionLongMediaJob,
@@ -57,6 +63,21 @@ interface LongMediaEffectRow extends Record<string, SqlStorageValue> {
   effect: string;
 }
 
+/** One persisted Container attempt. */
+interface LongMediaAttemptRow extends Record<string, SqlStorageValue> {
+  job_id: string;
+  epoch: number;
+  attempt_id: string;
+  phase: string;
+}
+
+/** One unacknowledged action for a specific attempt. */
+interface LongMediaAttemptEffectRow extends Record<string, SqlStorageValue> {
+  epoch: number;
+  attempt_id: string;
+  effect: string;
+}
+
 const JOB_TABLE = `
   CREATE TABLE IF NOT EXISTS long_media_jobs (
     job_id TEXT PRIMARY KEY NOT NULL,
@@ -81,6 +102,27 @@ const EFFECT_TABLE = `
     effect TEXT NOT NULL,
     status TEXT NOT NULL,
     PRIMARY KEY (job_id, revision, effect)
+  )
+`;
+
+const ATTEMPT_TABLES = `
+  CREATE TABLE IF NOT EXISTS long_media_attempts (
+    job_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    attempt_id TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (job_id, epoch),
+    UNIQUE (job_id, attempt_id)
+  );
+  CREATE TABLE IF NOT EXISTS long_media_attempt_effects (
+    job_id TEXT NOT NULL,
+    epoch INTEGER NOT NULL,
+    attempt_id TEXT NOT NULL,
+    effect TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (job_id, epoch, effect)
   )
 `;
 
@@ -141,6 +183,34 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   pendingEffects(): LongMediaJobEffect[] {
     return this.jobStore.pendingEffects();
   }
+
+  /**
+   * Start a new durable Container attempt when the job is live and idle.
+   * @param attemptId - Stable id allocated by the caller for this attempt.
+   * @param now - The allocation time in epoch milliseconds.
+   * @returns The queued attempt and start effect, or null when the job cannot run.
+   */
+  startAttempt(attemptId: string, now: number): LongMediaAttemptTransitionResult | null {
+    return this.jobStore.startAttempt(attemptId, now);
+  }
+
+  /**
+   * Apply a durable event to the current Container attempt.
+   * @param event - The incoming attempt event.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The committed attempt and effects, or null when there is no attempt.
+   */
+  applyAttemptEvent(event: LongMediaAttemptEvent, now: number): LongMediaAttemptTransitionResult | null {
+    return this.jobStore.applyAttemptEvent(event, now);
+  }
+
+  /**
+   * List unacknowledged Container actions for the current job.
+   * @returns Pending actions in insertion order.
+   */
+  pendingAttemptEffects(): LongMediaAttemptEffectRecord[] {
+    return this.jobStore.pendingAttemptEffects();
+  }
 }
 
 /** A non-container Durable Object used to exercise the protocol in workerd. */
@@ -194,12 +264,53 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   pendingEffects(): LongMediaJobEffect[] {
     return this.jobStore.pendingEffects();
   }
+
+  /**
+   * Start a new durable Container attempt when the job is live and idle.
+   * @param attemptId - Stable id allocated by the caller for this attempt.
+   * @param now - The allocation time in epoch milliseconds.
+   * @returns The queued attempt and start effect, or null when the job cannot run.
+   */
+  startAttempt(attemptId: string, now: number): LongMediaAttemptTransitionResult | null {
+    return this.jobStore.startAttempt(attemptId, now);
+  }
+
+  /**
+   * Apply a durable event to the current Container attempt.
+   * @param event - The incoming attempt event.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The committed attempt and effects, or null when there is no attempt.
+   */
+  applyAttemptEvent(event: LongMediaAttemptEvent, now: number): LongMediaAttemptTransitionResult | null {
+    return this.jobStore.applyAttemptEvent(event, now);
+  }
+
+  /**
+   * List unacknowledged Container actions for the current job.
+   * @returns Pending actions in insertion order.
+   */
+  pendingAttemptEffects(): LongMediaAttemptEffectRecord[] {
+    return this.jobStore.pendingAttemptEffects();
+  }
 }
 
 /** The committed lifecycle snapshot and requested effects. */
 export interface LongMediaTransitionResult {
   snapshot: LongMediaJobSnapshot;
   effects: LongMediaJobEffect[];
+}
+
+/** One committed attempt state and the external actions it requested. */
+export interface LongMediaAttemptTransitionResult {
+  state: LongMediaAttemptState;
+  effects: LongMediaAttemptEffect[];
+}
+
+/** An effect together with the attempt identity that owns it. */
+export interface LongMediaAttemptEffectRecord {
+  epoch: number;
+  attemptId: string;
+  effect: LongMediaAttemptEffect;
 }
 
 /** Durable SQL facts shared by production and workerd test DOs. */
@@ -214,6 +325,7 @@ class LongMediaJobStore {
     this.ctx = ctx;
     this.ctx.storage.sql.exec(JOB_TABLE);
     this.ctx.storage.sql.exec(EFFECT_TABLE);
+    this.ctx.storage.sql.exec(ATTEMPT_TABLES);
   }
 
   /**
@@ -338,6 +450,162 @@ class LongMediaJobStore {
       .toArray();
     return rows.map((row) => readEffect(row.effect));
   }
+
+  /**
+   * Persist a new attempt and its start effect before Container startup.
+   * @param attemptId - Stable id allocated for this attempt.
+   * @param now - The allocation time in epoch milliseconds.
+   * @returns The new attempt or null when the job is stopped, expired, or busy.
+   */
+  startAttempt(attemptId: string, now: number): LongMediaAttemptTransitionResult | null {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      if (job === undefined || !jobCanRun(job, now)) return null;
+      const held = this.ctx.storage.sql
+        .exec<LongMediaAttemptRow>("SELECT * FROM long_media_attempts ORDER BY epoch DESC LIMIT 1")
+        .toArray()[0];
+      if (held !== undefined && !isAttemptTerminal(readAttemptPhase(held.phase))) return null;
+      const epoch = (held?.epoch ?? 0) + 1;
+      const queued: LongMediaAttemptState = { attemptId, epoch, phase: "queued" };
+      const transition = transitionLongMediaAttempt(queued, { type: "start" });
+      this.ctx.storage.sql.exec(
+        "INSERT INTO long_media_attempts (job_id, epoch, attempt_id, phase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        job.job_id,
+        epoch,
+        attemptId,
+        transition.state.phase,
+        now,
+        now,
+      );
+      for (const effect of transition.effects) {
+        this.ctx.storage.sql.exec(
+          "INSERT INTO long_media_attempt_effects (job_id, epoch, attempt_id, effect, status) VALUES (?, ?, ?, ?, 'pending')",
+          job.job_id,
+          epoch,
+          attemptId,
+          effect,
+        );
+      }
+      return transition;
+    });
+  }
+
+  /**
+   * Apply a fenced event to the newest attempt and persist its effects.
+   * @param event - The incoming attempt event.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The committed attempt and effects, or null when no attempt exists.
+   */
+  applyAttemptEvent(event: LongMediaAttemptEvent, now: number): LongMediaAttemptTransitionResult | null {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      const row = this.ctx.storage.sql
+        .exec<LongMediaAttemptRow>("SELECT * FROM long_media_attempts ORDER BY epoch DESC LIMIT 1")
+        .toArray()[0];
+      if (job === undefined || row === undefined) return null;
+      const current = attemptStateOf(row);
+      const effectiveEvent = event.type === "restart"
+        ? { ...event, jobLive: event.jobLive && jobCanRun(job, now) }
+        : event;
+      const transition = transitionLongMediaAttempt(current, effectiveEvent);
+      if (transition.state.epoch !== current.epoch) {
+        this.ctx.storage.sql.exec(
+          "INSERT INTO long_media_attempts (job_id, epoch, attempt_id, phase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+          job.job_id,
+          transition.state.epoch,
+          transition.state.attemptId,
+          transition.state.phase,
+          now,
+          now,
+        );
+      } else if (transition.state.phase !== current.phase) {
+        this.ctx.storage.sql.exec(
+          "UPDATE long_media_attempts SET phase = ?, updated_at = ? WHERE job_id = ? AND epoch = ? AND attempt_id = ?",
+          transition.state.phase,
+          now,
+          job.job_id,
+          current.epoch,
+          current.attemptId,
+        );
+      }
+      for (const effect of transition.effects) {
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO long_media_attempt_effects (job_id, epoch, attempt_id, effect, status) VALUES (?, ?, ?, ?, 'pending')",
+          job.job_id,
+          transition.state.epoch,
+          transition.state.attemptId,
+          effect,
+        );
+      }
+      return transition;
+    });
+  }
+
+  /**
+   * Read pending start and destroy actions with their fencing identity.
+   * @returns Pending actions in attempt order.
+   * @throws {Error} When a persisted action name is invalid.
+   */
+  pendingAttemptEffects(): LongMediaAttemptEffectRecord[] {
+    const rows = this.ctx.storage.sql
+      .exec<LongMediaAttemptEffectRow>(
+        "SELECT epoch, attempt_id, effect FROM long_media_attempt_effects WHERE status = 'pending' ORDER BY epoch, effect",
+      )
+      .toArray();
+    return rows.map((row) => ({ epoch: row.epoch, attemptId: row.attempt_id, effect: readAttemptEffect(row.effect) }));
+  }
+}
+
+/**
+ * Validate whether the parent job can create or restart an attempt.
+ * @param row - The persisted job header.
+ * @param now - The current time.
+ * @returns Whether media work remains authorized.
+ */
+function jobCanRun(row: LongMediaJobRow, now: number): boolean {
+  return now < row.deadline_at && row.terminal_intent === null && !["stopping", "done", "failed", "cancelled", "expired"].includes(row.phase);
+}
+
+/**
+ * Read the typed state for a persisted attempt.
+ * @param row - The persisted attempt row.
+ * @returns The validated state.
+ * @throws {Error} When the phase is invalid.
+ */
+function attemptStateOf(row: LongMediaAttemptRow): LongMediaAttemptState {
+  return { attemptId: row.attempt_id, epoch: row.epoch, phase: readAttemptPhase(row.phase) };
+}
+
+/**
+ * Validate a persisted attempt phase.
+ * @param value - The SQL value.
+ * @returns A known phase.
+ * @throws {Error} When the phase is unknown.
+ */
+function readAttemptPhase(value: string): LongMediaAttemptState["phase"] {
+  const phases: readonly LongMediaAttemptState["phase"][] = ["queued", "starting", "running", "stopping", "stopped", "lost"];
+  if (!phases.includes(value as LongMediaAttemptState["phase"])) throw new Error("The long media attempt phase is invalid");
+  return value as LongMediaAttemptState["phase"];
+}
+
+/**
+ * Tell whether an attempt has no active Container process.
+ * @param phase - The attempt phase.
+ * @returns Whether another epoch may be allocated.
+ */
+function isAttemptTerminal(phase: LongMediaAttemptState["phase"]): boolean {
+  return phase === "stopped" || phase === "lost";
+}
+
+/**
+ * Validate a persisted Container action.
+ * @param value - The SQL value.
+ * @returns A known action.
+ * @throws {Error} When the action is unknown.
+ */
+function readAttemptEffect(value: string): LongMediaAttemptEffect {
+  if (value === "start" || value === "destroy") return value;
+  throw new Error("The long media attempt effect is invalid");
 }
 
 /**

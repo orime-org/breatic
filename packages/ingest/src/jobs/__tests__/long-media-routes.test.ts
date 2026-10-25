@@ -95,6 +95,33 @@ describe("POST /long-media/jobs", () => {
     await expect(stub.pendingEffects()).resolves.toEqual(["startProbe"]);
   });
 
+  it("persists attempt epochs and fences stale Container receipts", async () => {
+    const attemptPayload = { ...payload, jobId: "operation-attempt:source-0", operationId: "operation-attempt" };
+    const accepted = await call("/long-media/jobs", { method: "POST", body: await requestBody(attemptPayload) });
+    expect(accepted.status).toBe(202);
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(attemptPayload.jobId));
+
+    await expect(stub.startAttempt("attempt-1", Date.now())).resolves.toEqual({
+      state: { attemptId: "attempt-1", epoch: 1, phase: "starting" },
+      effects: ["start"],
+    });
+    await expect(stub.applyAttemptEvent({ type: "accepted", attemptId: "attempt-1", epoch: 0 }, Date.now()))
+      .resolves.toMatchObject({ state: { phase: "starting" }, effects: [] });
+    await expect(stub.applyAttemptEvent({ type: "accepted", attemptId: "attempt-1", epoch: 1 }, Date.now()))
+      .resolves.toMatchObject({ state: { phase: "running" } });
+    await expect(stub.applyAttemptEvent({ type: "stop" }, Date.now()))
+      .resolves.toMatchObject({ state: { phase: "stopping" }, effects: ["destroy"] });
+    await expect(stub.applyAttemptEvent({ type: "gone", attemptId: "attempt-1", epoch: 1 }, Date.now()))
+      .resolves.toMatchObject({ state: { phase: "stopped" } });
+    await expect(stub.applyAttemptEvent({
+      type: "restart", attemptId: "attempt-2", epoch: 2, jobLive: true,
+    }, Date.now())).resolves.toMatchObject({ state: { attemptId: "attempt-2", epoch: 2, phase: "queued" } });
+    await expect(stub.pendingAttemptEffects()).resolves.toEqual([
+      { attemptId: "attempt-1", epoch: 1, effect: "destroy" },
+      { attemptId: "attempt-1", epoch: 1, effect: "start" },
+    ]);
+  });
+
   it("rejects a job whose absolute deadline has already passed", async () => {
     const expired = { ...payload, jobId: "operation-expired:source-0", operationId: "operation-expired", deadlineAt: Date.now() - 1 };
     const response = await call("/long-media/jobs", { method: "POST", body: await requestBody(expired) });
