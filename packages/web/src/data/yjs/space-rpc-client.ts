@@ -9,38 +9,9 @@ import {
   SpaceRpcResponseSchema,
 } from '@breatic/shared';
 
-/**
- * Minimal slice of `HocuspocusProvider` the RPC client depends on.
- *
- * Declared explicitly so tests can pass a stub without spinning up a
- * real WebSocket (the real provider would attempt a y-protocols sync
- * handshake in jsdom and fail).
- */
-export interface RpcCapableProvider {
-  sendStateless(payload: string): void;
-  on(event: 'stateless', cb: (data: { payload: string }) => void): void;
-  off(event: 'stateless', cb: (data: { payload: string }) => void): void;
-}
-
-/**
- * The request was handed to the transport and no answer came back for it.
- *
- * What became of it is open: the server may have carried it out and the reply
- * been lost, it may never have arrived, or it may still be queued for a
- * reconnect. A caller holding optimistic state has to tell this apart from a
- * server that answered no — undoing a move the server made leaves the two
- * ends disagreeing until the page is reloaded.
- */
-export class SpaceRpcUnanswered extends Error {
-  /**
-   * Names the request that drew no answer.
-   * @param message - What went unanswered.
-   */
-  constructor(message: string) {
-    super(message);
-    this.name = 'SpaceRpcUnanswered';
-  }
-}
+import { sendCorrelatedRpc, type RpcCapableProvider } from '@web/data/yjs/stateless-rpc-client';
+export { SpaceRpcUnanswered } from '@web/data/yjs/stateless-rpc-client';
+export type { RpcCapableProvider } from '@web/data/yjs/stateless-rpc-client';
 
 export interface SendSpaceRpcOptions {
   /** Round-trip timeout in ms. Default 10000 (user-confirmed 2026-05-25). */
@@ -76,53 +47,6 @@ export async function sendSpaceRpc(
   const id = opts.idGen?.() ?? newId();
   const timeoutMs = opts.timeoutMs ?? 10000;
 
-  return new Promise<SpaceRpcResponse>((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    /**
-     * Handle a stateless message: parse, validate, and resolve when the
-     * correlation id matches this request.
-     * @param data - The stateless message envelope from the provider.
-     * @param data.payload - The raw JSON-encoded RPC response payload.
-     */
-    const onMessage = (data: { payload: string }): void => {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(data.payload);
-      } catch {
-        return;
-      }
-      const r = SpaceRpcResponseSchema.safeParse(parsed);
-      if (!r.success) return;
-      if (r.data.id !== id) return;
-      cleanup();
-      resolve(r.data);
-    };
-
-    /**
-     * Detach the stateless listener and clear the timeout timer.
-     */
-    const cleanup = (): void => {
-      provider.off('stateless', onMessage);
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    };
-
-    provider.on('stateless', onMessage);
-    timer = setTimeout(() => {
-      cleanup();
-      reject(
-        new SpaceRpcUnanswered(
-          `Space RPC timeout for type=${request.type} (id=${id}, ${timeoutMs}ms)`,
-        ),
-      );
-    }, timeoutMs);
-
-    // The sender's analytics consent rides on each request; collab reads no
-    // cookie per message (inner#1442 §4.4.5).
-    const envelope = { id, ...request, analyticsConsent: consentForCollab() } as SpaceRpcRequest;
-    provider.sendStateless(JSON.stringify(envelope));
-  });
+  const envelope = { id, ...request, analyticsConsent: consentForCollab() } as SpaceRpcRequest;
+  return sendCorrelatedRpc(provider, envelope, SpaceRpcResponseSchema, { timeoutMs });
 }

@@ -42,4 +42,11 @@ describe('Yjs manager', () => {
   it('docName.canvasSpace follows the v10 multi-doc convention', () => {
     expect(docName.canvasSpace('abc', 'def')).toBe('project-abc/canvas-def');
   });
+
+  it('binds Timeline to a separate content document with the shared naming contract', () => {
+    expect(docName.timelineSpace('abc', 'def')).toBe('project-abc/timeline-def');
+    const timeline = getDoc(docName.timelineSpace('abc', 'def'));
+    expect(timeline).not.toBe(getDoc(docName.canvasSpace('abc', 'def')));
+    expect(timeline).not.toBe(getDoc(docName.documentSpace('abc', 'def')));
+  });
 });
