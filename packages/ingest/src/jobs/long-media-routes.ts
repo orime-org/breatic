@@ -28,6 +28,9 @@ export const LONG_MEDIA_JOB_PATH = /^\/long-media\/jobs\/([^/]+)$/;
 /** `/long-media/jobs/{id}/probe`. */
 export const LONG_MEDIA_PROBE_REPORT_PATH = /^\/long-media\/jobs\/([^/]+)\/probe$/;
 
+/** `/long-media/jobs/{id}/segments`. */
+export const LONG_MEDIA_SEGMENTS_PATH = /^\/long-media\/jobs\/([^/]+)\/segments$/;
+
 /** `/long-media/jobs/{id}/plan`. */
 export const LONG_MEDIA_PLAN_PATH = /^\/long-media\/jobs\/([^/]+)\/plan$/;
 
@@ -130,6 +133,30 @@ export async function readLongMediaProbeReport(
   }
   const report = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId)).probeReport();
   return report === null ? new Response("Probe not ready", { status: 404 }) : Response.json(report);
+}
+
+/**
+ * Read the durable source-ordered segment states for the trusted Node executor.
+ * @param request - The backend request.
+ * @param env - The Worker's Durable Object namespace.
+ * @param jobId - The URL-encoded job identity.
+ * @returns 200 with ordered segments, 401 without the backend secret, or 404 for an unknown job.
+ */
+export async function readLongMediaSegments(
+  request: Request,
+  env: LongMediaRoutesEnv,
+  jobId: string,
+): Promise<Response> {
+  if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
+  let decodedJobId: string;
+  try {
+    decodedJobId = decodeURIComponent(jobId);
+  } catch {
+    return new Response("No such job", { status: 404 });
+  }
+  const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId));
+  if (await stub.report() === null) return new Response("No such job", { status: 404 });
+  return Response.json(await stub.readSegments());
 }
 
 /**

@@ -359,6 +359,18 @@ describe("POST /long-media/jobs", () => {
     });
     expect(firstMutation.status).toBe(200);
     await expect(firstMutation.json()).resolves.toMatchObject({ kind: "accepted", revision: 1, complete: true });
+    const segmentsPath = `/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/segments`;
+    const unauthenticatedSegments = await call(segmentsPath, { method: "GET" }, false);
+    const segmentsResponse = await call(segmentsPath, { method: "GET" });
+    expect(unauthenticatedSegments.status).toBe(401);
+    expect(segmentsResponse.status).toBe(200);
+    await expect(segmentsResponse.json()).resolves.toMatchObject(root.intervals.map((segment) => ({
+      id: segment.id,
+      core: segment.core,
+      decode: segment.decode,
+      status: "planned",
+      storageKey: root.grants.find((grant) => grant.segmentId === segment.id)?.storageKey,
+    })));
     await expect(stub.applyLongMediaPlan(root)).resolves.toMatchObject({ kind: "replayed", revision: 1 });
     await expect(stub.transition({ type: "planAck", hasRunnableSegments: false }, Date.now())).resolves.toMatchObject({
       snapshot: { phase: "running" },
