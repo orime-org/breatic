@@ -43,8 +43,10 @@ import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.
 import {
   LONG_MEDIA_JOB_PATH,
   LONG_MEDIA_PLAN_PATH,
+  LONG_MEDIA_PROBE_REPORT_PATH,
   applyLongMediaPlan,
   readLongMediaJob,
+  readLongMediaProbeReport,
   submitLongMediaJob,
   type LongMediaRoutesEnv,
 } from "@ingest/jobs/long-media-routes.js";
@@ -1407,6 +1409,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   const longMediaJob = LONG_MEDIA_JOB_PATH.exec(pathname);
   if (request.method === "GET" && longMediaJob) {
     return readLongMediaJob(request, env, longMediaJob[1] ?? "");
+  }
+
+  const longMediaProbeReport = LONG_MEDIA_PROBE_REPORT_PATH.exec(pathname);
+  if (request.method === "GET" && longMediaProbeReport) {
+    return readLongMediaProbeReport(request, env, longMediaProbeReport[1] ?? "");
   }
 
   const longMediaPlan = LONG_MEDIA_PLAN_PATH.exec(pathname);

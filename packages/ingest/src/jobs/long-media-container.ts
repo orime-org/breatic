@@ -300,6 +300,14 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   }
 
   /**
+   * Read the validated source probe facts needed by the Node planner.
+   * @returns The report, or null until the current source probe is accepted.
+   */
+  probeReport(): LongMediaProbeReport | null {
+    return this.jobStore.probeReport();
+  }
+
+  /**
    * Apply one lifecycle event to this durable job.
    * @param event - The lifecycle event.
    * @param now - The event's epoch milliseconds.
@@ -588,6 +596,14 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
    */
   report(): LongMediaJobSnapshot | null {
     return this.jobStore.report();
+  }
+
+  /**
+   * Read the validated source probe facts needed by the Node planner.
+   * @returns The report, or null until the current source probe is accepted.
+   */
+  probeReport(): LongMediaProbeReport | null {
+    return this.jobStore.probeReport();
   }
 
   /**
@@ -911,6 +927,26 @@ class LongMediaJobStore {
       throw new Error("The long media job durable identity is inconsistent");
     }
     return request;
+  }
+
+  /**
+   * Read and revalidate the accepted probe report for this job.
+   * @returns The report, or null until a probe report has been persisted.
+   */
+  probeReport(): LongMediaProbeReport | null {
+    const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+    if (job === undefined) return null;
+    const row = this.ctx.storage.sql.exec<LongMediaProbeRow>(
+      "SELECT * FROM long_media_probe_facts WHERE job_id = ?",
+      job.job_id,
+    ).toArray()[0];
+    if (row === undefined) return null;
+    const report = readLongMediaProbeReport(JSON.parse(row.report_json) as unknown);
+    const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+    if (report.sourceFingerprint !== request.source.sha256) {
+      throw new Error("The persisted long media probe report does not match its source.");
+    }
+    return report;
   }
 
   /**

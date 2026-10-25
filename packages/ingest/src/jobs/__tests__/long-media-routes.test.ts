@@ -112,6 +112,23 @@ describe("POST /long-media/jobs", () => {
     await expect(second.json()).resolves.toMatchObject({ jobId: replayPayload.jobId, phase: "probing", version: 1 });
   });
 
+  it("returns the validated probe report only to the backend", async () => {
+    const reportPayload = { ...payload, jobId: "operation-probe-read:source-0", operationId: "operation-probe-read" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(reportPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(reportPayload.jobId));
+    await stub.startAttempt("probe-read-attempt", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "probe-read-attempt", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("probe-read-attempt", 1, probeReport, Date.now());
+
+    const path = `/long-media/jobs/${encodeURIComponent(reportPayload.jobId)}/probe`;
+    const unauthorized = await call(path, { method: "GET" }, false);
+    const response = await call(path, { method: "GET" });
+
+    expect(unauthorized.status).toBe(401);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(probeReport);
+  });
+
   it("persists lifecycle changes and their recoverable effects atomically", async () => {
     const lifecyclePayload = { ...payload, jobId: "operation-lifecycle:source-0", operationId: "operation-lifecycle" };
     const accepted = await call("/long-media/jobs", { method: "POST", body: await requestBody(lifecyclePayload) });

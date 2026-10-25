@@ -25,6 +25,9 @@ export interface LongMediaRoutesEnv extends LongMediaEnv {
 /** `/long-media/jobs/{id}`. */
 export const LONG_MEDIA_JOB_PATH = /^\/long-media\/jobs\/([^/]+)$/;
 
+/** `/long-media/jobs/{id}/probe`. */
+export const LONG_MEDIA_PROBE_REPORT_PATH = /^\/long-media\/jobs\/([^/]+)\/probe$/;
+
 /** `/long-media/jobs/{id}/plan`. */
 export const LONG_MEDIA_PLAN_PATH = /^\/long-media\/jobs\/([^/]+)\/plan$/;
 
@@ -104,6 +107,29 @@ export async function readLongMediaJob(request: Request, env: LongMediaRoutesEnv
   }
   const report = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId)).report();
   return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
+}
+
+/**
+ * Read the validated source probe facts for the trusted Node planner.
+ * @param request - The backend request.
+ * @param env - The Worker's Durable Object namespace.
+ * @param jobId - The URL-encoded job identity.
+ * @returns 200 with the report, 401 without the backend secret, or 404 before probe completion.
+ */
+export async function readLongMediaProbeReport(
+  request: Request,
+  env: LongMediaRoutesEnv,
+  jobId: string,
+): Promise<Response> {
+  if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
+  let decodedJobId: string;
+  try {
+    decodedJobId = decodeURIComponent(jobId);
+  } catch {
+    return new Response("No such job", { status: 404 });
+  }
+  const report = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId)).probeReport();
+  return report === null ? new Response("Probe not ready", { status: 404 }) : Response.json(report);
 }
 
 /**
