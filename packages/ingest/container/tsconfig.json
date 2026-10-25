@@ -24,6 +24,7 @@
     "*.ts",
     "./analysis-frame-reader.ts",
     "./alpha-clock.ts",
+    "./alpha-presentation.ts",
     "./plan-command.ts",
     "./plan-recipes.ts",
     "./plan-run.ts",

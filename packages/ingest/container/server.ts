@@ -4,12 +4,14 @@
 /**
  * The media container's whole service (#209 + #210, design §4.2).
  *
- * Two endpoints. The probe runs ffprobe over the object it was handed, lifts
+ * The probe runs ffprobe over the object it was handed, lifts
  * a cover frame with ffmpeg when asked for one, cuts a preview with vips when
  * asked for one and there is still time, reads an audio object's peaks when
  * asked for them, and answers with all of it. The run
  * takes one mini-tool job (inner#888), answers 202, and reports on its own
- * when the job ends. It decides nothing about
+ * when the job ends.
+ * The alpha preparation endpoint holds its request through verification and
+ * reporting. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
  * is wanted are the caller's judgements, made where the stored bytes have
  * already been read.
@@ -57,6 +59,7 @@ import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
+import { ALPHA_RUN_PATH, handleAlphaPresentation } from "@ingest/container/alpha-presentation.js";
 
 /**
  * The most a cover frame may weigh.
@@ -217,6 +220,10 @@ function send(res: ServerResponse, answer: Response): void {
 }
 
 createServer((req, res) => {
+  if (req.method === "POST" && req.url === ALPHA_RUN_PATH) {
+    void handleAlphaPresentation(req, res);
+    return;
+  }
   if (req.method === "POST" && req.url === RUN_PATH) {
     void (async () => {
       const chunks: Buffer[] = [];
