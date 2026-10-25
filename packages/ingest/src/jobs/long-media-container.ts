@@ -3,6 +3,7 @@
 
 import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
+import { acceptLongMediaProbeReport } from "@ingest/jobs/long-media-routes.js";
 import {
   readLongMediaJobRequest,
   readLongMediaProbeReport,
@@ -27,6 +28,7 @@ import {
 /** The container bindings needed by one long media Durable Object. */
 export interface LongMediaEnv {
   BUCKET: R2Bucket;
+  LONG_MEDIA: DurableObjectNamespace<LongMediaContainer>;
 }
 
 /** State storage accepted by both the container DO and its workerd protocol test DO. */
@@ -347,6 +349,8 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
     return this.jobStore.applyProbeReport(attemptId, epoch, report, now);
   }
 }
+
+LongMediaContainer.outboundHandlers = { acceptLongMediaProbeReport };
 
 /** The committed lifecycle snapshot and requested effects. */
 export interface LongMediaTransitionResult {

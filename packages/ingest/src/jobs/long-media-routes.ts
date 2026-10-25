@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { verifyLongMediaJobRequest, type LongMediaJobRequest } from "@breatic/shared";
+import type { OutboundHandlerContext } from "@cloudflare/containers";
 
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
+import { buildLongMediaProbeReport } from "@ingest/long-media-probe-report.js";
 import type {
   LongMediaContainer,
   LongMediaEnv,
@@ -18,6 +20,17 @@ export interface LongMediaRoutesEnv extends LongMediaEnv {
 
 /** `/long-media/jobs/{id}`. */
 export const LONG_MEDIA_JOB_PATH = /^\/long-media\/jobs\/([^/]+)$/;
+
+/** The hostname used only by the Container's report callback. */
+export const LONG_MEDIA_REPORT_HOST = "long-media.local";
+
+/** Trusted identity persisted in the Container's outbound callback route. */
+export interface LongMediaProbeCallbackContext {
+  attemptId: string;
+  epoch: number;
+  sourceFingerprint: string;
+  profileVersion: string;
+}
 
 /**
  * Accept a validated long media job or return its existing durable state.
@@ -64,4 +77,45 @@ export async function readLongMediaJob(request: Request, env: LongMediaRoutesEnv
   }
   const report = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId)).report();
   return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
+}
+
+/**
+ * Validate and persist one Container probe callback against its fenced attempt.
+ * @param request - The raw ffprobe report from the intercepted Container host.
+ * @param env - The Worker's Durable Object namespace.
+ * @param context - The trusted callback identity bound when the run started.
+ * @returns 200 when accepted or replayed, 409 when the attempt is stale, and 400 for invalid output.
+ */
+export async function acceptLongMediaProbeReport(
+  request: Request,
+  env: LongMediaRoutesEnv,
+  context: OutboundHandlerContext<LongMediaProbeCallbackContext>,
+): Promise<Response> {
+  let stdout: string;
+  try {
+    const body: unknown = await request.json();
+    if (body === null || typeof body !== "object" || !("stdout" in body) || typeof body.stdout !== "string") {
+      return new Response("Invalid probe report", { status: 400 });
+    }
+    stdout = body.stdout;
+  } catch {
+    return new Response("Invalid probe report", { status: 400 });
+  }
+  let report;
+  try {
+    report = buildLongMediaProbeReport(stdout, context.params.sourceFingerprint, context.params.profileVersion);
+  } catch (err) {
+    noteFailure("ingest_long_media_probe_report_invalid", { containerId: context.containerId }, err);
+    return new Response("Invalid probe report", { status: 400 });
+  }
+  try {
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromString(context.containerId));
+    const result = await stub.applyProbeReport(context.params.attemptId, context.params.epoch, report, Date.now());
+    return result.kind === "accepted" || result.kind === "replayed"
+      ? new Response(null, { status: 200 })
+      : new Response("Stale probe report", { status: 409 });
+  } catch (err) {
+    noteFailure("ingest_long_media_probe_report_persist_failed", { containerId: context.containerId }, err);
+    throw err;
+  }
 }

@@ -5,6 +5,7 @@ import { env, createExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { computeLongMediaJobRequestDigest } from "@breatic/shared";
+import { acceptLongMediaProbeReport } from "@ingest/jobs/long-media-routes.js";
 import worker from "@ingest/index.js";
 
 const payload = {
@@ -175,6 +176,45 @@ describe("POST /long-media/jobs", () => {
       .resolves.toEqual({ kind: "stale" });
     await expect(stub.report()).resolves.toMatchObject({ phase: "planning", version: 2 });
     await expect(stub.pendingEffects()).resolves.toEqual(["startProbe"]);
+  });
+
+  it("builds and accepts a fenced report from the container's raw ffprobe output", async () => {
+    const probePayload = { ...payload, jobId: "operation-probe-callback:source-0", operationId: "operation-probe-callback" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(probePayload) });
+    const id = env.LONG_MEDIA.idFromName(probePayload.jobId);
+    const stub = env.LONG_MEDIA.get(id);
+    await stub.transition({ type: "start" }, Date.now());
+    await stub.startAttempt("probe-callback-attempt", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "probe-callback-attempt", epoch: 1 }, Date.now());
+    const stdout = JSON.stringify({ streams: [{
+      index: 0,
+      codec_type: "audio",
+      codec_name: "aac",
+      channels: 1,
+      channel_layout: "mono",
+      sample_rate: "48000",
+      start_pts: "0",
+      duration_ts: "480000",
+      time_base: "1/48000",
+    }] });
+
+    const response = await acceptLongMediaProbeReport(
+      new Request("http://long-media.local/probe-report", { method: "POST", body: JSON.stringify({ stdout }) }),
+      env,
+      {
+        className: "LongMediaContainer",
+        containerId: id.toString(),
+        params: {
+          attemptId: "probe-callback-attempt",
+          epoch: 1,
+          sourceFingerprint: probePayload.source.sha256,
+          profileVersion: probePayload.profileVersion,
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(stub.report()).resolves.toMatchObject({ phase: "planning", version: 2 });
   });
 
   it("rejects a job whose absolute deadline has already passed", async () => {
