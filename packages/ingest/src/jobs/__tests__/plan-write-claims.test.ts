@@ -3,6 +3,7 @@
 
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import fc from "fast-check";
 import { miniToolPlanAccess, type MiniToolPlanJobRequest } from "@breatic/shared";
 import { MiniToolContainerStd1, type MiniToolEnv } from "@ingest/jobs/mini-tool-container.js";
 import { mediaObjectUrl } from "@ingest/media-object-route.js";
@@ -111,6 +112,20 @@ describe("planned pre-write ownership through production outbound and real worke
     const winner = results[0]?.status === "fulfilled" && results[0].value.status === 200 ? A : B;
     expect(actual).toEqual(winner);
     expect((await f.stub.snapshot())?.written[f.key]).toEqual({ sha256: await digest(winner), sizeBytes: winner.length, contentType: "image/png" });
+  });
+
+  it("keeps one durable writer for bounded arbitrary concurrent retry sets", async () => {
+    await fc.assert(fc.asyncProperty(fc.integer({ min: 2, max: 5 }), async (count) => {
+      const f = await fixture();
+      const inputs = Array.from({ length: count }, (_, index) => new Uint8Array([...head("png"), index]));
+      const results = await Promise.allSettled(inputs.map((bytes) => f.invoke(bytes)));
+      const winners = results.flatMap((result, index) => result.status === "fulfilled" && result.value.status === 200 ? [index] : []);
+      expect(winners).toHaveLength(1);
+      expect(f.calls.filter((method) => method === "createMultipartUpload")).toHaveLength(1);
+      const bytes = inputs[winners[0]!]!;
+      expect(new Uint8Array(await (await env.BUCKET.get(f.key))!.arrayBuffer())).toEqual(bytes);
+      expect((await f.stub.snapshot())?.written[f.key]?.sha256).toBe(await digest(bytes));
+    }), { numRuns: 5 });
   });
 
   it("refuses an old outbound context and matching old query before any R2 IO", async () => {
