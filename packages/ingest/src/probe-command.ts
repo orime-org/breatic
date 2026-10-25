@@ -13,7 +13,7 @@
 
 import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
 import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
-import type { LongMediaJobRequest } from "@shared/media/long-media-job.js";
+import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";

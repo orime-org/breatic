@@ -36,7 +36,7 @@
     "../../shared/src/audio-dynamics.ts",
     "../../shared/src/audio-peaks.ts",
     "../../shared/src/upload/agent-picture-types.ts",
-    "../../shared/src/media/long-media-job.ts",
+    "../../shared/src/media/long-media-job-types.ts",
     "../../shared/src/mini-tools/types.ts",
     "__tests__/*.ts"
   ]

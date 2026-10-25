@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { LongMediaJobRequest } from "@shared/media/long-media-job.js";
+import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 import { longMediaSegmentArgs } from "@ingest/probe-command.js";
 import { runToolBounded } from "./run-tool.js";
 

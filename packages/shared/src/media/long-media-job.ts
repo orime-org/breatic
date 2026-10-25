@@ -3,6 +3,8 @@
 
 import { z } from "zod";
 
+import type { LongMediaJobPayload, LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
+
 const sha256 = z.string().regex(/^[a-f0-9]{64}$/i);
 
 const limitsSnapshot = z.object({
@@ -11,8 +13,16 @@ const limitsSnapshot = z.object({
   maxSegmentBytes: z.number().int().positive(),
   audioCoreSeconds: z.number().int().positive(),
   videoCoreSeconds: z.number().int().positive(),
-  overlapSeconds: z.number().int().nonnegative(),
   maxActiveLeaves: z.number().int().positive(),
+}).strict();
+
+const encodingProfile = z.object({
+  audioCodec: z.string().min(1).max(32),
+  audioBitrate: z.string().min(1).max(16),
+  videoCodec: z.string().min(1).max(32),
+  videoCrf: z.number().int().min(0).max(51),
+  videoAudioCodec: z.string().min(1).max(32),
+  videoAudioBitrate: z.string().min(1).max(16),
 }).strict();
 
 /** The immutable source and processing budget submitted to one media job. */
@@ -25,10 +35,10 @@ export const LongMediaJobRequestSchema = z.object({
     key: z.string().min(1).max(500),
     sha256,
     sizeBytes: z.number().int().positive(),
-    etag: z.string().min(1).max(200),
   }).strict(),
   profileId: z.string().min(1).max(64),
   profileVersion: z.string().min(1).max(64),
+  encodingProfile,
   limitsSnapshot,
   deadlineAt: z.number().int().positive(),
   requestDigest: sha256,
@@ -41,11 +51,7 @@ export const LongMediaJobRequestSchema = z.object({
   }
 });
 
-/** A validated request to create or recover one immutable long media job. */
-export type LongMediaJobRequest = z.infer<typeof LongMediaJobRequestSchema>;
-
-/** The canonical request fields, without the digest that authenticates them. */
-export type LongMediaJobPayload = Omit<LongMediaJobRequest, "requestDigest">;
+export type { LongMediaJobPayload, LongMediaJobRequest, LongMediaSourceReference } from "@shared/media/long-media-job-types.js";
 
 /**
  * Compute the digest over the immutable job payload in schema field order.
@@ -63,17 +69,23 @@ export async function computeLongMediaJobRequestDigest(request: LongMediaJobPayl
       key: request.source.key,
       sha256: request.source.sha256.toLowerCase(),
       sizeBytes: request.source.sizeBytes,
-      etag: request.source.etag,
     },
     profileId: request.profileId,
     profileVersion: request.profileVersion,
+    encodingProfile: {
+      audioCodec: request.encodingProfile.audioCodec,
+      audioBitrate: request.encodingProfile.audioBitrate,
+      videoCodec: request.encodingProfile.videoCodec,
+      videoCrf: request.encodingProfile.videoCrf,
+      videoAudioCodec: request.encodingProfile.videoAudioCodec,
+      videoAudioBitrate: request.encodingProfile.videoAudioBitrate,
+    },
     limitsSnapshot: {
       maxSourceBytes: request.limitsSnapshot.maxSourceBytes,
       maxSources: request.limitsSnapshot.maxSources,
       maxSegmentBytes: request.limitsSnapshot.maxSegmentBytes,
       audioCoreSeconds: request.limitsSnapshot.audioCoreSeconds,
       videoCoreSeconds: request.limitsSnapshot.videoCoreSeconds,
-      overlapSeconds: request.limitsSnapshot.overlapSeconds,
       maxActiveLeaves: request.limitsSnapshot.maxActiveLeaves,
     },
     deadlineAt: request.deadlineAt,
