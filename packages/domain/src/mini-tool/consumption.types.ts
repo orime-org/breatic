@@ -68,6 +68,14 @@ export type MiniToolSettlement = z.infer<typeof miniToolSettlementSchema>;
 export type MiniToolSettlementClaim = z.infer<typeof miniToolSettlementClaimSchema>;
 export type RecordMiniToolConsumptionInput = z.infer<typeof recordMiniToolConsumptionInputSchema>;
 
+/** Internal producer policy, frozen before submitting a known container identity. */
+export const openMiniToolConsumptionInputSchema = recordMiniToolConsumptionInputSchema.omit({ claim: true }).extend({
+  chargeTo: z.enum(["user", "platform"]),
+  creditMultiplier: z.number().nonnegative(),
+  containerPricing: containerPricingSchema.nullable(),
+});
+export type OpenMiniToolConsumptionInput = z.infer<typeof openMiniToolConsumptionInputSchema>;
+
 /** Confirmed lookup amounts carry their original lease and no replacement pricing. */
 export const confirmMiniToolConsumptionInputSchema = recordMiniToolConsumptionInputSchema.extend({
   claim: miniToolSettlementClaimSchema,

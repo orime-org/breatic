@@ -60,6 +60,7 @@ export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
 export { recordMiniToolConsumption, confirmMiniToolConsumption } from "@domain/mini-tool/consumption.service.js";
+export { openMiniToolConsumption, completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 export { claimMiniToolSettlement, deferMiniToolSettlement, type ClaimedMiniToolSettlement } from "@domain/mini-tool/settlement-lookup.service.js";
 export { settleMiniToolCharge, type MiniToolChargeResult } from "@domain/mini-tool/settlement.service.js";
 export {
@@ -67,11 +68,13 @@ export {
   miniToolSettlementSchema,
   miniToolSettlementClaimSchema,
   recordMiniToolConsumptionInputSchema,
+  openMiniToolConsumptionInputSchema,
   type MiniToolConsumptionRecord,
   type MiniToolContainerPricing,
   type MiniToolSettlement,
   type MiniToolSettlementClaim,
   type RecordMiniToolConsumptionInput,
+  type OpenMiniToolConsumptionInput,
 } from "@domain/mini-tool/consumption.types.js";
 export {
   miniToolAnalysisRequestSchema,
