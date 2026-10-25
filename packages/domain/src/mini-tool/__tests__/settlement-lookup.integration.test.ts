@@ -130,6 +130,68 @@ async function due(limit: number, cursor?: DueCursor): Promise<DuePage> {
   return invoke("listDueMiniToolSettlements", { limit, ...(cursor === undefined ? {} : { cursor }) });
 }
 
+describe("immutable UTC settlement index semantics", () => {
+  it.each([
+    ["2026-10-24T09:03:03.100Z", "2026-10-24T09:03:03.100000Z"],
+    ["2026-10-24T09:03:03.100000Z", "2026-10-24T09:03:03.100000Z"],
+    ["2026-10-24T09:03:03.100001Z", "2026-10-24T09:03:03.100001Z"],
+    ["2026-10-24T09:03Z", "2026-10-24T09:03:00.000000Z"],
+    ["2026-10-24T09:03:03.1234564Z", "2026-10-24T09:03:03.123456Z"],
+    ["2026-10-24T09:03:03.1234566Z", "2026-10-24T09:03:03.123457Z"],
+    ["2026-10-24T09:03:59.9999999Z", "2026-10-24T09:04:00.000000Z"],
+    ["2026-12-31T23:59:59.9999999Z", "2027-01-01T00:00:00.000000Z"],
+    ["2024-02-29T23:59:59.9999999Z", "2024-03-01T00:00:00.000000Z"],
+  ])("retains the original supported UTC instant %s", async (input, expected) => {
+    for (const state of ["waiting", "checking"]) {
+      const result = { settlement: { state, nextAttemptAt: state === "waiting" ? input : FUTURE, leaseUntil: state === "checking" ? input : FUTURE } };
+      const [row] = await pg`SELECT to_char(mini_tool_settlement_due_at(${pg.json(result)}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`;
+      expect(row).toEqual({ at: expected });
+    }
+  });
+
+  it.each([null, "now", "today", "tomorrow", "epoch", "infinity", "-infinity", "2026-10-24T09:03:03+00:00", "2026-10-24T17:03:03+08:00",
+    "2026-10-24T09:03:03", "2026-10-24t09:03:03z", " 2026-10-24T09:03:03Z", "2026-10-24T09:03:03Z ", "2026-02-30T09:03:03Z",
+  ])("never indexes relative, local or invalid date input %s", async (input) => {
+    const [row] = await pg`SELECT mini_tool_settlement_due_at(${pg.json({ settlement: { state: "waiting", nextAttemptAt: input } })}) AS at`;
+    expect(row).toEqual({ at: null });
+  });
+
+  it("does not derive a due time from unsupported or missing period facts", async () => {
+    for (const value of [null, {}, { settlement: {} }, { settlement: { state: "idle", nextAttemptAt: PAST } }, { settlement: { state: "settled", leaseUntil: PAST } }]) {
+      const [row] = await pg`SELECT mini_tool_settlement_due_at(${pg.json(value)}) AS at`;
+      expect(row).toEqual({ at: null });
+    }
+  });
+
+  it("keeps parsing independent of the caller's timezone and DateStyle without changing either", async () => {
+    for (const timezone of ["UTC", "Asia/Shanghai", "America/New_York"]) {
+      for (const style of ["ISO,YMD", "SQL,DMY", "German,DMY"]) {
+        await pg.begin(async (tx) => {
+          await tx`SELECT set_config('TimeZone',${timezone},true),set_config('DateStyle',${style},true)`;
+          const [before] = await tx`SELECT current_setting('TimeZone') AS tz,current_setting('DateStyle') AS style`;
+          const [row] = await tx`SELECT to_char(mini_tool_settlement_due_at(${tx.json({ settlement: { state: "waiting", nextAttemptAt: "2026-10-24T09:03:03.100001Z" } })}) AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS at`;
+          const [after] = await tx`SELECT current_setting('TimeZone') AS tz,current_setting('DateStyle') AS style`;
+          expect(row).toEqual({ at: "2026-10-24T09:03:03.100001Z" }); expect(after).toEqual(before);
+        });
+      }
+    }
+  });
+
+  it("keeps different legal fractional precision and UUID ties in one ordered query", async () => {
+    const fixtures: Fixture[] = [];
+    const instants = ["1880-01-01T00:00:00.100Z", "1880-01-01T00:00:00.100000Z", "1880-01-01T00:00:00.100001Z", "1880-01-01T00:00:00.100002Z"];
+    for (const [index, instant] of instants.entries()) {
+      const fixture = await seed(`b0000000-0000-4000-8000-00000000000${index + 1}`); fixtures.push(fixture);
+      await setPeriod(fixture, { nextAttemptAt: instant });
+    }
+    const first = await due(2);
+    expect(first.items).toEqual(fixtures.slice(0, 2).map((f) => ({ taskId: f.taskId, settlementVersion: 7, dueAt: "1880-01-01T00:00:00.100000Z" })));
+    const second = await due(2, first.nextCursor!);
+    expect(second.items).toEqual(fixtures.slice(2).map((f, index) => ({ taskId: f.taskId, settlementVersion: 7, dueAt: `1880-01-01T00:00:00.10000${index + 1}Z` })));
+    for (const fixture of fixtures) await setPeriod(fixture, { state: "idle", nextAttemptAt: null, pendingConsumptionKeys: [] });
+  });
+});
+
 describe("restart discovery reads durable mini-tool settlement periods", () => {
   it("finds waiting, expired claims and unbilled terminal periods without changing their facts", async () => {
     const waiting = await seed();
