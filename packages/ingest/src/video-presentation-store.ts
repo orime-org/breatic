@@ -154,7 +154,7 @@ export class VideoPresentationStore {
       if (current?.admission.sourceFingerprint === input.sourceFingerprint) {
         const status = current.snapshot.attempt?.status;
         if (status === 'accepted' || status === 'running' || input.repair !== true) return current.snapshot;
-        if (current.snapshot.presentation?.state === 'alpha_ready' && await this.manifest(current.admission, current.snapshot.presentation) !== null) return current.snapshot;
+        if (current.snapshot.presentation?.state === 'alpha_ready' && await this.manifest(current.admission, current.snapshot.presentation, current.packedReceipt) !== null) return current.snapshot;
       }
       if (current !== undefined) await this.storage.put(`${RECORD_KEY}:${current.admission.jobId}`, current);
       const original = input.original;
@@ -342,7 +342,7 @@ export class VideoPresentationStore {
       const next = advanceVideoPresentation(current.snapshot.presentation, accepted, proposed);
       if (next === null || next === current.snapshot.presentation) return current.snapshot;
       if (accepted.original !== null && (accepted.original.width !== next.original.width || accepted.original.height !== next.original.height || accepted.original.duration !== next.original.duration)) return current.snapshot;
-      const manifest = next.state === 'alpha_ready' ? await this.manifest(accepted, next) : null;
+      const manifest = next.state === 'alpha_ready' ? await this.manifest(accepted, next, current.packedReceipt) : null;
       if (next.state === 'alpha_ready' && manifest === null) return current.snapshot;
       const status = next.state === 'failed' ? 'failed' : next.state === 'native' || next.state === 'alpha_ready' ? 'completed' : 'running';
       const snapshot: VideoPresentationIngestSnapshot = { presentation: next,
@@ -386,7 +386,7 @@ export class VideoPresentationStore {
             return record.snapshot;
           }
         }
-        if (record.snapshot.presentation?.state === 'alpha_ready' && await this.manifest(record.admission, record.snapshot.presentation) === null) {
+        if (record.snapshot.presentation?.state === 'alpha_ready' && await this.manifest(record.admission, record.snapshot.presentation, record.packedReceipt) === null) {
           const failed: VideoPresentation = { ...record.snapshot.presentation, state: 'failed', error: 'presentation_missing' };
           await this.writeDescriptor(record, failed);
           record.snapshot = { presentation: failed, attempt: record.snapshot.attempt === null ? null : {
@@ -431,13 +431,15 @@ export class VideoPresentationStore {
    * Verify both physical companions and the owned canonical geometry.
    * @param admission - Canonical source and any expected public URLs.
    * @param presentation - Descriptor claiming readiness.
+   * @param receipt - The complete physical object actually published by this owner.
    * @returns Its validated manifest, or none when physical facts disagree.
    * @throws {Error} When R2 cannot be read.
    */
-  private async manifest(admission: VideoPresentationAdmission, presentation: VideoPresentation): Promise<AlphaManifest | null> {
+  private async manifest(admission: VideoPresentationAdmission, presentation: VideoPresentation, receipt?: AlphaPackedReceipt): Promise<AlphaManifest | null> {
     const object = await this.bucket.get(alphaManifestKeyFor(admission.storageKey));
     const packed = await this.bucket.head(alphaPackedKeyFor(admission.storageKey));
     if (object === null || packed === null || packed.size === 0 || packed.httpMetadata?.contentType !== 'video/mp4') return null;
+    if (receipt !== undefined && (packed.etag !== receipt.etag || packed.size !== receipt.size)) return null;
     const parsed = alphaManifestSchema.safeParse(await object.json().catch(() => null));
     if (!parsed.success || !alphaManifestMatchesPresentation(parsed.data, presentation)) return null;
     if (admission.packedURL !== undefined && parsed.data.packedURL !== admission.packedURL) return null;
