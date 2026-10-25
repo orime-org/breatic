@@ -1,28 +1,144 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type * as React from 'react';
-import type { MediaSurfaceSnapshot, VideoPresentationSource, VideoRendererFactory } from '@web/spaces/canvas/video-presentation/types';
+import * as React from 'react';
+import { parseVideoPresentation } from '@breatic/shared';
+import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
+import { createPresentedFrameClock, type PresentedFrameClock } from '@web/spaces/canvas/video-presentation/presented-frame-clock';
+import type { PresentedMediaFrame, MediaSurfaceBinding, MediaSurfaceSnapshot, VideoPresentationSource, VideoRendererFactory, VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
 
 /** Options for one effect-owned canvas video surface. */
 export interface MediaSurfaceOptions {
   host: React.RefObject<HTMLDivElement | null>;
+  container?: React.RefObject<HTMLDivElement | null>;
   source: VideoPresentationSource | null;
   active: boolean;
   createRenderer?: VideoRendererFactory;
+  onPresentedFrame?: (frame: PresentedMediaFrame) => void;
 }
-
 /** Resource state plus an explicit retry action. */
-export interface MediaSurfaceApi extends MediaSurfaceSnapshot {
-  retry: () => void;
-}
+export interface MediaSurfaceApi extends MediaSurfaceSnapshot { retry: () => void }
+const DETACHED: MediaSurfaceSnapshot = { status: 'detached', binding: null, error: null };
 
 /**
- * Owns a ready source's actual video resource for the active Space.
- * @param _options - Host, validated source and visibility.
+ * Owns a source's actual video resource for the active Space.
+ * @param options - Host, validated source and visibility.
+ * @param options.host - The element owned exclusively by this renderer.
+ * @param options.container - Optional outer container including existing controls.
+ * @param options.source - Resolved canonical classification and optional manifest.
+ * @param options.active - Whether the owning Space or preview is visible.
+ * @param options.createRenderer - Renderer factory, injectable for lifecycle tests.
+ * @param options.onPresentedFrame - Synchronous consumer of the committed drawable frame.
  * @returns Current resource state and a retry command.
  * @throws {never} Resource failures are reported in the snapshot.
  */
-export function useMediaSurface(_options: MediaSurfaceOptions): MediaSurfaceApi {
-  return { status: 'detached', binding: null, error: null, retry: () => {} };
+export function useMediaSurface({ host, container, source, active, createRenderer = createVideoRenderer, onPresentedFrame }: MediaSurfaceOptions): MediaSurfaceApi {
+  const [snapshot, setSnapshot] = React.useState<MediaSurfaceSnapshot>(DETACHED);
+  const [attempt, setAttempt] = React.useState(0);
+  const sourceEpoch = React.useRef(0);
+  const onPresentedFrameRef = React.useRef(onPresentedFrame);
+  React.useEffect(() => { onPresentedFrameRef.current = onPresentedFrame; }, [onPresentedFrame]);
+  const retry = React.useCallback((): void => setAttempt((value) => value + 1), []);
+
+  React.useEffect(() => {
+    if (!active || !source || !host.current) { setSnapshot(DETACHED); return; }
+    const descriptor = parseVideoPresentation(source.presentation, source.sourceFingerprint);
+    if (!descriptor) { setSnapshot({ status: 'failed', binding: null, error: 'invalid-presentation' }); return; }
+    if (descriptor.state === 'failed') { setSnapshot({ status: 'failed', binding: null, error: descriptor.error ?? 'presentation-failed' }); return; }
+    setSnapshot({ status: 'loading', binding: null, error: null });
+    if (descriptor.state !== 'native' && descriptor.state !== 'alpha_ready') return;
+
+    const epoch = ++sourceEpoch.current;
+    const sourceKey = JSON.stringify([source.canonicalURL, source.sourceFingerprint]);
+    let live = true;
+    let terminal = false;
+    let contextLost = false;
+    let released = false;
+    let resource: VideoRendererResource | undefined;
+    let binding: MediaSurfaceBinding | null = null;
+    let clock: PresentedFrameClock | undefined;
+
+    /**
+     * Releases a partially or fully initialized instance exactly once.
+     * @throws {never} Renderer cleanup owns its platform errors.
+     */
+    function release(): void {
+      if (released) return;
+      released = true;
+      clock?.dispose();
+      binding?.element.pause();
+      binding = null;
+      resource?.dispose();
+    }
+    /**
+     * Publishes only the current instance's resource failure.
+     * @param code - Stable failure code for the existing product error UI.
+     * @throws {never} Never.
+     */
+    function fail(code: string): void {
+      if (!live || terminal) return;
+      terminal = true;
+      release();
+      setSnapshot({ status: 'failed', binding: null, error: code });
+    }
+    try {
+      resource = createRenderer(host.current, source, {
+        ready: (element, surface) => {
+          if (!live || terminal) return;
+          if (binding?.element === element && binding.surface === surface) return;
+          clock?.dispose();
+          binding?.element.pause();
+          element.pause();
+          clock = createPresentedFrameClock(element, surface, sourceKey, epoch);
+          const frameClock = clock;
+          binding = {
+            sourceKey, sourceEpoch: epoch, element, surface, container: container?.current ?? host.current!, original: descriptor.original,
+            getSeekEpoch: frameClock.getSeekEpoch,
+            getPresentedFrame: frameClock.getFrame,
+            seek: (seconds) => {
+              if (!live || terminal || !Number.isFinite(seconds)) return;
+              frameClock.invalidate();
+              element.currentTime = Math.min(descriptor.original.duration, Math.max(0, seconds));
+            },
+            play: async () => {
+              if (!live || terminal) return;
+              try { await element.play(); }
+              catch (error) {
+                if (live && !terminal && binding?.element === element) {
+                  element.pause();
+                  setSnapshot({ status: 'ready', binding, error: 'play-rejected' });
+                }
+                throw error;
+              }
+            },
+            pause: () => { if (live && !terminal) element.pause(); },
+          };
+          setSnapshot({ status: 'ready', binding, error: null });
+        },
+        getSeekEpoch: () => clock?.getSeekEpoch() ?? 0,
+        frame: (mediaTime, seekEpoch) => {
+          if (!live || terminal) return;
+          const frame = clock?.commit(mediaTime, seekEpoch);
+          if (frame) onPresentedFrameRef.current?.(frame);
+        },
+        error: fail,
+        contextLost: () => {
+          if (!live || terminal) return;
+          contextLost = true;
+          terminal = true;
+          clock?.dispose();
+          binding?.element.pause();
+          binding = null;
+          setSnapshot({ status: 'failed', binding: null, error: 'webgl-context-lost' });
+        },
+        contextRestored: () => { if (live && contextLost) retry(); },
+      });
+      if (released) resource.dispose();
+    } catch {
+      fail('renderer-initialization-failed');
+    }
+    return () => { live = false; terminal = true; release(); };
+  }, [active, source, host, container, createRenderer, attempt, retry]);
+
+  return React.useMemo(() => ({ ...snapshot, retry }), [snapshot, retry]);
 }

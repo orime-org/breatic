@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { createPresentedFrameClock } from '../presented-frame-clock';
 
-// Independent expected: approved canvas design section 20, inner#1306.
+// Reviewed presented-frame invariants for inner#1306.
 describe('actual presented-frame identity', () => {
   it('does not treat currentTime or seeked as a newly drawn frame', () => {
     const element = document.createElement('video');

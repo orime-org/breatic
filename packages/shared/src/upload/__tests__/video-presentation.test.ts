@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { alphaManifestMatchesPresentation, alphaManifestSchema, alphaManifestKeyFor, alphaPackedKeyFor, parseVideoPresentation, videoPresentationKeyFor, videoPresentationSchema } from '../video-presentation.js';
 
-// Independent oracle: inner#1306 alpha-presentation-oracle, root-authored.
+// Reviewed contract fixtures for inner#1306.
 const H = 'a'.repeat(64);
 const H2 = 'b'.repeat(64);
 const key = 'video/fixture/original.webm';

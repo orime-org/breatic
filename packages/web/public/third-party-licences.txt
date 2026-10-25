@@ -9,7 +9,7 @@ copyright holder is the one named at the package's home page. Packages
 that install on one platform alone are left out: their bytes are native
 binaries, and no browser receives them.
 
-Packages 591, distinct licence texts 273
+Packages 592, distinct licence texts 273
 
 Regenerate with: pnpm --filter @breatic/repo-lint licences
 
@@ -586,6 +586,7 @@ vanilla-cookieconsent 3.1.0  MIT  https://cookieconsent.orestbida.com
 vfile 6.0.3  MIT  https://github.com/vfile/vfile#readme
 vfile-location 5.0.3  MIT  https://github.com/vfile/vfile-location#readme
 vfile-message 4.0.3  MIT  https://github.com/vfile/vfile-message#readme
+video-animation-player 1.0.5  MIT
 w3c-keyname 2.2.8  MIT  https://github.com/marijnh/w3c-keyname#readme
 wavesurfer.js 8.0.2  BSD-3-Clause  https://wavesurfer.xyz
 weakmap-shim 1.1.1  MIT  https://github.com/Raynos/weakmap-shim
@@ -1322,7 +1323,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 9 of 273 — applies to: @cfcs/core, @egjs/component, @react-oauth/google, @react-three/fiber, @tokenizer/token, @xzdarcy/react-timeline-editor, agent-base, ahooks, css-styled, https-proxy-agent, isarray, keycon, maath, react-remove-scroll-bar, rehype-katex, remark-math, safe-json-stringify, stats-gl, toggle-selection
+Licence 9 of 273 — applies to: @cfcs/core, @egjs/component, @react-oauth/google, @react-three/fiber, @tokenizer/token, @xzdarcy/react-timeline-editor, agent-base, ahooks, css-styled, https-proxy-agent, isarray, keycon, maath, react-remove-scroll-bar, rehype-katex, remark-math, safe-json-stringify, stats-gl, toggle-selection, video-animation-player
 ------------------------------------------------------------------------
 
 MIT License
@@ -11438,10 +11439,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
-video-animation-player 1.0.5
-Copyright (C) 2020 Tencent. All rights reserved.
-Browser package: MIT. Source: https://github.com/Tencent/vap/tree/master/web
-Complete upstream license and notices: /licenses/video-animation-player-1.0.5.txt
-The upstream license also covers native/tool components outside this browser package.

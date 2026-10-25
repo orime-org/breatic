@@ -43,6 +43,8 @@ class FakeVap {
     this.options!.container.append(this.canvas);
     return {} as WebGLRenderingContext;
   }
+  initTexture(): void {}
+  initVideoTexture(): void {}
   drawFrame(_now: number, _info: unknown): void { this.draws++; }
   cancelRequestAnimation(): void {}
   destroy(): void { this.destroyed++; this.canvas?.remove(); this.video.remove(); }

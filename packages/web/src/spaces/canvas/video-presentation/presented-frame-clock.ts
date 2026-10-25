@@ -8,24 +8,53 @@ export interface PresentedFrameClock {
   getFrame: () => PresentedMediaFrame | null;
   getSeekEpoch: () => number;
   invalidate: () => number;
-  commit: (mediaTime: number, seekEpoch: number) => void;
+  commit: (mediaTime: number, seekEpoch: number) => PresentedMediaFrame | null;
   dispose: () => void;
 }
 
 /**
  * Keeps only actual draws for the newest source and seek identity.
- * @param _element - The actual element driven by transport controls.
- * @param _surface - Its native picture or alpha compositor.
- * @param _sourceKey - Canonical identity, never the packed URL.
- * @param _sourceEpoch - Effect-owned resource identity.
+ * @param element - The actual element driven by transport controls.
+ * @param surface - Its native picture or alpha compositor.
+ * @param sourceKey - Canonical identity, never the packed URL.
+ * @param sourceEpoch - Effect-owned resource identity.
  * @returns A frame clock that can be invalidated before a seek command.
  * @throws {never} Invalid frame notifications are ignored.
  */
 export function createPresentedFrameClock(
-  _element: HTMLVideoElement,
-  _surface: HTMLVideoElement | HTMLCanvasElement,
-  _sourceKey: string,
-  _sourceEpoch: number,
+  element: HTMLVideoElement,
+  surface: HTMLVideoElement | HTMLCanvasElement,
+  sourceKey: string,
+  sourceEpoch: number,
 ): PresentedFrameClock {
-  return { getFrame: () => null, getSeekEpoch: () => 0, invalidate: () => 0, commit: () => {}, dispose: () => {} };
+  let live = true;
+  let seekEpoch = 0;
+  let frame: PresentedMediaFrame | null = null;
+  /**
+   * Invalidates the previous draw before a seek can expose it as current.
+   * @returns The newly accepted seek identity.
+   * @throws {never} Never.
+   */
+  function invalidate(): number {
+    if (live) { seekEpoch++; frame = null; }
+    return seekEpoch;
+  }
+  element.addEventListener('seeking', invalidate);
+  return {
+    getFrame: () => frame,
+    getSeekEpoch: () => seekEpoch,
+    invalidate,
+    commit: (mediaTime, acceptedSeekEpoch) => {
+      if (live && acceptedSeekEpoch === seekEpoch && !element.seeking && Number.isFinite(mediaTime) && mediaTime >= 0) {
+        frame = Object.freeze({ sourceKey, sourceEpoch, seekEpoch, mediaTime, surface });
+        return frame;
+      }
+      return null;
+    },
+    dispose: () => {
+      live = false;
+      frame = null;
+      element.removeEventListener('seeking', invalidate);
+    },
+  };
 }

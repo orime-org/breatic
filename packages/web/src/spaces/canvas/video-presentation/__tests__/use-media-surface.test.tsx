@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaSurface } from '../use-media-surface';
 import type { VideoPresentationSource, VideoRendererCallbacks, VideoRendererFactory } from '../types';
 
-// Independent expected: approved canvas design sections 18–20, inner#1306.
+// Reviewed resource lifecycle invariants for inner#1306.
 const source: VideoPresentationSource = {
   canonicalURL: 'https://assets.example/canonical.webm',
   sourceFingerprint: 'a'.repeat(64),
@@ -15,12 +15,14 @@ const source: VideoPresentationSource = {
 };
 
 let host: HTMLDivElement;
+let hostRef: React.RefObject<HTMLDivElement | null>;
 let sessions: { element: HTMLVideoElement; callbacks: VideoRendererCallbacks; dispose: ReturnType<typeof vi.fn> }[];
 let createRenderer: VideoRendererFactory;
 
 beforeEach(() => {
   host = document.createElement('div');
   document.body.append(host);
+  hostRef = { current: host };
   sessions = [];
   createRenderer = vi.fn((_host, _source, callbacks) => {
     const element = document.createElement('video');
@@ -31,10 +33,10 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
 });
-afterEach(() => { host.remove(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); host.remove(); vi.restoreAllMocks(); });
 
 function mount(active = true): ReturnType<typeof renderHook<ReturnType<typeof useMediaSurface>, { source: VideoPresentationSource; active: boolean }>> {
-  return renderHook((props) => useMediaSurface({ host: { current: host }, source: props.source, active: props.active, createRenderer }), { initialProps: { source, active } });
+  return renderHook((props) => useMediaSurface({ host: hostRef, source: props.source, active: props.active, createRenderer }), { initialProps: { source, active } });
 }
 
 function ready(index = 0): void {
@@ -84,7 +86,7 @@ describe('effect-owned video surface lifecycle', () => {
   });
 
   it('releases every StrictMode instance once and ignores the disposed instance', () => {
-    const { result, unmount } = renderHook(() => useMediaSurface({ host: { current: host }, source, active: true, createRenderer }), { wrapper: React.StrictMode });
+    const { result, unmount } = renderHook(() => useMediaSurface({ host: hostRef, source, active: true, createRenderer }), { wrapper: React.StrictMode });
     expect(sessions).toHaveLength(2);
     expect(sessions[0]!.dispose).toHaveBeenCalledTimes(1);
     ready(0);
@@ -129,4 +131,21 @@ describe('effect-owned video surface lifecycle', () => {
     ready(1);
     expect(result.current.binding!.sourceEpoch).toBeGreaterThan(epoch);
   });
+  it('synchronously forwards only committed draws to a mounted timeline consumer', () => {
+    const onPresentedFrame = vi.fn();
+    const { result, unmount } = renderHook(() => useMediaSurface({ host: hostRef, source, active: true, createRenderer, onPresentedFrame }));
+    ready();
+    act(() => sessions[0]!.callbacks.frame(0.125, 0));
+    expect(onPresentedFrame).toHaveBeenCalledTimes(1);
+    expect(onPresentedFrame).toHaveBeenLastCalledWith({ sourceKey: result.current.binding!.sourceKey, sourceEpoch: result.current.binding!.sourceEpoch, seekEpoch: 0, mediaTime: 0.125, surface: sessions[0]!.element });
+    act(() => result.current.binding!.seek(0.75));
+    act(() => sessions[0]!.callbacks.frame(0.25, 0));
+    expect(onPresentedFrame).toHaveBeenCalledTimes(1);
+    act(() => sessions[0]!.callbacks.frame(0.75, result.current.binding!.getSeekEpoch()));
+    expect(onPresentedFrame).toHaveBeenCalledTimes(2);
+    unmount();
+    act(() => sessions[0]!.callbacks.frame(0.9, 1));
+    expect(onPresentedFrame).toHaveBeenCalledTimes(2);
+  });
+
 });

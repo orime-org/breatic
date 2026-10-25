@@ -20,6 +20,7 @@ export interface MediaSurfaceBinding {
   surface: HTMLVideoElement | HTMLCanvasElement;
   container: HTMLElement;
   original: VideoPresentation['original'];
+  getSeekEpoch: () => number;
   getPresentedFrame: () => PresentedMediaFrame | null;
   seek: (seconds: number) => void;
   play: () => Promise<void>;
