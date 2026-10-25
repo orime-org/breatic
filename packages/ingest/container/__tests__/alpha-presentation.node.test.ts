@@ -10,7 +10,8 @@ const { command, download, put, cpuUsec } = vi.hoisted(() => ({ command: vi.fn()
 vi.mock('@ingest/container/plan-command.js', () => ({ runPlanCommand: command }));
 vi.mock('@ingest/container/mini-tool-run.js', async (original) => ({ ...await original<Record<string, unknown>>(), download, put, cpuUsec }));
 
-const job: AlphaRunBody = { jobId: 'native-probe', sourceFingerprint: 'a'.repeat(64), deadlineAt: 1900000000000,
+const NOW = Date.parse('2026-10-25T00:00:00Z');
+const job: AlphaRunBody = { jobId: 'native-probe', sourceFingerprint: 'a'.repeat(64), deadlineAt: NOW + 2 * 60 * 60 * 1000,
   token: 'accepted-capability', sourceURL: 'http://media-object.local/canonical', outputURL: 'http://alpha-packed.local/packed', reportURL: 'http://alpha-report.local/canonical', vcpu: 0.25,
   limits: { maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: 'medium', probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 65536 } };
 const raw = { streams: [{ index: 0, codec_type: 'video', codec_name: 'h264', pix_fmt: 'yuv420p', width: 64, height: 48,
@@ -19,6 +20,7 @@ let reports: Record<string, unknown>[];
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(Date, 'now').mockReturnValue(NOW);
   reports = [];
   download.mockImplementation(async (_url: string, file: string) => { await writeFile(file, new Uint8Array([1, 2, 3])); });
   cpuUsec.mockResolvedValue(null);
