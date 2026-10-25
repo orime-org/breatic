@@ -79,8 +79,25 @@ export interface MiniToolAnalysisExecution extends FinishedMiniToolAnalysis {
  * @throws {Error} When the task, accepted identity or persistent transition is invalid.
  */
 export async function startMiniToolAnalysisExecution(taskId: string, jobId: string): Promise<MiniToolAnalysisExecution> {
-  void taskId; void jobId;
-  throw new Error("Analysis execution entry awaits independent RED");
+  const [id, queueId] = z.tuple([z.uuid(), z.string().min(1).max(255)]).parse([taskId, jobId]);
+  return db.transaction(async (tx) => {
+    const task = await taskRepo.lockMiniToolAnalysisTask(id, tx);
+    if (task === null || task.source !== "mini_tool") throw new NotFoundError(t("server.error.not_found"));
+    const params = z.looseObject({
+      analysis: miniToolFrozenAnalysisSchema, requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+      sourceKey: z.string().min(1), credits: z.number().nonnegative(),
+    }).parse(task.params);
+    let record = recordFromTask(task);
+    if (task.status === "pending" || task.status === "running") {
+      await taskRepo.markRunning(task.id, queueId, new Date(), tx);
+      record = recordFromTask({ ...task, status: "running" });
+    }
+    const frozen = params.analysis;
+    return {
+      record, params,
+      context: { taskId: task.id, userId: task.userId, projectId: frozen.projectId, spaceId: frozen.spaceId, hostNodeId: frozen.hostNodeId },
+    };
+  });
 }
 
 /**

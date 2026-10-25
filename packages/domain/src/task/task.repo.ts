@@ -496,11 +496,12 @@ export async function setJobId(id: string, jobId: string): Promise<void> {
  * @param id - UUID of the task.
  * @param jobId - The BullMQ job running it.
  * @param now - The start to keep when the row has none yet.
+ * @param transaction - The analysis owner's transaction when the current state is locked.
  * @returns The start the row holds after the write.
  * @throws {Error} When the task row does not exist.
  */
-export async function markRunning(id: string, jobId: string, now: Date): Promise<Date> {
-  const [row] = await db
+export async function markRunning(id: string, jobId: string, now: Date, transaction?: DbTx): Promise<Date> {
+  const [row] = await (transaction ?? db)
     .update(tasks)
     .set({
       arqJobId: jobId,
