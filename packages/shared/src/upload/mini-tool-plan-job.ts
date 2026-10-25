@@ -28,9 +28,9 @@ export const miniToolPlanLimitsSchema = z.strictObject({
 /** The versioned per-output media recipes admitted by the planned job lane. */
 export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspect_video"), inputId }),
-  z.strictObject({ kind: z.literal("frame"), inputId, frameIndex: index }),
+  z.strictObject({ kind: z.literal("frame"), inputId, frameIndex: index, orientation: z.literal("display").optional() }),
   z.strictObject({ kind: z.literal("segment"), inputId, range, audioEnd: z.number().positive().optional() }),
-  z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile }),
+  z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile, orientation: z.literal("display").optional() }),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, range, profile }),
 ]) satisfies z.ZodType<MiniToolPlanRecipe>;
 

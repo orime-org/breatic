@@ -112,17 +112,18 @@ function decoderArgs(input: string, selection: string): string[] {
  * @param request - The exact recipe and original lifetime.
  * @param selection - Its frame-selection expression.
  * @param expectedFrameCount - The complete frozen selection size.
+ * @param prepared - Actual upright PNG pixels when the recipe explicitly requests display geometry.
  * @returns The complete owned JSON output.
  * @throws {Error} When the detector, complete input or JSON output fails.
  */
-async function analyze(request: PlanRecipeRequest, selection: string, expectedFrameCount: number): Promise<Record<string, unknown>> {
+async function analyze(request: PlanRecipeRequest, selection: string, expectedFrameCount: number, prepared?: PlanDisplayFrame): Promise<Record<string, unknown>> {
   const recipe = request.recipe;
   if (recipe.kind !== "people" && recipe.kind !== "scene_cuts") throw new TypeError("Expected an analysis recipe");
-  const { width, height } = request.facts.source;
+  const { width, height } = prepared ?? request.facts.source;
   const path = join(request.directory, "analysis-request.json");
   await writePlanJson(path, { kind: recipe.kind, width, height, expectedFrameCount, profile: recipe.profile });
   return probeObject(Buffer.from(await runAnalysisPipeline({
-    decoder: { program: "ffmpeg", args: decoderArgs(request.input, selection) },
+    decoder: { program: "ffmpeg", args: decoderArgs(prepared?.path ?? request.input, selection) },
     processor: { program: "python3", args: ["/app/analysis-runtime.py", path] },
     width, height, expectedFrameCount, signal: request.signal,
     limits: { stdoutBytes: request.limits.analysisStdoutBytes, stderrTailBytes: request.limits.stderrTailBytes },
@@ -180,7 +181,12 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       await writePlanJson(output, { schemaVersion: 1, kind: "inspect_video", source: facts.source, probe: facts.raw });
       return { ...NO_MEDIA };
     case "frame": {
-      if (facts.source.frameTable.frames[recipe.frameIndex] === undefined) throw new Error("Frame recipe is outside the complete source ledger");
+      const anchor = facts.source.frameTable.frames[recipe.frameIndex];
+      if (anchor === undefined) throw new Error("Frame recipe is outside the complete source ledger");
+      if (recipe.orientation === "display") {
+        const frame = await preparePlanDisplayFrame(request, anchor, output);
+        return { width: frame.width, height: frame.height, durationSeconds: null, cover: null };
+      }
       await runPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-noautorotate", "-copyts", "-i", input,
         "-map", "0:v:0", "-vf", `select=eq(n\\,${recipe.frameIndex})`, "-fps_mode", "passthrough", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], options);
       const geometry = pngSize(new Uint8Array(await readFile(output)));
@@ -190,9 +196,12 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
     case "people": {
       const anchor = facts.source.frameTable.frames[recipe.anchor.frameIndex];
       if (anchor === undefined || anchor.pts !== recipe.anchor.pts) throw new Error("Analysis anchor differs from the frozen source ledger");
-      const result = await analyze(request, `select=eq(n\\,${recipe.anchor.frameIndex})`, 1);
-      const { width, height } = facts.source;
-      await writePlanJson(output, { schemaVersion: 1, kind: "people", anchor: recipe.anchor, width, height, candidates: readYuNetFaces(result.faces, { width, height }) });
+      const prepared = recipe.orientation === "display"
+        ? await preparePlanDisplayFrame(request, recipe.anchor, join(request.directory, "people-anchor.png")) : undefined;
+      const result = await analyze(request, prepared === undefined ? `select=eq(n\\,${recipe.anchor.frameIndex})` : "null", 1, prepared);
+      const { width, height } = prepared ?? facts.source;
+      await writePlanJson(output, { schemaVersion: 1, kind: "people", ...(prepared === undefined ? {} : { coordinateSpace: "display" }),
+        anchor: recipe.anchor, width, height, candidates: readYuNetFaces(result.faces, { width, height }) });
       return { ...NO_MEDIA };
     }
     case "scene_cuts": {
