@@ -398,12 +398,19 @@ describe("POST /long-media/jobs", () => {
       context,
     );
     expect(refusedWrite.status).toBe(403);
-    const acceptedWrite = await writeLongMediaSegment(
-      new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("m4a") }),
-      env,
-      context,
-    );
-    expect(acceptedWrite.status).toBe(200);
+    const concurrentWrites = await Promise.all([
+      writeLongMediaSegment(
+        new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("m4a") }),
+        env,
+        context,
+      ),
+      writeLongMediaSegment(
+        new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("m4a") }),
+        env,
+        context,
+      ),
+    ]);
+    expect(concurrentWrites.map((response) => response.status).sort()).toEqual([200, 403]);
     await expect(stub.readSegments()).resolves.toMatchObject([{
       id: segmentId,
       status: "stored",
