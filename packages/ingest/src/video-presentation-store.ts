@@ -114,6 +114,22 @@ export class VideoPresentationStore {
     return this.gate(async () => {
       const record = await this.storage.get<PresentationRecord>(RECORD_KEY);
       if (record?.admission.sourceFingerprint === sourceFingerprint) {
+        if (record.snapshot.presentation !== null) {
+          const stored = await this.bucket.get(videoPresentationKeyFor(storageKey));
+          const descriptor = parseVideoPresentation(stored === null ? null : await stored.json().catch(() => null), sourceFingerprint);
+          const original = record.snapshot.presentation.original;
+          if (descriptor === null || descriptor.original.width !== original.width || descriptor.original.height !== original.height || descriptor.original.duration !== original.duration ||
+            descriptor.attempt?.jobId !== record.admission.jobId || descriptor.attempt.deadlineAt !== record.admission.deadlineAt) {
+            const failed: VideoPresentation = { ...record.snapshot.presentation, state: 'failed', error: 'descriptor_invalid' };
+            record.descriptorETag = stored?.etag ?? null;
+            await this.writeDescriptor(record, failed);
+            record.snapshot.presentation = failed;
+            delete record.snapshot.manifest;
+            if (record.snapshot.attempt !== null) record.snapshot.attempt = { ...record.snapshot.attempt, status: 'failed', error: 'descriptor_invalid' };
+            await this.storage.put(RECORD_KEY, record);
+            return record.snapshot;
+          }
+        }
         if (record.snapshot.presentation?.state === 'alpha_ready' && await this.manifest(record.admission, record.snapshot.presentation) === null) {
           const failed: VideoPresentation = { ...record.snapshot.presentation, state: 'failed', error: 'presentation_missing' };
           await this.writeDescriptor(record, failed);

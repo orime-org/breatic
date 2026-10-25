@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { queryOptions, type UseQueryOptions } from '@tanstack/react-query';
-import { videoPresentationResponseSchema, type VideoPresentationResponse, type VideoPresentationRepairResponse } from '@breatic/shared';
-import { apiGet } from '@web/data/api/request';
+import { t, videoPresentationRepairResponseSchema, videoPresentationResponseSchema, type VideoPresentationResponse, type VideoPresentationRepairResponse } from '@breatic/shared';
+import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
+import { ApiException } from '@web/data/api/types';
+import { toast } from '@web/lib/toast';
 
 /** Canonical source query inputs; the existing account-scoped client owns the cache. */
 export interface VideoPresentationQueryInput { projectId: string; canonicalURL: string; active: boolean }
@@ -53,10 +55,16 @@ function presentationOptions(input: VideoPresentationQueryInput): VideoPresentat
  * @param input - Current project and canonical registered identity.
  * @param requestId - Stable idempotency identity retained for this press.
  * @returns Current source facts and the accepted repair work.
- * @throws {Error} Until the independently specified repair transport replaces this RED stub.
+ * @throws {Error} When the server refuses, transport fails or the response is invalid.
  */
 export async function repairVideoPresentation(input: VideoPresentationRepairInput, requestId: string): Promise<VideoPresentationRepairResponse> {
-  void input;
-  void requestId;
-  throw new Error('Video presentation repair client is not implemented');
+  try {
+    const answer = await apiPost<unknown>(`/projects/${input.projectId}/assets/video-presentation/repair`, {
+      canonicalURL: input.canonicalURL, sourceFingerprint: input.sourceFingerprint,
+    }, runOnceRequest(requestId));
+    return videoPresentationRepairResponseSchema.parse(answer);
+  } catch (error) {
+    toast.error(error instanceof ApiException && error.fromServer ? error.message : t('canvas.task.couldNotStart'));
+    throw error;
+  }
 }
