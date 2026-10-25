@@ -7,6 +7,9 @@ import { alphaManifestKeyFor, alphaPackedKeyFor, t, videoPresentationAtIngest, v
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationAttempt, type VideoPresentationIngestRequest,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding, type VideoPresentationRepairResponse } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
+import { fillMediaNumbers } from '@domain/asset/asset.repo.js';
+import { containerCostUsd } from '@domain/credit/container-cost.js';
+import { createUsageRecorder } from '@domain/credit/usage-recorder.js';
 
 /** An authorized read of a canonical registered video. */
 export interface ResolveVideoPresentationInput { projectId: string; userId: string; canonicalURL: string }
@@ -206,6 +209,31 @@ export async function ensureVideoPresentation(input: EnsureVideoPresentationInpu
  * @throws {Error} When ingest, unique usage persistence or acknowledgement fails.
  */
 export async function runVideoPresentation(job: VideoPresentationJob): Promise<VideoPresentationExecutionResult> {
-  void job;
-  throw new Error('Presentation consumption awaits its independent RED oracle');
+  const row = await findById(job.assetId);
+  if (row === null || row.deletedAt !== null || row.kind !== 'video') return { status: 'gone', usageRecorded: false, usagePending: false };
+  if (row.contentHash !== job.sourceFingerprint) return { status: 'stale', usageRecorded: false, usagePending: false };
+  const identity = { storageKey: row.storageKey, sourceFingerprint: row.contentHash, jobId: job.jobId, deadlineAt: job.deadlineAt };
+  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+    ...identity, action: job.deadlineAt <= Date.now() ? 'expire' : 'run',
+  });
+  if (snapshot.attempt?.jobId !== job.jobId) return { status: 'stale', usageRecorded: false, usagePending: false };
+  const original = snapshot.presentation?.original;
+  if (original !== undefined && row.width === null && row.height === null && row.durationSeconds === null) {
+    await fillMediaNumbers(row.id, { width: original.width, height: original.height, durationSeconds: original.duration });
+  }
+  let usageRecorded = snapshot.attempt.usageRecorded === true;
+  const fact = snapshot.usageFact;
+  if (!usageRecorded && fact !== undefined) {
+    if (fact.jobId !== job.jobId) throw new Error('Presentation usage differs from its original attempt');
+    const recorder = createUsageRecorder({ operationKey: `video-presentation:${fact.jobId}`, feature: 'mini_tool', actorUserId: fact.actorUserId,
+      projectId: fact.projectId, multiplier: 0, onMissingCost: () => { throw new Error('Presentation expense requires actual measured usage'); } });
+    recorder.recordServiceCall({ source: 'container', service: 'video-presentation', provider: 'cloudflare', requests: 1,
+      costUsd: containerCostUsd(fact.usage, fact.pricing.size, fact.pricing.prices), costSource: 'computed' });
+    await recorder.settle();
+    await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { ...identity, action: 'ack_usage' });
+    usageRecorded = true;
+  }
+  const ready = snapshot.presentation?.state === 'native' || snapshot.presentation?.state === 'alpha_ready';
+  return { status: ready ? 'ready' : 'failed', usageRecorded, usagePending: ready && !usageRecorded,
+    ...(snapshot.attempt.error === undefined ? {} : { error: snapshot.attempt.error }) };
 }
