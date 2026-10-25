@@ -24,6 +24,8 @@
     "*.ts",
     "./analysis-frame-reader.ts",
     "./alpha-clock.ts",
+    "./iso-bmff-metadata.ts",
+    "./iso-bmff-presentation.ts",
     "./alpha-presentation.ts",
     "./plan-command.ts",
     "./plan-recipes.ts",
