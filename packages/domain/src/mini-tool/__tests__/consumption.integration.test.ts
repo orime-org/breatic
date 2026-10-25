@@ -44,6 +44,7 @@ interface Settlement {
   leaseToken: string | null;
   leaseUntil: string | null;
   lastError: string | null;
+  consumptionSetComplete?: boolean;
 }
 
 interface Fixture extends RecordInput {
@@ -90,6 +91,186 @@ beforeAll(() => {
   // Drizzle configures its own client's JSON serializers. Keep fixture SQL on
   // an independent pool so sql.json retains postgres.js's normal object codec.
   rawPg = createPgClient(inject("DATABASE_URL"), { name: "mini-tool-consumption-fixtures", max: 4 });
+});
+
+/** The producer supplies policy once, before it can submit this frozen identity. */
+interface OpenInput extends RecordInput {
+  chargeTo: Consumption["chargeTo"];
+  creditMultiplier: number;
+  containerPricing: Consumption["containerPricing"];
+}
+
+/**
+ * Invoke the producer entry without importing an implementation that does not exist yet.
+ * @param input - The actual step identity and its first frozen charge policy.
+ * @returns The pending or already recorded original consumption.
+ * @throws {Error} When the production entry is absent or rejects the operation.
+ */
+async function openConsumption(input: OpenInput): Promise<Consumption> {
+  const entry: unknown = Reflect.get(domain, "openMiniToolConsumption");
+  expect(entry, "domain exports openMiniToolConsumption").toBeTypeOf("function");
+  return (entry as (request: OpenInput) => Promise<Consumption>)(input);
+}
+
+/**
+ * Invoke the explicit producer fence after computation can no longer submit work.
+ * @param taskId - The terminal owning task.
+ * @returns The durable settlement period.
+ * @throws {Error} When the entry is absent or rejects an unsafe close.
+ */
+async function closeConsumptionSet(taskId: string): Promise<Settlement> {
+  const entry: unknown = Reflect.get(domain, "completeMiniToolConsumptionSet");
+  expect(entry, "domain exports completeMiniToolConsumptionSet").toBeTypeOf("function");
+  return (entry as (id: string) => Promise<Settlement>)(taskId);
+}
+
+/**
+ * Leave real task/step/node rows in their state immediately before first submission.
+ * @returns The independent expected policy, key and database fixture.
+ * @throws {Error} When fixture persistence fails.
+ */
+async function seedUnopened(): Promise<{ fixture: Fixture; input: OpenInput }> {
+  const identity = { kind: "container", containerClass: "MediaContainer", jobId: `job:${crypto.randomUUID()}`, chunkIndex: 0 } as const;
+  const fixture = await seed({ identity, state: "pending", parentStatus: "running" });
+  await rawPg`UPDATE tasks SET result = result - 'settlement', completed_at = NULL WHERE id = ${fixture.taskId}`;
+  await rawPg`
+    UPDATE task_upstream_steps SET status = 'pending', endpoint = 'MediaContainer', output = output - 'miniToolConsumption'
+    WHERE id = ${fixture.stepId}
+  `;
+  return { fixture, input: {
+    taskId: fixture.taskId, stepId: fixture.stepId, identity,
+    chargeTo: "user", creditMultiplier: 2, containerPricing: fixture.consumption.containerPricing,
+  } };
+}
+
+describe("mini-tool consumption producer persistence", () => {
+  it("persists pending identity and a due period before any cost is known", async () => {
+    const { fixture, input } = await seedUnopened();
+    const before = await snapshot(fixture);
+    const opened = await openConsumption(input);
+    expect(opened).toEqual(fixture.consumption);
+    const after = await snapshot(fixture);
+    expect(after.step.output.miniToolConsumption).toEqual(opened);
+    expect(after.task.result.settlement).toMatchObject({
+      version: 1, state: "waiting", pendingConsumptionKeys: [opened.consumptionKey],
+      consumptionSetComplete: false, leaseToken: null, leaseUntil: null,
+    });
+    expect(Date.parse(after.task.result.settlement.nextAttemptAt!)).toBeGreaterThan(0);
+    expect(after.usage).toEqual([]);
+    expect(after.task.params).toEqual(before.task.params);
+    expect(after.task.result.manifest).toEqual(before.task.result.manifest);
+    expect(after.step.output.preservedOutput).toEqual(before.step.output.preservedOutput);
+    expect(after.task.status).toBe("running");
+    expect(after.task.billed_at).toBeNull();
+    expect(after.node).toEqual(before.node);
+  });
+
+  it("replays the first policy and price after deployment configuration changes", async () => {
+    const { fixture, input } = await seedUnopened();
+    const first = await openConsumption(input);
+    const before = await snapshot(fixture);
+    const replay = await openConsumption({ ...input, chargeTo: "platform", creditMultiplier: 9,
+      containerPricing: { ...input.containerPricing!, configVersion: "changed", size: { vcpu: 4, memory_gib: 16, disk_gb: 32 } },
+    });
+    expect(replay).toEqual(first);
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("rejects another upstream identity without replacing the original pending fact", async () => {
+    const { fixture, input } = await seedUnopened();
+    await openConsumption(input);
+    const before = await snapshot(fixture);
+    await expect(openConsumption({ ...input, identity: { ...input.identity, kind: "container", containerClass: "MediaContainer", jobId: "replacement", chunkIndex: 0 } })).rejects.toThrow();
+    expect(await snapshot(fixture)).toEqual(before);
+  });
+
+  it("requires the actual owning container step and refuses a foreign task step", async () => {
+    const { fixture, input } = await seedUnopened();
+    const other = await seedUnopened();
+    await expect(openConsumption({ ...input, stepId: other.fixture.stepId })).rejects.toThrow();
+    await rawPg`UPDATE task_upstream_steps SET kind = 'generate' WHERE id = ${fixture.stepId}`;
+    await expect(openConsumption(input)).rejects.toThrow();
+    expect((await snapshot(fixture)).step.output.miniToolConsumption).toBeUndefined();
+  });
+
+  it("requires a provider prediction to match the actual persisted step", async () => {
+    const fixture = await seed({ state: "pending", parentStatus: "running" });
+    await rawPg`UPDATE tasks SET result = result - 'settlement', completed_at = NULL WHERE id = ${fixture.taskId}`;
+    await rawPg`UPDATE task_upstream_steps SET output = output - 'miniToolConsumption' WHERE id = ${fixture.stepId}`;
+    const input: OpenInput = { taskId: fixture.taskId, stepId: fixture.stepId, identity: fixture.identity,
+      chargeTo: "user", creditMultiplier: 2, containerPricing: null };
+    await expect(openConsumption({ ...input, identity: { kind: "provider", provider: "wavespeed", predictionId: "other" } })).rejects.toThrow();
+    expect(await openConsumption(input)).toEqual(fixture.consumption);
+  });
+
+  it("keeps incomplete costs pending when a failed computation closes its call set", async () => {
+    const { fixture, input } = await seedUnopened();
+    await openConsumption(input);
+    await expect(closeConsumptionSet(fixture.taskId)).rejects.toThrow();
+    await rawPg`UPDATE tasks SET status = 'failed', completed_at = now() WHERE id = ${fixture.taskId}`;
+    const closed = await closeConsumptionSet(fixture.taskId);
+    expect(closed).toMatchObject({ consumptionSetComplete: true, state: "waiting", pendingConsumptionKeys: [fixture.consumption.consumptionKey] });
+    const before = await snapshot(fixture);
+    expect(await closeConsumptionSet(fixture.taskId)).toEqual(closed);
+    expect(await openConsumption(input)).toEqual(fixture.consumption);
+    expect(await snapshot(fixture)).toEqual(before);
+    const settle: unknown = Reflect.get(domain, "settleMiniToolCharge");
+    expect(await (settle as (id: string) => Promise<unknown>)(fixture.taskId)).toEqual({ state: "pending" });
+    expect((await snapshot(fixture)).task.billed_at).toBeNull();
+  });
+
+  it("never creates a new consumption after computation has ended", async () => {
+    const { fixture, input } = await seedUnopened();
+    await rawPg`UPDATE tasks SET status = 'failed', completed_at = now() WHERE id = ${fixture.taskId}`;
+    await closeConsumptionSet(fixture.taskId);
+    const before = await snapshot(fixture);
+    await expect(openConsumption(input)).rejects.toThrow();
+    expect(await snapshot(fixture)).toEqual(before);
+    expect(before.task.result.settlement.pendingConsumptionKeys).toEqual([]);
+  });
+
+  it("serializes first writers on the immutable task row before reading the step", async () => {
+    const { fixture, input } = await seedUnopened();
+    const gate = await rawPg.reserve();
+    const running: Promise<Consumption>[] = [];
+    await gate`BEGIN`;
+    try {
+      await gate`SELECT id FROM tasks WHERE id = ${fixture.taskId} FOR UPDATE`;
+      running.push(openConsumption(input));
+      void running[0]!.catch(() => undefined);
+      await waitUntilBlockedOn(rawPg, ["tasks", "for update"], 1);
+      running.push(openConsumption(input));
+      void running[1]!.catch(() => undefined);
+      await waitUntilBlockedOn(rawPg, ["tasks", "for update"], 2);
+    } finally {
+      await gate`ROLLBACK`;
+      gate.release();
+    }
+    const [first, second] = await Promise.all(running);
+    expect(first).toEqual(second);
+    const after = await snapshot(fixture);
+    expect(after.task.result.settlement).toMatchObject({ version: 1, pendingConsumptionKeys: [fixture.consumption.consumptionKey] });
+    expect(after.usage).toEqual([]);
+  });
+
+  it("rolls back the new step fact if the settlement write fails", async () => {
+    const { fixture, input } = await seedUnopened();
+    const before = await snapshot(fixture);
+    const triggerName = `fail_open_${crypto.randomUUID().replaceAll("-", "")}`;
+    await rawPg.unsafe(`CREATE FUNCTION ${triggerName}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.id = '${fixture.taskId}'::uuid THEN RAISE EXCEPTION 'forced opening settlement failure'; END IF;
+      RETURN NEW; END $$`);
+    await rawPg.unsafe(`CREATE TRIGGER ${triggerName} BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION ${triggerName}()`);
+    try {
+      await expect(openConsumption(input)).rejects.toThrow();
+      expect(await snapshot(fixture)).toEqual(before);
+    } finally {
+      await rawPg.unsafe(`DROP TRIGGER ${triggerName} ON tasks`);
+      await rawPg.unsafe(`DROP FUNCTION ${triggerName}()`);
+    }
+    await openConsumption(input);
+    expect((await snapshot(fixture)).step.output.miniToolConsumption).toEqual(fixture.consumption);
+  });
 });
 afterAll(async () => {
   await rawPg.end();
