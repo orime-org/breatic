@@ -48,12 +48,19 @@ async function pendingKeys(taskId: string, tx: DbTx): Promise<string[]> {
  * The task PK lock serializes producers, recorders and the final billing fence;
  * this transaction performs no provider, storage or container IO.
  * @param input - The owned step, actual identity and initial internal price policy.
+ * @param transaction - An outer transaction that also freezes the execution request.
  * @returns Its original consumption, unchanged on same-identity replay.
  * @throws {Error} When ownership, identity, the submission fence or persistence fails.
  */
-export async function openMiniToolConsumption(input: OpenMiniToolConsumptionInput): Promise<MiniToolConsumptionRecord> {
+export async function openMiniToolConsumption(input: OpenMiniToolConsumptionInput, transaction?: DbTx): Promise<MiniToolConsumptionRecord> {
   const request = openMiniToolConsumptionInputSchema.parse(input);
-  return db.transaction(async (tx) => {
+  /**
+   * Apply the producer transition using the caller's actual transaction.
+   * @param tx - The transaction holding or acquiring the original parent lock.
+   * @returns The first frozen consumption.
+   * @throws {Error} When the ownership, fence or persistence check fails.
+   */
+  const execute = async (tx: DbTx): Promise<MiniToolConsumptionRecord> => {
     const task = await taskRepo.lockMiniToolConsumptionTask(request.taskId, tx);
     if (!task || task.source !== "mini_tool") throw new Error("Mini-tool consumption has no owning task");
     const step = await upstreamStepRepo.getStepForConsumption(task.id, request.stepId, tx);
@@ -90,7 +97,8 @@ export async function openMiniToolConsumption(input: OpenMiniToolConsumptionInpu
       leaseToken: null, leaseUntil: null, lastError: null,
     }), tx);
     return fact;
-  });
+  };
+  return transaction === undefined ? db.transaction(execute) : execute(transaction);
 }
 
 /**

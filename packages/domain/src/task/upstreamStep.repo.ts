@@ -13,6 +13,7 @@ import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, taskUpstreamSteps } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { MiniToolConsumptionRecord } from "@domain/mini-tool/consumption.types.js";
+import type { MiniToolPlanJobRequest } from "@breatic/shared";
 
 /** What a step does; decides what the executor reads off its answer. */
 export type UpstreamStepKind =
@@ -97,6 +98,25 @@ export async function storeMiniToolConsumption(
   }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
     .returning({ id: taskUpstreamSteps.id });
   if (rows.length !== 1) throw new Error("Consumption step no longer belongs to its task");
+}
+
+/**
+ * Freeze the complete planned request in its owning step before submission.
+ * @param taskId - The immutable parent whose row lock is held.
+ * @param stepId - The parent-owned container step.
+ * @param request - The first validated indexed job request.
+ * @param tx - The transaction that also stores its pending consumption and period.
+ * @returns Nothing.
+ * @throws {Error} When the step disappeared or persistence fails.
+ */
+export async function storeMiniToolPlanJob(taskId: string, stepId: string, request: MiniToolPlanJobRequest, tx: DbTx): Promise<void> {
+  const patch = sql.param({ miniToolPlanJob: request }, taskUpstreamSteps.output);
+  const rows = await tx.update(taskUpstreamSteps).set({
+    output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Planned job step no longer belongs to its task");
 }
 
 /**
