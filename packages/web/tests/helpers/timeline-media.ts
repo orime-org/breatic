@@ -138,14 +138,16 @@ export async function expectTimelineVideoReady(page: Page, fileUrl: string): Pro
  */
 function isTimelineUploadRequest(request: Request): boolean {
   const path = new URL(request.url()).pathname;
-  return path === '/api/v1/assets/upload-ticket' || /(?:^|\/)uploads(?:\/|$)/.test(path);
+  return path === '/api/v1/assets/upload-ticket' || path === '/api/v1/assets/upload-status'
+    || /(?:^|\/)uploads(?:\/|$)/.test(path);
 }
 
 /**
  * Upload the repository's real MP4 through Timeline's unmodified upload and authorization APIs.
+ * @param fixturePath - The existing MP4 fixture to upload; defaults to the ordinary Timeline sample.
  * @throws {Error} When upload, canonical resolution, placement acceptance or decoding fails.
  */
-export async function uploadTimelineVideo(page: Page, projectId: string): Promise<TimelineUpload> {
+export async function uploadTimelineVideo(page: Page, projectId: string, fixturePath = resolve(__dirname, '../fixtures/media-history.mp4')): Promise<TimelineUpload> {
   const outlet = visibleSpace(page);
   await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
   const { defaults: { fps } } = await dataOf<TimelineClientLimits>(
@@ -160,7 +162,7 @@ export async function uploadTimelineVideo(page: Page, projectId: string): Promis
   await dialog.getByTestId('timeline-file-input').setInputFiles({
     name: `timeline-${crypto.randomUUID()}.mp4`,
     mimeType: 'video/mp4',
-    buffer: readFileSync(resolve(__dirname, '../fixtures/media-history.mp4')),
+    buffer: readFileSync(fixturePath),
   });
   const observation: { response?: Response; failure?: string } = {};
   /** Record failures without including upload tokens, request bodies or signed query parameters. */
@@ -189,8 +191,8 @@ export async function uploadTimelineVideo(page: Page, projectId: string): Promis
       if (await error.isVisible()) observation.failure ??= `Timeline upload: ${await error.innerText()}`;
       return observation.failure !== undefined ? 'failed' : observation.response !== undefined ? 'authorized' : 'waiting';
     }, {
-      // Keep the previous response wait's 15-second budget; transfer failures terminate it immediately.
-      timeout: 15_000,
+      // Match watchQueuedFinish's asynchronous registration budget; transfer failures still terminate immediately.
+      timeout: 120_000,
       message: 'Timeline upload must authorize the registered asset or report its transfer failure',
     }).not.toBe('waiting');
     expect(observation.failure, 'Timeline upload failed before Project asset authorization').toBeUndefined();

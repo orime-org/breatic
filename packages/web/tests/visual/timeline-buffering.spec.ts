@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /** Native buffering at the Timeline clock boundary (inner#1707). */
+import { writeFileSync } from 'node:fs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
 import { expect, type Page, type Route } from 'playwright/test';
 
@@ -15,6 +16,50 @@ import { startTimelineRange, type TimelineRange } from '../helpers/timeline-rang
 interface TransportSample { at: number; time: number; frame: number; readyState: number; paused: boolean; ended: boolean; waitingEvents: number; error: number | null }
 
 test.use({ viewport: { width: 1680, height: 1100 } });
+
+/**
+ * Persist numeric evidence even with Playwright's list reporter.
+ * @throws {Error} When the test output cannot be written or attached.
+ */
+async function saveEvidence(name: string, evidence: unknown): Promise<void> {
+  const path = test.info().outputPath(`${name}.json`);
+  writeFileSync(path, JSON.stringify(evidence, null, 2), 'utf8');
+  await test.info().attach(name, { path, contentType: 'application/json' });
+}
+
+/**
+ * Capture the actual HTTP byte delivery and current native state, including first-frame failures.
+ * @throws {Error} When the numeric evidence cannot be written or attached.
+ */
+async function saveFixtureEvidence(page: Page, range: TimelineRange, name: string): Promise<void> {
+  const native = page.isClosed() ? { pageClosed: true } : await page.evaluate((fixtureUrl) => {
+    const root = document.querySelector('[data-space-outlet]:not([style*="display: none"])');
+    const video = root?.querySelector<HTMLVideoElement>('[data-testid="timeline-preview"] video');
+    if (video === undefined || video === null) return { mediaPresent: false };
+    return {
+      mediaPresent: true, usesLoopbackFixture: video.currentSrc === fixtureUrl,
+      currentTime: video.currentTime, duration: video.duration,
+      readyState: video.readyState, networkState: video.networkState,
+      paused: video.paused, ended: video.ended, seeking: video.seeking,
+      videoWidth: video.videoWidth, videoHeight: video.videoHeight, error: video.error?.code ?? null,
+      waitingEvents: Number(video.getAttribute('data-test-native-waiting') ?? '0'),
+      buffered: Array.from({ length: video.buffered.length }, (_, index) => ({ start: video.buffered.start(index), end: video.buffered.end(index) })),
+      seekable: Array.from({ length: video.seekable.length }, (_, index) => ({ start: video.seekable.start(index), end: video.seekable.end(index) })),
+      timelineFrame: Number(root?.querySelector('[role="slider"]')?.getAttribute('aria-valuenow') ?? '0'),
+      playControl: root?.querySelector('[data-testid="timeline-play"]')?.textContent ?? null,
+    };
+  }, range.url).catch((error: unknown) => ({ snapshotUnavailable: true, errorName: error instanceof Error ? error.name : 'UnknownError' }));
+  await saveEvidence(name, {
+    fixture: {
+      name: 'mini-tools/driving.mp4', sizeBytes: range.sizeBytes, holdStart: range.holdStart,
+      complete32KiBPrefixBlocks: Math.floor(range.holdStart / 32768),
+      rangeRequests: range.rangeRequests, heldResponses: range.heldResponses,
+      prefixBytesFlushed: range.prefixBytesFlushed, bodyBytesFlushed: range.bodyBytesFlushed,
+      requests: range.requests, errors: range.errors,
+    },
+    native,
+  });
+}
 
 /**
  * Read actual DOM/native facts on consecutive browser animation frames for a bounded interval.
@@ -82,7 +127,8 @@ async function withBufferingTimeline(
   try {
     await page.route(pattern, locateMedia);
     spaceId = await createSpace(page, 'timeline', `Timeline buffering ${crypto.randomUUID()}`);
-    const uploaded = await uploadTimelineVideo(page, projectId);
+    const uploaded = await uploadTimelineVideo(page, projectId, range.fixturePath);
+    await saveFixtureEvidence(page, range, 'native-first-frame');
     const canonicalAsset = authorization.asset;
     if (canonicalAsset === null) throw new Error('the uploaded video was not authorized through its Project');
     expect(uploaded.asset).toEqual({ ...canonicalAsset, fileUrl: range.url });
@@ -94,10 +140,17 @@ async function withBufferingTimeline(
     expect(errors.unexpected).toEqual([]);
   } finally {
     try {
-      if (spaceId !== null) await deleteSpace(page, spaceId);
+      await saveFixtureEvidence(page, range, 'native-final-snapshot');
     } finally {
-      await page.unroute(pattern, locateMedia);
-      await range.close();
+      try {
+        if (spaceId !== null) await deleteSpace(page, spaceId);
+      } finally {
+        try {
+          await page.unroute(pattern, locateMedia);
+        } finally {
+          await range.close();
+        }
+      }
     }
   }
 }
@@ -137,9 +190,8 @@ async function enterNativeWaiting(page: Page, uploaded: TimelineUpload, range: T
   expect(Math.max(...waiting.map((sample) => sample.time)) - Math.min(...waiting.map((sample) => sample.time))).toBeLessThan(uploaded.fps.den / uploaded.fps.num);
   expect(waiting[0].frame).toBeGreaterThan(0);
   expect(waiting[0].frame).toBeLessThan(uploaded.durationFrames - 1);
-  await test.info().attach('native-playing-then-waiting', {
-    body: JSON.stringify({ fps: uploaded.fps, advancing, waiting }), contentType: 'application/json',
-  });
+  await saveEvidence('native-playing-then-waiting', { fps: uploaded.fps, advancing, waiting });
+  await saveFixtureEvidence(page, range, 'native-waiting-byte-delivery');
   return waiting;
 }
 
@@ -155,7 +207,7 @@ test('native starvation freezes the Timeline clock and releasing the same HTTP r
     expect(resumed[0].frame).toBeGreaterThan(waiting.at(-1)!.frame);
     expect(resumed.at(-1)!.time).toBeGreaterThan(resumed[0].time);
     expect(resumed.at(-1)!.frame).toBeGreaterThan(resumed[0].frame);
-    await test.info().attach('native-resumed', { body: JSON.stringify({ fps: uploaded.fps, resumed }), contentType: 'application/json' });
+    await saveEvidence('native-resumed', { fps: uploaded.fps, resumed });
     await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
   });
@@ -180,6 +232,6 @@ test('pausing during native starvation keeps the Timeline paused when held HTTP 
     expect(afterRelease.at(-1)!.time).toBeCloseTo(paused[0].time, 6);
     await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
-    await test.info().attach('native-paused-across-release', { body: JSON.stringify({ fps: uploaded.fps, paused, afterRelease }), contentType: 'application/json' });
+    await saveEvidence('native-paused-across-release', { fps: uploaded.fps, paused, afterRelease });
   });
 });

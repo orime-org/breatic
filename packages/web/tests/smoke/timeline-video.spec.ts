@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /** Real registered video, permissions and concurrent Timeline arrangement (inner#1707). */
-import { expect } from 'playwright/test';
+import { Buffer } from 'node:buffer';
+import { expect, type Page, type WebSocketRoute } from 'playwright/test';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
@@ -19,6 +20,49 @@ import {
   watchTimelineErrors,
   withTimelinePeer,
 } from '../helpers/timeline-media';
+
+/** Original application frames temporarily withheld from one connected browser. */
+interface TimelineDeliveryGate {
+  holding: boolean;
+  pending: { client: WebSocketRoute; message: Buffer }[];
+}
+
+/**
+ * Connect to the real server and delay only its binary application frames during the concurrent-edit window.
+ * @throws {Error} When Playwright cannot install the route before navigation.
+ */
+async function installTimelineDeliveryGate(page: Page): Promise<TimelineDeliveryGate> {
+  const gate: TimelineDeliveryGate = { holding: false, pending: [] };
+  await page.routeWebSocket('**/*', (client) => {
+    const server = client.connectToServer();
+    if (client.protocols().includes('vite-hmr')) return;
+    // Only the server-side onMessage is overridden: client→server and close forwarding remain real and automatic.
+    server.onMessage((message) => {
+      if (gate.holding && Buffer.isBuffer(message)) gate.pending.push({ client, message });
+      else client.send(message);
+    });
+  });
+  return gate;
+}
+
+/**
+ * Deliver the exact original frames in their original receive order and resume normal forwarding.
+ * @throws {Error} When the real routed socket cannot accept a queued frame.
+ */
+function flushTimelineDelivery(gate: TimelineDeliveryGate): void {
+  gate.holding = false;
+  for (const { client, message } of gate.pending.splice(0)) client.send(message);
+}
+
+/**
+ * Assert that the existing Project connection policy still permits normal UI interaction.
+ * @throws {Error} When a disconnection, auth failure or workspace curtain appears.
+ */
+async function expectTimelineConnected(page: Page): Promise<void> {
+  await expect(page.getByTestId('connection-banner')).toHaveCount(0);
+  await expect(page.getByTestId('workspace-disabled-overlay')).toHaveCount(0);
+  await expect(visibleSpace(page).getByTestId('timeline-add-media')).toBeEnabled();
+}
 
 test.use({ viewport: { width: 1680, height: 1100 } });
 
@@ -132,8 +176,9 @@ test('a real Viewer sees the registered Timeline clips without material or start
   }
 });
 
-test('two Editors retain independent offline moves, see the merged overlap and repair it through start-frame editing @needs-storage @needs-ingest', async ({ page, browser }) => {
+test('two connected Editors merge concurrent moves into a visible overlap and repair it through conflict rows @needs-storage @needs-ingest', async ({ page, browser }) => {
   const ownerErrors = watchTimelineErrors(page);
+  const ownerDelivery = await installTimelineDeliveryGate(page);
   await openSmokeProject(page);
   const projectId = smokeProjectId();
   const projectUrl = page.url();
@@ -144,9 +189,10 @@ test('two Editors retain independent offline moves, see the merged overlap and r
     const secondId = await addProjectTimelineVideo(page, uploaded.asset.assetId);
     const duration = uploaded.durationFrames;
     const farStart = duration * 3;
-    await withTimelinePeer(page, browser, projectId, 'editor', async (peer, context) => {
+    await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
+      const peerDelivery = await installTimelineDeliveryGate(peer);
       await peer.goto(projectUrl);
       await openTimeline(peer, spaceId);
       await expect.poll(() => timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
@@ -154,41 +200,36 @@ test('two Editors retain independent offline moves, see the merged overlap and r
         await expectTimelineVideoReady(member, uploaded.asset.fileUrl);
         await expectTimelineStart(member, uploaded.clipId, 0, duration);
         await expectTimelineStart(member, secondId, duration, duration);
-        await expect(visibleSpace(member).getByTestId('timeline-edit-start')).toBeEnabled();
+        await expectTimelineConnected(member);
         await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
       }
-      ownerErrors.offline = true;
-      peerErrors.offline = true;
+      ownerDelivery.holding = true;
+      peerDelivery.holding = true;
       try {
-        await page.context().setOffline(true);
-        await context.setOffline(true);
-        await setTimelineConnection(page, projectId, spaceId, false);
-        await setTimelineConnection(peer, projectId, spaceId, false);
         await moveTimelineClip(page, uploaded.clipId, farStart, duration);
         await expectTimelineStart(peer, uploaded.clipId, 0, duration);
         await moveTimelineClip(peer, secondId, farStart, duration);
         await expectTimelineStart(page, secondId, duration, duration);
-        // Both branches are legal, retain both placements, and have not received the other's move.
+        // Each edit used the same initial layout; both sockets still send real updates to the server.
+        await expect.poll(() => ownerDelivery.pending.length).toBeGreaterThan(0);
+        await expect.poll(() => peerDelivery.pending.length).toBeGreaterThan(0);
         for (const member of [page, peer]) {
+          await expectTimelineConnected(member);
           await expect(visibleSpace(member).locator('[data-testid^="timeline-clip-"]')).toHaveCount(2);
           await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
         }
         await expectTimelineStart(page, uploaded.clipId, farStart, duration);
         await expectTimelineStart(peer, secondId, farStart, duration);
-        await page.context().setOffline(false);
-        await context.setOffline(false);
-        await setTimelineConnection(page, projectId, spaceId, true);
-        await setTimelineConnection(peer, projectId, spaceId, true);
-        ownerErrors.offline = false;
-        peerErrors.offline = false;
+        flushTimelineDelivery(ownerDelivery);
+        flushTimelineDelivery(peerDelivery);
         for (const member of [page, peer]) {
           const outlet = visibleSpace(member);
-          await expect(outlet.locator('[data-testid^="timeline-clip-"]')).toHaveCount(2);
+          await expectTimelineConnected(member);
           await expect(outlet.getByTestId(`timeline-conflict-${uploaded.clipId}`)).toContainText(`Start ${farStart} · Duration ${duration} frames`);
           await expect(outlet.getByTestId(`timeline-conflict-${secondId}`)).toContainText(`Start ${farStart} · Duration ${duration} frames`);
           expect((await timelineClipIds(member)).sort()).toEqual([uploaded.clipId, secondId].sort());
         }
-        // Conflict rows keep overlapping placements reachable even when track buttons cover each other.
+        // The conflict row reaches the selected placement without forcing clicks through an overlapping track button.
         await moveTimelineClip(page, secondId, farStart + duration, duration);
         for (const member of [page, peer]) {
           await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
@@ -198,9 +239,73 @@ test('two Editors retain independent offline moves, see the merged overlap and r
         }
         expect(peerErrors.unexpected).toEqual([]);
       } finally {
-        // Keep the owner's actual connection usable by the ordinary Space deletion helper on failure.
+        flushTimelineDelivery(ownerDelivery);
+        flushTimelineDelivery(peerDelivery);
+      }
+    });
+    expect(ownerErrors.unexpected).toEqual([]);
+  } finally {
+    flushTimelineDelivery(ownerDelivery);
+    await deleteSpace(page, spaceId);
+  }
+});
+
+test('a disconnected Editor keeps the Timeline behind the existing workspace curtain and resumes shared editing after reconnecting @needs-storage @needs-ingest', async ({ page, browser }) => {
+  const ownerErrors = watchTimelineErrors(page);
+  await openSmokeProject(page);
+  const projectId = smokeProjectId();
+  const projectUrl = page.url();
+  const spaceId = await createSpace(page, 'timeline', `Timeline reconnect ${crypto.randomUUID()}`);
+  try {
+    const uploaded = await uploadTimelineVideo(page, projectId);
+    ownerErrors.mediaUrls.add(uploaded.asset.fileUrl);
+    const secondId = await addProjectTimelineVideo(page, uploaded.asset.assetId);
+    const duration = uploaded.durationFrames;
+    await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
+      const peerErrors = watchTimelineErrors(peer);
+      peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
+      await peer.goto(projectUrl);
+      await openTimeline(peer, spaceId);
+      await expect.poll(() => timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
+      for (const member of [page, peer]) {
+        await expectTimelineVideoReady(member, uploaded.asset.fileUrl);
+        await expectTimelineStart(member, uploaded.clipId, 0, duration);
+        await expectTimelineStart(member, secondId, duration, duration);
+        await expectTimelineConnected(member);
+      }
+      ownerErrors.offline = true;
+      try {
+        await page.context().setOffline(true);
+        await setTimelineConnection(page, projectId, spaceId, false);
+        await expect(page.getByTestId('connection-banner')).toHaveAttribute('data-status', 'disconnected');
+        await expect(page.getByTestId('workspace-disabled-overlay')).toBeVisible();
+        // Inspect retained content without interacting through the existing disconnection curtain.
+        expect(await timelineClipIds(page)).toEqual([uploaded.clipId, secondId]);
+        await expect(visibleSpace(page).getByText(`Start ${duration} · Duration ${duration} frames`, { exact: true })).toHaveCount(1);
+        await expectTimelineConnected(peer);
+        expect(await timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
         await page.context().setOffline(false);
-        await context.setOffline(false);
+        await setTimelineConnection(page, projectId, spaceId, true);
+        ownerErrors.offline = false;
+        await expectTimelineConnected(page);
+        for (const member of [page, peer]) {
+          expect(await timelineClipIds(member)).toEqual([uploaded.clipId, secondId]);
+          await expectTimelineStart(member, uploaded.clipId, 0, duration);
+          await expectTimelineStart(member, secondId, duration, duration);
+        }
+        // Editing resumes only after the real connection and its normal Project policy are restored.
+        await moveTimelineClip(page, uploaded.clipId, duration * 3, duration);
+        await expectTimelineStart(peer, uploaded.clipId, duration * 3, duration);
+        await moveTimelineClip(peer, secondId, duration * 4, duration);
+        await expectTimelineStart(page, secondId, duration * 4, duration);
+        for (const member of [page, peer]) {
+          await expectTimelineConnected(member);
+          await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
+          expect(await timelineClipIds(member)).toEqual([uploaded.clipId, secondId]);
+        }
+        expect(peerErrors.unexpected).toEqual([]);
+      } finally {
+        await page.context().setOffline(false);
         await setTimelineConnection(page, projectId, spaceId, true);
       }
     });
