@@ -14,6 +14,7 @@ import { db, taskUpstreamSteps } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { MiniToolConsumptionRecord } from "@domain/mini-tool/consumption.types.js";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
+import type { MiniToolStepState } from "@domain/mini-tool/upstream-step.types.js";
 
 /** What a step does; decides what the executor reads off its answer. */
 export type UpstreamStepKind =
@@ -243,4 +244,30 @@ export async function failOpenSteps(taskId: string, reason: string): Promise<voi
     .update(taskUpstreamSteps)
     .set(failedWith(reason))
     .where(and(eq(taskUpstreamSteps.taskId, taskId), inArray(taskUpstreamSteps.status, ["pending", "submitted"])));
+}
+
+
+/**
+ * Merge only planned execution facts after the caller locks the immutable parent.
+ * @param taskId - The task whose lock serializes result and consumption writers.
+ * @param stepId - The step belonging to that task.
+ * @param execution - The operation-owned state, without fee or complete-plan patches.
+ * @param columns - Only the step status and canonical provider identity may also change.
+ * @param columns.status - The monotonic execution state, when it changes.
+ * @param columns.predictionId - The first canonical provider identity, when newly received.
+ * @param tx - The same transaction used by the identity and consumption producer.
+ * @returns Nothing after exactly one owned row was written.
+ * @throws {Error} When the row disappeared, belongs elsewhere or SQL fails.
+ */
+export async function storeMiniToolStepExecution(
+  taskId: string, stepId: string, execution: MiniToolStepState,
+  columns: { status?: UpstreamStepStatus; predictionId?: string }, tx: DbTx,
+): Promise<void> {
+  const patch = sql.param({ miniToolStep: execution }, taskUpstreamSteps.output);
+  const rows = await tx.update(taskUpstreamSteps).set({
+    ...columns, output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Planned execution step no longer belongs to its task");
 }

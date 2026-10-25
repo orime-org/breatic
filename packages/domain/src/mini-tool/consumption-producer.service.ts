@@ -3,9 +3,10 @@
 
 import { z } from "zod";
 import { db, type DbTx } from "@breatic/core";
-import { canonicalMiniToolValue, miniToolConsumptionKey } from "@breatic/shared/mini-tools";
+import { canonicalMiniToolValue, miniToolConsumptionKey, hashMiniToolValue } from "@breatic/shared/mini-tools";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
+import { miniToolStepStateSchema, hasUnresolvedMiniToolStepAttempts } from "@domain/mini-tool/upstream-step.types.js";
 import {
   miniToolConsumptionRecordSchema, miniToolSettlementSchema, openMiniToolConsumptionInputSchema,
   type MiniToolConsumptionRecord, type MiniToolSettlement, type OpenMiniToolConsumptionInput,
@@ -54,51 +55,94 @@ async function pendingKeys(taskId: string, tx: DbTx): Promise<string[]> {
  */
 export async function openMiniToolConsumption(input: OpenMiniToolConsumptionInput, transaction?: DbTx): Promise<MiniToolConsumptionRecord> {
   const request = openMiniToolConsumptionInputSchema.parse(input);
-  /**
-   * Apply the producer transition using the caller's actual transaction.
-   * @param tx - The transaction holding or acquiring the original parent lock.
-   * @returns The first frozen consumption.
-   * @throws {Error} When the ownership, fence or persistence check fails.
-   */
-  const execute = async (tx: DbTx): Promise<MiniToolConsumptionRecord> => {
-    const task = await taskRepo.lockMiniToolConsumptionTask(request.taskId, tx);
-    if (!task || task.source !== "mini_tool") throw new Error("Mini-tool consumption has no owning task");
-    const step = await upstreamStepRepo.getStepForConsumption(task.id, request.stepId, tx);
-    if (!step) throw new Error("Mini-tool consumption step belongs to another task");
-    const key = await miniToolConsumptionKey({ taskId: task.id, stepId: step.id, identity: request.identity });
-    if (step.output.miniToolConsumption !== undefined) {
-      const held = miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption);
-      if (held.consumptionKey !== key || canonicalMiniToolValue(held.identity) !== canonicalMiniToolValue(request.identity)) {
-        throw new Error("Consumption upstream identity cannot be replaced");
-      }
-      return held;
+  return transaction === undefined
+    ? db.transaction((tx) => produceConsumption(request, tx, false))
+    : produceConsumption(request, transaction, false);
+}
+
+/**
+ * Apply the common producer transition after its caller has established call authority.
+ * @param request - The original consumption identity and first price policy.
+ * @param tx - The shared identity, expense and task-period transaction.
+ * @param recoverTerminalAttempt - Internal authority from a verified persisted old submit intent.
+ * @returns The original or newly pending expense without estimating a missing amount.
+ * @throws {Error} When ownership, immutable identity or the submission fence fails.
+ */
+async function produceConsumption(request: OpenMiniToolConsumptionInput, tx: DbTx, recoverTerminalAttempt: boolean): Promise<MiniToolConsumptionRecord> {
+  const task = await taskRepo.lockMiniToolConsumptionTask(request.taskId, tx);
+  if (!task || task.source !== "mini_tool") throw new Error("Mini-tool consumption has no owning task");
+  const step = await upstreamStepRepo.getStepForConsumption(task.id, request.stepId, tx);
+  if (!step) throw new Error("Mini-tool consumption step belongs to another task");
+  const key = await miniToolConsumptionKey({ taskId: task.id, stepId: step.id, identity: request.identity });
+  if (step.output.miniToolConsumption !== undefined) {
+    const held = miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption);
+    if (held.consumptionKey !== key || canonicalMiniToolValue(held.identity) !== canonicalMiniToolValue(request.identity)) {
+      throw new Error("Consumption upstream identity cannot be replaced");
     }
-    const previous = currentPeriod(task.result);
-    if (task.billedAt !== null || (task.status !== "pending" && task.status !== "running") ||
-      previous.consumptionSetComplete === true || previous.state === "settled") {
-      throw new Error("Mini-tool consumption set no longer accepts new calls");
+    return held;
+  }
+  const previous = currentPeriod(task.result);
+  if (task.billedAt !== null || (!recoverTerminalAttempt && task.status !== "pending" && task.status !== "running") ||
+    previous.consumptionSetComplete === true || previous.state === "settled") {
+    throw new Error("Mini-tool consumption set no longer accepts new calls");
+  }
+  if (request.identity.kind === "container") {
+    if (step.kind !== "container_job" || step.endpoint !== request.identity.containerClass) {
+      throw new Error("Container consumption requires its actual owning class step");
     }
-    if (request.identity.kind === "container") {
-      if (step.kind !== "container_job" || step.endpoint !== request.identity.containerClass) {
-        throw new Error("Container consumption requires its actual owning class step");
-      }
-    } else if (step.predictionId !== request.identity.predictionId) {
-      throw new Error("Consumption prediction differs from its upstream step");
-    }
-    const fact = miniToolConsumptionRecordSchema.parse({
-      schemaVersion: 1, consumptionKey: key, identity: request.identity, state: "pending",
-      chargeTo: request.chargeTo, creditMultiplier: request.creditMultiplier, containerPricing: request.containerPricing,
-      costUsd: null, costSource: null, raw: null, credits: null,
-    });
-    await upstreamStepRepo.storeMiniToolConsumption(task.id, step.id, fact, tx);
-    await taskRepo.storeMiniToolSettlement(task.id, miniToolSettlementSchema.parse({
-      ...previous, version: previous.version + 1, state: "waiting", consumptionSetComplete: false,
-      pendingConsumptionKeys: await pendingKeys(task.id, tx), nextAttemptAt: await taskRepo.miniToolSettlementDatabaseNow(task.id, tx),
-      leaseToken: null, leaseUntil: null, lastError: null,
-    }), tx);
-    return fact;
-  };
-  return transaction === undefined ? db.transaction(execute) : execute(transaction);
+  } else if (step.predictionId !== request.identity.predictionId) {
+    throw new Error("Consumption prediction differs from its upstream step");
+  }
+  const fact = miniToolConsumptionRecordSchema.parse({
+    schemaVersion: 1, consumptionKey: key, identity: request.identity, state: "pending",
+    chargeTo: request.chargeTo, creditMultiplier: request.creditMultiplier, containerPricing: request.containerPricing,
+    costUsd: null, costSource: null, raw: null, credits: null,
+  });
+  await upstreamStepRepo.storeMiniToolConsumption(task.id, step.id, fact, tx);
+  await taskRepo.storeMiniToolSettlement(task.id, miniToolSettlementSchema.parse({
+    ...previous, version: previous.version + 1, state: "waiting", consumptionSetComplete: false,
+    pendingConsumptionKeys: await pendingKeys(task.id, tx), nextAttemptAt: await taskRepo.miniToolSettlementDatabaseNow(task.id, tx),
+    leaseToken: null, leaseUntil: null, lastError: null,
+  }), tx);
+  return fact;
+}
+
+/**
+ * Recover an original provider receipt from an already persisted submit intent.
+ *
+ * This internal entry derives policy from SQL. It cannot authorize a POST or
+ * receive a caller-supplied flag that permits a new call after computation ended.
+ * @param input - A receipt for one exact original task, step and attempt.
+ * @param input.taskId - The original owning task.
+ * @param input.stepId - The original generate step.
+ * @param input.attemptId - The durable intent that received this identity.
+ * @param input.predictionId - The provider identity observed for that intent.
+ * @param tx - The transaction saving the matching provider identity.
+ * @returns The common producer's pending or already recorded original expense.
+ * @throws {Error} When the durable intent, scope, body, identity or closing fence conflicts.
+ */
+export async function openMiniToolConsumptionForStepAttempt(
+  input: { taskId: string; stepId: string; attemptId: string; predictionId: string }, tx: DbTx,
+): Promise<MiniToolConsumptionRecord> {
+  const task = await taskRepo.lockMiniToolConsumptionTask(input.taskId, tx);
+  const step = await upstreamStepRepo.getStepForConsumption(input.taskId, input.stepId, tx);
+  if (!task || task.source !== "mini_tool" || !step || step.kind !== "generate") throw new Error("Provider receipt has no owning planned step");
+  const state = miniToolStepStateSchema.parse(step.output.miniToolStep);
+  const scope = state.scope;
+  const attempt = state.attempts.find((candidate) => candidate.attemptId === input.attemptId);
+  if (scope.taskId !== task.id || scope.stepId !== step.id || scope.kind !== step.kind || scope.endpoint !== step.endpoint || scope.itemIndex !== step.itemIndex ||
+    state.requestBody === null || state.requestFingerprint === null || state.deadlineAt === null || state.chargeTo === null || state.creditMultiplier === null ||
+    !attempt || attempt.requestFingerprint !== state.requestFingerprint || attempt.resolution.kind !== "identity" ||
+    attempt.resolution.predictionId !== input.predictionId || step.predictionId !== input.predictionId || Date.parse(attempt.preparedAt) >= state.deadlineAt) {
+    throw new Error("Provider receipt differs from its persisted submit intent");
+  }
+  const fingerprint = await hashMiniToolValue({ kind: scope.kind, endpoint: scope.endpoint, requestBody: state.requestBody });
+  if (fingerprint !== state.requestFingerprint) throw new Error("Provider receipt request fingerprint is inconsistent");
+  return produceConsumption(openMiniToolConsumptionInputSchema.parse({
+    taskId: task.id, stepId: step.id,
+    identity: { kind: "provider", provider: "wavespeed", predictionId: input.predictionId },
+    chargeTo: state.chargeTo, creditMultiplier: state.creditMultiplier, containerPricing: null,
+  }), tx, true);
 }
 
 /**
@@ -123,6 +167,12 @@ export async function completeMiniToolConsumptionSet(taskId: string, transaction
     if (previous.consumptionSetComplete === true) return previous;
     if (task.status !== "completed" && task.status !== "failed") {
       throw new Error("Mini-tool computation must end before closing its call set");
+    }
+    const steps = await upstreamStepRepo.listSteps(id, tx);
+    for (const step of steps) {
+      if (step.output.miniToolStep !== undefined && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) {
+        throw new Error("Mini-tool submit attempts are still unresolved");
+      }
     }
     // A terminal notification adds no identity and cannot revoke an in-flight
     // lookup. Its existing lease will accept the answer or expire normally.
