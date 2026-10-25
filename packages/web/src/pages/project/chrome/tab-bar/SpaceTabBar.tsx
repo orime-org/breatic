@@ -209,7 +209,7 @@ interface SpaceTabBarProps {
   /** All Spaces in the project - used by the drawer to list everything. */
   allSpaces: ReadonlyArray<ProjectSpace>;
   activeSpaceId: string;
-  /** Project id - drawer uses it for row test ids only (RPCs are by handler). */
+  /** Owning Project, used by Space task-status readers and drawer row test ids. */
   projectId: string;
   onActivate: (id: string) => void;
   /** Returns a promise so the dialog can show progress and report errors. */
@@ -264,7 +264,7 @@ interface SpaceTabBarProps {
  * @param root0.spaces - Tabs currently open in the bar, in the order they are painted.
  * @param root0.allSpaces - All spaces in the project, used by the drawer to list everything.
  * @param root0.activeSpaceId - Id of the active space, used to highlight and scroll to its tab.
- * @param root0.projectId - Project id, threaded to the drawer for row test ids.
+ * @param root0.projectId - Owning Project for Space task-status readers and drawer row test ids.
  * @param root0.onActivate - Activates the space with the given id.
  * @param root0.onCreate - Creates a new space of the given type and name.
  * @param root0.onClose - Closes a tab (removes it from the bar without deleting the space).
