@@ -75,6 +75,7 @@ transfer:
   # A reference that finds the lock held tries again every read_lock_retry_ms
   # milliseconds, for up to read_lock_wait_seconds, before answering 429; two
   # large operations of one user arriving together are then read one after
-  # the other instead of the second being refused.
+  # the other. That holds only while this wait is longer than one read of the
+  # largest route_max_bytes from storage; past it the second gets 429.
   read_lock_wait_seconds: 10
   read_lock_retry_ms: 100
