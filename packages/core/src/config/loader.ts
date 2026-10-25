@@ -29,7 +29,7 @@ const MEMORY_RESERVE_FACTOR = 2;
 /**
  * How much room a fold may add to the request it is shortening.
  *
- * What the budget measured carries the memory as it stood; what goes out
+ * What a fold measured carries the memory as it stood; what goes out
  * carries what the fold just wrote. A pass has to stop this far short of the
  * keep line to leave room for it.
  * @param ceilings - An object carrying the two memory ceilings, in code points.
@@ -37,7 +37,7 @@ const MEMORY_RESERVE_FACTOR = 2;
  * @param ceilings.memory_project_max_size - The project ceiling.
  * @returns The reserve, in tokens at a code unit each.
  */
-function reservedForMemory(ceilings: {
+export function memoryReserveTokens(ceilings: {
   memory_conversation_max_size: number;
   memory_project_max_size: number;
 }): number {
@@ -161,30 +161,32 @@ const agentConfigSchema = z.object({
    */
   space_list_max_items: z.number().int().positive().default(200),
   /**
-   * How long an assembled request may be before a consolidation runs, in
-   * tokens.
-   *
-   * Measured against everything about to go to the model — system prompt,
-   * memory, tool definitions, history and this turn's question
-   * — because those are what fill a context window, and a budget that only
-   * counted the history would be blind to the segments it cannot shorten.
-   *
-   * The size is the provider's own count from the last turn. What it has no
-   * count for is measured in characters, a character counted as a token: a
-   * character is never more than a token in the tokenizers this build meets,
-   * so that can only fire early.
-   */
-  memory_budget_tokens: z.number().int().positive().default(850000),
-  /**
    * What one consolidation leaves behind, in tokens.
    *
-   * A pass takes whole turns from the oldest end until what remains is at or
-   * under this. Written as "what is left" rather than "how much to take"
-   * because a turn has no upper bound — forty model calls, every tool result
-   * stored whole — so no fixed amount can promise the reassembled request
-   * lands under the budget, and that promise is the point.
+   * A fold takes whole turns from the oldest end until what remains is at or
+   * under the lower of this and the main model's window less
+   * `max_output_tokens`, less the room memory itself takes. A fold runs only
+   * when the provider's own count leaves no room or the provider turned the
+   * request away as too long (inner#1567).
    */
   memory_keep_tokens: z.number().int().positive().default(500000),
+  /**
+   * The main model's context window when the model directory cannot say, in
+   * tokens: the smallest window among the providers that serve the default
+   * model.
+   */
+  context_window_fallback_tokens: z.number().int().positive().default(1000000),
+  /**
+   * How many folds a provider's "context too long" may set off in one turn.
+   * Past it the turn ends as too long rather than paying for another fold.
+   */
+  overflow_folds_per_turn: z.number().int().min(0).default(2),
+  /**
+   * How many times one fold halves what it hands the consolidation model
+   * after that call is turned away as too long; past it the window is
+   * discarded the way a failed fold is.
+   */
+  consolidation_shrink_attempts: z.number().int().min(0).default(6),
   /**
    * How much page text one `web_search` call asks the service for, in tokens.
    *
@@ -344,19 +346,6 @@ const agentConfigSchema = z.object({
   /** How long the words of one tool call's input, or of its result, may be in characters when a message is read back; a search matches a tool's input cut to the same length, never its result. A questionnaire (an ask_user call that did not fail) is written and matched whole, its answers included. */
   records_tool_text_max_chars: z.number().int().min(10).default(600),
 }).superRefine((config, ctx) => {
-  // A consolidation runs when the request is over the budget and takes turns
-  // until what remains is at or under the keep line. Put the keep line at or
-  // above the budget and the loop stops before it has taken anything: the
-  // plan comes back empty, folding never happens, and every turn from then on
-  // goes out at whatever length it happens to be — with nothing said anywhere.
-  if (config.memory_keep_tokens >= config.memory_budget_tokens) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["memory_keep_tokens"],
-      message: `memory_keep_tokens (${config.memory_keep_tokens}) must be below memory_budget_tokens (${config.memory_budget_tokens})`,
-    });
-  }
-
   // The pass runs to the keep line less the room the fold may add: it
   // measures a payload carrying the memory as it stood, and the request that
   // goes out carries what the fold wrote. Let the two ceilings reach that
@@ -365,7 +354,7 @@ const agentConfigSchema = z.object({
   // never stopping. Both are configs that load clean and are found by the
   // first reader whose conversation grows past the budget.
   // The room the fold may add, held back from the keep line below.
-  const reserved = reservedForMemory(config);
+  const reserved = memoryReserveTokens(config);
   if (reserved >= config.memory_keep_tokens) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -399,27 +388,6 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
 /** How long a cached prompt prefix lives. */
 export type PromptCacheTtl = AgentConfig["prompt_cache_ttl"];
-
-/**
- * The keep line a consolidation pass actually runs to.
- *
- * The configured line less the room the fold may add, worked out here so the
- * arithmetic has one home: the refinement above rejects a pair of ceilings
- * that would put this at or below zero, and it can only do that if it holds
- * back the same amount the pass will.
- * @param config - An object carrying the three figures this is worked out from.
- * @param config.memory_keep_tokens - The configured keep line.
- * @param config.memory_conversation_max_size - The conversation ceiling.
- * @param config.memory_project_max_size - The project ceiling.
- * @returns The line, in tokens.
- */
-export function effectiveKeepTokens(config: {
-  memory_keep_tokens: number;
-  memory_conversation_max_size: number;
-  memory_project_max_size: number;
-}): number {
-  return config.memory_keep_tokens - reservedForMemory(config);
-}
 
 /**
  * The agent config shape, for tests that assert on its bounds.
