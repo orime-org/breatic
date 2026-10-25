@@ -56,6 +56,7 @@ import type { ProbeReport } from "@ingest/media-metadata.js";
 import type { ProbeRequest } from "@ingest/probe-answer.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
+import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 
 /**
  * The most a cover frame may weigh.
@@ -220,17 +221,23 @@ createServer((req, res) => {
     void (async () => {
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk);
-      let job: RunBody;
+      let job: unknown;
       try {
-        job = JSON.parse(Buffer.concat(chunks).toString("utf8")) as RunBody;
+        job = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const version = typeof job === "object" && job !== null && "schemaVersion" in job ? job.schemaVersion : undefined;
+      if (version !== undefined && version !== 2) {
         res.writeHead(400).end();
         return;
       }
       // Taken before it runs: the object that sent it marks the job running
       // on this answer, and the run reports on its own when it ends.
       res.writeHead(202).end();
-      await runJob(job);
+      if (version === 2) await runPlanJob(job as PlanRunBody);
+      else await runJob(job as RunBody);
     })();
     return;
   }
