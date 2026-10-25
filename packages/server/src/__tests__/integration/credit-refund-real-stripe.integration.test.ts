@@ -31,7 +31,7 @@
  * Every case is tagged, so the default integration run leaves the file out
  * (`testNamePattern` in vitest.integration.config.ts). Run it on purpose:
  *
- *   STRIPE_SECRET_KEY=sk_test_… pnpm --filter @breatic/server test:integration \
+ *   STRIPE_SECRET_KEY=sk_test_… pnpm exec turbo run test:integration --filter=@breatic/server --env-mode=loose -- \
  *     -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
  *
  * The suite refuses any key that is not `sk_test_…`, before the first call.
@@ -51,7 +51,7 @@
  * It prints "Your webhook signing secret is whsec_…". In another:
  *
  *   STRIPE_CLI_FORWARDING=1 STRIPE_WEBHOOK_SECRET=whsec_… STRIPE_SECRET_KEY=sk_test_… \
- *     pnpm --filter @breatic/server test:integration \
+ *     pnpm exec turbo run test:integration --filter=@breatic/server --env-mode=loose -- \
  *     -t @needs-payments src/__tests__/integration/credit-refund-real-stripe.integration.test.ts
  *
  * Without STRIPE_CLI_FORWARDING=1 the webhook case reports itself skipped;
@@ -96,6 +96,7 @@ import {
   type SeededLot,
 } from "./credit-refund-fixtures.js";
 import { expectRestored, expectRestoredBell } from "./credit-refund-cells.js";
+import { realStripeTestConfig } from "./real-stripe-config.js";
 
 /**
  * Long enough for Stripe to move a `pm_card_refundFail` refund to `failed`
@@ -123,6 +124,7 @@ let running: RunningApp | undefined;
 /** The product app with the Stripe webhook, served only while the CLI forwards. */
 let webhookApp: RunningApp | undefined;
 let stripe: Stripe;
+let stripeAccountId: string;
 const lots: SeededLot[] = [];
 
 beforeAll(async () => {
@@ -135,7 +137,7 @@ beforeAll(async () => {
     throw new Error("STRIPE_CLI_FORWARDING=1 needs STRIPE_WEBHOOK_SECRET set to the whsec_ that `stripe listen` printed.");
   }
   stripe = new Stripe(key);
-  initCore({
+  const configured = await realStripeTestConfig(stripe, {
     ...process.env,
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: key,
@@ -144,6 +146,8 @@ beforeAll(async () => {
     INTERNAL_API_SECRET: SECRET,
     INTERNAL_API_SECRET_PREVIOUS: PREVIOUS_SECRET,
   });
+  stripeAccountId = configured.STRIPE_WEBHOOK_ACCOUNT_ID;
+  initCore(configured);
   loadLocales();
   suite.sql = postgres(inject("DATABASE_URL"), {
     max: 8,
@@ -674,6 +678,23 @@ describe("the three refund webhooks, forwarded by the Stripe CLI", () => {
           expect(typesOf(pendingRefundId)).toEqual(expect.arrayContaining(["refund.created", "refund.updated"]));
           expect(typesOf(failedRefundId)).toEqual(expect.arrayContaining(["refund.created", "refund.failed"]));
           expect(await claimedEvents(sent.map((e) => e.id))).toEqual(Object.fromEntries(sent.map((e) => [e.id, e.type])));
+          const attempts = await suite.sql`
+            SELECT event_id, event_type, account_id, endpoint_id, livemode,
+              connected_account_id, response_status, result, finished_at IS NOT NULL AS finished
+            FROM stripe_webhook_attempts WHERE event_id IN ${suite.sql(sent.map(e => e.id))} AND deleted_at IS NULL
+          `;
+          for (const event of sent) {
+            expect(attempts).toContainEqual({
+              event_id: event.id, event_type: event.type, account_id: stripeAccountId,
+              endpoint_id: null, livemode: false, connected_account_id: null,
+              response_status: 200, result: "refund_synced", finished: true,
+            });
+          }
+          console.info(`@needs-payments attempt recording observed: ${JSON.stringify({
+            eventTypes: [...new Set(sent.map(event => event.type))].sort(),
+            eventCount: sent.length, completedAttempts: attempts.filter(attempt => attempt.finished).length,
+            mode: "test", endpoint: "unknown_cli_forwarding", responseStatus: 200, result: "refund_synced",
+          })}`);
         },
         { timeout: 60_000, interval: 3_000 },
       );

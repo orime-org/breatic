@@ -74,7 +74,7 @@ export type SubscriptionEventOutcome =
       actual: ActualPrice;
     }
   | { status: "acknowledged"; reason: string }
-  | { status: "noop"; reason: string }
+  | { status: "noop"; reasonCode: "no_account" | "unknown_price" | "no_subscription"; reason: string }
   | { status: "replay"; userId: string }
   | { status: "applied"; userId: string; tier: MembershipTier };
 
@@ -240,6 +240,7 @@ export async function handleSubscriptionEvent(
   if (!userId) {
     return {
       status: "noop",
+      reasonCode: "no_account",
       reason: `no account claims Stripe customer ${customerIdOf(subscription) ?? "(none named)"}`,
     };
   }
@@ -281,6 +282,7 @@ export async function handleSubscriptionEvent(
     }
     return {
       status: "noop",
+      reasonCode: "unknown_price",
       reason: `subscription ${subscription.id} sells a price this deployment does not know`,
     };
   }
@@ -334,10 +336,10 @@ async function handleInvoicePaid(event: Stripe.Event): Promise<SubscriptionEvent
   const customerId = typeof customer === "string" ? customer : (customer?.id ?? null);
   const userId = customerId ? await userRepo.findUserIdByStripeCustomerId(customerId) : null;
   if (!userId) {
-    return { status: "noop", reason: `no account claims Stripe customer ${customerId ?? "(none named)"}` };
+    return { status: "noop", reasonCode: "no_account", reason: `no account claims Stripe customer ${customerId ?? "(none named)"}` };
   }
   const { record } = subscriptionSituation(await listSubscriptions(userId), subscriptionClock());
-  if (!record) return { status: "noop", reason: `account ${userId} holds no subscription` };
+  if (!record) return { status: "noop", reasonCode: "no_subscription", reason: `account ${userId} holds no subscription` };
   await reportSubscriptionRenewed({ eventId: event.id, userId, subscription: record });
   return { status: "acknowledged", reason: "renewal reported" };
 }
