@@ -15,7 +15,7 @@ export interface MiniToolPlanDetectorProfile {
 /** Media recipes shared with a container that loads no validation libraries. */
 export type MiniToolPlanRecipe =
   | { kind: "inspect_video"; inputId: string }
-  | { kind: "frame"; inputId: string; frameIndex: number }
+  | { kind: "frame"; inputId: string; frameIndex: number; orientation?: "display" }
   | { kind: "segment"; inputId: string; range: { start: number; end: number }; audioEnd?: number }
-  | { kind: "people"; inputId: string; anchor: { frameIndex: number; pts: number }; profile: MiniToolPlanDetectorProfile }
+  | { kind: "people"; inputId: string; anchor: { frameIndex: number; pts: number }; profile: MiniToolPlanDetectorProfile; orientation?: "display" }
   | { kind: "scene_cuts"; inputId: string; range: { start: number; end: number }; profile: MiniToolPlanDetectorProfile };

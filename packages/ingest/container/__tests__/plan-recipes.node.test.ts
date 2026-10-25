@@ -74,6 +74,34 @@ describe("owned plan recipe orchestration, with subprocesses mocked", () => {
     expect(JSON.parse(await readFile(request.output, "utf8"))).toEqual({ schemaVersion: 1, kind: "people", anchor, width: 400, height: 200, candidates: [{ detectionIndex: 0, faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 } }] });
   });
 
+  it("prepares an explicitly displayed frame while preserving the original source ledger", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    vi.mocked(runPlanCommand).mockImplementation(async (_program, args) => { await writeFile(args.at(-1)!, png); return Buffer.alloc(0); });
+    expect(await executePlanRecipe({ ...request, recipe: { kind: "frame", inputId: ID, frameIndex: 1, orientation: "display" } }))
+      .toEqual({ width: 1, height: 1, durationSeconds: null, cover: null });
+    const [, args] = vi.mocked(runPlanCommand).mock.calls[0]!;
+    expect(args).not.toContain("-noautorotate"); expect(args).toContain("select=eq(n\\,1)");
+    expect(request.facts).toEqual(FACTS);
+  });
+
+  it("detects on the same upright PNG using its actual BGR geometry and original anchor", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    vi.mocked(runPlanCommand).mockImplementation(async (_program, args) => { await writeFile(args.at(-1)!, png); return Buffer.alloc(0); });
+    vi.mocked(runAnalysisPipeline).mockResolvedValue(JSON.stringify({ faces: [[0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9]] }));
+    const anchor = { frameIndex: 1, pts: 0.25 };
+    await executePlanRecipe({ ...request, recipe: { kind: "people", inputId: ID, anchor, profile: PEOPLE, orientation: "display" } });
+    const analysis = vi.mocked(runAnalysisPipeline).mock.calls[0]![0];
+    expect(analysis).toMatchObject({ width: 1, height: 1, expectedFrameCount: 1, signal: request.signal });
+    const [,, options] = vi.mocked(runPlanCommand).mock.calls[0]!;
+    const inputPath = analysis.decoder.args[analysis.decoder.args.indexOf("-i") + 1]!;
+    expect(inputPath).not.toBe(request.input); expect(await readFile(inputPath)).toEqual(png);
+    expect(analysis.decoder.args[analysis.decoder.args.indexOf("-vf") + 1]).toBe("null");
+    expect(options.signal).toBe(request.signal);
+    expect(JSON.parse(await readFile(request.output, "utf8"))).toEqual({ schemaVersion: 1, kind: "people", coordinateSpace: "display", anchor,
+      width: 1, height: 1, candidates: [{ detectionIndex: 0, faceBox: { x: 0, y: 0, width: 1, height: 1 } }] });
+    expect(request.facts).toEqual(FACTS);
+  });
+
   it("maps local scene cuts through exact source-PTS range membership without resetting indices", async () => {
     vi.mocked(runAnalysisPipeline).mockResolvedValue(JSON.stringify({ cuts: [{ detectorFrameIndex: 1, detectionScore: 85 }] }));
     await executePlanRecipe({ ...request, recipe: { kind: "scene_cuts", inputId: ID, range: { start: 0.25, end: 1 }, profile: SCENE } });

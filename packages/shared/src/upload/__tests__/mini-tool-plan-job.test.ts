@@ -77,6 +77,23 @@ describe("planned media job requests", () => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
   });
 
+  it.each([
+    { kind: "frame", inputId: INPUT_A, frameIndex: 1, orientation: "display" },
+    { kind: "people", inputId: INPUT_A, anchor: { frameIndex: 1, pts: 0.25 }, profile, orientation: "display" },
+  ])("preserves explicitly requested display orientation for $kind", (recipe) => {
+    expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
+  });
+
+  it.each(["clockwise", true, null, 90])("refuses an undefined orientation rule: %s", (orientation) => {
+    expect(miniToolPlanRecipeSchema.safeParse({ kind: "frame", inputId: INPUT_A, frameIndex: 1, orientation }).success).toBe(false);
+  });
+
+  it("freezes display orientation as part of the original job recipe", () => {
+    const display = { ...base, outputs: base.outputs.map((output) => ({ ...output, recipe: { ...output.recipe, orientation: "display" } })) };
+    expect(sameMiniToolPlanJob(display, structuredClone(display))).toBe(true);
+    expect(sameMiniToolPlanJob(base, display)).toBe(false);
+  });
+
   it("grants exactly the two frozen reads and declared main and cover writes", () => {
     expect(miniToolPlanAccess(base)).toEqual({
       reads: ["fixtures/source-a.mp4", "fixtures/source-b.mp4"],
