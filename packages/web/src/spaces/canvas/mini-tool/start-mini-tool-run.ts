@@ -462,7 +462,7 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
   const settle: Settle = (message) => {
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {
-      const op = ops[index]!;
+      const op = ops[index];
       if (message === undefined) now.answer(spaceId, node.id, op);
       else now.fail(spaceId, node.id, op, message);
     });
@@ -472,8 +472,8 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
       nodes.map((node, index) => ({
         id: node.id,
         position: node.position,
-        width: placements[index]!.width,
-        height: placements[index]!.height,
+        width: placements[index].width,
+        height: placements[index].height,
       })),
       group,
     );
@@ -507,7 +507,7 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
         const made = files[index];
         if (made === undefined) return [];
         handed.add(index);
-        return [{ nodeId: built.id, file: made.file, markOp: ops[index]! }];
+        return [{ nodeId: built.id, file: made.file, markOp: ops[index] }];
       });
       run.fillUploads(entries, tag);
     } else {
@@ -515,12 +515,12 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
       const [only] = files;
       if (node !== undefined && only !== undefined && output.modality !== 'text') {
         handed.add(0);
-        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]!);
+        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]);
       }
     }
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {
-      if (!handed.has(index)) now.answer(spaceId, node.id, ops[index]!);
+      if (!handed.has(index)) now.answer(spaceId, node.id, ops[index]);
     });
     return null;
   }
