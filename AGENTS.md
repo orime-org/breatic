@@ -96,6 +96,8 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 
 Upload and generation paths only insert objects, never delete them (dedup losers are queued for offline reclaim); every URL a consumer stores comes from the registered record (`publicUrl(record.storage_key)`), never from a freshly written key; a failed registration is a failed upload; hash, size and content type come from the Worker's report on the stored bytes, never from client claims. Mechanism, thumbnails, covers and avatars: the storage paragraph of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Canvas collaboration".
 
+**Transfer uploads are the one exception to registration: a JSON request body over `request_body_max_bytes` (`config/limits.yaml`) goes up through `POST /assets/transfer-ticket` under the `transfer/` prefix in our own `application/vnd.breatic.transfer` format, and the route is sent `{ "transfer": key }` instead (`acceptTransferBody`).** The finish marks the grant complete with no `studio_assets` row and no storage usage; each reference is read once; the public asset domain does not serve the prefix, and an R2 lifecycle rule deletes it after one day.
+
 ## Server production standards
 
 ### Application-layer error logging
