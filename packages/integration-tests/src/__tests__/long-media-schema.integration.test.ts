@@ -1,19 +1,33 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
+import postgres from "postgres";
 import { db, initCore, users } from "@breatic/core";
 import {
   applyUnderstandDispatchEvent,
   applyUnderstandOperationEvent,
+  claimUnderstandOperationLease,
   getUnderstandOperation,
   listDueUnderstandDispatches,
   openUnderstandOperation,
+  releaseUnderstandOperationLease,
+  renewUnderstandOperationLease,
 } from "@breatic/domain";
+import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 
 initCore(process.env);
+let sqlClient!: ReturnType<typeof postgres>;
+
+beforeAll(() => {
+  sqlClient = postgres(inject("DATABASE_URL"), { max: 8, prepare: false });
+});
+
+afterAll(async () => {
+  await sqlClient.end({ timeout: 1 });
+});
 
 const TABLES = [
   "media_understanding_operations",
@@ -180,6 +194,107 @@ describe("long-media persistence migration", () => {
       dispatchDueAt: new Date(nextDueAt),
       revision: 4,
     });
+  });
+
+  it("grants one fenced lease at a time and rejects stale owners", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-lease-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const opened = await openUnderstandOperation({
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn",
+      originKey: `turn:${randomUUID()}`,
+      requestDigest: "sha256:lease-request",
+      sources: [{ sourceIndex: 0, assetId: randomUUID() }],
+      question: "Describe the recording.",
+      mode: "understand",
+      locale: "en",
+      model: "test-model",
+      promptVersion: "test-v1",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+      recoveryGroupId: randomUUID(),
+      logicalRequestId: randomUUID(),
+      userActionId: randomUUID(),
+    });
+
+    const first = await claimUnderstandOperationLease(opened.id, 60_000);
+    const duplicate = await claimUnderstandOperationLease(opened.id, 60_000);
+
+    expect(first).toMatchObject({ kind: "claimed", epoch: 1 });
+    expect(duplicate).toEqual({ kind: "busy" });
+    if (first.kind !== "claimed") throw new Error("The first lease was not granted.");
+
+    const operation = await getUnderstandOperation(opened.id);
+    expect(operation).toMatchObject({
+      status: "running",
+      revision: 2,
+      leaseEpoch: first.epoch,
+      leaseToken: first.token,
+    });
+    expect(operation?.leaseExpiresAt?.getTime()).toBeGreaterThan(Date.now());
+
+    const renewed = await renewUnderstandOperationLease(opened.id, first.token, first.epoch, 60_000);
+    expect(renewed.kind).toBe("applied");
+    if (renewed.kind !== "applied") throw new Error("The current lease did not renew.");
+    expect(renewed.revision).toBe(3);
+    await expect(releaseUnderstandOperationLease(opened.id, first.token, first.epoch + 1))
+      .resolves.toEqual({ kind: "stale" });
+    await expect(releaseUnderstandOperationLease(opened.id, first.token, first.epoch))
+      .resolves.toEqual({ kind: "applied", revision: 4 });
+
+    const recovered = await claimUnderstandOperationLease(opened.id, 60_000);
+    expect(recovered).toMatchObject({ kind: "claimed", epoch: 2, revision: 5 });
+    const cancelled = await applyUnderstandOperationEvent(opened.id, {
+      type: "cancel-applied",
+      expectedRevision: 5,
+      atMs: Date.now(),
+    });
+    expect(cancelled).toMatchObject({ status: "cancelled", leaseToken: null, leaseExpiresAt: null, revision: 6 });
+  });
+
+  it("waits for the operation row lock before claiming a lease", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-lease-lock-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const opened = await openUnderstandOperation({
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn",
+      originKey: `turn:${randomUUID()}`,
+      requestDigest: "sha256:lease-lock-request",
+      sources: [{ sourceIndex: 0, assetId: randomUUID() }],
+      question: "Describe the recording.",
+      mode: "understand",
+      locale: "en",
+      model: "test-model",
+      promptVersion: "test-v1",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+      recoveryGroupId: randomUUID(),
+      logicalRequestId: randomUUID(),
+      userActionId: randomUUID(),
+    });
+
+    let enterLock: () => void = () => undefined;
+    let releaseLock: () => void = () => undefined;
+    const entered = new Promise<void>((resolve) => { enterLock = resolve; });
+    const resume = new Promise<void>((resolve) => { releaseLock = resolve; });
+    const held = sqlClient.begin(async (tx) => {
+      await tx`SELECT id FROM media_understanding_operations WHERE id = ${opened.id} FOR UPDATE`;
+      enterLock();
+      await resume;
+    });
+    await entered;
+    const first = claimUnderstandOperationLease(opened.id, 60_000);
+    try {
+      await waitUntilBlockedOn(sqlClient, ["media_understanding_operations", "for update"]);
+    } finally {
+      releaseLock();
+      await held;
+    }
+
+    expect(await first).toMatchObject({ kind: "claimed", epoch: 1 });
+    expect(await claimUnderstandOperationLease(opened.id, 60_000)).toEqual({ kind: "busy" });
   });
 
   it("refuses an approved handoff after the operation has closed", async () => {

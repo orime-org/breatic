@@ -238,8 +238,16 @@ export {
   listDueUnderstandDispatches,
   applyUnderstandOperationEvent,
   applyUnderstandDispatchEvent,
+  claimUnderstandOperationLease,
+  renewUnderstandOperationLease,
+  releaseUnderstandOperationLease,
 } from "@domain/understand/operation.repo.js";
-export type { DueUnderstandDispatch, OpenUnderstandOperationInput } from "@domain/understand/operation.repo.js";
+export type {
+  DueUnderstandDispatch,
+  OpenUnderstandOperationInput,
+  UnderstandOperationLease,
+  UnderstandOperationLeaseMutation,
+} from "@domain/understand/operation.repo.js";
 export type {
   MediaKind,
   RefusalKind,

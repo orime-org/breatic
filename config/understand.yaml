@@ -48,6 +48,7 @@ long_media:
   max_active_leaves: 512
   delivery_concurrency: 2
   per_operation_delivery_concurrency: 1
+  operation_lease_ms: 30000
   container_class: LongMediaContainerStd4
   container_max_instances: 2
   profile_version: channel-v1
