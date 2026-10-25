@@ -16,7 +16,7 @@
 
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext, StopParams } from "@cloudflare/containers";
-import { miniToolPlanAccess, sameMiniToolPlanJob, readMiniToolPlanJobReport, type IngestMeasurements, type MiniToolJobReport, type MiniToolJobRequest, type MiniToolPlanJobRequest, type MiniToolPlanJobReport } from "@breatic/shared";
+import { miniToolPlanAccess, sameMiniToolPlanJob, readMiniToolPlanJobReport, type MiniToolJobReport, type MiniToolJobRequest, type MiniToolPlanJobRequest, type MiniToolPlanJobReport } from "@breatic/shared";
 
 import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
@@ -26,6 +26,8 @@ import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
 import { serveJobObjects, type JobObjectAccess } from "@ingest/jobs/job-objects.js";
+import { JOB_RECORD_KEY, type JobWritten as Written, type StoredMiniToolJob as JobRecord } from "@ingest/jobs/job-record.js";
+import { recordJobWrite, claimJobWrite } from "@ingest/jobs/job-write.js";
 
 /** Where the container reports how its run went. */
 export const JOB_REPORT_HOST = "jobs.local";
@@ -46,20 +48,7 @@ export const CLASS_BINDINGS = {
 /** A class name this Worker binds. */
 export type MiniToolClass = keyof typeof CLASS_BINDINGS;
 
-/** What the edge measured about one written object. */
-type Written = Pick<IngestMeasurements, "sha256" | "sizeBytes" | "contentType">;
-
-/** One job as the object stores it. */
-interface JobRecord {
-  state: JobState;
-  request: MiniToolJobRequest | MiniToolPlanJobRequest;
-  reported?: ContainerReportBody | PlanContainerReportBody;
-  written: Record<string, Written>;
-  media: Record<string, MediaOfOutput>;
-  cpuUsec: number | null;
-}
-
-const RECORD = "job";
+const RECORD = JOB_RECORD_KEY;
 
 /** The outbound handlers' names. */
 const JOB_OBJECTS = "jobObjects";
@@ -257,19 +246,18 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
    * @returns Nothing.
    */
   async noteWritten(key: string, written: Written, attemptId?: string): Promise<void> {
-    const record = await this.load();
-    if (!record) return;
-    if (isPlan(record.request)) {
-      const access = miniToolPlanAccess(record.request);
-      if (attemptId !== record.state.attemptId || access.writes[key] === undefined || access.writes[key] !== written.contentType) throw new Error("Unexpected planned output write or attempt");
-      const existing = record.written[key];
-      if (existing !== undefined) {
-        if (canonicalMiniToolValue(existing) !== canonicalMiniToolValue(written)) throw new Error("Conflicting immutable output measurements");
-        return;
-      }
-    }
-    await this.save({ ...record, written: { ...record.written, [key]: written } });
-    await this.apply({ type: "written", key });
+    await recordJobWrite(this.ctx.storage, key, written, attemptId);
+  }
+
+  /**
+   * Claim a planned key before its outbound handler starts any R2 IO.
+   * @param key - The declared output key.
+   * @param attemptId - The immutable planned attempt.
+   * @returns The durable writer token, or null when refused.
+   * @throws {Error} Until the claim contract has passed its real R2 RED.
+   */
+  async claimOutputWrite(key: string, attemptId: string): Promise<string | null> {
+    return claimJobWrite(this.ctx.storage, key, attemptId);
   }
 
   /**

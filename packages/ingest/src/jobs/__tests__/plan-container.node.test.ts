@@ -49,7 +49,12 @@ function owner(): { object: MiniToolContainerStd1; storage: Map<string, unknown>
   const storage = new Map<string, unknown>();
   const ctx = {
     id: { toString: () => "unit-only-object" }, container: { running: true },
-    storage: { get: async (key: string) => storage.get(key), put: async (key: string, value: unknown) => { storage.set(key, value); }, delete: async (key: string) => storage.delete(key) },
+    storage: {
+      get: async (key: string) => storage.get(key),
+      put: async (key: string, value: unknown) => { storage.set(key, value); },
+      delete: async (key: string) => storage.delete(key),
+      transaction: async (callback: (transaction: unknown) => Promise<unknown>) => callback({ get: async (key: string) => storage.get(key), put: async (key: string, value: unknown) => { storage.set(key, value); } }),
+    },
   };
   return { object: new MiniToolContainerStd1(ctx as unknown as ConstructorParameters<typeof MiniToolContainerStd1>[0], {} as MiniToolEnv), storage };
 }
