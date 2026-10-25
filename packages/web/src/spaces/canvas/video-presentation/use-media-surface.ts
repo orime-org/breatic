@@ -98,7 +98,8 @@ export function useMediaSurface({ host, container, source, active, createRendere
             seek: (seconds) => {
               if (!live || terminal || !Number.isFinite(seconds)) return;
               frameClock.invalidate();
-              element.currentTime = Math.min(descriptor.original.duration, Math.max(0, seconds));
+              const mediaEnd = Number.isFinite(element.duration) && element.duration >= 0 ? element.duration : Infinity;
+              element.currentTime = Math.min(mediaEnd, Math.max(0, seconds));
             },
             play: async () => {
               if (!live || terminal) return;
