@@ -54,6 +54,29 @@ export interface AcceptedMiniToolAnalysis {
   params: MiniToolAnalysisTaskParams;
 }
 
+/** A worker's terminal computation fact and knowledge of its actual upstream identities. */
+export type MiniToolAnalysisCompletion =
+  | { kind: "result"; result: unknown; consumptionSet: "complete" | "uncertain" }
+  | { kind: "error"; error: unknown; consumptionSet: "complete" | "uncertain" };
+
+/** Committed metadata and the original SQL-owned destination for subsequent notifications. */
+export interface FinishedMiniToolAnalysis {
+  record: MiniToolAnalysisRecord;
+  context: { taskId: string; userId: string; projectId: string; spaceId: string; hostNodeId: string };
+}
+
+/**
+ * Commit a computation outcome and its proven call-set closure under one task lock.
+ * @param taskId - The original accepted analysis.
+ * @param completion - The worker's observed outcome and upstream identity knowledge.
+ * @returns Committed metadata and the immutable notification destination.
+ * @throws {Error} When validation, ownership or either persistent transition fails.
+ */
+export async function finishMiniToolAnalysis(taskId: string, completion: MiniToolAnalysisCompletion): Promise<FinishedMiniToolAnalysis> {
+  void taskId; void completion;
+  throw new Error("Atomic analysis completion awaits independent RED");
+}
+
 /** The accepted identity shared by public records and typed detector results. */
 type AnalysisIdentity = Omit<MiniToolAnalysisRecord, "status" | "result" | "error" | "usage" | "artifactUnavailable">;
 

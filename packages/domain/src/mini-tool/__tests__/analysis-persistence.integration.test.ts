@@ -132,6 +132,142 @@ function people(f: Fixture): PeopleResult {
   return structuredClone(f.result);
 }
 
+describe("atomic analysis computation completion", () => {
+  it.each(["people", "scene_cuts", "tracked_mask"] as const)("commits %s metadata and proven identities together", async (kind) => {
+    const f = await seed(kind); const before = await snapshot(f);
+    const params = before.task.params as { analysis: { projectId: string; spaceId: string; hostNodeId: string } };
+    const expected = { ...f.initial, status: "completed", result: f.result };
+    expect(await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result, consumptionSet: "complete" })).toEqual({
+      record: expected,
+      context: { taskId: f.taskId, userId: f.userId, projectId: params.analysis.projectId, spaceId: params.analysis.spaceId, hostNodeId: params.analysis.hostNodeId },
+    });
+    const after = await snapshot(f);
+    expect(after.task.status).toBe("completed");
+    expect(after.task.result.analysis).toEqual(expected);
+    expect(after.task.result.settlement).toMatchObject({ state: "waiting", version: 8, consumptionSetComplete: true, pendingConsumptionKeys: [f.consumptionKey] });
+    const preserved = { ...after, task: { ...after.task, result: { ...after.task.result, settlement: before.task.result.settlement } } };
+    assertPreserved(before, preserved);
+  });
+
+  it.each(["pending", "running"] as const)("atomically closes a failed computation from %s while retaining its hold", async (status) => {
+    const f = await seed("scene_cuts", status); const before = await snapshot(f);
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR, consumptionSet: "complete" });
+    expect(finished.record).toEqual({ ...f.initial, status: "failed", error: ERROR });
+    const after = await snapshot(f);
+    expect(after.task.status).toBe("failed");
+    expect(after.task.result.settlement).toMatchObject({ version: 8, consumptionSetComplete: true, pendingConsumptionKeys: [f.consumptionKey] });
+    expect({ holds: after.holds, usage: after.usage, ledger: after.ledger, step: after.step }).toEqual({ holds: before.holds, usage: 0, ledger: 0, step: before.step });
+    expect(after.task.billed_at).toBeNull();
+  });
+
+  it.each(["result", "error"] as const)("retains incomplete identities after an uncertain %s outcome", async (kind) => {
+    const f = await seed("scene_cuts"); const before = await snapshot(f);
+    const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "uncertain" as const } : { kind, error: ERROR, consumptionSet: "uncertain" as const };
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
+    expect(finished.record.status).toBe(kind === "result" ? "completed" : "failed");
+    const after = await snapshot(f);
+    expect(after.task.result.settlement).toEqual(before.task.result.settlement);
+    assertPreserved(before, after);
+  });
+
+  it.each(["completed", "failed"] as const)("preserves the existing %s outcome while closing its proven identities", async (status) => {
+    const f = await seed("scene_cuts", status); const before = await snapshot(f);
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: { code: "later_failure" }, consumptionSet: "complete" });
+    expect(finished.record).toEqual(f.initial);
+    const after = await snapshot(f);
+    expect(after.task.status).toBe(status);
+    expect(after.task.error_message).toBe(before.task.error_message);
+    expect(after.task.completed_at).toBe(before.task.completed_at);
+    expect(after.task.result.settlement).toMatchObject({ consumptionSetComplete: true, version: 8 });
+    expect(after.holds).toEqual(before.holds);
+  });
+
+  it("retains a matching late result on a failed run and closes the original identities", async () => {
+    const f = await seed("scene_cuts", "failed"); const before = await snapshot(f);
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result, consumptionSet: "complete" });
+    expect(finished.record).toEqual({ ...f.initial, result: f.result });
+    const after = await snapshot(f);
+    expect(after.task.status).toBe("failed"); expect(after.task.error_message).toBe(before.task.error_message);
+    expect(after.task.result.settlement).toMatchObject({ consumptionSetComplete: true });
+  });
+
+  it("keeps an active expense claim when a computation closes its identities", async () => {
+    const f = await seed("scene_cuts");
+    const claim = { version: 7, state: "checking", pendingConsumptionKeys: [f.consumptionKey], nextAttemptAt: null,
+      leaseToken: crypto.randomUUID(), leaseUntil: "2099-01-01T00:00:00.000000Z", lastError: null, consumptionSetComplete: false };
+    await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement}',${pg.json(claim)}) WHERE id=${f.taskId}`;
+    await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "result", result: f.result, consumptionSet: "complete" });
+    expect((await snapshot(f)).task.result.settlement).toEqual({ ...claim, consumptionSetComplete: true });
+  });
+
+  it("keeps a previously closed set on an uncertain replay", async () => {
+    const f = await seed("scene_cuts", "completed");
+    await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,consumptionSetComplete}','true'::jsonb) WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
+    const finished = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR, consumptionSet: "uncertain" });
+    expect(finished.record).toEqual(f.initial); expect(await snapshot(f)).toEqual(before);
+  });
+
+  it.each(["result", "error"] as const)("rolls back the %s outcome when closing the call set fails", async (kind) => {
+    const f = await seed("scene_cuts"); const before = await snapshot(f);
+    await pg.unsafe(`CREATE OR REPLACE FUNCTION reject_analysis_completion() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.result#>>'{settlement,consumptionSetComplete}'='true' THEN RAISE EXCEPTION 'fixture_call_set_close_failed'; END IF; RETURN NEW; END $$`);
+    await pg.unsafe("CREATE TRIGGER reject_analysis_completion BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_analysis_completion()");
+    try {
+      const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "complete" as const } : { kind, error: ERROR, consumptionSet: "complete" as const };
+      const error: unknown = await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion).catch((reason: unknown) => reason);
+      expect(error).toMatchObject({ cause: { message: expect.stringContaining("fixture_call_set_close_failed") } });
+      expect(await snapshot(f)).toEqual(before);
+    } finally {
+      await pg.unsafe("DROP TRIGGER reject_analysis_completion ON tasks");
+      await pg.unsafe("DROP FUNCTION reject_analysis_completion()");
+    }
+  });
+
+  it("keeps all original facts when the result conflicts with its accepted identity", async () => {
+    const f = await seed(); const before = await snapshot(f);
+    await expect(domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, {
+      kind: "result", result: { ...f.result, acceptedAt: "2026-10-23T01:02:03.123457Z" }, consumptionSet: "complete",
+    })).rejects.toBeInstanceOf(ConflictError);
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it("reads current state after waiting for a competing terminal writer", async () => {
+    const f = await seed("scene_cuts");
+    const committed = { ...f.initial, status: "completed", result: f.result };
+    let release!: () => void; let locked!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const entered = new Promise<void>((resolve) => { locked = resolve; });
+    const owner = pg.begin(async (tx) => {
+      await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; locked(); await gate;
+      await tx`UPDATE tasks SET status='completed',result=result || ${tx.json({ analysis: committed })},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
+    });
+    await entered;
+    const failure = domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error: ERROR, consumptionSet: "complete" });
+    const observed = failure.catch(() => undefined);
+    try {
+      await Promise.race([waitUntilBlockedOn(pg, ["tasks", "for update"], 1), failure.then(() => { throw new Error("Completion bypassed the task lock"); })]);
+    } finally { release(); await owner; }
+    await observed;
+    const finished = await failure;
+    expect(finished.record).toEqual(committed);
+    expect((await snapshot(f)).task.result.settlement).toMatchObject({ consumptionSetComplete: true });
+  });
+
+  it("keeps the first terminal outcome across generated completion replays", async () => {
+    await fc.assert(fc.asyncProperty(fc.array(fc.constantFrom("result", "error"), { minLength: 1, maxLength: 5 }), async (events) => {
+      const f = await seed("scene_cuts");
+      for (const kind of events) {
+        const completion = kind === "result" ? { kind, result: f.result, consumptionSet: "complete" as const } : { kind, error: ERROR, consumptionSet: "complete" as const };
+        await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, completion);
+      }
+      const after = await snapshot(f);
+      expect(after.task.status).toBe(events[0] === "result" ? "completed" : "failed");
+      expect(after.task.result.settlement).toMatchObject({ consumptionSetComplete: true, version: 8 });
+      expect(after.task.billed_at).toBeNull(); expect(after.usage).toBe(0); expect(after.ledger).toBe(0);
+    }), { numRuns: 6 });
+  });
+});
+
 describe("persistent analysis results", () => {
   it.each(["people", "scene_cuts", "tracked_mask"] as const)("commits the complete %s result and preserves execution facts", async (kind) => {
     const f = await seed(kind); const before = await snapshot(f);
