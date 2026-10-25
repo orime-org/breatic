@@ -18,6 +18,7 @@ import {
   doublePrecision,
   numeric,
   integer,
+  smallint,
   bigint,
   timestamp,
   json,
@@ -40,7 +41,8 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
-import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
+import type { StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -1401,6 +1403,33 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
     .defaultNow()
     .notNull(),
 });
+
+/** Each verified HTTP request has an independent recording lifecycle. */
+export const stripeWebhookAttempts = pgTable("stripe_webhook_attempts", {
+  id: uuid("id").primaryKey(),
+  eventId: varchar("event_id", { length: 255 }).notNull(),
+  eventType: varchar("event_type", { length: 80 }).notNull(),
+  livemode: boolean("livemode").notNull(),
+  accountId: varchar("account_id", { length: 255 }),
+  endpointId: varchar("endpoint_id", { length: 255 }),
+  connectedAccountId: varchar("connected_account_id", { length: 255 }),
+  environment: text("environment").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  responseStatus: smallint("response_status"),
+  result: varchar("result", { length: 80 }).$type<StripeWebhookResult>(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  check("stripe_webhook_attempts_completion", sql`
+    (${table.finishedAt} is null and ${table.responseStatus} is null and ${table.result} is null)
+    or (${table.finishedAt} is not null and ${table.responseStatus} is not null and ${table.result} is not null
+      and ${table.responseStatus} between 100 and 599
+      and ${table.result} in (${sql.raw(STRIPE_WEBHOOK_RESULTS.map((result) => `'${result}'`).join(", "))}))
+  `),
+  index("stripe_webhook_attempts_received_idx").on(desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+  index("stripe_webhook_attempts_event_idx").on(table.eventId, desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+]);
 
 // ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
