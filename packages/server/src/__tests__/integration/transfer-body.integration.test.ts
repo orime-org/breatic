@@ -67,6 +67,7 @@ import {
   type ReadStub,
   type Seeded,
 } from "./transfer-fixtures.js";
+import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 
 try {
   initCore(process.env);
@@ -303,14 +304,32 @@ describe("§4.1 the main path", () => {
 
   it("T54: a paste through a transfer answers and writes what the same body sent directly does", async () => {
     const w = await world();
-    const node = crypto.randomUUID();
-    const words = "中".repeat(400_000);
-    const body = { project_id: w.projectId, urls: [], pairs: [], history: [{ node_id: node, kind: "text", content: words }] };
-    const file = enc(body);
+    // Each path pastes into its own node: a node's history keeps one row per
+    // distinct content, so a second paste of the same words into the same
+    // node would write nothing and prove nothing.
+    const directNode = crypto.randomUUID();
+    const transferNode = crypto.randomUUID();
+    // Sized so the direct send stays within the request body limit, which
+    // refuses anything larger before the route runs; the comparison needs
+    // both paths to reach the route.
+    const words = "中".repeat(340_000);
+    /**
+     * The paste body for one node.
+     * @param node - The pasted node.
+     * @returns The body.
+     */
+    const body = (node: string): Record<string, unknown> => ({
+      project_id: w.projectId,
+      urls: [],
+      pairs: [],
+      history: [{ node_id: node, kind: "text", content: words }],
+    });
+    expect(Buffer.byteLength(JSON.stringify(body(directNode)))).toBeLessThanOrEqual(getRequestBodyMaxBytes());
+    const file = enc(body(transferNode));
     const key = await grant(w, file.length);
     read.answer = async () => file;
 
-    const direct = await post(app, PASTE, w.a.cookie, JSON.stringify(body));
+    const direct = await post(app, PASTE, w.a.cookie, JSON.stringify(body(directNode)));
     const viaTransfer = await post(app, PASTE, w.a.cookie, ref(key));
 
     expect(direct.status).toBe(200);
@@ -318,7 +337,8 @@ describe("§4.1 the main path", () => {
     const directMap = ((await direct.json()) as { data: { map: Record<string, unknown> } }).data.map;
     const transferMap = ((await viaTransfer.json()) as { data: { map: Record<string, unknown> } }).data.map;
     expect(Object.keys(transferMap).sort()).toEqual(Object.keys(directMap).sort());
-    expect(await contents(w.projectId, node)).toEqual([words, words]);
+    expect(await contents(w.projectId, directNode)).toEqual([words]);
+    expect(await contents(w.projectId, transferNode)).toEqual([words]);
     expect(read.calls).toEqual([[key, Math.min(transferConfig().route_max_bytes.canvas_paste, file.length)]]);
   });
 
@@ -335,17 +355,21 @@ describe("§4.1 the main path", () => {
       message: "m".repeat(200),
       project_id: w.projectId,
       conversation_id: conversationId,
-      attached_chips: [{ id: "file-1", type: "text", name: "notes.txt", data_snapshot: { text: "中".repeat(190_000) } }],
+      attached_chips: [{ id: "file-1", type: "text", name: "notes.txt", data_snapshot: { text: "中".repeat(150_000) } }],
       current_space: {
         id: "space-1",
         name: "Doc",
         kind: "document",
         state: "loaded",
-        content: "中".repeat(90_000),
-        total_chars: 90_000,
-        blocks: [{ id: "b1", type: "paragraph", text: "中".repeat(90_000), lossy: false, partial: false }],
+        content: "中".repeat(50_000),
+        total_chars: 50_000,
+        blocks: [{ id: "b1", type: "paragraph", text: "中".repeat(50_000), lossy: false, partial: false }],
       },
     });
+    // Sized so the direct send stays within the request body limit, which
+    // refuses anything larger before the route runs; the comparison needs
+    // both paths to reach the route.
+    expect(Buffer.byteLength(JSON.stringify(body(direct)))).toBeLessThanOrEqual(getRequestBodyMaxBytes());
     const file = enc(body(viaTransfer));
     const key = await grant(w, file.length);
     read.answer = async () => file;
