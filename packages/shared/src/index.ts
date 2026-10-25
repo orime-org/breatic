@@ -430,6 +430,8 @@ export { resolveTimelineArrangement } from "@shared/timeline/arrangement.js";
 export type { TimelineArrangement, TimelineArrangementClip, TimelineArrangementReason, TimelinePlacement } from "@shared/timeline/arrangement.js";
 export { TimelinePersistenceRequestSchema, TimelinePersistenceResponseSchema, sameNativeEditRecord } from "@shared/timeline/persistence.js";
 export type { TimelinePersistenceRequest, TimelinePersistenceResponse, TimelineStoreAttempt } from "@shared/timeline/persistence.js";
+export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
+export type { TimelineClientLimits } from "@shared/timeline/api.js";
 
 export {
   DOCUMENT_SCHEMA,

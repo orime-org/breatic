@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { ProjectAssetPage, ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity } from "@breatic/shared";
+import type { ProjectAssetPage, ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity, TimelineClientLimits } from "@breatic/shared";
 import { t } from "@breatic/shared";
 import { z } from "zod";
 import { AppError, ForbiddenError, NotFoundError } from "@core/app-errors.js";
@@ -158,6 +158,29 @@ async function studioForMember(projectId: string, userId: string): Promise<strin
   const studioId = await findLiveOwnerStudioId(projectId);
   if (studioId === undefined) throw new ForbiddenError(t("server.error.forbidden"));
   return studioId;
+}
+
+/**
+ * Read the public Timeline configuration after checking current Project access.
+ * @param projectId - The Project being opened.
+ * @param userId - The authenticated current member.
+ * @returns Only the defaults and client transport settings.
+ * @throws {ForbiddenError} When current Project access is absent.
+ * @throws {Error} When configuration or authorization cannot be read.
+ */
+export async function getTimelineLimits(projectId: string, userId: string): Promise<TimelineClientLimits> {
+  await studioForMember(projectId, userId);
+  const config = getTimelineConfig();
+  return {
+    defaults: { width: config.defaults.width, height: config.defaults.height, fps: { ...config.defaults.fps } },
+    assets: { pageSize: config.assets.page_size, pageMax: config.assets.page_max },
+    persistence: {
+      batchSize: config.persistence.batch_size,
+      pollIntervalMs: config.persistence.poll_interval_ms,
+      rpcTimeoutMs: config.persistence.rpc_timeout_ms,
+      retryMinIntervalMs: config.persistence.retry_min_interval_ms,
+    },
+  };
 }
 
 /**

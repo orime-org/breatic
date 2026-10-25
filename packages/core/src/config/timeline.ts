@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMER_MS } from "@breatic/shared";
+import { MAX_TIMER_MS, MAX_TIMELINE_ASSET_PAGE_SIZE } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 /** Runtime defaults and bounded client transport parameters for Timeline. */
@@ -19,8 +19,8 @@ export const timelineConfigSchema = z.object({
     }).prefault({}),
   }).prefault({}),
   assets: z.object({
-    page_size: z.number().int().positive().default(50),
-    page_max: z.number().int().positive().default(100),
+    page_size: z.number().int().positive().max(MAX_TIMELINE_ASSET_PAGE_SIZE).default(50),
+    page_max: z.number().int().positive().max(MAX_TIMELINE_ASSET_PAGE_SIZE).default(100),
     backfill_batch_size: z.number().int().positive().default(200),
   }).prefault({}),
   persistence: z.object({
