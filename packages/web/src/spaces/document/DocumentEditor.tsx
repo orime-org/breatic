@@ -211,24 +211,37 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     // A regular block's own content leaves its indented children out. A
     // layout table is already its own content frame; descendants belong to
     // its cells and cannot stand in for the whole table (inner#1619).
-    const at = (block.querySelector(':scope > .bn-block > .bn-block-content') ?? block).getBoundingClientRect();
-    const frame = viewport.getBoundingClientRect();
-    const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
-    const top = at.top - frame.top + viewport.scrollTop - gap;
-    setLandedBox({
-      location: landed,
-      style: {
-        top,
+    const content = block.querySelector(':scope > .bn-block > .bn-block-content') ?? block;
+    /**
+     * Measures the layout after asynchronously committed table chrome changes it.
+     * @returns The outline's current coordinates and dimensions in its viewport.
+     */
+    const measure = (): LandedBox['style'] => {
+      const at = content.getBoundingClientRect();
+      const frame = viewport.getBoundingClientRect();
+      const gap = parseFloat(getComputedStyle(viewport).getPropertyValue(LANDED_MARK_GAP_VAR)) || 0;
+      return {
+        top: at.top - frame.top + viewport.scrollTop - gap,
         left: at.left - frame.left + viewport.scrollLeft - gap,
         width: at.width + gap * 2,
         height: at.height + gap * 2,
-      },
+      };
+    };
+    const style = measure();
+    setLandedBox({ location: landed, style });
+    const sizes = new ResizeObserver(() => {
+      const currentStyle = measure();
+      setLandedBox((current) => current?.location === landed ? { location: landed, style: currentStyle } : current);
     });
-    viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
+    sizes.observe(content, { box: 'border-box' });
+    sizes.observe(viewport, { box: 'border-box' });
+    viewport.scrollTo({ top: Math.max(0, style.top - viewport.clientHeight / 3), behavior: 'smooth' });
     const timer = window.setTimeout(() => {
+      sizes.disconnect();
       setLandedBox((current) => current?.location === landed ? null : current);
     }, LANDED_MARK_MS);
     return () => {
+      sizes.disconnect();
       window.clearTimeout(timer);
       setLandedBox((current) => current?.location === landed ? null : current);
     };
