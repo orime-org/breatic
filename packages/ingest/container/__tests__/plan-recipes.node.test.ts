@@ -5,6 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fc from "fast-check";
 import { executePlanRecipe, inspectPlanInput, type PlanRecipeRequest, type PlanSource } from "@ingest/container/plan-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
@@ -113,6 +114,29 @@ describe("owned plan recipe orchestration, with subprocesses mocked", () => {
     vi.mocked(runPlanCommand).mockResolvedValue(Buffer.from(JSON.stringify({ streams: [{ codec_type: "video", width: 400, height: 200 }], format: { duration: "1" } })));
     await expect(executePlanRecipe({ ...request, recipe: { kind: "segment", inputId: ID, range: { start: 2, end: 3 } } })).rejects.toThrow();
     expect(runPlanCommand).not.toHaveBeenCalled();
+  });
+
+
+  it("represents both source video and decoded audio clocks in MP4 edit lists", async () => {
+    const facts: PlanSource = { ...FACTS, source: { ...FACTS.source, timeBase: "1/16384" }, raw: { ...RAW, streams: [...RAW.streams.slice(0, 1), { index: 1, codec_type: "audio", codec_name: "aac", sample_rate: "48000" }] } };
+    vi.mocked(runPlanCommand).mockResolvedValue(Buffer.from(JSON.stringify({ streams: [{ codec_type: "video", width: 400, height: 200 }], format: { duration: "0.65" } })));
+    await executePlanRecipe({ ...request, facts, recipe: { kind: "segment", inputId: ID, range: { start: 0.25, end: 0.9 } } });
+    const [, args] = vi.mocked(runPlanCommand).mock.calls[0]!;
+    expect(args[args.indexOf("-movie_timescale") + 1]).toBe("6144000");
+    expect(args).toContain("atrim=start=0.25:end=0.9,asetpts=PTS-0.25/TB");
+  });
+
+  it("preserves both rational clock divisors for bounded arbitrary source clocks", async () => {
+    await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 16384 }), fc.constantFrom(44100, 48000), async (denominator, rate) => {
+      vi.mocked(runPlanCommand).mockClear().mockResolvedValue(Buffer.from(JSON.stringify({ streams: [{ codec_type: "video", width: 400, height: 200 }], format: { duration: "0.65" } })));
+      const facts: PlanSource = { ...FACTS, source: { ...FACTS.source, timeBase: `1/${denominator}` }, raw: { ...RAW, streams: [...RAW.streams.slice(0, 1), { index: 1, codec_type: "audio", sample_rate: String(rate) }] } };
+      await executePlanRecipe({ ...request, facts, recipe: { kind: "segment", inputId: ID, range: { start: 0.25, end: 0.9 } } });
+      const [, args] = vi.mocked(runPlanCommand).mock.calls[0]!;
+      const scale = Number(args[args.indexOf("-movie_timescale") + 1]);
+      expect(Number.isSafeInteger(scale) && scale > 0).toBe(true);
+      expect(scale % denominator).toBe(0);
+      expect(scale % rate).toBe(0);
+    }), { numRuns: 20 });
   });
 
 });
