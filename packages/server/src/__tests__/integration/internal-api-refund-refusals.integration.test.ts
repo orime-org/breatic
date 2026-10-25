@@ -23,7 +23,7 @@ vi.mock("@server/infra/stripe.js", async () => {
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { aroundNextList, fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { ADMIN, buildRequest, call, freshKey, holdersOf, mailsSettled, paths, useInternalApp, type CallResult } from "./internal-api-harness.js";
-import { CREDITS, PAID_CENTS, ledgerOf, readLot, readOp, reId, refundObject, refundedThenFailed, seedOperation, seedRefundLot, type LotState, type SeededLot } from "./credit-refund-fixtures.js";
+import { CREDITS, PAID_CENTS, ledgerOf, readLot, readOp, reId, refundObject, refundedThenFailed, seedOperation, seedRefundLot, worldOf, type LotState, type SeededLot } from "./credit-refund-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import { openPaymentSource } from "./payment-source.js";
 
@@ -234,6 +234,105 @@ describe("all eight write endpoints share persisted refusal ownership", () => {
     const replay = await post(paths.reject(target), REJECT, key);
     expect({ status: replay.status, body: replay.json }).toEqual({ status: 404, body });
     expect(fakeStripe.listCalls).toEqual([]);
+  });
+});
+
+describe("soft-deleted lots remain unavailable to new requests while existing keys retain their results", () => {
+  it.each([
+    { kind: "approve", path: paths.approve, body: APPROVE },
+    { kind: "retry", path: paths.retry, body: { ...REJECT, confirmedRefundIds: [] } },
+    { kind: "reject", path: paths.reject, body: REJECT },
+    { kind: "settle", path: paths.settle, body: { ...REJECT, notify: false, confirmedSucceededCents: PAID_CENTS } },
+    { kind: "send_back", path: paths.sendBack, body: REJECT },
+    { kind: "resolve_outside", path: paths.resolvedOutside, body: { ...REJECT, failedRefundIds: [], confirmedSucceededCents: 0 } },
+    { kind: "restore_credits", path: paths.restoreCredits, body: { ...REJECT, failedRefundIds: [] } },
+  ])("$kind retains a literal 404 for a lot that remains soft-deleted without reading Stripe or changing business records", async ({ kind, path, body }) => {
+    const needsAttention = kind === "retry" || kind === "send_back" || kind === "restore_credits";
+    const lot = await lotOnStripe(needsAttention ? "refunding" : "refund_pending");
+    if (needsAttention) {
+      await seedOperation(suite.sql, lot, { kind: "approve", status: "needs_attention", attentionReason: "attempts_exhausted" });
+    }
+    if (kind === "settle") fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(reId("soft_deleted_full"), "succeeded", PAID_CENTS)]);
+    await suite.sql`UPDATE credit_lots SET deleted_at = now() WHERE id = ${lot.lotId}`;
+    const before = await worldOf(suite.sql, lot);
+    const key = freshKey(kind);
+    const answer = await post(path(lot.lotId), body, key);
+    await mailsSettled(suite.sql, lot);
+    expect(answer.status).toBe(404);
+    expect(answer.json).toEqual({ code: "not_found", detail: expect.any(String) });
+    await expectStored(key, answer, kind, lot.lotId);
+    expect(await worldOf(suite.sql, lot)).toEqual(before);
+    expect(fakeStripe.listCalls).toEqual([]);
+    expect(fakeStripe.createCalls).toEqual([]);
+    expect(fakeStripe.retrieveCalls).toEqual([]);
+    const replay = await post(path(lot.lotId), body, key);
+    expect({ status: replay.status, body: replay.json }).toEqual({ status: answer.status, body: answer.json });
+    await expectStored(key, answer, kind, lot.lotId);
+    expect(await worldOf(suite.sql, lot)).toEqual(before);
+    expect(fakeStripe.listCalls).toEqual([]);
+    expect(fakeStripe.createCalls).toEqual([]);
+  });
+
+  it("a lot soft-deleted during lock-free Stripe preparation finishes as 404 and retains only the prepared refund copies", async () => {
+    const lot = await lotOnStripe("refund_pending");
+    const refundId = reId("prepared_before_soft_delete");
+    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(refundId, "succeeded", PAID_CENTS)]);
+    aroundNextList(fakeStripe, async (read) => {
+      const refunds = await read();
+      await suite.sql`UPDATE credit_lots SET deleted_at = now() WHERE id = ${lot.lotId}`;
+      return refunds;
+    });
+    const before = await worldOf(suite.sql, lot);
+    const key = freshKey();
+    const answer = await post(paths.settle(lot.lotId), { ...REJECT, notify: false, confirmedSucceededCents: PAID_CENTS }, key);
+    await mailsSettled(suite.sql, lot);
+    expect(answer.status).toBe(404);
+    expect(answer.json).toEqual({ code: "not_found", detail: expect.any(String) });
+    await expectStored(key, answer, "settle", lot.lotId);
+    const after = await worldOf(suite.sql, lot);
+    expect({ ...after.lot, deleted_at: before.lot.deleted_at }).toEqual(before.lot);
+    expect(after.lot.deleted_at).toEqual(expect.any(String));
+    expect({ ...after, lot: before.lot, copies: before.copies }).toEqual(before);
+    expect(after.copies).toEqual([expect.objectContaining({ stripe_refund_id: refundId, status: "succeeded", amount_cents: PAID_CENTS })]);
+    expect(fakeStripe.listCalls).toEqual([{ payment_intent: lot.paymentIntentId, limit: 100 }]);
+    expect(fakeStripe.createCalls).toEqual([]);
+    const replay = await post(paths.settle(lot.lotId), { ...REJECT, notify: false, confirmedSucceededCents: PAID_CENTS }, key);
+    expect({ status: replay.status, body: replay.json }).toEqual({ status: answer.status, body: answer.json });
+    expect(fakeStripe.listCalls).toHaveLength(1);
+  });
+
+  it.each(["operation", "mail", "refusal"] as const)("an existing %s key still replays after its lot is soft-deleted", async (recordKind) => {
+    const lot = await lotOnStripe(recordKind === "refusal" ? "active" : "refund_pending");
+    const key = freshKey();
+    let path = paths.reject(lot.lotId);
+    let first: CallResult;
+    if (recordKind === "mail") {
+      const operation = await post(path, REJECT, freshKey());
+      expect(operation.status).toBe(200);
+      await mailsSettled(suite.sql, lot);
+      path = paths.resend(operation.json.id);
+      first = await post(path, REJECT, key);
+      expect(first.status).toBe(202);
+    } else {
+      first = await post(path, REJECT, key);
+      expect(first.status).toBe(recordKind === "refusal" ? 409 : 200);
+    }
+    await mailsSettled(suite.sql, lot);
+    // Mail replay is dynamic: settle the first send before taking its snapshot.
+    const established = await post(path, REJECT, key);
+    expect(established.status).toBe(recordKind === "refusal" ? 409 : 200);
+    await suite.sql`UPDATE credit_lots SET deleted_at = now() WHERE id = ${lot.lotId}`;
+    const before = await worldOf(suite.sql, lot);
+    const stripeReads = fakeStripe.listCalls.length;
+    const stripeCreates = fakeStripe.createCalls.length;
+    const replay = await post(path, REJECT, key);
+    expect({ status: replay.status, body: replay.json }).toEqual({ status: established.status, body: established.json });
+    expect(await worldOf(suite.sql, lot)).toEqual(before);
+    expect(fakeStripe.listCalls).toHaveLength(stripeReads);
+    expect(fakeStripe.createCalls).toHaveLength(stripeCreates);
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: recordKind === "operation" ? 1 : 0, mails: recordKind === "mail" ? 1 : 0 });
+    if (recordKind === "refusal") await expectStored(key, first, "reject", lot.lotId);
+    else expect(await refusalRows(key)).toEqual([]);
   });
 });
 
