@@ -82,6 +82,24 @@ describe('canonical owned video in the existing player', () => {
     expect(bindings.mock.calls.at(-1)![0].binding).toBeNull();
   });
 
+  it('preserves the node volume and mute when the presentation owner replaces its actual element', () => {
+    const bindings = vi.fn();
+    const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} onVideoBinding={bindings} />);
+    expect(driver.sessions).toHaveLength(1);
+    const first = driver.sessions[0]!;
+    act(() => first.callbacks.ready(first.element, first.surface));
+    act(() => { first.element.volume = 0.3; first.element.muted = true; first.element.dispatchEvent(new Event('volumechange')); });
+    const other: VideoPresentationSource = { ...source, canonicalURL: 'https://assets.example.test/replaced.webm', sourceFingerprint: 'b'.repeat(64), presentation: { ...source.presentation, sourceFingerprint: 'b'.repeat(64) }, manifest: { ...source.manifest!, sourceFingerprint: 'b'.repeat(64) } };
+    view.rerender(<MediaPlayer modality='video' src={other.canonicalURL} videoSource={other} onVideoBinding={bindings} />);
+    expect(driver.sessions).toHaveLength(2);
+    const next = driver.sessions[1]!;
+    act(() => next.callbacks.ready(next.element, next.surface));
+    expect(next.element.volume).toBe(0.3);
+    expect(next.element.muted).toBe(true);
+    expect(next.element.paused).toBe(true);
+    expect(bindings.mock.calls.at(-1)![0].binding.element).toBe(next.element);
+  });
+
   it('keeps unknown classification blank instead of interpreting a canonical alpha URL as native', () => {
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={null} />);
     expect(driver.sessions).toHaveLength(0);
