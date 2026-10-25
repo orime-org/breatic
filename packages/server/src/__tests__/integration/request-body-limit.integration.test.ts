@@ -3,7 +3,9 @@
 
 /**
  * The public app's request body limit over a real socket (inner#1006 §3):
- * T01–T06, T08–T10, T12(c), T17, and the raw-body regressions X01–X03.
+ * T01–T06, T08–T10, T12(c), T17, the raw-body regressions X01–X03, and a
+ * keep-alive regression: a body within the limit that a route refuses unread
+ * must not break the next request on the same connection.
  *
  * `createApp()` is served by `@hono/node-server` on a loopback port
  * (`serveOnLoopback`, as `internal-api-harness.ts` does), and requests are
@@ -139,6 +141,8 @@ interface Answer {
   text: string;
   /** Bytes of the body the client had handed to the socket when the answer arrived. */
   writtenAtAnswer: number;
+  /** Whether the request went out on a socket an earlier request had used. */
+  reusedSocket: boolean;
 }
 
 /** How one request is sent. */
@@ -151,6 +155,8 @@ interface SendOptions {
   chunkSize?: number;
   /** Send this many bytes chunked, produced by `bodyAt`, stopping once answered. */
   stream?: { total: number; bodyAt: (offset: number, length: number) => Buffer };
+  /** The connection pool to send through; the default global agent otherwise. */
+  agent?: http.Agent;
 }
 
 /**
@@ -169,14 +175,20 @@ function send(path: string, opts: SendOptions = {}): Promise<Answer> {
     let written = 0;
     let answered = false;
     const req = http.request(
-      { host: url.hostname, port: url.port, path: url.pathname + url.search, method: opts.method ?? "POST", headers },
+      { host: url.hostname, port: url.port, path: url.pathname + url.search, method: opts.method ?? "POST", headers, agent: opts.agent },
       (res) => {
         answered = true;
         const at = written;
         const parts: Buffer[] = [];
         res.on("data", (d: Buffer) => parts.push(d));
         res.on("end", () =>
-          resolve({ status: res.statusCode ?? 0, headers: res.headers, text: Buffer.concat(parts).toString("utf-8"), writtenAtAnswer: at }),
+          resolve({
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+            text: Buffer.concat(parts).toString("utf-8"),
+            writtenAtAnswer: at,
+            reusedSocket: req.reusedSocket,
+          }),
         );
         res.on("error", reject);
       },
@@ -441,6 +453,31 @@ describe("§2 the limit itself (T01–T06)", () => {
     expect(JSON.parse(res.text)).toEqual(tooLarge());
     expect(res.writtenAtAnswer).toBeLessThan(8 * 1024 * 1024);
     expect(logsNamed("user_logged_in")).toEqual([]);
+  });
+});
+
+describe("§2 a body within the limit that a route refuses unread", () => {
+  it("leaves the keep-alive connection usable for the next request", async () => {
+    // One socket only, so the second request has to go out on the connection
+    // the first one used. A signed-out snapshot is refused by requireAuth
+    // before anything reads the body, so the 300 KB stay unread on the socket.
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    try {
+      const refused = await send("/api/v1/canvas/node-history/snapshot", {
+        agent,
+        headers: { "Content-Type": "application/json" },
+        body: padded({ project_id: randomUUID(), node_id: randomUUID(), text: "a" }, 300_000),
+      });
+      expect(refused.status).toBe(401);
+      expect(refused.reusedSocket).toBe(false);
+
+      const next = await send("/api/v1/assets/upload-config", { method: "GET", agent });
+
+      expect(next.reusedSocket).toBe(true);
+      expect(next.status).toBe(401);
+    } finally {
+      agent.destroy();
+    }
   });
 });
 
