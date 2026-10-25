@@ -231,14 +231,16 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
     try {
       if (gl === null) throw new Error('WebGL unavailable');
       audio = new AudioContext();
-      gains.push(audio.createGain(), audio.createGain());
+      gains.push(audio.createGain());
+      gains.push(audio.createGain());
       for (const gain of gains) gain.connect(audio.destination);
       buffer = gl.createBuffer();
       if (buffer === null) throw new Error('Preview buffer allocation failed');
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, -1, 4, 4, -1]), gl.STATIC_DRAW);
       gl.viewport(0, 0, surface.width, surface.height); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      textures.push(videoTexture(gl), videoTexture(gl));
+      textures.push(videoTexture(gl));
+      textures.push(videoTexture(gl));
       for (const [name, glsl] of Object.entries({ fade, wipeLeft, wipeRight })) renderers.set(name, createTransition(gl, { glsl, paramsTypes: {}, defaultParams: {} }, { resizeMode: 'contain' }));
     } catch { fail(); }
     /**
