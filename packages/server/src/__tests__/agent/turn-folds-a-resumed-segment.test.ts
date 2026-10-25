@@ -14,8 +14,8 @@
  * fold may just have taken, so the reassembled message carries it in full and
  * replaces what was kept of the message.
  *
- * Window 1,048,576, output reserve 16,384, keep line 1,000,000, memory reserve
- * 4,000. Against H1's 1,048,577, two earlier turns of about 9,000 characters
+ * Window 1,048,576, output reserve 16,384, keep line 2,000,000, memory reserve
+ * 4,000, so the fold target is 1,028,192. Against H1's 1,048,577, two earlier turns of about 9,000 characters
  * are enough to fit once taken (more than 16,385) and not enough to reach the
  * fold's target (less than 20,385), so a planner free to take the running
  * turn would take it too.

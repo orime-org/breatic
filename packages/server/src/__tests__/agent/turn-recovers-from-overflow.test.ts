@@ -12,8 +12,9 @@
  * reader sees is one reply: the waiting dot, "consolidating memory", and the
  * answer -- never the error.
  *
- * Window 1,048,576 (the probe's), output reserve 16,384, keep line 1,000,000,
- * memory reserve 4,000: the target a fold runs down to is 1,028,192, so a
+ * Window 1,048,576 (the probe's), output reserve 16,384, keep line 2,000,000,
+ * memory reserve 4,000: the target a fold runs down to is
+ * min(2,000,000, 1,032,192) - 4,000 = 1,028,192, so a
  * 30,000-character turn is one fold's worth against H1's 1,048,577.
  */
 

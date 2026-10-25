@@ -324,7 +324,8 @@ export const BASE_CONFIG: Record<string, unknown> = {
   default_model: "test",
   main_model_sees_pictures: "no",
   max_output_tokens: 16_384,
-  memory_keep_tokens: 1_000_000,
+  // Above the window less the output reserve, so the window term sets the fold target.
+  memory_keep_tokens: 2_000_000,
   memory_conversation_max_size: 1000,
   memory_project_max_size: 1000,
   max_tool_iterations: 8,
