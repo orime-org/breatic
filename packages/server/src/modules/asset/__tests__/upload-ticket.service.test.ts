@@ -2,18 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The transfer branch of `issueUploadTicket` (inner#1006 design §4.2, test
- * spec T28).
+ * `issueTransferTicket` (inner#1006 design §4.2, test spec T28).
  *
  * A transfer file never becomes an asset and never counts toward storage, so
- * the branch asks neither the dedup ledger nor the storage allowance; the key,
+ * the ticket asks neither the dedup ledger nor the storage allowance; the key,
  * the grant's provenance, the file name and the signed type are all the
- * server's, not the browser's.
- *
- * The call shape is an assumption of this test: the design says only that
- * `issueUploadTicket` gains a transfer branch. It is reached here the way the
- * existing purposes are, through `purpose`, with nothing but the size the
- * browser sends.
+ * server's, not the browser's. The route calls it with the caller's scope and
+ * the size the browser sends, nothing else; the size cap is the route
+ * schema's alone (T21).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -61,13 +57,14 @@ vi.mock("@breatic/domain", () => ({
 }));
 
 vi.mock("@server/modules/asset/assetUpload.service.js", () => ({ checkUploadDedup, settleDedupHit }));
+const assertStudioStorageAllowance = vi.fn(async () => {});
 vi.mock("@server/modules/asset/storageQuota.service.js", () => ({
   INSUFFICIENT_STORAGE: 507,
-  assertStudioStorageAllowance: vi.fn(async () => {}),
+  assertStudioStorageAllowance,
 }));
 vi.mock("@server/modules/asset/upload-opening.js", () => ({ openUpload }));
 
-const { issueUploadTicket } = await import("@server/modules/asset/upload-ticket.service.js");
+const { issueTransferTicket } = await import("@server/modules/asset/upload-ticket.service.js");
 
 const SCOPE = {
   userId: "22222222-2222-4222-8222-222222222222",
@@ -75,32 +72,29 @@ const SCOPE = {
   projectId: "11111111-1111-4111-8111-111111111111",
 };
 
-/** The transfer request as the route hands it over: a purpose and a size. */
-const TRANSFER_ITEM = { purpose: "transfer", size: 1500019 } as unknown as Parameters<
-  typeof issueUploadTicket
->[1];
+/** The size the browser asks for: the whole transfer file, signature included. */
+const SIZE = 1500019;
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("T28: the transfer branch of issueUploadTicket", () => {
+describe("T28: issueTransferTicket", () => {
   it("names the shared transfer type", () => {
     expect(TRANSFER_MEDIA_TYPE).toBe(TRANSFER_TYPE);
   });
 
   it("asks neither dedup nor the storage allowance", async () => {
-    const admitStorage = vi.fn(async () => true);
-
     // Settled either way: what is asserted is which questions were asked.
-    await issueUploadTicket(SCOPE, TRANSFER_ITEM, admitStorage).catch(() => undefined);
+    await issueTransferTicket(SCOPE, SIZE).catch(() => undefined);
 
     expect(checkUploadDedup).toHaveBeenCalledTimes(0);
-    expect(admitStorage).toHaveBeenCalledTimes(0);
+    expect(settleDedupHit).toHaveBeenCalledTimes(0);
+    expect(assertStudioStorageAllowance).toHaveBeenCalledTimes(0);
   });
 
   it("opens a transfer grant with no node and no space, under a .transfer key", async () => {
-    await issueUploadTicket(SCOPE, TRANSFER_ITEM, vi.fn(async () => true));
+    await issueTransferTicket(SCOPE, SIZE);
 
     expect(openUpload).toHaveBeenCalledTimes(1);
     const [grant] = openUpload.mock.calls[0] as unknown as [
@@ -119,7 +113,7 @@ describe("T28: the transfer branch of issueUploadTicket", () => {
   });
 
   it("signs the ticket with the transfer type", async () => {
-    await issueUploadTicket(SCOPE, TRANSFER_ITEM, vi.fn(async () => true));
+    await issueTransferTicket(SCOPE, SIZE);
 
     expect(signTicketFor).toHaveBeenCalledTimes(1);
     const [signed] = signTicketFor.mock.calls[0] as unknown as [{ contentType: string; declaredSize: number }];
