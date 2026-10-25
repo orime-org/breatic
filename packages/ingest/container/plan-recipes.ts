@@ -61,8 +61,19 @@ export async function preparePlanDisplayFrame(request: PlanRecipeRequest, anchor
  * @throws {Error} When geometry, the process or the resulting PNG is invalid.
  */
 export async function cropPlanDisplayFrame(request: PlanRecipeRequest, frame: PlanDisplayFrame, crop: MiniToolPlanFrameCrop, output: string): Promise<Pick<PlanDisplayFrame, "path" | "width" | "height">> {
-  void request; void frame; void crop; void output;
-  throw new Error("Saved display crop awaits independent RED");
+  request.signal.throwIfAborted();
+  if (crop.sourceWidth !== frame.width || crop.sourceHeight !== frame.height) throw new Error("Display crop source geometry differs from its original frame");
+  const { x, y, width, height } = crop.rect;
+  if (![x, y].every((value) => Number.isSafeInteger(value) && value >= 0) ||
+    ![width, height].every((value) => Number.isSafeInteger(value) && value > 0) || x + width > frame.width || y + height > frame.height) {
+    throw new RangeError("Display crop rectangle lies outside its original frame");
+  }
+  await runPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-noautorotate", "-i", frame.path,
+    "-vf", `crop=${width}:${height}:${x}:${y}:exact=1`, "-frames:v", "1", "-c:v", "png", "-f", "image2", output],
+  { signal: request.signal, stdoutBytes: request.limits.probeStdoutBytes, stderrTailBytes: request.limits.stderrTailBytes });
+  const geometry = pngSize(new Uint8Array(await readFile(output)));
+  if (geometry === null || geometry.width !== width || geometry.height !== height) throw new Error("Cropped display PNG differs from its saved pixel rectangle");
+  return { path: output, ...geometry };
 }
 
 /** JSON metadata artifacts have no image, video duration or optional cover. */
@@ -198,8 +209,9 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       const anchor = facts.source.frameTable.frames[recipe.frameIndex];
       if (anchor === undefined) throw new Error("Frame recipe is outside the complete source ledger");
       if (recipe.orientation === "display") {
-        const frame = await preparePlanDisplayFrame(request, anchor, output);
-        return { width: frame.width, height: frame.height, durationSeconds: null, cover: null };
+        const frame = await preparePlanDisplayFrame(request, anchor, recipe.crop === undefined ? output : `${output}.display.png`);
+        const image = recipe.crop === undefined ? frame : await cropPlanDisplayFrame(request, frame, recipe.crop, output);
+        return { width: image.width, height: image.height, durationSeconds: null, cover: null };
       }
       await runPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-noautorotate", "-copyts", "-i", input,
         "-map", "0:v:0", "-vf", `select=eq(n\\,${recipe.frameIndex})`, "-fps_mode", "passthrough", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], options);
@@ -215,7 +227,7 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
       const result = await analyze(request, prepared === undefined ? `select=eq(n\\,${recipe.anchor.frameIndex})` : "null", 1, prepared);
       const { width, height } = prepared ?? facts.source;
       await writePlanJson(output, { schemaVersion: 1, kind: "people", ...(prepared === undefined ? {} : { coordinateSpace: "display" }),
-        anchor: recipe.anchor, width, height, candidates: readYuNetFaces(result.faces, { width, height }) });
+        anchor: recipe.anchor, width, height, candidates: readYuNetFaces(result.faces, { width, height }, prepared !== undefined) });
       return { ...NO_MEDIA };
     }
     case "scene_cuts": {

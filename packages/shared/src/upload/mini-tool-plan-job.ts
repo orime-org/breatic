@@ -17,6 +17,9 @@ const index = z.number().int().nonnegative();
 const range = z.strictObject({ start: z.number().nonnegative(), end: z.number().positive() })
   .refine((value) => value.end > value.start);
 const profile = miniToolAnalysisInputSchema.options[0].shape.profile;
+const pixelRect = z.strictObject({ x: index, y: index, width: z.number().int().positive(), height: z.number().int().positive() });
+const frameCrop = z.strictObject({ sourceWidth: z.number().int().positive(), sourceHeight: z.number().int().positive(), rect: pixelRect })
+  .refine((crop) => crop.rect.x + crop.rect.width <= crop.sourceWidth && crop.rect.y + crop.rect.height <= crop.sourceHeight);
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */
 export const miniToolPlanLimitsSchema = z.strictObject({
@@ -28,7 +31,8 @@ export const miniToolPlanLimitsSchema = z.strictObject({
 /** The versioned per-output media recipes admitted by the planned job lane. */
 export const miniToolPlanRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inspect_video"), inputId }),
-  z.strictObject({ kind: z.literal("frame"), inputId, frameIndex: index, orientation: z.literal("display").optional() }),
+  z.strictObject({ kind: z.literal("frame"), inputId, frameIndex: index, orientation: z.literal("display").optional(), crop: frameCrop.optional() })
+    .refine((recipe) => recipe.crop === undefined || recipe.orientation === "display"),
   z.strictObject({ kind: z.literal("segment"), inputId, range, audioEnd: z.number().positive().optional() }),
   z.strictObject({ kind: z.literal("people"), inputId, anchor: miniToolAnchorSchema, profile, orientation: z.literal("display").optional() }),
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, range, profile }),

@@ -34,7 +34,6 @@ function isFiniteNumber(value: unknown): value is number {
  * @throws {TypeError} When geometry or a detector row is malformed.
  */
 export function readYuNetFaces(detections: unknown, dimensions: { width: number; height: number }, includePixelCrop = false): AnalysisFaceCandidate[] {
-  void includePixelCrop;
   const { width, height } = dimensions;
   if (![width, height].every((value) => Number.isSafeInteger(value) && value > 0)) throw new TypeError("Expected positive integral analysis geometry");
   if (detections === null) return [];
@@ -50,11 +49,15 @@ export function readYuNetFaces(detections: unknown, dimensions: { width: number;
     if (right <= left || bottom <= top) continue;
     const x = left / width;
     const y = top / height;
+    const pixelX = Math.floor(left);
+    const pixelY = Math.floor(top);
     candidates.push({ detectionIndex, faceBox: {
       x, y,
       width: Math.min((right - left) / width, 1 - x),
       height: Math.min((bottom - top) / height, 1 - y),
-    } });
+    }, ...(includePixelCrop ? { pixelCrop: {
+      x: pixelX, y: pixelY, width: Math.ceil(right) - pixelX, height: Math.ceil(bottom) - pixelY,
+    } } : {}) });
   }
   return candidates;
 }
