@@ -752,9 +752,15 @@ export {
 } from "@shared/media/long-media-schema.js";
 export {
   LongMediaProbeReportSchema,
+  LongMediaInputSchema,
   readLongMediaProbeReport,
   type LongMediaProbeReport,
 } from "@shared/media/long-media-probe.js";
+export {
+  LongMediaPlanRequestSchema,
+  readLongMediaPlanRequest,
+  type LongMediaPlanRequest,
+} from "@shared/media/long-media-plan.js";
 export {
   computeLongMediaJobRequestDigest,
   LongMediaJobRequestSchema,

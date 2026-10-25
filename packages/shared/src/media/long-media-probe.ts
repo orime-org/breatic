@@ -40,7 +40,7 @@ const stream = z.discriminatedUnion("kind", [
   }).strict().refine((value) => BigInt(value.startUs) < BigInt(value.endUs), "Invalid video stream range"),
 ]);
 
-const mediaInput = z.object({
+export const LongMediaInputSchema = z.object({
   mediaInputId: z.string().min(1),
   descriptor: MediaInputDescriptorSchema,
   sourceRange: timeRange,
@@ -54,7 +54,7 @@ export const LongMediaProbeReportSchema = z.object({
   sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
   selectedVideoStreamIndex: z.number().int().nonnegative().nullable(),
   streams: z.array(stream).min(1),
-  mediaInputs: z.array(mediaInput).min(1),
+  mediaInputs: z.array(LongMediaInputSchema).min(1),
 }).strict().superRefine((report, context) => {
   const streamsByIndex = new Map(report.streams.map((item) => [item.index, item]));
   const selectedVideo = report.selectedVideoStreamIndex === null
