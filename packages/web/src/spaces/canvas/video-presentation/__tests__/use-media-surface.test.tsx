@@ -164,8 +164,9 @@ describe('effect-owned video surface lifecycle', () => {
     expect(result.current.binding?.getPresentedFrame()).toBeNull();
     await act(async () => result.current.binding!.play());
     expect(element.play).toHaveBeenCalledTimes(1);
+    const pauses = vi.mocked(element.pause).mock.calls.length;
     act(() => result.current.binding!.pause());
-    expect(element.pause).toHaveBeenCalled();
+    expect(element.pause).toHaveBeenCalledTimes(pauses + 1);
     expect(onPresentedFrame).toHaveBeenCalledTimes(0);
   });
 

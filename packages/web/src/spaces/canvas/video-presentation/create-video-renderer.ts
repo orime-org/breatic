@@ -102,7 +102,7 @@ function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource
   let live = true;
   let frameHandle: number | undefined;
   /**
-   * Publishes the actual native surface after enough decoded data exists.
+   * Publishes native transport at metadata; presented-frame readiness stays separate.
    * @throws {never} Never.
    */
   function ready(): void { if (live) { callbacks.ready(video, video); restoreFrameCallbacks.afterReady(); } }
@@ -123,6 +123,7 @@ function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource
    * @throws {never} Never.
    */
   function error(): void { if (live) callbacks.error('media-load-failed'); }
+  video.addEventListener('loadedmetadata', ready);
   video.addEventListener('loadeddata', ready);
   video.addEventListener('error', error);
   host.append(video);
@@ -136,6 +137,7 @@ function createNativeRenderer(host: HTMLElement, source: VideoPresentationSource
     video.pause();
     if (frameHandle !== undefined) video.cancelVideoFrameCallback(frameHandle);
     restoreFrameCallbacks.dispose();
+    video.removeEventListener('loadedmetadata', ready);
     video.removeEventListener('loadeddata', ready);
     video.removeEventListener('error', error);
     video.removeAttribute('src');
