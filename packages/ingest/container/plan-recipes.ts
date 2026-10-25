@@ -3,7 +3,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+import type { MiniToolPlanFrameCrop, MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 import { parseVideoFrameProbe, type VideoFrameProbe } from "@ingest/container/video-frame-probe.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
@@ -49,6 +49,20 @@ export async function preparePlanDisplayFrame(request: PlanRecipeRequest, anchor
   const geometry = pngSize(new Uint8Array(await readFile(output)));
   if (geometry === null) throw new Error("Display anchor did not produce a complete PNG");
   return { path: output, ...geometry, anchor };
+}
+
+/**
+ * Crop the saved integer region from the same actual upright PNG.
+ * @param request - The original process lifetime and frozen IO bounds.
+ * @param frame - The materialized display pixels and measured geometry.
+ * @param crop - The candidate's saved source geometry and integer rectangle.
+ * @param output - The owned PNG output path.
+ * @returns The actual cropped PNG and its natural pixel dimensions.
+ * @throws {Error} When geometry, the process or the resulting PNG is invalid.
+ */
+export async function cropPlanDisplayFrame(request: PlanRecipeRequest, frame: PlanDisplayFrame, crop: MiniToolPlanFrameCrop, output: string): Promise<Pick<PlanDisplayFrame, "path" | "width" | "height">> {
+  void request; void frame; void crop; void output;
+  throw new Error("Saved display crop awaits independent RED");
 }
 
 /** JSON metadata artifacts have no image, video duration or optional cover. */
