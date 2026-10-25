@@ -106,6 +106,33 @@ loads none of its libraries. The image carries the licence texts and a
 `SOURCE` file at `/usr/share/sox-source/`, written from the installed package
 while the image is built, as the FFmpeg one above is.
 
+### Isolated analysis in the media container
+
+The media container also carries Python 3.12.15, NumPy 2.3.5, OpenCV
+4.12.0, PySceneDetect 0.7.2 and the YuNet 2023mar face detector. The Node
+service invokes our Python analysis program as a separate process and hands
+it raw BGR frames. Python does not decode media: OpenCV is built from source
+with FFmpeg, GStreamer, GUI and dynamic backend plugins disabled. The
+existing FFmpeg program supplies decoded frames through a separate process.
+
+| Component | Licence | Source |
+|---|---|---|
+| Python 3.12.15 | Python-2.0 | https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tar.xz |
+| NumPy 2.3.5 | BSD-3-Clause and its bundled notices | https://github.com/numpy/numpy/tree/v2.3.5 |
+| OpenBLAS 0.3.30 | BSD-3-Clause | https://github.com/OpenMathLib/OpenBLAS/tree/v0.3.30 |
+| GCC runtime libraries | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org/pub/gcc/releases/gcc-15.2.0/gcc-15.2.0.tar.xz |
+| Limited OpenCV 4.12.0 | Apache-2.0 and its bundled notices, including Protobuf, SoftFloat and MSCR | https://github.com/opencv/opencv/tree/4.12.0 |
+| PySceneDetect 0.7.2 | BSD-3-Clause | https://github.com/Breakthrough/PySceneDetect/tree/v0.7.2 |
+| YuNet 2023mar weights | MIT | https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet |
+
+The image retains upstream licence texts and a `SOURCE` declaration under
+`/usr/share/analysis-source/`. That declaration includes the fixed upstream
+archive and weight hashes and the installed Alpine package metadata.
+OpenCV's generated CMake cache, install manifest and build/runtime package
+lists are retained under `/opt/opencv/build-record/`. Python package notices
+also remain in their installed `dist-info` directories. This separate
+analysis runtime leaves the existing media programs' notices in place.
+
 ## Packages in our container images
 
 The `breatic` image carries the production `node_modules` of `server`, `worker`
