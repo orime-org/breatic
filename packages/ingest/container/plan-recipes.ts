@@ -146,8 +146,14 @@ export async function executePlanRecipe(request: PlanRecipeRequest): Promise<Med
     }
     case "segment": {
       const start = recipe.range.start;
+      const count = facts.source.frameTable.frames.filter((frame) => frame.pts >= start && frame.pts < recipe.range.end).length;
+      if (count === 0) throw new Error("Segment range has no source frames");
+      // Decode order equals presentation order with B frames disabled. The next
+      // actual PTS defines interior display durations; the frozen range boundary
+      // defines the last one, rather than a nominal fps or stale packet duration.
+      const timing = `setts=pts=PTS:dts=DTS:duration='if(eq(N,${count - 1}),${recipe.range.end - start}/TB-PTS,NEXT_PTS-PTS)'`;
       const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-noautorotate", "-copyts", "-i", input, "-map", "0:v:0",
-        "-vf", `trim=start=${start}:end=${recipe.range.end},setpts=PTS-${start}/TB`, "-fps_mode", "passthrough", "-enc_time_base:v", "demux", "-c:v", "libx264", "-pix_fmt", "yuv420p"];
+        "-vf", `trim=start=${start}:end=${recipe.range.end},setpts=PTS-${start}/TB`, "-fps_mode", "passthrough", "-enc_time_base:v", "demux", "-c:v", "libx264", "-bf", "0", "-pix_fmt", "yuv420p", "-bsf:v", timing];
       if (facts.source.hasAudio && (recipe.audioEnd ?? recipe.range.end) > start) {
         args.push("-map", "0:a:0", "-af", `atrim=start=${start}:end=${recipe.audioEnd ?? recipe.range.end},asetpts=PTS-${start}/TB`, "-c:a", "aac");
       } else args.push("-an");
