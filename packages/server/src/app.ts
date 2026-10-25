@@ -29,6 +29,7 @@ import creditsRoute from "@server/routes/credits.js";
 import { textToolsRoute } from "@server/routes/text-tools.js";
 import { modelsRoute } from "@server/routes/models.js";
 import { assetsRoute } from "@server/routes/assets.js";
+import { videoPresentationRoute } from "@server/routes/video-presentation.js";
 import { accountRoute } from "@server/routes/account.js";
 import { subscriptionRoute } from "@server/routes/subscription.js";
 import { activitiesRoute } from "@server/routes/activities.js";
@@ -76,6 +77,7 @@ export function createApp(): Hono {
   app.route("/api/v1/mini-tools", miniToolsRoute);
   app.route("/api/v1/mini-tools/text", textToolsRoute);
   app.route("/api/v1/projects", projectsRoute);
+  app.route("/api/v1/projects/:projectId/assets/video-presentation", videoPresentationRoute);
   app.route("/api/v1/projects/:pid/members", membersRoute);
   app.route("/api/v1/projects/:pid/invitations", projectInvitesRoute);
   app.route("/api/v1/projects/:pid/join-requests", projectJoinRequestsRoute);

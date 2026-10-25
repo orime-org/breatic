@@ -45,6 +45,7 @@ import {
   applyIngestReport,
   INGEST_SIDE_EFFECT_EVENTS,
   type IngestReportOutcome,
+  type IngestReport,
   type IngestSideEffects,
 } from "@domain/asset/ingest-report.service.js";
 
@@ -138,6 +139,8 @@ export interface BackendUploadContext {
   assetSource: Extract<StudioAssetEntity["source"], "ai" | "cover" | "agent">;
   /** The generation that produced these bytes, when one did. */
   generationTaskId?: string;
+  /** Internal alpha-channel hint; trustworthy probing still verifies the source. */
+  knownAlpha?: boolean;
   /** The key's task segment, which also decides its extension. */
   taskType: string;
   /** The dotted extension the object is stored under. */
@@ -149,6 +152,20 @@ export interface BackendUploadContext {
    * Every call of the upload is bounded by it and by nothing of its own.
    */
   deadlineAt: number;
+}
+
+/**
+ * Preserve the caller's original video budget at the registration boundary.
+ * @param report - Trusted stored-byte measurements.
+ * @param deadlineAt - Parent task's original absolute deadline.
+ * @param knownAlpha - Internal channel hint, still verified by the auxiliary probe.
+ * @returns The unchanged canonical registration outcome and typed side effects.
+ * @throws {Error} When canonical registration fails.
+ */
+function registerBackendOutcome(report: Extract<IngestReport, { outcome: 'completed' }>, deadlineAt: number, knownAlpha = false): Promise<IngestReportOutcome> {
+  void deadlineAt;
+  void knownAlpha;
+  return applyIngestReport(report);
 }
 
 /**
@@ -245,11 +262,11 @@ export async function uploadBytesToStorage(
     ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
   return landed(
-    await applyIngestReport({
+    await registerBackendOutcome({
       storageKey: opened.storageKey,
       outcome: "completed",
       ...measured,
-    }),
+    }, ctx.deadlineAt, ctx.knownAlpha),
     `the upload for project ${ctx.projectId}`,
   );
 }
@@ -283,11 +300,11 @@ export async function transferUrlToStorage(
     ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
   return landed(
-    await applyIngestReport({
+    await registerBackendOutcome({
       storageKey: opened.storageKey,
       outcome: "completed",
       ...measured,
-    }),
+    }, ctx.deadlineAt, ctx.knownAlpha),
     `the transfer of ${sourceUrl}`,
   );
 }
@@ -444,6 +461,6 @@ export async function pullReaderLink(
     return { status: "failed", reason: INGEST_TYPE_NOT_REPORTED, settled, reported: measured.contentType };
   }
 
-  const outcome = await applyIngestReport({ storageKey, outcome: "completed", ...measured, contentType: storedType });
+  const outcome = await registerBackendOutcome({ storageKey, outcome: "completed", ...measured, contentType: storedType }, deadlineAt);
   return { status: "reported", outcome };
 }

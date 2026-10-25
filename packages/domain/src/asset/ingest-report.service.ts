@@ -48,6 +48,7 @@ import { canvasSpaceDocName, NO_CONSENT, t, uprightKeyFor } from "@breatic/share
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
+import { ensureVideoPresentation } from "@domain/asset/video-presentation.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import type {
   UploadGrant,
@@ -143,6 +144,7 @@ export const INGEST_SIDE_EFFECT_EVENTS: Record<
   activityAppendFailed: "activity_record_failed",
   coverRegisterFailed: "ingest_cover_register_failed",
   peaksQueueFailed: "audio_peaks_queue_failed",
+  presentationQueueFailed: "video_presentation_queue_failed",
 };
 
 /**
@@ -176,6 +178,13 @@ export interface IngestSideEffects {
    * them, and this line is what says so.
    */
   peaksQueueFailed?: boolean;
+  /** Presentation admission failed; canonical registration remains successful. */
+  presentationQueueFailed?: boolean;
+}
+
+/** Trusted caller context, never parsed from a browser's registration report. */
+export interface IngestReportOptions {
+  presentation?: { deadlineAt: number; knownAlpha?: boolean };
 }
 
 /**
@@ -564,11 +573,13 @@ export async function settleDedupedCover(
 /**
  * Apply one report from the ingest Worker.
  * @param report - What happened to this upload.
+ * @param options - Trusted parent presentation budget and channel hint.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
  */
 export async function applyIngestReport(
   report: IngestReport,
+  options: IngestReportOptions = {},
 ): Promise<IngestReportOutcome> {
   const grant = await findGrantByKey(report.storageKey);
   if (grant === null) throw new NotFoundError(t("server.error.not_found"));
@@ -634,7 +645,7 @@ export async function applyIngestReport(
       sizeBytes: existing.sizeBytes,
       ...(countsPublishFailed && { countsPublishFailed }),
     };
-    return withPeaksQueued(repeated);
+    return withPeaksQueued(repeated, grant, options);
   }
 
   // The declared size got the ticket issued; this is the first time anyone has
@@ -822,7 +833,7 @@ export async function applyIngestReport(
     ...((cover.failed || settled?.failed === true) && {
       coverRegisterFailed: true,
     }),
-  });
+  }, grant, options);
 }
 
 /**
@@ -833,12 +844,20 @@ export async function applyIngestReport(
  * leave its audio without a job. The row stands either way; a job that could
  * not be queued is a flag for the caller to write down.
  * @param outcome - What registration answered.
+ * @param grant - Original upload identity and budget.
+ * @param options - Trusted parent context for auxiliary presentation work.
  * @returns The same outcome, flagged when its job could not be queued.
  */
-async function withPeaksQueued(outcome: IngestReportOutcome): Promise<IngestReportOutcome> {
+async function withPeaksQueued(outcome: IngestReportOutcome, grant: UploadGrant, options: IngestReportOptions): Promise<IngestReportOutcome> {
   const queued = await scheduleAudioPeaks(outcome).then(
     () => true,
     () => false,
   );
-  return queued ? outcome : { ...outcome, peaksQueueFailed: true };
+  const result = queued ? outcome : { ...outcome, peaksQueueFailed: true };
+  if ((outcome.status !== 'registered' && outcome.status !== 'already_registered') || outcome.kind !== 'video') return result;
+  const presentationQueued = await Promise.resolve().then(async () => ensureVideoPresentation({
+    assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant),
+    knownAlpha: options.presentation?.knownAlpha === true,
+  })).then(() => true, () => false);
+  return presentationQueued ? result : { ...result, presentationQueueFailed: true };
 }

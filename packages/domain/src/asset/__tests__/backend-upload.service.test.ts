@@ -38,7 +38,8 @@ const DEADLINE_AT = Date.now() + 3_600_000;
 const IDLE_DISPATCHER = { dispatcher: "idle-socket" };
 const idleSocketDispatcher = vi.fn(() => IDLE_DISPATCHER);
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
   budgetDeadlineFrom: (startedAt: number) => startedAt + 7_200_000,
   // Shaped like the real one, which the cover key is checked against below.
@@ -130,6 +131,22 @@ beforeEach(() => {
     assetId: "a1",
     fileUrl: "https://our-bucket/k.png",
     kind: "image",
+  });
+});
+
+describe('video presentation registration context (inner#1306)', () => {
+  it.each(['bytes', 'url'] as const)('retains the original parent deadline and alpha hint for the %s lane', async (lane) => {
+    issueUploadGrant.mockResolvedValue({ key: 'video/canonical.webm', studioId: 's1' });
+    const measured = { ...MEASURED, contentType: 'video/webm' };
+    finishUploadAtIngest.mockResolvedValue(measured);
+    fetchUrlToIngest.mockResolvedValue(measured);
+    applyIngestReport.mockResolvedValue({ status: 'registered', assetId: 'a1', fileUrl: 'https://our-bucket/canonical.webm', kind: 'video' });
+    const ctx = { ...CTX, taskType: 'video', ext: '.webm', contentType: 'video/webm', knownAlpha: true };
+    if (lane === 'bytes') await uploadBytesToStorage(new Blob([new Uint8Array([1, 2, 3])]), ctx);
+    else await transferUrlToStorage('https://provider.example.test/temporary.webm', ctx);
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      storageKey: 'video/canonical.webm', outcome: 'completed', sha256: measured.sha256,
+    }), { presentation: { deadlineAt: DEADLINE_AT, knownAlpha: true } });
   });
 });
 
