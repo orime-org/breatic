@@ -59,7 +59,9 @@ function untilStopped<T>(work: Promise<T>, signal: AbortSignal | undefined): Pro
  * @param options - The stop signal and the start hook.
  * @returns The reference to send in place of the body.
  * @throws {Error} When the ticket is refused or the upload does not end transferred.
- * @throws {DOMException} `AbortError` once the signal is raised.
+ * @throws {DOMException} `AbortError` when the signal is raised between steps;
+ *   a stop during the ticket or finish request rejects with the `ApiException`
+ *   the cancelled request becomes, which `bodyOrTransfer` turns into `AbortError`.
  */
 async function transfer(
   projectId: string,

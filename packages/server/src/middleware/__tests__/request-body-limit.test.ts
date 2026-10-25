@@ -6,7 +6,7 @@
  *
  * The middleware is mounted on a minimal Hono app in front of a spy route, so
  * these cases see exactly what it reads, what it logs and what it answers. The
- * real-socket cases (T01–T10) are in
+ * real-socket cases (T01–T06, T08–T10, T12, T17) are in
  * `src/__tests__/integration/request-body-limit.integration.test.ts`.
  *
  * The module under test is imported inside each case, so a case that only

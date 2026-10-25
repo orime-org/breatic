@@ -56,7 +56,9 @@ export interface QueuedFinish {
  *   to every part and to the finish, and checked between the two.
  * @returns The key the queued finish runs under.
  * @throws {Error} When any part is refused, or queueing fails every attempt.
- * @throws {DOMException} `AbortError` once `signal` is raised.
+ * @throws {DOMException} `AbortError` when `signal` is raised during the parts
+ *   or before the finish; a stop during the finish request rejects with the
+ *   `ApiException` the cancelled request becomes.
  */
 export async function sendFileAndFinish(
   file: Blob,

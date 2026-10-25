@@ -231,7 +231,8 @@ export type IngestReportOutcome = IngestSideEffects &
   | { status: "transferred" }
   /**
    * Nothing for this report to answer with: a failure for an upload another
-   * delivery already registered, or a repeat whose ledger row is gone.
+   * delivery already registered, a repeat whose ledger row is gone, or a
+   * transfer finish whose grant was already voided.
    */
     | { status: "stale" });
 

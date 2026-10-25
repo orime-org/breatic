@@ -8,8 +8,8 @@
  * Postgres and Redis are real. Only the storage adapter's `read` is a stub,
  * because the suite's R2 endpoint is not reachable; its delays are what make
  * concurrent references overlap inside the read lock's window. Every property
- * run seeds fresh users, so the routes' own per-user rate limits (60 a
- * minute) never decide an answer.
+ * run seeds fresh users, so the canvas routes' per-user rate limits (60 a
+ * minute) never decide an answer; `/chat/message` has none of its own.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach, inject, vi } from "vitest";
