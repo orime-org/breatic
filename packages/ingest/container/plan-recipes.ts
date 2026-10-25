@@ -28,6 +28,22 @@ export interface PlanRecipeRequest {
   limits: PlanLimits;
 }
 
+/** One exact selected frame in its native displayed orientation. */
+export interface PlanDisplayFrame { path: string; width: number; height: number; anchor: { frameIndex: number; pts: number } }
+
+/**
+ * Materialize the selected original frame using FFmpeg's native autorotation.
+ * @param request - The immutable source facts and original process lifetime.
+ * @param anchor - The exact original frame ordinal and PTS to preserve.
+ * @param output - The owned temporary PNG path for detection and cropping.
+ * @returns The actual produced geometry and original anchor identity.
+ * @throws {Error} When the anchor, process or produced PNG is invalid.
+ */
+export async function preparePlanDisplayFrame(request: PlanRecipeRequest, anchor: PlanDisplayFrame["anchor"], output: string): Promise<PlanDisplayFrame> {
+  void request; void anchor; void output;
+  throw new Error("Display anchor preparation awaits independent RED");
+}
+
 /** JSON metadata artifacts have no image, video duration or optional cover. */
 const NO_MEDIA: MediaOfOutput = { width: null, height: null, durationSeconds: null, cover: null };
 
