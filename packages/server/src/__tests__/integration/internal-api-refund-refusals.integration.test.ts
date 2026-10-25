@@ -442,6 +442,105 @@ describe("key decisions remain atomic across concurrency and transport failures"
     await mailsSettled(suite.sql, lot);
   });
 
+  it("terminating the backend after a refusal INSERT but before commit rolls back every key result and permits a fresh same-body decision", async () => {
+    const target = randomUUID();
+    const key = freshKey("abort-before-commit");
+    const name = `refusal_after_insert_${randomUUID().replaceAll("-", "")}`;
+    const barrier = `refund-after-insert:${randomUUID()}`;
+    const keyLiteral = `'${key.replaceAll("'", "''")}'`;
+    const barrierLiteral = `'${barrier.replaceAll("'", "''")}'`;
+    let triggerCreated = false;
+    let release: (() => void) | undefined;
+    let gate: Promise<unknown> | undefined;
+    let request: Promise<CallResult> | undefined;
+    await suite.sql.unsafe(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.idempotency_key = TG_ARGV[0] THEN
+          PERFORM pg_advisory_xact_lock(hashtext(TG_ARGV[1]));
+        END IF;
+        RETURN NEW;
+      END
+    $$`);
+    try {
+      await suite.sql.unsafe(`CREATE TRIGGER ${name} AFTER INSERT ON credit_refund_refusals FOR EACH ROW EXECUTE FUNCTION ${name}(${keyLiteral}, ${barrierLiteral})`);
+      triggerCreated = true;
+      let entered!: (pid: number) => void;
+      const ready = new Promise<number>((resolve) => { entered = resolve; });
+      const unlocked = new Promise<void>((resolve) => { release = resolve; });
+      gate = suite.sql.begin(async (tx) => {
+        await tx`SELECT pg_advisory_xact_lock(hashtext(${barrier}))`;
+        const rows = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+        entered(rows[0]!.pid);
+        await unlocked;
+      });
+      const gatePid = await ready;
+      request = post(paths.reject(target), REJECT, key);
+      // This is the request's INSERT, not a client-side pause: the AFTER
+      // INSERT trigger cannot reach its advisory barrier before inserting.
+      await waitUntilBlockedOn(suite.sql, ['insert into "credit_refund_refusals"'], 1);
+      const blocked = await suite.sql<{
+        pid: number; backend_start: string; transaction_id: string | null;
+        transaction_start: string | null; state: string; wait_event_type: string;
+      }[]>`
+        SELECT pid, backend_start::text AS backend_start, backend_xid::text AS transaction_id,
+               xact_start::text AS transaction_start, state, wait_event_type
+        FROM pg_stat_activity
+        WHERE ${gatePid} = ANY(pg_blocking_pids(pid))
+          AND query ILIKE '%insert into "credit_refund_refusals"%'
+          AND wait_event_type = 'Lock'
+      `;
+      expect(blocked).toEqual([{
+        pid: expect.any(Number), backend_start: expect.any(String), transaction_id: expect.stringMatching(/^\d+$/),
+        transaction_start: expect.any(String), state: "active", wait_event_type: "Lock",
+      }]);
+      const victim = blocked[0]!;
+      expect(victim.pid).not.toBe(gatePid);
+      const keyAvailable = await suite.sql.begin(async (tx) => {
+        const rows = await tx<{ acquired: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`internal-idem:${key}`})) AS acquired`;
+        return rows[0]!.acquired;
+      });
+      expect(keyAvailable).toBe(false);
+      // The INSERT exists only in the victim's uncommitted transaction.
+      expect(await refusalRows(key)).toEqual([]);
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
+      const killed = await suite.sql<{ terminated: boolean }[]>`
+        SELECT pg_terminate_backend(pid) AS terminated FROM pg_stat_activity
+        WHERE pid = ${victim.pid} AND backend_start = ${victim.backend_start}::timestamptz
+          AND backend_xid::text = ${victim.transaction_id}
+          AND ${gatePid} = ANY(pg_blocking_pids(pid))
+      `;
+      expect(killed).toEqual([{ terminated: true }]);
+      await vi.waitFor(async () => {
+        const alive = await suite.sql`SELECT pid FROM pg_stat_activity WHERE pid = ${victim.pid}`;
+        expect(alive).toEqual([]);
+      }, { timeout: 10_000, interval: 20 });
+      const interrupted = await request;
+      expect({ status: interrupted.status, body: interrupted.json }).toEqual({ status: 500, body: { code: "internal_error" } });
+      expect(await refusalRows(key)).toEqual([]);
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
+      console.info(`Refund refusal transaction exited before commit: ${JSON.stringify({
+        backendPid: victim.pid, transactionId: victim.transaction_id, barrierBackendPid: gatePid,
+        afterInsertObserved: true, backendExited: true, committedKeyResults: 0,
+      })}`);
+    } finally {
+      release?.();
+      await gate;
+      // Settle the HTTP request before removing a trigger its INSERT used.
+      if (request) await request;
+      if (triggerCreated) await suite.sql.unsafe(`DROP TRIGGER ${name} ON credit_refund_refusals`);
+      await suite.sql.unsafe(`DROP FUNCTION ${name}()`);
+    }
+    const retried = await post(paths.reject(target), REJECT, key);
+    expect(retried.status).toBe(404);
+    expect(retried.json).toEqual({ code: "not_found", detail: expect.any(String) });
+    await expectStored(key, retried, "reject", target);
+    const replay = await post(paths.reject(target), REJECT, key);
+    expect({ status: replay.status, body: replay.json }).toEqual({ status: retried.status, body: retried.json });
+    await expectStored(key, retried, "reject", target);
+    expect(fakeStripe.listCalls).toEqual([]);
+    expect(fakeStripe.createCalls).toEqual([]);
+  });
+
   it("a database failure while inserting the refusal rolls back the decision and leaves the key unused", async () => {
     const lot = await lotOnStripe("active");
     const key = freshKey();
