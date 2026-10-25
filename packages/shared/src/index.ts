@@ -792,6 +792,7 @@ export {
   type MiniToolPlanJobReport,
   type MiniToolPlanAccess,
 } from "@shared/upload/mini-tool-plan-job.js";
+export { submitMiniToolPlanJob, readMiniToolPlanJob } from "@shared/upload/mini-tool-plan-client.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,
 // and a storage key's extension comes from a filename we let be any Unicode.

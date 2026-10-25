@@ -892,6 +892,9 @@ export function renderProductGuide(): string {
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.frameMode"))} ` +
       `offers ${quoted(t("canvas.miniTool.videoUI.first"))}, ${quoted(t("canvas.miniTool.videoUI.last"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.current"))} and ${quoted(t("canvas.miniTool.videoUI.interval"))}. ` +
+      `Current requires an actually displayed frame. Until one is available, ` +
+      `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
+      `the other modes can still use their verified frame table. ` +
       "The current-frame mode uses the frame actually shown by the player; the interval mode takes seconds " +
       "between requests. Preview cards are centred below the settings. " +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
