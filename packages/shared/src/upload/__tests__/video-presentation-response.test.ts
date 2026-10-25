@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import { videoPresentationResponseSchema, videoPresentationSourceBindingSchema } from '../video-presentation-response.js';
 
 const idle = { preparation: null, pollAfterMs: null };
@@ -88,5 +89,16 @@ describe('registered video presentation response (inner#1306)', () => {
     const response = { ...idle, sourceBinding: { ...binding, mediaInfo: { ...binding.mediaInfo, duration: registered } },
       presentation: { ...presentation, state: 'native', alpha: undefined, original: { ...presentation.original, duration: measured } } };
     expect(videoPresentationResponseSchema.safeParse(response).success).toBe(valid);
+  });
+
+  it('preserves positive decimal half-millisecond rounding across a range of registered durations', () => {
+    fc.assert(fc.property(fc.integer({ min: 0, max: 1000000 }), (ticks) => {
+      const measured = Number(`${Math.floor(ticks / 1000)}.${String(ticks % 1000).padStart(3, '0')}5`);
+      const registered = (ticks + 1) / 1000;
+      expect(videoPresentationResponseSchema.safeParse({ ...idle,
+        sourceBinding: { ...binding, mediaInfo: { ...binding.mediaInfo, duration: registered } },
+        presentation: { ...presentation, state: 'native', alpha: undefined, original: { ...presentation.original, duration: measured } },
+      }).success).toBe(true);
+    }));
   });
 });
