@@ -312,3 +312,128 @@ describe("operation-typed results keep execution, plans and expenses separate", 
     }), { numRuns: 8 });
   });
 });
+
+/** Invoke one real mutation with a valid receipt or result, leaving scope as the tested variable.
+ * @throws {Error} When the actual persistence entry rejects the supplied scope.
+ */
+function validMutation(kind: "attempt" | "identity" | "result" | "failure", fixture: Fixture): Promise<unknown> {
+  switch (kind) {
+    case "attempt": return beginMiniToolStepAttempt({ ...fixture.input, attemptId: crypto.randomUUID() });
+    case "identity": return recordMiniToolStepIdentity({ taskId: fixture.taskId, stepId: fixture.stepId, attemptId: fixture.input.attemptId, predictionId: "prediction-original" });
+    case "result": return done(fixture);
+    case "failure": return failMiniToolStep({ taskId: fixture.taskId, stepId: fixture.stepId, error: ERROR });
+  }
+}
+
+describe("planned step contract branches isolated from earlier terminal shortcuts", () => {
+  it.each(["same-attempt", "separate-attempt"] as const)("persists a conflicting %s receipt candidate without replacing canonical expense facts", async (mode) => {
+    const f = await seed(); await beginMiniToolStepAttempt(f.input);
+    const candidateAttemptId = mode === "same-attempt" ? f.input.attemptId : crypto.randomUUID();
+    if (mode === "separate-attempt") await beginMiniToolStepAttempt({ ...f.input, attemptId: candidateAttemptId });
+    await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: f.stepId, attemptId: f.input.attemptId, predictionId: "prediction-original" });
+    const identity = (await snapshot(f)).step.output.miniToolConsumption!.identity;
+    await pg`UPDATE task_upstream_steps SET output=jsonb_set(output,'{miniToolConsumption}',(output->'miniToolConsumption') || ${pg.json({ state: "known", costUsd: 0.2, costSource: "generation_lookup", raw: { deduction: 0.2 }, credits: null })}) WHERE id=${f.stepId}`;
+    await recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity });
+    const before = await snapshot(f);
+    expect(before.step.output.miniToolConsumption!.state).toBe("recorded"); expect(before.usage).toHaveLength(1);
+    const input = { taskId: f.taskId, stepId: f.stepId, attemptId: candidateAttemptId, predictionId: "prediction-candidate" };
+    const received = await recordMiniToolStepIdentity(input); const after = await snapshot(f);
+    expect(received.conflict).toBe(true); expect(received.consumption).toEqual(before.step.output.miniToolConsumption);
+    expect(after.step.status).toBe(before.step.status); expect(after.step.prediction_id).toBe("prediction-original");
+    expect(after.step.output.miniToolConsumption).toEqual(before.step.output.miniToolConsumption);
+    expect(after.step.output.miniToolStep!.attempts).toEqual(before.step.output.miniToolStep!.attempts);
+    expect(after.step.output.miniToolStep!.conflicts).toEqual([{ kind: "identity", attemptId: candidateAttemptId, canonicalId: "prediction-original", candidateId: "prediction-candidate" }]);
+    expect(after.task).toEqual(before.task); expect(after.usage).toEqual(before.usage); preserved(before, after);
+    expect((await recordMiniToolStepIdentity(input)).conflict).toBe(true); expect(await snapshot(f)).toEqual(after);
+    await pg`UPDATE tasks SET status='failed' WHERE id=${f.taskId}`;
+    const terminal = await snapshot(f); await expect(completeMiniToolConsumptionSet(f.taskId)).rejects.toThrow(); expect(await snapshot(f)).toEqual(terminal);
+  });
+
+  it("persists a distinct valid result conflict while keeping the first result and expense", async () => {
+    const f = await seed(); await identify(f); await done(f); const before = await snapshot(f);
+    const candidate = { schemaVersion: 1, kind: "tracking_observation", frames: [{ ordinal: 0, counts: "5" }] };
+    expect(PARSER.parse(candidate)).toEqual(candidate);
+    await expect(done(f, candidate)).rejects.toThrow(); const after = await snapshot(f);
+    expect(after.step.status).toBe("done"); expect(after.step.prediction_id).toBe("prediction-original");
+    expect(after.step.output.miniToolStep!.result).toEqual(before.step.output.miniToolStep!.result);
+    expect(after.step.output.miniToolStep!.conflicts).toEqual([{ kind: "result", result: candidate }]);
+    expect(after.step.output.miniToolConsumption).toEqual(before.step.output.miniToolConsumption);
+    expect(after.task).toEqual(before.task); expect(after.usage).toEqual(before.usage); preserved(before, after);
+    await expect(done(f, candidate)).rejects.toThrow(); expect(await snapshot(f)).toEqual(after);
+  });
+
+  it("keeps the first failure on a different repeated error before any typed result exists", async () => {
+    const f = await seed(); await beginMiniToolStepAttempt(f.input); await failMiniToolStep({ taskId: f.taskId, stepId: f.stepId, error: ERROR });
+    const before = await snapshot(f); expect(before.step.status).toBe("failed"); expect(before.step.output.miniToolStep!.result).toBeNull();
+    expect(before.step.output.miniToolStep!.error).toEqual(ERROR);
+    await failMiniToolStep({ taskId: f.taskId, stepId: f.stepId, error: { code: "later_failure", detail: "A different diagnostic" } });
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it("stores one explicit not-sent proof without fabricating a provider identity or zero cost", async () => {
+    const f = await seed(); await beginMiniToolStepAttempt(f.input); const before = await snapshot(f);
+    const failure = { taskId: f.taskId, stepId: f.stepId, error: { code: "request_not_sent" }, attempt: { attemptId: f.input.attemptId, proof: "not_sent" as const } };
+    await failMiniToolStep(failure); const after = await snapshot(f);
+    expect(after.step.status).toBe("failed"); expect(after.step.prediction_id).toBeNull(); expect(after.step.output.miniToolConsumption).toBeUndefined(); expect(after.usage).toEqual([]);
+    expect(after.step.output.miniToolStep!.attempts).toEqual([{ ...before.step.output.miniToolStep!.attempts[0], resolution: { kind: "not_sent", error: failure.error } }]);
+    expect(after.step.output.miniToolStep!.error).toEqual(failure.error); expect(after.task).toEqual(before.task); preserved(before, after);
+    await failMiniToolStep(failure); expect(await snapshot(f)).toEqual(after);
+  });
+
+  it("rejects a contradictory resolution after a particular attempt was recorded as not sent", async () => {
+    const f = await seed(); await beginMiniToolStepAttempt(f.input);
+    await failMiniToolStep({ taskId: f.taskId, stepId: f.stepId, error: { code: "request_not_sent" }, attempt: { attemptId: f.input.attemptId, proof: "not_sent" } });
+    const before = await snapshot(f); expect(before.step.output.miniToolStep!.attempts[0]!.resolution.kind).toBe("not_sent");
+    await expect(failMiniToolStep({ taskId: f.taskId, stepId: f.stepId, error: { code: "contradictory_rejection" }, attempt: { attemptId: f.input.attemptId, proof: "rejected" } })).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it("keeps an accepted identity when a later failure tries to classify that attempt as not sent", async () => {
+    const f = await seed(); await identify(f); const before = await snapshot(f);
+    expect(before.step.output.miniToolStep!.attempts[0]!.resolution).toEqual({ kind: "identity", predictionId: "prediction-original" });
+    await expect(failMiniToolStep({ taskId: f.taskId, stepId: f.stepId, error: { code: "contradictory_not_sent" }, attempt: { attemptId: f.input.attemptId, proof: "not_sent" } })).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it.each(["completed", "failed"] as const)("fences a new intent when only the parent is %s and the step stays pending", async (status) => {
+    const f = await seed(); await beginMiniToolStepAttempt(f.input); await pg`UPDATE tasks SET status=${status} WHERE id=${f.taskId}`;
+    const before = await snapshot(f); expect(before.step.status).toBe("pending"); expect(before.step.prediction_id).toBeNull();
+    expect(before.step.output.miniToolStep!.deadlineAt).toBeGreaterThan(Date.now()); expect(before.task.result.settlement!.consumptionSetComplete).toBe(false);
+    const result = await beginMiniToolStepAttempt({ ...f.input, attemptId: crypto.randomUUID() });
+    expect(result.shouldSubmit).toBe(false); expect(result.attempt).toBeNull(); expect(await snapshot(f)).toEqual(before);
+  });
+
+  it.each(["attempt", "identity", "result", "failure"] as const)("refuses the %s mutation for an existing non-mini-tool parent", async (kind) => {
+    const f = await seed(); await identify(f); await pg`UPDATE tasks SET source='canvas' WHERE id=${f.taskId}`;
+    const before = await snapshot(f); await expect(validMutation(kind, f)).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
+    const [parent] = await pg`SELECT source FROM tasks WHERE id=${f.taskId}`; expect(parent?.source).toBe("canvas");
+  });
+
+  it.each(["attempt", "identity", "result", "failure"] as const)("refuses the %s mutation for a missing parent without touching another task's step", async (kind) => {
+    const f = await seed(); await identify(f); const before = await snapshot(f); const missing = crypto.randomUUID();
+    const [parent] = await pg`SELECT count(*)::int AS count FROM tasks WHERE id=${missing}`; expect(parent?.count).toBe(0);
+    const request = { ...f, taskId: missing, input: { ...f.input, taskId: missing } };
+    await expect(validMutation(kind, request)).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
+    const [remaining] = await pg`SELECT count(*)::int AS count FROM tasks WHERE id=${missing}`; expect(remaining?.count).toBe(0);
+  });
+
+  it("refuses a parsed failed container report without its required failure diagnostic", async () => {
+    const { f, identity, parser } = await container(); const before = await snapshot(f);
+    const report = { schemaVersion: 2, state: "failed", reason: "tool_failed", usage: { wallMs: 1234, cpuUsec: 900 }, outputs: [] };
+    expect(parser.parse(report)).toEqual(report);
+    await expect(recordMiniToolStepResult({ taskId: f.taskId, stepId: f.stepId, identity, outcome: "failed", result: report }, parser)).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
+  });
+
+  it.each(["known", "recorded"] as const)("preserves the closed call set and active lookup claim on a same-ID %s replay", async (state) => {
+    const f = await seed(); await identify(f); await done(f); const identity = (await snapshot(f)).step.output.miniToolConsumption!.identity;
+    await pg`UPDATE task_upstream_steps SET output=jsonb_set(output,'{miniToolConsumption}',(output->'miniToolConsumption') || ${pg.json({ state: "known", costUsd: 0.2, costSource: "generation_lookup", raw: { deduction: 0.2 }, credits: null })}) WHERE id=${f.stepId}`;
+    if (state === "recorded") await recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity });
+    const open = await snapshot(f); const claim = crypto.randomUUID();
+    await pg`UPDATE tasks SET status='completed',result=jsonb_set(result,'{settlement}',(result->'settlement') || ${pg.json({ state: "checking", consumptionSetComplete: true, leaseToken: claim, leaseUntil: "2099-01-01T00:00:00.000000Z" })}) WHERE id=${f.taskId}`;
+    const before = await snapshot(f); expect(before.step.status).toBe("done"); expect(before.step.output.miniToolConsumption!.state).toBe(state);
+    expect(before.task.result.settlement).toMatchObject({ state: "checking", consumptionSetComplete: true, leaseToken: claim }); expect(before.usage).toEqual(open.usage);
+    const replay = await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: f.stepId, attemptId: f.input.attemptId, predictionId: "prediction-original" });
+    expect(replay.conflict).toBe(false); expect(replay.consumption).toEqual(before.step.output.miniToolConsumption); expect(await snapshot(f)).toEqual(before);
+  });
+});
