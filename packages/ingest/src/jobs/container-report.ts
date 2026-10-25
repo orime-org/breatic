@@ -25,17 +25,66 @@ export interface ContainerReportBody {
   reason?: ContainerFailure;
 }
 
+/** One explicitly indexed output's metadata, independent of Worker byte measurements. */
+export interface PlanContainerOutput extends MediaOfOutput { outputIndex: number; storageKey: string }
+/** The versioned report from one immutable container attempt. */
+export interface PlanContainerReportBody {
+  schemaVersion: 2;
+  attemptId: string;
+  ok: boolean;
+  cpuUsec: number | null;
+  outputs: PlanContainerOutput[];
+  reason?: ContainerFailure;
+}
+
+/**
+ * Read finite optional media dimensions without accepting coercions.
+ * @param value - A nullable media number.
+ * @returns Whether the measured value has the supported numerical domain.
+ * @throws {never} Never.
+ */
+function mediaNumber(value: unknown): boolean {
+  return value === null || (typeof value === "number" && Number.isFinite(value) && value >= 0);
+}
+
+/**
+ * Read one owned metadata object returned by a planned recipe.
+ * @param value - The untrusted report value.
+ * @returns The metadata, or null for an invalid shape.
+ * @throws {never} Never.
+ */
+function planMedia(value: unknown): MediaOfOutput | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  if (![raw.width, raw.height, raw.durationSeconds].every(mediaNumber)) return null;
+  const cover = raw.cover;
+  if (cover !== null && (typeof cover !== "object" || !mediaNumber((cover as Record<string, unknown>).width) || !mediaNumber((cover as Record<string, unknown>).height))) return null;
+  return { width: raw.width as number | null, height: raw.height as number | null, durationSeconds: raw.durationSeconds as number | null, cover: cover as MediaOfOutput["cover"] };
+}
+
 /**
  * Read a report the container posted. A cause this side does not know is
  * dropped, and the failure stays unnamed.
  * @param body - The parsed JSON body.
  * @returns The report, or null when it has no `ok`.
  */
-export function readContainerReport(body: unknown): ContainerReportBody | null {
+export function readContainerReport(body: unknown): ContainerReportBody | PlanContainerReportBody | null {
   if (typeof body !== "object" || body === null) return null;
   const raw = body as Record<string, unknown>;
   if (typeof raw.ok !== "boolean") return null;
   const reason = CONTAINER_FAILURES.find((known) => known === raw.reason);
+  if (raw.schemaVersion !== undefined) {
+    if (raw.schemaVersion !== 2 || typeof raw.attemptId !== "string" || !Array.isArray(raw.outputs) || !mediaNumber(raw.cpuUsec)) return null;
+    const outputs: PlanContainerOutput[] = [];
+    for (const item of raw.outputs) {
+      const media = planMedia(item);
+      if (media === null) return null;
+      const output = item as Record<string, unknown>;
+      if (typeof output.outputIndex !== "number" || !Number.isSafeInteger(output.outputIndex) || output.outputIndex < 0 || typeof output.storageKey !== "string") return null;
+      outputs.push({ outputIndex: output.outputIndex, storageKey: output.storageKey, ...media });
+    }
+    return { schemaVersion: 2, attemptId: raw.attemptId, ok: raw.ok, cpuUsec: raw.cpuUsec as number | null, outputs, ...(reason !== undefined && { reason }) };
+  }
   return {
     ok: raw.ok,
     cpuUsec: typeof raw.cpuUsec === "number" ? raw.cpuUsec : null,

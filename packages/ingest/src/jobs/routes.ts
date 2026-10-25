@@ -8,13 +8,14 @@
  * object, and reading names the class the job was submitted to.
  */
 
-import { miniToolJobRequestSchema } from "@breatic/shared";
+import { miniToolJobRequestSchema, miniToolPlanJobRequestSchema } from "@breatic/shared";
 
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
 import {
   CLASS_BINDINGS,
   JobStartFailed,
+  JobIdentityConflict,
   type MiniToolClass,
   type MiniToolEnv,
 } from "@ingest/jobs/mini-tool-container.js";
@@ -47,7 +48,9 @@ function namespaceOf(env: JobsEnv, containerClass: string): MiniToolEnv["MINI_TO
  */
 export async function submitJob(request: Request, env: JobsEnv): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
-  const parsed = miniToolJobRequestSchema.safeParse(await request.json().catch(() => null));
+  const body: unknown = await request.json().catch(() => null);
+  const version = typeof body === "object" && body !== null && "schemaVersion" in body ? body.schemaVersion : undefined;
+  const parsed = version === 2 ? miniToolPlanJobRequestSchema.safeParse(body) : miniToolJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
   const job = parsed.data;
   const namespace = namespaceOf(env, job.containerClass);
@@ -56,6 +59,7 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
     const report = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
     return Response.json(report);
   } catch (err) {
+    if (err instanceof JobIdentityConflict || (err instanceof Error && err.name === "JobIdentityConflict")) return new Response("Job identity conflict", { status: 409 });
     if (err instanceof JobStartFailed || (err instanceof Error && err.name === "JobStartFailed")) {
       noteFailure("ingest_mini_tool_start_failed", { jobId: job.jobId, containerClass: job.containerClass }, err);
       return new Response("The container could not start", { status: 503 });

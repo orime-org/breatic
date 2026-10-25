@@ -16,25 +16,19 @@
 
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext, StopParams } from "@cloudflare/containers";
-import type { IngestMeasurements, MiniToolJobReport, MiniToolJobRequest } from "@breatic/shared";
+import { miniToolPlanAccess, sameMiniToolPlanJob, readMiniToolPlanJobReport, type IngestMeasurements, type MiniToolJobReport, type MiniToolJobRequest, type MiniToolPlanJobRequest, type MiniToolPlanJobReport } from "@breatic/shared";
 
+import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
-import { askedKey } from "@ingest/object-url.js";
-import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
-import { readContainerReport, type ContainerReportBody, type MediaOfOutput } from "@ingest/jobs/container-report.js";
+import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
+import { readContainerReport, type ContainerReportBody, type MediaOfOutput, type PlanContainerReportBody } from "@ingest/jobs/container-report.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
 import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
-import { hashStoredObject, sniffStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
+import { serveJobObjects, type JobObjectAccess } from "@ingest/jobs/job-objects.js";
 
 /** Where the container reports how its run went. */
 export const JOB_REPORT_HOST = "jobs.local";
-
-/** Each part of an output as it is written to R2. */
-const PART_SIZE = 32 * 1024 * 1024;
-
-/** The most parts one output may take: 20 GiB at the size above. */
-const MAX_PARTS = 640;
 
 /** What these classes need bound. */
 export interface MiniToolEnv {
@@ -58,16 +52,11 @@ type Written = Pick<IngestMeasurements, "sha256" | "sizeBytes" | "contentType">;
 /** One job as the object stores it. */
 interface JobRecord {
   state: JobState;
-  request: MiniToolJobRequest;
+  request: MiniToolJobRequest | MiniToolPlanJobRequest;
+  reported?: ContainerReportBody | PlanContainerReportBody;
   written: Record<string, Written>;
   media: Record<string, MediaOfOutput>;
   cpuUsec: number | null;
-}
-
-/** What one outbound handler is told about its job. */
-interface JobObjects {
-  read: string;
-  writes: Record<string, string>;
 }
 
 const RECORD = "job";
@@ -78,16 +67,58 @@ const JOB_REPORT = "jobReport";
 
 /** A run that could not be started; the route answers 503. */
 export class JobStartFailed extends Error {}
+/** A repeated identifier whose immutable request differs from its first submission. */
+export class JobIdentityConflict extends Error { override name = "JobIdentityConflict"; }
+
+/**
+ * Identify a validated versioned request without promoting a legacy payload.
+ * @param request - The accepted request.
+ * @returns Whether this is the planned protocol lane.
+ * @throws {never} Never.
+ */
+function isPlan(request: MiniToolJobRequest | MiniToolPlanJobRequest): request is MiniToolPlanJobRequest {
+  return "schemaVersion" in request && request.schemaVersion === 2;
+}
+
+/**
+ * Add an attempt capability to a URL emitted only by this object's code.
+ * @param url - The internal intercepted URL.
+ * @param attemptId - The current immutable attempt.
+ * @returns Its attempt-bound URL.
+ * @throws {never} Never.
+ */
+function attemptUrl(url: string, attemptId: string): string {
+  return `${url}?attempt=${encodeURIComponent(attemptId)}`;
+}
 
 /**
  * The report a job gives.
  * @param record - The job.
  * @returns Its report.
  */
-function reportOf(record: JobRecord): MiniToolJobReport {
+function reportOf(record: JobRecord): MiniToolJobReport | MiniToolPlanJobReport {
   const { state, request } = record;
   const usage =
     state.endedAt === null ? null : { wallMs: state.endedAt - state.startedAt, cpuUsec: record.cpuUsec };
+  if (isPlan(request)) {
+    if (state.phase === "starting" || state.phase === "running") return { schemaVersion: 2, state: state.phase };
+    const outputs = request.outputs.filter((output) => record.written[output.storageKey] !== undefined).map((output) => {
+      const written = record.written[output.storageKey]!;
+      const media = record.media[output.storageKey];
+      const cover = output.coverKey === undefined ? undefined : record.written[output.coverKey];
+      return {
+        outputIndex: output.outputIndex, storageKey: output.storageKey, ...written,
+        width: media?.width ?? null, height: media?.height ?? null, durationSeconds: media?.durationSeconds ?? null,
+        upright: null,
+        cover: cover === undefined || output.coverKey === undefined ? null : {
+          storageKey: output.coverKey, ...cover, width: media?.cover?.width ?? null, height: media?.cover?.height ?? null,
+        },
+      };
+    });
+    return readMiniToolPlanJobReport(request, state.phase === "done" && usage !== null
+      ? { schemaVersion: 2, state: "done", outputs, usage }
+      : { schemaVersion: 2, state: "failed", reason: state.reason ?? "tool_failed", outputs, usage });
+  }
   if (state.phase === "starting" || state.phase === "running") return { state: state.phase };
   if (state.phase === "failed" || usage === null) return { state: "failed", reason: state.reason ?? "tool_failed", usage };
   return {
@@ -130,9 +161,14 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
    * @returns Its report.
    * @throws {JobStartFailed} When the container could not be started or would not take the run.
    */
-  async submit(request: MiniToolJobRequest): Promise<MiniToolJobReport> {
+  async submit(request: MiniToolJobRequest | MiniToolPlanJobRequest): Promise<MiniToolJobReport | MiniToolPlanJobReport> {
     const held = await this.load();
-    if (held) return reportOf(held);
+    if (held) {
+      if ((isPlan(held.request) || isPlan(request)) && (!isPlan(held.request) || !isPlan(request) || !sameMiniToolPlanJob(held.request, request))) {
+        throw new JobIdentityConflict("The submitted plan differs from the original job identity");
+      }
+      return reportOf(held);
+    }
     const now = Date.now();
     const state: JobState = {
       phase: "starting",
@@ -156,24 +192,36 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
       writes[output.storageKey] = output.contentType;
       if (output.coverKey !== undefined) writes[output.coverKey] = "image/png";
     }
-    const objects: JobObjects = { read: request.input.storageKey, writes };
+    const planned = isPlan(request);
+    const objects: JobObjectAccess = planned
+      ? { ...miniToolPlanAccess(request), attemptId: state.attemptId }
+      : { reads: [request.input.storageKey], writes };
     try {
       await this.setOutboundByHosts({
         [MEDIA_OBJECT_HOST]: { method: JOB_OBJECTS, params: objects },
-        [JOB_REPORT_HOST]: JOB_REPORT,
+        [JOB_REPORT_HOST]: planned ? { method: JOB_REPORT, params: objects } : JOB_REPORT,
       });
       await this.start();
       const answered = await this.containerFetch(
         new Request(`http://job${RUN_PATH}`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
+          body: JSON.stringify(isPlan(request) ? {
+            schemaVersion: 2, attemptId: state.attemptId, deadlineAt: request.deadlineAt,
+            limits: request.limits,
+            inputs: request.inputs.map((input) => ({ inputId: input.inputId, url: attemptUrl(mediaObjectUrl(input.storageKey), state.attemptId) })),
+            outputs: request.outputs.map((output) => ({
+              outputIndex: output.outputIndex, recipe: output.recipe, contentType: output.contentType,
+              key: output.storageKey, url: attemptUrl(mediaObjectUrl(output.storageKey), state.attemptId),
+              ...(output.coverKey === undefined ? {} : { coverUrl: attemptUrl(mediaObjectUrl(output.coverKey), state.attemptId) }),
+            })),
+            reportUrl: attemptUrl(`http://${JOB_REPORT_HOST}/report`, state.attemptId),
+          } : {
             op: request.op,
             params: request.params,
             input: mediaObjectUrl(request.input.storageKey),
             outputs: request.outputs.map((output) => ({
-              url: mediaObjectUrl(output.storageKey),
-              key: output.storageKey,
+              url: mediaObjectUrl(output.storageKey), key: output.storageKey,
               ...(output.coverKey !== undefined && { coverUrl: mediaObjectUrl(output.coverKey) }),
             })),
             reportUrl: `http://${JOB_REPORT_HOST}/report`,
@@ -182,18 +230,18 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
       );
       if (answered.status !== 202) throw new JobStartFailed(`the run was answered ${answered.status}`);
     } catch (err) {
-      await this.apply({ type: "startFailed" });
+      await this.apply(planned ? { type: "reported", ok: false, reason: "internal" } : { type: "startFailed" });
       throw err instanceof JobStartFailed ? err : new JobStartFailed(String(err));
     }
     const accepted = await this.apply({ type: "accepted" });
-    return accepted ? reportOf(accepted) : { state: "running" };
+    return accepted ? reportOf(accepted) : planned ? { schemaVersion: 2, state: "running" } : { state: "running" };
   }
 
   /**
    * The job's report, noticing a running job whose container is gone.
    * @returns The report, or null when this object holds no job.
    */
-  async report(): Promise<MiniToolJobReport | null> {
+  async report(): Promise<MiniToolJobReport | MiniToolPlanJobReport | null> {
     let record = await this.load();
     if (record?.state.phase === "running" && this.ctx.container?.running !== true) {
       record = await this.apply({ type: "containerGone" });
@@ -205,11 +253,21 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
    * One object the container wrote.
    * @param key - Its storage key.
    * @param written - What the edge measured.
+   * @param attemptId - The immutable planned attempt that issued the write.
    * @returns Nothing.
    */
-  async noteWritten(key: string, written: Written): Promise<void> {
+  async noteWritten(key: string, written: Written, attemptId?: string): Promise<void> {
     const record = await this.load();
     if (!record) return;
+    if (isPlan(record.request)) {
+      const access = miniToolPlanAccess(record.request);
+      if (attemptId !== record.state.attemptId || access.writes[key] === undefined || access.writes[key] !== written.contentType) throw new Error("Unexpected planned output write or attempt");
+      const existing = record.written[key];
+      if (existing !== undefined) {
+        if (canonicalMiniToolValue(existing) !== canonicalMiniToolValue(written)) throw new Error("Conflicting immutable output measurements");
+        return;
+      }
+    }
     await this.save({ ...record, written: { ...record.written, [key]: written } });
     await this.apply({ type: "written", key });
   }
@@ -219,10 +277,31 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
    * @param body - What it said.
    * @returns Nothing.
    */
-  async noteReported(body: ContainerReportBody): Promise<void> {
+  async noteReported(body: ContainerReportBody | PlanContainerReportBody): Promise<void> {
     const record = await this.load();
     if (!record) return;
-    await this.save({ ...record, media: body.media, cpuUsec: body.cpuUsec });
+    let media: Record<string, MediaOfOutput>;
+    if (isPlan(record.request)) {
+      if (!("schemaVersion" in body) || body.attemptId !== record.state.attemptId) throw new Error("Unexpected planned report attempt");
+      media = {};
+      const seen = new Set<number>();
+      for (const output of body.outputs) {
+        const declared = record.request.outputs.find((item) => item.outputIndex === output.outputIndex);
+        if (!declared || declared.storageKey !== output.storageKey || seen.has(output.outputIndex)) throw new Error("Unexpected planned report output identity");
+        if (output.cover !== null && declared.coverKey === undefined) throw new Error("Unexpected planned report cover");
+        seen.add(output.outputIndex);
+        media[output.storageKey] = { width: output.width, height: output.height, durationSeconds: output.durationSeconds, cover: output.cover };
+      }
+      if (body.ok && seen.size !== record.request.outputs.length) throw new Error("Incomplete planned report metadata");
+      if (record.reported !== undefined) {
+        if (canonicalMiniToolValue(record.reported) !== canonicalMiniToolValue(body)) throw new Error("Conflicting immutable container report");
+        return;
+      }
+    } else {
+      if ("schemaVersion" in body) throw new Error("Unexpected versioned report for a legacy job");
+      media = body.media;
+    }
+    await this.save({ ...record, media, cpuUsec: body.cpuUsec, ...(isPlan(record.request) ? { reported: body } : {}) });
     await this.apply({ type: "reported", ok: body.ok, ...(body.reason !== undefined && { reason: body.reason }) });
   }
 
@@ -327,26 +406,8 @@ function jobObject(env: MiniToolEnv, ctx: OutboundHandlerContext): DurableObject
  * @param ctx - The handler's context, carrying the job's keys.
  * @returns The object, a refusal, or the write's acknowledgement.
  */
-async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<JobObjects>): Promise<Response> {
-  if (request.method === "GET" || request.method === "HEAD") return serveOneObject(request, env.BUCKET, ctx.params.read);
-  if (request.method !== "PUT" || request.body === null) return new Response("Not allowed", { status: 405 });
-  const key = askedKey(request);
-  const contentType = ctx.params.writes[key];
-  if (contentType === undefined) return new Response("Not this object", { status: 403 });
-
-  const stored = await writeStreamedObject(env.BUCKET, key, request.body, {
-    contentType,
-    partSize: PART_SIZE,
-    maxBytes: PART_SIZE * MAX_PARTS,
-  });
-  if (stored === "over_cap") return new Response("Too large", { status: 413 });
-  const written: Written = {
-    sha256: await hashStoredObject(env.BUCKET, key),
-    sizeBytes: stored.sizeBytes,
-    contentType: await sniffStoredObject(env.BUCKET, key),
-  };
-  await jobObject(env, ctx).noteWritten(key, written);
-  return new Response(null, { status: 200 });
+async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<JobObjectAccess>): Promise<Response> {
+  return serveJobObjects(request, env.BUCKET, ctx.params, (key, written, attemptId) => jobObject(env, ctx).noteWritten(key, written, attemptId));
 }
 
 /**
@@ -356,7 +417,8 @@ async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandl
  * @param ctx - The handler's context.
  * @returns An acknowledgement.
  */
-async function jobReport(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext): Promise<Response> {
+async function jobReport(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<{ attemptId?: string }>): Promise<Response> {
+  if (ctx.params?.attemptId !== undefined && new URL(request.url).searchParams.get("attempt") !== ctx.params.attemptId) return new Response("Not this attempt", { status: 403 });
   const body = readContainerReport(await request.json().catch(() => null));
   if (body === null) return new Response("Unreadable report", { status: 400 });
   await jobObject(env, ctx).noteReported(body);
