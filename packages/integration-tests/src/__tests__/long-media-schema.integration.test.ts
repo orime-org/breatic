@@ -9,6 +9,7 @@ import {
   applyUnderstandDispatchEvent,
   applyUnderstandOperationEvent,
   getUnderstandOperation,
+  listDueUnderstandDispatches,
   openUnderstandOperation,
 } from "@breatic/domain";
 
@@ -213,5 +214,63 @@ describe("long-media persistence migration", () => {
       expectedRevision: 2,
       nextDueAtMs: Date.now() + 5_000,
     })).rejects.toThrow("closed operation");
+  });
+
+  it("scans only due outbox wakes for operations that still accept work", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-scan-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const common = {
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn" as const,
+      requestDigest: "sha256:dispatch-scan",
+      sources: [{ sourceIndex: 0, assetId: randomUUID() }],
+      question: "Describe the recording.",
+      mode: "understand",
+      locale: "en",
+      model: "test-model",
+      promptVersion: "test-v1",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+      recoveryGroupId: randomUUID(),
+      logicalRequestId: randomUUID(),
+    };
+    const active = await openUnderstandOperation({
+      ...common,
+      originKey: `turn:${randomUUID()}`,
+      userActionId: randomUUID(),
+    });
+    const closed = await openUnderstandOperation({
+      ...common,
+      originKey: `turn:${randomUUID()}`,
+      requestDigest: "sha256:closed-dispatch-scan",
+      userActionId: randomUUID(),
+    });
+    const blocked = await openUnderstandOperation({
+      ...common,
+      originKey: `turn:${randomUUID()}`,
+      requestDigest: "sha256:blocked-dispatch-scan",
+      userActionId: randomUUID(),
+    });
+    await applyUnderstandOperationEvent(closed.id, {
+      type: "cancel-applied",
+      expectedRevision: 1,
+      atMs: Date.now(),
+    });
+    await applyUnderstandOperationEvent(blocked.id, {
+      type: "claim",
+      expectedRevision: 1,
+      atMs: Date.now(),
+    });
+    await applyUnderstandOperationEvent(blocked.id, {
+      type: "unknown",
+      expectedRevision: 2,
+      atMs: Date.now(),
+    });
+
+    const due = await listDueUnderstandDispatches(50);
+    expect(due.map(({ operationId }) => operationId)).toContain(active.id);
+    expect(due.map(({ operationId }) => operationId)).not.toContain(closed.id);
+    expect(due.map(({ operationId }) => operationId)).not.toContain(blocked.id);
   });
 });

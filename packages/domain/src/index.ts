@@ -235,10 +235,11 @@ export {
 export {
   openUnderstandOperation,
   getUnderstandOperation,
+  listDueUnderstandDispatches,
   applyUnderstandOperationEvent,
   applyUnderstandDispatchEvent,
 } from "@domain/understand/operation.repo.js";
-export type { OpenUnderstandOperationInput } from "@domain/understand/operation.repo.js";
+export type { DueUnderstandDispatch, OpenUnderstandOperationInput } from "@domain/understand/operation.repo.js";
 export type {
   MediaKind,
   RefusalKind,

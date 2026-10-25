@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
   db,
   mediaUnderstandingOperations,
@@ -32,6 +32,13 @@ export interface OpenUnderstandOperationInput {
 }
 
 type OperationRow = typeof mediaUnderstandingOperations.$inferSelect;
+
+/** One due durable queue wake selected for Redis delivery. */
+export interface DueUnderstandDispatch {
+  operationId: string;
+  revision: number;
+  sequence: number;
+}
 
 /**
  * Open or idempotently recover a long-media operation for one trusted user action.
@@ -99,6 +106,32 @@ export async function getUnderstandOperation(id: string): Promise<OperationRow |
     .where(and(eq(mediaUnderstandingOperations.id, id), isNull(mediaUnderstandingOperations.deletedAt)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+/**
+ * Find due outbox wakes that still belong to active operations.
+ * @param limit - Maximum number of wake candidates to return.
+ * @returns Pending or sent wake identities in due-time order.
+ * @throws {RangeError} when the requested batch limit is invalid.
+ */
+export async function listDueUnderstandDispatches(limit: number): Promise<DueUnderstandDispatch[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1) throw new RangeError("The dispatch scan limit must be a positive integer.");
+  const rows = await db
+    .select({
+      operationId: mediaUnderstandingOperations.id,
+      revision: mediaUnderstandingOperations.revision,
+      sequence: mediaUnderstandingOperations.dispatchSequence,
+    })
+    .from(mediaUnderstandingOperations)
+    .where(and(
+      inArray(mediaUnderstandingOperations.status, ["queued", "running"]),
+      inArray(mediaUnderstandingOperations.dispatchState, ["pending", "sent"]),
+      lte(mediaUnderstandingOperations.dispatchDueAt, sql`clock_timestamp()`),
+      isNull(mediaUnderstandingOperations.deletedAt),
+    ))
+    .orderBy(asc(mediaUnderstandingOperations.dispatchDueAt), asc(mediaUnderstandingOperations.createdAt))
+    .limit(limit);
+  return rows;
 }
 
 /**

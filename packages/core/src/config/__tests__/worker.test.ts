@@ -24,6 +24,10 @@ describe("worker concurrency", () => {
     expect(workerConcurrencyFor("mail")).toBe(5);
   });
 
+  it("limits the long-media SQL outbox scan to one worker at a time", () => {
+    expect(workerConcurrencyFor("long-media-dispatch")).toBe(1);
+  });
+
   it("has no per-round wait left: an upstream is asked once per pickup", () => {
     expect(getWorkerConfig()).not.toHaveProperty("poll_max_wait");
   });
@@ -59,7 +63,7 @@ describe("worker concurrency", () => {
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {
