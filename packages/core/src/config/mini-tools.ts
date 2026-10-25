@@ -60,7 +60,10 @@ export const miniToolsConfigSchema = z
     settlement: z.strictObject({
       lease_ms: z.number().int().positive().default(60_000),
       retry_ms: z.number().int().positive().default(30_000),
-    }).default({ lease_ms: 60_000, retry_ms: 30_000 }),
+      lookup_timeout_ms: z.number().int().positive().default(15_000),
+      discovery_interval_ms: z.number().int().positive().default(30_000),
+      discovery_page_size: z.number().int().positive().default(100),
+    }).default({ lease_ms: 60_000, retry_ms: 30_000, lookup_timeout_ms: 15_000, discovery_interval_ms: 30_000, discovery_page_size: 100 }),
     prices: z.object({
       vcpu_second_usd: z.number().nonnegative(),
       memory_gib_second_usd: z.number().nonnegative(),

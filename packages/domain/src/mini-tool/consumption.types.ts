@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { miniToolConsumptionIdentitySchema } from "@breatic/shared/mini-tools";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
+import type { MiniToolSettlementDiscovery } from "@breatic/core";
 
 const containerPricingSchema = z.strictObject({
   configVersion: z.string().min(1),
@@ -78,7 +79,7 @@ export const openMiniToolConsumptionInputSchema = recordMiniToolConsumptionInput
 export type OpenMiniToolConsumptionInput = z.infer<typeof openMiniToolConsumptionInputSchema>;
 
 /** Stable discovery position; the database's UTC microseconds stay as text. */
-export interface MiniToolSettlementCursor { taskId: string; dueAt: string }
+export type MiniToolSettlementCursor = NonNullable<MiniToolSettlementDiscovery["cursor"]>;
 /** A wake identity discovered from SQL rather than a queue's retention state. */
 export interface DueMiniToolSettlement extends MiniToolSettlementCursor { settlementVersion: number }
 /** One ordered discovery page, without acquiring a lookup lease. */

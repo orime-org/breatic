@@ -3,7 +3,7 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { db, getMiniToolsConfig } from "@breatic/core";
+import { db, getMiniToolsConfig, miniToolSettlementWakeSchema, miniToolSettlementDiscoverySchema } from "@breatic/core";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import {
@@ -12,11 +12,10 @@ import {
   type DueMiniToolSettlementPage,
 } from "@domain/mini-tool/consumption.types.js";
 
-const claimInputSchema = z.strictObject({ taskId: z.string().uuid(), settlementVersion: z.number().int().nonnegative() });
+const claimInputSchema = miniToolSettlementWakeSchema;
 const deferInputSchema = z.strictObject({ taskId: z.string().uuid(), claim: miniToolSettlementClaimSchema, lastError: z.string() });
-const discoveryInputSchema = z.strictObject({
+const discoveryInputSchema = miniToolSettlementDiscoverySchema.extend({
   limit: z.number().int().positive().refine((limit) => Number.isSafeInteger(limit + 1)),
-  cursor: z.strictObject({ taskId: z.uuid(), dueAt: z.iso.datetime({ precision: 6 }) }).optional(),
 });
 
 /**

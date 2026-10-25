@@ -27,6 +27,9 @@ presentation:
 settlement:
   lease_ms: 60000
   retry_ms: 30000
+  lookup_timeout_ms: 15000
+  discovery_interval_ms: 30000
+  discovery_page_size: 100
 
 # Cloudflare's published per-second prices
 # (https://developers.cloudflare.com/containers/pricing/, read 2026-10-07).

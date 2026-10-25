@@ -40,6 +40,7 @@ import {
   unscheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
+  MINI_TOOL_SETTLEMENT_QUEUE,
 } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
@@ -126,6 +127,7 @@ import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
 import { runVideoPresentation } from '@worker/handlers/video-presentation.js';
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
+import { startMiniToolSettlementWorker } from "@worker/handlers/mini-tool/settlement-worker.js";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -138,6 +140,7 @@ const WORKER_QUEUES: readonly string[] = [
   VIDEO_PRESENTATION_QUEUE,
   MAIL_QUEUE,
   ADS_CONVERSION_QUEUE,
+  MINI_TOOL_SETTLEMENT_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -166,8 +169,10 @@ function settleWhenStalled(job: Job<{ storageKey: string }> | undefined): void {
 /**
  * Start the worker process: install production error logging on the shared
  * Redis singletons, then begin consuming the BullMQ task queue.
+ * @returns Once required expense recovery and the ordinary workers are registered.
+ * @throws {Error} When required queue registration or discovery scheduling fails.
  */
-export function startWorker(): void {
+export async function startWorker(): Promise<void> {
   // Every call this process makes on a task's chain is bounded by the task's
   // own deadline (inner#1367), so undici's 300-second wait for an answer must
   // not cut one first.
@@ -190,6 +195,7 @@ export function startWorker(): void {
   // would leave the queue it meant at the default.
   assertKnownQueues(WORKER_QUEUES);
 
+  const miniToolSettlement = await startMiniToolSettlementWorker();
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
   // Its own queue, because `runTask` is a generation: past the dispatch it
@@ -470,6 +476,7 @@ export function startWorker(): void {
       releaseListenSocket: () => {},
       drains: [
         () => worker.close(),
+        () => miniToolSettlement.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),
         () => usageLookup.close(),
@@ -508,4 +515,9 @@ try {
   }
   await exitProcess(1);
 }
-startWorker();
+try {
+  await startWorker();
+} catch (err) {
+  logger.error({ err, ctx: { phase: "worker-start" } }, "worker_start_failed");
+  await exitProcess(1);
+}

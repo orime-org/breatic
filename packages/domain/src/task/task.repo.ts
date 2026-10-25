@@ -175,6 +175,25 @@ export async function listDueMiniToolSettlements(limit: number, cursor?: MiniToo
   return { items, nextCursor: rows.length > limit && last !== undefined ? { taskId: last.taskId, dueAt: last.dueAt } : null };
 }
 
+/**
+ * Read the current committed waiting cycle after a claim or recording invalidates its predecessor.
+ * @param taskId - The validated immutable parent, including hidden task history.
+ * @returns Its current waiting identity, even when its retry time is still in the future.
+ * @throws {Error} When the database read fails.
+ */
+export async function waitingMiniToolSettlement(taskId: string): Promise<DueMiniToolSettlement | null> {
+  const rows = await db.execute<DueMiniToolSettlement & Record<string, unknown>>(sql`
+    SELECT ${tasks.id} AS "taskId", (${tasks.result}->'settlement'->>'version')::float8 AS "settlementVersion",
+      to_char(mini_tool_settlement_due_at(${tasks.result}) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "dueAt"
+    FROM ${tasks}
+    WHERE ${tasks.id} = ${taskId}::uuid AND ${tasks.source} = 'mini_tool' AND ${tasks.billedAt} IS NULL
+      AND jsonb_typeof(${tasks.result}->'settlement'->'version') = 'number'
+      AND ${tasks.result}->'settlement'->>'state' = 'waiting'
+  `);
+  const row = rows[0];
+  return row && typeof row.dueAt === "string" ? { taskId: row.taskId, settlementVersion: row.settlementVersion, dueAt: row.dueAt } : null;
+}
+
 /** Durable admission fields, with the database instant kept outside Date. */
 export interface AnalysisTaskRow {
   id: string;

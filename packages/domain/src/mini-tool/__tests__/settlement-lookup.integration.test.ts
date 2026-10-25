@@ -624,4 +624,22 @@ describe("durable expense recovery orchestration", () => {
       expect(settled.task.status).toBe(completed ? "completed" : "failed"); expect(settled.task.result.manifest).toEqual(MANIFEST);
     }), { numRuns: 6 });
   });
+
+  it("keeps the SQL lease recoverable when persisting a failed lookup's retry also fails", async () => {
+    const f = await seed(); const lookup = vi.fn(async () => { throw new Error("upstream unavailable"); });
+    await pg.unsafe(`CREATE OR REPLACE FUNCTION fail_runner_defer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF NEW.id='${f.taskId}'::uuid AND NEW.result->'settlement'->>'state'='waiting' THEN RAISE EXCEPTION 'forced retry persistence failure'; END IF;
+      RETURN NEW; END $$`);
+    await pg.unsafe("CREATE TRIGGER fail_runner_defer BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION fail_runner_defer()");
+    try { await expect(domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup)).rejects.toThrow(); }
+    finally {
+      await pg.unsafe("DROP TRIGGER fail_runner_defer ON tasks"); await pg.unsafe("DROP FUNCTION fail_runner_defer()");
+    }
+    const retained = await snapshot(f); expect(retained.fact).toEqual(f.fact); expect(retained.usage).toBe(0);
+    expect(retained.task.result.settlement).toMatchObject({ state: "checking", version: 7, pendingConsumptionKeys: [f.fact.consumptionKey], leaseToken: expect.any(String) });
+    expect(retained.task.result.manifest).toEqual(MANIFEST); expect(retained.task.billed_at).toBeNull();
+    await pg`UPDATE tasks SET result=jsonb_set(result,'{settlement,leaseUntil}',to_jsonb(${PAST}::text)) WHERE id=${f.taskId}`;
+    const recovered = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+    expect(recovered.nextWake).toMatchObject({ taskId: f.taskId, settlementVersion: 8 }); expect(lookup).toHaveBeenCalledTimes(1);
+  });
 });
