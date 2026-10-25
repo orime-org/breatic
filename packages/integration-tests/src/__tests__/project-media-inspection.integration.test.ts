@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { sql as statement } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
+import * as Y from "yjs";
 import {
   createPgClient,
   db,
@@ -15,10 +16,13 @@ import {
   projectAssetReferenceService,
   schema,
 } from "@breatic/core";
+import { CANVAS_NODES_KEY, canvasSpaceDocName } from "@breatic/shared";
+import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { issueUploadTicket } from "@server/modules/asset/upload-ticket.service.js";
 
 interface Fixture { ownerId: string; studioId: string; projectId: string }
-interface Asset { id: string; fileUrl: string; storageKey: string }
+interface Asset { id: string; fileUrl: string; storageKey: string; contentHash: string }
 interface ReferenceRow {
   id: string;
   asset_id: string;
@@ -43,6 +47,7 @@ afterEach(async () => {
   try {
     if (owned.projects.length > 0) {
       await sql`UPDATE project_asset_refs SET deleted_at = now() WHERE project_id = ANY(${owned.projects}::uuid[])`;
+      await sql`UPDATE project_members SET deleted_at = now() WHERE project_id = ANY(${owned.projects}::uuid[])`;
       await sql`UPDATE projects SET deleted_at = now() WHERE id = ANY(${owned.projects}::uuid[])`;
     }
     if (owned.assets.length > 0) await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ANY(${owned.assets}::uuid[])`;
@@ -100,7 +105,7 @@ async function asset(scope: Fixture): Promise<Asset> {
     VALUES (${id}, ${scope.studioId}, ${hash}, ${storageKey}, ${fileUrl}, 8192,
       'video/mp4', 'video', 'upload', ${scope.ownerId}, 1280, 720, 2.5)`;
   owned.assets.push(id);
-  return { id, storageKey, fileUrl };
+  return { id, storageKey, fileUrl, contentHash: hash };
 }
 
 /**
@@ -372,19 +377,113 @@ describe("Detailed canonical Project media acceptance", () => {
     expect(await references(scope.projectId)).toEqual(before);
   });
 
-  it("keeps the first null name when a later acceptance supplies a name", async () => {
+  it.each(["missing", "empty"] as const)("fills an initially %s name once without changing reference identity or timestamps", async (initialName) => {
     const scope = await fixture();
     const media = await asset(scope);
-    const first = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId: scope.projectId, assetIds: [media.id] });
-    const before = await references(scope.projectId);
-    const repeated = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
-      projectId: scope.projectId, urls: [media.fileUrl], displayNames: { [media.id]: "Later label.mp4" },
+    const first = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+      projectId: scope.projectId, assetIds: [media.id],
+      ...(initialName === "empty" ? { displayNames: { [media.id]: "" } } : {}),
     });
+    const before = await references(scope.projectId);
     expect(first.insertedAssetIds).toEqual([media.id]);
+    expect(first.references.map((entry) => entry.displayName)).toEqual([null]);
+    for (const displayNames of [undefined, { [media.id]: "" }]) {
+      const unnamed = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+        projectId: scope.projectId, assetIds: [media.id],
+        ...(displayNames === undefined ? {} : { displayNames }),
+      });
+      expect(unnamed.insertedAssetIds).toEqual([]);
+      expect(unnamed.references).toEqual(first.references);
+      expect(await references(scope.projectId)).toEqual(before);
+    }
+    const named = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+      projectId: scope.projectId, urls: [media.fileUrl], displayNames: { [media.id]: "First verified.mp4" },
+    });
+    expect(named.insertedAssetIds).toEqual([]);
+    expect(named.references).toEqual(first.references.map((entry) => ({ ...entry, displayName: "First verified.mp4" })));
+    const after = before.map((entry) => ({ ...entry, display_name: "First verified.mp4" }));
+    expect(await references(scope.projectId)).toEqual(after);
+    for (const displayNames of [undefined, { [media.id]: "" }, { [media.id]: "Later label.mp4" }]) {
+      const repeated = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+        projectId: scope.projectId, assetIds: [media.id],
+        ...(displayNames === undefined ? {} : { displayNames }),
+      });
+      expect(repeated.insertedAssetIds).toEqual([]);
+      expect(repeated.references).toEqual(named.references);
+      expect(await references(scope.projectId)).toEqual(after);
+    }
+  });
+
+  it("exposes the first upload filename after an unnamed Canvas acceptance and hash dedup", async () => {
+    const scope = await fixture();
+    const media = await asset(scope);
+    await sql`INSERT INTO project_members (project_id, user_id, role, added_by)
+      VALUES (${scope.projectId}, ${scope.ownerId}, 'owner', null)`;
+    const canvas = new Y.Doc();
+    try {
+      canvas.getMap(CANVAS_NODES_KEY).set(randomUUID(), { type: "video", data: { content: media.fileUrl } });
+      await acceptSpaceMediaReferences(canvasSpaceDocName(scope.projectId, randomUUID()), Y.encodeStateAsUpdate(canvas));
+    } finally {
+      canvas.destroy();
+    }
+    const before = await references(scope.projectId);
+    expect(before.map((entry) => ({ assetId: entry.asset_id, name: entry.display_name }))).toEqual([
+      { assetId: media.id, name: null },
+    ]);
+    const ledgerBefore = await ledgerRows([media.id]);
+    for (const filename of ["First upload.mp4", "Later upload.mp4"]) {
+      const outcome = await issueUploadTicket(
+        { userId: scope.ownerId, studioId: scope.studioId, projectId: scope.projectId },
+        { filename, content_type: "video/mp4", size: 8192, client_hash: media.contentHash, space_id: randomUUID() },
+        async () => true,
+      );
+      expect(outcome).toMatchObject({ kind: "alreadyExists", assetId: media.id, fileUrl: media.fileUrl });
+      const persisted = await references(scope.projectId);
+      const resolved = await projectAssetReferenceService.resolveProjectAsset({
+        projectId: scope.projectId, userId: scope.ownerId, assetId: media.id,
+      });
+      const page = await projectAssetReferenceService.listProjectVideos({ projectId: scope.projectId, userId: scope.ownerId });
+      expect(persisted).toEqual(before.map((entry) => ({ ...entry, display_name: "First upload.mp4" })));
+      expect(resolved).toMatchObject({ assetId: media.id, projectReferenceId: before[0]!.id, displayName: "First upload.mp4" });
+      expect(page).toEqual({ items: [resolved], nextCursor: null });
+    }
+    const repeated = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId: scope.projectId, assetIds: [media.id] });
     expect(repeated.insertedAssetIds).toEqual([]);
-    expect(repeated.references).toEqual(first.references);
-    expect(repeated.references.map((entry) => entry.displayName)).toEqual([null]);
-    expect(await references(scope.projectId)).toEqual(before);
+    expect(repeated.references.map((entry) => entry.displayName)).toEqual(["First upload.mp4"]);
+    expect(await ledgerRows([media.id])).toEqual(ledgerBefore);
+  });
+
+  it("counts only new inserts in a batch that fills one name and preserves another", async () => {
+    const scope = await fixture();
+    const unnamed = await asset(scope);
+    const named = await asset(scope);
+    const incoming = await asset(scope);
+    const previous = await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: scope.projectId, assetIds: [unnamed.id, named.id], displayNames: { [named.id]: "Original.mp4" },
+    });
+    const before = await references(scope.projectId);
+    const input = {
+      projectId: scope.projectId, assetIds: [incoming.id, unnamed.id, named.id, unnamed.id],
+      urls: [unnamed.fileUrl, incoming.fileUrl],
+      displayNames: { [unnamed.id]: "First verified.mp4", [named.id]: "Ignored.mp4", [incoming.id]: "New.mp4" },
+    };
+    const result = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed(input);
+    expect(result.insertedAssetIds).toEqual([incoming.id]);
+    expect(result.references.map((entry) => entry.assetId)).toEqual([unnamed.id, named.id, incoming.id].sort());
+    expect(result.references.filter((entry) => entry.assetId !== incoming.id)).toEqual(previous.map((entry) => (
+      entry.assetId === unnamed.id ? { ...entry, displayName: "First verified.mp4" } : entry
+    )));
+    const after = await references(scope.projectId);
+    expect(after.filter((entry) => entry.asset_id !== incoming.id)).toEqual(before.map((entry) => (
+      entry.asset_id === unnamed.id ? { ...entry, display_name: "First verified.mp4" } : entry
+    )));
+    expect(after.filter((entry) => entry.asset_id === incoming.id).map((entry) => entry.display_name)).toEqual(["New.mp4"]);
+    const repeated = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+      ...input, displayNames: { [unnamed.id]: "Later.mp4", [named.id]: "Later.mp4", [incoming.id]: "Later.mp4" },
+    });
+    expect(repeated.insertedAssetIds).toEqual([]);
+    expect(repeated.references).toEqual(result.references);
+    expect(await references(scope.projectId)).toEqual(after);
   });
 
   it("returns existing and newly inserted batch references with accurate inserted ids", async () => {
@@ -487,6 +586,63 @@ describe("Detailed canonical Project media acceptance", () => {
     }
   });
 
+  it("keeps one first name across two PostgreSQL-blocked competing name fills", async () => {
+    const scope = await fixture();
+    const media = await asset(scope);
+    const initial = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId: scope.projectId, assetIds: [media.id] });
+    const before = await references(scope.projectId);
+    expect(before.map((entry) => entry.display_name)).toEqual([null]);
+    const gate = createPgClient(inject("DATABASE_URL"), {
+      name: "timeline-detailed-reference-name-gate", max: 1, prepare: false,
+    });
+    const pending: Promise<projectAssetReferenceService.RegisteredProjectMediaAcceptance>[] = [];
+    try {
+      await gate`BEGIN`;
+      await gate`SELECT id FROM project_asset_refs WHERE project_id = ${scope.projectId} AND asset_id = ${media.id} FOR UPDATE`;
+      const names = ["First contender.mp4", "Second contender.mp4"];
+      pending.push(...names.map((name) => projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+        projectId: scope.projectId, assetIds: [media.id], displayNames: { [media.id]: name },
+      })));
+      const accepts = Promise.allSettled(pending);
+      let probeError: unknown;
+      try {
+        // Both writes must actually reach the locked name-fill statement before release.
+        await waitUntilBlockedOn(sql, ["update", "project_asset_refs", "display_name"], 2);
+      } catch (error) {
+        probeError = error;
+      } finally {
+        await gate`ROLLBACK`;
+      }
+      const settled = await accepts;
+      if (probeError !== undefined) throw probeError;
+      expect(settled.map((entry) => entry.status)).toEqual(["fulfilled", "fulfilled"]);
+      const results = settled.map((entry) => {
+        if (entry.status !== "fulfilled") throw entry.reason;
+        return entry.value;
+      });
+      const persisted = await references(scope.projectId);
+      expect(persisted).toHaveLength(1);
+      const winner = persisted[0]!.display_name;
+      expect(names).toContain(winner);
+      expect(persisted).toEqual(before.map((entry) => ({ ...entry, display_name: winner })));
+      const expected = initial.references.map((entry) => ({ ...entry, displayName: winner }));
+      expect(results.map((entry) => entry.references)).toEqual([expected, expected]);
+      expect(results.map((entry) => entry.insertedAssetIds)).toEqual([[], []]);
+      const repeated = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+        projectId: scope.projectId, assetIds: [media.id], displayNames: { [media.id]: "After competition.mp4" },
+      });
+      expect(repeated.references).toEqual(expected);
+      expect(repeated.insertedAssetIds).toEqual([]);
+      expect(await references(scope.projectId)).toEqual(persisted);
+    } finally {
+      try {
+        await gate.end({ timeout: 1 });
+      } finally {
+        await Promise.allSettled(pending);
+      }
+    }
+  });
+
   it("joins the supplied business transaction and rolls back its accepted batch", async () => {
     const scope = await fixture();
     const media = await asset(scope);
@@ -500,6 +656,23 @@ describe("Detailed canonical Project media acceptance", () => {
       throw rollback;
     })).rejects.toBe(rollback);
     expect(await references(scope.projectId)).toEqual([]);
+  });
+
+  it("rolls back a name fill with its enclosing business transaction", async () => {
+    const scope = await fixture();
+    const media = await asset(scope);
+    const initial = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId: scope.projectId, assetIds: [media.id] });
+    const before = await references(scope.projectId);
+    const rollback = new Error("rollback detailed name fill");
+    await expect(db.transaction(async (tx) => {
+      const result = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({
+        projectId: scope.projectId, assetIds: [media.id], displayNames: { [media.id]: "Uncommitted.mp4" },
+      }, tx);
+      expect(result.insertedAssetIds).toEqual([]);
+      expect(result.references).toEqual(initial.references.map((entry) => ({ ...entry, displayName: "Uncommitted.mp4" })));
+      throw rollback;
+    })).rejects.toBe(rollback);
+    expect(await references(scope.projectId)).toEqual(before);
   });
 
   it("rolls back every new association when one valid asset insert fails", async () => {

@@ -59,6 +59,7 @@ interface ReferenceRow {
   asset_id: string;
   display_name: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 let sql: ReturnType<typeof createPgClient>;
@@ -223,7 +224,7 @@ async function registerStudioCopy(fixture: ProjectFixture, source?: StudioAssetE
  */
 async function liveReferences(projectId: string): Promise<ReferenceRow[]> {
   return sql<ReferenceRow[]>`SELECT id, project_id, asset_id, display_name,
-      created_at::text AS created_at
+      created_at::text AS created_at, updated_at::text AS updated_at
     FROM project_asset_refs
     WHERE project_id = ${projectId} AND deleted_at IS NULL
     ORDER BY id`;
@@ -278,6 +279,7 @@ describe("Project registered asset references", () => {
       asset_id: asset.id,
       display_name: "First video.mp4",
       created_at: before[0]!.created_at,
+      updated_at: before[0]!.updated_at,
     }]);
     expect(repeated[0]!.id).toBe(first[0]!.id);
   });
@@ -828,6 +830,29 @@ describe("Registered Project media identity and Project copies", () => {
     expect(second.map((entry) => entry.id)).toEqual([before[0]!.id]);
     expect(second[0]!.displayName).toBe("Existing target.mp4");
     expect(await liveReferences(targetId)).toEqual(before);
+  });
+
+  it("fills an unnamed target from the source name once while retaining its identity and timestamps", async () => {
+    const source = await seedFixture();
+    const targetId = await seedProject(source.studioId, source.ownerId);
+    const asset = await seedAsset(source);
+    await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: source.projectId, assetIds: [asset.id], displayNames: { [asset.id]: "Source name.mp4" },
+    });
+    const targetRefs = await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: targetId, assetIds: [asset.id],
+    });
+    const sourceBefore = await liveReferences(source.projectId);
+    const before = await liveReferences(targetId);
+    expect(before.map((entry) => entry.display_name)).toEqual([null]);
+    const first = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+    expect(first).toEqual(targetRefs.map((entry) => ({ ...entry, displayName: "Source name.mp4" })));
+    const expected = before.map((entry) => ({ ...entry, display_name: "Source name.mp4" }));
+    expect(await liveReferences(targetId)).toEqual(expected);
+    const second = await db.transaction((tx) => projectAssetReferenceService.copyProjectAssetReferences(source.projectId, targetId, tx));
+    expect(second).toEqual(first);
+    expect(await liveReferences(targetId)).toEqual(expected);
+    expect(await liveReferences(source.projectId)).toEqual(sourceBefore);
   });
 
   it("copies only live source references to live assets in the source owning Studio", async () => {

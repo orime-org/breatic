@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import * as Y from "yjs";
-import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
+import { createPgClient, getStorageAdapter, initCore, loadLocales, projectAssetReferenceService } from "@breatic/core";
 import type { ProjectMediaBackfillRecord, ProjectMediaBackfillRow, ProjectMediaBackfillSummary } from "@breatic/core";
 import { CANVAS_NODES_KEY, canvasSpaceDocName } from "@breatic/shared";
 
@@ -430,6 +430,39 @@ describe("Project media backfill maintenance command", () => {
     expect(await references(fixture.scope.projectId)).toEqual(persisted);
     expect(await snapshot(fixture.documentName)).toEqual(originalBytes);
     expectSummaryCounts(repeated);
+  });
+
+  it("fills an existing unnamed reference from historical provenance without counting an insertion", async () => {
+    const fixture = await seedProvenance();
+    await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: fixture.scope.projectId, assetIds: [fixture.first.id, fixture.second.id],
+    });
+    const before = await references(fixture.scope.projectId);
+    expect(before.map((row) => row.display_name)).toEqual([null, null]);
+    const originalBytes = await snapshot(fixture.documentName);
+    const applyPath = resolve(directory, "fill-name.jsonl");
+    expectSuccess(await command(["--apply", "--output", applyPath]));
+    const applied = await records(applyPath);
+    const ownApply = candidates(applied).filter((row) => row.projectId === fixture.scope.projectId);
+    expect(ownApply.filter((row) => row.pass === "initial" && row.source === "consumed_grants").map((row) => ({
+      rowId: row.rowId, existingAssetIds: row.existingAssetIds, insertedAssetIds: row.insertedAssetIds,
+    }))).toEqual([{ rowId: fixture.grantId, existingAssetIds: [fixture.first.id], insertedAssetIds: [] }]);
+    expect(candidates(applied).flatMap((row) => row.insertedAssetIds)).toEqual([]);
+    expect(summaries(applied).reduce((sum, row) => sum + row.insertedAssets, 0)).toBe(0);
+    expectSummaryCounts(applied);
+    const expected = before.map((row) => (
+      row.asset_id === fixture.first.id ? { ...row, display_name: "Historical A.mp4" } : row
+    ));
+    expect(await references(fixture.scope.projectId)).toEqual(expected);
+
+    const repeatPath = resolve(directory, "fill-name-repeat.jsonl");
+    expectSuccess(await command(["--apply", "--output", repeatPath]));
+    const repeated = await records(repeatPath);
+    expect(candidates(repeated).flatMap((row) => row.insertedAssetIds)).toEqual([]);
+    expect(summaries(repeated).reduce((sum, row) => sum + row.insertedAssets, 0)).toBe(0);
+    expectSummaryCounts(repeated);
+    expect(await references(fixture.scope.projectId)).toEqual(expected);
+    expect(await snapshot(fixture.documentName)).toEqual(originalBytes);
   });
 
   it("resumes the selected verification source after the supplied activity cursor", async () => {
