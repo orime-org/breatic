@@ -14,6 +14,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type { StoredAsset } from "@breatic/domain";
 
 const h = vi.hoisted(() => {
   /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
@@ -34,6 +35,7 @@ const h = vi.hoisted(() => {
     markFailed: vi.fn(),
     moveToDelayed: vi.fn(),
     getByIdInternal: vi.fn(),
+    resolveRegisteredProjectMedia: vi.fn<(_projectId: string, url: string) => Promise<StoredAsset>>(),
     markCompletedAndBill: vi.fn(),
     markRunning: vi.fn(),
     settleTaskForNode: vi.fn(),
@@ -54,6 +56,9 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   runContainerJob: h.runContainerJob,
 }));
 vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
+vi.mock("@worker/services/project-media.service.js", () => ({
+  resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia,
+}));
 vi.mock("@worker/providers/three-d/index.js", () => ({
   validateThreeDParams: (model: string, params: Record<string, unknown>) => [model, params],
   generateAsync: h.threeD,
@@ -187,6 +192,17 @@ beforeEach(() => {
   });
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
+  h.resolveRegisteredProjectMedia.mockImplementation(async (_projectId, fileUrl) => ({
+    assetId: "asset-video",
+    fileUrl,
+    kind: "video",
+    coverUrl: null,
+    width: null,
+    height: null,
+    durationSeconds: null,
+    mimeType: "video/mp4",
+    sizeBytes: 10,
+  }));
   h.runContainerJob.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
   h.runCatalogTask.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
   h.threeD.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));

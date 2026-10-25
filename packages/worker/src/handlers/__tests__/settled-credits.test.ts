@@ -14,6 +14,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type { StoredAsset } from "@breatic/domain";
 
 const h = vi.hoisted(() => {
   /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
@@ -34,6 +35,8 @@ const h = vi.hoisted(() => {
     markFailed: vi.fn(),
     moveToDelayed: vi.fn(),
     getByIdInternal: vi.fn(),
+    recordProviderResult: vi.fn(),
+    resolveRegisteredProjectMedia: vi.fn<(_projectId: string, url: string) => Promise<StoredAsset>>(),
     markCompletedAndBill: vi.fn(),
     markRunning: vi.fn(),
     settleTaskForNode: vi.fn(),
@@ -59,6 +62,9 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   runContainerJob: h.runContainerJob,
 }));
 vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
+vi.mock("@worker/services/project-media.service.js", () => ({
+  resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia,
+}));
 vi.mock("@worker/providers/three-d/index.js", () => ({
   validateThreeDParams: (model: string, params: Record<string, unknown>) => [model, params],
   generateAsync: h.threeD,
@@ -110,7 +116,7 @@ vi.mock("@breatic/domain", async () => ({
     markFailed: h.markFailed,
     markRunning: h.markRunning,
     getByIdInternal: h.getByIdInternal,
-    recordProviderResult: vi.fn(),
+    recordProviderResult: h.recordProviderResult,
     recordProviderTaskId: vi.fn(),
     markCompletedAndBill: h.markCompletedAndBill,
   },
@@ -226,6 +232,19 @@ beforeEach(() => {
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
   h.markCompletedAndBill.mockResolvedValue(true);
+  h.recordProviderResult.mockReset();
+  h.resolveRegisteredProjectMedia.mockReset();
+  h.resolveRegisteredProjectMedia.mockImplementation(async (_projectId, fileUrl) => ({
+    assetId: fileUrl.endsWith(".mp4") ? "asset-video" : "asset-image",
+    fileUrl,
+    kind: fileUrl.endsWith(".mp4") ? "video" : "image",
+    coverUrl: null,
+    width: null,
+    height: null,
+    durationSeconds: null,
+    mimeType: fileUrl.endsWith(".mp4") ? "video/mp4" : "image/png",
+    sizeBytes: 10,
+  }));
   // The real charge settles its amount before it writes anything.
   h.chargeForGeneration.mockImplementation(async (input: { amount: number }) => {
     toChargeMicro(input.amount);
@@ -254,5 +273,58 @@ describe.each(LANES)("the credits $name is billed with", (lane) => {
   it("passes a negative cost through without throwing, and charges nothing", async () => {
     expect(await billedFor(lane, -1)).toBe(-1);
     expect(h.chargeForGeneration).not.toHaveBeenCalled();
+  });
+});
+
+describe("accepting registered media after the vendor has returned", () => {
+  it("fails without billing or vendor replay when accepting the Project relationship fails", async () => {
+    const fileUrl = "https://cdn/out.png";
+    const providerFactsAtAcceptance: Array<string | null> = [];
+    const row = {
+      status: "running",
+      startedAt: new Date(),
+      billedAt: null,
+      providerResultUrl: null as string | null,
+      providerTaskId: null,
+    };
+    h.getByIdInternal.mockResolvedValue(row);
+    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: fileUrl }], cost: 3.075 });
+    h.recordProviderResult.mockImplementation(async (_taskId: string, url: string) => {
+      // The later boundary may run only after the provider fact's write resolves.
+      await Promise.resolve();
+      row.providerResultUrl = url;
+    });
+    h.resolveRegisteredProjectMedia.mockImplementation(async () => {
+      providerFactsAtAcceptance.push(row.providerResultUrl);
+      throw new Error("Project asset association SQL failed");
+    });
+
+    await expect(runTask(jobOf({}), "lock-token")).resolves.toEqual({ failed: true, reason: "persist_failed" });
+
+    expect(h.recordProviderResult).toHaveBeenCalledExactlyOnceWith("task-1", fileUrl);
+    expect(h.resolveRegisteredProjectMedia).toHaveBeenCalledExactlyOnceWith("proj-1", fileUrl);
+    expect(providerFactsAtAcceptance).toEqual([fileUrl]);
+    expect(h.markFailed).toHaveBeenCalledExactlyOnceWith("task-1", "internal");
+    expect(h.runCatalogTask).toHaveBeenCalledTimes(1);
+    expect(h.markCompletedAndBill).not.toHaveBeenCalled();
+    expect(h.chargeForGeneration).not.toHaveBeenCalled();
+    expect(h.recordGenerationSuccess).not.toHaveBeenCalled();
+    expect(h.upsertGenerationSucceeded).not.toHaveBeenCalled();
+    expect(row.providerResultUrl).toBe(fileUrl);
+
+    // This is another real dispatcher call reading the same written fact.
+    await expect(runTask(jobOf({}, 1), "lock-token")).resolves.toEqual({ failed: true, reason: "no_retry_after_provider" });
+
+    expect(h.getByIdInternal).toHaveBeenCalledTimes(2);
+    expect(h.getByIdInternal).toHaveBeenNthCalledWith(1, "task-1");
+    expect(h.getByIdInternal).toHaveBeenNthCalledWith(2, "task-1");
+    expect(h.runCatalogTask).toHaveBeenCalledTimes(1);
+    expect(h.recordProviderResult).toHaveBeenCalledTimes(1);
+    expect(h.resolveRegisteredProjectMedia).toHaveBeenCalledTimes(1);
+    expect(h.markFailed).toHaveBeenCalledTimes(2);
+    expect(h.markFailed).toHaveBeenNthCalledWith(2, "task-1", "internal");
+    expect(h.markCompletedAndBill).not.toHaveBeenCalled();
+    expect(h.chargeForGeneration).not.toHaveBeenCalled();
+    expect(h.moveToDelayed).not.toHaveBeenCalled();
   });
 });

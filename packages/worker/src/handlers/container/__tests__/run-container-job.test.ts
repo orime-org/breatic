@@ -8,6 +8,7 @@
  */
 
 import type * as sharedModule from "@breatic/shared";
+import type * as coreModule from "@breatic/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
@@ -31,7 +32,9 @@ vi.mock("node:timers/promises", () => ({
   },
 }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  // The real side-effect event table imports the asset repository compatibility exports.
+  ...(await importOriginal<typeof coreModule>()),
   env: { INGEST_BASE_URL: "https://ingest.test", INGEST_SHARED_SECRET: "s", CREDIT_MULTIPLIER: 2 },
   logger: { warn: vi.fn(), error: vi.fn() },
   getMiniToolsConfig: () => ({
