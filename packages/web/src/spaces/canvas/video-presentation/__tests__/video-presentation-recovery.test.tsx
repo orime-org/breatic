@@ -1,0 +1,155 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { t, type VideoPresentationResponse } from '@breatic/shared';
+import { ApiException } from '@web/data/api/types';
+import { CanvasContext } from '@web/spaces/canvas/canvas-context';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
+import { VideoTimelinePreview } from '@web/spaces/canvas/mini-tool/video/VideoTimelinePreview';
+import { CanonicalTimelineDecoder } from '../CanonicalTimelineDecoder';
+import { createVideoPresentationRecovery } from '../video-presentation-recovery';
+import { videoPresentationQuery } from '../video-presentation-query';
+import type { VideoPresentationSource, VideoRendererCallbacks } from '../types';
+
+const platform = vi.hoisted(() => ({
+  apiGet: vi.fn(), apiPost: vi.fn(), toastError: vi.fn(),
+  sessions: [] as { element: HTMLVideoElement; surface: HTMLCanvasElement; callbacks: VideoRendererCallbacks }[],
+  frames: [] as FrameRequestCallback[],
+}));
+vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet: platform.apiGet, apiPost: platform.apiPost }));
+vi.mock('@web/lib/toast', async (original) => ({ ...await original<Record<string, unknown>>(), toast: { error: platform.toastError } }));
+vi.mock('gl-transition', () => ({ default: () => ({ draw: vi.fn(), dispose: vi.fn() }) }));
+vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (original) => ({
+  ...await original<Record<string, unknown>>(),
+  createVideoRenderer: (host: HTMLElement, _source: VideoPresentationSource, callbacks: VideoRendererCallbacks) => {
+    const element = document.createElement('video'); const surface = document.createElement('canvas');
+    surface.width = 160; surface.height = 240; host.append(surface);
+    platform.sessions.push({ element, surface, callbacks });
+    return { dispose: () => { element.pause(); surface.remove(); } };
+  },
+}));
+
+const input = { projectId: 'project', canonicalURL: 'https://assets.example.test/canonical.webm', active: true };
+const sourceBinding: VideoPresentationResponse['sourceBinding'] = {
+  assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14', canonicalURL: input.canonicalURL,
+  contentHash: 'a'.repeat(64), kind: 'video', mediaInfo: { width: 160, height: 240, duration: 10, mimeType: 'video/webm' },
+};
+const original = { width: 160, height: 240, duration: 10 };
+const attempt = { jobId: 'failed-preparation', deadlineAt: 1900000000000 };
+const failed: VideoPresentationResponse = {
+  sourceBinding, presentation: { schemaVersion: 1, state: 'failed', sourceFingerprint: sourceBinding.contentHash, original, error: 'preparation-failed' },
+  preparation: { status: 'failed', attempt, error: 'preparation-failed' }, pollAfterMs: null,
+};
+const ready: VideoPresentationResponse = {
+  sourceBinding, presentation: { schemaVersion: 1, state: 'native', sourceFingerprint: sourceBinding.contentHash, original }, preparation: null, pollAfterMs: null,
+};
+let client: QueryClient;
+
+function seed(data: VideoPresentationResponse): void {
+  const options = videoPresentationQuery(input);
+  client.setQueryDefaults(options.queryKey, { staleTime: Infinity });
+  client.setQueryData(options.queryKey, data);
+  void client.fetchQuery({ ...options, staleTime: Infinity });
+}
+
+function mount(content: React.ReactNode): ReturnType<typeof render> {
+  return render(<QueryClientProvider client={client}><CanvasContext.Provider value={{ projectId: input.projectId, spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}>{content}</CanvasContext.Provider></QueryClientProvider>);
+}
+
+function timeline(): React.JSX.Element {
+  const clip = { clipId: '10000000-0000-4000-8000-000000000001', inputId: '20000000-0000-4000-8000-000000000001', in: 0, out: 1, transition: { kind: 'cut' as const, duration: 0 }, start: 0, end: 1, overlap: 0 };
+  return <VideoTimelinePreview plan={{ duration: 1, clips: [clip] }} inputs={[{ inputId: clip.inputId, url: input.canonicalURL }]} cursor={0} playing={false}
+    onCursorChange={vi.fn()} onPlayingChange={vi.fn()}
+    renderDecoder={(source, onBinding, onPresentedFrame) => <CanonicalTimelineDecoder input={source} onBinding={onBinding} onPresentedFrame={onPresentedFrame} />} />;
+}
+
+beforeEach(() => {
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  platform.apiGet.mockReset().mockResolvedValue(ready);
+  platform.apiPost.mockReset().mockResolvedValue({ ...ready, attempt: null });
+  platform.toastError.mockReset(); platform.sessions = []; platform.frames = [];
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => { platform.frames.push(callback); return platform.frames.length; }));
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  const gl = { createBuffer: vi.fn(() => ({})), bindBuffer: vi.fn(), bufferData: vi.fn(), viewport: vi.fn(), pixelStorei: vi.fn(), createTexture: vi.fn(() => ({})), bindTexture: vi.fn(), texParameteri: vi.fn(), deleteTexture: vi.fn(), deleteBuffer: vi.fn() };
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((kind: string) => kind === 'webgl' ? gl as unknown as WebGLRenderingContext : null);
+  vi.stubGlobal('AudioContext', class {
+    state = 'running'; destination = {};
+    createGain(): GainNode { return { connect: vi.fn(), disconnect: vi.fn(), gain: { value: 1 } } as unknown as GainNode; }
+    close(): Promise<void> { return Promise.resolve(); }
+  });
+});
+afterEach(() => { client.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)', () => {
+  it('joins an in-flight press and repairs a failed preparation from a fresh cache before refetching source facts', async () => {
+    seed(failed);
+    let finish!: (answer: unknown) => void;
+    platform.apiPost.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const recovery = createVideoPresentationRecovery(client, input);
+    const first = recovery.recover('source');
+    const duplicate = recovery.recover('source');
+    expect(duplicate).toBe(first);
+    await waitFor(() => expect(platform.apiPost).toHaveBeenCalledOnce());
+    expect(platform.apiPost).toHaveBeenCalledWith('/projects/project/assets/video-presentation/repair', {
+      canonicalURL: input.canonicalURL, sourceFingerprint: sourceBinding.contentHash,
+    }, expect.objectContaining({ headers: { 'Idempotency-Key': expect.any(String) } }));
+    expect(platform.apiGet).not.toHaveBeenCalled();
+    finish({ ...ready, attempt: null });
+    await first;
+    expect(platform.apiGet).toHaveBeenCalledOnce();
+    expect(client.getQueryData(videoPresentationQuery(input).queryKey)).toEqual(ready);
+  });
+
+  it('rereads source facts after a repair conflict and preserves the same visibly reported error', async () => {
+    seed(failed);
+    const failure = new ApiException({ status: 409, code: 'sourceConflict', message: 'The source changed.', fromServer: true });
+    platform.apiPost.mockRejectedValue(failure);
+    const recovery = createVideoPresentationRecovery(client, input);
+    await expect(recovery.recover('source')).rejects.toBe(failure);
+    expect(platform.toastError).toHaveBeenCalledExactlyOnceWith('The source changed.');
+    expect(platform.apiGet).toHaveBeenCalledOnce();
+    expect(client.getQueryData(videoPresentationQuery(input).queryKey)).toEqual(ready);
+  });
+
+  it('the actual node Retry repairs a failed cached preparation and attaches a fresh actual element', async () => {
+    seed(failed);
+    mount(<NodeIdContext.Provider value='node'><VideoNode data={{ handling: false, content: input.canonicalURL, width: 160, height: 240, duration: 10 }} /></NodeIdContext.Provider>);
+    fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
+    await waitFor(() => expect(platform.apiPost).toHaveBeenCalledOnce());
+    await waitFor(() => expect(platform.sessions).toHaveLength(1));
+    const session = platform.sessions[0]!;
+    act(() => session.callbacks.ready(session.element, session.surface));
+    expect(screen.getByTestId('play-toggle')).toBeEnabled();
+    expect(platform.apiGet).toHaveBeenCalledOnce();
+  });
+
+  it('the actual timeline Retry repairs a failed fresh descriptor before rebuilding its decoder', async () => {
+    seed(failed);
+    mount(timeline());
+    await waitFor(() => expect(platform.frames.length).toBeGreaterThan(0));
+    act(() => platform.frames.shift()!(performance.now()));
+    fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
+    await waitFor(() => expect(platform.apiPost).toHaveBeenCalledOnce());
+    await waitFor(() => expect(platform.sessions).toHaveLength(1));
+    expect(platform.apiGet).toHaveBeenCalledOnce();
+  });
+
+  it('rebuilds a transient decoder failure without starting another platform media job', async () => {
+    seed(ready);
+    mount(timeline());
+    await waitFor(() => expect(platform.sessions).toHaveLength(1));
+    act(() => platform.sessions[0]!.callbacks.error('media-load-failed'));
+    act(() => platform.frames.shift()!(performance.now()));
+    fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
+    await waitFor(() => expect(platform.sessions).toHaveLength(2));
+    expect(platform.apiPost).not.toHaveBeenCalled();
+  });
+});
