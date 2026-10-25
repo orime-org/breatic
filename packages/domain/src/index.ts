@@ -252,3 +252,4 @@ export type {
 
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
+export { beginMiniToolStepAttempt, recordMiniToolStepIdentity, recordMiniToolStepResult, failMiniToolStep, type MiniToolStepJson, type MiniToolStepResultParser, type MiniToolStepAttempt, type BeginMiniToolStepAttemptInput, type BeginMiniToolStepAttemptResult, type RecordMiniToolStepIdentityInput, type RecordMiniToolStepIdentityResult, type RecordMiniToolStepResultInput, type FailMiniToolStepInput } from "@domain/mini-tool/upstream-step.service.js";
