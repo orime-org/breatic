@@ -326,6 +326,12 @@ function readMeasurements(answered: unknown): IngestMeasurements {
 }
 
 /**
+ * What bounds one upload's requests: the task's deadline (signal and time
+ * left), the caller's stop signal alone, or both joined.
+ */
+type PartBound = UntilDeadline | { signal: AbortSignal };
+
+/**
  * Send one blob of bytes to the ingest Worker, part by part.
  *
  * The receipts are collected on the way: the Worker keeps nothing between
@@ -344,9 +350,12 @@ function readMeasurements(answered: unknown): IngestMeasurements {
  *   part the Worker accepts.
  * @param deadlineAt - When the upload's task runs out, in epoch ms, for a
  *   backend caller; a page holds none, and the Worker refuses a part past it.
+ * @param signal - Raised when the caller no longer wants the upload: checked
+ *   between parts and handed to each request.
  * @returns Everything finishing this upload will need.
  * @throws {UploadHttpError} When the Worker refuses either step.
  * @throws {DeadlinePassed} When the deadline has already come.
+ * @throws {DOMException} `AbortError` once `signal` is raised.
  * @throws {unknown} The transport's own failure when no delivery produced a
  *   response.
  */
@@ -356,13 +365,22 @@ export async function sendBytesToIngest(
   cfg: Pick<UploadClientConfig, "uploadIdleTimeoutMs">,
   onPartLanded?: (bytesLanded: number) => void,
   deadlineAt?: number,
+  signal?: AbortSignal,
 ): Promise<HeldUpload> {
-  const bound = deadlineAt === undefined ? undefined : untilDeadline(deadlineAt);
+  const deadline = deadlineAt === undefined ? undefined : untilDeadline(deadlineAt);
+  const bound: PartBound | undefined =
+    signal === undefined
+      ? deadline
+      : deadline === undefined
+        ? { signal }
+        : { ...deadline, signal: AbortSignal.any([deadline.signal, signal]) };
+  signal?.throwIfAborted();
   const opened = await openUpload(target, bound);
 
   let token = opened.token;
   const parts: PartReceipt[] = [];
   for (let part = 1; part <= target.totalParts; part += 1) {
+    signal?.throwIfAborted();
     const start = (part - 1) * target.partSize;
     const slice = bytes.slice(start, start + target.partSize);
     const landed = await sendPart(
@@ -637,7 +655,7 @@ export async function askWorker<T>(
   init: RequestInit,
   options: {
     replaySafe: boolean;
-    bound?: UntilDeadline | { timeoutMs: number };
+    bound?: PartBound | { timeoutMs: number };
     idleTimeoutMs?: number;
     dispatcher?: unknown;
   },
@@ -664,13 +682,13 @@ export async function askWorker<T>(
 /**
  * Open a multipart upload for this ticket's key.
  * @param target - The signed ticket and where to send it.
- * @param bound - The upload's deadline, when the caller holds one.
+ * @param bound - The upload's deadline and the caller's stop signal, when held.
  * @returns The upload's id and its first session token.
  * @throws {UploadHttpError} When the Worker refuses the ticket.
  */
 async function openUpload(
   target: IngestTarget,
-  bound: UntilDeadline | undefined,
+  bound: PartBound | undefined,
 ): Promise<OpenedUpload> {
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,
@@ -690,7 +708,7 @@ async function openUpload(
  * @param bytes - This part's bytes.
  * @param token - The token this part is authorised by.
  * @param cfg - The idle window a part is cut after.
- * @param bound - The upload's deadline, when the caller holds one.
+ * @param bound - The upload's deadline and the caller's stop signal, when held.
  * @returns This part's receipt and the token for the next part.
  * @throws {UploadHttpError} When the Worker refuses the part.
  */
@@ -701,7 +719,7 @@ async function sendPart(
   bytes: Blob,
   token: string,
   cfg: Pick<UploadClientConfig, "uploadIdleTimeoutMs">,
-  bound: UntilDeadline | undefined,
+  bound: PartBound | undefined,
 ): Promise<PartReceipt & { token: string }> {
   return askWorker<PartReceipt & { token: string }>(
     `${target.uploadUrl}/uploads/${uploadId}/parts/${part}`,
@@ -714,7 +732,7 @@ async function sendPart(
     // keeps the later write of a part, never both.
     {
       replaySafe: true,
-      bound: bound ?? { timeoutMs: MAX_TIMER_MS },
+      bound: { timeoutMs: MAX_TIMER_MS, ...bound },
       ...(target.dispatcher !== undefined
         ? { dispatcher: target.dispatcher }
         : { idleTimeoutMs: cfg.uploadIdleTimeoutMs }),
