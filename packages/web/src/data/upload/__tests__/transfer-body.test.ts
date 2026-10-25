@@ -311,6 +311,27 @@ describe('bodyOrTransfer: a server that names no usable limit (W15)', () => {
     expect(postsTo(isTicket)).toHaveLength(0);
     expect(vi.mocked(sendBytesToIngest)).toHaveBeenCalledTimes(0);
   });
+
+  it.each([
+    ['the network failed', new ApiException({ status: 0, message: 'Network Error', network: true })],
+    ['the server answered 500', new ApiException({ status: 500, message: 'Internal error', fromServer: true })],
+  ])('sends a 5 MB body unchanged when the upload-config request fails (%s)', async (_case, failure) => {
+    assetsApi.resetUploadConfigCache();
+    vi.mocked(apiGet).mockImplementation(async (url: string) => {
+      if (url === '/assets/upload-config') throw failure;
+      throw new Error(`unexpected GET ${url}`);
+    });
+    const body = { t: 'a'.repeat(5 * 1024 * 1024) };
+    const onTransferStart = vi.fn();
+
+    const out = await bodyOrTransfer(P, body, { onTransferStart });
+
+    expect(out).toBe(body);
+    expect(vi.mocked(apiGet)).toHaveBeenCalledWith('/assets/upload-config');
+    expect(onTransferStart).toHaveBeenCalledTimes(0);
+    expect(postsTo(isTicket)).toHaveLength(0);
+    expect(vi.mocked(sendBytesToIngest)).toHaveBeenCalledTimes(0);
+  });
 });
 
 describe('bodyOrTransfer: failures go to the caller', () => {
