@@ -107,8 +107,8 @@ export interface RunOnceSpec<B, R> {
   send: (key: string, body: B) => Promise<R>;
   /** The final success; `leaving` keeps the button waiting while the page navigates away. */
   onDone?: (result: R) => 'leaving' | undefined;
-  /** The final failure, for the press to tell the reader. */
-  onFailure?: (err: unknown) => void;
+  /** The final failure, for the press to tell the reader; the press ends once it has. */
+  onFailure?: (err: unknown) => void | Promise<void>;
 }
 
 /**
@@ -280,7 +280,7 @@ async function drive<B, R>(
   } catch (err) {
     if (!current()) return RELEASED;
     release(intentId, press);
-    spec.onFailure?.(err);
+    await spec.onFailure?.(err);
     return { kind: 'failed', error: err };
   }
   if (!current()) return RELEASED;
@@ -306,7 +306,7 @@ async function drive<B, R>(
       const ms = resendWait(err, attempt);
       if (ms === null) {
         release(intentId, press);
-        spec.onFailure?.(err);
+        await spec.onFailure?.(err);
         return { kind: 'failed', error: err };
       }
       if (!(await wait(press, ms)) || !current()) return RELEASED;

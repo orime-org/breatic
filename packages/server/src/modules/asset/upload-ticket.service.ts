@@ -14,7 +14,7 @@
 
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import { assetService, safeExt, uploadDeadlineByKey, uploadTicketService } from "@breatic/domain";
-import type { NodeTaskAction } from "@breatic/shared";
+import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 import { INSUFFICIENT_STORAGE, assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
@@ -32,6 +32,18 @@ export interface TicketItem {
   tool_name?: string | undefined;
   derived?: boolean | undefined;
   purpose?: "project_cover" | "studio_avatar" | undefined;
+}
+
+/** The file name every transfer grant records. */
+const TRANSFER_FILENAME = "body.transfer";
+
+/**
+ * The largest transfer file a ticket is signed for: the largest of the
+ * per-route caps, since the ticket does not yet know which route it serves.
+ * @returns The ceiling in bytes, signature line included.
+ */
+export function transferTicketMaxBytes(): number {
+  return Math.max(...Object.values(getStorageConfig().transfer.route_max_bytes));
 }
 
 /** Where the file is going and who asked, already checked by the caller. */
@@ -64,6 +76,9 @@ export type TicketOutcome =
     }
   | { kind: "refused"; reason: "too_large" | "storage" };
 
+/** A file answered with a signed ticket. */
+export type IssuedTicket = Extract<TicketOutcome, { kind: "ticket" }>;
+
 /**
  * What an upload's task row says: a browser tool's export is shown as that
  * tool, every other upload by its file name.
@@ -74,6 +89,80 @@ function uploadRowOf(item: TicketItem): { action: NodeTaskAction; label: string 
   return item.source === "mini_tool" && item.tool_name !== undefined
     ? { action: "mini_tool", label: item.tool_name }
     : { action: "upload", label: item.filename };
+}
+
+/**
+ * Fail when the ingest Worker is not configured. Without the secret the
+ * Worker would reject every ticket we sign; without the base URL the browser
+ * has nowhere to send its parts. Neither is anything the user did, so this is
+ * our own misconfiguration and reads as a 500.
+ * @throws {Error} When either setting is missing.
+ */
+function assertIngestConfigured(): void {
+  if (!env.INGEST_SHARED_SECRET || !env.INGEST_BASE_URL) {
+    logger.error(
+      { hasSecret: Boolean(env.INGEST_SHARED_SECRET), hasBaseUrl: Boolean(env.INGEST_BASE_URL) },
+      "upload_ticket_ingest_unconfigured",
+    );
+    throw new Error("ingest Worker is not configured: INGEST_BASE_URL and INGEST_SHARED_SECRET are both required");
+  }
+}
+
+/**
+ * Answer a transfer file (inner#1006). It never becomes an asset and never
+ * counts toward storage, so neither the dedup ledger nor the storage
+ * allowance is asked; its grant has no node and no space, so no task row.
+ * The size cap is the route schema's.
+ * @param scope - Where it goes and who asked.
+ * @param size - The whole transfer file's size, signature line included.
+ * @returns The signed ticket.
+ * @throws {Error} When the ingest Worker is not configured.
+ */
+export async function issueTransferTicket(scope: TicketScope, size: number): Promise<IssuedTicket> {
+  const { userId, studioId, projectId } = scope;
+  assertIngestConfigured();
+
+  const expiresAt = Date.now() + getStorageConfig().ingest.ticket_expires_seconds * 1000;
+  const { key, taskId } = await openUpload(
+    {
+      ...(projectId !== undefined ? { projectId } : { studioId }),
+      actingUserId: userId,
+      declaredSize: size,
+      taskType: TRANSFER_KEY_DIR,
+      ext: ".transfer",
+      expiresAt: new Date(expiresAt),
+      context: {
+        nodeId: null,
+        spaceId: null,
+        derived: true,
+        filename: TRANSFER_FILENAME,
+        assetSource: "transfer",
+      },
+    },
+    { budgetMs: getNodeTaskConfig().default_budget_ms, action: "upload", label: TRANSFER_FILENAME },
+  );
+  const deadlineAt = await uploadDeadlineByKey(key);
+  const target = await uploadTicketService.signTicketFor({
+    storageKey: key,
+    studioId,
+    userId,
+    declaredSize: size,
+    contentType: TRANSFER_MEDIA_TYPE,
+    expiresAt,
+    deadlineAt,
+  });
+  logger.info({ key, userId, size }, "transfer_ticket_issued");
+
+  return {
+    kind: "ticket",
+    ticket: target.ticket,
+    storageKey: key,
+    uploadUrl: target.uploadUrl,
+    assetKind: assetService.detectAssetKind(TRANSFER_MEDIA_TYPE),
+    partSize: target.partSize,
+    totalParts: target.totalParts,
+    taskId,
+  };
 }
 
 /**
@@ -133,17 +222,8 @@ export async function issueUploadTicket(
   // Storage gate, after the dedup return: that path consumes nothing.
   if (!(await admitStorage())) return { kind: "refused", reason: "storage" };
 
-  // Both settings have to be present before a byte is authorised. Without the
-  // secret the Worker would reject every ticket we sign; without the base URL
-  // the browser has nowhere to send its parts. Neither is anything the user
-  // did, so this is our own misconfiguration and reads as a 500.
-  if (!env.INGEST_SHARED_SECRET || !env.INGEST_BASE_URL) {
-    logger.error(
-      { hasSecret: Boolean(env.INGEST_SHARED_SECRET), hasBaseUrl: Boolean(env.INGEST_BASE_URL) },
-      "upload_ticket_ingest_unconfigured",
-    );
-    throw new Error("ingest Worker is not configured: INGEST_BASE_URL and INGEST_SHARED_SECRET are both required");
-  }
+  // Both settings have to be present before a byte is authorised.
+  assertIngestConfigured();
 
   const assetKind = assetService.detectAssetKind(item.content_type);
   // One rule for what may go in a key, shared with the lane that takes an

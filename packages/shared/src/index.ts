@@ -843,6 +843,17 @@ export {
   sniffMimeTypeOfStream,
   SNIFF_WINDOW,
 } from "@shared/upload/sniff-mime.js";
+// A request body too large for the API, carried through storage instead
+// (inner#1006): web writes it, the ingest Worker names it, the server reads it.
+export {
+  TRANSFER_KEY_DIR,
+  TRANSFER_MEDIA_TYPE,
+  TRANSFER_SIGNATURE,
+  TransferDecodeError,
+  decodeTransferBody,
+  encodeTransferBody,
+  type TransferDecodeReason,
+} from "@shared/upload/transfer-format.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the
 // status alone.

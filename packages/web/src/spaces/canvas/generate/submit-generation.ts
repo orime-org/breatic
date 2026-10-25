@@ -88,8 +88,8 @@ export function submitGeneration(opts: {
     },
     // Unconditional: a press that failed after the reader closed the panel
     // still explains itself.
-    onFailure: (err) => {
-      toast.error(executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
+    onFailure: async (err) => {
+      toast.error(await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
     },
   });
 }

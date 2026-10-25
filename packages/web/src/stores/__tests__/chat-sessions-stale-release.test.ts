@@ -7,6 +7,7 @@
  * silenced the panel's toast by the time the turn settles.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as AssetsApiModule from '@web/data/api/assets';
 
 vi.mock('@web/data/api/chat', () => ({
   chatApi: {
@@ -17,6 +18,29 @@ vi.mock('@web/data/api/chat', () => ({
     })),
   },
 }));
+
+// Chat sends every body through bodyOrTransfer, which first asks for the
+// upload config. Answer it here with the shipped request-body limit, so the
+// real threshold runs (these bodies are small and go as they are) and no
+// request reaches the network, where fake timers would never settle it.
+vi.mock('@web/data/api/assets', async (importOriginal) => {
+  const actual = await importOriginal<typeof AssetsApiModule>();
+  return {
+    ...actual,
+    assetsApi: {
+      ...actual.assetsApi,
+      fetchUploadConfig: async () => ({
+        maxUploadBytes: 2 * 1024 * 1024 * 1024,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        uploadIdleTimeoutMs: 30_000,
+        assetUrlPrefix: 'https://assets.test.invalid/',
+        uploadStatusPollSeconds: 5,
+        maxRequestBodyBytes: 1048576,
+      }),
+    },
+  };
+});
 
 const order: string[] = [];
 const checkStaleRelease = vi.hoisted(() => vi.fn());

@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   chatAttachedChipSchema,
   chatMessageSchema,
+  emailSchema,
   projectCreateSchema,
   taskCreateSchema,
 } from "@shared/schemas/api.js";
@@ -269,5 +270,99 @@ describe("chatMessageSchema — an answer to a questionnaire (inner#1542)", () =
 
   it("refuses an answer of the wrong shape", () => {
     expect(chatMessageSchema.safeParse({ ...base, message: "", answer: { toolCallId: "" , answers: [] } }).success).toBe(false);
+  });
+});
+
+// inner#1006 §6: written columns get a zod ceiling, so an over-long value is a
+// validation refusal (issue code too_big) rather than a database error.
+
+/**
+ * The issue codes a refused parse reported.
+ * @param result - A failed safeParse result.
+ * @returns Each issue's code.
+ */
+function codesOf(result: { success: boolean; error?: { issues: { code: string }[] } }): string[] {
+  return (result.error?.issues ?? []).map((issue) => issue.code);
+}
+
+describe("F01 emailSchema — 254 characters after normalizing", () => {
+  const local = "u".repeat(64);
+  /** 64 + 1 + 63 + 1 + 63 + 1 + 57 + 4 = 254 characters. */
+  const at254 = `${local}@${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(57)}.com`;
+  const at255 = `${local}@${"a".repeat(63)}.${"b".repeat(63)}.${"c".repeat(58)}.com`;
+
+  it("builds the fixtures at the lengths the case names", () => {
+    expect(at254.length).toBe(254);
+    expect(at255.length).toBe(255);
+  });
+
+  it("takes a 254-character address", () => {
+    expect(emailSchema.safeParse(at254)).toEqual({ success: true, data: at254 });
+  });
+
+  it("measures after trimming: 256 characters with the spaces still pass", () => {
+    expect(emailSchema.safeParse(` ${at254} `)).toEqual({ success: true, data: at254 });
+  });
+
+  it("refuses a 255-character address as too_big", () => {
+    const result = emailSchema.safeParse(at255);
+    expect(result.success).toBe(false);
+    expect(codesOf(result)).toContain("too_big");
+  });
+});
+
+describe("F03 projectCreateSchema — description", () => {
+  it("takes 2000 characters", () => {
+    expect(projectCreateSchema.safeParse({ ...base, description: "d".repeat(2000) }).success).toBe(true);
+  });
+
+  it("refuses 2001 characters as too_big", () => {
+    const result = projectCreateSchema.safeParse({ ...base, description: "d".repeat(2001) });
+    expect(result.success).toBe(false);
+    expect(codesOf(result)).toEqual(["too_big"]);
+  });
+});
+
+describe("F05 / F06 taskCreateSchema — task_type and model", () => {
+  const task = {
+    task_type: "image",
+    params: {},
+    project_id: "11111111-1111-4111-8111-111111111111",
+    space_id: "22222222-2222-4222-8222-222222222222",
+    mode: "append" as const,
+  };
+
+  it("F05 takes a 50-character task_type", () => {
+    expect(taskCreateSchema.safeParse({ ...task, task_type: "t".repeat(50) }).success).toBe(true);
+  });
+
+  it("F05 refuses a 51-character task_type as too_big", () => {
+    const result = taskCreateSchema.safeParse({ ...task, task_type: "t".repeat(51) });
+    expect(result.success).toBe(false);
+    expect(codesOf(result)).toEqual(["too_big"]);
+  });
+
+  it("F06 takes a 100-character model", () => {
+    expect(taskCreateSchema.safeParse({ ...task, model: "m".repeat(100) }).success).toBe(true);
+  });
+
+  it("F06 refuses a 101-character model as too_big", () => {
+    const result = taskCreateSchema.safeParse({ ...task, model: "m".repeat(101) });
+    expect(result.success).toBe(false);
+    expect(codesOf(result)).toEqual(["too_big"]);
+  });
+});
+
+describe("F08 chatAttachedChipSchema — name", () => {
+  const chip = { id: "chip-1", type: "text", data_snapshot: { text: "hello" } };
+
+  it("takes a 255-character name", () => {
+    expect(chatAttachedChipSchema.safeParse({ ...chip, name: "n".repeat(255) }).success).toBe(true);
+  });
+
+  it("refuses a 256-character name as too_big", () => {
+    const result = chatAttachedChipSchema.safeParse({ ...chip, name: "n".repeat(256) });
+    expect(result.success).toBe(false);
+    expect(codesOf(result)).toEqual(["too_big"]);
   });
 });

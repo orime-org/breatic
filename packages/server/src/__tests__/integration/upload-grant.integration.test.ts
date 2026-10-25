@@ -388,3 +388,71 @@ describe("upload-grant repo — storage_key uniqueness", () => {
     ).rejects.toThrow();
   });
 });
+
+/**
+ * Read a grant's state columns, timestamps as full-precision text.
+ * @param storageKey - The grant's key.
+ * @returns The row, or undefined when no grant has the key.
+ */
+async function stateOf(storageKey: string): Promise<
+  | { consumed_at: string | null; voided_at: string | null; asset_id: string | null; failure_reason: string | null }
+  | undefined
+> {
+  const rows = await sql<
+    { consumed_at: string | null; voided_at: string | null; asset_id: string | null; failure_reason: string | null }[]
+  >`
+    SELECT consumed_at::text AS consumed_at, voided_at::text AS voided_at, asset_id, failure_reason
+    FROM upload_grants WHERE storage_key = ${storageKey}
+  `;
+  return rows[0];
+}
+
+describe("T36: completeTransferGrant completes only a live transfer grant (inner#1006 §4.3)", () => {
+  /**
+   * A transfer key in the design's format.
+   * @returns A fresh key under `transfer/`.
+   */
+  function transferKey(): string {
+    return `transfer/2026-10-24/${Date.now()}_${crypto.randomUUID()}.transfer`;
+  }
+
+  it("(a) leaves a voided transfer grant voided and answers failure", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = transferKey();
+    await issueGrant({
+      ...grantFields({ userId, studioId, storageKey, declaredSize: 1500019 }),
+      context: { assetSource: "transfer", derived: true, filename: "body.transfer" },
+    });
+    await claimFinalize({ storageKey, uploadId: "upload-t36a" });
+    expect(await uploadGrantRepo.voidGrant(storageKey, "unsupported_type")).toBe(true);
+    const before = await stateOf(storageKey);
+
+    expect(await uploadGrantRepo.completeTransferGrant(storageKey)).toBe(false);
+
+    expect(await stateOf(storageKey)).toEqual(before);
+    expect(before!.consumed_at).toBeNull();
+  });
+
+  it("(b) leaves an ordinary finishing grant unconsumed and answers failure", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant(grantFields({ userId, studioId, storageKey, declaredSize: 1 }));
+    await claimFinalize({ storageKey, uploadId: "upload-t36b" });
+    const before = await stateOf(storageKey);
+
+    expect(await uploadGrantRepo.completeTransferGrant(storageKey)).toBe(false);
+
+    expect(await stateOf(storageKey)).toEqual(before);
+    expect(before!.consumed_at).toBeNull();
+  });
+
+  it("(c) answers failure for a key never issued and writes no row", async () => {
+    const storageKey = transferKey();
+
+    expect(await uploadGrantRepo.completeTransferGrant(storageKey)).toBe(false);
+
+    expect(await stateOf(storageKey)).toBeUndefined();
+  });
+});

@@ -14,6 +14,7 @@
  *   - the storage-full notice window — how long one account's "out of
  *     storage" notice silences the next.
  *   - how long a vendor's voice list is reused before asking again.
+ *   - the largest request body a public API route reads.
  *
  * Mirrors the `pricing.ts` / `text-tools.ts` business-config loaders:
  * a yaml file under `config/` validated by a Zod schema and memoized.
@@ -37,6 +38,7 @@ export const limitsConfigSchema = z.object({
   credit_page_max: z.number().int().positive().default(100),
   decision_window_days: z.number().int().positive().default(7),
   storage_notice_window_seconds: z.number().int().positive().default(86400),
+  request_body_max_bytes: z.number().int().positive().default(1048576),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */
@@ -169,4 +171,15 @@ export function getDecisionWindowSeconds(): number {
  */
 export function getStorageNoticeWindowSeconds(): number {
   return loadConfig().storage_notice_window_seconds;
+}
+
+/**
+ * The largest request body any public API route reads, in bytes
+ * (inner#1006). Larger bodies are refused with 413 before a route runs; the
+ * browser learns it from `GET /assets/upload-config` and moves a larger body
+ * through a transfer upload on the routes that take one.
+ * @returns The limit in bytes.
+ */
+export function getRequestBodyMaxBytes(): number {
+  return loadConfig().request_body_max_bytes;
 }
