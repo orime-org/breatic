@@ -23,6 +23,9 @@ export interface LongMediaRoutesEnv extends LongMediaEnv {
 /** `/long-media/jobs/{id}`. */
 export const LONG_MEDIA_JOB_PATH = /^\/long-media\/jobs\/([^/]+)$/;
 
+/** `/long-media/jobs/{id}/plan`. */
+export const LONG_MEDIA_PLAN_PATH = /^\/long-media\/jobs\/([^/]+)\/plan$/;
+
 /** The hostname used only by the Container's report callback. */
 export const LONG_MEDIA_REPORT_HOST = "long-media.local";
 
@@ -91,6 +94,38 @@ export async function readLongMediaJob(request: Request, env: LongMediaRoutesEnv
   }
   const report = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId)).report();
   return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
+}
+
+/**
+ * Accept one authenticated, versioned plan mutation for a durable job.
+ * @param request - The backend mutation request.
+ * @param env - The Worker's bindings.
+ * @param jobId - The URL-encoded job identity.
+ * @returns The mutation result or a protocol-level error response.
+ */
+export async function applyLongMediaPlan(
+  request: Request,
+  env: LongMediaRoutesEnv,
+  jobId: string,
+): Promise<Response> {
+  if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
+  let decodedJobId: string;
+  let value: unknown;
+  try {
+    decodedJobId = decodeURIComponent(jobId);
+    value = await request.json();
+  } catch {
+    return new Response("Invalid long media plan", { status: 400 });
+  }
+  try {
+    const result = await env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId)).applyLongMediaPlan(value);
+    if (result.kind === "accepted" || result.kind === "replayed") return Response.json(result);
+    if (result.kind === "stale" || result.kind === "conflict") return Response.json(result, { status: 409 });
+    return Response.json(result, { status: 400 });
+  } catch (err) {
+    noteFailure("ingest_long_media_plan_failed", { jobId: decodedJobId }, err);
+    throw err;
+  }
 }
 
 /**

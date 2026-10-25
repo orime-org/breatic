@@ -757,6 +757,7 @@ export {
   type LongMediaProbeReport,
 } from "@shared/media/long-media-probe.js";
 export {
+  computeLongMediaInputsDigest,
   LongMediaPlanRequestSchema,
   readLongMediaPlanRequest,
   type LongMediaPlanRequest,

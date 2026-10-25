@@ -82,6 +82,32 @@ export const LongMediaPlanRequestSchema = z.object({
 export type LongMediaPlanRequest = z.infer<typeof LongMediaPlanRequestSchema>;
 
 /**
+ * Compute the stable identity of the complete required input set for one source.
+ * @param sourceFingerprint - The immutable source content hash.
+ * @param profileVersion - The frozen channel-preserving conversion profile.
+ * @param requiredMediaInputs - Probe-derived inputs in their fixed probe order.
+ * @returns A lowercase SHA-256 digest.
+ * @throws {z.ZodError} When the input list or its identities are invalid.
+ * @throws {DOMException} When the runtime cannot compute SHA-256.
+ */
+export async function computeLongMediaInputsDigest(
+  sourceFingerprint: string,
+  profileVersion: string,
+  requiredMediaInputs: LongMediaPlanRequest["requiredMediaInputs"],
+): Promise<string> {
+  const parsedInputs = z.array(LongMediaInputSchema).min(1).parse(requiredMediaInputs);
+  const canonical = {
+    version: 1,
+    sourceFingerprint: sha256.parse(sourceFingerprint).toLowerCase(),
+    profileVersion: z.string().min(1).parse(profileVersion),
+    requiredMediaInputs: parsedInputs,
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(canonical));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
  * Parse a trusted Node plan payload before persisting it.
  * @param value - The untrusted JSON payload.
  * @returns A strictly validated plan mutation.

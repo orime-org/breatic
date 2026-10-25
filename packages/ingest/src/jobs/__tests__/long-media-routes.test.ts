@@ -4,7 +4,7 @@
 import { env, createExecutionContext } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { computeLongMediaJobRequestDigest } from "@breatic/shared";
+import { computeLongMediaInputsDigest, computeLongMediaJobRequestDigest, type LongMediaPlanRequest } from "@breatic/shared";
 import { acceptLongMediaProbeReport, serveLongMediaSource } from "@ingest/jobs/long-media-routes.js";
 import worker from "@ingest/index.js";
 
@@ -324,4 +324,124 @@ describe("POST /long-media/jobs", () => {
       { ...segments[1], status: "planned", version: 0 },
     ]);
   });
+
+  it("assembles one complete root plan from versioned per-input mutations", async () => {
+    const rootPayload = { ...payload, jobId: "operation-root-plan:source-0", operationId: "operation-root-plan" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(rootPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(rootPayload.jobId));
+    await stub.startAttempt("root-plan-probe", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "root-plan-probe", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("root-plan-probe", 1, probeReport, Date.now());
+    const left = await rootInputPlan(0, 0);
+    const right = await rootInputPlan(1, 1);
+
+    const unauthorized = await call(`/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/plan`, {
+      method: "PUT",
+      body: JSON.stringify(left),
+    }, false);
+    expect(unauthorized.status).toBe(401);
+    const firstMutation = await call(`/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/plan`, {
+      method: "PUT",
+      body: JSON.stringify(left),
+    });
+    expect(firstMutation.status).toBe(200);
+    await expect(firstMutation.json()).resolves.toMatchObject({ kind: "accepted", revision: 1, complete: false });
+    await expect(stub.transition({ type: "planAck", hasRunnableSegments: true }, Date.now())).resolves.toBeNull();
+    await expect(stub.applyLongMediaPlan(right)).resolves.toMatchObject({ kind: "accepted", revision: 2 });
+    await expect(stub.applyLongMediaPlan(right)).resolves.toMatchObject({ kind: "replayed", revision: 2 });
+    await expect(stub.transition({ type: "planAck", hasRunnableSegments: false }, Date.now())).resolves.toMatchObject({
+      snapshot: { phase: "running" },
+      effects: ["startMediaAttempt"],
+    });
+    await expect(stub.readSegments()).resolves.toHaveLength(2);
+  });
+
+  it("replaces only an oversize parent with an exact same-input child partition", async () => {
+    const splitPayload = { ...payload, jobId: "operation-split-plan:source-0", operationId: "operation-split-plan" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(splitPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(splitPayload.jobId));
+    await stub.startAttempt("split-plan-probe", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "split-plan-probe", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("split-plan-probe", 1, probeReport, Date.now());
+    const root = await rootInputPlan(0, 0);
+    const accepted = await stub.applyLongMediaPlan(root);
+    expect(accepted).toMatchObject({ kind: "accepted", revision: 1 });
+    const parentId = root.intervals[0]?.id;
+    if (parentId === undefined) throw new Error("The root segment is missing");
+    await expect(stub.applySegmentEvent(parentId, 0, { type: "run" })).resolves.toMatchObject({ status: "encoding" });
+    await expect(stub.applySegmentEvent(parentId, 1, { type: "oversize" })).resolves.toMatchObject({ status: "oversize" });
+    const input = probeReport.mediaInputs[0];
+    if (input === undefined) throw new Error("The probe input is missing");
+    const child = (startUs: string, endUs: string, suffix: string) => ({
+      id: `${input.mediaInputId}:${startUs}:${endUs}`,
+      mediaInputId: input.mediaInputId,
+      descriptor: input.descriptor,
+      core: { startUs, endUs },
+      decode: { startUs, endUs },
+      mode: "prepare" as const,
+      suffix,
+    });
+    const left = child("0", "5000000", "left");
+    const right = child("5000000", "10000000", "right");
+    const replacement: LongMediaPlanRequest = {
+      ...root,
+      expectedVersion: 1,
+      mutationId: "split-audio-0",
+      parentId,
+      intervals: [left, right].map((segment) => ({
+        id: segment.id,
+        mediaInputId: segment.mediaInputId,
+        descriptor: segment.descriptor,
+        core: segment.core,
+        decode: segment.decode,
+        mode: segment.mode,
+      })),
+      grants: [left, right].map((segment) => ({
+        segmentId: segment.id,
+        candidateId: `candidate-${segment.suffix}`,
+        grantId: `grant-${segment.suffix}`,
+        storageKey: `understand/${segment.suffix}.mp3`,
+      })),
+    };
+
+    await expect(stub.applyLongMediaPlan(replacement)).resolves.toMatchObject({
+      kind: "accepted",
+      revision: 2,
+      complete: false,
+    });
+    await expect(stub.readSegments()).resolves.toMatchObject([
+      { id: parentId, status: "superseded", version: 3 },
+      { id: left.id, status: "planned", version: 0 },
+      { id: right.id, status: "planned", version: 0 },
+    ]);
+  });
 });
+
+/** Create one complete root interval mutation for a required media input. */
+async function rootInputPlan(inputIndex: number, expectedVersion: number): Promise<LongMediaPlanRequest> {
+  const input = probeReport.mediaInputs[inputIndex];
+  if (input === undefined) throw new Error(`No probe input at index ${inputIndex}`);
+  const segmentId = `${input.mediaInputId}:0:10000000`;
+  return {
+    expectedVersion,
+    mutationId: `root-plan-${inputIndex}`,
+    requiredMediaInputs: probeReport.mediaInputs,
+    requiredMediaInputsDigest: await computeLongMediaInputsDigest(payload.source.sha256, payload.profileVersion, probeReport.mediaInputs),
+    mediaInputId: input.mediaInputId,
+    parentId: null,
+    intervals: [{
+      id: segmentId,
+      mediaInputId: input.mediaInputId,
+      descriptor: input.descriptor,
+      core: { startUs: "0", endUs: "10000000" },
+      decode: { startUs: "0", endUs: "10000000" },
+      mode: "prepare",
+    }],
+    grants: [{
+      segmentId,
+      candidateId: `candidate-${inputIndex}`,
+      grantId: `grant-${inputIndex}`,
+      storageKey: `understand/root-${inputIndex}.mp3`,
+    }],
+  };
+}

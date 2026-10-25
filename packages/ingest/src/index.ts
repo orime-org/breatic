@@ -42,6 +42,8 @@ import { fromOurBackend } from "@ingest/backend-secret.js";
 import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
   LONG_MEDIA_JOB_PATH,
+  LONG_MEDIA_PLAN_PATH,
+  applyLongMediaPlan,
   readLongMediaJob,
   submitLongMediaJob,
   type LongMediaRoutesEnv,
@@ -1405,6 +1407,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   const longMediaJob = LONG_MEDIA_JOB_PATH.exec(pathname);
   if (request.method === "GET" && longMediaJob) {
     return readLongMediaJob(request, env, longMediaJob[1] ?? "");
+  }
+
+  const longMediaPlan = LONG_MEDIA_PLAN_PATH.exec(pathname);
+  if (request.method === "PUT" && longMediaPlan) {
+    return applyLongMediaPlan(request, env, longMediaPlan[1] ?? "");
   }
 
   const job = JOB_PATH.exec(pathname);

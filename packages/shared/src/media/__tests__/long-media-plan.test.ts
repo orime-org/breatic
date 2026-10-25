@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { LongMediaPlanRequestSchema } from "@shared/media/long-media-plan.js";
+import { computeLongMediaInputsDigest, LongMediaPlanRequestSchema } from "@shared/media/long-media-plan.js";
 
 const input = {
   mediaInputId: "audio-0-0",
@@ -55,5 +55,19 @@ describe("LongMediaPlanRequestSchema", () => {
       grants: [],
     };
     expect(LongMediaPlanRequestSchema.safeParse(adoption).success).toBe(true);
+  });
+
+  it("binds the full input identity to the source and conversion profile", async () => {
+    const first = await computeLongMediaInputsDigest("a".repeat(64), "channel-v1", [input]);
+    const reordered = await computeLongMediaInputsDigest("A".repeat(64), "channel-v1", [{
+      audioRange: input.audioRange,
+      sourceRange: input.sourceRange,
+      descriptor: input.descriptor,
+      mediaInputId: input.mediaInputId,
+    }]);
+    const changedProfile = await computeLongMediaInputsDigest("a".repeat(64), "channel-v2", [input]);
+
+    expect(reordered).toBe(first);
+    expect(changedProfile).not.toBe(first);
   });
 });

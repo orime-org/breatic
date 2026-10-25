@@ -13,10 +13,13 @@ import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js
 import { LONG_MEDIA_PROBE_PATH, PROBE_PORT } from "@ingest/probe-answer.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
 import {
+  computeLongMediaInputsDigest,
   readLongMediaJobRequest,
   readLongMediaProbeReport,
+  readLongMediaPlanRequest,
   type LongMediaJobRequest,
   type LongMediaProbeReport,
+  type LongMediaPlanRequest,
 } from "@breatic/shared";
 import type { LongMediaSegmentPlan, LongMediaSegmentStatus, LongMediaSegmentEvent } from "@ingest/jobs/long-media-segment.js";
 import { transitionLongMediaSegment } from "@ingest/jobs/long-media-segment.js";
@@ -104,15 +107,27 @@ interface LongMediaProbeRow extends Record<string, SqlStorageValue> {
   report_json: string;
 }
 
+/** One durable plan mutation receipt. */
+interface LongMediaPlanMutationRow extends Record<string, SqlStorageValue> {
+  mutation_id: string;
+  payload_digest: string;
+  revision: number;
+}
+
 /** One persisted logical media leaf. */
 interface LongMediaSegmentRow extends Record<string, SqlStorageValue> {
   segment_id: string;
+  parent_id: string | null;
   media_input_id: string;
   descriptor_json: string;
   core_start_us: string;
   core_end_us: string;
   decode_start_us: string;
   decode_end_us: string;
+  mode: string;
+  candidate_id: string | null;
+  grant_id: string | null;
+  storage_key: string | null;
   status: string;
   version: number;
 }
@@ -188,20 +203,45 @@ const PROBE_TABLE = `
 const SEGMENT_TABLES = `
   CREATE TABLE IF NOT EXISTS long_media_segment_plans (
     job_id TEXT PRIMARY KEY NOT NULL,
-    revision INTEGER NOT NULL
+    revision INTEGER NOT NULL,
+    required_inputs_json TEXT NOT NULL DEFAULT '[]',
+    required_inputs_digest TEXT NOT NULL DEFAULT ''
+  );
+  CREATE TABLE IF NOT EXISTS long_media_plan_mutations (
+    job_id TEXT NOT NULL,
+    mutation_id TEXT NOT NULL,
+    payload_digest TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    PRIMARY KEY (job_id, mutation_id)
   );
   CREATE TABLE IF NOT EXISTS long_media_segments (
     job_id TEXT NOT NULL,
     segment_id TEXT NOT NULL,
+    parent_id TEXT,
     media_input_id TEXT NOT NULL,
     descriptor_json TEXT NOT NULL,
     core_start_us TEXT NOT NULL,
     core_end_us TEXT NOT NULL,
     decode_start_us TEXT NOT NULL,
     decode_end_us TEXT NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'prepare',
+    candidate_id TEXT,
+    grant_id TEXT,
+    storage_key TEXT,
     status TEXT NOT NULL,
     version INTEGER NOT NULL,
     PRIMARY KEY (job_id, segment_id)
+  );
+  CREATE TABLE IF NOT EXISTS long_media_write_permits (
+    job_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    segment_id TEXT NOT NULL,
+    grant_id TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (job_id, candidate_id),
+    UNIQUE (job_id, grant_id),
+    UNIQUE (job_id, storage_key)
   )
 `;
 
@@ -310,6 +350,15 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    */
   acknowledgeAttemptEffect(epoch: number, attemptId: string, effect: LongMediaAttemptEffect): boolean {
     return this.jobStore.acknowledgeAttemptEffect(epoch, attemptId, effect);
+  }
+
+  /**
+   * Apply one versioned, per-input plan mutation and its exact write grants.
+   * @param value - The untrusted Node plan mutation.
+   * @returns The persisted revision or a replay/conflict result.
+   */
+  applyLongMediaPlan(value: unknown): Promise<LongMediaPlanMutationResult> {
+    return this.jobStore.applyLongMediaPlan(value);
   }
 
   /**
@@ -576,6 +625,15 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Apply one versioned, per-input plan mutation and its exact write grants.
+   * @param value - The untrusted Node plan mutation.
+   * @returns The persisted revision or a replay/conflict result.
+   */
+  applyLongMediaPlan(value: unknown): Promise<LongMediaPlanMutationResult> {
+    return this.jobStore.applyLongMediaPlan(value);
+  }
+
+  /**
    * Persist the first source-time plan after checking its complete probe coverage.
    * @param segments - The proposed required-input leaves.
    * @param expectedRevision - The manifest revision the planner observed.
@@ -678,6 +736,11 @@ export interface LongMediaSegmentSnapshot extends LongMediaSegmentPlan {
 export type LongMediaSegmentPlanResult =
   | { kind: "accepted" | "replayed"; revision: number }
   | { kind: "stale" | "invalid" };
+
+/** Result of applying one idempotent, versioned plan mutation. */
+export type LongMediaPlanMutationResult =
+  | { kind: "accepted" | "replayed"; revision: number; complete: boolean }
+  | { kind: "stale" | "conflict" | "invalid" };
 
 /** Result of applying an expected-version segment lifecycle event. */
 export type LongMediaSegmentEventResult =
@@ -837,6 +900,162 @@ class LongMediaJobStore {
   }
 
   /**
+   * Apply one idempotent plan mutation for a single probed media input.
+   * @param value - The untrusted plan mutation.
+   * @returns The accepted revision, replay, or rejection.
+   * @throws {Error} When durable probe facts are corrupt.
+   */
+  async applyLongMediaPlan(value: unknown): Promise<LongMediaPlanMutationResult> {
+    const plan = readLongMediaPlanRequest(value);
+    const planDigest = await digestPlanPayload(plan);
+    const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+    if (job === undefined) return { kind: "stale" };
+    const probe = this.ctx.storage.sql.exec<LongMediaProbeRow>(
+      "SELECT * FROM long_media_probe_facts WHERE job_id = ?", job.job_id,
+    ).toArray()[0];
+    if (probe === undefined) return { kind: "invalid" };
+    const report = readLongMediaProbeReport(JSON.parse(probe.report_json) as unknown);
+    const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+    const requiredInputsDigest = await computeLongMediaInputsDigest(
+      request.source.sha256,
+      request.profileVersion,
+      report.mediaInputs,
+    );
+    if (plan.requiredMediaInputsDigest !== requiredInputsDigest ||
+        JSON.stringify(plan.requiredMediaInputs) !== JSON.stringify(report.mediaInputs)) return { kind: "invalid" };
+
+    return this.ctx.storage.transactionSync(() => {
+      const currentJob = this.ctx.storage.sql.exec<LongMediaJobRow>(
+        "SELECT * FROM long_media_jobs WHERE job_id = ?", job.job_id,
+      ).toArray()[0];
+      if (currentJob === undefined) return { kind: "stale" };
+      const state = stateOf(currentJob);
+      if (state.phase !== "planning" || Date.now() >= state.deadlineAt) return { kind: "stale" };
+      const duplicate = this.ctx.storage.sql.exec<LongMediaPlanMutationRow>(
+        "SELECT * FROM long_media_plan_mutations WHERE job_id = ? AND mutation_id = ?",
+        job.job_id, plan.mutationId,
+      ).toArray()[0];
+      if (duplicate !== undefined) {
+        return duplicate.payload_digest === planDigest
+          ? { kind: "replayed", revision: duplicate.revision, complete: this.rootPlanComplete(job.job_id) }
+          : { kind: "conflict" };
+      }
+      const manifest = this.ctx.storage.sql.exec<{
+        revision: number; required_inputs_json: string; required_inputs_digest: string;
+      } & Record<string, SqlStorageValue>>(
+        "SELECT * FROM long_media_segment_plans WHERE job_id = ?", job.job_id,
+      ).toArray()[0];
+      const revision = manifest?.revision ?? 0;
+      if (plan.expectedVersion !== revision) return { kind: "stale" };
+      if (manifest !== undefined && (manifest.required_inputs_json !== JSON.stringify(plan.requiredMediaInputs) ||
+          manifest.required_inputs_digest !== plan.requiredMediaInputsDigest)) return { kind: "conflict" };
+      const input = report.mediaInputs.find((item) => item.mediaInputId === plan.mediaInputId);
+      if (input === undefined) return { kind: "invalid" };
+      const parent = plan.parentId === null ? undefined : this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        "SELECT * FROM long_media_segments WHERE job_id = ? AND segment_id = ?",
+        job.job_id, plan.parentId,
+      ).toArray()[0];
+      if (plan.parentId !== null && (parent === undefined || parent.media_input_id !== plan.mediaInputId ||
+          readLongMediaSegmentStatus(parent.status) !== "oversize")) return { kind: "conflict" };
+      if (plan.parentId === null) {
+        const existing = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+          "SELECT * FROM long_media_segments WHERE job_id = ? AND media_input_id = ?",
+          job.job_id, plan.mediaInputId,
+        ).toArray();
+        if (existing.length > 0) return { kind: "conflict" };
+      }
+      const intervals = [...plan.intervals].sort((left, right) => BigInt(left.core.startUs) < BigInt(right.core.startUs) ? -1 : 1);
+      const targetRange = parent === undefined
+        ? input.sourceRange
+        : { startUs: parent.core_start_us, endUs: parent.core_end_us };
+      if (!intervalsCoverRange(intervals, targetRange.startUs, targetRange.endUs)) return { kind: "invalid" };
+      if (intervals.some((item) => BigInt(item.decode.startUs) < BigInt(input.sourceRange.startUs) ||
+          BigInt(item.decode.endUs) > BigInt(input.sourceRange.endUs))) return { kind: "invalid" };
+      const existingIds = new Set(this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        "SELECT * FROM long_media_segments WHERE job_id = ?", job.job_id,
+      ).toArray().map((row) => row.segment_id));
+      const existingPermits = this.ctx.storage.sql.exec<{
+        candidate_id: string; grant_id: string; storage_key: string;
+      } & Record<string, SqlStorageValue>>(
+        "SELECT candidate_id, grant_id, storage_key FROM long_media_write_permits WHERE job_id = ?", job.job_id,
+      ).toArray();
+      if (plan.intervals.some((item) => {
+        const grant = plan.grants.find((candidate) => candidate.segmentId === item.id);
+        return existingIds.has(item.id) || (item.mode === "prepare" && (grant === undefined || existingPermits.some((permit) =>
+          permit.candidate_id === grant.candidateId || permit.grant_id === grant.grantId || permit.storage_key === grant.storageKey)));
+      })) return { kind: "conflict" };
+      const count = this.ctx.storage.sql.exec<{ count: number } & Record<string, SqlStorageValue>>(
+        "SELECT COUNT(*) AS count FROM long_media_segments WHERE job_id = ? AND status != 'superseded'", job.job_id,
+      ).one().count;
+      if (count - (parent === undefined ? 0 : 1) + intervals.length > request.limitsSnapshot.maxActiveLeaves) return { kind: "invalid" };
+      if (manifest === undefined) {
+        this.ctx.storage.sql.exec(
+          "INSERT INTO long_media_segment_plans (job_id, revision, required_inputs_json, required_inputs_digest) VALUES (?, 0, ?, ?)",
+          job.job_id, JSON.stringify(plan.requiredMediaInputs), plan.requiredMediaInputsDigest,
+        );
+      }
+      if (parent !== undefined) {
+        const superseded = transitionLongMediaSegment(readLongMediaSegmentStatus(parent.status), { type: "split" });
+        if (superseded !== "superseded") return { kind: "conflict" };
+        this.ctx.storage.sql.exec(
+          "UPDATE long_media_segments SET status = ?, version = version + 1 WHERE job_id = ? AND segment_id = ? AND version = ?",
+          superseded, job.job_id, parent.segment_id, parent.version,
+        );
+      }
+      for (const item of intervals) {
+        const grant = plan.grants.find((candidate) => candidate.segmentId === item.id);
+        if (item.mode === "prepare" && grant === undefined) return { kind: "invalid" };
+        this.ctx.storage.sql.exec(
+          `INSERT INTO long_media_segments (
+            job_id, segment_id, parent_id, media_input_id, descriptor_json, core_start_us, core_end_us,
+            decode_start_us, decode_end_us, mode, candidate_id, grant_id, storage_key, status, version
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          job.job_id, item.id, plan.parentId, item.mediaInputId, JSON.stringify(item.descriptor), item.core.startUs,
+          item.core.endUs, item.decode.startUs, item.decode.endUs, item.mode,
+          grant?.candidateId ?? null, grant?.grantId ?? null, grant?.storageKey ?? null,
+          item.mode === "adopt" ? "ready" : "planned", 0,
+        );
+        if (grant !== undefined) {
+          this.ctx.storage.sql.exec(
+            "INSERT INTO long_media_write_permits (job_id, candidate_id, segment_id, grant_id, storage_key, status) VALUES (?, ?, ?, ?, ?, 'pending')",
+            job.job_id, grant.candidateId, item.id, grant.grantId, grant.storageKey,
+          );
+        }
+      }
+      const nextRevision = revision + 1;
+      this.ctx.storage.sql.exec("UPDATE long_media_segment_plans SET revision = ? WHERE job_id = ?", nextRevision, job.job_id);
+      this.ctx.storage.sql.exec(
+        "INSERT INTO long_media_plan_mutations (job_id, mutation_id, payload_digest, revision) VALUES (?, ?, ?, ?)",
+        job.job_id, plan.mutationId, planDigest, nextRevision,
+      );
+      return { kind: "accepted", revision: nextRevision, complete: this.rootPlanComplete(job.job_id) };
+    });
+  }
+
+  /**
+   * Check whether every frozen input has contiguous root coverage.
+   * @param jobId - The durable job identity.
+   * @returns Whether all required input ranges have planned leaves.
+   */
+  private rootPlanComplete(jobId: string): boolean {
+    const manifest = this.ctx.storage.sql.exec<{
+      required_inputs_json: string;
+    } & Record<string, SqlStorageValue>>(
+      "SELECT required_inputs_json FROM long_media_segment_plans WHERE job_id = ?", jobId,
+    ).toArray()[0];
+    if (manifest === undefined) return false;
+    const requiredInputs = JSON.parse(manifest.required_inputs_json) as LongMediaPlanRequest["requiredMediaInputs"];
+    return requiredInputs.every((input) => {
+      const rows = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        "SELECT * FROM long_media_segments WHERE job_id = ? AND media_input_id = ? AND status != 'superseded' ORDER BY core_start_us",
+        jobId, input.mediaInputId,
+      ).toArray();
+      return intervalsCoverRange(rows.map((row) => ({ core: { startUs: row.core_start_us, endUs: row.core_end_us } })),
+        input.sourceRange.startUs, input.sourceRange.endUs);
+    });
+  }
+
+  /**
    * Read planned leaves in stable source order.
    * @returns The plan with current states.
    */
@@ -914,7 +1133,7 @@ class LongMediaJobStore {
           "SELECT revision FROM long_media_segment_plans WHERE job_id = ?",
           row.job_id,
         ).toArray()[0];
-        if (plan === undefined) return null;
+        if (plan === undefined || !this.rootPlanComplete(row.job_id)) return null;
         const runnable = this.ctx.storage.sql.exec<{ count: number } & Record<string, SqlStorageValue>>(
           `SELECT COUNT(*) AS count FROM long_media_segments
            WHERE job_id = ? AND status IN ('planned', 'encoding', 'oversize', 'stored', 'paused')`,
@@ -1397,6 +1616,42 @@ function stateOf(row: LongMediaJobRow): LongMediaJobState {
     terminalIntent: readTerminalIntent(row.terminal_intent),
     activeContainer: row.active_container === 1,
   };
+}
+
+/**
+ * Hash the parsed mutation for durable idempotency checks.
+ * @param plan - The validated mutation.
+ * @returns The lowercase SHA-256 digest.
+ * @throws {DOMException} When the runtime cannot compute SHA-256.
+ */
+async function digestPlanPayload(plan: LongMediaPlanRequest): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(plan));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Check that intervals form exact contiguous coverage of one source range.
+ * @param intervals - Ordered or unordered intervals to check.
+ * @param startUs - Trusted range start.
+ * @param endUs - Trusted range end.
+ * @returns Whether coverage is complete without gaps or overlap.
+ */
+function intervalsCoverRange(
+  intervals: readonly { core: { startUs: string; endUs: string } }[],
+  startUs: string,
+  endUs: string,
+): boolean {
+  const ordered = [...intervals].toSorted((left, right) =>
+    BigInt(left.core.startUs) < BigInt(right.core.startUs) ? -1 : 1);
+  let cursor = BigInt(startUs);
+  for (const interval of ordered) {
+    const start = BigInt(interval.core.startUs);
+    const end = BigInt(interval.core.endUs);
+    if (start !== cursor || end <= start) return false;
+    cursor = end;
+  }
+  return cursor === BigInt(endUs);
 }
 
 /**
