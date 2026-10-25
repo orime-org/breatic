@@ -476,6 +476,14 @@ frames. Frame counts and sampling use the independently resolved source table.
 The video expansion background leaves the original display and controls live;
 its geometry reads the canonical display box, independently of packed dimensions.
 
+Node and timeline Retry actions share a canonical-source recovery operation on
+the existing account query client. Failed preparation repairs the registered
+source using its current content hash and one idempotent press identity, then
+rereads the exact source query even when its cache is fresh. A repair conflict
+rereads source facts and preserves the reported error. Local decoder and graphics
+failures only rebuild their presentation resources. Recovery capabilities remain
+in UI error objects, separate from the persisted descriptor and wire response.
+
 Invariants: a queued event cannot reinstate an obsolete source's state; a click
 uses native state even before React receives the event; switching one node does
 not reset another node, volume, or mute. Browser tests must decode actual audio

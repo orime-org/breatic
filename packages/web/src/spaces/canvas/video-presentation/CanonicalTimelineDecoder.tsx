@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { VideoToolInput } from '@breatic/shared/mini-tools';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
 import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
+import { createVideoPresentationRecovery, VideoPresentationRecoveryError } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import type { MediaSurfaceSnapshot, PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 import type { VideoTimelineDecoderBinding } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 
@@ -24,6 +26,9 @@ interface CanonicalTimelineDecoderProps {
 export function CanonicalTimelineDecoder(props: CanonicalTimelineDecoderProps): React.JSX.Element {
   const { projectId } = useCanvasContext();
   const { source, failure } = useResolvedVideoPresentation(projectId, props.input.url, true);
+  const client = useQueryClient();
+  const canonicalURL = props.input.url;
+  const recovery = React.useMemo(() => createVideoPresentationRecovery(client, { projectId, canonicalURL, active: true }), [client, projectId, canonicalURL]);
   const latest = React.useRef(props);
   latest.current = props;
   /**
@@ -31,7 +36,11 @@ export function CanonicalTimelineDecoder(props: CanonicalTimelineDecoderProps): 
    * @param notice - Owned source attachment state.
    * @throws {never} Never.
    */
-  const bind = React.useCallback((notice: MediaSurfaceSnapshot): void => latest.current.onBinding(notice.binding, notice.error ?? failure ?? undefined), [failure]);
+  const bind = React.useCallback((notice: MediaSurfaceSnapshot): void => {
+    const message = notice.error ?? failure;
+    const error = message === null ? undefined : new VideoPresentationRecoveryError(message, canonicalURL, () => recovery.recover(notice.error === null ? 'source' : 'renderer'));
+    latest.current.onBinding(notice.binding, error);
+  }, [failure, canonicalURL, recovery]);
   /**
    * Delivers a draw before VAP can clear its transient buffer.
    * @param frame - The current actual drawable frame.

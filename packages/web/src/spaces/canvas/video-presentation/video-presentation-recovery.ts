@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { QueryClient } from '@tanstack/react-query';
-import type { VideoPresentationQueryInput } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { newId, type VideoPresentationResponse } from '@breatic/shared';
+import { ApiException } from '@web/data/api/types';
+import { repairVideoPresentation, videoPresentationQuery, type VideoPresentationQueryInput } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 /** Recovery distinguishes platform source work from a local renderer restart. */
 export type VideoPresentationRecoveryReason = 'source' | 'renderer';
@@ -11,13 +13,61 @@ export interface VideoPresentationRecovery {
   recover: (reason: VideoPresentationRecoveryReason) => Promise<void>;
 }
 
+/** A UI-only source recovery capability, independent of the source wire DTO. */
+export class VideoPresentationRecoveryError extends Error {
+  /**
+   * Keeps the failed decoder's canonical identity with its existing Retry action.
+   * @param message - Stable source or renderer error.
+   * @param canonicalURL - The actual source this recovery belongs to.
+   * @param recover - Its account-bound explicit recovery operation.
+   * @throws {never} Constructing the error performs no operation.
+   */
+  constructor(message: string, readonly canonicalURL: string, readonly recover: () => Promise<void>) {
+    super(message);
+    this.name = 'VideoPresentationRecoveryError';
+  }
+}
+
 /**
  * Binds the existing Retry action to its account cache and canonical source.
- * @param _client - The existing account-scoped query owner.
- * @param _input - Current Project and canonical source identity.
+ * @param client - The existing account-scoped query owner.
+ * @param input - Current Project and canonical source identity.
  * @returns The shared node and timeline recovery action.
  * @throws {never} Constructing the action does not make a request.
  */
-export function createVideoPresentationRecovery(_client: QueryClient, _input: VideoPresentationQueryInput): VideoPresentationRecovery {
-  return { recover: () => Promise.resolve() };
+export function createVideoPresentationRecovery(client: QueryClient, input: VideoPresentationQueryInput): VideoPresentationRecovery {
+  const { queryKey } = videoPresentationQuery(input);
+  let pending: Promise<void> | null = null;
+  /**
+   * Repairs only failed registered source work and then rereads authorized facts.
+   * @param reason - Whether the failure came from source preparation or the local renderer.
+   * @throws {Error} The original repair failure or the source query failure.
+   */
+  async function execute(reason: VideoPresentationRecoveryReason): Promise<void> {
+    if (reason === 'renderer') return;
+    const data = client.getQueryData<VideoPresentationResponse>(queryKey);
+    if (data?.preparation?.status === 'failed' || data?.presentation?.state === 'failed') {
+      try {
+        await repairVideoPresentation({ projectId: input.projectId, canonicalURL: input.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash }, newId());
+      } catch (error) {
+        // The repair client already reports the refusal. Refresh the actual
+        // identity even when this press lost a source race, then preserve it.
+        if (error instanceof ApiException && error.status === 409) await client.refetchQueries({ queryKey, exact: true, type: 'all' });
+        throw error;
+      }
+    }
+    await client.refetchQueries({ queryKey, exact: true, type: 'all' }, { throwOnError: true });
+  }
+  /**
+   * Joins concurrent invocations of the same press without duplicating repair work.
+   * @param reason - The failure's actual owner.
+   * @returns This press's shared completion promise.
+   * @throws {Error} Repair or reread failures reject the returned promise.
+   */
+  function recover(reason: VideoPresentationRecoveryReason): Promise<void> {
+    if (pending !== null) return pending;
+    pending = execute(reason).finally(() => { pending = null; });
+    return pending;
+  }
+  return { recover };
 }

@@ -12,6 +12,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { expandFillStyle } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { NativeTimelineDecoder } from '@web/spaces/canvas/mini-tool/video/NativeTimelineDecoder';
 import type { VideoTimelineDecoderBinding, VideoTimelineDecoderRenderer, VideoTimelinePresentedFrame } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
+import { VideoPresentationRecoveryError } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 
 export interface VideoTimelinePreviewProps {
   plan: VideoTimelinePlan;
@@ -105,6 +106,10 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
   const [failure, setFailure] = React.useState(false);
   const [waiting, setWaiting] = React.useState(false);
   const [epoch, setEpoch] = React.useState(0);
+  const [retrying, setRetrying] = React.useState(false);
+  const pendingRetry = React.useRef(false);
+  const mounted = React.useRef(false);
+  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const pair = visibleClips(props.plan, props.cursor);
   const sources = [pair.from, pair.to].flatMap((clip) => {
     const input = props.inputs.find((candidate) => candidate.inputId === clip?.inputId);
@@ -340,11 +345,31 @@ export function VideoTimelinePreview(props: VideoTimelinePreviewProps): React.JS
       dispose();
     };
   }, [epoch]);
+  /**
+   * Recovers failed preparation before rebuilding the same preview resources.
+   * @throws {never} The source displays repair errors; this caller resets its wait.
+   */
+  async function retry(): Promise<void> {
+    if (pendingRetry.current) return;
+    pendingRetry.current = true;
+    setRetrying(true);
+    const error = sourceError.current;
+    try {
+      if (error instanceof VideoPresentationRecoveryError && latest.current.inputs.some((input) => input.url === error.canonicalURL)) await error.recover();
+      if (!mounted.current || sourceError.current !== error) return;
+      sourceError.current = null; setFailure(false); setEpoch((value) => value + 1);
+    } catch {
+      // Keep Retry available after the source reports the failed repair.
+    } finally {
+      pendingRetry.current = false;
+      if (mounted.current) setRetrying(false);
+    }
+  }
   return <div className='relative flex min-h-0 items-center justify-center overflow-hidden rounded-content-sm bg-canvas' style={expandFillStyle(1, { x: 0, y: 0 })} data-testid='video-timeline-preview'>
     <canvas ref={canvas} width={960} height={540} className='h-full w-full object-contain' />
     <div hidden>{(failure ? [] : sources).map(({ input, key }) => <React.Fragment key={`${epoch}:${key}`}>{props.renderDecoder === undefined ? <NativeTimelineDecoder input={input} onBinding={(binding, error) => bind(key, binding, error)} onPresentedFrame={(frame) => presented(key, frame)} /> : props.renderDecoder(input, (binding, error) => bind(key, binding, error), (frame) => presented(key, frame))}</React.Fragment>)}</div>
     {props.plan.clips.length === 0 ? <p className='absolute inset-0 grid place-content-center p-4 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.timelineEmpty')}</p> : null}
     {waiting && !failure ? <span className='absolute bottom-2 rounded-chrome bg-popover px-2 py-1 text-xs'>{t('canvas.miniTool.videoUI.loadingFrames')}</span> : null}
-    {failure ? <div className='absolute inset-0 grid place-content-center gap-2 bg-card p-4 text-center'><p className='text-xs'>{t('canvas.miniTool.videoUI.previewUnavailable')}</p><Button variant='outline' size='sm' onClick={() => { sourceError.current = null; setFailure(false); setEpoch((value) => value + 1); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}
+    {failure ? <div className='absolute inset-0 grid place-content-center gap-2 bg-card p-4 text-center'><p className='text-xs'>{t('canvas.miniTool.videoUI.previewUnavailable')}</p><Button variant='outline' size='sm' loading={retrying} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button></div> : null}
   </div>;
 }

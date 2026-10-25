@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
+import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
+import { Button } from '@web/components/ui/button';
 import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 import type { MediaPlayerProps, MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -30,6 +33,20 @@ function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId
   const { nodeId, projectId, ...player } = props;
   const actions = useCanvasActions();
   const { source, failure, query } = useResolvedVideoPresentation(projectId, player.src, true);
+  const client = useQueryClient();
+  const recovery = React.useMemo(() => createVideoPresentationRecovery(client, { projectId, canonicalURL: player.src, active: true }), [client, projectId, player.src]);
+  const identity = JSON.stringify([projectId, player.src]);
+  const currentIdentity = React.useRef(identity);
+  currentIdentity.current = identity;
+  const mounted = React.useRef(false);
+  React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [rendererFailure, setRendererFailure] = React.useState<{ identity: string; error: string } | null>(null);
+  const [retrying, setRetrying] = React.useState<string | null>(null);
+  const [attempt, setAttempt] = React.useState(0);
+  // A local retry gives the existing leaf a fresh resource lifetime while the
+  // player, its volume and the canonical descriptor remain owned in place.
+  const presentedSource = React.useMemo(() => { void attempt; return source === null ? null : { ...source }; }, [source, attempt]);
+  const localFailure = rendererFailure?.identity === identity ? rendererFailure.error : null;
   const t = useTranslation();
   /**
    * Publishes only this canonical node attachment, including unresolved failure.
@@ -37,17 +54,40 @@ function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId
    * @throws {never} Never.
    */
   const onBinding = React.useCallback((snapshot: MediaPlayerVideoSnapshot): void => {
+    if (snapshot.status === 'failed') setRendererFailure((held) => held?.identity === identity && held.error === snapshot.error ? held : { identity, error: snapshot.error ?? 'renderer-failed' });
+    else if (snapshot.status === 'ready') setRendererFailure((held) => held?.identity === identity ? null : held);
     const notice = { ...snapshot, sourceBinding: query.data?.sourceBinding };
     actions.onVideoBinding?.(nodeId, player.src, failure === null || snapshot.binding !== null ? notice : { ...notice, status: 'failed', error: failure });
-  }, [actions, nodeId, player.src, failure, query.data?.sourceBinding]);
+  }, [actions, nodeId, player.src, failure, query.data?.sourceBinding, identity]);
   /**
    * Forwards a committed draw synchronously without treating native time as a frame.
    * @param frame - The actual canonical drawable frame and its epochs.
    * @throws {never} The canvas consumer owns pixel-read failures.
    */
   const onFrame = React.useCallback((frame: PresentedMediaFrame): void => actions.onVideoFrame?.(nodeId, player.src, frame), [actions, nodeId, player.src]);
-  return <MediaPlayer {...player} videoSource={source} onVideoBinding={onBinding} onPresentedFrame={onFrame}>
-    {failure === null ? null : <p className='pointer-events-none absolute inset-0 grid place-content-center bg-card p-3 text-center text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>}
+  /**
+   * Restarts only this source after its existing recovery operation completes.
+   * @throws {never} The source reports errors; this caller resets its wait state.
+   */
+  async function retry(): Promise<void> {
+    if (!mounted.current || currentIdentity.current !== identity) return;
+    setRetrying(identity);
+    try {
+      await recovery.recover(failure === null ? 'renderer' : 'source');
+      if (!mounted.current || currentIdentity.current !== identity) return;
+      setRendererFailure(null);
+      if (source !== null) setAttempt((value) => value + 1);
+    } catch {
+      // Keep the failure visible; repair failures were already reported at source.
+    } finally {
+      if (mounted.current && currentIdentity.current === identity) setRetrying(null);
+    }
+  }
+  return <MediaPlayer {...player} videoSource={presentedSource} onVideoBinding={onBinding} onPresentedFrame={onFrame}>
+    {failure === null && localFailure === null ? null : <div className='pointer-events-auto absolute inset-0 z-20 grid place-content-center justify-items-center gap-2 bg-card p-3 text-center'>
+      <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>
+      <Button variant='outline' size='sm' className='nodrag nokey' loading={retrying === identity} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button>
+    </div>}
   </MediaPlayer>;
 }
 
