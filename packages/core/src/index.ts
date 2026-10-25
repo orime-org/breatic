@@ -131,6 +131,7 @@ export {
   getStorageAdapter,
   storageKey,
 } from "@core/infra/storage/index.js";
+export { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
