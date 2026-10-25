@@ -32,6 +32,32 @@ const payload = {
   deadlineAt: Date.now() + 60_000,
 };
 
+const probeReport = {
+  version: 1 as const,
+  sourceFingerprint: payload.source.sha256,
+  selectedVideoStreamIndex: null,
+  streams: [{
+    index: 0,
+    kind: "audio" as const,
+    codec: "aac",
+    channels: 2,
+    channelLayout: "stereo",
+    channelMembers: [
+      { channelIndex: 0, member: "FL" },
+      { channelIndex: 1, member: "FR" },
+    ],
+    sampleRate: 48000,
+    startUs: "0",
+    endUs: "10000000",
+    timeBase: { numerator: "1", denominator: "48000" },
+  }],
+  mediaInputs: [0, 1].map((audioChannelIndex) => ({
+    mediaInputId: `audio-0-${audioChannelIndex}`,
+    descriptor: { inputKind: "audio_channel" as const, audioStreamIndex: 0, audioChannelIndex },
+    sourceRange: { startUs: "0", endUs: "10000000" },
+  })),
+};
+
 /** Send one authenticated long media request to the Worker. */
 async function call(path: string, init: RequestInit, withSecret = true): Promise<Response> {
   const headers = new Headers(init.headers);
@@ -120,6 +146,34 @@ describe("POST /long-media/jobs", () => {
       { attemptId: "attempt-1", epoch: 1, effect: "destroy" },
       { attemptId: "attempt-1", epoch: 1, effect: "start" },
     ]);
+  });
+
+  it("commits validated probe facts only for the current running attempt and advances atomically", async () => {
+    const probePayload = { ...payload, jobId: "operation-probe:source-0", operationId: "operation-probe" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(probePayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(probePayload.jobId));
+    await stub.transition({ type: "start" }, Date.now());
+    await stub.startAttempt("probe-attempt-1", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "probe-attempt-1", epoch: 1 }, Date.now());
+
+    const accepted = await stub.applyProbeReport("probe-attempt-1", 1, probeReport, Date.now());
+    expect(accepted).toMatchObject({
+      kind: "accepted",
+      report: { mediaInputs: [{ descriptor: { audioChannelIndex: 0 } }, { descriptor: { audioChannelIndex: 1 } }] },
+      lifecycle: { snapshot: { phase: "planning", version: 2 } },
+    });
+
+    await expect(stub.applyProbeReport("probe-attempt-1", 1, {
+      ...probeReport,
+      sourceFingerprint: "b".repeat(64),
+    }, Date.now())).resolves.toEqual({ kind: "conflict" });
+
+    await expect(stub.applyProbeReport("probe-attempt-1", 1, probeReport, Date.now()))
+      .resolves.toMatchObject({ kind: "replayed", lifecycle: { snapshot: { phase: "planning" }, effects: [] } });
+    await expect(stub.applyProbeReport("probe-attempt-1", 0, probeReport, Date.now()))
+      .resolves.toEqual({ kind: "stale" });
+    await expect(stub.report()).resolves.toMatchObject({ phase: "planning", version: 2 });
+    await expect(stub.pendingEffects()).resolves.toEqual(["startProbe"]);
   });
 
   it("rejects a job whose absolute deadline has already passed", async () => {

@@ -9,7 +9,7 @@ import {
 
 const stereoReport: LongMediaProbeReport = {
   version: 1,
-  sourceFingerprint: "sha256:0123456789abcdef",
+  sourceFingerprint: "a".repeat(64),
   selectedVideoStreamIndex: null,
   streams: [
     {
@@ -99,7 +99,7 @@ describe("readLongMediaProbeReport", () => {
   it("keeps the selected video in each channel input and represents silent video explicitly", () => {
     const videoSource: LongMediaProbeReport = {
       version: 1,
-      sourceFingerprint: "sha256:video-source",
+      sourceFingerprint: "b".repeat(64),
       selectedVideoStreamIndex: 0,
       streams: [{
         index: 0,

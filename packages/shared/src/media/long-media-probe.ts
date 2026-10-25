@@ -49,7 +49,7 @@ const mediaInput = z.object({
 /** Probe facts needed to freeze all required media inputs for one immutable source. */
 export const LongMediaProbeReportSchema = z.object({
   version: z.literal(1),
-  sourceFingerprint: z.string().min(1),
+  sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/i),
   selectedVideoStreamIndex: z.number().int().nonnegative().nullable(),
   streams: z.array(stream).min(1),
   mediaInputs: z.array(mediaInput).min(1),

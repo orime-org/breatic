@@ -3,7 +3,12 @@
 
 import { Container } from "@cloudflare/containers";
 import { DurableObject } from "cloudflare:workers";
-import { readLongMediaJobRequest, type LongMediaJobRequest } from "@breatic/shared";
+import {
+  readLongMediaJobRequest,
+  readLongMediaProbeReport,
+  type LongMediaJobRequest,
+  type LongMediaProbeReport,
+} from "@breatic/shared";
 import {
   transitionLongMediaAttempt,
   type LongMediaAttemptEffect,
@@ -78,6 +83,19 @@ interface LongMediaAttemptEffectRow extends Record<string, SqlStorageValue> {
   effect: string;
 }
 
+/** A persisted authoritative probe report for one immutable job source. */
+interface LongMediaProbeRow extends Record<string, SqlStorageValue> {
+  job_id: string;
+  epoch: number;
+  attempt_id: string;
+  report_json: string;
+}
+
+/** Result of attempting to commit current-attempt source probe facts. */
+export type LongMediaProbeApplyResult =
+  | { kind: "accepted" | "replayed"; report: LongMediaProbeReport; lifecycle: LongMediaTransitionResult }
+  | { kind: "stale" | "conflict" | "not-probing" };
+
 const JOB_TABLE = `
   CREATE TABLE IF NOT EXISTS long_media_jobs (
     job_id TEXT PRIMARY KEY NOT NULL,
@@ -123,6 +141,16 @@ const ATTEMPT_TABLES = `
     effect TEXT NOT NULL,
     status TEXT NOT NULL,
     PRIMARY KEY (job_id, epoch, effect)
+  )
+`;
+
+const PROBE_TABLE = `
+  CREATE TABLE IF NOT EXISTS long_media_probe_facts (
+    job_id TEXT PRIMARY KEY NOT NULL,
+    epoch INTEGER NOT NULL,
+    attempt_id TEXT NOT NULL,
+    report_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL
   )
 `;
 
@@ -211,6 +239,19 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
   pendingAttemptEffects(): LongMediaAttemptEffectRecord[] {
     return this.jobStore.pendingAttemptEffects();
   }
+
+  /**
+   * Validate and atomically persist probe facts from the current Container attempt.
+   * @param attemptId - The Container attempt that produced the report.
+   * @param epoch - The attempt fencing epoch.
+   * @param report - Untrusted decoded probe output.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The persisted report and lifecycle transition, or the rejection reason.
+   * @throws {Error} When the probe report is malformed or durable state is corrupt.
+   */
+  applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): LongMediaProbeApplyResult {
+    return this.jobStore.applyProbeReport(attemptId, epoch, report, now);
+  }
 }
 
 /** A non-container Durable Object used to exercise the protocol in workerd. */
@@ -292,6 +333,19 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   pendingAttemptEffects(): LongMediaAttemptEffectRecord[] {
     return this.jobStore.pendingAttemptEffects();
   }
+
+  /**
+   * Validate and atomically persist probe facts from the current Container attempt.
+   * @param attemptId - The Container attempt that produced the report.
+   * @param epoch - The attempt fencing epoch.
+   * @param report - Untrusted decoded probe output.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The persisted report and lifecycle transition, or the rejection reason.
+   * @throws {Error} When the probe report is malformed or durable state is corrupt.
+   */
+  applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): LongMediaProbeApplyResult {
+    return this.jobStore.applyProbeReport(attemptId, epoch, report, now);
+  }
 }
 
 /** The committed lifecycle snapshot and requested effects. */
@@ -326,6 +380,7 @@ class LongMediaJobStore {
     this.ctx.storage.sql.exec(JOB_TABLE);
     this.ctx.storage.sql.exec(EFFECT_TABLE);
     this.ctx.storage.sql.exec(ATTEMPT_TABLES);
+    this.ctx.storage.sql.exec(PROBE_TABLE);
   }
 
   /**
@@ -554,6 +609,60 @@ class LongMediaJobStore {
       .toArray();
     return rows.map((row) => ({ epoch: row.epoch, attemptId: row.attempt_id, effect: readAttemptEffect(row.effect) }));
   }
+
+  /**
+   * Validate and atomically accept current-attempt source probe facts.
+   * @param attemptId - The producing attempt identity.
+   * @param epoch - The producing attempt epoch.
+   * @param value - The untrusted container report.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The accepted report and lifecycle transition or a fenced rejection.
+   * @throws {Error} When the report or persisted source identity is malformed.
+   */
+  applyProbeReport(attemptId: string, epoch: number, value: unknown, now: number): LongMediaProbeApplyResult {
+    const report = readLongMediaProbeReport(value);
+    const reportJson = JSON.stringify(report);
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      const attempt = this.ctx.storage.sql
+        .exec<LongMediaAttemptRow>("SELECT * FROM long_media_attempts ORDER BY epoch DESC LIMIT 1")
+        .toArray()[0];
+      if (job === undefined || attempt === undefined || attempt.attempt_id !== attemptId || attempt.epoch !== epoch ||
+          readAttemptPhase(attempt.phase) !== "running") return { kind: "stale" };
+
+      const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+      if (report.sourceFingerprint.toLowerCase() !== request.source.sha256.toLowerCase()) return { kind: "conflict" };
+      const held = this.ctx.storage.sql.exec<LongMediaProbeRow>(
+        "SELECT * FROM long_media_probe_facts WHERE job_id = ?",
+        job.job_id,
+      ).toArray()[0];
+      if (held !== undefined) {
+        return held.epoch === epoch && held.attempt_id === attemptId && held.report_json === reportJson
+          ? { kind: "replayed", report, lifecycle: currentLifecycle(job) }
+          : { kind: "conflict" };
+      }
+
+      const current = stateOf(job);
+      const transition = transitionLongMediaJob(current, { type: "probeOk" }, now);
+      if (current.phase !== "probing" || transition.state.phase !== "planning" || transition.state.version === current.version) {
+        return { kind: "not-probing" };
+      }
+      this.ctx.storage.sql.exec(
+        "INSERT INTO long_media_probe_facts (job_id, epoch, attempt_id, report_json, created_at) VALUES (?, ?, ?, ?, ?)",
+        job.job_id,
+        epoch,
+        attemptId,
+        reportJson,
+        now,
+      );
+      persistLifecycle(this.ctx, job, transition, now);
+      return {
+        kind: "accepted",
+        report,
+        lifecycle: lifecycleResult(job, transition),
+      };
+    });
+  }
 }
 
 /**
@@ -620,6 +729,71 @@ function readEffect(value: string): LongMediaJobEffect {
   ];
   if (!effects.includes(value as LongMediaJobEffect)) throw new Error("The long media effect is invalid");
   return value as LongMediaJobEffect;
+}
+
+/**
+ * Persist one lifecycle reducer result and its retryable effects.
+ * @param ctx - The Durable Object state store.
+ * @param row - The previous job row.
+ * @param transition - The computed lifecycle transition.
+ * @param now - The update time in epoch milliseconds.
+ */
+function persistLifecycle(
+  ctx: LongMediaState,
+  row: LongMediaJobRow,
+  transition: ReturnType<typeof transitionLongMediaJob>,
+  now: number,
+): void {
+  ctx.storage.sql.exec(
+    "UPDATE long_media_jobs SET phase = ?, version = ?, terminal_intent = ?, active_container = ?, updated_at = ? WHERE job_id = ?",
+    transition.state.phase,
+    transition.state.version,
+    transition.state.terminalIntent,
+    transition.state.activeContainer ? 1 : 0,
+    now,
+    row.job_id,
+  );
+  for (const effect of transition.effects) {
+    ctx.storage.sql.exec(
+      "INSERT OR IGNORE INTO long_media_effects (job_id, revision, effect, status) VALUES (?, ?, ?, 'pending')",
+      row.job_id,
+      transition.state.version,
+      effect,
+    );
+  }
+}
+
+/**
+ * Build the public lifecycle result for one reducer transition.
+ * @param row - The prior persisted job row.
+ * @param transition - The computed lifecycle transition.
+ * @returns The next durable summary and requested effects.
+ */
+function lifecycleResult(
+  row: LongMediaJobRow,
+  transition: ReturnType<typeof transitionLongMediaJob>,
+): LongMediaTransitionResult {
+  return {
+    snapshot: {
+      jobId: row.job_id,
+      operationId: row.operation_id,
+      sourceIndex: row.source_index,
+      phase: transition.state.phase,
+      version: transition.state.version,
+      deadlineAt: transition.state.deadlineAt,
+      terminalIntent: transition.state.terminalIntent,
+    },
+    effects: transition.effects,
+  };
+}
+
+/**
+ * Read the unchanged lifecycle result for an idempotent probe replay.
+ * @param row - The persisted job row.
+ * @returns Its current summary without new effects.
+ */
+function currentLifecycle(row: LongMediaJobRow): LongMediaTransitionResult {
+  return { snapshot: snapshotOf(row), effects: [] };
 }
 
 /**
