@@ -290,7 +290,9 @@ describe("Project media inspection", () => {
     if (condition === "studio_deleted") await sql`UPDATE studios SET deleted_at = now() WHERE id = ${scope.studioId}`;
     const projectId = condition === "missing" ? randomUUID() : scope.projectId;
     const before = await ledgerRows([media.id]);
-    await expect(projectAssetReferenceService.inspectRegisteredProjectMedia({ projectId, assetIds: [media.id] })).rejects.toBeInstanceOf(NotFoundError);
+    const inspection = projectAssetReferenceService.inspectRegisteredProjectMedia({ projectId, assetIds: [media.id] });
+    await expect(inspection).rejects.toBeInstanceOf(NotFoundError);
+    await expect(inspection).rejects.toBeInstanceOf(projectAssetReferenceService.ProjectMediaScopeUnavailableError);
     expect(await references(scope.projectId)).toEqual([]);
     expect(await ledgerRows([media.id])).toEqual(before);
   });
@@ -318,8 +320,23 @@ describe("Detailed canonical Project media acceptance", () => {
     if (condition === "project_deleted") await sql`UPDATE projects SET deleted_at = now() WHERE id = ${scope.projectId}`;
     if (condition === "studio_deleted") await sql`UPDATE studios SET deleted_at = now() WHERE id = ${scope.studioId}`;
     const projectId = condition === "missing" ? randomUUID() : scope.projectId;
-    await expect(projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId, assetIds: [media.id] })).rejects.toBeInstanceOf(NotFoundError);
+    const acceptance = projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId, assetIds: [media.id] });
+    await expect(acceptance).rejects.toBeInstanceOf(NotFoundError);
+    await expect(acceptance).rejects.toBeInstanceOf(projectAssetReferenceService.ProjectMediaScopeUnavailableError);
     expect(await references(scope.projectId)).toEqual([]);
+  });
+
+  it("retains an ordinary not-found error when a requested asset is missing from a live Project", async () => {
+    const scope = await fixture();
+    const media = await asset(scope);
+    const before = await ledgerRows([media.id]);
+    const acceptance = projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: scope.projectId, assetIds: [media.id, randomUUID()],
+    });
+    await expect(acceptance).rejects.toBeInstanceOf(NotFoundError);
+    await expect(acceptance).rejects.not.toBeInstanceOf(projectAssetReferenceService.ProjectMediaScopeUnavailableError);
+    expect(await references(scope.projectId)).toEqual([]);
+    expect(await ledgerRows([media.id])).toEqual(before);
   });
 
   it("reports actual inserted identities once across asset ids and URLs", async () => {

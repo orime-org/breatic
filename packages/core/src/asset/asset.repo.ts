@@ -12,7 +12,7 @@
  * (asset.service.resolveOwnerStudioId); this repo is attribution-agnostic.
  */
 
-import { and, desc, eq, isNull, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, studioAssets } from "@core/db/schema.js";
@@ -67,6 +67,20 @@ export interface RegisterAssetInput {
    * readable without the frame that was cut for it (#187).
    */
   coverAssetId?: string | null;
+}
+
+/**
+ * Scan live registered assets carrying a generation-task provenance identity.
+ * @param cursor - The last emitted asset identity, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Canonical ledger rows in immutable-id order.
+ * @throws {Error} When the database read fails.
+ */
+export async function scanGenerationMediaAssets(cursor: string | null, limit: number): Promise<StudioAssetEntity[]> {
+  const rows = await db.select().from(studioAssets).where(and(
+    isNotNull(studioAssets.generationTaskId), isNull(studioAssets.deletedAt), cursor === null ? undefined : gt(studioAssets.id, cursor),
+  )).orderBy(studioAssets.id).limit(limit);
+  return rows.map(toEntity);
 }
 
 /**

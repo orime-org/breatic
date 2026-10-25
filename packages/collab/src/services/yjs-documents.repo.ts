@@ -23,10 +23,27 @@
  * run here idempotently; create is handled by lazy-seed on first load.
  */
 
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { decodeUpdate } from "yjs";
 import { listedContentDocNamesInState, yjsDb, yjsDocuments } from "@breatic/core";
 import { projectMetaDocName, spaceContentRowPattern } from "@breatic/shared";
+
+/** Stored live Space snapshots read only by the offline media-provenance scan. */
+export interface MediaBackfillDocument { name: string; data: Uint8Array }
+
+/**
+ * Scan live content rows in immutable-name order for media backfill.
+ * @param cursor - The last emitted document name, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Live Space snapshots without Project meta rows.
+ * @throws {Error} When the Yjs database read fails.
+ */
+export async function scanMediaBackfillDocuments(cursor: string | null, limit: number): Promise<MediaBackfillDocument[]> {
+  return yjsDb.select({ name: yjsDocuments.name, data: yjsDocuments.data }).from(yjsDocuments).where(and(
+    isNull(yjsDocuments.deletedAt), sql`${yjsDocuments.name} ~ '^project-[^/]+/(canvas|document|timeline)-[^/]+$'`,
+    cursor === null ? undefined : gt(yjsDocuments.name, cursor),
+  )).orderBy(yjsDocuments.name).limit(limit);
+}
 
 /**
  * Fetch the latest binary state of a live (non-soft-deleted) Yjs doc.

@@ -19,7 +19,7 @@
  * table's schema), and this is still the only place that reads or writes it.
  */
 
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants, type DbTx } from "@breatic/core";
 import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
 
@@ -70,6 +70,20 @@ export interface UploadGrant {
   /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
   analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
+}
+
+/**
+ * Read consumed grants in immutable-id order for explicit media backfill.
+ * @param cursor - The last emitted grant identity, or the first page.
+ * @param limit - The configured bounded batch size.
+ * @returns Consumed grant provenance after the cursor.
+ * @throws {Error} When the database read fails.
+ */
+export async function scanConsumedMediaGrants(cursor: string | null, limit: number): Promise<UploadGrant[]> {
+  const rows = await db.select().from(uploadGrants).where(and(
+    isNotNull(uploadGrants.consumedAt), cursor === null ? undefined : gt(uploadGrants.id, cursor),
+  )).orderBy(uploadGrants.id).limit(limit);
+  return rows.map(toEntity);
 }
 
 /**

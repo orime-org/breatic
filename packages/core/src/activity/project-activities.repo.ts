@@ -18,7 +18,7 @@
  * page fetches and walks the index O(n).
  */
 
-import { and, eq, inArray, isNull, lt, or, desc, sql, type SQL } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lt, or, desc, sql, type SQL } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectActivities, studios } from "@core/db/schema.js";
@@ -172,6 +172,20 @@ function feedConditions(projectId: string, spaceIds: readonly string[] | undefin
 }
 
 export const projectActivitiesRepo = {
+  /**
+   * Scan explicit upload and successful-generation activity provenance.
+   * @param cursor - The last emitted activity identity, or the first page.
+   * @param limit - The configured bounded batch size.
+   * @returns Live candidate rows in immutable-id order, including legacy payloads.
+   * @throws {Error} When the database read fails.
+   */
+  async scanMediaBackfill(cursor: string | null, limit: number): Promise<ProjectActivityEntry[]> {
+    const rows = await db.select().from(projectActivities).where(and(
+      inArray(projectActivities.type, ["asset:uploaded", "generation:succeeded"]), isNull(projectActivities.deletedAt),
+      cursor === null ? undefined : gt(projectActivities.id, cursor),
+    )).orderBy(projectActivities.id).limit(limit);
+    return rows.map((row) => toEntity(row, null));
+  },
   /**
    * Append one activity row. Threads an optional transaction so
    * writers can bundle the row with related writes (e.g. collab's

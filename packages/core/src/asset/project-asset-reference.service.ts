@@ -41,9 +41,21 @@ export interface RegisteredProjectMediaInspection {
   references: ProjectAssetReferenceEntity[];
 }
 
-/** Actual relationship insertions reported by a committed acceptance attempt. */
+/** Actual relationship insertions reported by the association transaction. */
 export interface RegisteredProjectMediaAcceptance extends RegisteredProjectMediaInspection {
   insertedAssetIds: string[];
+}
+
+/** A missing live Project or Studio, distinct from a failed asset acceptance. */
+export class ProjectMediaScopeUnavailableError extends NotFoundError {
+  /**
+   * Identify the owning scope that cannot accept or expose registered media.
+   * @param message - The existing localized not-found description.
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = "ProjectMediaScopeUnavailableError";
+  }
 }
 
 /**
@@ -51,6 +63,7 @@ export interface RegisteredProjectMediaAcceptance extends RegisteredProjectMedia
  * @param input - The Project and its explicitly identified media.
  * @param tx - An enclosing read transaction, when supplied.
  * @returns Read-only classifications and existing relationships.
+ * @throws {NotFoundError} When the live Project or its owning Studio is absent.
  * @throws {Error} When the live scope or database read is unavailable.
  */
 export async function inspectRegisteredProjectMedia(input: ReferenceRegisteredProjectMediaInput, tx?: DbTx): Promise<RegisteredProjectMediaInspection> {
@@ -64,6 +77,7 @@ export async function inspectRegisteredProjectMedia(input: ReferenceRegisteredPr
  * @param input - The accepting Project, media identities and verified names.
  * @param tx - An enclosing business transaction, when supplied.
  * @returns Canonical classifications and the actual insertion identities.
+ * @throws {NotFoundError} When the live owning scope or a valid asset is absent.
  * @throws {Error} When the owning scope or association transaction fails.
  */
 export async function referenceRegisteredProjectMediaDetailed(input: ReferenceRegisteredProjectMediaInput & { displayNames?: Readonly<Record<string, string>> }, tx?: DbTx): Promise<RegisteredProjectMediaAcceptance> {
@@ -111,7 +125,7 @@ async function normalizeMediaReferences(input: ReferenceRegisteredProjectMediaIn
  * @param references - Stable input identities and precomputed storage keys.
  * @param displayNames - Verified original names for newly accepted identities.
  * @param tx - The actual association transaction.
- * @returns Resolved rows only after their associations have been accepted.
+ * @returns Canonical classifications and the actual association insert results.
  * @throws {NotFoundError} When the Project's live owning scope is absent.
  * @throws {Error} When reading or accepting valid references fails.
  */
@@ -148,7 +162,7 @@ async function inspectMediaInTransaction(projectId: string, references: readonly
  */
 async function classifyMediaInTransaction(projectId: string, references: readonly MediaReference[], tx: DbTx): Promise<RegisteredProjectMediaResolution> {
   const studioId = await findLiveOwnerStudioId(projectId, tx);
-  if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
+  if (studioId === undefined) throw new ProjectMediaScopeUnavailableError(t("server.error.not_found"));
   const ids = references.filter((item) => item.kind === "assetId" && assetIdentitySchema.safeParse(item.reference).success).map((item) => item.reference);
   const keys = references.flatMap((item) => item.kind === "url" && item.storageKey !== null ? [item.storageKey] : []);
   const assets = await assetRepo.findLiveMediaIdentities(ids, keys, tx);
@@ -228,7 +242,7 @@ async function recordInTransaction(projectId: string, assetIds: readonly string[
  */
 async function recordDetailedInTransaction(projectId: string, assetIds: readonly string[], displayNames: Readonly<Record<string, string>>, tx: DbTx): Promise<assetRepo.ProjectReferenceAcceptance> {
   const studioId = await findLiveOwnerStudioId(projectId, tx);
-  if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
+  if (studioId === undefined) throw new ProjectMediaScopeUnavailableError(t("server.error.not_found"));
   const assets = await assetRepo.findLiveManyInStudio(studioId, assetIds, tx);
   if (assets.length !== assetIds.length) throw new NotFoundError(t("server.error.not_found"));
   return assetRepo.ensureProjectReferencesDetailed(projectId, assetIds, displayNames, tx);
