@@ -125,9 +125,7 @@ export async function openTransferGrant(owner: SeededOwner, declaredSize = 15000
       spaceId: null,
       derived: true,
       filename: "body.transfer",
-      // The grant's type does not admit "transfer" until the design lands;
-      // the column is plain text, so the row is written as production will.
-      assetSource: "transfer" as unknown as "upload",
+      assetSource: "transfer",
     },
   });
   return key;
@@ -171,8 +169,7 @@ export function transferJob(key: string, uploadId = "transfer-upload-1"): Upload
     uploadId,
     token: "transfer-session-token",
     parts: [{ partNumber: 1, etag: "etag-1" }],
-    // The job type does not admit "transfer" until the design lands.
-    assetSource: "transfer" as unknown as UploadFinishJob["assetSource"],
+    assetSource: "transfer",
   };
 }
 

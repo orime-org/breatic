@@ -17,7 +17,6 @@ import type * as sharedModule from "@breatic/shared";
 import type * as mediaReadModule from "@domain/asset/media-read.service.js";
 import type * as ingestReportModule from "@domain/asset/ingest-report.service.js";
 import type * as grantRepoModule from "@domain/asset/upload-grant.repo.js";
-import type { UploadFinishJob } from "@domain/asset/upload-finish.service.js";
 
 const TMT = "application/vnd.breatic.transfer";
 const KEY = "transfer/2026-10-24/1_00000000-0000-4000-8000-000000000001.transfer";
@@ -113,7 +112,7 @@ describe("T34 the transfer branch of finishUpload", () => {
       uploadId: "upload-1",
       token: "token-1",
       parts: [{ partNumber: 1, etag: "etag-1" }],
-      assetSource: "transfer" as UploadFinishJob["assetSource"],
+      assetSource: "transfer",
     });
 
     expect(readsMediaAtFinish).toHaveBeenCalledTimes(0);

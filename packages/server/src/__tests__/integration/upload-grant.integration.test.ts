@@ -422,8 +422,7 @@ describe("T36: completeTransferGrant completes only a live transfer grant (inner
     const storageKey = transferKey();
     await issueGrant({
       ...grantFields({ userId, studioId, storageKey, declaredSize: 1500019 }),
-      // The grant's type does not admit "transfer" until the design lands.
-      context: { assetSource: "transfer" as unknown as "upload", derived: true, filename: "body.transfer" },
+      context: { assetSource: "transfer", derived: true, filename: "body.transfer" },
     });
     await claimFinalize({ storageKey, uploadId: "upload-t36a" });
     expect(await uploadGrantRepo.voidGrant(storageKey, "unsupported_type")).toBe(true);
