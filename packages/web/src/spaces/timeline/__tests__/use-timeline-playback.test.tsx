@@ -5,7 +5,7 @@ import * as React from 'react';
 import { act, renderHook, type RenderHookResult } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import { resolveTimelineArrangement, type TimelineDocumentV1, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 
 type PlaybackInput = Parameters<typeof useTimelinePlayback>[0];
@@ -26,6 +26,7 @@ interface MediaFixture {
   facts: MediaFacts;
   play: ReturnType<typeof vi.fn<() => Promise<void>>>;
   pause: ReturnType<typeof vi.fn<() => void>>;
+  load: ReturnType<typeof vi.fn<() => void>>;
   seeks: number[];
 }
 
@@ -124,9 +125,15 @@ function mediaFixture(overrides: Partial<MediaFacts> = {}): MediaFixture {
   const pause = vi.fn<() => void>(() => {
     facts.paused = true;
   });
+  // HTML load resets native facts and playbackRate; readiness remains at HAVE_NOTHING.
+  const load = vi.fn<() => void>(() => {
+    Object.assign(facts, { error: null, currentTime: 0, duration: Number.NaN, readyState: 0, paused: true, seeking: false, ended: false });
+    element.playbackRate = element.defaultPlaybackRate;
+  });
   Object.defineProperty(element, 'play', { configurable: true, value: play });
   Object.defineProperty(element, 'pause', { configurable: true, value: pause });
-  return { element, facts, play, pause, seeks };
+  Object.defineProperty(element, 'load', { configurable: true, value: load });
+  return { element, facts, play, pause, load, seeks };
 }
 
 /**
@@ -186,7 +193,9 @@ function renderPlayback(
       observedFrames.push(value);
       setFrame(value);
     }, []);
-    const clip = Object.values(input.document.clips).find((item) => frame >= item.startFrame
+    const clips = Object.values(input.document.clips);
+    const ready = new Set(resolveTimelineArrangement({ tracks: Object.values(input.document.tracks), clips }).readyClipIds);
+    const clip = clips.find((item) => ready.has(item.id) && frame >= item.startFrame
       && frame < item.startFrame + item.durationFrames) ?? null;
     const source = clip === null ? null : input.document.sources[clip.sourceId] ?? null;
     const playback = useTimelinePlayback({
@@ -615,6 +624,7 @@ describe('useTimelinePlayback', () => {
     await settle();
     expect(hook.result.current.state).toBe('playing');
     expect(media.play).toHaveBeenCalledTimes(2);
+    expect(media.load).toHaveBeenCalledTimes(0);
   });
 
   it('stops at a current native media error', async () => {
@@ -745,5 +755,269 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.intent).toBe('pause');
     expect(hook.result.current.state).toBe('paused');
     expect(media.facts.paused).toBe(true);
+  });
+});
+
+describe('useTimelinePlayback review regressions', () => {
+  it.each([0, 30, 120])('continues the playing clock after seeking to frame %i inside the same gap', (target) => {
+    const hook = renderPlayback(null, { document: timelineDocument([{ ...CLIP, startFrame: 240 }]) });
+    act(() => hook.result.current.toggle());
+    tick(1000);
+    expect(hook.result.current.frame).toBe(24);
+    act(() => hook.result.current.seek(target));
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('playing');
+    tick(1250);
+    expect(hook.result.current.frame).toBe(target + 6);
+    expect(hook.result.current.state).toBe('playing');
+  });
+
+  it('keeps a paused gap seek at rest until the user explicitly resumes', () => {
+    const hook = renderPlayback(null, { document: timelineDocument([{ ...CLIP, startFrame: 240 }]) });
+    act(() => hook.result.current.toggle());
+    tick(1000);
+    act(() => hook.result.current.toggle());
+    act(() => hook.result.current.seek(30));
+    tick(4000);
+    expect(hook.result.current.frame).toBe(30);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+    act(() => hook.result.current.toggle());
+    tick(4250);
+    expect(hook.result.current.frame).toBe(36);
+  });
+
+  it('crosses consecutive conflict intervals and holds the next ready video until its native seek completes', async () => {
+    const conflicts = [24, 48, 96, 120].map((startFrame, index) => ({
+      ...CLIP, id: `30000000-0000-4000-8000-00000000000${index + 1}`, startFrame, durationFrames: 48,
+    }));
+    const later = { ...CLIP, id: '30000000-0000-4000-8000-000000000005', startFrame: 192, durationFrames: 24, sourceInFrame: 24 };
+    const document = timelineDocument([...conflicts, later]);
+    expect(resolveTimelineArrangement({ tracks: Object.values(document.tracks), clips: Object.values(document.clips) }).readyClipIds).toEqual([later.id]);
+    const media = mediaFixture({ readyState: 0 });
+    const hook = renderPlayback(media, { document });
+    act(() => hook.result.current.toggle());
+    for (let second = 1; second <= 7; second += 1) {
+      tick(second * 1000);
+      expect(hook.result.current.frame).toBe(second * 24);
+      expect(hook.result.current.state).toBe('playing');
+      expect(media.play).toHaveBeenCalledTimes(0);
+    }
+    tick(8000);
+    expect(hook.result.current.frame).toBe(192);
+    expect(hook.result.current.state).toBe('waiting');
+    tick(12000);
+    expect(hook.result.current.frame).toBe(192);
+    mediaEvent(media, 'loadedmetadata', { readyState: 1 });
+    expect(media.facts.currentTime).toBe(1);
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: true });
+    expect(hook.result.current.state).toBe('waiting');
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'seeked', { seeking: false });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    tick(12250);
+    expect(hook.result.current.frame).toBe(198);
+    tick(13000);
+    expect(hook.result.current.frame).toBe(215);
+    expect(hook.result.current.intent).toBe('pause');
+  });
+
+  it.each([0, 4])('stops an arbitrarily late gap frame at the first ready source barrier with readyState %i', async (readyState) => {
+    const clip = { ...CLIP, startFrame: 48, durationFrames: 24, sourceInFrame: 24 };
+    const media = mediaFixture({ readyState });
+    const hook = renderPlayback(media, { document: timelineDocument([clip]) });
+    act(() => hook.result.current.toggle());
+    tick(10000);
+    expect(hook.result.current.frame).toBe(48);
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('waiting');
+    expect(media.play).toHaveBeenCalledTimes(0);
+    tick(30000);
+    expect(hook.result.current.frame).toBe(48);
+    if (readyState === 0) mediaEvent(media, 'loadedmetadata', { readyState: 1 });
+    expect(media.facts.currentTime).toBe(1);
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: true });
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(media, 'seeked', { seeking: false });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    tick(30250);
+    expect(hook.result.current.frame).toBe(54);
+    tick(31000);
+    expect(hook.result.current.frame).toBe(71);
+    expect(hook.result.current.state).toBe('paused');
+  });
+
+  it('reloads the same errored element and restores its source position, rate, gain and mute before native playback', async () => {
+    const clip = { ...CLIP, rate: { num: 2, den: 1 }, durationFrames: 96, sourceInFrame: 24, gain: 0.4, mute: true };
+    const media = mediaFixture({ readyState: 0, error: { code: 4, message: 'Media unavailable' } as MediaError });
+    media.element.src = 'http://localhost/timeline-retry.mp4';
+    const sameUrl = media.element.src;
+    const hook = renderPlayback(media, { document: timelineDocument([clip]), initialFrame: 48 });
+    expect(hook.result.current.state).toBe('failed');
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(1);
+    expect(media.element.src).toBe(sameUrl);
+    expect(media.facts.error).toBeNull();
+    expect(media.facts.currentTime).toBe(0);
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('waiting');
+    // Queued events from before load must read the reset facts rather than release the new barrier.
+    mediaEvent(media, 'canplay');
+    mediaEvent(media, 'seeked');
+    tick(4000);
+    expect(hook.result.current.frame).toBe(48);
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'loadedmetadata', { readyState: 1, duration: 10 });
+    expect(media.facts.currentTime).toBe(5);
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: true });
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'seeked', { seeking: false, readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'canplay', { readyState: 4 });
+    await settle();
+    expect(media.element.playbackRate).toBe(2);
+    expect(media.element.volume).toBe(0.4);
+    expect(media.element.muted).toBe(true);
+    expect(media.play).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.state).toBe('playing');
+    tick(4250);
+    expect(hook.result.current.frame).toBe(54);
+  });
+
+  it('preserves a user pause through metadata and seek completion after an errored-element reload', async () => {
+    const media = mediaFixture({ readyState: 0, error: { code: 2, message: 'Network failed' } as MediaError });
+    const hook = renderPlayback(media, { initialFrame: 48 });
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(1);
+    act(() => hook.result.current.toggle());
+    mediaEvent(media, 'loadedmetadata', { readyState: 1, duration: 10 });
+    expect(media.facts.currentTime).toBe(2);
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: true });
+    mediaEvent(media, 'seeked', { seeking: false });
+    await settle();
+    tick(5000);
+    expect(hook.result.current.frame).toBe(48);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+    expect(media.facts.paused).toBe(true);
+    expect(media.play).toHaveBeenCalledTimes(0);
+  });
+
+  it('uses the latest explicit seek during native reload and refuses the old source position', async () => {
+    const media = mediaFixture({ readyState: 0, error: { code: 2, message: 'Network failed' } as MediaError });
+    const hook = renderPlayback(media, { initialFrame: 48 });
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(1);
+    act(() => hook.result.current.seek(96));
+    mediaEvent(media, 'loadedmetadata', { readyState: 1, duration: 10 });
+    expect(media.facts.currentTime).toBe(4);
+    mediaEvent(media, 'seeked', { readyState: 4, currentTime: 2, seeking: false });
+    expect(hook.result.current.state).toBe('waiting');
+    tick(1000);
+    expect(hook.result.current.frame).toBe(96);
+    expect(media.play).toHaveBeenCalledTimes(0);
+    mediaEvent(media, 'seeked', { readyState: 2, currentTime: 4, seeking: false });
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(media, 'canplay', { readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    tick(1250);
+    expect(hook.result.current.frame).toBe(102);
+  });
+
+  it.each(['resolve', 'reject'] as const)('ignores an old play promise %s after native reload starts a newer play request', async (outcome) => {
+    const media = mediaFixture();
+    const previous = deferredPlay();
+    const current = deferredPlay();
+    media.play.mockReturnValueOnce(previous.promise).mockReturnValueOnce(current.promise);
+    const hook = renderPlayback(media);
+    act(() => hook.result.current.toggle());
+    mediaEvent(media, 'error', { readyState: 0, error: { code: 2, message: 'Network failed' } as MediaError });
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(1);
+    mediaEvent(media, 'loadedmetadata', { readyState: 1, duration: 10 });
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: false });
+    expect(media.play).toHaveBeenCalledTimes(2);
+    const pausesBeforeOldSettlement = media.pause.mock.calls.length;
+    await act(async () => {
+      if (outcome === 'resolve') previous.resolve();
+      else previous.reject(new DOMException('Old load aborted playback', 'AbortError'));
+      await Promise.resolve();
+    });
+    expect(media.pause).toHaveBeenCalledTimes(pausesBeforeOldSettlement);
+    expect(hook.result.current.intent).toBe('play');
+    expect(hook.result.current.state).toBe('waiting');
+    tick(4000);
+    expect(hook.result.current.frame).toBe(0);
+    await act(async () => {
+      media.facts.paused = false;
+      current.resolve();
+      await current.promise;
+    });
+    expect(hook.result.current.state).toBe('playing');
+    tick(4250);
+    expect(hook.result.current.frame).toBe(6);
+  });
+
+  it('keeps a reloaded source promise and old events from changing its replacement video', async () => {
+    const sourceB = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002' };
+    const first = { ...CLIP, durationFrames: 24 };
+    const second = { ...CLIP, id: '30000000-0000-4000-8000-000000000002', sourceId: sourceB.id, startFrame: 24, durationFrames: 24 };
+    const mediaA = mediaFixture({ readyState: 0, error: { code: 2, message: 'Network failed' } as MediaError });
+    const mediaB = mediaFixture({ readyState: 0 });
+    const pending = deferredPlay();
+    mediaA.play.mockReturnValueOnce(pending.promise);
+    const hook = renderPlayback(mediaA, {
+      document: timelineDocument([first, second], [SOURCE, sourceB]),
+      media: new Map([[SOURCE.id, mediaA.element], [sourceB.id, mediaB.element]]),
+    });
+    act(() => hook.result.current.retry());
+    expect(mediaA.load).toHaveBeenCalledTimes(1);
+    mediaEvent(mediaA, 'loadeddata', { readyState: 4, seeking: false, duration: 10 });
+    expect(mediaA.play).toHaveBeenCalledTimes(1);
+    act(() => hook.result.current.seek(24));
+    await act(async () => {
+      mediaA.facts.paused = false;
+      pending.resolve();
+      await pending.promise;
+    });
+    mediaEvent(mediaA, 'canplay', { readyState: 4 });
+    expect(mediaA.facts.paused).toBe(true);
+    expect(hook.result.current.frame).toBe(24);
+    expect(hook.result.current.state).toBe('waiting');
+    expect(mediaB.play).toHaveBeenCalledTimes(0);
+    expect(mediaB.load).toHaveBeenCalledTimes(0);
+    mediaEvent(mediaB, 'loadeddata', { readyState: 4, seeking: false });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    tick(250);
+    expect(hook.result.current.frame).toBe(30);
+  });
+
+  it('releases a native-reload play request on unmount without late clock or listener activity', async () => {
+    const media = mediaFixture({ readyState: 0, error: { code: 2, message: 'Network failed' } as MediaError });
+    const pending = deferredPlay();
+    media.play.mockReturnValueOnce(pending.promise);
+    const hook = renderPlayback(media);
+    act(() => hook.result.current.retry());
+    expect(media.load).toHaveBeenCalledTimes(1);
+    mediaEvent(media, 'loadeddata', { readyState: 4, seeking: false, duration: 10 });
+    expect(media.play).toHaveBeenCalledTimes(1);
+    const writes = hook.observedFrames.length;
+    hook.unmount();
+    await act(async () => {
+      media.facts.paused = false;
+      pending.resolve();
+      await pending.promise;
+    });
+    mediaEvent(media, 'canplay', { readyState: 4, seeking: false });
+    tick(5000);
+    expect(media.facts.paused).toBe(true);
+    expect(queuedFrames.size).toBe(0);
+    expect(hook.observedFrames).toHaveLength(writes);
+    expect(media.load).toHaveBeenCalledTimes(1);
   });
 });

@@ -13,7 +13,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
+import type { StudioAssetEntity } from "@breatic/shared";
 import {
+  assetRepo,
   createPgClient,
   db,
   ForbiddenError,
@@ -191,6 +193,26 @@ async function seedAsset(
       ${asset.sizeBytes}, ${asset.mimeType}, ${kind}, 'upload', ${fixture.ownerId},
       ${asset.width}, ${asset.height}, ${asset.durationSeconds}, ${options.coverAssetId ?? null})`;
   owned.assets.push(id);
+  return asset;
+}
+
+/**
+ * Register a real Studio-owned copy through the same canonical repository used by cross-Studio paste.
+ * @param fixture - The accepting Studio and its producer.
+ * @param source - An optional existing record whose physical object is reused.
+ * @returns The Studio's independently registered asset identity.
+ * @throws {Error} When canonical registration or storage configuration fails.
+ */
+async function registerStudioCopy(fixture: ProjectFixture, source?: StudioAssetEntity): Promise<StudioAssetEntity> {
+  const storageKey = source?.storageKey ?? `registered-copy/${randomUUID()}.mp4`;
+  const fileUrl = source?.fileUrl ?? (await getStorageAdapter()).publicUrl(storageKey);
+  const { asset } = await assetRepo.registerWithDedup({
+    studioId: fixture.studioId, producedByUserId: fixture.ownerId,
+    contentHash: source?.contentHash ?? createHash("sha256").update(storageKey).digest("hex"),
+    storageKey, fileUrl, sizeBytes: 8192, mimeType: "video/mp4", kind: "video", source: "upload",
+    width: 1280, height: 720, durationSeconds: 2.5,
+  });
+  owned.assets.push(asset.id);
   return asset;
 }
 
@@ -563,6 +585,87 @@ describe("Project registered asset references", () => {
 });
 
 describe("Registered Project media identity and Project copies", () => {
+  it.each(["url-only", "mixed"] as const)("associates each Studio's own shared-object copy and exposes its Project directory for %s references", async (mode) => {
+    const first = await seedFixture();
+    const second = await seedFixture();
+    const firstAsset = await registerStudioCopy(first);
+    const secondAsset = await registerStudioCopy(second, firstAsset);
+    const cases = [
+      { scope: first, own: firstAsset, foreign: secondAsset },
+      { scope: second, own: secondAsset, foreign: firstAsset },
+    ];
+    // Gather both Projects before assertions so the registration order cannot hide the other Studio's result.
+    const actual = await Promise.all(cases.map(async ({ scope, own, foreign }) => {
+      const input = { projectId: scope.projectId, assetIds: mode === "mixed" ? [foreign.id, own.id, foreign.id] : [], urls: [own.fileUrl, own.fileUrl] };
+      const inspection = await projectAssetReferenceService.inspectRegisteredProjectMedia(input);
+      const acceptance = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed(input);
+      const references = await liveReferences(scope.projectId);
+      const videos = await projectAssetReferenceService.listProjectVideos({ projectId: scope.projectId, userId: scope.ownerId });
+      return { scope, own, foreign, inspection, acceptance, references, videos };
+    }));
+    expect(firstAsset.id).not.toBe(secondAsset.id);
+    expect(secondAsset).toMatchObject({ studioId: second.studioId, storageKey: firstAsset.storageKey, contentHash: firstAsset.contentHash, fileUrl: firstAsset.fileUrl });
+    for (const { scope, own, foreign, inspection, acceptance, references, videos } of actual) {
+      const expected = {
+        resolved: [
+          ...(mode === "mixed" ? [{ kind: "assetId", reference: own.id, asset: own }] : []),
+          { kind: "url", reference: own.fileUrl, asset: own },
+        ],
+        unavailable: mode === "mixed" ? [{ kind: "assetId", reference: foreign.id, reason: "foreign_studio" }] : [],
+      };
+      expect(inspection.resolution, `inspect Studio ${scope.studioId}`).toEqual(expected);
+      expect(inspection.references).toEqual([]);
+      expect(acceptance.resolution, `accept Studio ${scope.studioId}`).toEqual(expected);
+      expect(acceptance.insertedAssetIds).toEqual([own.id]);
+      expect(acceptance.references.map(({ projectId, assetId }) => ({ projectId, assetId }))).toEqual([{ projectId: scope.projectId, assetId: own.id }]);
+      expect(references.map((row) => ({ projectId: row.project_id, assetId: row.asset_id }))).toEqual([{ projectId: scope.projectId, assetId: own.id }]);
+      expect(videos.items.map(({ assetId }) => assetId)).toEqual([own.id]);
+    }
+  });
+
+  it("keeps a URL and explicit ID foreign when its physical object is registered only in another Studio", async () => {
+    const local = await seedFixture();
+    const foreign = await seedFixture();
+    const media = await registerStudioCopy(foreign);
+    const input = { projectId: local.projectId, assetIds: [media.id], urls: [media.fileUrl] };
+    const inspection = await projectAssetReferenceService.inspectRegisteredProjectMedia(input);
+    const acceptance = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed(input);
+    const expected = {
+      resolved: [],
+      unavailable: [
+        { kind: "assetId", reference: media.id, reason: "foreign_studio" },
+        { kind: "url", reference: media.fileUrl, reason: "foreign_studio" },
+      ],
+    };
+    expect(inspection).toEqual({ resolution: expected, references: [] });
+    expect(acceptance).toEqual({ resolution: expected, references: [], insertedAssetIds: [] });
+    expect(await liveReferences(local.projectId)).toEqual([]);
+    expect(await projectAssetReferenceService.listProjectVideos({ projectId: local.projectId, userId: local.ownerId })).toEqual({ items: [], nextCursor: null });
+  });
+
+  it.each(["foreign-live", "all-deleted"] as const)("does not resolve a deleted local copy when the other registered copy is %s", async (state) => {
+    const local = await seedFixture();
+    const foreign = await seedFixture();
+    const localAsset = await registerStudioCopy(local);
+    const foreignAsset = await registerStudioCopy(foreign, localAsset);
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${localAsset.id}`;
+    if (state === "all-deleted") await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${foreignAsset.id}`;
+    const input = { projectId: local.projectId, assetIds: [localAsset.id], urls: [localAsset.fileUrl] };
+    const inspection = await projectAssetReferenceService.inspectRegisteredProjectMedia(input);
+    const acceptance = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed(input);
+    const expected = {
+      resolved: [],
+      unavailable: [
+        { kind: "assetId", reference: localAsset.id, reason: "unregistered" },
+        { kind: "url", reference: localAsset.fileUrl, reason: state === "foreign-live" ? "foreign_studio" : "unregistered" },
+      ],
+    };
+    expect(inspection).toEqual({ resolution: expected, references: [] });
+    expect(acceptance).toEqual({ resolution: expected, references: [], insertedAssetIds: [] });
+    expect(await liveReferences(local.projectId)).toEqual([]);
+    expect(await projectAssetReferenceService.listProjectVideos({ projectId: local.projectId, userId: local.ownerId })).toEqual({ items: [], nextCursor: null });
+  });
+
   it("resolves a view-only URL to the canonical ledger URL and metadata before returning it", async () => {
     const fixture = await seedFixture();
     const asset = await seedAsset(fixture);

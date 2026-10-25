@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /** Real registered video, permissions and concurrent Timeline arrangement (inner#1707). */
-import { Buffer } from 'node:buffer';
-import { expect, type Page, type WebSocketRoute } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { flushTimelineDelivery, installTimelineDeliveryGate } from '../helpers/timeline-delivery';
 import {
   addProjectTimelineVideo,
   expectTimelineStart,
@@ -20,39 +20,6 @@ import {
   watchTimelineErrors,
   withTimelinePeer,
 } from '../helpers/timeline-media';
-
-/** Original application frames temporarily withheld from one connected browser. */
-interface TimelineDeliveryGate {
-  holding: boolean;
-  pending: { client: WebSocketRoute; message: Buffer }[];
-}
-
-/**
- * Connect to the real server and delay only its binary application frames during the concurrent-edit window.
- * @throws {Error} When Playwright cannot install the route before navigation.
- */
-async function installTimelineDeliveryGate(page: Page): Promise<TimelineDeliveryGate> {
-  const gate: TimelineDeliveryGate = { holding: false, pending: [] };
-  await page.routeWebSocket('**/*', (client) => {
-    const server = client.connectToServer();
-    if (client.protocols().includes('vite-hmr')) return;
-    // Only the server-side onMessage is overridden: client→server and close forwarding remain real and automatic.
-    server.onMessage((message) => {
-      if (gate.holding && Buffer.isBuffer(message)) gate.pending.push({ client, message });
-      else client.send(message);
-    });
-  });
-  return gate;
-}
-
-/**
- * Deliver the exact original frames in their original receive order and resume normal forwarding.
- * @throws {Error} When the real routed socket cannot accept a queued frame.
- */
-function flushTimelineDelivery(gate: TimelineDeliveryGate): void {
-  gate.holding = false;
-  for (const { client, message } of gate.pending.splice(0)) client.send(message);
-}
 
 /**
  * Assert that the existing Project connection policy still permits normal UI interaction.
