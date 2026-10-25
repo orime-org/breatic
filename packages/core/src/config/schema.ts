@@ -269,6 +269,8 @@ export const coreConfigSchema = z.object({
     .transform((v) => v === "true"),
   STRIPE_SECRET_KEY: z.string().default(""),
   STRIPE_WEBHOOK_SECRET: z.string().default(""),
+  STRIPE_WEBHOOK_ACCOUNT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^acct_[A-Za-z0-9]+$/).optional()),
+  STRIPE_WEBHOOK_ENDPOINT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^we_[A-Za-z0-9]+$/).optional()),
   CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
 
   // ── Internal API (back office) ───────────────────

@@ -63,6 +63,7 @@ export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export {
@@ -172,6 +173,7 @@ export {
   sessionCookieName,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
+export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────

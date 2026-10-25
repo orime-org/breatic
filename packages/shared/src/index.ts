@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";
+export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
   Environment,

@@ -52,7 +52,7 @@ import {
   parseDocName,
   spaceContentDocName,
 } from "@breatic/shared";
-import { readCookie } from "@collab/hooks/auth.js";
+import { readCookie } from "@collab/infra/cookie.js";
 import { reportSpaceCreated } from "@collab/services/space-analytics.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 

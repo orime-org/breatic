@@ -22,13 +22,16 @@
     "@hocuspocus/server": "catalog:",
     "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
+    "@types/ws": "catalog:",
     "ai": "catalog:",
     "bullmq": "catalog:",
     "drizzle-orm": "catalog:",
     "fast-check": "catalog:",
+    "lib0": "catalog:",
     "postgres": "catalog:",
     "testcontainers": "catalog:",
     "vitest": "catalog:",
+    "ws": "catalog:",
     "yjs": "catalog:"
   }
 }

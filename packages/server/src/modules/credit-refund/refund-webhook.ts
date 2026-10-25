@@ -34,16 +34,17 @@ export interface RefundEvent {
  * Handle one refund event.
  * @param event - The verified event.
  * @returns `unreadable` when Stripe could not be read and nothing was
- *   written, so Stripe should redeliver; `handled` otherwise.
+ *   written, `no_target` after the existing missing-target claim, or `synced`
+ *   after applying the current Stripe snapshot.
  */
-export async function handleRefundEvent(event: RefundEvent): Promise<"handled" | "unreadable"> {
+export async function handleRefundEvent(event: RefundEvent): Promise<"synced" | "no_target" | "unreadable"> {
   const intent = event.data.object.payment_intent;
   const paymentIntent = typeof intent === "string" ? intent : (intent?.id ?? null);
   const paymentId = paymentIntent ? await paymentRepo.findIdByPaymentIntent(paymentIntent) : null;
   const lotId = paymentId ? await creditLotRepo.findLotIdByPayment(paymentId) : null;
   if (paymentIntent === null || paymentId === null || lotId === null) {
     await db.transaction((tx) => claimWebhookEvent(event.id, event.type, tx));
-    return "handled";
+    return "no_target";
   }
 
   let listed: StripeRefundObject[];
@@ -66,5 +67,5 @@ export async function handleRefundEvent(event: RefundEvent): Promise<"handled" |
     return applyRefundSnapshot(tx, paymentId, listed, "webhook");
   });
   if (judged !== null) followUpOperationLater(judged);
-  return "handled";
+  return "synced";
 }
