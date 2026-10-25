@@ -933,6 +933,7 @@ export {
 
 export {
   videoPresentationSchema,
+  videoPresentationOriginalSchema,
   alphaManifestSchema,
   videoPresentationKeyFor,
   alphaPackedKeyFor,
@@ -956,6 +957,9 @@ export {
 export {
   videoPresentationAtIngest,
   videoPresentationIngestSnapshotSchema,
+  videoPresentationIngestRequestSchema,
+  videoPresentationPricingSchema,
+  videoPresentationProcessLimitsSchema,
   type VideoPresentationIngestRequest,
   type VideoPresentationIngestSnapshot,
   type VideoPresentationIngestAttempt,

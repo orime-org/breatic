@@ -23,6 +23,7 @@
   "include": [
     "*.ts",
     "./analysis-frame-reader.ts",
+    "./alpha-clock.ts",
     "./plan-command.ts",
     "./plan-recipes.ts",
     "./plan-run.ts",
@@ -33,6 +34,8 @@
     "../src/jobs/container-report.ts",
     "../../shared/src/upload/mini-tool-plan-types.ts",
     "../src/probe-answer.ts",
+    "../src/alpha-run-contract.ts",
+    "../src/video-alpha-classification.ts",
     "../src/probe-command.ts",
     "../src/media-metadata.ts",
     "../src/png-size.ts",
@@ -47,6 +50,7 @@
     "../../shared/src/audio-dynamics.ts",
     "../../shared/src/audio-peaks.ts",
     "../../shared/src/mini-tools/types.ts",
+    "../../shared/src/upload/video-presentation-types.ts",
     "../../shared/src/mini-tools/video-frame-table.ts",
     "__tests__/*.ts"
   ]

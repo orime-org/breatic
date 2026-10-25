@@ -26,6 +26,13 @@
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { askedKey } from "@ingest/object-url.js";
+import { objectUrlOn } from '@ingest/object-url.js';
+import { mediaObjectUrl, MEDIA_OBJECT_HOST } from '@ingest/media-object-route.js';
+import { alphaPackedKeyFor, videoPresentationOriginalSchema, type VideoPresentationIngestSnapshot } from '@breatic/shared';
+import { VideoPresentationStore, type VideoPresentationAdmission } from '@ingest/video-presentation-store.js';
+import type { AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
+import { ALPHA_RUN_PATH, ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, ALPHA_PACKED_HOST, type AlphaPresentationReport, type AlphaRunBody } from '@ingest/alpha-run-contract.js';
+import { noteFailure } from '@ingest/error-monitoring.js';
 import { serveOneObject } from "@ingest/media-object-route.js";
 import { writeStreamedObject } from "@ingest/stored-object.js";
 import {
@@ -86,6 +93,141 @@ export class MediaContainer extends Container<MediaEnv> {
    * refuses it by the same rule as every other host.
    */
   interceptHttps = true;
+
+  private readonly presentationRuns = new Map<string, Promise<VideoPresentationIngestSnapshot>>();
+
+  /**
+   * Resolve persisted source facts without starting another container.
+   * @param storageKey - Registered canonical key.
+   * @param sourceFingerprint - Its registered hash.
+   * @returns Verified current presentation and accepted work.
+   * @throws {Error} When durable storage or R2 fails.
+   */
+  async readPresentation(storageKey: string, sourceFingerprint: string): Promise<VideoPresentationIngestSnapshot> {
+    const store = this.presentationStore();
+    const snapshot = await store.read(storageKey, sourceFingerprint);
+    const attempt = snapshot.attempt;
+    return attempt !== null && (attempt.status === 'accepted' || attempt.status === 'running') && attempt.deadlineAt <= Date.now()
+      ? store.fail({ ...attempt, sourceFingerprint }, 'expired') : snapshot;
+  }
+
+  /**
+   * Accept or replay one canonical presentation job.
+   * @param admission - Trusted registry facts and original work deadline.
+   * @returns Fixed durable work identity.
+   * @throws {Error} When durable admission fails.
+   */
+  acceptPresentation(admission: VideoPresentationAdmission): Promise<VideoPresentationIngestSnapshot> {
+    return this.presentationStore().accept(admission);
+  }
+
+  /**
+   * Apply one capability-bound container report.
+   * @param fact - Trusted probe, geometry or measured usage.
+   * @returns Whether the original owner accepted it.
+   * @throws {Error} When persistence fails.
+   */
+  reportPresentation(fact: AlphaPresentationReport): Promise<boolean> { return this.presentationStore().report(fact); }
+
+  /**
+   * Stop an expired attempt without extending its budget.
+   * @param identity - Originally accepted work.
+   * @returns Current source state.
+   * @throws {Error} When persistence fails.
+   */
+  expirePresentation(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> { return this.presentationStore().fail(identity, 'expired'); }
+
+  /**
+   * Acknowledge one already-recorded platform usage fact.
+   * @param identity - Its original source and job identity.
+   * @returns Durable acknowledgement without another charge or media run.
+   * @throws {Error} When persistence fails.
+   */
+  acknowledgePresentationUsage(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> { return this.presentationStore().acknowledgeUsage(identity); }
+
+  /**
+   * Run the accepted probe under one request that keeps the shared container active.
+   * @param identity - Fixed accepted identity and deadline.
+   * @returns Actual current facts after complete reporting.
+   * @throws {Error} When durable state cannot be read.
+   */
+  runPresentation(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+    const existing = this.presentationRuns.get(identity.jobId);
+    if (existing !== undefined) return existing;
+    const running = this.executePresentation(identity);
+    this.presentationRuns.set(identity.jobId, running);
+    void running.then(() => this.presentationRuns.delete(identity.jobId), (err: unknown) => {
+      this.presentationRuns.delete(identity.jobId);
+      noteFailure('ingest_video_presentation_storage_failed', { err, jobId: identity.jobId });
+    });
+    return running;
+  }
+
+  /**
+   * Bind one source-only container request and retain its original execution lifetime.
+   * @param identity - Fixed accepted source work.
+   * @returns Durable source and expense facts.
+   * @throws {Error} When storage cannot retain a failure.
+   */
+  private async executePresentation(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+    const store = this.presentationStore();
+    if (identity.deadlineAt <= Date.now()) return store.fail(identity, 'expired');
+    const prepared = await store.prepare(identity);
+    const admission = prepared.admission;
+    if (admission === null || prepared.token === null) return prepared.snapshot;
+    if (admission.limits === undefined || admission.pricing === undefined) return store.fail(identity, 'admission_invalid');
+    const source = await this.env.BUCKET.head(admission.storageKey);
+    if (source === null) return store.fail(identity, 'source_missing');
+    if (source.size > admission.limits.maxSourceBytes) return store.fail(identity, 'source_over_cap');
+    try {
+      await this.setOutboundByHost(MEDIA_OBJECT_HOST, SERVE_OBJECT, { key: admission.storageKey });
+      await this.setOutboundByHost(ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, { key: admission.storageKey });
+      const outputURL = new URL(objectUrlOn(ALPHA_PACKED_HOST, alphaPackedKeyFor(admission.storageKey)));
+      outputURL.search = new URLSearchParams({ jobId: identity.jobId, sourceFingerprint: identity.sourceFingerprint, deadlineAt: String(identity.deadlineAt), token: prepared.token }).toString();
+      const body: AlphaRunBody = { ...identity, token: prepared.token, sourceURL: mediaObjectUrl(admission.storageKey), outputURL: outputURL.toString(),
+        reportURL: objectUrlOn(ALPHA_REPORT_HOST, admission.storageKey), limits: admission.limits, vcpu: admission.pricing.size.vcpu };
+      const answer = await super.fetch(new Request(`http://media${ALPHA_RUN_PATH}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+      if (!answer.ok) return store.fail(identity, 'presentation_failed');
+      const result = await answer.json<{ ok?: boolean; error?: string }>();
+      if (result.ok !== true) return store.fail(identity, typeof result.error === 'string' && /^[a-z][a-z0-9_]*$/.test(result.error) ? result.error : 'presentation_failed');
+      return store.snapshotFor(identity);
+    } catch (err) {
+      noteFailure('ingest_video_presentation_failed', { err, jobId: identity.jobId, sourceFingerprint: identity.sourceFingerprint });
+      return store.fail(identity, identity.deadlineAt <= Date.now() ? 'expired' : 'presentation_failed');
+    }
+  }
+
+  /**
+   * Construct the sole storage owner with this object's actual durable serialization gate.
+   * @returns The canonical presentation persistence owner.
+   * @throws {never} No IO starts while the owner is constructed.
+   */
+  private presentationStore(): VideoPresentationStore {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work));
+  }
+}
+
+/**
+ * Accept only a report scoped to the source this container may read.
+ * @param request - Container report delivered through its private outbound host.
+ * @param env - Actual R2 and canonical durable object bindings.
+ * @param ctx - The one authorized source key.
+ * @returns Durable acknowledgement or a refusal.
+ * @throws {Error} When durable reporting fails.
+ */
+export async function reportAlphaPresentation(request: Request, env: MediaEnv, ctx: OutboundHandlerContext<ServeOneKey>): Promise<Response> {
+  if (request.method !== 'POST' || askedKey(request) !== ctx.params.key) return new Response('Not allowed', { status: 403 });
+  const value = await request.json<Record<string, unknown>>().catch(() => null);
+  if (value === null || typeof value.jobId !== 'string' || typeof value.sourceFingerprint !== 'string' || typeof value.deadlineAt !== 'number' || typeof value.token !== 'string') return new Response('Invalid report', { status: 400 });
+  if (value.kind === 'probe' && (!videoPresentationOriginalSchema.safeParse(value.original).success || (value.classification !== 'confirmed_alpha' && value.classification !== 'confirmed_opaque'))) return new Response('Invalid probe', { status: 400 });
+  if (value.kind !== 'probe' && value.kind !== 'encoded' && value.kind !== 'finished') return new Response('Invalid report', { status: 400 });
+  if (value.kind === 'finished') {
+    const usage = value.usage as { wallMs?: unknown; cpuUsec?: unknown } | undefined;
+    if (usage === undefined || typeof usage.wallMs !== 'number' || !Number.isFinite(usage.wallMs) || usage.wallMs < 0 || (usage.cpuUsec !== null && (typeof usage.cpuUsec !== 'number' || !Number.isFinite(usage.cpuUsec) || usage.cpuUsec < 0))) return new Response('Invalid usage', { status: 400 });
+  }
+  const instance = env.MEDIA.get(env.MEDIA.idFromName(ctx.params.key));
+  const accepted = await instance.reportPresentation(value as unknown as AlphaPresentationReport);
+  return new Response(null, { status: accepted ? 200 : 409 });
 }
 
 /**
@@ -157,4 +299,5 @@ export async function writeUpright(
 MediaContainer.outboundHandlers = {
   [SERVE_OBJECT]: serveObject,
   [WRITE_UPRIGHT]: writeUpright,
+  [ALPHA_REPORT_HANDLER]: reportAlphaPresentation,
 };

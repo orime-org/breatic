@@ -18,6 +18,8 @@ export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineA
 export type { VideoPresentationRepairResponse } from '@breatic/shared';
 /** The queue retains the accepted source identity and original deadline on retry. */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string; deadlineAt: number }
+/** Source readiness and platform accounting remain independent observations. */
+export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
 /** Internal admission context; explicit repairs retain their actual requester. */
 interface AdmissionOptions { parentDeadlineAt?: number; knownAlpha?: boolean; repair?: boolean; requestId?: string; userId?: string; projectId?: string }
 /** Automatic metadata preparation has no user task or credit hold. */
@@ -195,4 +197,15 @@ export async function ensureVideoPresentation(input: EnsureVideoPresentationInpu
   if (row === null || row.deletedAt !== null || row.kind !== 'video') return null;
   const snapshot = await accept(row, input);
   return snapshot.attempt === null ? null : { jobId: snapshot.attempt.jobId, deadlineAt: snapshot.attempt.deadlineAt };
+}
+
+/**
+ * Execute the accepted metadata job and record one actual platform expense.
+ * @param job - Original registered source, work identity and fixed deadline.
+ * @returns Current readiness and independent expense acknowledgement.
+ * @throws {Error} When ingest, unique usage persistence or acknowledgement fails.
+ */
+export async function runVideoPresentation(job: VideoPresentationJob): Promise<VideoPresentationExecutionResult> {
+  void job;
+  throw new Error('Presentation consumption awaits its independent RED oracle');
 }

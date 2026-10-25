@@ -4,6 +4,7 @@
 import { alphaManifestKeyFor, alphaManifestMatchesPresentation, alphaManifestSchema, alphaPackedKeyFor, parseVideoPresentation, videoPresentationKeyFor,
   type AlphaManifest, type VideoPresentation, type VideoPresentationIngestSnapshot, type VideoPresentationPricing, type VideoPresentationProcessLimits } from '@breatic/shared';
 import { advanceVideoPresentation, type AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
+import type { AlphaPresentationReport, AlphaProbeEvidence } from '@ingest/alpha-run-contract.js';
 
 /** Backend-authorized admission of one canonical source's auxiliary work. */
 export interface VideoPresentationAdmission extends AcceptedVideoPresentationAttempt {
@@ -21,7 +22,18 @@ export interface VideoPresentationAdmission extends AcceptedVideoPresentationAtt
 }
 
 /** Private durable state remains valid even while original metadata is unknown. */
-interface PresentationRecord { admission: VideoPresentationAdmission; snapshot: VideoPresentationIngestSnapshot; descriptorETag: string | null }
+interface PresentationRecord {
+  admission: VideoPresentationAdmission;
+  snapshot: VideoPresentationIngestSnapshot;
+  descriptorETag: string | null;
+  token: string;
+  evidence?: AlphaProbeEvidence;
+  encoded?: Extract<AlphaPresentationReport, { kind: 'encoded' }>;
+  packedReceipt?: { etag: string; size: number; sha256: string };
+  writeOwner?: string;
+}
+/** The physical container receives only the currently accepted admission. */
+export interface PreparedAlphaAdmission { admission: VideoPresentationAdmission | null; token: string | null; snapshot: VideoPresentationIngestSnapshot }
 const RECORD_KEY = 'video-presentation-v1';
 
 /** Durable gate shared by the production container and a storage-only test object. */
@@ -55,6 +67,7 @@ export class VideoPresentationStore {
         if (status === 'accepted' || status === 'running' || input.repair !== true) return current.snapshot;
         if (current.snapshot.presentation?.state === 'alpha_ready' && await this.manifest(current.admission, current.snapshot.presentation) !== null) return current.snapshot;
       }
+      if (current !== undefined) await this.storage.put(`${RECORD_KEY}:${current.admission.jobId}`, current);
       const original = input.original;
       const presentation: VideoPresentation | null = original === null ? null : {
         schemaVersion: 1, sourceFingerprint: input.sourceFingerprint, original,
@@ -64,11 +77,153 @@ export class VideoPresentationStore {
         jobId: input.jobId, deadlineAt: input.deadlineAt, status: 'accepted', usage: null,
       } };
       const head = await this.bucket.head(videoPresentationKeyFor(input.storageKey));
-      const record: PresentationRecord = { admission: input, snapshot, descriptorETag: head?.etag ?? null };
+      const record: PresentationRecord = { admission: input, snapshot, descriptorETag: head?.etag ?? null, token: crypto.randomUUID() };
       await this.storage.put(RECORD_KEY, record);
       if (presentation !== null) await this.writeDescriptor(record, presentation);
       return snapshot;
     });
+  }
+
+  /**
+   * Claim the fixed active attempt before any container IO starts.
+   * @param identity - Originally accepted source and deadline.
+   * @returns Current admission or a replayed terminal result without another run.
+   * @throws {Error} When durable state cannot be read or updated.
+   */
+  async prepare(identity: AcceptedVideoPresentationAttempt): Promise<PreparedAlphaAdmission> {
+    return this.gate(async () => {
+      const current = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      const record = current?.admission.jobId === identity.jobId ? current : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${identity.jobId}`);
+      if (record === undefined || record.admission.sourceFingerprint !== identity.sourceFingerprint || record.admission.deadlineAt !== identity.deadlineAt) return { admission: null, token: null, snapshot: { presentation: null, attempt: null } };
+      const attempt = record.snapshot.attempt;
+      if (current?.admission.jobId !== identity.jobId || attempt === null || attempt.status === 'completed' || attempt.status === 'failed') return { admission: null, token: null, snapshot: record.snapshot };
+      attempt.status = 'running';
+      await this.persist(record);
+      return { admission: record.admission, token: record.token, snapshot: record.snapshot };
+    });
+  }
+
+  /**
+   * Retain trusted probe facts and actual usage under their original admission.
+   * @param fact - Container report carrying its private accepted capability.
+   * @returns Whether the still-owned report was accepted.
+   * @throws {Error} When persistence or descriptor publication fails.
+   */
+  async report(fact: AlphaPresentationReport): Promise<boolean> {
+    let proposed: VideoPresentation | null = null;
+    const accepted = await this.gate(async () => {
+      const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      const record = active?.admission.jobId === fact.jobId ? active : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${fact.jobId}`);
+      if (record === undefined || record.token !== fact.token || record.admission.sourceFingerprint !== fact.sourceFingerprint || record.admission.deadlineAt !== fact.deadlineAt) return false;
+      const isActive = active?.admission.jobId === fact.jobId;
+      if (fact.kind !== 'finished' && !isActive) return false;
+      if (fact.kind === 'probe') {
+        if (record.snapshot.presentation?.state === 'native' || record.snapshot.presentation?.state === 'alpha_ready') return true;
+        const original = record.admission.original;
+        if (original !== null && (original.width !== fact.original.width || original.height !== fact.original.height || original.duration !== fact.original.duration)) {
+          proposed = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original, state: 'failed',
+            attempt: { jobId: fact.jobId, deadlineAt: fact.deadlineAt }, error: 'metadata_mismatch' };
+        } else {
+          record.admission.original = fact.original;
+          record.evidence = fact.evidence;
+          const base: VideoPresentation = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original: fact.original,
+            state: 'classifying', attempt: { jobId: fact.jobId, deadlineAt: fact.deadlineAt } };
+          record.snapshot.presentation = base;
+          proposed = { ...base, state: fact.classification === 'confirmed_alpha' ? 'alpha_pending' : 'native' };
+        }
+      } else if (fact.kind === 'encoded') {
+        if (record.snapshot.presentation?.state !== 'alpha_pending' || record.evidence === undefined) return false;
+        const manifest = alphaManifestSchema.safeParse({ schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint,
+          packedURL: record.admission.packedURL, packedWidth: fact.packedWidth, packedHeight: fact.packedHeight, colorRect: fact.colorRect, alphaRect: fact.alphaRect });
+        if (!manifest.success || !alphaManifestMatchesPresentation(manifest.data, record.snapshot.presentation)) return false;
+        record.encoded = fact;
+      } else {
+        const attempt = record.snapshot.attempt;
+        if (attempt === null) return false;
+        if (attempt.usage !== null && (attempt.usage.wallMs !== fact.usage.wallMs || attempt.usage.cpuUsec !== fact.usage.cpuUsec)) return false;
+        attempt.usage = fact.usage;
+        if (record.admission.pricing !== undefined && record.admission.actorUserId !== undefined) {
+          record.snapshot.usageFact = { jobId: fact.jobId, actorUserId: record.admission.actorUserId, projectId: record.admission.projectId ?? null,
+            usage: fact.usage, pricing: record.admission.pricing };
+        }
+        if (fact.error !== undefined && record.snapshot.presentation?.state !== 'native' && record.snapshot.presentation?.state !== 'alpha_ready') {
+          attempt.status = 'failed'; attempt.error = fact.error;
+          if (record.snapshot.presentation !== null) proposed = { ...record.snapshot.presentation, state: 'failed', error: fact.error };
+        }
+      }
+      await this.persist(record);
+      return true;
+    });
+    if (accepted && proposed !== null) {
+      const snapshot = await this.advance(fact, proposed);
+      return snapshot.attempt?.jobId === fact.jobId && snapshot.presentation?.state !== 'failed';
+    }
+    return accepted;
+  }
+
+  /**
+   * Mark a failed execution without inventing missing original metadata.
+   * @param identity - Accepted source and original deadline.
+   * @param error - Stable failure code.
+   * @returns Current source facts, ignoring superseded attempts.
+   * @throws {Error} When persistence fails.
+   */
+  async fail(identity: AcceptedVideoPresentationAttempt, error: string): Promise<VideoPresentationIngestSnapshot> {
+    let proposed: VideoPresentation | null = null;
+    const snapshot = await this.gate(async () => {
+      const record = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      if (record === undefined) return { presentation: null, attempt: null };
+      if (record.admission.jobId !== identity.jobId || record.admission.sourceFingerprint !== identity.sourceFingerprint || record.admission.deadlineAt !== identity.deadlineAt) return record.snapshot;
+      if (record.snapshot.presentation?.state === 'native' || record.snapshot.presentation?.state === 'alpha_ready') return record.snapshot;
+      if (record.snapshot.attempt !== null) { record.snapshot.attempt.status = 'failed'; record.snapshot.attempt.error = error; }
+      if (record.snapshot.presentation !== null) proposed = { ...record.snapshot.presentation, state: 'failed', error };
+      await this.persist(record);
+      return record.snapshot;
+    });
+    return proposed === null ? snapshot : this.advance(identity, proposed);
+  }
+
+  /**
+   * Acknowledge the existing usage fact only after its unique SQL record commits.
+   * @param identity - Actual measured attempt.
+   * @returns Its unchanged source facts with an independent usage acknowledgement.
+   * @throws {Error} When durable acknowledgement fails.
+   */
+  async acknowledgeUsage(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+    return this.gate(async () => {
+      const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      const record = active?.admission.jobId === identity.jobId ? active : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${identity.jobId}`);
+      if (record === undefined || record.admission.sourceFingerprint !== identity.sourceFingerprint || record.admission.deadlineAt !== identity.deadlineAt) return { presentation: null, attempt: null };
+      if (record.snapshot.attempt !== null && record.snapshot.usageFact !== undefined) record.snapshot.attempt.usageRecorded = true;
+      await this.persist(record);
+      return record.snapshot;
+    });
+  }
+
+  /**
+   * Read one original attempt's receipt without exposing it as the current source.
+   * @param identity - The original source and accepted work.
+   * @returns Its own durable facts, including late measured usage.
+   * @throws {Error} When storage cannot be read.
+   */
+  async snapshotFor(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+    return this.gate(async () => {
+      const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
+      const record = active?.admission.jobId === identity.jobId ? active : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${identity.jobId}`);
+      return record?.admission.sourceFingerprint === identity.sourceFingerprint && record.admission.deadlineAt === identity.deadlineAt ? record.snapshot : { presentation: null, attempt: null };
+    });
+  }
+
+  /**
+   * Persist original-attempt receipts without ever restoring a replaced owner.
+   * @param record - One accepted identity's facts.
+   * @returns Nothing after durable persistence.
+   * @throws {Error} When storage fails.
+   */
+  private async persist(record: PresentationRecord): Promise<void> {
+    await this.storage.put(`${RECORD_KEY}:${record.admission.jobId}`, record);
+    const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
+    if (active?.admission.jobId === record.admission.jobId && active.admission.sourceFingerprint === record.admission.sourceFingerprint && active.admission.deadlineAt === record.admission.deadlineAt) await this.storage.put(RECORD_KEY, record);
   }
 
   /**

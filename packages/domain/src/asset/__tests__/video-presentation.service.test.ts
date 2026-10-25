@@ -4,12 +4,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudioAssetEntity } from '@breatic/shared';
 import type * as coreModule from '@breatic/core';
-import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation } from '../video-presentation.service.js';
+import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation } from '../video-presentation.service.js';
 
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
 }));
-const { videoPresentationAtIngest, queueAdd } = vi.hoisted(() => ({ videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn() }));
+const { videoPresentationAtIngest, queueAdd, fillMediaNumbers, createUsageRecorder, recordServiceCall, settle } = vi.hoisted(() => ({
+  videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn(), fillMediaNumbers: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(),
+}));
 vi.mock('@breatic/core', async (original) => {
   const actual = await original<typeof coreModule>();
   return {
@@ -23,7 +25,8 @@ vi.mock('@breatic/core', async (original) => {
 };
 });
 vi.mock('@breatic/shared', async (original) => ({ ...await original<Record<string, unknown>>(), videoPresentationAtIngest }));
-vi.mock('@domain/asset/asset.repo.js', () => ({ findLiveByStorageKey, findById }));
+vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, fillMediaNumbers }));
+vi.mock('@domain/credit/usage-recorder.js', async (original) => ({ ...await original<Record<string, unknown>>(), createUsageRecorder }));
 
 const canonicalURL = 'https://assets.example.test/video/canonical.webm';
 const input = { projectId: '49646d44-2e1a-4184-b8bd-57cef3b9b47c', userId: '6061c056-f758-47c1-9527-8495ecba60e3', canonicalURL };
@@ -43,6 +46,54 @@ beforeEach(() => {
   findById.mockResolvedValue(asset);
   videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: null });
   queueAdd.mockResolvedValue(undefined);
+  createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
+  settle.mockResolvedValue(0);
+});
+
+describe('platform presentation queue consumption (inner#1306 §6.20)', () => {
+  const job = { assetId: asset.id, sourceFingerprint: asset.contentHash, jobId: 'accepted-native', deadlineAt: 1900000000000 };
+  const presentation = { schemaVersion: 1 as const, sourceFingerprint: asset.contentHash, original: { width: 48, height: 64, duration: 2 },
+    state: 'native' as const, attempt: { jobId: job.jobId, deadlineAt: job.deadlineAt } };
+  const attempt = { jobId: job.jobId, deadlineAt: job.deadlineAt, status: 'completed' as const, usage: { wallMs: 1000, cpuUsec: 10000 } };
+
+  it('runs only the fixed accepted identity and fills unknown registry measurements from trusted display geometry', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: { ...attempt, usageRecorded: true } });
+    expect(await runVideoPresentation(job)).toEqual({ status: 'ready', usageRecorded: true, usagePending: false });
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      action: 'run', storageKey: asset.storageKey, sourceFingerprint: asset.contentHash, jobId: job.jobId, deadlineAt: job.deadlineAt,
+    });
+    expect(fillMediaNumbers).toHaveBeenCalledWith(asset.id, { width: 48, height: 64, durationSeconds: 2 });
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+  });
+
+  it('records measured container expense once under the original platform-funded actor before acknowledging it', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt, usageFact: { jobId: job.jobId, actorUserId: input.userId,
+      projectId: null, usage: attempt.usage, pricing: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 },
+        prices: { vcpu_second_usd: 0.00001, memory_gib_second_usd: 0.00001, disk_gb_second_usd: 0.00001 } } } });
+    expect(await runVideoPresentation(job)).toEqual({ status: 'ready', usageRecorded: true, usagePending: false });
+    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: `video-presentation:${job.jobId}`,
+      feature: 'mini_tool', actorUserId: input.userId, projectId: null, multiplier: 0 }));
+    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ source: 'container', service: 'video-presentation', provider: 'cloudflare', costUsd: expect.any(Number), costSource: 'computed' }));
+    expect(settle.mock.invocationCallOrder[0]).toBeLessThan(videoPresentationAtIngest.mock.invocationCallOrder[1]!);
+    expect(videoPresentationAtIngest).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'ack_usage', jobId: job.jobId, deadlineAt: job.deadlineAt }));
+  });
+
+  it('retains ready content while an unreceived expense fact requires queue recovery', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: { ...attempt, usage: null } });
+    expect(await runVideoPresentation(job)).toEqual({ status: 'ready', usageRecorded: false, usagePending: true });
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+  });
+
+  it('expires an elapsed original deadline instead of starting fresh compute', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { ...attempt, deadlineAt: 1, status: 'failed', error: 'expired' } });
+    await runVideoPresentation({ ...job, deadlineAt: 1 });
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'expire', deadlineAt: 1 }));
+  });
+
+  it('does not execute a stale source hash', async () => {
+    expect(await runVideoPresentation({ ...job, sourceFingerprint: 'b'.repeat(64) })).toEqual({ status: 'stale', usageRecorded: false, usagePending: false });
+    expect(videoPresentationAtIngest).not.toHaveBeenCalled();
+  });
 });
 
 describe('registered presentation source authorization (inner#1306 §6.20)', () => {

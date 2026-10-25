@@ -2,41 +2,22 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from 'zod';
-
-/** Owned pixel rectangle, independent of renderer configuration. */
-export interface VideoPresentationRect { x: number; y: number; width: number; height: number }
-/** Owned canonical classification and presentation readiness. */
-export interface VideoPresentation {
-  schemaVersion: 1;
-  sourceFingerprint: string;
-  original: { width: number; height: number; duration: number };
-  state: 'classifying' | 'native' | 'alpha_pending' | 'alpha_ready' | 'failed';
-  alpha?: { manifestURL: string };
-  attempt?: { jobId: string; deadlineAt: number };
-  error?: string;
-}
-/** Geometry and URL of one verified packed-alpha derivative. */
-export interface AlphaManifest {
-  schemaVersion: 1;
-  sourceFingerprint: string;
-  packedURL: string;
-  packedWidth: number;
-  packedHeight: number;
-  colorRect: VideoPresentationRect;
-  alphaRect: VideoPresentationRect;
-}
+import type { AlphaManifest, VideoPresentation } from '@shared/upload/video-presentation-types.js';
+export type { AlphaManifest, VideoPresentation, VideoPresentationRect } from '@shared/upload/video-presentation-types.js';
 
 const pixel = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const coordinate = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const fingerprint = z.string().regex(/^[a-f0-9]{64}$/);
 const httpsURL = z.url().refine((value) => value.startsWith('https://'), 'Expected HTTPS storage URL');
 const rect = z.strictObject({ x: coordinate, y: coordinate, width: pixel, height: pixel });
+/** Complete trusted canonical display geometry and format duration. */
+export const videoPresentationOriginalSchema = z.strictObject({ width: pixel, height: pixel, duration: z.number().finite().positive() });
 
 /** The owned classification record, never a renderer configuration. */
 export const videoPresentationSchema: z.ZodType<VideoPresentation> = z.strictObject({
   schemaVersion: z.literal(1),
   sourceFingerprint: fingerprint,
-  original: z.strictObject({ width: pixel, height: pixel, duration: z.number().finite().positive() }),
+  original: videoPresentationOriginalSchema,
   state: z.enum(['classifying', 'native', 'alpha_pending', 'alpha_ready', 'failed']),
   alpha: z.strictObject({ manifestURL: httpsURL }).optional(),
   attempt: z.strictObject({ jobId: z.string().min(1), deadlineAt: pixel }).optional(),

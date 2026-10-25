@@ -4,20 +4,11 @@
 import type { VideoPresentation, AlphaManifest } from '@shared/upload/video-presentation.js';
 import type { ContainerUsage } from '@shared/upload/mini-tool-job.js';
 import { z } from 'zod';
-import { alphaManifestSchema, videoPresentationSchema } from '@shared/upload/video-presentation.js';
+import { alphaManifestSchema, videoPresentationOriginalSchema, videoPresentationSchema } from '@shared/upload/video-presentation.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
 import { untilDeadline } from '@shared/http/deadline.js';
-
-/** Frozen operational and subprocess ceilings for one auxiliary attempt. */
-export interface VideoPresentationProcessLimits {
-  maxSourceBytes: number;
-  maxPackedBytes: number;
-  crf: number;
-  preset: string;
-  probeStdoutBytes: number;
-  analysisStdoutBytes: number;
-  stderrTailBytes: number;
-}
+import type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
+export type { VideoPresentationProcessLimits } from '@shared/upload/video-presentation-types.js';
 /** Actual configured instance size and rates captured before compute starts. */
 export interface VideoPresentationPricing {
   containerClass: string;
@@ -51,7 +42,7 @@ export interface VideoPresentationIngestSnapshot {
 }
 /** Plain internal calls; only ingest owns storage and container execution. */
 export type VideoPresentationIngestRequest = {
-  action: 'read' | 'accept' | 'run' | 'ack_usage';
+  action: 'read' | 'accept' | 'run' | 'expire' | 'ack_usage';
   storageKey: string;
   sourceFingerprint: string;
   jobId?: string;
@@ -69,10 +60,30 @@ export type VideoPresentationIngestRequest = {
 };
 
 const usage = z.strictObject({ wallMs: z.number().finite().nonnegative(), cpuUsec: z.number().finite().nonnegative().nullable() });
-const pricing: z.ZodType<VideoPresentationPricing> = z.strictObject({
+export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing> = z.strictObject({
   containerClass: z.string().min(1),
   size: z.strictObject({ vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
   prices: z.strictObject({ vcpu_second_usd: z.number().nonnegative(), memory_gib_second_usd: z.number().nonnegative(), disk_gb_second_usd: z.number().nonnegative() }),
+});
+/** Limits are validated at the edge and frozen for the original accepted job. */
+export const videoPresentationProcessLimitsSchema: z.ZodType<VideoPresentationProcessLimits> = z.strictObject({
+  maxSourceBytes: z.number().int().positive(), maxPackedBytes: z.number().int().positive(),
+  crf: z.number().int().min(0).max(51), preset: z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']),
+  probeStdoutBytes: z.number().int().positive(), analysisStdoutBytes: z.number().int().positive(), stderrTailBytes: z.number().int().positive(),
+});
+/** The backend-only operation contract contains no client classification claim. */
+export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIngestRequest> = z.strictObject({
+  action: z.enum(['read', 'accept', 'run', 'expire', 'ack_usage']), storageKey: z.string().min(1).max(500), sourceFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+  jobId: z.string().min(1).max(200).optional(), deadlineAt: z.number().int().positive().optional(),
+  original: videoPresentationOriginalSchema.nullable().optional(),
+  contentType: z.string().min(1).optional(), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
+  limits: videoPresentationProcessLimitsSchema.optional(), pricing: videoPresentationPricingSchema.optional(), actorUserId: z.uuid().optional(),
+  projectId: z.uuid().nullable().optional(), packedURL: z.url().optional(), manifestURL: z.url().optional(),
+}).superRefine((value, ctx) => {
+  if (value.action !== 'read' && (value.jobId === undefined || value.deadlineAt === undefined)) ctx.addIssue({ code: 'custom', message: 'Attempt operations require their fixed identity' });
+  if (value.action === 'accept' && (value.original === undefined || value.contentType === undefined || value.limits === undefined || value.pricing === undefined || value.actorUserId === undefined || value.projectId === undefined || value.packedURL === undefined || value.manifestURL === undefined)) {
+    ctx.addIssue({ code: 'custom', message: 'Admission requires frozen source facts, pricing, attribution and capabilities' });
+  }
 });
 /** Internal response parser is shared by the backend client and ingest writer. */
 export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationIngestSnapshot> = z.strictObject({
@@ -81,7 +92,7 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
     status: z.enum(['accepted', 'running', 'completed', 'failed']), usage: usage.nullable(),
     error: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(), usageRecorded: z.boolean().optional(),
   }).nullable(),
-  usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing }).optional(),
+  usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
 });
 
 /**

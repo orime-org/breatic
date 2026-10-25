@@ -47,9 +47,11 @@ import {
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
   AUDIO_PEAKS_QUEUE,
+  VIDEO_PRESENTATION_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
   type AudioPeaksJob,
+  type VideoPresentationJob,
   type MailJob,
   type MediaReadJob,
   type UploadFinishJob,
@@ -121,6 +123,7 @@ import { settleStalledIngest } from "@worker/handlers/abort-ingest.js";
 import { runUsageLookup } from "@worker/handlers/usage-lookup.js";
 import { runMediaRead } from "@worker/handlers/media-read.js";
 import { runAudioPeaks } from "@worker/handlers/audio-peaks.js";
+import { runVideoPresentation } from '@worker/handlers/video-presentation.js';
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 
@@ -132,6 +135,7 @@ const WORKER_QUEUES: readonly string[] = [
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
   AUDIO_PEAKS_QUEUE,
+  VIDEO_PRESENTATION_QUEUE,
   MAIL_QUEUE,
   ADS_CONVERSION_QUEUE,
 ];
@@ -282,6 +286,10 @@ export function startWorker(): void {
       },
       "audio_peaks_job_failed",
     );
+  });
+  const videoPresentation = createWorker<VideoPresentationJob>(VIDEO_PRESENTATION_QUEUE, job => runVideoPresentation(job));
+  videoPresentation.on('failed', (job, err) => {
+    logger.error({ err, ctx: job?.data, attemptsMade: job?.attemptsMade, attemptsAllowed: job?.opts?.attempts }, 'video_presentation_job_failed');
   });
 
   // Notification mail a request queued instead of waiting on SMTP (#1232).
@@ -467,6 +475,7 @@ export function startWorker(): void {
         () => usageLookup.close(),
         () => mediaRead.close(),
         () => audioPeaks.close(),
+        () => videoPresentation.close(),
         () => mail.close(),
         () => adsConversion.close(),
         () => flushServerAnalytics(),
