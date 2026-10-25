@@ -319,8 +319,8 @@ function buildReadingRun(
  * @param reading - Which reading it was.
  * @param err - The final failure.
  */
-function reportReadingFailure(reading: Reading, err: unknown): void {
-  toast.error(readingFailureSentence(reading, err));
+async function reportReadingFailure(reading: Reading, err: unknown): Promise<void> {
+  toast.error(await readingFailureSentence(reading, err));
 }
 
 /**
@@ -331,10 +331,10 @@ function reportReadingFailure(reading: Reading, err: unknown): void {
  * @param err - The final failure.
  * @returns The sentence, in the reader's language.
  */
-function readingFailureSentence(reading: Reading, err: unknown): string {
+async function readingFailureSentence(reading: Reading, err: unknown): Promise<string> {
   if (err instanceof ApiException && err.fromServer && err.message) return err.message;
   if (err instanceof ApiException && err.status === 413) {
-    const { key, params } = tooLargeMessage();
+    const { key, params } = await tooLargeMessage();
     return t(key, params);
   }
   return t(READINGS[reading].couldNotStart);

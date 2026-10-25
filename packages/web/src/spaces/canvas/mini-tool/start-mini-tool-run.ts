@@ -363,9 +363,9 @@ type Settle = (message?: UploadMarkMessage) => void;
  * @param err - What the send rejected with.
  * @returns The message.
  */
-function refusalOf(err: unknown): UploadMarkMessage {
+async function refusalOf(err: unknown): Promise<UploadMarkMessage> {
   if (err instanceof ApiException && err.fromServer && err.message) return { text: err.message };
-  if (err instanceof ApiException && err.status === 413) return tooLargeMessage();
+  if (err instanceof ApiException && err.status === 413) return await tooLargeMessage();
   return { key: 'canvas.miniTool.panel.couldNotStart' };
 }
 
@@ -398,9 +398,9 @@ export function startMiniToolRun(run: MiniToolRun): Promise<RunOnceOutcome<unkno
       settle?.();
       return undefined;
     },
-    onFailure: (err) => {
+    onFailure: async (err) => {
       if (settle === null) toast.error(t('canvas.miniTool.panel.couldNotStart'));
-      else settle(refusalOf(err));
+      else settle(await refusalOf(err));
     },
   }).then((outcome) => {
     // Let go after the request went out, with no final answer: the nodes stop
