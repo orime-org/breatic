@@ -728,6 +728,30 @@ export {
 // What a stored asset is called, which is the last segment of the address it
 // is stored at — read by both ends that name a file while refusing it.
 export { assetNameFromUrl } from "@shared/media/asset-name.js";
+export {
+  bisectMediaCore,
+  expandMediaDecodeWindow,
+  mapMediaLocalTimeToSource,
+  replaceMediaManifestLeaf,
+  type MediaCoreInterval,
+  type MediaDecodeWindow,
+  type MediaLocalTimeMapping,
+  type MediaManifestLeaf,
+  type MediaManifestLeafReplacement,
+  type MediaManifestSnapshot,
+} from "@shared/media/long-media-interval.js";
+export {
+  MediaInputDescriptorSchema,
+  type MediaInputDescriptor,
+} from "@shared/media/long-media-schema.js";
+export {
+  computeLongMediaJobRequestDigest,
+  LongMediaJobRequestSchema,
+  readLongMediaJobRequest,
+  verifyLongMediaJobRequest,
+  type LongMediaJobPayload,
+  type LongMediaJobRequest,
+} from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.
 export {
