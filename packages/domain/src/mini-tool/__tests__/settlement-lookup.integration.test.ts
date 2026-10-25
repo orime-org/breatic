@@ -607,4 +607,21 @@ describe("durable expense recovery orchestration", () => {
     const after = await snapshot(f); expect(after.fact).toMatchObject({ state: "recorded", costUsd: 0.0325, containerPricing: fact.containerPricing });
     expect(after.task.status).toBe("failed"); expect(after.task.result.manifest).toEqual(MANIFEST);
   });
+
+  it("keeps lookup, usage and the committed zero charge idempotent under generated stale deliveries", async () => {
+    await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 5 }), fc.boolean(), async (repeats, completed) => {
+      const f = await seed();
+      if (completed) await pg`UPDATE tasks SET status='completed' WHERE id=${f.taskId}`;
+      const lookup = vi.fn(async () => ({ state: "known" as const, costUsd: 0, costSource: "generation_lookup" as const, raw: { confirmedZero: true } }));
+      await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+      const recorded = await snapshot(f);
+      for (let index = 0; index < repeats; index += 1) await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
+      expect(await snapshot(f)).toEqual(recorded);
+      expect((await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 8 }, lookup)).charge).toMatchObject({ state: "settled", credits: 0 });
+      const settled = await snapshot(f);
+      for (let index = 0; index < repeats; index += 1) await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 8 }, lookup);
+      expect(await snapshot(f)).toEqual(settled); expect(settled.usage).toBe(1); expect(lookup).toHaveBeenCalledTimes(1);
+      expect(settled.task.status).toBe(completed ? "completed" : "failed"); expect(settled.task.result.manifest).toEqual(MANIFEST);
+    }), { numRuns: 6 });
+  });
 });

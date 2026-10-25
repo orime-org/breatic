@@ -4,8 +4,22 @@
 import { describe, expect, it } from "vitest";
 
 import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-tools.js";
+import { workerConcurrencyFor } from "@core/config/worker.js";
 
 describe("getMiniToolsConfig", () => {
+  it("loads and defaults the durable settlement discovery and query settings", () => {
+    const expected = { lease_ms: 60000, retry_ms: 30000, lookup_timeout_ms: 15000, discovery_interval_ms: 30000, discovery_page_size: 100 };
+    const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;
+    expect(configured.settlement).toEqual(expected);
+    const bare = structuredClone(configured); delete bare.settlement;
+    expect((miniToolsConfigSchema.parse(bare) as unknown as Record<string, unknown>).settlement).toEqual(expected);
+    const custom = { lease_ms: 70000, retry_ms: 20000, lookup_timeout_ms: 12000, discovery_interval_ms: 24000, discovery_page_size: 64 };
+    expect((miniToolsConfigSchema.parse({ ...bare, settlement: custom }) as unknown as Record<string, unknown>).settlement).toEqual(custom);
+  });
+
+  it("uses the existing worker concurrency registry for settlement jobs", () => {
+    expect(workerConcurrencyFor("mini-tool-settlement")).toBe(2);
+  });
   it("loads and defaults the complete planned-process byte limits", () => {
     const expected = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
     const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;
