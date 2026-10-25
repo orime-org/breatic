@@ -25,6 +25,7 @@ export type JobObjectWritten = Pick<IngestMeasurements, "sha256" | "sizeBytes" |
  * @param bucket - The real R2 storage binding.
  * @param access - The frozen source/output keys and optional attempt.
  * @param note - Record measurements of a completed authorized write.
+ * @param claim - Atomically claim a planned key before any R2 IO.
  * @returns The authorized object or a definite refusal.
  * @throws {Error} When an authorized storage write or its measurement fails.
  */
@@ -32,7 +33,8 @@ export async function serveJobObjects(
   request: Request,
   bucket: R2Bucket,
   access: JobObjectAccess,
-  note: (key: string, written: JobObjectWritten, attemptId?: string) => Promise<void> | void,
+  note: (key: string, written: JobObjectWritten, attemptId?: string, claimToken?: string) => Promise<void> | void,
+  claim?: (key: string, attemptId: string) => Promise<string | null>,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (url.hostname !== MEDIA_OBJECT_HOST || (access.attemptId !== undefined && url.searchParams.get("attempt") !== access.attemptId)) {
@@ -46,6 +48,12 @@ export async function serveJobObjects(
   if (request.method !== "PUT" || request.body === null) return new Response("Not allowed", { status: 405 });
   const contentType = access.writes[key];
   if (contentType === undefined || access.reads.includes(key)) return new Response("Not this object", { status: 403 });
+  let claimToken: string | undefined;
+  if (access.attemptId !== undefined) {
+    const claimed = await claim?.(key, access.attemptId);
+    if (claimed === null || claimed === undefined) return new Response("Output already claimed or attempt is inactive", { status: 409 });
+    claimToken = claimed;
+  }
   const stored = await writeStreamedObject(bucket, key, request.body, {
     contentType, partSize: PART_SIZE, maxBytes: PART_SIZE * MAX_PARTS,
   });
@@ -53,6 +61,6 @@ export async function serveJobObjects(
   await note(key, {
     sha256: await hashStoredObject(bucket, key), sizeBytes: stored.sizeBytes,
     contentType: await sniffStoredObject(bucket, key),
-  }, access.attemptId);
+  }, access.attemptId, claimToken);
   return new Response(null, { status: 200 });
 }

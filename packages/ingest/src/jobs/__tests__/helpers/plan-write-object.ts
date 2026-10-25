@@ -29,7 +29,7 @@ export class PlanWriteTestObject extends DurableObject {
    * @param key - The declared output key.
    * @param attemptId - The claimed attempt.
    * @returns Its writer token or refusal.
-   * @throws {Error} Until the production claim is implemented.
+   * @throws {Error} When the production claim transaction fails.
    */
   async claimOutputWrite(key: string, attemptId: string): Promise<string | null> {
     return claimJobWrite(this.ctx.storage, key, attemptId);

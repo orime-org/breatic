@@ -243,10 +243,11 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
    * @param key - Its storage key.
    * @param written - What the edge measured.
    * @param attemptId - The immutable planned attempt that issued the write.
+   * @param claimToken - The durable pre-write owner of the output.
    * @returns Nothing.
    */
-  async noteWritten(key: string, written: Written, attemptId?: string): Promise<void> {
-    await recordJobWrite(this.ctx.storage, key, written, attemptId);
+  async noteWritten(key: string, written: Written, attemptId?: string, claimToken?: string): Promise<void> {
+    await recordJobWrite(this.ctx.storage, key, written, attemptId, claimToken);
   }
 
   /**
@@ -254,7 +255,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
    * @param key - The declared output key.
    * @param attemptId - The immutable planned attempt.
    * @returns The durable writer token, or null when refused.
-   * @throws {Error} Until the claim contract has passed its real R2 RED.
+   * @throws {Error} When the durable claim transaction fails.
    */
   async claimOutputWrite(key: string, attemptId: string): Promise<string | null> {
     return claimJobWrite(this.ctx.storage, key, attemptId);
@@ -395,7 +396,9 @@ function jobObject(env: MiniToolEnv, ctx: OutboundHandlerContext): DurableObject
  * @returns The object, a refusal, or the write's acknowledgement.
  */
 async function jobObjects(request: Request, env: MiniToolEnv, ctx: OutboundHandlerContext<JobObjectAccess>): Promise<Response> {
-  return serveJobObjects(request, env.BUCKET, ctx.params, (key, written, attemptId) => jobObject(env, ctx).noteWritten(key, written, attemptId));
+  return serveJobObjects(request, env.BUCKET, ctx.params,
+    (key, written, attemptId, token) => jobObject(env, ctx).noteWritten(key, written, attemptId, token),
+    (key, attemptId) => jobObject(env, ctx).claimOutputWrite(key, attemptId));
 }
 
 /**

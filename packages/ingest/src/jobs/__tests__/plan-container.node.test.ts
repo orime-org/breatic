@@ -116,7 +116,9 @@ describe("planned DO state with a mocked container base, not an image", () => {
     const { object, storage } = owner();
     await object.submit(PLAN);
     const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;
-    await object.noteWritten(PLAN.outputs[0]!.storageKey, WRITTEN, attemptId);
+    const token = await object.claimOutputWrite(PLAN.outputs[0]!.storageKey, attemptId);
+    expect(token).toEqual(expect.any(String));
+    await object.noteWritten(PLAN.outputs[0]!.storageKey, WRITTEN, attemptId, token!);
     await object.noteReported({ schemaVersion: 2, attemptId, ok: false, cpuUsec: 123, outputs: [{ outputIndex: 8, storageKey: PLAN.outputs[0]!.storageKey, ...MEDIA }], reason: "tool_failed" });
     const result = await object.report();
     expect(result).toEqual({ schemaVersion: 2, state: "failed", reason: "tool_failed", usage: { wallMs: 0, cpuUsec: 123 }, outputs: [{ outputIndex: 8, storageKey: PLAN.outputs[0]!.storageKey, ...WRITTEN, ...MEDIA, upright: null }] });
@@ -128,9 +130,11 @@ describe("planned DO state with a mocked container base, not an image", () => {
     const { object, storage } = owner();
     await object.submit(PLAN);
     const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;
-    await object.noteWritten(PLAN.outputs[0]!.storageKey, WRITTEN, attemptId);
+    const token = await object.claimOutputWrite(PLAN.outputs[0]!.storageKey, attemptId);
+    expect(token).toEqual(expect.any(String));
+    await object.noteWritten(PLAN.outputs[0]!.storageKey, WRITTEN, attemptId, token!);
     const original = structuredClone(storage.get("job"));
-    await expect(object.noteWritten(PLAN.outputs[0]!.storageKey, { ...WRITTEN, sha256: "b".repeat(64) }, attemptId)).rejects.toThrow();
+    await expect(object.noteWritten(PLAN.outputs[0]!.storageKey, { ...WRITTEN, sha256: "b".repeat(64) }, attemptId, token!)).rejects.toThrow();
     await expect(object.noteWritten(PLAN.outputs[1]!.storageKey, WRITTEN, "old-attempt")).rejects.toThrow();
     expect(storage.get("job")).toEqual(original);
   });

@@ -12,17 +12,18 @@ import { transition } from "@ingest/jobs/transition.js";
  * @param key - The issued object key.
  * @param written - Measurements computed over the stored bytes.
  * @param attemptId - The planned attempt that issued the output.
- * @param _claimToken - The pending pre-write claim contract, not enforced by this RED baseline.
+ * @param claimToken - The immutable pre-write owner of these stored bytes.
  * @returns Nothing after the atomic measurement/state update.
  * @throws {Error} When a planned attempt or byte observation conflicts.
  */
-export async function recordJobWrite(storage: DurableObjectStorage, key: string, written: JobWritten, attemptId?: string, _claimToken?: string): Promise<void> {
+export async function recordJobWrite(storage: DurableObjectStorage, key: string, written: JobWritten, attemptId?: string, claimToken?: string): Promise<void> {
   await storage.transaction(async (transaction) => {
     const record = await transaction.get<StoredMiniToolJob>(JOB_RECORD_KEY);
     if (!record) return;
     if ("schemaVersion" in record.request && record.request.schemaVersion === 2) {
       const access = miniToolPlanAccess(record.request);
       if (attemptId !== record.state.attemptId || access.writes[key] === undefined || access.writes[key] !== written.contentType) throw new Error("Unexpected planned output write or attempt");
+      if (claimToken === undefined || record.writeClaims?.[key] !== claimToken) throw new Error("Output measurement has no matching durable writer claim");
       const existing = record.written[key];
       if (existing !== undefined) {
         if (canonicalMiniToolValue(existing) !== canonicalMiniToolValue(written)) throw new Error("Conflicting immutable output measurements");
@@ -36,12 +37,21 @@ export async function recordJobWrite(storage: DurableObjectStorage, key: string,
 
 /**
  * Claim one planned output before any R2 write is started.
- * @param _storage - The actual Durable Object storage.
- * @param _key - The issued output key.
- * @param _attemptId - The immutable attempt claiming the key.
+ * @param storage - The actual Durable Object storage.
+ * @param key - The issued output key.
+ * @param attemptId - The immutable attempt claiming the key.
  * @returns The durable writer token, or null for a refused claim.
- * @throws {Error} Until the pre-write claim is implemented after its real R2 RED.
+ * @throws {Error} When the durable transaction cannot be completed.
  */
-export async function claimJobWrite(_storage: DurableObjectStorage, _key: string, _attemptId: string): Promise<string | null> {
-  throw new Error("Planned pre-write claims are not implemented");
+export async function claimJobWrite(storage: DurableObjectStorage, key: string, attemptId: string): Promise<string | null> {
+  return storage.transaction(async (transaction) => {
+    const record = await transaction.get<StoredMiniToolJob>(JOB_RECORD_KEY);
+    if (!record || !("schemaVersion" in record.request) || record.request.schemaVersion !== 2) return null;
+    if (record.state.attemptId !== attemptId || record.request.deadlineAt <= Date.now()) return null;
+    if (record.state.phase !== "starting" && record.state.phase !== "running") return null;
+    if (miniToolPlanAccess(record.request).writes[key] === undefined || record.written[key] !== undefined || record.writeClaims?.[key] !== undefined) return null;
+    const token = crypto.randomUUID();
+    await transaction.put(JOB_RECORD_KEY, { ...record, writeClaims: { ...record.writeClaims, [key]: token } });
+    return token;
+  });
 }
