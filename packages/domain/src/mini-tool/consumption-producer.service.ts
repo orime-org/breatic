@@ -109,11 +109,15 @@ export async function completeMiniToolConsumptionSet(taskId: string): Promise<Mi
     if (task.status !== "completed" && task.status !== "failed") {
       throw new Error("Mini-tool computation must end before closing its call set");
     }
-    const next = miniToolSettlementSchema.parse({
-      ...previous, version: previous.version + 1, state: "waiting", consumptionSetComplete: true,
-      pendingConsumptionKeys: await pendingKeys(id, tx), nextAttemptAt: await taskRepo.miniToolSettlementDatabaseNow(id, tx),
-      leaseToken: null, leaseUntil: null, lastError: null,
-    });
+    // A terminal notification adds no identity and cannot revoke an in-flight
+    // lookup. Its existing lease will accept the answer or expire normally.
+    const next = miniToolSettlementSchema.parse(previous.state === "checking"
+      ? { ...previous, consumptionSetComplete: true }
+      : {
+        ...previous, version: previous.version + 1, state: "waiting", consumptionSetComplete: true,
+        pendingConsumptionKeys: await pendingKeys(id, tx), nextAttemptAt: await taskRepo.miniToolSettlementDatabaseNow(id, tx),
+        leaseToken: null, leaseUntil: null, lastError: null,
+      });
     await taskRepo.storeMiniToolSettlement(id, next, tx);
     return next;
   });
