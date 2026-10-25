@@ -493,13 +493,53 @@ export async function ensureProjectReferences(
   displayNames: Readonly<Record<string, string>>,
   tx: DbTx,
 ): Promise<ProjectAssetReferenceEntity[]> {
-  if (assetIds.length === 0) return [];
-  await tx.insert(projectAssetRefs).values(assetIds.map((assetId) => ({
+  return (await ensureProjectReferencesDetailed(projectId, assetIds, displayNames, tx)).references;
+}
+
+/** Canonical relationships and the identities inserted by this SQL statement. */
+export interface ProjectReferenceAcceptance {
+  references: ProjectAssetReferenceEntity[];
+  insertedAssetIds: string[];
+}
+
+/**
+ * Ensure a validated batch and distinguish actual inserts from existing rows.
+ * @param projectId - The Project accepting the assets.
+ * @param assetIds - Canonical, unique asset identities in stable order.
+ * @param displayNames - Verified original names for new relationships.
+ * @param tx - The transaction containing validation and association writes.
+ * @returns Live relationships and identities returned by PostgreSQL's insert.
+ * @throws {Error} When the database insert or read fails.
+ */
+export async function ensureProjectReferencesDetailed(
+  projectId: string,
+  assetIds: readonly string[],
+  displayNames: Readonly<Record<string, string>>,
+  tx: DbTx,
+): Promise<ProjectReferenceAcceptance> {
+  if (assetIds.length === 0) return { references: [], insertedAssetIds: [] };
+  const inserted = await tx.insert(projectAssetRefs).values(assetIds.map((assetId) => ({
     projectId, assetId, displayName: displayNames[assetId] || null,
   }))).onConflictDoNothing({
     target: [projectAssetRefs.projectId, projectAssetRefs.assetId],
     where: sql`deleted_at IS NULL`,
-  });
+  }).returning({ assetId: projectAssetRefs.assetId });
+  return {
+    references: await findLiveProjectReferences(projectId, assetIds, tx),
+    insertedAssetIds: inserted.map((row) => row.assetId).sort(),
+  };
+}
+
+/**
+ * Read existing live relationships for a bounded canonical asset batch.
+ * @param projectId - The Project whose relationships are inspected.
+ * @param assetIds - The resolved identities belonging to this Project's Studio.
+ * @param tx - The transaction providing the inspection snapshot.
+ * @returns Only this batch's live relationships in asset-id order.
+ * @throws {Error} When the database read fails.
+ */
+export async function findLiveProjectReferences(projectId: string, assetIds: readonly string[], tx: DbTx): Promise<ProjectAssetReferenceEntity[]> {
+  if (assetIds.length === 0) return [];
   const rows = await tx.select().from(projectAssetRefs)
     .where(and(eq(projectAssetRefs.projectId, projectId), inArray(projectAssetRefs.assetId, [...assetIds]), isNull(projectAssetRefs.deletedAt)))
     .orderBy(projectAssetRefs.assetId);

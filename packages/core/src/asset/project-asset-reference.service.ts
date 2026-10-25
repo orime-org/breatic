@@ -35,6 +35,44 @@ export interface RegisteredProjectMediaResolution {
   unavailable: { kind: "assetId" | "url"; reference: string; reason: "external" | "unregistered" | "foreign_studio" }[];
 }
 
+/** A read-only classification and the batch's existing Project relationships. */
+export interface RegisteredProjectMediaInspection {
+  resolution: RegisteredProjectMediaResolution;
+  references: ProjectAssetReferenceEntity[];
+}
+
+/** Actual relationship insertions reported by a committed acceptance attempt. */
+export interface RegisteredProjectMediaAcceptance extends RegisteredProjectMediaInspection {
+  insertedAssetIds: string[];
+}
+
+/**
+ * Inspect registered identities and their current Project relationships.
+ * @param input - The Project and its explicitly identified media.
+ * @param tx - An enclosing read transaction, when supplied.
+ * @returns Read-only classifications and existing relationships.
+ * @throws {Error} When the live scope or database read is unavailable.
+ */
+export async function inspectRegisteredProjectMedia(input: ReferenceRegisteredProjectMediaInput, tx?: DbTx): Promise<RegisteredProjectMediaInspection> {
+  const references = await normalizeMediaReferences(input);
+  if (tx !== undefined) return inspectMediaInTransaction(input.projectId, references, tx);
+  return db.transaction((transaction) => inspectMediaInTransaction(input.projectId, references, transaction));
+}
+
+/**
+ * Accept registered identities and return the actual inserted relationships.
+ * @param input - The accepting Project, media identities and verified names.
+ * @param tx - An enclosing business transaction, when supplied.
+ * @returns Canonical classifications and the actual insertion identities.
+ * @throws {Error} When the owning scope or association transaction fails.
+ */
+export async function referenceRegisteredProjectMediaDetailed(input: ReferenceRegisteredProjectMediaInput & { displayNames?: Readonly<Record<string, string>> }, tx?: DbTx): Promise<RegisteredProjectMediaAcceptance> {
+  const references = await normalizeMediaReferences(input);
+  const displayNames = Object.fromEntries(Object.entries(input.displayNames ?? {}).map(([id, name]) => [id.toLowerCase(), name]));
+  if (tx !== undefined) return acceptMediaInTransaction(input.projectId, references, displayNames, tx);
+  return db.transaction((transaction) => acceptMediaInTransaction(input.projectId, references, displayNames, transaction));
+}
+
 /** A declared identity whose storage classification needs no database access. */
 type MediaReference = { kind: "assetId"; reference: string } | { kind: "url"; reference: string; storageKey: string | null };
 
@@ -48,27 +86,67 @@ const assetIdentitySchema = z.uuid();
  * @throws {Error} When the owning scope or valid-reference acceptance fails.
  */
 export async function referenceRegisteredProjectMedia(input: ReferenceRegisteredProjectMediaInput, tx?: DbTx): Promise<RegisteredProjectMediaResolution> {
+  return (await referenceRegisteredProjectMediaDetailed(input, tx)).resolution;
+}
+
+/**
+ * Capture stable semantic identities and resolve storage URL keys before SQL.
+ * @param input - The explicitly identified media accepted by the caller.
+ * @returns Deduplicated references in the existing kind and identity order.
+ * @throws {Error} When storage configuration cannot be read.
+ */
+async function normalizeMediaReferences(input: ReferenceRegisteredProjectMediaInput): Promise<MediaReference[]> {
   const assetIds = [...new Set((input.assetIds ?? []).map((id) => id.toLowerCase()))].sort();
   const urls = [...new Set(input.urls ?? [])].sort();
   const adapter = urls.length === 0 ? undefined : await getStorageAdapter();
-  const references: MediaReference[] = [
+  return [
     ...assetIds.map((reference): MediaReference => ({ kind: "assetId", reference })),
     ...urls.map((reference): MediaReference => ({ kind: "url", reference, storageKey: adapter?.keyFromUrl(reference) ?? null })),
   ];
-  if (tx !== undefined) return acceptMediaInTransaction(input.projectId, references, tx);
-  return db.transaction((transaction) => acceptMediaInTransaction(input.projectId, references, transaction));
 }
 
 /**
  * Classify one captured reference set and accept its valid canonical identities.
  * @param projectId - The Project accepting these semantic references.
  * @param references - Stable input identities and precomputed storage keys.
+ * @param displayNames - Verified original names for newly accepted identities.
  * @param tx - The actual association transaction.
  * @returns Resolved rows only after their associations have been accepted.
  * @throws {NotFoundError} When the Project's live owning scope is absent.
  * @throws {Error} When reading or accepting valid references fails.
  */
-async function acceptMediaInTransaction(projectId: string, references: readonly MediaReference[], tx: DbTx): Promise<RegisteredProjectMediaResolution> {
+async function acceptMediaInTransaction(projectId: string, references: readonly MediaReference[], displayNames: Readonly<Record<string, string>>, tx: DbTx): Promise<RegisteredProjectMediaAcceptance> {
+  const resolution = await classifyMediaInTransaction(projectId, references, tx);
+  const accepted = [...new Set(resolution.resolved.map((item) => item.asset.id))].sort();
+  const result = await recordDetailedInTransaction(projectId, accepted, displayNames, tx);
+  return { resolution, ...result };
+}
+
+/**
+ * Inspect one captured reference set without accepting or changing any identity.
+ * @param projectId - The Project whose existing relationships are inspected.
+ * @param references - Stable semantic identities and precomputed storage keys.
+ * @param tx - The transaction providing the inspection snapshot.
+ * @returns Canonical classifications and this batch's existing relationships.
+ * @throws {NotFoundError} When the live owning scope is absent.
+ * @throws {Error} When reading registered identities or relationships fails.
+ */
+async function inspectMediaInTransaction(projectId: string, references: readonly MediaReference[], tx: DbTx): Promise<RegisteredProjectMediaInspection> {
+  const resolution = await classifyMediaInTransaction(projectId, references, tx);
+  const assetIds = [...new Set(resolution.resolved.map((item) => item.asset.id))].sort();
+  return { resolution, references: await assetRepo.findLiveProjectReferences(projectId, assetIds, tx) };
+}
+
+/**
+ * Classify explicit media using the live Project and registered storage ledger.
+ * @param projectId - The Project identifying the owning Studio.
+ * @param references - Captured identities in stable order.
+ * @param tx - The actual transaction used for these database reads.
+ * @returns Canonical assets and the existing unavailable classifications.
+ * @throws {NotFoundError} When the live owning scope is absent.
+ * @throws {Error} When reading the owning scope or asset ledger fails.
+ */
+async function classifyMediaInTransaction(projectId: string, references: readonly MediaReference[], tx: DbTx): Promise<RegisteredProjectMediaResolution> {
   const studioId = await findLiveOwnerStudioId(projectId, tx);
   if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
   const ids = references.filter((item) => item.kind === "assetId" && assetIdentitySchema.safeParse(item.reference).success).map((item) => item.reference);
@@ -88,8 +166,6 @@ async function acceptMediaInTransaction(projectId: string, references: readonly 
     else if (asset.studioId !== studioId) result.unavailable.push({ ...identity, reason: "foreign_studio" });
     else result.resolved.push({ ...identity, asset });
   }
-  const accepted = [...new Set(result.resolved.map((item) => item.asset.id))].sort();
-  await recordInTransaction(projectId, accepted, {}, tx);
   return result;
 }
 
@@ -137,11 +213,25 @@ export async function recordProjectAssetReferences(input: RecordProjectAssetRefe
  * @throws {Error} When a database query fails.
  */
 async function recordInTransaction(projectId: string, assetIds: readonly string[], displayNames: Readonly<Record<string, string>>, tx: DbTx): Promise<ProjectAssetReferenceEntity[]> {
+  return (await recordDetailedInTransaction(projectId, assetIds, displayNames, tx)).references;
+}
+
+/**
+ * Validate every canonical candidate and report actual association inserts.
+ * @param projectId - The accepting Project.
+ * @param assetIds - Unique registered identities in stable order.
+ * @param displayNames - Optional verified names keyed by canonical identity.
+ * @param tx - The caller's actual business transaction.
+ * @returns The live relationships and identities inserted by this attempt.
+ * @throws {NotFoundError} When any candidate falls outside the live owning scope.
+ * @throws {Error} When a database query fails.
+ */
+async function recordDetailedInTransaction(projectId: string, assetIds: readonly string[], displayNames: Readonly<Record<string, string>>, tx: DbTx): Promise<assetRepo.ProjectReferenceAcceptance> {
   const studioId = await findLiveOwnerStudioId(projectId, tx);
   if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
   const assets = await assetRepo.findLiveManyInStudio(studioId, assetIds, tx);
   if (assets.length !== assetIds.length) throw new NotFoundError(t("server.error.not_found"));
-  return assetRepo.ensureProjectReferences(projectId, assetIds, displayNames, tx);
+  return assetRepo.ensureProjectReferencesDetailed(projectId, assetIds, displayNames, tx);
 }
 
 /**
