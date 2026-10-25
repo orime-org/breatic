@@ -9,6 +9,8 @@ import {
 } from "@breatic/core";
 import type { UnderstandOperationEvent, UnderstandOperationStatus } from "@domain/understand/operation-state.js";
 import { reduceUnderstandOperation } from "@domain/understand/operation-state.js";
+import type { UnderstandDispatchEvent, UnderstandDispatchState } from "@domain/understand/dispatch-state.js";
+import { reduceUnderstandDispatch } from "@domain/understand/dispatch-state.js";
 
 /** Immutable identity and execution inputs for opening one long-media operation. */
 export interface OpenUnderstandOperationInput {
@@ -140,6 +142,59 @@ export async function applyUnderstandOperationEvent(
       ))
       .returning();
     if (!updated[0]) throw new Error("The media-understanding operation revision changed before the event committed.");
+    return updated[0];
+  });
+}
+
+/**
+ * Apply one durable queue-delivery event under the operation row lock.
+ * @param id - Operation UUID.
+ * @param event - The outbox event and expected operation revision.
+ * @returns The operation with the persisted outbox state.
+ * @throws {Error} when the operation is missing or the event loses revision arbitration.
+ */
+export async function applyUnderstandDispatchEvent(
+  id: string,
+  event: UnderstandDispatchEvent,
+): Promise<OperationRow> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(mediaUnderstandingOperations)
+      .where(and(eq(mediaUnderstandingOperations.id, id), isNull(mediaUnderstandingOperations.deletedAt)))
+      .for("update")
+      .limit(1);
+    const current = rows[0];
+    if (!current) throw new Error("The media-understanding operation does not exist.");
+
+    const clockRows = await tx.execute(sql`SELECT clock_timestamp() AS now`);
+    if (!clockRows[0]) throw new Error("The database clock could not be read.");
+    const now = new Date(String(clockRows[0].now));
+    const state: UnderstandDispatchState = {
+      status: current.dispatchState as UnderstandDispatchState["status"],
+      sequence: current.dispatchSequence,
+      revision: current.revision,
+      dueAtMs: current.dispatchDueAt.getTime(),
+    };
+    const reducedEvent = event.type === "dispatch" ? { ...event, atMs: now.getTime() } : event;
+    const next = reduceUnderstandDispatch(state, reducedEvent);
+    if (next.revision === current.revision) return current;
+
+    const updated = await tx
+      .update(mediaUnderstandingOperations)
+      .set({
+        dispatchState: next.status,
+        dispatchSequence: next.sequence,
+        dispatchDueAt: new Date(next.dueAtMs),
+        revision: next.revision,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(mediaUnderstandingOperations.id, id),
+        eq(mediaUnderstandingOperations.revision, event.expectedRevision),
+      ))
+      .returning();
+    if (!updated[0]) throw new Error("The operation revision changed before its dispatch event committed.");
     return updated[0];
   });
 }

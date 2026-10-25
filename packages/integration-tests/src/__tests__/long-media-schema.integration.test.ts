@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db, initCore, users } from "@breatic/core";
 import {
+  applyUnderstandDispatchEvent,
   applyUnderstandOperationEvent,
   getUnderstandOperation,
   openUnderstandOperation,
@@ -127,5 +128,56 @@ describe("long-media persistence migration", () => {
     });
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.revision).toBe(3);
+  });
+
+  it("persists outbox delivery and advances the wake only after a claimed step ends", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-dispatch-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const opened = await openUnderstandOperation({
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn",
+      originKey: `turn:${randomUUID()}`,
+      requestDigest: "sha256:dispatch-request",
+      sources: [{ sourceIndex: 0, assetId: randomUUID() }],
+      question: "Describe the recording.",
+      mode: "understand",
+      locale: "en",
+      model: "test-model",
+      promptVersion: "test-v1",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+      recoveryGroupId: randomUUID(),
+      logicalRequestId: randomUUID(),
+      userActionId: randomUUID(),
+    });
+
+    const sent = await applyUnderstandDispatchEvent(opened.id, {
+      type: "dispatch",
+      expectedRevision: 1,
+      operationId: opened.id,
+      atMs: Date.now() + 1_000,
+    });
+    expect(sent).toMatchObject({ dispatchState: "sent", dispatchSequence: 1, revision: 2 });
+
+    const claimed = await applyUnderstandDispatchEvent(opened.id, {
+      type: "claim",
+      expectedRevision: 2,
+      wakeSequence: 1,
+    });
+    expect(claimed).toMatchObject({ dispatchState: "claimed", dispatchSequence: 1, revision: 3 });
+
+    const nextDueAt = Date.now() + 10_000;
+    const nextWake = await applyUnderstandDispatchEvent(opened.id, {
+      type: "step-ended",
+      expectedRevision: 3,
+      nextDueAtMs: nextDueAt,
+    });
+    expect(nextWake).toMatchObject({
+      dispatchState: "pending",
+      dispatchSequence: 2,
+      dispatchDueAt: new Date(nextDueAt),
+      revision: 4,
+    });
   });
 });
