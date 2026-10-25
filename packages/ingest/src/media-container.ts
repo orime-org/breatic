@@ -29,9 +29,10 @@ import { askedKey } from "@ingest/object-url.js";
 import { objectUrlOn } from '@ingest/object-url.js';
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from '@ingest/media-object-route.js';
 import { alphaPackedKeyFor, videoPresentationOriginalSchema, type VideoPresentationIngestSnapshot } from '@breatic/shared';
-import { VideoPresentationStore, type VideoPresentationAdmission } from '@ingest/video-presentation-store.js';
+import { VideoPresentationStore, type VideoPresentationAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt } from '@ingest/video-presentation-store.js';
+import { writeAlphaPacked } from '@ingest/video-presentation-packed.js';
 import type { AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
-import { ALPHA_RUN_PATH, ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, ALPHA_PACKED_HOST, type AlphaPresentationReport, type AlphaRunBody } from '@ingest/alpha-run-contract.js';
+import { ALPHA_RUN_PATH, ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, ALPHA_PACKED_HOST, ALPHA_PACKED_HANDLER, type AlphaPresentationReport, type AlphaRunBody } from '@ingest/alpha-run-contract.js';
 import { noteFailure } from '@ingest/error-monitoring.js';
 import { serveOneObject } from "@ingest/media-object-route.js";
 import { writeStreamedObject } from "@ingest/stored-object.js";
@@ -130,6 +131,34 @@ export class MediaContainer extends Container<MediaEnv> {
   reportPresentation(fact: AlphaPresentationReport): Promise<boolean> { return this.presentationStore().report(fact); }
 
   /**
+   * Claim packed bytes before the outbound handler can write R2.
+   * @param identity - Originally accepted private capability.
+   * @param byteLength - Complete length enforced by the actual storage stream.
+   * @returns One physical writer or a refusal.
+   * @throws {Error} When durable state cannot be read.
+   */
+  claimPacked(identity: AlphaPackedIdentity, byteLength: number): Promise<AlphaPackedWriteClaim | null> { return this.presentationStore().claimPacked(identity, byteLength); }
+
+  /**
+   * Retain an actual physical receipt before publishing the current manifest.
+   * @param identity - Originally accepted private capability.
+   * @param owner - Durable pre-write owner.
+   * @param receipt - Actual measured stored bytes.
+   * @returns Whether current readiness committed.
+   * @throws {Error} When storage fails.
+   */
+  completePacked(identity: AlphaPackedIdentity, owner: string, receipt: AlphaPackedReceipt): Promise<boolean> { return this.presentationStore().completePacked(identity, owner, receipt); }
+
+  /**
+   * Release only the failed stream's own pre-write claim.
+   * @param identity - Originally accepted private capability.
+   * @param owner - Failed physical writer.
+   * @returns Nothing after exact release.
+   * @throws {Error} When storage fails.
+   */
+  releasePacked(identity: AlphaPackedIdentity, owner: string): Promise<void> { return this.presentationStore().releasePacked(identity, owner); }
+
+  /**
    * Stop an expired attempt without extending its budget.
    * @param identity - Originally accepted work.
    * @returns Current source state.
@@ -182,6 +211,7 @@ export class MediaContainer extends Container<MediaEnv> {
     try {
       await this.setOutboundByHost(MEDIA_OBJECT_HOST, SERVE_OBJECT, { key: admission.storageKey });
       await this.setOutboundByHost(ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, { key: admission.storageKey });
+      await this.setOutboundByHost(ALPHA_PACKED_HOST, ALPHA_PACKED_HANDLER, { key: admission.storageKey });
       const outputURL = new URL(objectUrlOn(ALPHA_PACKED_HOST, alphaPackedKeyFor(admission.storageKey)));
       outputURL.search = new URLSearchParams({ jobId: identity.jobId, sourceFingerprint: identity.sourceFingerprint, deadlineAt: String(identity.deadlineAt), token: prepared.token }).toString();
       const body: AlphaRunBody = { ...identity, token: prepared.token, sourceURL: mediaObjectUrl(admission.storageKey), outputURL: outputURL.toString(),
@@ -228,6 +258,35 @@ export async function reportAlphaPresentation(request: Request, env: MediaEnv, c
   const instance = env.MEDIA.get(env.MEDIA.idFromName(ctx.params.key));
   const accepted = await instance.reportPresentation(value as unknown as AlphaPresentationReport);
   return new Response(null, { status: accepted ? 200 : 409 });
+}
+
+/**
+ * Accept packed bytes only through their canonical owner's durable pre-write claim.
+ * @param request - Container-local complete encoded stream.
+ * @param env - Actual canonical durable owner and R2 bindings.
+ * @param ctx - The exact canonical key authorized for this container.
+ * @returns Physical publication acknowledgement or an explicit refusal.
+ * @throws {never} Infrastructure faults are logged and returned as failed writes.
+ */
+export async function writeAlphaPresentation(request: Request, env: MediaEnv, ctx: OutboundHandlerContext<ServeOneKey>): Promise<Response> {
+  if (request.method !== 'PUT' || askedKey(request) !== alphaPackedKeyFor(ctx.params.key)) return new Response('Not allowed', { status: 403 });
+  const query = new URL(request.url).searchParams;
+  const jobId = query.get('jobId');
+  const sourceFingerprint = query.get('sourceFingerprint');
+  const deadlineAt = Number(query.get('deadlineAt'));
+  const token = query.get('token');
+  const length = request.headers.get('content-length');
+  const byteLength = Number(length);
+  if (jobId === null || jobId.length === 0 || sourceFingerprint === null || !/^[a-f0-9]{64}$/.test(sourceFingerprint) || !Number.isSafeInteger(deadlineAt) || deadlineAt <= 0 ||
+    token === null || token.length === 0 || length === null || !Number.isSafeInteger(byteLength) || byteLength <= 0 || request.body === null) return new Response('Invalid packed write', { status: 400 });
+  try {
+    const owner = env.MEDIA.get(env.MEDIA.idFromName(ctx.params.key));
+    const result = await writeAlphaPacked({ bucket: env.BUCKET, owner, identity: { jobId, sourceFingerprint, deadlineAt, token }, body: request.body, byteLength });
+    return new Response(null, { status: result.status });
+  } catch (err) {
+    noteFailure('ingest_video_presentation_write_failed', { err, storageKey: ctx.params.key, jobId, sourceFingerprint });
+    return new Response('Packed write failed', { status: 502 });
+  }
 }
 
 /**
@@ -300,4 +359,5 @@ MediaContainer.outboundHandlers = {
   [SERVE_OBJECT]: serveObject,
   [WRITE_UPRIGHT]: writeUpright,
   [ALPHA_REPORT_HANDLER]: reportAlphaPresentation,
+  [ALPHA_PACKED_HANDLER]: writeAlphaPresentation,
 };
