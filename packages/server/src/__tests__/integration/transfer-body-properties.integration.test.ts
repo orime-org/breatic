@@ -197,9 +197,11 @@ describe("P07: one transfer, many concurrent references", () => {
             const alreadyUsed = reasons.filter((r) => r === "already_used").length;
             expect(badFormat).toBe(outcome === "badFormat" ? 1 : 0);
             if (outcome !== "badFormat") expect(statuses.filter((s) => s === won)).toHaveLength(1);
-            // Every other answer is a lock refusal or already_used.
+            // Every other reference waits for the lock and then finds the
+            // transfer used: already_used, never a 429.
             const others = statuses.length - 1;
-            expect(statuses.filter((s) => s === 429).length + alreadyUsed).toBe(others);
+            expect(statuses.filter((s) => s === 429)).toEqual([]);
+            expect(alreadyUsed).toBe(others);
             expect(statuses.filter((s) => s === 400)).toHaveLength(alreadyUsed + badFormat);
             expect(await historyCount(sql, w.projectId)).toBe(historyBefore + (outcome === "ok" ? 1 : 0));
             expect(await getRedis().get(refKey(key))).toBe("1");
@@ -212,7 +214,7 @@ describe("P07: one transfer, many concurrent references", () => {
 });
 
 describe("P08: reads are serial per user and parallel across users", () => {
-  it("never has two reads in flight for one user, and every refused key succeeds when sent again", async () => {
+  it("never has two reads in flight for one user, and every reference succeeds without a 429", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 1, max: 5 }),
@@ -248,14 +250,10 @@ describe("P08: reads are serial per user and parallel across users", () => {
 
           expect(peak.get(w.a.id) ?? 0).toBeLessThanOrEqual(1);
           expect(peak.get(w.b.id) ?? 0).toBeLessThanOrEqual(1);
-          // Each key is its sender's own finished transfer, so a first send
-          // either reads it or is turned away by the sender's lock.
-          expect(first.map((r) => r.status).filter((s) => s !== 201 && s !== 429)).toEqual([]);
-          const refused = sends.filter((_, i) => first[i]!.status === 429);
-          for (const s of refused) {
-            const again = await post(app, SNAPSHOT, s.cookie, ref(s.key));
-            expect(again.status).toBe(201);
-          }
+          // Each key is its sender's own finished transfer, and the reads
+          // together take far less than LOCKWAIT, so every reference waits its
+          // turn and is read.
+          expect(first.map((r) => r.status)).toEqual(sends.map(() => 201));
           expect(read.calls.map(([k]) => k).sort()).toEqual(sends.map((s) => s.key).sort());
         },
       ),

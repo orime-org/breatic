@@ -15,7 +15,7 @@
  * is not reachable); Postgres and Redis are real.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, inject, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -34,10 +34,25 @@ const logged = vi.hoisted(() => {
   const record = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
   return { ...record, child: () => record };
 });
-vi.mock("@breatic/core", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  logger: logged,
-}));
+/**
+ * `LOCKWAIT` for the cases that need it short: null keeps the configured
+ * `transfer.read_lock_wait_seconds`. Read through the storage config the app
+ * reads, so the case changes only that one value.
+ */
+const lockWait = vi.hoisted(() => ({ seconds: null as number | null }));
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const realConfig = actual.getStorageConfig as () => { transfer: Record<string, unknown> };
+  return {
+    ...actual,
+    logger: logged,
+    getStorageConfig: () => {
+      const config = realConfig();
+      if (lockWait.seconds === null) return config;
+      return { ...config, transfer: { ...config.transfer, read_lock_wait_seconds: lockWait.seconds } };
+    },
+  };
+});
 
 import crypto from "node:crypto";
 import postgres from "postgres";
@@ -106,6 +121,19 @@ beforeEach(() => {
   read.calls.length = 0;
   for (const fn of Object.values(logged)) if (typeof fn === "function" && "mockClear" in fn) fn.mockClear();
 });
+
+afterEach(() => {
+  lockWait.seconds = null;
+});
+
+/**
+ * Wait this long.
+ * @param ms - Milliseconds.
+ * @returns After that long.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 /** A project, its node and A's completed transfer of `SNAP(t0)`. */
 interface World extends Seeded {
@@ -582,13 +610,17 @@ describe("§4.2 refusals and claims", () => {
     expect(read.calls).toEqual([]);
   });
 
-  it("T67 / S24: a read already in flight for the user answers 429 and leaves the transfer usable", async () => {
+  it("T67 / S24: a lock held throughout makes the reference wait LOCKWAIT, then answer 429 and leave the transfer usable", async () => {
+    lockWait.seconds = 1;
     const w = await world();
     await getRedis().set(lockKey(w.a.id), "other-token", "EX", 60, "NX");
 
+    const started = Date.now();
     const res = await post(app, SNAPSHOT, w.a.cookie, ref(w.key));
+    const took = Date.now() - started;
 
     expect(res.status).toBe(429);
+    expect(took).toBeGreaterThanOrEqual(1000);
     expect(res.headers.get("retry-after")).toBe("1");
     expect(await res.json()).toEqual({ error: { code: 429, message: t("server.error.rate_limited") } });
     expect(read.calls).toEqual([]);
@@ -598,6 +630,58 @@ describe("§4.2 refusals and claims", () => {
     await getRedis().del(lockKey(w.a.id));
     const again = await post(app, SNAPSHOT, w.a.cookie, ref(w.key));
     expect(again.status).toBe(201);
+  });
+
+  it("T80 / S24: two references of one user arriving together both succeed, one read after the other", async () => {
+    const w = await bareWorld();
+    const pasteNode = crypto.randomUUID();
+    const pasteFile = enc({
+      project_id: w.projectId,
+      urls: [],
+      pairs: [],
+      history: [{ node_id: pasteNode, kind: "text", content: "pasted through a transfer" }],
+    });
+    const snapFile = enc(snap({ projectId: w.projectId, node: w.node }, "kept through a transfer"));
+    const k1 = await grant(w, pasteFile.length);
+    const k2 = await grant(w, snapFile.length);
+    const spans: Array<{ key: string; start: number; end: number }> = [];
+    read.answer = async (key) => {
+      const start = Date.now();
+      await sleep(300);
+      spans.push({ key, start, end: Date.now() });
+      return key === k1 ? pasteFile : snapFile;
+    };
+
+    const [pasted, kept] = await Promise.all([
+      post(app, PASTE, w.a.cookie, ref(k1)),
+      post(app, SNAPSHOT, w.a.cookie, ref(k2)),
+    ]);
+
+    expect([pasted.status, kept.status]).toEqual([200, 201]);
+    expect(read.calls.map(([k]) => k).sort()).toEqual([k1, k2].sort());
+    expect(spans).toHaveLength(2);
+    const [first, second] = [...spans].sort((x, y) => x.start - y.start);
+    expect(second!.start).toBeGreaterThanOrEqual(first!.end);
+    await expectClaimed(k1);
+    await expectClaimed(k2);
+    expect(await getRedis().get(lockKey(w.a.id))).toBeNull();
+  });
+
+  it("T80: a reference that finds the lock held goes on once it is released within LOCKWAIT", async () => {
+    const w = await world();
+    await getRedis().set(lockKey(w.a.id), "other-token", "EX", 60, "NX");
+    const released = sleep(300).then(() => getRedis().del(lockKey(w.a.id)));
+
+    const started = Date.now();
+    const res = await post(app, SNAPSHOT, w.a.cookie, ref(w.key));
+    const took = Date.now() - started;
+    await released;
+
+    expect(res.status).toBe(201);
+    expect(took).toBeGreaterThanOrEqual(300);
+    expect(read.calls).toEqual([[w.key, Math.min(capSnap(), w.file.length)]]);
+    await expectClaimed(w.key);
+    expect(await getRedis().get(lockKey(w.a.id))).toBeNull();
   });
 
   it("T68 / S21b / R02: a missing object is refused as expired without claiming", async () => {
@@ -1000,14 +1084,18 @@ describe("§6.2 the two Redis keys", () => {
     await getRedis().del(lockKey(w.a.id));
   });
 
-  it("R08: a lock left by a crashed process expires on its own", async () => {
+  it("R08: a lock left by a crashed process expires on its own, and the waiting reference then reads", async () => {
+    lockWait.seconds = 2;
     const w = await world();
+    const set = Date.now();
     await getRedis().set(lockKey(w.a.id), "dead", "PX", 1000, "NX");
 
-    const first = await post(app, SNAPSHOT, w.a.cookie, ref(w.key));
-    expect(first.status).toBe(429);
-    await new Promise((r) => setTimeout(r, 1200));
-    const second = await post(app, SNAPSHOT, w.a.cookie, ref(w.key));
-    expect(second.status).toBe(201);
+    const res = await post(app, SNAPSHOT, w.a.cookie, ref(w.key));
+    const sinceSet = Date.now() - set;
+
+    expect(res.status).toBe(201);
+    expect(sinceSet).toBeGreaterThanOrEqual(1000);
+    expect(read.calls).toEqual([[w.key, Math.min(capSnap(), w.file.length)]]);
+    expect(await getRedis().get(lockKey(w.a.id))).toBeNull();
   });
 });
