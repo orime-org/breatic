@@ -36,7 +36,8 @@ export class VideoPresentationRecoveryError extends Error {
  * @throws {never} Constructing the action does not make a request.
  */
 export function createVideoPresentationRecovery(client: QueryClient, input: VideoPresentationQueryInput): VideoPresentationRecovery {
-  const { queryKey } = videoPresentationQuery(input);
+  const options = videoPresentationQuery(input);
+  const { queryKey } = options;
   let pending: Promise<void> | null = null;
   /**
    * Repairs only failed registered source work and then rereads authorized facts.
@@ -52,11 +53,13 @@ export function createVideoPresentationRecovery(client: QueryClient, input: Vide
       } catch (error) {
         // The repair client already reports the refusal. Refresh the actual
         // identity even when this press lost a source race, then preserve it.
-        if (error instanceof ApiException && error.status === 409) await client.refetchQueries({ queryKey, exact: true, type: 'all' });
+        if (error instanceof ApiException && error.status === 409) await client.fetchQuery({ ...options, staleTime: 0 }).catch(() => undefined);
         throw error;
       }
     }
-    await client.refetchQueries({ queryKey, exact: true, type: 'all' }, { throwOnError: true });
+    // A cache populated without an observer need not have a queryFn yet.
+    // Supply the actual public factory and bypass freshness for this read.
+    await client.fetchQuery({ ...options, staleTime: 0 });
   }
   /**
    * Joins concurrent invocations of the same press without duplicating repair work.
