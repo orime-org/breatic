@@ -28,6 +28,7 @@ import {
   attachmentParamSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
+import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
@@ -250,7 +251,7 @@ chat.use("*", requireAuth);
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */
-chat.post("/message", validate("json", chatMessageSchema), async (c) => {
+chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
