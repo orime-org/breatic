@@ -15,6 +15,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { act } from '@testing-library/react';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -39,14 +40,16 @@ function open(): Editor {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const host = document.createElement('div');
   document.body.appendChild(host);
-  editor.mount(host);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'above' },
-    tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
-    { type: 'codeBlock', content: 'x = 1' },
-    { type: 'paragraph', content: 'below' },
-  ] as never);
+  act(() => {
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'above' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+      { type: 'codeBlock', content: 'x = 1' },
+      { type: 'paragraph', content: 'below' },
+    ] as never);
+  });
   return editor;
 }
 

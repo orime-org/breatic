@@ -7,6 +7,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { act } from '@testing-library/react';
 import * as Y from 'yjs';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 
@@ -36,12 +37,14 @@ function open(): { editor: Editor; tableId: string; cellBlockId: string; nextBlo
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
   const host = document.createElement('div');
   document.body.appendChild(host);
-  editor.mount(host);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, [
-    { type: 'paragraph', content: 'above' },
-    tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
-  ] as never);
+  act(() => {
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'above' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }] }),
+    ] as never);
+  });
   const table = editor.document[1] as unknown as { id: string; children: { children: { children: { id: string }[] }[] }[] };
   const cellBlockId = table.children[0]!.children[0]!.children[0]!.id;
   const nextBlockId = table.children[0]!.children[1]!.children[0]!.id;

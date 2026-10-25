@@ -11,6 +11,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
 import { addRowAfter, CellSelection, mergeCells, TableMap } from '@tiptap/pm/tables';
 import { TextSelection } from '@tiptap/pm/state';
@@ -188,7 +189,7 @@ describe('a table cell holds blocks', () => {
     expect(added.child(0).child(0).content.size).toBe(0);
   });
 
-  it('is drawn as a table whose cells hold the blocks', () => {
+  it('is drawn as a table whose cells hold the blocks', async () => {
     const editor = open();
     editor.replaceBlocks(editor.document, [
       table([[[{ type: 'heading', props: { level: 2 }, content: 'title' }], [{ type: 'paragraph', content: 'p' }]]]),
@@ -199,7 +200,9 @@ describe('a table cell holds blocks', () => {
     const cells = element!.querySelectorAll(':scope > tbody > tr > td');
     expect(cells).toHaveLength(2);
     expect(cells[0].querySelector('[data-content-type="heading"]')?.textContent).toBe('title');
-    expect(element!.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
+    await waitFor(() => {
+      expect(element!.closest('[data-radix-scroll-area-viewport]')).not.toBeNull();
+    });
     expect(editor.prosemirrorState.doc.check()).toBeUndefined();
   });
 
@@ -278,12 +281,14 @@ describe('a table cell holds blocks', () => {
     expect(again[0]!.children[0]!.children[0]!.props['colwidth']).toBeNull();
   });
 
-  it('draws the table where the reader can edit its cells, in the wrapper the table rules style', () => {
+  it('draws the table where the reader can edit its cells, in the wrapper the table rules style', async () => {
     const editor = open();
     editor.replaceBlocks(editor.document, [table([[[{ type: 'paragraph', content: 'a' }]]])] as never);
 
     const element = document.querySelector('[data-node-type="docTable"] table')!;
-    expect(element.parentElement?.classList.contains('tableWrapper')).toBe(true);
+    await waitFor(() => {
+      expect(element.parentElement?.classList.contains('tableWrapper')).toBe(true);
+    });
     expect(element.closest('[contenteditable="false"]')).toBeNull();
   });
 

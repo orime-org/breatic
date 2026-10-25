@@ -25,7 +25,6 @@ import { Extension } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
-import { flushSync } from 'react-dom';
 import { ySyncPluginKey } from 'y-prosemirror';
 
 import { deriveId } from '@breatic/shared';
@@ -177,26 +176,28 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
 
 /**
  * Puts the table into the horizontal frame of `DocumentTableScroller`. The
- * frame is rendered synchronously so the table is in place before
- * ProseMirror first reads the view's DOM.
+ * table is attached before ProseMirror reads its content DOM. React owns a
+ * separate chrome host, and the slot moves that same table into its viewport
+ * when the frame commits. A view can be created inside a React effect.
  * @param host - The element the frame is drawn in.
  * @param table - The `<table>`.
  * @returns The React root, to unmount when the view goes.
  */
 function mountScroller(host: HTMLElement, table: HTMLElement): Root {
-  const root = createRoot(host);
-  flushSync(() => {
-    root.render(
-      <DocumentTableScroller>
-        <div
-          className='tableWrapper'
-          ref={(slot) => {
-            if (slot !== null && table.parentElement !== slot) slot.appendChild(table);
-          }}
-        />
-      </DocumentTableScroller>,
-    );
-  });
+  const chrome = document.createElement('div');
+  chrome.className = 'contents';
+  host.append(table, chrome);
+  const root = createRoot(chrome);
+  root.render(
+    <DocumentTableScroller>
+      <div
+        className='tableWrapper'
+        ref={(slot) => {
+          if (slot !== null && table.parentElement !== slot) slot.appendChild(table);
+        }}
+      />
+    </DocumentTableScroller>,
+  );
   return root;
 }
 

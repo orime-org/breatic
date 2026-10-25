@@ -9,6 +9,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act } from '@testing-library/react';
 import * as Y from 'yjs';
 
 import { documentBodyFragment } from '@breatic/shared';
@@ -49,9 +50,11 @@ function open(blocks: unknown[]): Editor {
   const host = document.createElement('div');
   container.appendChild(host);
   document.body.appendChild(container);
-  editor.mount(host);
-  mounted.push(editor);
-  editor.replaceBlocks(editor.document, blocks as never);
+  act(() => {
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, blocks as never);
+  });
   return editor;
 }
 

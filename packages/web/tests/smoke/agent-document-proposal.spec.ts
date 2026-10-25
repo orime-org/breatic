@@ -195,6 +195,29 @@ test('a comment lands on the quoted words, marked as from the Agent', async () =
   await expect(rail.getByTestId('doc-comment-card')).toHaveAttribute('data-selected', 'true');
 });
 
+test('a manual comment filter survives a real Space switch after an Agent View', async () => {
+  const id = await openDocumentWithText();
+  await sendTheOpenSpace();
+  await answerWith(onSecondBlock({ kind: 'comment', quote: 'her bags packed', body: 'Why is she leaving?' }));
+  const card = await askForTheCard();
+  await card.getByRole('button').first().click();
+  await expect(card).toHaveAttribute('data-state', 'applied');
+  const rail = visibleSpace(page).getByTestId('doc-comment-rail');
+  await expect(rail.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
+  await rail.getByTestId('doc-comment-rail-filter-open').click();
+  created.push(await createSpace(page, 'canvas', `comment-filter-switch-${String(Date.now())}`));
+  await expect(visibleSpace(page).getByTestId('document-space')).toHaveCount(0);
+  await test.info().attach('hidden-document-body', {
+    body: JSON.stringify({ loadingBodies: await page.locator(`[data-testid="document-space"][data-space-id="${id}"] [data-testid="document-space-loading"]`).count() }),
+    contentType: 'application/json',
+  });
+  await page.getByTestId(`space-tab-name-${id}`).click();
+  await expect(rail).toBeVisible();
+  await expect(rail.getByTestId('doc-comment-rail-filter-open')).toHaveAttribute('aria-pressed', 'true');
+  await card.getByRole('button').click();
+  await expect(rail.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
+});
+
 /** A table wider than the body column: its second column holds `MIDCELL`, its last `LASTCELL`. */
 const WIDE_TABLE = [
   `| ${Array.from({ length: 8 }, (_, i) => `Column ${String(i + 1)}`).join(' | ')} |`,
