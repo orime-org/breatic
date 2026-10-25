@@ -31,6 +31,7 @@ beforeEach(() => {
     return { dispose };
   });
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(() => {});
 });
 afterEach(() => { cleanup(); host.remove(); vi.restoreAllMocks(); });
@@ -146,6 +147,26 @@ describe('effect-owned video surface lifecycle', () => {
     unmount();
     act(() => sessions[0]!.callbacks.frame(0.9, 1));
     expect(onPresentedFrame).toHaveBeenCalledTimes(2);
+  });
+
+  it('binds native transport at metadata before a decoder consumer requests its in-point', async () => {
+    const onPresentedFrame = vi.fn();
+    const { result } = renderHook(() => useMediaSurface({ host: hostRef, source, active: true, onPresentedFrame }));
+    const element = host.querySelector('video')!;
+    Object.defineProperties(element, { readyState: { value: 1 }, videoWidth: { value: 160 }, videoHeight: { value: 96 } });
+    act(() => element.dispatchEvent(new Event('loadedmetadata')));
+    expect(result.current.status).toBe('ready');
+    expect(result.current.binding?.element).toBe(element);
+    expect(result.current.binding?.getPresentedFrame()).toBeNull();
+    expect(onPresentedFrame).toHaveBeenCalledTimes(0);
+    act(() => result.current.binding!.seek(0.75));
+    expect(element.currentTime).toBe(0.75);
+    expect(result.current.binding?.getPresentedFrame()).toBeNull();
+    await act(async () => result.current.binding!.play());
+    expect(element.play).toHaveBeenCalledTimes(1);
+    act(() => result.current.binding!.pause());
+    expect(element.pause).toHaveBeenCalled();
+    expect(onPresentedFrame).toHaveBeenCalledTimes(0);
   });
 
 });
