@@ -928,3 +928,16 @@ export {
   type Attribution,
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
+
+export {
+  videoPresentationSchema,
+  alphaManifestSchema,
+  videoPresentationKeyFor,
+  alphaPackedKeyFor,
+  alphaManifestKeyFor,
+  parseVideoPresentation,
+  alphaManifestMatchesPresentation,
+  type VideoPresentation,
+  type AlphaManifest,
+  type VideoPresentationRect,
+} from "@shared/upload/video-presentation.js";
