@@ -173,8 +173,9 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
     const formats = record(pixelFormats).pixel_formats as unknown[];
     const pixel = formats.map(record).find(value => value.name === video.pix_fmt)!;
     const tags = typeof video.tags === 'object' && video.tags !== null ? record(video.tags) : {};
+    const alphaMode = Object.entries(tags).find(([name]) => name.toLowerCase() === 'alpha_mode')?.[1];
     const evidence: AlphaProbeEvidence = { codecName: String(video.codec_name), pixelFormat: String(video.pix_fmt),
-      pixelAlpha: record(pixel.flags).alpha as 0 | 1, alphaMode: typeof tags.alpha_mode === 'string' ? tags.alpha_mode : null,
+      pixelAlpha: record(pixel.flags).alpha as 0 | 1, alphaMode: typeof alphaMode === 'string' ? alphaMode : null,
       formatName: String(format.format_name), videoStreamIndex: Number(video.index) };
     await report(job, { ...identity, kind: 'probe', classification, original: { width: metadata.width, height: metadata.height, duration: metadata.durationSeconds }, evidence }, signal);
     if (classification === 'confirmed_alpha') {
