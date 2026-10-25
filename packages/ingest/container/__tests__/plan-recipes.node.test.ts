@@ -94,4 +94,25 @@ describe("owned plan recipe orchestration, with subprocesses mocked", () => {
     expect(args).toContain("atrim=start=0.25:end=1.1,asetpts=PTS-0.25/TB");
     expect(options.signal).toBe(request.signal);
   });
+
+  it("gives a VFR segment its frozen final display boundary without changing PTS", async () => {
+    const frames = [9.3, 9.92, 10.56, 11.22, 11.9, 12.6, 13.32, 14.06, 14.82, 15.6, 16.4].map((pts, frameIndex) => ({ frameIndex, pts }));
+    const facts: PlanSource = { ...FACTS, source: { ...FACTS.source, hasAudio: false, frameTable: { frames, videoEnd: 17.22 } } };
+    vi.mocked(runPlanCommand).mockResolvedValue(Buffer.from(JSON.stringify({ streams: [{ codec_type: "video", width: 400, height: 200 }], format: { duration: "7.1" } })));
+    await executePlanRecipe({ ...request, facts, recipe: { kind: "segment", inputId: ID, range: { start: 9.3, end: 16.4 } } });
+    const [, args] = vi.mocked(runPlanCommand).mock.calls[0]!;
+    expect(args[args.indexOf("-bf") + 1]).toBe("0");
+    const timing = args[args.indexOf("-bsf:v") + 1];
+    expect(timing).toContain("pts=PTS:dts=DTS");
+    expect(timing).toContain("eq(N,9)");
+    expect(timing).toContain("NEXT_PTS-PTS");
+    expect(Number(timing?.match(/,([^,]+)\/TB-PTS/)?.[1])).toBeCloseTo(7.1, 12);
+  });
+
+  it("refuses an empty source-frame segment before spawning", async () => {
+    vi.mocked(runPlanCommand).mockResolvedValue(Buffer.from(JSON.stringify({ streams: [{ codec_type: "video", width: 400, height: 200 }], format: { duration: "1" } })));
+    await expect(executePlanRecipe({ ...request, recipe: { kind: "segment", inputId: ID, range: { start: 2, end: 3 } } })).rejects.toThrow();
+    expect(runPlanCommand).not.toHaveBeenCalled();
+  });
+
 });
