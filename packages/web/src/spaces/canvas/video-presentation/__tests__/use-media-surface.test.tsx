@@ -41,7 +41,7 @@ function mount(active = true): ReturnType<typeof renderHook<ReturnType<typeof us
 }
 
 function ready(index = 0): void {
-  const session = sessions[index]!;
+  const session = sessions[index];
   act(() => session.callbacks.ready(session.element, session.element));
 }
 
@@ -52,9 +52,9 @@ describe('effect-owned video surface lifecycle', () => {
     expect(result.current.binding).toBeNull();
     ready();
     expect(result.current.status).toBe('ready');
-    expect(result.current.binding?.element).toBe(sessions[0]!.element);
+    expect(result.current.binding?.element).toBe(sessions[0].element);
     expect(result.current.binding?.original).toEqual({ width: 160, height: 96, duration: 1 });
-    expect(sessions[0]!.element.pause).toHaveBeenCalled();
+    expect(sessions[0].element.pause).toHaveBeenCalled();
     expect(result.current.binding?.getPresentedFrame()).toBeNull();
   });
 
@@ -63,12 +63,12 @@ describe('effect-owned video surface lifecycle', () => {
     ready();
     const epoch = result.current.binding!.sourceEpoch;
     rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: { ...source.presentation, sourceFingerprint: 'b'.repeat(64) } }, active: true });
-    expect(sessions[0]!.dispose).toHaveBeenCalledTimes(1);
+    expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     expect(result.current.status).toBe('loading');
     ready(0);
     expect(result.current.binding).toBeNull();
     ready(1);
-    expect(result.current.binding?.element).toBe(sessions[1]!.element);
+    expect(result.current.binding?.element).toBe(sessions[1].element);
     expect(result.current.binding!.sourceEpoch).toBeGreaterThan(epoch);
   });
 
@@ -78,32 +78,32 @@ describe('effect-owned video surface lifecycle', () => {
     rerender({ source, active: false });
     expect(result.current.status).toBe('detached');
     expect(result.current.binding).toBeNull();
-    expect(sessions[0]!.dispose).toHaveBeenCalledTimes(1);
+    expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     ready();
     expect(result.current.status).toBe('detached');
     rerender({ source, active: true });
     ready(1);
-    expect(result.current.binding?.element).toBe(sessions[1]!.element);
+    expect(result.current.binding?.element).toBe(sessions[1].element);
   });
 
   it('releases every StrictMode instance once and ignores the disposed instance', () => {
     const { result, unmount } = renderHook(() => useMediaSurface({ host: hostRef, source, active: true, createRenderer }), { wrapper: React.StrictMode });
     expect(sessions).toHaveLength(2);
-    expect(sessions[0]!.dispose).toHaveBeenCalledTimes(1);
+    expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     ready(0);
     expect(result.current.status).toBe('loading');
     ready(1);
-    expect(result.current.binding?.element).toBe(sessions[1]!.element);
+    expect(result.current.binding?.element).toBe(sessions[1].element);
     unmount();
     expect(sessions.map((session) => session.dispose.mock.calls.length)).toEqual([1, 1]);
   });
 
   it('fails the current resource, rejects a late ready and rebuilds only on retry', () => {
     const { result } = mount();
-    act(() => sessions[0]!.callbacks.error('decode-failed'));
+    act(() => sessions[0].callbacks.error('decode-failed'));
     expect(result.current.status).toBe('failed');
     expect(result.current.error).toBe('decode-failed');
-    expect(sessions[0]!.dispose).toHaveBeenCalledTimes(1);
+    expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     ready();
     expect(result.current.status).toBe('failed');
     act(() => result.current.retry());
@@ -124,11 +124,11 @@ describe('effect-owned video surface lifecycle', () => {
     const { result } = mount();
     ready();
     const epoch = result.current.binding!.sourceEpoch;
-    act(() => sessions[0]!.callbacks.contextLost());
+    act(() => sessions[0].callbacks.contextLost());
     expect(result.current.status).toBe('failed');
     expect(result.current.binding).toBeNull();
-    act(() => sessions[0]!.callbacks.contextRestored());
-    expect(sessions[0]!.dispose).toHaveBeenCalledTimes(1);
+    act(() => sessions[0].callbacks.contextRestored());
+    expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     ready(1);
     expect(result.current.binding!.sourceEpoch).toBeGreaterThan(epoch);
   });
@@ -136,16 +136,16 @@ describe('effect-owned video surface lifecycle', () => {
     const onPresentedFrame = vi.fn();
     const { result, unmount } = renderHook(() => useMediaSurface({ host: hostRef, source, active: true, createRenderer, onPresentedFrame }));
     ready();
-    act(() => sessions[0]!.callbacks.frame(0.125, 0));
+    act(() => sessions[0].callbacks.frame(0.125, 0));
     expect(onPresentedFrame).toHaveBeenCalledTimes(1);
-    expect(onPresentedFrame).toHaveBeenLastCalledWith({ sourceKey: result.current.binding!.sourceKey, sourceEpoch: result.current.binding!.sourceEpoch, seekEpoch: 0, mediaTime: 0.125, surface: sessions[0]!.element });
+    expect(onPresentedFrame).toHaveBeenLastCalledWith({ sourceKey: result.current.binding!.sourceKey, sourceEpoch: result.current.binding!.sourceEpoch, seekEpoch: 0, mediaTime: 0.125, surface: sessions[0].element });
     act(() => result.current.binding!.seek(0.75));
-    act(() => sessions[0]!.callbacks.frame(0.25, 0));
+    act(() => sessions[0].callbacks.frame(0.25, 0));
     expect(onPresentedFrame).toHaveBeenCalledTimes(1);
-    act(() => sessions[0]!.callbacks.frame(0.75, result.current.binding!.getSeekEpoch()));
+    act(() => sessions[0].callbacks.frame(0.75, result.current.binding!.getSeekEpoch()));
     expect(onPresentedFrame).toHaveBeenCalledTimes(2);
     unmount();
-    act(() => sessions[0]!.callbacks.frame(0.9, 1));
+    act(() => sessions[0].callbacks.frame(0.9, 1));
     expect(onPresentedFrame).toHaveBeenCalledTimes(2);
   });
 
@@ -168,6 +168,35 @@ describe('effect-owned video surface lifecycle', () => {
     act(() => result.current.binding!.pause());
     expect(element.pause).toHaveBeenCalledTimes(pauses + 1);
     expect(onPresentedFrame).toHaveBeenCalledTimes(0);
+  });
+
+  it.each([
+    ['native', 2.375], ['alpha_ready', 2.375], ['native', Number.NaN],
+  ] as const)('seeks the actual %s clock beyond format duration with actual duration %s', (state, duration) => {
+    const clockSource: VideoPresentationSource = {
+      ...source, presentation: { ...source.presentation, original: { ...source.presentation.original, duration: 2.125 }, state,
+        ...(state === 'alpha_ready' ? { alpha: { manifestURL: 'https://assets.example/packed.alpha.v1.json' } } : {}) },
+      ...(state === 'alpha_ready' ? { manifest: { schemaVersion: 1, sourceFingerprint: source.sourceFingerprint,
+        packedURL: 'https://assets.example/packed.alpha.v1.mp4', packedWidth: 320, packedHeight: 96,
+        colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 160, y: 0, width: 160, height: 96 } } } : {}),
+    };
+    const { result } = renderHook(() => useMediaSurface({ host: hostRef, source: clockSource, active: true, createRenderer }));
+    const session = sessions[0];
+    Object.defineProperty(session.element, 'duration', { value: duration });
+    const surface = state === 'alpha_ready' ? document.createElement('canvas') : session.element;
+    act(() => session.callbacks.ready(session.element, surface));
+    act(() => session.callbacks.frame(1, result.current.binding!.getSeekEpoch()));
+    const previousEpoch = result.current.binding!.getSeekEpoch();
+    expect(result.current.binding!.getPresentedFrame()?.mediaTime).toBe(1);
+    act(() => result.current.binding!.seek(2.25));
+    expect(session.element.currentTime).toBe(2.25);
+    expect(result.current.binding!.original.duration).toBe(2.125);
+    expect(result.current.binding!.getSeekEpoch()).toBeGreaterThan(previousEpoch);
+    expect(result.current.binding!.getPresentedFrame()).toBeNull();
+    act(() => session.callbacks.frame(2.25, previousEpoch));
+    expect(result.current.binding!.getPresentedFrame()).toBeNull();
+    act(() => session.callbacks.frame(2.25, result.current.binding!.getSeekEpoch()));
+    expect(result.current.binding!.getPresentedFrame()?.mediaTime).toBe(2.25);
   });
 
 });
