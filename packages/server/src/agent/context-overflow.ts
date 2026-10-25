@@ -75,7 +75,7 @@ const patterns = [
   /context length is only \d+ tokens/i,
   /input length.*exceeds.*context length/i,
   // Z.ai code 1261 arrives as `Prompt too long`, `Prompt exceeds max length` or `Prompt` followed by the Chinese for "too long".
-  /prompt (?:too long|exceeds max length|超长)/i,
+  /prompt (?:too long|exceeds max length|\u8d85\u957f)/i,
   /too large for model with \d+ maximum context length/i,
   /prompt has [\d,]+ tokens?, but the configured context size is [\d,]+ tokens?/i,
   /model_context_window_exceeded/i,
