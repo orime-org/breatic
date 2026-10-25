@@ -136,7 +136,7 @@ async function failTaskWrite(f: Fixture, run: () => Promise<unknown>): Promise<v
   const name = `step_red_${crypto.randomUUID().replaceAll("-", "")}`;
   await pg.unsafe(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.result ? 'settlement' THEN RAISE EXCEPTION 'step task write failed'; END IF; RETURN NEW; END $$`);
   await pg.unsafe(`CREATE TRIGGER ${name} BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION ${name}()`);
-  try { await expect(run()).rejects.toThrow("step task write failed"); }
+  try { await expect(run()).rejects.toMatchObject({ cause: { message: expect.stringContaining("step task write failed") } }); }
   finally { await pg.unsafe(`DROP TRIGGER ${name} ON tasks`); await pg.unsafe(`DROP FUNCTION ${name}()`); }
 }
 
@@ -167,7 +167,7 @@ describe("planned upstream intent and canonical identity persistence", () => {
     const name = `intent_red_${crypto.randomUUID().replaceAll("-", "")}`;
     await pg.unsafe(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.stepId}'::uuid THEN RAISE EXCEPTION 'intent failed'; END IF; RETURN NEW; END $$`);
     await pg.unsafe(`CREATE TRIGGER ${name} BEFORE UPDATE ON task_upstream_steps FOR EACH ROW EXECUTE FUNCTION ${name}()`);
-    try { await expect((async () => { const opened = await beginMiniToolStepAttempt(second); if (opened.shouldSubmit) posts += 1; })()).rejects.toThrow("intent failed"); }
+    try { await expect((async () => { const opened = await beginMiniToolStepAttempt(second); if (opened.shouldSubmit) posts += 1; })()).rejects.toMatchObject({ cause: { message: expect.stringContaining("intent failed") } }); }
     finally { await pg.unsafe(`DROP TRIGGER ${name} ON task_upstream_steps`); await pg.unsafe(`DROP FUNCTION ${name}()`); }
     expect(posts).toBe(0); expect(await snapshot(f)).toEqual(before);
   });
