@@ -96,7 +96,6 @@ test('background node activity leads the tab in five languages and both themes',
     await expect(busy).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
-    if (canvas) await setRunning(page, canvas, 0);
     if (localeAt) {
       await page.evaluate(async (at) => {
         const i18n = await import(/* @vite-ignore */ at) as { changeLocale: (locale: string) => void };
