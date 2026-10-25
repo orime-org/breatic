@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import type { MediaSurfaceBinding } from '@web/spaces/canvas/video-presentation/types';
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId } from '@breatic/shared';
@@ -53,6 +54,10 @@ export interface VideoToolPresentation {
 export interface VideoToolCostText { execution: string; analysis?: string }
 
 export interface VideoToolPanelContainerProps {
+  /** Actual canonical display box supplied by the node's presentation owner. */
+  overlayTarget?: HTMLElement | null;
+  /** Actual transport identity and frame-clock epoch for overlay invalidation. */
+  binding?: MediaSurfaceBinding | null;
   costs?: VideoToolCostText;
   renderTimelineDecoder?: VideoTimelineDecoderRenderer;
   nodeId: string;
