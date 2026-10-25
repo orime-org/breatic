@@ -3,8 +3,8 @@
 
 CREATE TABLE project_asset_refs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
-  asset_id uuid NOT NULL REFERENCES studio_assets(id) ON DELETE RESTRICT,
+  project_id uuid NOT NULL CONSTRAINT project_asset_refs_project_id_fkey REFERENCES projects(id) ON DELETE RESTRICT,
+  asset_id uuid NOT NULL CONSTRAINT project_asset_refs_asset_id_fkey REFERENCES studio_assets(id) ON DELETE RESTRICT,
   display_name text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
