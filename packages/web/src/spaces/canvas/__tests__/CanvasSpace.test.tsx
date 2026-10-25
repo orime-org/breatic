@@ -9,6 +9,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { modelsApi } from '@web/data/api';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import type { VideoPresentationResponse } from '@breatic/shared';
 import { toast } from 'sonner';
 import { Awareness } from 'y-protocols/awareness';
 import type * as React from 'react';
@@ -379,10 +381,11 @@ function spaceRegion(): HTMLElement {
  * where `keyTarget()` lands when nothing holds focus — takes the gate's
  * `<body>` branch either way.
  * @param readOnly - Mount the space in its read-only form.
+ * @param queryClient - An explicitly prepared account query cache, when needed.
  * @returns The render result.
  */
-function renderSpace(readOnly = false): ReturnType<typeof render> {
-  const client = new QueryClient({
+function renderSpace(readOnly = false, queryClient?: QueryClient): ReturnType<typeof render> {
+  const client = queryClient ?? new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
@@ -3781,7 +3784,21 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    renderSpace();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryKey = videoPresentationQuery({ projectId: 'p', canonicalURL: 'https://cdn/clip.mp4', active: true }).queryKey;
+    const sourceFingerprint = 'a'.repeat(64);
+    const source: VideoPresentationResponse = {
+      sourceBinding: {
+        assetId: '21de0c40-eb00-4bc0-ab81-d32f709b3b14',
+        canonicalURL: 'https://cdn/clip.mp4', contentHash: sourceFingerprint, kind: 'video',
+        mediaInfo: { width: 800, height: 600, duration: 10, mimeType: 'video/mp4' },
+      },
+      presentation: { schemaVersion: 1, state: 'native', sourceFingerprint, original: { width: 800, height: 600, duration: 10 } },
+      preparation: null, pollAfterMs: null,
+    };
+    client.setQueryDefaults(queryKey, { staleTime: Infinity });
+    client.setQueryData(queryKey, source);
+    renderSpace(false, client);
     act(() => {
       canvasSessions.of('s').getState().startFocusPick('target');
     });
@@ -3790,9 +3807,12 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         document.querySelector('.react-flow__node[data-id="src-video"]')!,
       );
     });
-    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    await waitFor(() => expect(document.querySelector('.react-flow__node[data-id="src-video"] video')).toBeInstanceOf(HTMLVideoElement));
+    const video = document.querySelector<HTMLVideoElement>('.react-flow__node[data-id="src-video"] video')!;
     Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
     Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
+    act(() => { fireEvent.loadedMetadata(video); });
+    await waitFor(() => expect(screen.getByTestId('media-element')).toBe(video));
     // 用户拖时间轴停在的那一帧，故意不是整秒。
     Object.defineProperty(video, 'currentTime', {
       value: 4.375,

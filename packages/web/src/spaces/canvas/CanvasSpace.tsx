@@ -4741,7 +4741,7 @@ function CanvasSpaceInner({
               unmounts while its own box is off screen; drawn here, over every
               node like the new-note box, it stays while any part is visible. */}
             <ViewportPortal>
-              <div className='absolute top-0 left-0' style={{ zIndex: videoExpansion ? undefined : VIEWPORT_TOP_Z }}>
+              <div className='absolute top-0 left-0' style={videoExpansion ? undefined : { zIndex: VIEWPORT_TOP_Z }}>
                 {videoExpansion ? <CanvasVideoExpandBridge nodeId={videoHost} canonicalURL={videoSource} locked={videoNode?.data.locked === true} snapshot={videoRuntime.bindings.get(videoHost)} onNodeContextMenu={onNodeContextMenu} /> : <ExpandFrameOverlay onNodeContextMenu={onNodeContextMenu} />}
               </div>
             </ViewportPortal>

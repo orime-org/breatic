@@ -65,6 +65,17 @@ export function useMediaPlayer(
   const nativeRef = owned === undefined ? ref : undefined;
   React.useEffect(() => {
     const el = owned?.element ?? nativeRef?.current;
+    return () => {
+      if (owned) owned.pause();
+      else el?.pause();
+    };
+    // Native ref wrappers may change on render; only an actual owner change
+    // ends this transport lifetime, matching the existing native mount contract.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owned]);
+
+  React.useEffect(() => {
+    const el = owned?.element ?? nativeRef?.current;
     if (!el) { setPlaying(false); setCurrentTime(0); setElementDuration(0); return undefined; }
     /**
      * Reads the current actual element, including resource reset events.
@@ -85,8 +96,6 @@ export function useMediaPlayer(
     for (const event of events) el.addEventListener(event, sync);
     return () => {
       for (const event of events) el.removeEventListener(event, sync);
-      if (owned) owned.pause();
-      else el.pause();
     };
   }, [nativeRef, owned]);
 
