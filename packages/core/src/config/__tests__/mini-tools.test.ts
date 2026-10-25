@@ -6,6 +6,26 @@ import { describe, expect, it } from "vitest";
 import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-tools.js";
 
 describe("getMiniToolsConfig", () => {
+  it("loads and defaults the complete planned-process byte limits", () => {
+    const expected = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
+    const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;
+    expect(configured.plan_limits).toEqual(expected);
+    const bare = structuredClone(configured);
+    delete bare.plan_limits;
+    expect((miniToolsConfigSchema.parse(bare) as unknown as Record<string, unknown>).plan_limits).toEqual(expected);
+    const custom = { probeStdoutBytes: 2048, analysisStdoutBytes: 1024, stderrTailBytes: 256 };
+    expect((miniToolsConfigSchema.parse({ ...bare, plan_limits: custom }) as unknown as Record<string, unknown>).plan_limits).toEqual(custom);
+  });
+
+  it.each([
+    { probeStdoutBytes: 0, analysisStdoutBytes: 1024, stderrTailBytes: 256 },
+    { probeStdoutBytes: 2048, analysisStdoutBytes: -1, stderrTailBytes: 256 },
+    { probeStdoutBytes: 2048, analysisStdoutBytes: 1024, stderrTailBytes: 0.5 },
+    { probeStdoutBytes: Number.POSITIVE_INFINITY, analysisStdoutBytes: 1024, stderrTailBytes: 256 },
+    { probeStdoutBytes: 2048, analysisStdoutBytes: Number.MAX_SAFE_INTEGER + 1, stderrTailBytes: 256 },
+  ])("rejects invalid planned-process byte limits %j", (plan_limits) => {
+    expect(miniToolsConfigSchema.safeParse({ ...getMiniToolsConfig(), plan_limits }).success).toBe(false);
+  });
   it("requires complete analysis profiles before accepting work", () => {
     const config = structuredClone(getMiniToolsConfig()) as Record<string, unknown>;
     delete config.analyses;

@@ -11,12 +11,13 @@ const INPUT_A = "20000000-0000-4000-8000-000000000001";
 const INPUT_B = "20000000-0000-4000-8000-000000000002";
 const DEADLINE = Date.parse("2026-10-25T11:03:03.100Z");
 const inputs = [{ inputId: INPUT_A, storageKey: "fixtures/source-a.mp4" }, { inputId: INPUT_B, storageKey: "fixtures/source-b.mp4" }];
+const limits = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const outputs = Array.from({ length: 17 }, (_, outputIndex) => ({
   outputIndex, storageKey: `results/T/o${String(outputIndex).padStart(2, "0")}.png`, contentType: "image/png",
   ...(outputIndex % 8 === 0 ? { coverKey: `results/T/o${String(outputIndex).padStart(2, "0")}.cover.webp` } : {}),
   recipe: { kind: "frame", inputId: outputIndex % 2 === 0 ? INPUT_A : INPUT_B, frameIndex: outputIndex },
 }));
-const base = { schemaVersion: 2, jobId: "task:10000000-0000-4000-8000-000000000001:chunk:0", containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE, inputs, outputs: outputs.slice(0, 8) };
+const base = { schemaVersion: 2, jobId: "task:10000000-0000-4000-8000-000000000001:chunk:0", containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE, inputs, outputs: outputs.slice(0, 8), limits };
 const legacy = { jobId: "legacy", containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE, op: "cut", params: { range: { start: 0, end: 1 } }, input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/legacy.mp4", contentType: "video/mp4" }] };
 const profile = { id: "pyscenedetect-content", version: "0.7.2", weightsHash: null, params: { threshold: 27, minSceneLength: 15 } };
 
@@ -84,13 +85,14 @@ describe("planned media job requests", () => {
   });
 
   it("recognizes semantically identical object fields without changing array order", () => {
-    const reordered = { outputs: base.outputs.map(({ recipe, ...output }) => ({ recipe: { frameIndex: recipe.frameIndex, inputId: recipe.inputId, kind: recipe.kind }, ...output })), inputs: base.inputs, deadlineAt: base.deadlineAt, containerClass: base.containerClass, jobId: base.jobId, schemaVersion: 2 };
+    const reordered = { limits: { stderrTailBytes: limits.stderrTailBytes, analysisStdoutBytes: limits.analysisStdoutBytes, probeStdoutBytes: limits.probeStdoutBytes }, outputs: base.outputs.map(({ recipe, ...output }) => ({ recipe: { frameIndex: recipe.frameIndex, inputId: recipe.inputId, kind: recipe.kind }, ...output })), inputs: base.inputs, deadlineAt: base.deadlineAt, containerClass: base.containerClass, jobId: base.jobId, schemaVersion: 2 };
     expect(sameMiniToolPlanJob(base, reordered)).toBe(true);
     expect(sameMiniToolPlanJob(base, { ...base, outputs: [...base.outputs].reverse() })).toBe(false);
   });
 
   it.each([
     { ...base, deadlineAt: DEADLINE + 1 },
+    { ...base, limits: { ...limits, analysisStdoutBytes: limits.analysisStdoutBytes + 1 } },
     { ...base, containerClass: "MiniToolContainerStd4" },
     { ...base, inputs: [{ ...inputs[0], storageKey: "fixtures/other.mp4" }, inputs[1]] },
     { ...base, outputs: [{ ...outputs[0], recipe: { ...outputs[0]!.recipe, frameIndex: 1 } }, ...base.outputs.slice(1)] },
@@ -108,6 +110,19 @@ describe("planned media job requests", () => {
       expect(accepted).toEqual(chunks.map((chunk, index) => ({ ...base, jobId: `task:T:${index}`, outputs: chunk })));
       expect(chunks.flat()).toEqual(complete);
     }), { numRuns: 60 });
+  });
+
+  it.each([
+    undefined,
+    { ...limits, probeStdoutBytes: 0 },
+    { ...limits, analysisStdoutBytes: -1 },
+    { ...limits, stderrTailBytes: 0.5 },
+    { ...limits, probeStdoutBytes: Number.POSITIVE_INFINITY },
+    { ...limits, analysisStdoutBytes: Number.MAX_SAFE_INTEGER + 1 },
+    { ...limits, stderrTailBytes: "65536" },
+    { ...limits, extra: 1 },
+  ])("requires complete finite positive integer limits before starting planned work: %j", (invalid) => {
+    expect(miniToolPlanJobRequestSchema.safeParse({ ...base, limits: invalid }).success).toBe(false);
   });
 });
 
