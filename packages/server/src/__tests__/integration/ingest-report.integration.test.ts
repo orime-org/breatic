@@ -183,6 +183,7 @@ const FINISH_UPLOAD_ID = "r2-upload-id";
 
 /** What the last finish request asked the Worker for. */
 let lastFinishBody: Record<string, unknown> = {};
+let presentationBodies: Record<string, unknown>[] = [];
 const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
 
 /**
@@ -201,6 +202,8 @@ async function report(
   body: Record<string, unknown>,
   cookie?: string,
 ): Promise<UploadFinishResult> {
+  lastFinishBody = {};
+  presentationBodies = [];
   const storageKey = body.storage_key as string;
   const contentType = (body.content_type as string) ?? "image/png";
   const token = await signSessionToken(
@@ -216,11 +219,19 @@ async function report(
   );
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (_url: string, init: RequestInit) => {
-      lastFinishBody = JSON.parse(String(init.body ?? "{}")) as Record<
+    vi.fn(async (url: string, init: RequestInit) => {
+      const requestBody = JSON.parse(String(init.body ?? "{}")) as Record<
         string,
         unknown
       >;
+      const pathname = new URL(String(url)).pathname;
+      if (pathname === '/video-presentation') {
+        presentationBodies.push(requestBody);
+        return Response.json({ presentation: null, attempt: {
+          jobId: requestBody.jobId, deadlineAt: requestBody.deadlineAt, status: 'accepted', usage: null,
+        } });
+      }
+      if (/^\/uploads\/[^/]+\/complete$/.test(pathname)) lastFinishBody = requestBody;
       if (body.unreachable === true) throw new TypeError("fetch failed");
       if (typeof body.refusal === "string") {
         return new Response("Refused", {
@@ -1738,6 +1749,8 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
     await uploadVideo(seed);
 
     expect(lastFinishBody.coverKey).toMatch(/^video\/\d{4}-\d{2}-\d{2}\/.+_cover\.png$/);
+    expect(presentationBodies).toHaveLength(1);
+    expect(presentationBodies[0]).toMatchObject({ action: 'accept' });
   });
 
   // Named on every upload, including the ones this side believes have no frame
