@@ -3,9 +3,7 @@
 
 import type { Context } from "hono";
 import { stream } from "hono/streaming";
-
-/** The writer `stream()` hands its callback; hono exports no name for it. */
-type StreamingApi = Parameters<Parameters<typeof stream>[1]>[0];
+import type { StreamingApi } from "hono/utils/stream";
 
 /**
  * Open a streaming response whose work stops when the client goes away.
