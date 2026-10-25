@@ -167,6 +167,8 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 `mini-tool-settlement` 队列只唤醒 SQL 费用周期，载荷是 taskId 与 settlementVersion；发现任务使用原精度游标逐页补投。worker 启动时先注册恢复 worker、安装持久周期调度并投一次立即扫描，失败则关闭该 worker 并让启动失败；单个实例退出不删除共享调度。一次认领最多记录一项消费，随后读取新周期再投递，known 费用跳过外部查询；已确认费用遇到 usage 写入失败仍保持 known。队列投递失败由周期扫描重发现，最终扣费后的通知失败只记应用层错误。发现周期、页大小和查询预算来自 `config/mini-tools.yaml`，队列并发统一来自 `config/worker.yaml`；这些恢复期限不替换原计算的两小时期限。
 
+计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求。提交前重新检查原期限并用它限定传输；两次查询间隔的最终报告窗口只供读取。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。
+
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
 `worker/src/handlers/dispatch.ts` 里一个任务从投递到结束的顺序。**碰 worker 任何一步之前先定位「我在第几步」—— 同一个失败在第 3 步和第 5 步的后果完全相反**:

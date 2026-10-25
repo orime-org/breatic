@@ -94,6 +94,13 @@ describe("frozen planned job advancement", () => {
     expect(h.submit).not.toHaveBeenCalled();
   });
 
+  it("retains a failed job's completed subset and nonzero measured CPU", async () => {
+    const report = { ...failed, usage: { wallMs: 9876, cpuUsec: 123456 } };
+    h.read.mockResolvedValue(report);
+    expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
+    expect(h.submit).not.toHaveBeenCalled();
+  });
+
   it("does not submit when the missing answer crosses the original deadline", async () => {
     h.now = DEADLINE - 1;
     h.read.mockImplementation(async () => { h.now = DEADLINE; return null; });
@@ -127,6 +134,13 @@ describe("frozen planned job advancement", () => {
       expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
       expect(h.read).toHaveBeenCalledExactlyOnceWith("https://ingest.test.invalid", "test-secret", plan, undefined);
     }
+    expect(h.submit).not.toHaveBeenCalled();
+  });
+
+  it.each([done, failed])("retains a $state report that arrives across the reporting boundary", async (report) => {
+    h.now = GRACE_END - 1;
+    h.read.mockImplementation(async () => { h.now = GRACE_END; return report; });
+    expect(await advanceMiniToolPlanJob(plan)).toEqual(report);
     expect(h.submit).not.toHaveBeenCalled();
   });
 
@@ -192,7 +206,7 @@ describe("frozen planned job advancement", () => {
     expect(h.submit).not.toHaveBeenCalled();
   });
 
-  it.each([new Error("transport timeout"), new TypeError("reply lost")])("uses the original computation deadline for a failed submission $name", async (error) => {
+  it.each([new Error("transport timeout"), new TypeError("reply lost"), new UploadHttpError(429), new UploadHttpError(503), new HttpRetryError("reply lost", 3, new TypeError("fetch failed"))])("uses the original computation deadline for a failed submission $name", async (error) => {
     h.now = DEADLINE - 1; h.read.mockResolvedValue(null);
     h.submit.mockImplementation(async () => { h.now = DEADLINE; throw error; });
     await expect(advanceMiniToolPlanJob(plan)).rejects.toBeInstanceOf(DeadlinePassed);
