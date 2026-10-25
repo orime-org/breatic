@@ -31,7 +31,7 @@ import {
   type StorageConfig,
 } from "@breatic/core";
 import { uploadGrantRepo } from "@breatic/domain";
-import { decodeTransferBody, TransferDecodeError } from "@breatic/shared";
+import { decodeTransferBody, TRANSFER_KEY_DIR, TransferDecodeError } from "@breatic/shared";
 
 /** A route that takes a transfer reference, named as in `config/storage.yaml`. */
 export type TransferRoute = keyof StorageConfig["transfer"]["route_max_bytes"];
@@ -60,11 +60,8 @@ export type TransferReadResult =
   /** Storage failed for a reason that is not the file's; the reference stays usable. */
   | { kind: "read_failed"; err: unknown };
 
-/**
- * Every transfer key starts with this. It is bound to the bucket's lifecycle
- * rule and the public domain's block on the prefix, so it is not configurable.
- */
-const TRANSFER_KEY_PREFIX = "transfer/";
+/** Every transfer key starts with this. */
+const TRANSFER_KEY_PREFIX = `${TRANSFER_KEY_DIR}/`;
 
 /** Delete the read lock only while it still holds this request's token. */
 const RELEASE_LOCK_SCRIPT =

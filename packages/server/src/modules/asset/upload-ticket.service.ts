@@ -14,7 +14,7 @@
 
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import { assetService, safeExt, uploadDeadlineByKey, uploadTicketService } from "@breatic/domain";
-import { TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
+import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 import { INSUFFICIENT_STORAGE, assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
@@ -128,9 +128,7 @@ export async function issueTransferTicket(scope: TicketScope, size: number): Pro
       ...(projectId !== undefined ? { projectId } : { studioId }),
       actingUserId: userId,
       declaredSize: size,
-      // `transfer/` is bound to the bucket's lifecycle rule and the public
-      // domain's block on the prefix; changing it means changing both.
-      taskType: "transfer",
+      taskType: TRANSFER_KEY_DIR,
       ext: ".transfer",
       expiresAt: new Date(expiresAt),
       context: {

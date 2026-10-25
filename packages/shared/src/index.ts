@@ -844,6 +844,7 @@ export {
 // A request body too large for the API, carried through storage instead
 // (inner#1006): web writes it, the ingest Worker names it, the server reads it.
 export {
+  TRANSFER_KEY_DIR,
   TRANSFER_MEDIA_TYPE,
   TRANSFER_SIGNATURE,
   TransferDecodeError,

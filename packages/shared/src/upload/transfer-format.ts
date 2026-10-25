@@ -11,6 +11,14 @@
  * Sizes always count the whole file, signature line included.
  */
 
+/**
+ * The storage key directory every transfer file is written under
+ * (`transfer/<date>/<name>.transfer`). It is bound to the bucket's lifecycle
+ * rule and the public domain's block on the prefix; changing it means
+ * changing both.
+ */
+export const TRANSFER_KEY_DIR = "transfer";
+
 /** The transfer file's media type (an RFC 6838 vendor type). */
 export const TRANSFER_MEDIA_TYPE = "application/vnd.breatic.transfer";
 
