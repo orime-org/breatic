@@ -11,7 +11,7 @@
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { stream } from "hono/streaming";
+import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -160,19 +160,12 @@ async function streamTurn(
   c.header("Cache-Control", "no-cache");
   c.header("Connection", "keep-alive");
 
-  // The first ring of the stop chain, and the only one that can hear the
-  // client leave. It cannot be inferred from the writes: `StreamingApi.write`
-  // catches and discards the error a dead socket produces, so a loop that only
-  // watched its writes would stream into nothing for as long as the model kept
-  // talking. See `routes/text-tools.ts`, which does the same for its own
-  // stream.
-  const stopped = new AbortController();
-
-  return stream(c, async (s) => {
-    s.onAbort(() => {
-      stopped.abort();
-    });
-
+  // `stopped` is the first ring of the stop chain, and the only one that can
+  // hear the client leave. It cannot be inferred from the writes:
+  // `StreamingApi.write` catches and discards the error a dead socket
+  // produces, so a loop that only watched its writes would stream into
+  // nothing for as long as the model kept talking.
+  return streamUntilClientLeaves(c, async (s, stopped) => {
     // Say the connection is alive on a schedule, because a turn that is
     // thinking looks exactly like a turn that is dead: an open socket with
     // nothing on it. Not awaited — a beat is worth nothing late, and waiting
@@ -201,7 +194,7 @@ async function streamTurn(
       await runWithContext(
         { userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
         async () => {
-          const turn = await turnStream(stopped.signal);
+          const turn = await turnStream(stopped);
           for await (const chunk of turn) {
             await s.write(frame(chunk));
           }
