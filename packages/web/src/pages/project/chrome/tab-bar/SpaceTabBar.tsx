@@ -567,6 +567,7 @@ export function SpaceTabBar({
               {spaces.map((s) => (
                 <SpaceTab
                   key={s.id}
+                  projectId={projectId}
                   id={s.id}
                   name={s.name}
                   type={s.type}

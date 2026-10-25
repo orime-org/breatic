@@ -24,7 +24,7 @@ import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
-import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
+import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
@@ -337,7 +337,7 @@ function groupResults(
  * @returns The intent id.
  */
 export function miniToolIntent(spaceId: string, nodeId: string, toolId: string): string {
-  return `mini-tool:${spaceId}:${nodeId}:${toolId}`;
+  return spaceTaskIntent('mini-tool', spaceId, nodeId, toolId);
 }
 
 /**

@@ -24,7 +24,7 @@ import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
-import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
+import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { refusalClause } from '@web/spaces/canvas/failure-sentence';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
@@ -111,7 +111,7 @@ const READINGS: Readonly<Record<Reading, { prefix: string; sourceGone: string; c
  * @returns The intent id.
  */
 export function readingIntent(reading: Reading, spaceId: string, nodeId: string): string {
-  return `${reading}:${spaceId}:${nodeId}`;
+  return spaceTaskIntent(reading, spaceId, nodeId);
 }
 
 /**

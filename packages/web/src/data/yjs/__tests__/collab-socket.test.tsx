@@ -63,6 +63,8 @@ import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
   acquireDocProvider,
   releaseDocProvider,
+  readDocProvider,
+  subscribeDocProvider,
   _resetCollabSocketForTests,
 } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests as _resetDocsForTests } from '@web/data/yjs/manager';
@@ -79,6 +81,44 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
   });
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('reads an existing provider without creating a connection', () => {
+    expect(readDocProvider(META)).toBeNull();
+    expect(providerInstances).toHaveLength(0);
+    expect(wsInstances).toHaveLength(0);
+    const provider = acquireDocProvider(META, getDoc(META));
+    expect(readDocProvider(META)).toBe(provider);
+    expect(providerInstances).toHaveLength(1);
+    expect(wsInstances).toHaveLength(1);
+  });
+
+  it('observes provider creation and final destruction without retaining a reference', () => {
+    const seen: unknown[] = [];
+    const unsubscribe = subscribeDocProvider(META, () => seen.push(readDocProvider(META)));
+    expect(readDocProvider(META)).toBeNull();
+    expect(providerInstances).toHaveLength(0);
+    const provider = acquireDocProvider(META, getDoc(META));
+    expect(seen).toEqual([provider]);
+    releaseDocProvider(META);
+    vi.runOnlyPendingTimers();
+    expect(seen).toEqual([provider, null]);
+    expect(providerInstances[0].destroy).toHaveBeenCalledOnce();
+    expect(readDocProvider(META)).toBeNull();
+    unsubscribe();
+  });
+
+  it('isolates read-only observers by document and stops notifying after unsubscribe', () => {
+    const changed = vi.fn();
+    const unsubscribe = subscribeDocProvider(META, changed);
+    acquireDocProvider('project-other/meta', getDoc('project-other/meta'));
+    expect(changed).toHaveBeenCalledTimes(0);
+    acquireDocProvider(META, getDoc(META));
+    expect(changed).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    releaseDocProvider(META);
+    vi.runOnlyPendingTimers();
+    expect(changed).toHaveBeenCalledTimes(1);
   });
 
   it('creates ONE shared socket + attaches the provider on first acquire', () => {

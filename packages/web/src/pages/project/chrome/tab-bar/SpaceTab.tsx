@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Lock, X } from 'lucide-react';
+import { Loader2, Lock, X } from 'lucide-react';
 import * as React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { toast } from '@web/lib/toast';
@@ -21,8 +21,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores/ui';
 import { SPACE_TYPE_ICON } from '@web/pages/project/space-type';
+import { useSpaceTaskStatus } from '@web/pages/project/chrome/tab-bar/use-space-task-status';
 
 interface SpaceTabProps {
+  projectId: string;
   id: string;
   name: string;
   type: SpaceType;
@@ -73,7 +75,7 @@ function preventFocusOnPress(event: React.MouseEvent): void {
  * Single space tab — chrome-baseline mock `.space-tab`.
  *
  * Layout (mock spec):
- *   [type-icon] [name] [optional lock-icon] [hover-revealed × close]
+ *   [optional busy-icon] [type-icon] [name] [optional lock-icon] [hover-revealed × close]
  *
  * - 32px hit area (`--btn-chrome`)
  * - rounded 4px (ground truth specifies sm radius, not chrome 6px)
@@ -82,6 +84,7 @@ function preventFocusOnPress(event: React.MouseEvent): void {
  * - close button takes room and fades in on hover; shown on every tab,
  *   locked or not, because closing a tab is not deleting the Space
  * @param root0 - Component props.
+ * @param root0.projectId - Owning Project for existing task sources.
  * @param root0.id - Space id, used for the tab's test ids and keys.
  * @param root0.name - Current space name shown on the tab.
  * @param root0.type - Space type, selecting the leading type icon.
@@ -93,6 +96,7 @@ function preventFocusOnPress(event: React.MouseEvent): void {
  * @returns The single space tab button with icon, name (or inline name editor), optional lock icon, and close affordance.
  */
 export function SpaceTab({
+  projectId,
   id,
   name,
   type,
@@ -103,6 +107,7 @@ export function SpaceTab({
   onRename,
 }: SpaceTabProps): React.JSX.Element {
   const t = useTranslation();
+  const busy = useSpaceTaskStatus(projectId, id, type);
   // The comparison sits inside the selector so a tab subscribes to a boolean
   // and zustand bails out of every re-render where that boolean holds.
   const spaceRegionActive = useUIStore((s) => s.activeRegion === 'space');
@@ -246,6 +251,15 @@ export function SpaceTab({
         opacity: isDragging ? 0.55 : undefined,
       }}
     >
+      {busy ? (
+        // Space activity leaves navigation enabled; Button loading would swallow tab presses.
+        // eslint-disable-next-line breatic/no-hand-written-button-spinner
+        <Loader2
+          data-testid={`space-tab-busy-${id}`}
+          className='size-3 shrink-0 animate-spin text-status-info-foreground'
+          aria-hidden='true'
+        />
+      ) : null}
       <Icon
         className='shrink-0 text-muted-foreground'
         style={{ width: 14, height: 14 }}
@@ -344,7 +358,10 @@ export function SpaceTab({
           from the edge a person sees rather than from the name inset within
           it. */}
       <TooltipTrigger asChild>{tab}</TooltipTrigger>
-      <TooltipContent>{shown}</TooltipContent>
+      <TooltipContent className='flex flex-col gap-1'>
+        <span>{shown}</span>
+        {busy ? <span>{t('canvas.task.status.running')}</span> : null}
+      </TooltipContent>
     </Tooltip>
   );
 }
