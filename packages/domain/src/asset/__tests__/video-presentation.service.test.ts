@@ -106,6 +106,15 @@ describe('partial registered presentation measurements (inner#1306)', () => {
       action: 'accept', original: null, registeredMetadata: { width: 95, height: null, duration: null },
     }));
   });
+
+  it('resolves a previously unknown source after registry precision projects its trusted duration', async () => {
+    loadProjectRole.mockResolvedValue('viewer');
+    findLiveByStorageKey.mockResolvedValue({ ...asset, width: 95, height: 63, durationSeconds: 1.323 });
+    const presentation = { schemaVersion: 1, sourceFingerprint: asset.contentHash, original: { width: 95, height: 63, duration: 1.323333 },
+      state: 'native', attempt: { jobId: 'unknown-first-probe', deadlineAt: 1900000000000 } };
+    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: { ...presentation.attempt, status: 'completed', usage: null, usageRecorded: true } });
+    expect(await resolveVideoPresentation(input)).toMatchObject({ presentation, sourceBinding: { mediaInfo: { width: 95, height: 63, duration: 1.323 } } });
+  });
 });
 
 describe('registered presentation source authorization (inner#1306 §6.20)', () => {

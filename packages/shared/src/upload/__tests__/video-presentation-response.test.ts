@@ -80,4 +80,13 @@ describe('registered video presentation response (inner#1306)', () => {
     }, pollAfterMs: null }).success).toBe(false);
     expect(videoPresentationResponseSchema.safeParse({ sourceBinding: binding, presentation: null, ...idle, pollAfterMs: 5000 }).success).toBe(false);
   });
+
+  it.each([
+    [1.323333, 1.323, true], [1.3235, 1.324, true], [1.323499999, 1.323, true],
+    [1.324333, 1.323, false], [1.3235, 1.323, false],
+  ] as const)('compares probe duration %s to stored numeric duration %s at PostgreSQL decimal precision', (measured, registered, valid) => {
+    const response = { ...idle, sourceBinding: { ...binding, mediaInfo: { ...binding.mediaInfo, duration: registered } },
+      presentation: { ...presentation, state: 'native', alpha: undefined, original: { ...presentation.original, duration: measured } } };
+    expect(videoPresentationResponseSchema.safeParse(response).success).toBe(valid);
+  });
 });
