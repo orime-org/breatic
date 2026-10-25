@@ -6,9 +6,10 @@
  * much it may be (inner#1006 design §5, test spec §7.4 E01-E04 and the
  * Generate entry of E10).
  *
- * The limit is the server's `maxRequestBodyBytes`, read synchronously from the
- * session's cached upload config. The config here names 2 MiB rather than the
- * default 1 MiB, so a sentence that says "2 MiB" can only have come from it.
+ * The limit is the server's `maxRequestBodyBytes`, from the session's upload
+ * config, fetched when nothing has fetched it yet. The config here names 2 MiB
+ * rather than the default 1 MiB, so a sentence that says "2 MiB" can only have
+ * come from it.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -94,12 +95,12 @@ afterEach(() => {
 });
 
 describe('executeErrorMessage on 413 (E01, E02)', () => {
-  it('E01 asks for the server\'s payload_too_large sentence with the configured limit, and returns what it got', () => {
+  it('E01 asks for the server\'s payload_too_large sentence with the configured limit, and returns what it got', async () => {
     const translate = vi.fn((key: string, params?: Record<string, string | number>) =>
       `${key}:${JSON.stringify(params)}`,
     );
 
-    const message = executeErrorMessage(413, translate);
+    const message = await executeErrorMessage(413, translate);
 
     expect(translate.mock.calls).toEqual([['server.error.payload_too_large', { limit: '2 MiB' }]]);
     expect(message).toBe('server.error.payload_too_large:{"limit":"2 MiB"}');
@@ -111,26 +112,43 @@ describe('executeErrorMessage on 413 (E01, E02)', () => {
     [503, 'canvas.generatePanel.errorUnavailable'],
     [500, 'canvas.generatePanel.errorFailed'],
     [undefined, 'canvas.generatePanel.errorFailed'],
-  ])('E02 keeps the sentence for %s', (status, key) => {
-    expect(executeErrorMessage(status, (k: string) => k)).toBe(key);
+  ])('E02 keeps the sentence for %s', async (status, key) => {
+    expect(await executeErrorMessage(status, (k: string) => k)).toBe(key);
   });
 });
 
 describe('executeErrorMessage on 413 without a usable limit (E10, Generate entry)', () => {
   it.each([
-    ['no config fetched yet', null],
+    ['a config that cannot be fetched', null],
     ['a config without the field', undefined],
   ])('says the limitless sentence when there is %s', async (_case, limit) => {
-    if (limit === null) assetsApi.resetUploadConfigCache();
-    else await cacheLimit(limit);
+    if (limit === null) {
+      assetsApi.resetUploadConfigCache();
+      vi.mocked(apiGet).mockRejectedValue(new Error('offline'));
+    } else await cacheLimit(limit);
 
-    const message = executeErrorMessage(413, t);
+    const message = await executeErrorMessage(413, t);
 
     expect(message).toBe(t('canvas.generatePanel.errorTooLargeNoLimit'));
     expect(message).not.toBe('canvas.generatePanel.errorTooLargeNoLimit');
     expect(message).not.toContain('{limit}');
     expect(message).not.toContain('undefined');
     expect(message).not.toBe(t('canvas.generatePanel.errorFailed'));
+  });
+});
+
+describe('a 413 before this session cached the upload config', () => {
+  it('fetches the config and names its limit', async () => {
+    assetsApi.resetUploadConfigCache();
+    vi.mocked(apiGet).mockClear();
+    await cacheLimit(TWO_MIB);
+    assetsApi.resetUploadConfigCache();
+
+    const message = await executeErrorMessage(413, t);
+
+    expect(vi.mocked(apiGet)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(apiGet)).toHaveBeenLastCalledWith('/assets/upload-config');
+    expect(message).toBe(t('server.error.payload_too_large', { limit: '2 MiB' }));
   });
 });
 

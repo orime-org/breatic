@@ -140,12 +140,25 @@ describe('a reading refused with 413', () => {
     expect(vi.mocked(toast.error).mock.calls).toEqual([[SERVER_SENTENCE]]);
   });
 
+  it('nginx\'s 413 before the config was cached: fetches it and names its limit', async () => {
+    await cacheLimit(2097152);
+    assetsApi.resetUploadConfigCache();
+    vi.mocked(canvasApi.understand).mockRejectedValueOnce(NGINX_413());
+
+    await startUnderstandRun(RUN);
+
+    expect(vi.mocked(apiGet)).toHaveBeenLastCalledWith('/assets/upload-config');
+    expect(vi.mocked(toast.error).mock.calls).toEqual([[t('server.error.payload_too_large', { limit: '2 MiB' })]]);
+  });
+
   it.each([
-    ['no config fetched yet', null],
+    ['a config that cannot be fetched', null],
     ['a config without the field', undefined],
   ])('E10 nginx\'s 413 with %s: the limitless sentence, not couldNotStart', async (_case, limit) => {
-    if (limit === null) assetsApi.resetUploadConfigCache();
-    else await cacheLimit(limit);
+    if (limit === null) {
+      assetsApi.resetUploadConfigCache();
+      vi.mocked(apiGet).mockRejectedValue(new Error('offline'));
+    } else await cacheLimit(limit);
     vi.mocked(canvasApi.understand).mockRejectedValueOnce(NGINX_413());
 
     await startUnderstandRun(RUN);

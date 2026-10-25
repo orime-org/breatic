@@ -156,12 +156,25 @@ describe('a mini-tool run refused with 413', () => {
     expect(failedMessage()).toEqual({ text: SERVER_SENTENCE });
   });
 
+  it('nginx\'s 413 before the config was cached: fetches it and names its limit', async () => {
+    await cacheLimit(2097152);
+    assetsApi.resetUploadConfigCache();
+    api.run.mockRejectedValue(new ApiException({ status: 413, message: '<html>413</html>', fromServer: false }));
+
+    await startMiniToolRun(press());
+
+    expect(vi.mocked(apiGet)).toHaveBeenLastCalledWith('/assets/upload-config');
+    expect(failedMessage()).toEqual({ key: 'server.error.payload_too_large', params: { limit: '2 MiB' } });
+  });
+
   it.each([
-    ['no config fetched yet', null],
+    ['a config that cannot be fetched', null],
     ['a config without the field', undefined],
   ])('E10 nginx\'s 413 with %s: the limitless key, not couldNotStart', async (_case, limit) => {
-    if (limit === null) assetsApi.resetUploadConfigCache();
-    else await cacheLimit(limit);
+    if (limit === null) {
+      assetsApi.resetUploadConfigCache();
+      vi.mocked(apiGet).mockRejectedValue(new Error('offline'));
+    } else await cacheLimit(limit);
     api.run.mockRejectedValue(new ApiException({ status: 413, message: '<html>413</html>', fromServer: false }));
 
     await startMiniToolRun(press());
