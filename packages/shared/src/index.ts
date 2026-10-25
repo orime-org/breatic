@@ -751,6 +751,11 @@ export {
   type MediaInputDescriptor,
 } from "@shared/media/long-media-schema.js";
 export {
+  LongMediaProbeReportSchema,
+  readLongMediaProbeReport,
+  type LongMediaProbeReport,
+} from "@shared/media/long-media-probe.js";
+export {
   computeLongMediaJobRequestDigest,
   LongMediaJobRequestSchema,
   readLongMediaJobRequest,
