@@ -35,8 +35,10 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/** An email address field, returned in its normalized form. */
-/** RFC 3696 erratum 1690: an address is at most 254 characters. */
+/**
+ * An email address field, returned in its normalized form; at most 254
+ * characters (RFC 3696 erratum 1690).
+ */
 export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().max(254));
 
 /**
