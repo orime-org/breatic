@@ -566,11 +566,10 @@ async function getMembershipReadingForStudio(studioId: string, tx?: DbTx): Promi
  * @throws {Error} When stored membership facts are invalid.
  */
 export async function lockRawMembershipSnapshot(userId: string, tx: DbTx): Promise<RawMembershipSnapshot | null> {
-  const locked = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).for("update").limit(1);
-  if (locked.length === 0) return null;
-  const [row] = await tx.select({ storedTier: users.membershipTier, enterprise: getTableColumns(enterpriseMemberships) }).from(users).leftJoin(enterpriseMemberships, and(eq(enterpriseMemberships.userId, users.id), isNull(enterpriseMemberships.deletedAt))).where(eq(users.id, userId)).limit(1);
-  if (row === undefined) throw new Error(`Locked account ${userId} disappeared`);
-  return { userId, storedTier: asKnownTier(row.storedTier, { accountId: userId }), enterprise: row.enterprise === null ? null : enterpriseRecordOf(row.enterprise) };
+  const [locked] = await tx.select({ storedTier: users.membershipTier }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).for("update").limit(1);
+  if (locked === undefined) return null;
+  const [enterprise] = await tx.select().from(enterpriseMemberships).where(and(eq(enterpriseMemberships.userId, userId), isNull(enterpriseMemberships.deletedAt))).limit(1);
+  return { userId, storedTier: asKnownTier(locked.storedTier, { accountId: userId }), enterprise: enterprise === undefined ? null : enterpriseRecordOf(enterprise) };
 }
 
 /**

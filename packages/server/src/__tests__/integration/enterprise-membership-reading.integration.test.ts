@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { db, initCore, getHonouredTierForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, lockLimitsForUser } from "@breatic/core";
+import { db, initCore, getHonouredTierForUser, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, lockLimitsForUser } from "@breatic/core";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -40,6 +40,11 @@ beforeAll(() => {
 afterAll(async () => { await sql?.end({ timeout: 1 }); });
 
 describe("enterprise membership unified reads", () => {
+  it.each(["missing", "deleted"])("refuses a %s membership subject", async (state) => {
+    const userId = state === "missing" ? randomUUID() : (await account("pro")).userId;
+    if (state === "deleted") await sql`update users set deleted_at=now() where id=${userId}`;
+    await expect(getMembershipReadingForUser(userId)).rejects.toThrow(`No live account ${userId}`);
+  });
   it("reads all negotiated limits while retaining the enterprise display and storage rules", async () => {
     const { userId, studioId } = await account("enterprise");
     await enterprise(userId, "2070-01-01T00:00:00Z");

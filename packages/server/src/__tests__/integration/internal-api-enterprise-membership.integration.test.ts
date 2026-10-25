@@ -266,4 +266,29 @@ describe("enterprise membership signed internal API", () => {
     const response = await call(suite.baseUrl, `/internal/v1/enterprise-membership-operations/${key()}`);
     expect(response.status).toBe(404); expect(response.json.code).toBe("not_found");
   });
+  it("rolls back a suppressed membership write and permits retry under the original key", async () => {
+    const id = await user(); const requestKey = key();
+    const name = `enterprise_suppressed_${randomUUID().replaceAll("-", "")}`;
+    let functionCreated = false;
+    let triggerCreated = false;
+    try {
+      await suite.sql.unsafe(`create function ${name}() returns trigger language plpgsql as $$ begin if new.user_id = '${id}'::uuid then return null; end if; return new; end $$`);
+      functionCreated = true;
+      await suite.sql.unsafe(`create trigger ${name} before insert or update on enterprise_memberships for each row execute function ${name}()`);
+      triggerCreated = true;
+      const response = await call(suite.baseUrl, path(id), { body, idempotencyKey: requestKey });
+      expect(response.status).toBe(500); expect(response.json.code).toBe("internal_error");
+      const [stored] = await suite.sql<{ membership_tier: string }[]>`select membership_tier from users where id=${id}`;
+      expect(stored!.membership_tier).toBe("pro");
+      expect(await suite.sql`select user_id from enterprise_memberships where user_id=${id}`).toEqual([]);
+      expect(await suite.sql`select id from membership_tier_changes where user_id=${id}`).toEqual([]);
+      expect(await operationCount(requestKey)).toBe(0);
+    } finally {
+      if (triggerCreated) await suite.sql.unsafe(`drop trigger ${name} on enterprise_memberships`);
+      if (functionCreated) await suite.sql.unsafe(`drop function ${name}()`);
+    }
+    const retry = await call(suite.baseUrl, path(id), { body, idempotencyKey: requestKey });
+    expect(retry.status).toBe(200); expect(retry.json.status).toBe("applied");
+    expect(await operationCount(requestKey)).toBe(1);
+  });
 });
