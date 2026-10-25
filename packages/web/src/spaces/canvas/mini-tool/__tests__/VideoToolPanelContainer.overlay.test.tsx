@@ -21,6 +21,11 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
   NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../video/use-video-frame-thumbnails')>()),
+  useVideoFrameThumbnails: () => ({ status: 'loading', frames: [] }),
+}));
+
 const projectId = 'portal-project'; const spaceId = 'portal-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.webm';
 let target: HTMLElement | null = null;
@@ -54,5 +59,33 @@ describe('parameter-owned overlay in the actual canonical node display', () => {
     if (reading.state !== 'supported' || !('region' in reading.draft.params)) throw new Error('Expected supported erase draft');
     expect(reading.draft.draftId).toBe(draft.draftId);
     expect(reading.draft.params.region.box).toEqual({ x: 0.1, y: 0.2, width: 0.5, height: 0.6000000000000001 });
+  });
+});
+
+
+describe('Run with a trusted frame table and an unknown presented frame', () => {
+  it.each(['current', 'first', 'last', 'interval'] as const)('gates %s by its actual frame dependency without inventing a Current time', (mode) => {
+    const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+    addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
+    const source = { nodeId, canonicalURL: sourceURL, mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
+    const initial = createVideoToolDraft('video.extract-frames', source);
+    const draft = { ...initial, params: { mode, currentTime: 0.13, interval: 0.04 } };
+    commitVideoToolDraft(doc, nodeId, 'video.extract-frames', draft);
+    canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.extract-frames', { sourceContent: sourceURL, params: {} });
+    const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...source.mediaInfo } };
+    const frameTable = { frames: [{ frameIndex: 0, pts: 0 }, { frameIndex: 1, pts: 0.04 }, { frameIndex: 2, pts: 0.12 }, { frameIndex: 3, pts: 0.2 }], videoEnd: 0.28 };
+    const onRun = vi.fn().mockResolvedValue(undefined);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} onRunVideo={onRun} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 3, presentedTime: null as unknown as number }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+    const run = screen.getByTestId('mini-tool-run');
+    if (mode === 'current') {
+      expect(run).toBeDisabled();
+      fireEvent.click(run);
+      expect(onRun).not.toHaveBeenCalled();
+    } else {
+      expect(run).not.toBeDisabled();
+      fireEvent.click(run);
+      expect(onRun).toHaveBeenCalledOnce();
+      expect(onRun.mock.calls[0]![2].params).toEqual(draft.params);
+    }
   });
 });

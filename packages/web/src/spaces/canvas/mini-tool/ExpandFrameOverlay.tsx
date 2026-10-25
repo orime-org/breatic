@@ -35,6 +35,8 @@ type Gesture = { pointerId: number; frame: ExpandFrame; ratio: ExpandRatio; last
 );
 
 export interface ExpandFrameOverlayProps {
+  /** Keep the actual canonical video and controls visible inside their node. */
+  videoLiveSource?: boolean;
   videoSource?: VideoExpansionSurface;
   videoRevision?: string;
   videoDisabled?: boolean;
