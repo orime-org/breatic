@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { VideoPresentation } from '@breatic/shared';
+import { parseVideoPresentation, type VideoPresentation } from '@breatic/shared';
 
 /** Internal accepted work identity, including sources not yet measured. */
 export interface AcceptedVideoPresentationAttempt {
@@ -23,7 +23,20 @@ export function advanceVideoPresentation(
   accepted: AcceptedVideoPresentationAttempt,
   proposed: unknown,
 ): VideoPresentation | null {
-  void accepted;
-  void proposed;
-  return current;
+  const next = parseVideoPresentation(proposed, accepted.sourceFingerprint);
+  if (next === null || next.attempt?.jobId !== accepted.jobId || next.attempt.deadlineAt !== accepted.deadlineAt) return current;
+  if (current !== null && current.sourceFingerprint === accepted.sourceFingerprint) {
+    for (const field of ['width', 'height', 'duration'] as const) {
+      if (current.original[field] !== next.original[field]) return current;
+    }
+    const transitions: Record<VideoPresentation['state'], readonly VideoPresentation['state'][]> = {
+      classifying: ['classifying', 'native', 'alpha_pending', 'failed'],
+      native: ['native', 'classifying', 'failed'],
+      alpha_pending: ['alpha_pending', 'alpha_ready', 'failed'],
+      alpha_ready: ['alpha_ready', 'alpha_pending', 'failed'],
+      failed: ['failed', 'classifying', 'alpha_pending', 'alpha_ready'],
+    };
+    if (!transitions[current.state].includes(next.state)) return current;
+  }
+  return next;
 }

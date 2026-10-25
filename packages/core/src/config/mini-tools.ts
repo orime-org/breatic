@@ -45,6 +45,13 @@ const analysisConfigSchema = z.strictObject({
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
+    presentation: z.strictObject({
+      container_class: z.string().min(1).default("MediaContainer"),
+      max_source_bytes: z.number().int().positive().default(1_073_741_824),
+      max_packed_bytes: z.number().int().positive().default(1_073_741_824),
+      crf: z.number().int().min(0).max(51).default(18),
+      preset: z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]).default("medium"),
+    }).default({ container_class: "MediaContainer", max_source_bytes: 1_073_741_824, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium" }),
     plan_limits: miniToolPlanLimitsSchema.extend({
       probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),
@@ -78,6 +85,9 @@ export const miniToolsConfigSchema = z
     waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
   })
   .superRefine((config, ctx) => {
+    if (!(config.presentation.container_class in config.classes)) {
+      ctx.addIssue({ code: "custom", path: ["presentation", "container_class"], message: "Presentation names an undeclared container class" });
+    }
     for (const [op, spec] of Object.entries(config.ops)) {
       if (!(spec.container_class in config.classes)) {
         ctx.addIssue({

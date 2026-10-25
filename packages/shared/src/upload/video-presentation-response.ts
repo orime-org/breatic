@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from 'zod';
-import type { AlphaManifest, VideoPresentation } from '@shared/upload/video-presentation.js';
+import { alphaManifestMatchesPresentation, alphaManifestSchema, videoPresentationSchema, type AlphaManifest, type VideoPresentation } from '@shared/upload/video-presentation.js';
 
 /** Registry identity remains available before trusted media measurement. */
 export interface VideoPresentationSourceBinding {
@@ -32,6 +32,46 @@ export interface VideoPresentationPreparation {
 }
 
 /** Registry-backed nullable metadata wire contract. */
-export const videoPresentationSourceBindingSchema = z.never() as unknown as z.ZodType<VideoPresentationSourceBinding>;
+export const videoPresentationSourceBindingSchema: z.ZodType<VideoPresentationSourceBinding> = z.strictObject({
+  assetId: z.uuid(), contentHash: z.string().regex(/^[a-f0-9]{64}$/), canonicalURL: z.url(), kind: z.literal('video'),
+  mediaInfo: z.strictObject({
+    width: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
+    height: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
+    duration: z.number().finite().positive().nullable(), mimeType: z.string().min(1),
+  }),
+});
+const attempt = z.strictObject({ jobId: z.string().min(1), deadlineAt: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
+const preparation: z.ZodType<VideoPresentationPreparation> = z.strictObject({
+  status: z.enum(['accepted', 'running', 'completed', 'failed']), attempt,
+  error: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
+}).superRefine((value, ctx) => {
+  if ((value.status === 'failed') !== (value.error !== undefined)) {
+    ctx.addIssue({ code: 'custom', path: ['error'], message: 'Only failed preparation carries its stable error code' });
+  }
+});
 /** Authorized presentation query wire contract. */
-export const videoPresentationResponseSchema = z.never() as unknown as z.ZodType<VideoPresentationResponse>;
+export const videoPresentationResponseSchema: z.ZodType<VideoPresentationResponse> = z.strictObject({
+  sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationSchema.nullable(),
+  manifest: alphaManifestSchema.optional(), preparation: preparation.nullable(),
+  pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
+}).superRefine((value, ctx) => {
+  const descriptor = value.presentation;
+  if (descriptor !== null) {
+    if (descriptor.sourceFingerprint !== value.sourceBinding.contentHash) {
+      ctx.addIssue({ code: 'custom', path: ['presentation'], message: 'Presentation differs from registered source' });
+    }
+    for (const field of ['width', 'height', 'duration'] as const) {
+      const known = value.sourceBinding.mediaInfo[field];
+      if (known !== null && known !== descriptor.original[field]) {
+        ctx.addIssue({ code: 'custom', path: ['presentation', 'original', field], message: 'Presentation differs from registered measurement' });
+      }
+    }
+    if (descriptor.state === 'alpha_ready' && (value.manifest === undefined || !alphaManifestMatchesPresentation(value.manifest, descriptor))) {
+      ctx.addIssue({ code: 'custom', path: ['manifest'], message: 'Ready alpha requires a matching verified manifest' });
+    }
+  }
+  const pending = value.preparation?.status === 'accepted' || value.preparation?.status === 'running';
+  if (pending !== (value.pollAfterMs !== null)) {
+    ctx.addIssue({ code: 'custom', path: ['pollAfterMs'], message: 'Only accepted pending work carries a polling interval' });
+  }
+});

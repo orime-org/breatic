@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { queryOptions, type UseQueryOptions } from '@tanstack/react-query';
-import type { VideoPresentationResponse } from '@breatic/shared';
+import { videoPresentationResponseSchema, type VideoPresentationResponse } from '@breatic/shared';
+import { apiGet } from '@web/data/api/request';
 
 /** Canonical source query inputs; the existing account-scoped client owns the cache. */
 export interface VideoPresentationQueryInput { projectId: string; canonicalURL: string; active: boolean }
@@ -31,9 +32,16 @@ function presentationOptions(input: VideoPresentationQueryInput): VideoPresentat
     queryKey: ['video-presentation', 1, input.projectId, input.canonicalURL] as const,
     enabled: input.active && input.projectId.length > 0 && input.canonicalURL.length > 0,
     retry: false,
-    queryFn: async (): Promise<VideoPresentationResponse> => {
-      throw new Error('Video presentation query is not implemented');
+    queryFn: async ({ signal }): Promise<VideoPresentationResponse> => {
+      const answered = await apiGet<unknown>(`/projects/${input.projectId}/assets/video-presentation`, {
+        params: { url: input.canonicalURL }, signal,
+      });
+      signal.throwIfAborted();
+      return videoPresentationResponseSchema.parse(answered);
     },
-    refetchInterval: (): number | false => false,
+    refetchInterval: (query): number | false => {
+      const data = query.state.data;
+      return data?.preparation?.status === 'accepted' || data?.preparation?.status === 'running' ? data.pollAfterMs ?? false : false;
+    },
   });
 }

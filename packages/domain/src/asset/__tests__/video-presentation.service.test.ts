@@ -3,21 +3,25 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StudioAssetEntity } from '@breatic/shared';
+import type * as coreModule from '@breatic/core';
 import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation } from '../video-presentation.service.js';
 
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
 }));
 const { videoPresentationAtIngest, queueAdd } = vi.hoisted(() => ({ videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn() }));
-vi.mock('@breatic/core', async (original) => ({
-  ...await original<Record<string, unknown>>(),
+vi.mock('@breatic/core', async (original) => {
+  const actual = await original<typeof coreModule>();
+  return {
+  ...actual,
   projectAuthService: { loadProjectRole },
   getStorageAdapter: async () => ({ keyFromUrl, publicUrl }),
   createQueue: () => ({ add: queueAdd }),
   defaultJobOpts: () => ({ attempts: 3 }),
-  getMiniToolsConfig: () => ({ poll_interval_ms: 5000 }),
+  getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
   env: { INGEST_BASE_URL: 'https://ingest.example.test', INGEST_SHARED_SECRET: 'secret' },
-}));
+};
+});
 vi.mock('@breatic/shared', async (original) => ({ ...await original<Record<string, unknown>>(), videoPresentationAtIngest }));
 vi.mock('@domain/asset/asset.repo.js', () => ({ findLiveByStorageKey, findById }));
 

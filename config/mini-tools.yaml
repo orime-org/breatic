@@ -15,6 +15,14 @@ plan_limits:
   analysisStdoutBytes: 16777216
   stderrTailBytes: 65536
 
+# Automatic presentation preparation is platform funded and uses the metadata container.
+presentation:
+  container_class: "MediaContainer"
+  max_source_bytes: 1073741824
+  max_packed_bytes: 1073741824
+  crf: 18
+  preset: "medium"
+
 # A billing lookup lease and retry delay; neither changes the node task budget.
 settlement:
   lease_ms: 60000
@@ -29,6 +37,11 @@ prices:
 
 # One class per instance type, each with the instance type's published size.
 classes:
+  MediaContainer:
+    instance_type: "basic"
+    vcpu: 0.25
+    memory_gib: 1
+    disk_gb: 4
   MiniToolContainerStd1:
     instance_type: "standard-1"
     vcpu: 0.5
