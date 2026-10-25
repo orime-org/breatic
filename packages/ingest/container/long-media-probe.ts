@@ -14,9 +14,12 @@ export interface LongMediaProbeRunRequest {
 /** Dependencies that let the long-media probe protocol run without a real Container. */
 export interface LongMediaProbeRunDeps {
   execute(objectUrl: string, signal: AbortSignal): Promise<string | null>;
-  report(reportUrl: string, stdout: string): Promise<void>;
+  report(reportUrl: string, result: LongMediaProbeRunResult): Promise<void>;
   now(): number;
 }
+
+/** A complete probe answer or a controlled execution failure. */
+export type LongMediaProbeRunResult = { stdout: string } | { failure: "probe_failed" };
 
 /**
  * Probe one source and return the raw measured facts to the Worker.
@@ -30,10 +33,18 @@ export async function runLongMediaProbe(
   deps: LongMediaProbeRunDeps = LONG_MEDIA_PROBE_DEPS,
 ): Promise<void> {
   const remainingMs = request.deadlineAt - deps.now();
-  if (remainingMs <= 0) throw new Error("The long media probe deadline has passed");
-  const stdout = await deps.execute(request.objectUrl, AbortSignal.timeout(remainingMs));
-  if (stdout === null) throw new Error("ffprobe did not return measured source facts");
-  await deps.report(request.reportUrl, stdout);
+  if (remainingMs <= 0) {
+    await deps.report(request.reportUrl, { failure: "probe_failed" });
+    return;
+  }
+  let stdout: string | null;
+  try {
+    stdout = await deps.execute(request.objectUrl, AbortSignal.timeout(remainingMs));
+  } catch {
+    await deps.report(request.reportUrl, { failure: "probe_failed" });
+    return;
+  }
+  await deps.report(request.reportUrl, stdout === null ? { failure: "probe_failed" } : { stdout });
 }
 
 const LONG_MEDIA_PROBE_DEPS: LongMediaProbeRunDeps = {
@@ -41,11 +52,11 @@ const LONG_MEDIA_PROBE_DEPS: LongMediaProbeRunDeps = {
     const result = await runTool("ffprobe", probeArgs(objectUrl), { maxBytes: PROBE_MAX_BYTES, signal });
     return result?.toString("utf8") ?? null;
   },
-  report: async (reportUrl, stdout) => {
+  report: async (reportUrl, result) => {
     const response = await fetch(reportUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ stdout }),
+      body: JSON.stringify(result),
     });
     await response.body?.cancel();
     if (!response.ok) throw new Error(`The long media probe report was answered ${response.status}`);

@@ -242,6 +242,42 @@ describe("POST /long-media/jobs", () => {
     await accepted.body?.cancel();
   });
 
+  it("persists an attempt-fenced ffprobe failure and requests Container shutdown", async () => {
+    const failurePayload = { ...payload, jobId: "operation-probe-failure:source-0", operationId: "operation-probe-failure" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(failurePayload) });
+    const id = env.LONG_MEDIA.idFromName(failurePayload.jobId);
+    const stub = env.LONG_MEDIA.get(id);
+    await stub.startAttempt("probe-failure-attempt", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "probe-failure-attempt", epoch: 1 }, Date.now());
+    await stub.transition({ type: "containerStarted" }, Date.now());
+
+    const response = await acceptLongMediaProbeReport(
+      new Request("http://long-media.local/probe-report", {
+        method: "POST",
+        body: JSON.stringify({ failure: "probe_failed" }),
+      }),
+      env,
+      {
+        className: "LongMediaContainer",
+        containerId: id.toString(),
+        params: {
+          attemptId: "probe-failure-attempt",
+          epoch: 1,
+          sourceFingerprint: failurePayload.source.sha256,
+          profileVersion: failurePayload.profileVersion,
+        },
+      },
+    );
+
+    expect(response.status, await response.clone().text()).toBe(200);
+    await expect(stub.report()).resolves.toMatchObject({ phase: "stopping", terminalIntent: "failed" });
+    await expect(stub.pendingAttemptEffects()).resolves.toContainEqual({
+      attemptId: "probe-failure-attempt",
+      epoch: 1,
+      effect: "destroy",
+    });
+  });
+
   it("rejects a job whose absolute deadline has already passed", async () => {
     const expired = { ...payload, jobId: "operation-expired:source-0", operationId: "operation-expired", deadlineAt: Date.now() - 1 };
     const response = await call("/long-media/jobs", { method: "POST", body: await requestBody(expired) });

@@ -105,16 +105,33 @@ export async function acceptLongMediaProbeReport(
   env: Pick<LongMediaEnv, "LONG_MEDIA">,
   context: OutboundHandlerContext<LongMediaProbeCallbackContext>,
 ): Promise<Response> {
-  let stdout: string;
+  let stdout: string | null = null;
+  let failed = false;
   try {
     const body: unknown = await request.json();
-    if (body === null || typeof body !== "object" || !("stdout" in body) || typeof body.stdout !== "string") {
+    if (body === null || typeof body !== "object" || Object.keys(body).length !== 1) {
       return new Response("Invalid probe report", { status: 400 });
     }
-    stdout = body.stdout;
+    if ("stdout" in body && typeof body.stdout === "string") stdout = body.stdout;
+    else if ("failure" in body && body.failure === "probe_failed") failed = true;
+    else return new Response("Invalid probe report", { status: 400 });
   } catch {
     return new Response("Invalid probe report", { status: 400 });
   }
+  const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromString(context.containerId));
+  if (failed) {
+    noteFailure("ingest_long_media_probe_failed", { containerId: context.containerId });
+    try {
+      const result = await stub.applyProbeFailure(context.params.attemptId, context.params.epoch, Date.now());
+      return result.kind === "accepted"
+        ? new Response(null, { status: 200 })
+        : new Response("Stale probe failure", { status: 409 });
+    } catch (err) {
+      noteFailure("ingest_long_media_probe_failure_persist_failed", { containerId: context.containerId }, err);
+      throw err;
+    }
+  }
+  if (stdout === null) return new Response("Invalid probe report", { status: 400 });
   let report;
   try {
     report = buildLongMediaProbeReport(stdout, context.params.sourceFingerprint, context.params.profileVersion);
@@ -123,7 +140,6 @@ export async function acceptLongMediaProbeReport(
     return new Response("Invalid probe report", { status: 400 });
   }
   try {
-    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromString(context.containerId));
     const result = await stub.applyProbeReport(context.params.attemptId, context.params.epoch, report, Date.now());
     return result.kind === "accepted" || result.kind === "replayed"
       ? new Response(null, { status: 200 })

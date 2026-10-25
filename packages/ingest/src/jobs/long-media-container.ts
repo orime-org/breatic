@@ -107,6 +107,11 @@ export type LongMediaProbeApplyResult =
   | { kind: "accepted" | "replayed"; report: LongMediaProbeReport; lifecycle: LongMediaTransitionResult }
   | { kind: "stale" | "conflict" | "not-probing" };
 
+/** Result of a fenced probe failure report. */
+export type LongMediaProbeFailureApplyResult =
+  | { kind: "accepted"; lifecycle: LongMediaTransitionResult }
+  | { kind: "stale" | "not-probing" };
+
 const JOB_TABLE = `
   CREATE TABLE IF NOT EXISTS long_media_jobs (
     job_id TEXT PRIMARY KEY NOT NULL,
@@ -283,6 +288,21 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    */
   async applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): Promise<LongMediaProbeApplyResult> {
     const result = this.jobStore.applyProbeReport(attemptId, epoch, report, now);
+    if (result.kind === "accepted" && result.lifecycle.effects.includes("stopContainer")) {
+      await this.destroy();
+    }
+    return result;
+  }
+
+  /**
+   * Persist a failed probe and stop the Container for that attempt.
+   * @param attemptId - The producing attempt identity.
+   * @param epoch - The attempt epoch.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The fenced failure result.
+   */
+  async applyProbeFailure(attemptId: string, epoch: number, now: number): Promise<LongMediaProbeFailureApplyResult> {
+    const result = this.jobStore.applyProbeFailure(attemptId, epoch, now);
     if (result.kind === "accepted" && result.lifecycle.effects.includes("stopContainer")) {
       await this.destroy();
     }
@@ -498,6 +518,17 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
    */
   applyProbeReport(attemptId: string, epoch: number, report: unknown, now: number): LongMediaProbeApplyResult {
     return this.jobStore.applyProbeReport(attemptId, epoch, report, now);
+  }
+
+  /**
+   * Persist a probe failure in the protocol test object.
+   * @param attemptId - The producing attempt identity.
+   * @param epoch - The attempt epoch.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The fenced failure result.
+   */
+  applyProbeFailure(attemptId: string, epoch: number, now: number): LongMediaProbeFailureApplyResult {
+    return this.jobStore.applyProbeFailure(attemptId, epoch, now);
   }
 
   /**
@@ -920,6 +951,51 @@ class LongMediaJobStore {
         report,
         lifecycle: lifecycleResult(job, transition),
       };
+    });
+  }
+
+  /**
+   * Atomically fence a probe failure, terminate its job and request shutdown.
+   * @param attemptId - The producing attempt identity.
+   * @param epoch - The attempt epoch.
+   * @param now - The event time in epoch milliseconds.
+   * @returns The fenced failure result.
+   */
+  applyProbeFailure(attemptId: string, epoch: number, now: number): LongMediaProbeFailureApplyResult {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      const attempt = this.ctx.storage.sql
+        .exec<LongMediaAttemptRow>("SELECT * FROM long_media_attempts ORDER BY epoch DESC LIMIT 1")
+        .toArray()[0];
+      if (job === undefined || attempt === undefined || attempt.attempt_id !== attemptId || attempt.epoch !== epoch ||
+          readAttemptPhase(attempt.phase) !== "running") return { kind: "stale" };
+      const current = stateOf(job);
+      if (current.phase !== "probing") return { kind: "not-probing" };
+
+      const attemptTransition = transitionLongMediaAttempt(attemptStateOf(attempt), { type: "failure", attemptId, epoch });
+      if (attemptTransition.state.phase !== attempt.phase) {
+        this.ctx.storage.sql.exec(
+          "UPDATE long_media_attempts SET phase = ?, updated_at = ? WHERE job_id = ? AND epoch = ? AND attempt_id = ?",
+          attemptTransition.state.phase,
+          now,
+          job.job_id,
+          epoch,
+          attemptId,
+        );
+      }
+      for (const effect of attemptTransition.effects) {
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO long_media_attempt_effects (job_id, epoch, attempt_id, effect, status) VALUES (?, ?, ?, ?, 'pending')",
+          job.job_id,
+          epoch,
+          attemptId,
+          effect,
+        );
+      }
+
+      const lifecycle = transitionLongMediaJob(current, { type: "fatal" }, now);
+      persistLifecycle(this.ctx, job, lifecycle, now);
+      return { kind: "accepted", lifecycle: lifecycleResult(job, lifecycle) };
     });
   }
 }
