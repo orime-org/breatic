@@ -505,7 +505,7 @@ describe("key decisions remain atomic across concurrency and transport failures"
       expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
       const killed = await suite.sql<{ terminated: boolean }[]>`
         SELECT pg_terminate_backend(pid) AS terminated FROM pg_stat_activity
-        WHERE pid = ${victim.pid} AND backend_start = ${victim.backend_start}::timestamptz
+        WHERE pid = ${victim.pid} AND backend_start::text = ${victim.backend_start}
           AND backend_xid::text = ${victim.transaction_id}
           AND ${gatePid} = ANY(pg_blocking_pids(pid))
       `;
