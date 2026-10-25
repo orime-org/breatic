@@ -4,22 +4,20 @@
 /**
  * The first ring of the stop chain: the route notices the client leaving.
  *
- * Both streaming chat entrances are covered, because a stop that only works on
- * one of them is a route the user cannot get out of.
+ * The client leaving is reproduced two ways, because Node reports it two
+ * ways. A client gone mid-stream is heard through the response body's
+ * `cancel`, which `@hono/node-server` 2.1.0 calls from `writable.on("close")`;
+ * it is reproduced by cancelling the response body. A client gone before the
+ * body began (a read-lock wait) is heard only on the request's own signal,
+ * which `streamUntilClientLeaves` routes into `StreamingApi.abort()`; it is
+ * reproduced by aborting the request. hono 4.13.1's `stream()` subscribes to
+ * that signal only on old Bun.
  *
- * The client going away is reproduced by cancelling the response body, which
- * is the same path a real disconnect takes. Measured on this repo's
- * hono 4.12.23 and @hono/node-server 2.0.4: the `stream()` helper only
- * subscribes to `c.req.raw.signal` on old Bun, so on Node the only route to
- * `StreamingApi.abort()` is the response readable's `cancel` callback, and
- * node-server calls it from `writable.on("close", ...)` when the socket goes.
- * A probe against a real server confirmed `s.onAbort` fires.
- *
- * What that probe also showed is why this ring alone settles nothing: with the
- * callback firing, the turn's generator still ran 357 more iterations and its
- * `finally` was never entered, because nothing connected the callback to the
- * turn. So the assertion here is not that `onAbort` fired — it is that the
- * signal the turn was handed is the one that gets raised.
+ * A raised callback alone settles nothing: with nothing connecting it to the
+ * turn, the turn's generator keeps running and its `finally` is never
+ * entered. So each case asserts that the signal the turn was handed is raised
+ * and that the route read the turn to its end, where the real turn records
+ * what it said.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -146,10 +144,12 @@ describe("a client that goes away mid-stream", () => {
 
       await reader?.cancel();
       // The subscriber list runs synchronously inside `abort()`, but the read
-      // side needs a turn of the loop to get there.
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      // side needs a turn of the loop to get there, and the turn two more
+      // pulls to say it stopped and close.
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(signal?.aborted).toBe(true);
+      expect(turns.ended).toBe(1);
     });
   }
 });

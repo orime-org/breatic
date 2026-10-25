@@ -51,7 +51,7 @@ describe("text tools stream when the client leaves before anything is read", () 
   /**
    * A run that streams until its signal is raised, then reports the stop the
    * way the real one does and counts that it got that far.
-   * @returns The mock's run and how many runs reached their end.
+   * @returns The signal each run was handed, and how many runs reached their end.
    */
   function stoppableRun(): { ended: { count: number }; signals: AbortSignal[] } {
     const ended = { count: 0 };
