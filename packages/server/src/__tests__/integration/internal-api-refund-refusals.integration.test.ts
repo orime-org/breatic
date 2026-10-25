@@ -23,8 +23,9 @@ vi.mock("@server/infra/stripe.js", async () => {
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { aroundNextList, fakeStripe, stripeError } from "./fake-stripe-refunds.js";
 import { ADMIN, buildRequest, call, freshKey, holdersOf, mailsSettled, paths, useInternalApp, type CallResult } from "./internal-api-harness.js";
-import { PAID_CENTS, reId, refundObject, refundedThenFailed, seedOperation, seedRefundLot, type LotState, type SeededLot } from "./credit-refund-fixtures.js";
+import { CREDITS, PAID_CENTS, ledgerOf, readLot, readOp, reId, refundObject, refundedThenFailed, seedOperation, seedRefundLot, type LotState, type SeededLot } from "./credit-refund-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
+import { openPaymentSource } from "./payment-source.js";
 
 const suite = useInternalApp("internal-api-refund-refusals-test");
 const APPROVE = { reason: "Return the unused payment.", confirmedRefundIds: [] };
@@ -237,6 +238,111 @@ describe("all eight write endpoints share persisted refusal ownership", () => {
 });
 
 describe("key decisions remain atomic across concurrency and transport failures", () => {
+  it.each(["lot", "payment"] as const)("a missing %s target restored while waiting for the key lock continues with Stripe preparation outside that lock", async (missing) => {
+    const lot = await lotOnStripe("refund_pending");
+    const key = freshKey();
+    if (missing === "lot") {
+      await suite.sql`UPDATE credit_lots SET deleted_at = now() WHERE id = ${lot.lotId}`;
+    } else {
+      // The receipt exists (preserving the composite source FK), while its
+      // corresponding payment has not appeared yet.
+      const missingPaymentId = await openPaymentSource(suite.sql);
+      await suite.sql`UPDATE credit_lots SET source_id = ${missingPaymentId} WHERE id = ${lot.lotId}`;
+    }
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const unlocked = new Promise<void>((resolve) => { release = resolve; });
+    const gate = suite.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`internal-idem:${key}`}))`;
+      entered();
+      await unlocked;
+    });
+    await ready;
+    let keyWasFreeDuringPreparation: boolean | undefined;
+    aroundNextList(fakeStripe, async (read) => {
+      // A different PG connection can acquire this key only after the early
+      // target recheck transaction has committed, before Stripe preparation.
+      keyWasFreeDuringPreparation = await suite.sql.begin(async (tx) => {
+        const rows = await tx<{ acquired: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`internal-idem:${key}`})) AS acquired`;
+        return rows[0]!.acquired;
+      });
+      return read();
+    });
+    const request = post(paths.reject(lot.lotId), REJECT, key);
+    try {
+      await waitUntilBlockedOn(suite.sql, ["pg_advisory_xact_lock"], 1);
+      expect(fakeStripe.listCalls).toEqual([]);
+      expect(fakeStripe.createCalls).toEqual([]);
+      if (missing === "lot") {
+        await suite.sql`UPDATE credit_lots SET deleted_at = NULL WHERE id = ${lot.lotId}`;
+      } else {
+        await suite.sql`UPDATE credit_lots SET source_id = ${lot.paymentId} WHERE id = ${lot.lotId}`;
+      }
+    } finally { release(); await gate; }
+    const answer = await request;
+    expect(answer.status).toBe(200);
+    expect(answer.json).toMatchObject({ lotId: lot.lotId, kind: "reject", status: "succeeded", result: "rejected" });
+    expect(keyWasFreeDuringPreparation).toBe(true);
+    expect(fakeStripe.listCalls).toEqual([{ payment_intent: lot.paymentIntentId, limit: 100 }]);
+    expect(fakeStripe.createCalls).toEqual([]);
+    expect(await readOp(suite.sql, answer.json.id)).toMatchObject({
+      kind: "reject", status: "succeeded", result: "rejected", idempotency_key: key, requested_by: ADMIN,
+    });
+    expect(await readLot(suite.sql, lot.lotId)).toEqual({ lifecycle: "active", remaining: `${CREDITS}.000000`, attempts: 1 });
+    expect((await ledgerOf(suite.sql, lot.lotId)).filter((row) => row.entry_type === "refund_rejected")).toEqual([
+      { entry_type: "refund_rejected", amount: "0.000000", reference_id: answer.json.id },
+    ]);
+    expect(await refusalRows(key)).toEqual([]);
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 1, mails: 0 });
+    await mailsSettled(suite.sql, lot);
+  });
+
+  it("a missing resend operation created while waiting for the key lock queues one resend instead of storing 404", async () => {
+    const lot = await lotOnStripe("active");
+    const operationId = randomUUID();
+    const key = freshKey();
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => { entered = resolve; });
+    const unlocked = new Promise<void>((resolve) => { release = resolve; });
+    const gate = suite.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${`internal-idem:${key}`}))`;
+      entered();
+      await unlocked;
+    });
+    await ready;
+    const request = post(paths.resend(operationId), REJECT, key);
+    try {
+      await waitUntilBlockedOn(suite.sql, ["pg_advisory_xact_lock"], 1);
+      expect(await refusalRows(key)).toEqual([]);
+      expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 0 });
+      await suite.sql`
+        INSERT INTO credit_refund_operations
+          (id, lot_id, payment_id, kind, status, result, idempotency_key, request_hash,
+           requested_by, reason, notify, finished_at)
+        VALUES (${operationId}, ${lot.lotId}, ${lot.paymentId}, 'reject', 'succeeded', 'rejected',
+                ${freshKey("earlier-reject")}, ${"0".repeat(64)}, ${ADMIN}, ${REJECT.reason}, true, now())
+      `;
+    } finally { release(); await gate; }
+    const answer = await request;
+    expect(answer.status).toBe(202);
+    expect(answer.json).toMatchObject({ operationId, kind: "refund_rejected", origin: "resend", requestedBy: ADMIN, reason: REJECT.reason });
+    const rows = await suite.sql`
+      SELECT id, operation_id, kind, origin, requested_by, reason, idempotency_key, request_hash
+      FROM refund_mail_outbox WHERE idempotency_key = ${key}
+    `;
+    expect(rows).toEqual([{
+      id: answer.json.id, operation_id: operationId, kind: "refund_rejected", origin: "resend",
+      requested_by: ADMIN, reason: REJECT.reason, idempotency_key: key, request_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    }]);
+    expect(await holdersOf(suite.sql, key)).toEqual({ ops: 0, mails: 1 });
+    expect(await refusalRows(key)).toEqual([]);
+    expect(fakeStripe.listCalls).toEqual([]);
+    expect(fakeStripe.createCalls).toEqual([]);
+    await mailsSettled(suite.sql, lot);
+  });
+
   it("a database failure while inserting the refusal rolls back the decision and leaves the key unused", async () => {
     const lot = await lotOnStripe("active");
     const key = freshKey();
