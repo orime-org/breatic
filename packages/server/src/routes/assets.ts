@@ -41,6 +41,7 @@ import {
   type UploadFinishJob,
 } from "@breatic/domain";
 import {
+  issueTransferTicket,
   issueUploadTicket,
   issueUploadTicketBatch,
   transferTicketMaxBytes,
@@ -418,15 +419,8 @@ assets.post(
     const body = c.req.valid("json");
     await projectService.assertAccess(body.project_id, user.id, "editor");
     const studioId = await assetService.resolveOwnerStudioId(body.project_id);
-    const outcome = await issueUploadTicket(
-      { userId: user.id, studioId, projectId: body.project_id },
-      { purpose: "transfer", size: body.size },
-      async () => true,
-    );
-    if (outcome.kind === "refused") {
-      return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
-    }
-    return c.json({ data: ticketBody(outcome) }, 201);
+    const ticket = await issueTransferTicket({ userId: user.id, studioId, projectId: body.project_id }, body.size);
+    return c.json({ data: ticketBody(ticket) }, 201);
   },
 );
 

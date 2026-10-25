@@ -34,17 +34,6 @@ export interface TicketItem {
   purpose?: "project_cover" | "studio_avatar" | undefined;
 }
 
-/**
- * A transfer file (inner#1006): a request body too large for the API, moved
- * through storage. The browser names only its size; the type, the file name
- * and the key are the server's.
- */
-export interface TransferTicketItem {
-  purpose: "transfer";
-  /** The whole transfer file's size, signature line included. */
-  size: number;
-}
-
 /** The file name every transfer grant records. */
 const TRANSFER_FILENAME = "body.transfer";
 
@@ -87,6 +76,9 @@ export type TicketOutcome =
     }
   | { kind: "refused"; reason: "too_large" | "storage" };
 
+/** A file answered with a signed ticket. */
+export type IssuedTicket = Extract<TicketOutcome, { kind: "ticket" }>;
+
 /**
  * What an upload's task row says: a browser tool's export is shown as that
  * tool, every other upload by its file name.
@@ -120,18 +112,14 @@ function assertIngestConfigured(): void {
  * Answer a transfer file (inner#1006). It never becomes an asset and never
  * counts toward storage, so neither the dedup ledger nor the storage
  * allowance is asked; its grant has no node and no space, so no task row.
+ * The size cap is the route schema's.
  * @param scope - Where it goes and who asked.
- * @param item - Its size.
- * @returns The outcome.
+ * @param size - The whole transfer file's size, signature line included.
+ * @returns The signed ticket.
  * @throws {Error} When the ingest Worker is not configured.
  */
-async function issueTransferTicket(scope: TicketScope, item: TransferTicketItem): Promise<TicketOutcome> {
+export async function issueTransferTicket(scope: TicketScope, size: number): Promise<IssuedTicket> {
   const { userId, studioId, projectId } = scope;
-  const cap = transferTicketMaxBytes();
-  if (item.size > cap) {
-    logger.info({ size: item.size, cap, userId }, "transfer_ticket_rejected_over_cap");
-    return { kind: "refused", reason: "too_large" };
-  }
   assertIngestConfigured();
 
   const expiresAt = Date.now() + getStorageConfig().ingest.ticket_expires_seconds * 1000;
@@ -139,7 +127,7 @@ async function issueTransferTicket(scope: TicketScope, item: TransferTicketItem)
     {
       ...(projectId !== undefined ? { projectId } : { studioId }),
       actingUserId: userId,
-      declaredSize: item.size,
+      declaredSize: size,
       // `transfer/` is bound to the bucket's lifecycle rule and the public
       // domain's block on the prefix; changing it means changing both.
       taskType: "transfer",
@@ -160,12 +148,12 @@ async function issueTransferTicket(scope: TicketScope, item: TransferTicketItem)
     storageKey: key,
     studioId,
     userId,
-    declaredSize: item.size,
+    declaredSize: size,
     contentType: TRANSFER_MEDIA_TYPE,
     expiresAt,
     deadlineAt,
   });
-  logger.info({ key, userId, size: item.size }, "transfer_ticket_issued");
+  logger.info({ key, userId, size }, "transfer_ticket_issued");
 
   return {
     kind: "ticket",
@@ -182,8 +170,7 @@ async function issueTransferTicket(scope: TicketScope, item: TransferTicketItem)
 /**
  * Answer one file: refuse it over the cap, settle it when the studio already
  * holds the content, refuse it when the caller's storage check says no, and
- * otherwise open its grant and row and sign its ticket. A transfer file takes
- * its own branch, which asks neither dedup nor storage.
+ * otherwise open its grant and row and sign its ticket.
  * @param scope - Where it goes and who asked.
  * @param item - The file.
  * @param admitStorage - Asked once this file needs room; false refuses it.
@@ -192,10 +179,9 @@ async function issueTransferTicket(scope: TicketScope, item: TransferTicketItem)
  */
 export async function issueUploadTicket(
   scope: TicketScope,
-  item: TicketItem | TransferTicketItem,
+  item: TicketItem,
   admitStorage: () => Promise<boolean>,
 ): Promise<TicketOutcome> {
-  if (item.purpose === "transfer") return issueTransferTicket(scope, item);
   const { userId, studioId, projectId } = scope;
   const { upload, ingest } = getStorageConfig();
   if (item.size > upload.max_upload_bytes) {
