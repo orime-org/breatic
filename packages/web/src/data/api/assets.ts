@@ -20,6 +20,22 @@ export interface UploadConfig extends UploadClientConfig {
    * until an answer names its own interval (inner#1367).
    */
   uploadStatusPollSeconds: number;
+  /**
+   * The largest request body the API reads, in bytes (inner#1006). Absent
+   * from a server that predates it, so it is read as unknown until checked.
+   */
+  maxRequestBodyBytes?: unknown;
+}
+
+/**
+ * The request body limit these knobs name, when it is usable.
+ * @param cfg - The upload knobs, or null when the page has none.
+ * @returns The limit in bytes; null when absent or not a positive integer
+ *   (a server that predates it sends none).
+ */
+export function requestBodyLimitOf(cfg: UploadConfig | null): number | null {
+  const limit = cfg?.maxRequestBodyBytes;
+  return typeof limit === 'number' && Number.isInteger(limit) && limit > 0 ? limit : null;
 }
 
 /** Session cache for the upload knobs (one fetch per session). */

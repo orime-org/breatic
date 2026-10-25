@@ -29,6 +29,7 @@ import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
+import { bodyOrTransfer, type TransferReference } from '@web/data/upload/transfer-body';
 
 /** What starting a conversation's state takes. */
 export interface ChatSessionInit {
@@ -110,6 +111,24 @@ const sessions = new Map<string, Chat<StoredUiMessage>>();
  * project as well as to a conversation, and the turn is run from here.
  */
 const projectOf = new Map<string, string>();
+
+/**
+ * The stop for each conversation's body upload in flight (inner#1006).
+ *
+ * A body over the request limit is uploaded inside `prepareSendMessagesRequest`,
+ * which the SDK calls without its own abort signal, so the session holds one:
+ * stopping the turn and dropping the session both raise it.
+ */
+const bodyUploads = new Map<string, AbortController>();
+
+/**
+ * Stop a conversation's body upload, if one is running.
+ * @param conversationId - The conversation.
+ */
+function stopBodyUpload(conversationId: string): void {
+  bodyUploads.get(conversationId)?.abort();
+  bodyUploads.delete(conversationId);
+}
 
 /**
  * What a panel subscribes to before it knows which conversation it is showing.
@@ -251,7 +270,9 @@ function transportFor(
     // default would leave it off in any deployment where the API is not the
     // page's own origin.
     credentials: 'include',
-    prepareSendMessagesRequest: ({ messages, body: carried }) => {
+    prepareSendMessagesRequest: async ({ messages, body: carried }) => {
+      // Read before anything is awaited: the turn this request belongs to.
+      const turn = runningTurn.get(conversationId);
       const last = messages[messages.length - 1];
       // An answer to a questionnaire says nothing of the reader's: the last
       // message is the paused reply, whose words and items are not theirs.
@@ -260,6 +281,37 @@ function transportFor(
         .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
         .map((part) => part.text)
         .join('');
+      const body = {
+        // What the send was handed for this one message: the reader's
+        // Spaces, read when they pressed send (`sendInSession`).
+        ...carried,
+        message: isAnswer ? '' : said,
+        project_id: projectId,
+        conversation_id: conversationId,
+        attached_chips: isAnswer ? [] : attachedOn(last),
+        // Read on every send: the agent is told the time where the reader is
+        // now, and a laptop can change zones mid-session.
+        time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
+      // A body over the request limit goes through storage first (inner#1006).
+      // No beat can come before the request goes out, so the watch on this
+      // turn is paused for the upload and counts again from the send.
+      const upload = new AbortController();
+      bodyUploads.set(conversationId, upload);
+      let uploaded = false;
+      let sent: typeof body | TransferReference;
+      try {
+        sent = await bodyOrTransfer(projectId, body, {
+          signal: upload.signal,
+          onTransferStart: () => {
+            uploaded = true;
+            pauseBeatWatch(conversationId, turn);
+          },
+        });
+      } finally {
+        if (bodyUploads.get(conversationId) === upload) bodyUploads.delete(conversationId);
+      }
+      if (uploaded) restartBeatWatch(conversationId, turn);
       return {
         // What the interface is in, which is what the server needs when it
         // has something of its own to show the reader: a message refused for
@@ -273,18 +325,7 @@ function transportFor(
         // of a reply is ours to translate -- so nothing on the agent's side
         // reads this (user 2026-09-07).
         headers: { 'Accept-Language': getLocale() },
-        body: {
-          // What the send was handed for this one message: the reader's
-          // Spaces, read when they pressed send (`sendInSession`).
-          ...carried,
-          message: isAnswer ? '' : said,
-          project_id: projectId,
-          conversation_id: conversationId,
-          attached_chips: isAnswer ? [] : attachedOn(last),
-          // Read on every send: the agent is told the time where the reader is
-          // now, and a laptop can change zones mid-session.
-          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        },
+        body: sent,
       };
     },
   });
@@ -559,6 +600,7 @@ function settleTurn(
   answering.delete(conversationId);
   stopWatching(conversationId);
   runningTurn.delete(conversationId);
+  pausedTurn.delete(conversationId);
   // A turn that failed, was stopped, or folded and then said nothing would
   // otherwise leave the line up — and it says something about a turn that is
   // over, still there the next time this conversation is opened.
@@ -649,7 +691,7 @@ async function expectAnotherBeat(
   // outlives every turn it runs, so arming on that answer puts a timer on an
   // idle conversation, and fifteen seconds later it marks a finished reply as
   // cut off and reports a network problem to a reader with nothing running.
-  if (runningTurn.get(conversationId) !== turn) return;
+  if (runningTurn.get(conversationId) !== turn || pausedTurn.get(conversationId) === turn) return;
   stopWatching(conversationId);
   const spent = Date.now() - pressedAt;
   const left = heartbeatIntervalMs * SSE_HEARTBEAT_MISSES_ALLOWED - spent;
@@ -657,6 +699,36 @@ async function expectAnotherBeat(
     conversationId,
     setTimeout(() => giveUpOn(conversationId), Math.max(left, 0)),
   );
+}
+
+/**
+ * The turn whose watch is paused while its body uploads, by conversation
+ * (inner#1006). A wait that lands meanwhile arms nothing.
+ */
+const pausedTurn = new Map<string, number>();
+
+/**
+ * Stop waiting on a turn's beats while its body uploads: no beat can come
+ * before its request goes out.
+ * @param conversationId - The conversation.
+ * @param turn - The turn uploading; nothing happens once another is running.
+ */
+function pauseBeatWatch(conversationId: string, turn: number | undefined): void {
+  if (turn === undefined || runningTurn.get(conversationId) !== turn) return;
+  stopWatching(conversationId);
+  pausedTurn.set(conversationId, turn);
+}
+
+/**
+ * Wait on a turn's beats again, counting from now, once its body has
+ * uploaded and its request is about to go out.
+ * @param conversationId - The conversation.
+ * @param turn - The turn sending; nothing happens once another is running.
+ */
+function restartBeatWatch(conversationId: string, turn: number | undefined): void {
+  if (turn === undefined || runningTurn.get(conversationId) !== turn) return;
+  pausedTurn.delete(conversationId);
+  void expectAnotherBeat(conversationId, turn, Date.now());
 }
 
 /**
@@ -755,6 +827,7 @@ export async function answerInSession(
  * @param conversationId - The conversation to stop.
  */
 export function stopChatSession(conversationId: string): void {
+  stopBodyUpload(conversationId);
   const chat = sessions.get(conversationId);
   if (!chat) return;
   void chat.stop();
@@ -859,12 +932,14 @@ export function prependHistory(conversationId: string, earlier: StoredUiMessage[
  * @param conversationId - Which one.
  */
 export function evictChatSession(conversationId: string): void {
+  stopBodyUpload(conversationId);
   sessions.get(conversationId)?.stop();
   stopWatching(conversationId);
   sessions.delete(conversationId);
   projectOf.delete(conversationId);
   turnsRun.delete(conversationId);
   runningTurn.delete(conversationId);
+  pausedTurn.delete(conversationId);
   answeredTurn.delete(conversationId);
   givenUpOn.delete(conversationId);
   answering.delete(conversationId);
@@ -876,6 +951,8 @@ export function evictChatSession(conversationId: string): void {
  * For leaving a project, where what is being left is all of them at once.
  */
 export function evictAllChatSessions(): void {
+  for (const upload of bodyUploads.values()) upload.abort();
+  bodyUploads.clear();
   for (const [id, chat] of sessions) {
     void chat.stop();
     stopWatching(id);
@@ -884,6 +961,7 @@ export function evictAllChatSessions(): void {
   projectOf.clear();
   turnsRun.clear();
   runningTurn.clear();
+  pausedTurn.clear();
   answeredTurn.clear();
   givenUpOn.clear();
   answering.clear();
