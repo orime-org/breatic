@@ -451,4 +451,18 @@ describe('durable scene result application', () => {
     expect(api.commitVideoSceneAnalysis(peer, hostId, completedScene())).toBe(false);
     expect(api.readVideoToolDraft(peer, hostId, 'video.split')).toEqual({ state: 'supported', draft: splitDraft({ cuts: [] }) });
   });
+
+  it.each(['changed node content', 'missing reference', 'locked node', 'unavailable artifacts', 'failed analysis'] as const)('does not apply stale or unavailable scene results: %s', (condition) => {
+    const doc = sceneSpace();
+    const record = completedScene();
+    if (condition === 'changed node content') dataOf(doc).set('content', 'https://media.example.test/replaced.mp4');
+    if (condition === 'missing reference') dataOf(doc).delete(`miniToolAnalysis:${firstRunId}`);
+    if (condition === 'locked node') dataOf(doc).set('locked', true);
+    if (condition === 'unavailable artifacts') record.artifactUnavailable = true;
+    if (condition === 'failed analysis') { record.status = 'failed'; record.result = null; record.error = { code: 'analysis_failed' }; }
+    const undo = undoManager(doc);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(false);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: splitDraft({ cuts: [] }) });
+    expect(undo.undoStack).toHaveLength(0);
+  });
 });
