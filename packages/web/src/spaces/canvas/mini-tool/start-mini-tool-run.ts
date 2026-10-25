@@ -37,6 +37,7 @@ import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import type { ExpandFrame, PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { createEmptyNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import { tooLargeMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import type { DrawOp } from '@web/stores/drawing-draft';
 import type { MarkObject } from '@web/stores/mark-draft';
@@ -356,15 +357,16 @@ type Settle = (message?: UploadMarkMessage) => void;
 
 /**
  * What a refused or unreached request says on the nodes: the server's
- * sentence when it gave one, already in the reader's language; a request that
- * never arrived has none.
+ * sentence when it gave one, already in the reader's language; a request
+ * refused as too large by a proxy with no sentence of ours says why
+ * (inner#1006); a request that never arrived has none.
  * @param err - What the send rejected with.
  * @returns The message.
  */
 function refusalOf(err: unknown): UploadMarkMessage {
-  return err instanceof ApiException && err.fromServer && err.message
-    ? { text: err.message }
-    : { key: 'canvas.miniTool.panel.couldNotStart' };
+  if (err instanceof ApiException && err.fromServer && err.message) return { text: err.message };
+  if (err instanceof ApiException && err.status === 413) return tooLargeMessage();
+  return { key: 'canvas.miniTool.panel.couldNotStart' };
 }
 
 /**

@@ -26,6 +26,7 @@ import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
 import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { refusalClause } from '@web/spaces/canvas/failure-sentence';
+import { tooLargeMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
 import {
   understandNodePosition,
@@ -319,9 +320,22 @@ function buildReadingRun(
  * @param err - The final failure.
  */
 function reportReadingFailure(reading: Reading, err: unknown): void {
-  const said =
-    err instanceof ApiException && err.fromServer && err.message
-      ? err.message
-      : t(READINGS[reading].couldNotStart);
-  toast.error(said);
+  toast.error(readingFailureSentence(reading, err));
+}
+
+/**
+ * The sentence for {@link reportReadingFailure}: the server's own when it
+ * wrote one; why, when a proxy refused the request as too large without one
+ * (inner#1006); otherwise the reading's short line.
+ * @param reading - Which reading it was.
+ * @param err - The final failure.
+ * @returns The sentence, in the reader's language.
+ */
+function readingFailureSentence(reading: Reading, err: unknown): string {
+  if (err instanceof ApiException && err.fromServer && err.message) return err.message;
+  if (err instanceof ApiException && err.status === 413) {
+    const { key, params } = tooLargeMessage();
+    return t(key, params);
+  }
+  return t(READINGS[reading].couldNotStart);
 }
