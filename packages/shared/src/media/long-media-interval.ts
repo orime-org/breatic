@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { MediaInputDescriptorSchema, type MediaInputDescriptor } from "@shared/media/long-media-schema.js";
+
 /** A half-open interval on the source media timeline, in integer microseconds. */
 export interface MediaCoreInterval {
   /** Inclusive source-time start, encoded as an integer string for JSON safety. */
@@ -43,6 +45,42 @@ export interface MediaManifestLeafReplacement {
   children: readonly MediaManifestLeaf[];
 }
 
+/** One trusted media input and its measured source-time range. */
+export interface LongMediaInputRange {
+  /** Stable identity of this audio channel or video view. */
+  mediaInputId: string;
+  /** Probe-derived stream and channel identity. */
+  descriptor: MediaInputDescriptor;
+  /** The exact source-time range that this input must cover. */
+  sourceRange: MediaCoreInterval;
+}
+
+/** Frozen limits for creating a complete media segment plan. */
+export interface LongMediaPlanLimits {
+  /** Maximum source-time core width for audio-only channel inputs. */
+  audioCoreSeconds: number;
+  /** Maximum source-time core width for video views, including their audio channel. */
+  videoCoreSeconds: number;
+  /** Decoder context added on either side of each core. */
+  overlapSeconds: number;
+  /** Maximum active leaves across every supplied media input. */
+  maxActiveLeaves: number;
+}
+
+/** One ordered plan leaf with separate coverage and decoder intervals. */
+export interface LongMediaPlannedSegment {
+  /** Stable identity derived from media input and source-time core. */
+  id: string;
+  /** Required media input this leaf covers. */
+  mediaInputId: string;
+  /** Probe-derived source streams and channel for this leaf. */
+  descriptor: MediaInputDescriptor;
+  /** Disjoint interval counted toward coverage. */
+  core: MediaCoreInterval;
+  /** Overlapped source interval decoded to provide boundary context. */
+  decode: MediaCoreInterval;
+}
+
 /** Measured local output window and its source timeline origins. */
 export interface MediaLocalTimeMapping {
   /** Source-timeline timestamp corresponding to the output timeline origin. */
@@ -55,6 +93,76 @@ export interface MediaLocalTimeMapping {
   outputEndUs: string;
   /** Model or transcript event timestamp in the output's local timeline. */
   localTimeUs: string;
+}
+
+/**
+ * Plan contiguous source-time cores for every required media input.
+ *
+ * Each input keeps its own channel identity and coverage range. Audio-only
+ * inputs use the audio core limit; video views use the video core limit even
+ * when they also carry one isolated audio channel. The leaf limit applies to
+ * the complete returned plan, so adding channels cannot multiply capacity.
+ * @param inputs - Probe-derived inputs in their required deterministic order.
+ * @param limits - The immutable operation processing limits.
+ * @returns Ordered leaves whose cores exactly cover each input range.
+ * @throws {RangeError} when an input, limit, range, or global leaf budget is invalid.
+ */
+export function planLongMediaSegments(
+  inputs: readonly LongMediaInputRange[],
+  limits: LongMediaPlanLimits,
+): LongMediaPlannedSegment[] {
+  if (
+    inputs.length === 0 ||
+    !Number.isSafeInteger(limits.audioCoreSeconds) || limits.audioCoreSeconds <= 0 ||
+    !Number.isSafeInteger(limits.videoCoreSeconds) || limits.videoCoreSeconds <= 0 ||
+    !Number.isSafeInteger(limits.overlapSeconds) || limits.overlapSeconds < 0 ||
+    !Number.isSafeInteger(limits.maxActiveLeaves) || limits.maxActiveLeaves <= 0
+  ) {
+    throw new RangeError("Long media segment limits and required inputs must be valid.");
+  }
+
+  const seenInputIds = new Set<string>();
+  const segments: LongMediaPlannedSegment[] = [];
+  const overlapUs = BigInt(limits.overlapSeconds) * 1_000_000n;
+
+  for (const input of inputs) {
+    if (input.mediaInputId.length === 0 || seenInputIds.has(input.mediaInputId)) {
+      throw new RangeError("Long media input identities must be non-empty and unique.");
+    }
+    seenInputIds.add(input.mediaInputId);
+
+    const parsedDescriptor = MediaInputDescriptorSchema.safeParse(input.descriptor);
+    if (!parsedDescriptor.success) throw new RangeError("The long media input descriptor is invalid.");
+
+    const sourceStartUs = integerUs(input.sourceRange.startUs);
+    const sourceEndUs = integerUs(input.sourceRange.endUs);
+    if (sourceEndUs <= sourceStartUs) throw new RangeError("A long media input range must have positive duration.");
+
+    const coreSeconds = parsedDescriptor.data.inputKind === "audio_channel"
+      ? limits.audioCoreSeconds
+      : limits.videoCoreSeconds;
+    const coreWidthUs = BigInt(coreSeconds) * 1_000_000n;
+    let coreStartUs = sourceStartUs;
+
+    while (coreStartUs < sourceEndUs) {
+      if (segments.length >= limits.maxActiveLeaves) {
+        throw new RangeError("The long media plan exceeds the operation active-leaf limit.");
+      }
+      const coreEndUs = coreStartUs + coreWidthUs < sourceEndUs ? coreStartUs + coreWidthUs : sourceEndUs;
+      const core = { startUs: String(coreStartUs), endUs: String(coreEndUs) };
+      const window = expandMediaDecodeWindow(core, input.sourceRange, String(overlapUs));
+      segments.push({
+        id: `${input.mediaInputId}:${core.startUs}:${core.endUs}`,
+        mediaInputId: input.mediaInputId,
+        descriptor: parsedDescriptor.data,
+        core: window.core,
+        decode: window.decode,
+      });
+      coreStartUs = coreEndUs;
+    }
+  }
+
+  return segments;
 }
 
 /**
