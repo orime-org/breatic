@@ -18,6 +18,19 @@ import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
 const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
 
 /**
+ * Applies one accepted scene result without repeating it after parameter undo.
+ * @param doc - The live canvas document.
+ * @param nodeId - The host video node.
+ * @param record - The immutable accepted result.
+ * @returns Whether one guarded parameter edit was committed.
+ * @throws {never} Never while the scene application lane is unimplemented.
+ */
+export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unknown): boolean {
+  void doc; void nodeId; void record;
+  return false;
+}
+
+/**
  * Reads one tool's scalar without changing unknown or malformed stored data.
  * @param doc - The live canvas document.
  * @param nodeId - The host node.

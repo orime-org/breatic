@@ -45,7 +45,7 @@ interface AnalysisApi {
   fingerprintMiniToolAnalysisInput: (input: ObjectValue) => string | Promise<string>;
   selectMiniToolAnalyses: (
     records: readonly unknown[],
-    query: { draftId: string; kind: AnalysisKind; inputFingerprint: string },
+    query: { draftId: string; kind: AnalysisKind; inputFingerprint: string; references?: readonly unknown[] },
   ) => { latestAccepted: AnalysisRecord | null; latestSuccessful: AnalysisRecord | null };
 }
 
@@ -466,5 +466,42 @@ describe("batch six analysis public contract", () => {
     for (const params of [{ ...source.params, region: { box: { x: 0.2, y: 0.2, width: 0.3, height: 0.4 }, points: [] } }, { ...source.params, trackingPrompt: "the person on the right" }]) {
       expect(await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput({ ...source, params }))).not.toBe(original);
     }
+  });
+});
+
+describe("same-project copied analysis references", () => {
+  const copiedDraftId = "20000000-0000-4000-8000-000000000002";
+
+  it.each<AnalysisKind>(kinds)("reuses %s through a matching copied reference without rewriting acceptance", (kind) => {
+    const record = recordFor(kind);
+    const before = structuredClone(record);
+    const toolId = kind === "people" ? "video.lip-sync" : kind === "scene_cuts" ? "video.split" : "video.erase";
+    const reference = { version: 1, draftId: copiedDraftId, toolId, kind, analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint };
+    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind, inputFingerprint: record.inputFingerprint, references: [reference] }))
+      .toEqual({ latestAccepted: record, latestSuccessful: record });
+    expect(record).toEqual(before);
+  });
+
+  it.each([
+    {},
+    { draftId: "20000000-0000-4000-8000-000000000003" },
+    { analysisRunId: laterId },
+    { inputFingerprint: "a".repeat(64) },
+    { kind: "scene_cuts", toolId: "video.split" },
+    { toolId: "video.erase" },
+    { version: 2 },
+  ])("does not widen reuse for a missing or mismatched copied reference %j", (change) => {
+    const record = recordFor("people");
+    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.lip-sync", kind: "people", analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint, ...change };
+    const references = Object.keys(change).length === 0 ? [] : [reference];
+    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind: "people", inputFingerprint: record.inputFingerprint, references }))
+      .toEqual({ latestAccepted: null, latestSuccessful: null });
+  });
+
+  it("requires the current source dependency fingerprint even when the copied reference matches", () => {
+    const record = recordFor("people");
+    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.lip-sync", kind: "people", analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint };
+    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind: "people", inputFingerprint: "c".repeat(64), references: [reference] }))
+      .toEqual({ latestAccepted: null, latestSuccessful: null });
   });
 });

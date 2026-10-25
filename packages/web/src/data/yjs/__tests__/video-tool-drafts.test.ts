@@ -39,6 +39,7 @@ interface DraftApi {
   commitVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId, draft: Draft) => boolean;
   commitVideoToolAnalysisRef: (doc: Y.Doc, nodeId: string, ref: AnalysisRef) => boolean;
   clearVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId) => boolean;
+  commitVideoSceneAnalysis: (doc: Y.Doc, nodeId: string, record: unknown) => boolean;
 }
 
 // The public-entry assertion remains collectable before this module exists.
@@ -356,5 +357,98 @@ describe('video mini-tool raw draft storage', () => {
     expect(dataOf(doc).get(`miniToolAnalysis:${firstRunId}`)).toEqual(ref);
     undo.redo();
     expect(nodeDataMap(doc, hostId)).toBeNull();
+  });
+});
+
+
+describe('durable scene result application', () => {
+  /** The independent application oracle's complete accepted scene result. */
+  function completedScene(runId = firstRunId): Record<string, unknown> {
+    const binding = {
+      assetId: '50000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64),
+      canonicalURL: sourceURL, kind: 'video',
+      mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' },
+    };
+    const identity = {
+      schemaVersion: 1, draftId, revision: firstRevision, analysisRunId: runId,
+      acceptedAt: '2026-10-25T09:03:03.100001Z', kind: 'scene_cuts', binding,
+      analysisInput: { schemaVersion: 1, kind: 'scene_cuts', sourceURL, range: { start: 0, end: 5 }, profile: { id: 'pyscenedetect-content', version: '0.7.2', weightsHash: null, params: { threshold: 27, minSceneLength: 15 } } },
+      inputFingerprint: 'a'.repeat(64),
+    };
+    return { ...identity, status: 'completed', result: { ...identity, timeBase: { numerator: 1, denominator: 1000 }, frameCount: 125, cuts: [{ frameIndex: 43, pts: 1.7, detectionScore: 31 }, { frameIndex: 85, pts: 3.4, detectionScore: 47 }] }, error: null, usage: [], artifactUnavailable: false };
+  }
+
+  /** Creates the accepted run's editable source without tracking setup in undo. */
+  function sceneSpace(): Y.Doc {
+    const { doc } = space();
+    api.commitVideoToolDraft(doc, hostId, 'video.split', splitDraft({ cuts: [] }));
+    api.commitVideoToolAnalysisRef(doc, hostId, analysisRef());
+    return doc;
+  }
+
+  it('applies a matching result as one atomic parameter undo step and ignores repeated notifications', () => {
+    const doc = sceneSpace();
+    const undo = undoManager(doc);
+    const origins: unknown[] = [];
+    doc.on('afterTransaction', (transaction) => origins.push(transaction.origin));
+    const record = completedScene();
+    const before = structuredClone(record);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(true);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [1.7, 3.4] } } });
+    expect(origins).toEqual([CANVAS_UNDO]);
+    expect(undo.undoStack).toHaveLength(1);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(false);
+    expect(undo.undoStack).toHaveLength(1);
+    expect(record).toEqual(before);
+  });
+
+  it('preserves the application fact across undo, redo and a newly mounted manager', () => {
+    const doc = sceneSpace();
+    const original = splitDraft({ cuts: [] });
+    const undo = undoManager(doc);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(true);
+    undo.undo();
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: original });
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
+    undo.redo();
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [1.7, 3.4] } } });
+    undo.undo();
+    undo.destroy();
+    const remounted = undoManager(doc);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: original });
+    expect(remounted.undoStack).toHaveLength(0);
+  });
+
+  it('lets a newly accepted run apply after the previous result was undone', () => {
+    const doc = sceneSpace();
+    const undo = undoManager(doc);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(true);
+    undo.undo();
+    api.commitVideoToolAnalysisRef(doc, hostId, analysisRef({ analysisRunId: secondRunId }));
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene(secondRunId))).toBe(true);
+    expect(undo.undoStack).toHaveLength(1);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [1.7, 3.4] } } });
+  });
+
+  it('retains a manual edit made before the accepted result arrives', () => {
+    const doc = sceneSpace();
+    const edited = splitDraft({ cuts: [1.2] }, { revision: secondRevision });
+    api.commitVideoToolDraft(doc, hostId, 'video.split', edited);
+    const undo = undoManager(doc);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: edited });
+    expect(undo.undoStack).toHaveLength(0);
+  });
+
+  it('keeps the receipt when an undone result is synchronized to another real document', () => {
+    const doc = sceneSpace();
+    const peer = collaborator(doc);
+    const undo = undoManager(doc);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(true);
+    undo.undo();
+    merge(doc, peer);
+    expect(api.commitVideoSceneAnalysis(peer, hostId, completedScene())).toBe(false);
+    expect(api.readVideoToolDraft(peer, hostId, 'video.split')).toEqual({ state: 'supported', draft: splitDraft({ cuts: [] }) });
   });
 });
