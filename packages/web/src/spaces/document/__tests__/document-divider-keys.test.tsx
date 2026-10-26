@@ -20,7 +20,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
 
 import {
   DropdownMenu,

@@ -21,7 +21,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { documentChordsExtension } from '@web/spaces/document/document-block-chords';

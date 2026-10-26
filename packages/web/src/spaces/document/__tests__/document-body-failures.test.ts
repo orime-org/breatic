@@ -7,7 +7,7 @@ import type * as SentryModule from '@sentry/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import { documentBodyFragment, documentBodyRecords, documentBodySource, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared';
+import { documentBodyFragment, documentBodyRecords, documentBodySource, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';

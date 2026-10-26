@@ -7,7 +7,7 @@ import { act } from '@testing-library/react';
 import { TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 import { Awareness } from 'y-protocols/awareness';
 import type { DocumentProposal } from '@breatic/shared';
 

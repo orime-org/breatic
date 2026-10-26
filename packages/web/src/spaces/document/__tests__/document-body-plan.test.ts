@@ -10,7 +10,7 @@ import {
   documentBodySource,
   readBodyTree,
   registerDocumentBodyRecords,
-} from '@breatic/shared';
+} from '@breatic/shared/document-body';
 
 import { commitPreparedBodyBatch, prepareBodyBatch } from '@web/spaces/document/document-body-plan';
 import type { BodyBatchEnvironment, BodyBatchPlan, BodyPlanProjection } from '@web/spaces/document/document-body-plan-types';

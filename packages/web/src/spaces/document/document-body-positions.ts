@@ -5,7 +5,7 @@ import * as Y from 'yjs';
 import { AllSelection, NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection, inSameTable } from '@tiptap/pm/tables';
 
-import { assertBodySourceBoundary, documentBodySource, DocumentBodyFormatError, readBodyTree } from '@breatic/shared';
+import { assertBodySourceBoundary, documentBodySource, DocumentBodyFormatError, readBodyTree } from '@breatic/shared/document-body';
 
 import type { BodyIndexedUnit, BodyNodePosition, BodyProjectionIndex } from '@web/spaces/document/document-body-codec-types';
 import { bodyEdgeAt, bodyEdgeBetween, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';

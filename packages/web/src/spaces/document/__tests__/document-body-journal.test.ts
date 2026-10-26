@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act } from '@testing-library/react';
 import { EditorState, Plugin, TextSelection, type Transaction } from '@tiptap/pm/state';
 import * as Y from 'yjs';
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
 
 import { BodyJournal, replayBodyJournal } from '@web/spaces/document/document-body-journal';
 import {
@@ -198,8 +198,10 @@ describe('body provenance journal', () => {
       expect(handled).toBe(true);
       if (produced === undefined) throw new Error('Backspace did not dispatch');
       expect(produced.doc.textContent).toBe('ABCD');
-      recordBodyOperation(produced, {
-        id: 'first-child-backspace', name: 'merge first child',
+      const operations = produced.getMeta(BODY_OPERATION_META) as readonly BodyTransferOperation[];
+      expect(operations).toHaveLength(1);
+      expect(operations[0]).toMatchObject({
+        name: 'blocknote first child merge',
         source: { transaction: 0, step: 0 }, target: { transaction: 0, step: produced.steps.length },
         handoffs: [{ kind: 'move',
           source: { boundary: { transaction: 0, step: 0 }, from: childFrom, to: childFrom + 2, block: 'child' },

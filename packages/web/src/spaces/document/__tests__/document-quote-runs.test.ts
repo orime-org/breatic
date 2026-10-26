@@ -20,7 +20,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as Y from 'yjs';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';

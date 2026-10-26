@@ -31,7 +31,7 @@ import { describe, it, expect, afterEach, beforeAll } from 'vitest';
 import * as Y from 'yjs';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { computeNumbering } from '@web/spaces/document/document-numbering';

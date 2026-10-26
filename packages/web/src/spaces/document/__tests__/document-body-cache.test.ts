@@ -7,7 +7,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import {
   documentBodySource, encodeInitialSpaceContent, readBodyTree, readDocumentBodyRecords, registerDocumentBodyRecords,
-} from '@breatic/shared';
+} from '@breatic/shared/document-body';
 
 import {
   _resetDocumentEditorCacheForTests, adoptDocumentEditor, evictDocumentEditor, getDocumentEditor,

@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
 import { DOMParser } from '@tiptap/pm/model';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { hasTextIn } from '@web/spaces/document/SelectionBubbleBar';

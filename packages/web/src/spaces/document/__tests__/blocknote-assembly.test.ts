@@ -32,7 +32,7 @@ import { createExtension } from '@blocknote/core';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 

@@ -6,14 +6,8 @@ import { EditorState, TextSelection, type Transaction } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import {
-  bodyTreeRecordProperties,
-  documentBodyRecords,
-  documentBodySource,
-  documentCommentThreads,
-  registerDocumentBodyRecords,
-  type BodyJsonObject,
-} from '@breatic/shared';
+import { type BodyJsonObject } from '@breatic/shared';
+import { bodyTreeRecordProperties, documentBodyRecords, documentBodySource, documentCommentThreads, registerDocumentBodyRecords } from '@breatic/shared/document-body';
 
 import { writeAlignment } from '@web/spaces/document/document-align-run';
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';

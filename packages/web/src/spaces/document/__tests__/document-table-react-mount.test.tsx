@@ -8,7 +8,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { documentBodyFragment, importCurrentDocumentBody } from '@breatic/shared';
+import { documentBodyFragment, importCurrentDocumentBody } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {

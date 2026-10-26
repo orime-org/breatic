@@ -11,7 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 import { Awareness } from 'y-protocols/awareness';
 import { deriveId, type DocumentProposal } from '@breatic/shared';
 

@@ -16,7 +16,7 @@ import { act, render, screen, fireEvent } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { TextSelection } from '@tiptap/pm/state';
 

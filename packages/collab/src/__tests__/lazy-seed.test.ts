@@ -51,13 +51,8 @@ vi.mock(
 );
 
 import { lazySeedMeta } from "../services/lazy-seed.js";
-import {
-  canvasSpaceDocName,
-  deriveId,
-  documentBodyFragment,
-  projectMetaDocName,
-  spaceContentDocName,
-} from "@breatic/shared";
+import { canvasSpaceDocName, deriveId, projectMetaDocName, spaceContentDocName } from "@breatic/shared";
+import { documentBodyFragment } from "@breatic/shared/document-body";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";

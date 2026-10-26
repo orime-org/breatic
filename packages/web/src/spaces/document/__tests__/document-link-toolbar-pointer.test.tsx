@@ -27,7 +27,7 @@ import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 vi.mock('@web/spaces/document/document-link-anchor', async () => {
   const actual = await vi.importActual<

@@ -24,7 +24,7 @@ import { DOMParser } from '@tiptap/pm/model';
 import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';

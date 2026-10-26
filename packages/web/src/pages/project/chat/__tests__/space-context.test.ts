@@ -11,7 +11,8 @@ import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import type { ChatAttachedChip, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
-import { chatMessageSchema, documentBodyFragment } from '@breatic/shared';
+import { chatMessageSchema } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';

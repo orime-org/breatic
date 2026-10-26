@@ -7,7 +7,7 @@ import * as Y from "yjs";
 import {
   documentBodyRecords, documentBodySource, documentCommentThreads, encodeInitialSpaceContent,
   readDocumentBodyRecords, registerDocumentBodyRecords,
-} from "@breatic/shared";
+} from "@breatic/shared/document-body";
 import { createPersistenceExtension } from "@collab/services/persistence.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { armTimedStore, forgetDocument, hasUnsavedContent, releaseTimedStoreArm } from "@collab/services/store-tracker.js";

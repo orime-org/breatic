@@ -30,7 +30,7 @@ import {
   _resetDocumentEditorCacheForTests,
   adoptDocumentEditor,
 } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment, importCurrentDocumentBody, DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared';
+import { documentBodyFragment, importCurrentDocumentBody, DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared/document-body';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const REMOTE_CLIENT_ID = 4242;

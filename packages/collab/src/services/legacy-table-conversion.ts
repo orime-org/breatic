@@ -27,7 +27,7 @@
 
 import * as Y from "yjs";
 
-import { convertLegacyTables, hasLegacyTable, LEGACY_TABLE_CONVERSION_ORIGIN } from "@breatic/shared";
+import { convertLegacyTables, hasLegacyTable, LEGACY_TABLE_CONVERSION_ORIGIN } from "@breatic/shared/document-body";
 
 export { convertLegacyTables, hasLegacyTable, LEGACY_TABLE_CONVERSION_ORIGIN };
 

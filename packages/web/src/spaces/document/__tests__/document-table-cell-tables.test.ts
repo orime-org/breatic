@@ -14,7 +14,7 @@ import * as Y from 'yjs';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { prosemirrorToYXmlFragment } from 'y-prosemirror';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { rowById } from '@web/spaces/document/document-row-by-id';

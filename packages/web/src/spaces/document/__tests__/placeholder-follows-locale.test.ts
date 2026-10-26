@@ -23,7 +23,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 
 import { TextSelection } from '@tiptap/pm/state';
 

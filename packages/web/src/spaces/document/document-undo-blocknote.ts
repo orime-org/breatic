@@ -35,7 +35,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { defaultDeleteFilter, redoCommand, undoCommand, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';

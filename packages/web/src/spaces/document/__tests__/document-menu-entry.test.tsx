@@ -21,7 +21,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 import { Awareness } from 'y-protocols/awareness';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';

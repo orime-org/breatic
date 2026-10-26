@@ -23,7 +23,7 @@ import userEvent from '@testing-library/user-event';
 import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import {
   openSharedBody,

@@ -4,7 +4,7 @@
 import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Awareness } from 'y-protocols/awareness';
-import { DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared';
+import { DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared/document-body';
 
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 import { textEnds } from '@web/spaces/document/document-body-edge-selection';

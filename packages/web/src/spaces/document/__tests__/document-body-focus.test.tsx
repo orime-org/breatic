@@ -13,7 +13,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 import { NodeSelection, TextSelection, type EditorState } from '@tiptap/pm/state';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 import { fallbackForFirstTextblock } from './textblocks';
 
 const { buildDocumentEditor } = await import('@web/spaces/document/build-document-editor');

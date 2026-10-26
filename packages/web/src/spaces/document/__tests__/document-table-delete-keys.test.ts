@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';

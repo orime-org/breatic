@@ -25,7 +25,7 @@ import { renderHook, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';

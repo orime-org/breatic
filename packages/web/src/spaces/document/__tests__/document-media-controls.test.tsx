@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { TooltipProvider } from '@web/components/ui/tooltip';

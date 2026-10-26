@@ -4,7 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 import { Awareness } from 'y-protocols/awareness';
 
 import { captionDraftsFor, createCaptionDrafts } from '@web/spaces/document/document-caption-drafts';

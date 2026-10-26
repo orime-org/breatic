@@ -468,11 +468,12 @@ export class BodyOriginMirror {
    * Uses the current selection content for the real and private drop paths.
    * @param selection - The live source selection.
    * @param drop - The target in the current document.
+   * @param normalize - The same pure product slice rule for both schemas.
    * @returns The complete move, including a source-preserving no-op at its own range.
    * @throws {BodyProvenanceError} If fitting changes a declared source unexpectedly.
    * @throws {RangeError} If ProseMirror rejects the selection or target.
    */
-  moveSelection(selection: Selection, drop: number): BodyTransferOperation {
+  moveSelection(selection: Selection, drop: number, normalize?: (slice: Slice, source: Selection) => Slice): BodyTransferOperation {
     const step = this.tr.steps.length;
     const shadowStep = this.shadow.steps.length;
     const before = this.readUnits();
@@ -481,8 +482,8 @@ export class BodyOriginMirror {
     const selected = this.capture(from, to);
     this.tr.setSelection(selection);
     this.shadow.setSelection(Selection.fromJSON(this.shadow.doc, selection.toJSON()));
-    const slice = this.tr.selection.content();
-    const mirrored = this.shadow.selection.content();
+    const slice = normalize?.(this.tr.selection.content(), this.tr.selection) ?? this.tr.selection.content();
+    const mirrored = normalize?.(this.shadow.selection.content(), this.shadow.selection) ?? this.shadow.selection.content();
     const realDrop = dropPoint(this.tr.doc, drop, slice) ?? drop;
     const shadowDrop = dropPoint(this.shadow.doc, drop, mirrored) ?? drop;
     assertBodyProvenance(realDrop === shadowDrop, 'Private drop point differs from the actual fitter');

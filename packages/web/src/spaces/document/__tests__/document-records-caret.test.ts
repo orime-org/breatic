@@ -8,7 +8,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { documentBodyFragment, documentBodySource } from '@breatic/shared';
+import { documentBodyFragment, documentBodySource } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';

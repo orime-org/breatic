@@ -21,7 +21,7 @@ import {
   documentBodyFragment,
   documentCommentThreads,
   encodeInitialSpaceContent,
-} from '@breatic/shared';
+} from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';

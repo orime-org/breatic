@@ -15,7 +15,7 @@ import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection, tableEditingKey } from '@tiptap/pm/tables';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';

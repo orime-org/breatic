@@ -4,15 +4,8 @@
 import * as Y from 'yjs';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
-import {
-  documentBodyFragment,
-  documentBodyRecords,
-  documentBodySource,
-  registerDocumentBodyRecords,
-  type BodyFact,
-  type BodyJsonObject,
-  type BodyRecord,
-} from '@breatic/shared';
+import { type BodyFact, type BodyJsonObject, type BodyRecord } from '@breatic/shared';
+import { documentBodyFragment, documentBodyRecords, documentBodySource, registerDocumentBodyRecords } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';

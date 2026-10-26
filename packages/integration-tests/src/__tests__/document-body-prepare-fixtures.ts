@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from "yjs";
-import { documentBodyFragment, documentCommentThreads, readBodyTree, type BodyTreeView } from "@breatic/shared";
+import { type BodyTreeView } from "@breatic/shared";
+import { documentBodyFragment, documentCommentThreads, readBodyTree } from "@breatic/shared/document-body";
 
 export const PREPARE_PARAGRAPH_ID = "16190001-1111-4111-8111-111111111111";
 export const PREPARE_LIST_ID = "16190002-2222-4222-8222-222222222222";

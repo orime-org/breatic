@@ -26,6 +26,7 @@ import {
   type ReaderPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
+import { documentTextDropPlugin } from '@web/spaces/document/document-text-drop';
 
 /** What the drag in flight picked up, if it picked up a row at all. */
 interface RowInFlight {
@@ -129,5 +130,6 @@ export const documentDragDropExtension = createExtension(() => ({
         },
       },
     }),
+    documentTextDropPlugin(rowInFlight),
   ],
 }) as never);

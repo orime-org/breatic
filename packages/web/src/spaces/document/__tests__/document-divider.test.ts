@@ -17,7 +17,8 @@ import * as Y from 'yjs';
 import { ShowSelectionExtension } from '@blocknote/core/extensions';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 
-import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
+import { DOCUMENT_SCHEMA } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DIVIDER } from '@web/spaces/document/document-divider';

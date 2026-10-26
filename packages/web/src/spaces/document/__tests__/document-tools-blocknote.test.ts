@@ -25,7 +25,7 @@ import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { isMarkActive } from '@tiptap/core';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { setColour } from '@web/spaces/document/document-colour-run';

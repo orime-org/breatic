@@ -15,7 +15,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 

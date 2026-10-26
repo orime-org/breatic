@@ -7,7 +7,7 @@ import { AllSelection, NodeSelection, TextSelection, type Selection } from '@tip
 import type { Schema } from '@tiptap/pm/model';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodySource } from '@breatic/shared';
+import { documentBodySource } from '@breatic/shared/document-body';
 
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';
 import type { BodyProjectionIndex } from '@web/spaces/document/document-body-codec-types';

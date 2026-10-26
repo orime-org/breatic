@@ -2,18 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as Y from 'yjs';
-import {
-  assertBodySourceBoundary,
-  BODY_MARK_ATTRIBUTE_PREFIX,
-  BODY_REGISTRATION_ORIGIN,
-  documentBodyRecords,
-  documentBodySource,
-  readBodyTree,
-  registerBodyCut,
-  registerDocumentBodyRecords,
-  type BodyTreeUnit,
-  type BodyTreeView,
-} from '@breatic/shared';
+import { type BodyTreeUnit, type BodyTreeView } from '@breatic/shared';
+import { assertBodySourceBoundary, BODY_MARK_ATTRIBUTE_PREFIX, BODY_REGISTRATION_ORIGIN, documentBodyRecords, documentBodySource, readBodyTree, registerBodyCut, registerDocumentBodyRecords } from '@breatic/shared/document-body';
 
 import type {
   BodyBatchEnvironment,

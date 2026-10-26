@@ -100,12 +100,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 import { handleSpaceRpc } from "../services/space-rpc.js";
-import {
-  spaceContentDocName,
-  documentBodyFragment,
-  ACTIVITY_NEW_SIGNAL,
-  MAX_SPACES_PER_PROJECT,
-} from "@breatic/shared";
+import { spaceContentDocName, ACTIVITY_NEW_SIGNAL, MAX_SPACES_PER_PROJECT } from "@breatic/shared";
+import { documentBodyFragment } from "@breatic/shared/document-body";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 const SID = "22222222-2222-4222-9222-222222222222";

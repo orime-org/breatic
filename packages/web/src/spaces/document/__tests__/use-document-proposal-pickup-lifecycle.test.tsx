@@ -6,7 +6,8 @@ import { act, cleanup, render, renderHook, waitFor } from '@testing-library/reac
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { deriveId, documentBodyFragment, encodeInitialSpaceContent, readBodyTree, type DocumentProposal } from '@breatic/shared';
+import { deriveId, type DocumentProposal } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent, readBodyTree } from '@breatic/shared/document-body';
 
 import { assetsApi, type UploadConfig } from '@web/data/api/assets';
 import {

@@ -52,13 +52,8 @@ import {
   type SeatHandover,
 } from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
-import {
-  parseDocName,
-  readDocumentBodyRecords,
-  SpaceRpcRequestSchema,
-  type ProjectRole,
-  type SpaceRpcResponse,
-} from "@breatic/shared";
+import { parseDocName, SpaceRpcRequestSchema, type ProjectRole, type SpaceRpcResponse } from "@breatic/shared";
+import { readDocumentBodyRecords } from "@breatic/shared/document-body";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
   recordPresenceOnConnect,

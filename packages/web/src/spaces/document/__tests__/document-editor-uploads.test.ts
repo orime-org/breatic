@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({

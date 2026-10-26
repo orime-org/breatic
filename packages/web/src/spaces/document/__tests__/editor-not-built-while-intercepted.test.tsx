@@ -16,7 +16,7 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
+import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
 
 import type { ProjectRole } from '@breatic/shared';
 

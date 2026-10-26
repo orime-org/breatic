@@ -25,7 +25,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { setMeta, ySyncPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 

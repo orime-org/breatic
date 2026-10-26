@@ -27,7 +27,8 @@ import { waitFor } from '@testing-library/react';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
-import { documentBodyFragment, setLocale, t } from '@breatic/shared';
+import { setLocale, t } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { documentLocaleRedrawExtension } from '@web/spaces/document/document-locale-redraw';

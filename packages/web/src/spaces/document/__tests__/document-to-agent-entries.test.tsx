@@ -13,7 +13,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared/document-body';
 
 import {
   DropdownMenu,
