@@ -157,20 +157,22 @@ export interface MeasuredChars {
  * writes; the turn's figure adds this turn's user message in characters. A
  * turn with no count -- its first call stopped or failed before
  * one came back -- is measured in characters, a character counted as a
- * token: never fewer than the tokens, so a fold can only come early.
+ * token: never fewer than the tokens. Such a count never sets off a fold
+ * (`endTokensFrom: "chars"`), and when it sizes one, the fold takes more than
+ * it needs, never less.
  * @param usage - What the provider reported.
  * @param chars - Character counts to fall back on.
- * @returns The two figures the reply row keeps.
+ * @returns The two figures the reply row keeps, and where `endTokens` came from.
  * @throws {never} Never.
  */
 export function replyTokens(
   usage: ReportedUsage,
   chars: MeasuredChars,
-): { turnTokens: number; endTokens: number } {
+): { turnTokens: number; endTokens: number; endTokensFrom: "provider" | "chars" } {
   const { firstInput, lastInput, lastOutput } = usage;
   if (firstInput === undefined || lastInput === undefined || lastOutput === undefined) {
-    return { turnTokens: chars.user + chars.reply, endTokens: chars.request + chars.reply };
+    return { turnTokens: chars.user + chars.reply, endTokens: chars.request + chars.reply, endTokensFrom: "chars" };
   }
   const endTokens = lastInput + lastOutput;
-  return { turnTokens: endTokens - firstInput + chars.user, endTokens };
+  return { turnTokens: endTokens - firstInput + chars.user, endTokens, endTokensFrom: "provider" };
 }

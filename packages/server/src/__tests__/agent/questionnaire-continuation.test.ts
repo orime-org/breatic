@@ -23,7 +23,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>, _forModel?: unknown) => 3);
 const setUserForModel = vi.fn(async () => undefined);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async (..._args: unknown[]) => "none");
 const usageKeys = vi.hoisted(() => ({ keys: [] as string[] }));
 const modelSays = vi.hoisted(() => ({
   parts: [] as unknown[],
@@ -81,7 +81,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
@@ -146,7 +146,7 @@ function storedReply(): { message: Record<string, unknown>; forModel: { messages
 beforeEach(() => {
   addMessage.mockClear();
   setUserForModel.mockClear();
-  foldIfOverBudget.mockClear();
+  foldIfTooLong.mockClear();
   usageKeys.keys = [];
   modelSays.prompts = [];
   modelSays.history = pausedTurn();
@@ -187,10 +187,14 @@ describe("the resumed segment", () => {
     expect(replayRows(rows, PREFIX).at(-1)?.asSent).toBe(true);
   });
 
-  it("leaves the reader's message of that turn alone and folds nothing", async () => {
+  it("leaves the reader's message of that turn alone, and checks the provider's count before it sends", async () => {
+    // A resumed segment folds by the same rule as any other (inner#1567, A3):
+    // the check runs before its first call, and the fold itself, when one
+    // runs, takes only turns before the one it resumes.
     await resume();
     expect(setUserForModel).not.toHaveBeenCalled();
-    expect(foldIfOverBudget).not.toHaveBeenCalled();
+    expect(foldIfTooLong).toHaveBeenCalledTimes(1);
+    expect(foldIfTooLong.mock.calls[0]?.[3]).toMatchObject({ kind: "precheck", at: "start" });
   });
 
   it("counts its own message once when the provider reported no usage", async () => {

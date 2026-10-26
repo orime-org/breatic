@@ -103,3 +103,12 @@ export async function readSignedPayload<T>(
   if (!valid) return { ok: false, reason: "bad_signature" };
   return { ok: true, payload };
 }
+
+/**
+ * Whether a field read off a signed payload is a non-empty string.
+ * @param value - The field.
+ * @returns True for a string with at least one character.
+ */
+export function isFilled(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}

@@ -30,7 +30,8 @@ const CONTEXT = {
  */
 function ticket(index: number): Record<string, unknown> {
   return {
-    ticket: `signed-${index}`,
+    uploadId: `upload-${index}`,
+    token: `token-${index}`,
     storageKey: `image/k${index}.png`,
     uploadUrl: 'https://ingest.example.com',
     kind: 'image',
@@ -150,5 +151,38 @@ describe('runMediaUploadBatch', () => {
     await runMediaUploadBatch(entries, CONTEXT, d);
 
     expect(entries[0]!.onFailure).toHaveBeenCalledWith({ reason: 'transfer', taskId: 'task-0' });
+  });
+});
+
+// inner#1595 §3.4–§3.5: one file the server could not open at the ingest Worker
+// fails on its own entry as a transfer naming its row; the others go on.
+describe('runMediaUploadBatch — one file the server could not open (inner#1595)', () => {
+  it('W04 fails only that entry, after its answer, and sends only the ticketed file', async () => {
+    const entries = [entry(0), entry(1), entry(2), entry(3)];
+    const d = deps({
+      requestTicketBatch: vi.fn().mockResolvedValue([
+        ticket(0),
+        { openFailed: { reason: 'store_failed' }, taskId: 't2' },
+        { alreadyExists: true, assetId: 'a2', fileUrl: 'https://cdn/a2.png', kind: 'image', width: 3, height: 3 },
+        { refused: { reason: 'storage' } },
+      ]),
+    });
+
+    await runMediaUploadBatch(entries, CONTEXT, d);
+
+    expect(d.requestTicketBatch).toHaveBeenCalledTimes(1);
+    const sent = vi.mocked(d.sendToIngest).mock.calls;
+    expect(sent).toHaveLength(1);
+    expect(sent[0]![0]).toBe(entries[0]!.file);
+    const e1 = entries[1]!;
+    expect(e1.onAnswered).toHaveBeenCalledOnce();
+    expect(e1.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', taskId: 't2' });
+    expect(vi.mocked(e1.onAnswered!).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(e1.onFailure).mock.invocationCallOrder[0]!,
+    );
+    expect(e1.onSuccess).not.toHaveBeenCalled();
+    expect(entries[2]!.onSuccess).toHaveBeenCalledOnce();
+    expect(entries[3]!.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'storage' });
+    expect(entries[0]!.onFailure).not.toHaveBeenCalled();
   });
 });

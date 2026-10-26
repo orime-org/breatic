@@ -85,7 +85,7 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 **Every task on a canvas node (upload, generation, understanding, mini-tool, container tools) has one limit, two hours: `default_budget_ms` in `config/node-tasks.yaml`.** Container deadlines and worker waits take this value; a shorter limit kills healthy tasks inside their budget. Check: writing a timeout or deadline for a task? It is two hours; any other value is asked about first.
 
 ### Storage
-**Cloudflare R2 is the only storage (`STORAGE_PROVIDER` accepts only `r2`), and the browser never writes to it directly.** The browser exchanges a signed ticket from `POST /assets/upload-ticket` and sends chunks to the ingest Worker, which writes R2 and hashes the bytes as it writes; our services finish the upload, and the Worker never calls us back. Check: who holds the bytes now?
+**Cloudflare R2 is the only storage (`STORAGE_PROVIDER` accepts only `r2`), and the browser never writes to it directly.** The browser asks `POST /assets/upload-ticket`, whose answer is an upload our server has already opened at the ingest Worker with the shared secret (a signed ticket never leaves our services, so each opens exactly one upload), and sends chunks to the Worker, which writes R2 and hashes the bytes as it writes; our services finish the upload, and the Worker never calls us back. Check: who holds the bytes now?
 
 | Bytes are | Path |
 |---|---|
