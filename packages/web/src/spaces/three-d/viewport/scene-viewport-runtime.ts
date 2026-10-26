@@ -12,7 +12,6 @@ import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resourc
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { SceneTransformOutline } from '@web/spaces/three-d/viewport/scene-transform-outline';
 import { focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import type { SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
@@ -83,7 +82,6 @@ export class SceneViewportRuntime {
   private readonly renderer: WebGLRenderer;
   private readonly orbit: OrbitControls;
   private readonly controls: SceneTransformControls173;
-  private readonly controlsOutline: SceneTransformOutline;
   private readonly pivot = new Group();
   private readonly grid = new GridHelper(200, 200);
   private readonly resources: ModelResourceCache;
@@ -111,7 +109,7 @@ export class SceneViewportRuntime {
   constructor(host: HTMLDivElement, props: SceneViewportProps) {
     this.host = host;
     this.props = props;
-    this.renderer = new WebGLRenderer({ antialias: true, stencil: true });
+    this.renderer = new WebGLRenderer({ antialias: true });
     const canvas = this.renderer.domElement;
     canvas.className = 'block h-full w-full outline-none focus-visible:ring-1 focus-visible:ring-active-border';
     canvas.tabIndex = 0;
@@ -124,8 +122,7 @@ export class SceneViewportRuntime {
     this.orbit.enableDamping = true;
     this.orbit.update();
     this.controls = new SceneTransformControls173(this.camera, canvas, props.scaleSensitivity, this.onCancel);
-    this.controlsOutline = new SceneTransformOutline(this.renderer, this.controls.getHelper());
-    this.scene.add(this.pivot, this.grid);
+    this.scene.add(this.controls.getHelper(), this.pivot, this.grid);
     this.scene.add(new HemisphereLight(0xffffff, 0x666666, 2.7));
     const light = new DirectionalLight(0xffffff, 3);
     light.position.set(5, 10, 4);
@@ -598,7 +595,6 @@ export class SceneViewportRuntime {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height, false);
-    this.controlsOutline.setSize(width, height);
   };
 
   /**
@@ -607,7 +603,6 @@ export class SceneViewportRuntime {
    */
   private onThemeChange = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
-    this.controlsOutline.setColors(this.token('--color-foreground'), this.token('--color-background'));
     this.grid.material.vertexColors = false;
     this.grid.material.color.setStyle(this.token('--color-muted-foreground'));
     this.grid.material.opacity = 0.2;
@@ -641,7 +636,6 @@ export class SceneViewportRuntime {
     updateSceneCameraRange(this.camera, bounds);
     for (const outline of this.outlines) outline.update();
     this.renderer.render(this.scene, this.camera);
-    this.controlsOutline.render(this.camera);
     if (import.meta.env.DEV) this.inspectNativeControls();
     this.frame = requestAnimationFrame(this.onFrame);
   };
@@ -728,7 +722,6 @@ export class SceneViewportRuntime {
     this.controls.removeEventListener('mouseUp', this.onGestureCommit);
     this.controls.removeEventListener('dragging-changed', this.onDraggingChanged);
     this.orbit.removeEventListener('change', this.onViewChange);
-    this.controlsOutline.dispose();
     this.controls.dispose();
     this.orbit.dispose();
     this.overview?.dispose();
