@@ -70,6 +70,7 @@ test('3D Space creates, edits independent copies, locks, undoes and reopens its 
     await page.getByTestId('scene-objects-panel').getByTestId(`scene-object-${originalId}`).click();
     await setX(page, 6);
     await expect(scene.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
+    await page.getByTestId(`space-tab-${id}`).hover();
     await page.getByTestId(`space-tab-close-${id}`).click();
     await expect(page.getByTestId(`space-tab-${id}`)).toHaveCount(0);
     await page.getByTestId('space-drawer-trigger').click();
