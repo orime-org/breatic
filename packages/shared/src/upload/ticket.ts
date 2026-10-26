@@ -68,6 +68,7 @@ export type UploadTicketVerification =
 import {
   signPayload,
   readSignedPayload,
+  isFilled,
 } from "@shared/upload/signed-payload.js";
 
 /**
@@ -111,6 +112,28 @@ export async function verifyUploadTicket(
 ): Promise<UploadTicketVerification> {
   const read = await readSignedPayload<UploadTicketPayload>(token, secret);
   if (!read.ok) return read;
+  if (!isTicketShaped(read.payload)) return { ok: false, reason: "malformed" };
   if (now > read.payload.expiresAt) return { ok: false, reason: "expired" };
   return { ok: true, payload: read.payload };
+}
+
+/**
+ * Whether a signed payload is a ticket rather than a session token.
+ *
+ * Both are signed with the same secret, so a valid signature does not say
+ * which one arrived. A session token always names an `uploadId` and a ticket
+ * never does, and only a ticket names who asked for it; requiring both keeps
+ * either from passing as the other (RFC 8725 §3.12, inner#1595).
+ * @param payload - The payload a valid signature covered.
+ * @returns True when it has a ticket's identity fields and no upload id.
+ */
+function isTicketShaped(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    !("uploadId" in p) &&
+    isFilled(p.storageKey) &&
+    isFilled(p.userId) &&
+    isFilled(p.studioId)
+  );
 }

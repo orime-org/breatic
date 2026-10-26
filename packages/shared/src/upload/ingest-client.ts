@@ -98,6 +98,31 @@ export interface IngestTarget {
 }
 
 /**
+ * An upload our server has already opened, and the layout its parts follow
+ * (inner#1595). It carries no ticket: opening takes the shared secret, so only
+ * our services open uploads, and whoever sends the bytes starts from the first
+ * session token.
+ */
+export interface OpenedIngestTarget {
+  /** The ingest Worker's base address. */
+  uploadUrl: string;
+  /** R2's id for the open multipart upload. */
+  uploadId: string;
+  /** The session token the first part carries. */
+  token: string;
+  /** How long every part but the last must be. */
+  partSize: number;
+  /** How many parts the bytes are cut into. */
+  totalParts: number;
+  /**
+   * What Node sends the parts through, timing the socket for a part whose
+   * bytes stopped moving (core's `idleSocketDispatcher`). A page leaves it
+   * out and the transport judges the same from upload progress.
+   */
+  dispatcher?: unknown;
+}
+
+/**
  * What the Worker turns a picture upright under (inner#1367). It reads no
  * configuration of its own, so these travel on every finish and fetch.
  */
@@ -128,7 +153,7 @@ export interface PartReceipt {
 }
 
 /** What opening an upload answers with. */
-interface OpenedUpload {
+export interface OpenedUpload {
   uploadId: string;
   token: string;
 }
@@ -332,7 +357,7 @@ function readMeasurements(answered: unknown): IngestMeasurements {
 type PartBound = UntilDeadline | { signal: AbortSignal };
 
 /**
- * Send one blob of bytes to the ingest Worker, part by part.
+ * Send one blob of bytes to an open upload at the ingest Worker, part by part.
  *
  * The receipts are collected on the way: the Worker keeps nothing between
  * requests, so what it needs to assemble the object is the list this side
@@ -344,7 +369,7 @@ type PartBound = UntilDeadline | { signal: AbortSignal };
  * the upload incomplete, and nothing here can finish it — the task's own
  * budget is what settles that, when somebody opens the node's task list.
  * @param bytes - What to upload. A browser's `File` is one of these.
- * @param target - What the ticket endpoint issued for it.
+ * @param opened - The upload our server opened and the layout of its parts.
  * @param cfg - The idle window a part is cut after.
  * @param onPartLanded - Told how many bytes have landed so far, after each
  *   part the Worker accepts.
@@ -353,7 +378,7 @@ type PartBound = UntilDeadline | { signal: AbortSignal };
  * @param signal - Raised when the caller no longer wants the upload: checked
  *   between parts and handed to each request.
  * @returns Everything finishing this upload will need.
- * @throws {UploadHttpError} When the Worker refuses either step.
+ * @throws {UploadHttpError} When the Worker refuses a part.
  * @throws {DeadlinePassed} When the deadline has already come.
  * @throws {DOMException} `AbortError` once `signal` is raised.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -361,7 +386,7 @@ type PartBound = UntilDeadline | { signal: AbortSignal };
  */
 export async function sendBytesToIngest(
   bytes: Blob,
-  target: IngestTarget,
+  opened: OpenedIngestTarget,
   cfg: Pick<UploadClientConfig, "uploadIdleTimeoutMs">,
   onPartLanded?: (bytesLanded: number) => void,
   deadlineAt?: number,
@@ -375,16 +400,15 @@ export async function sendBytesToIngest(
         ? { signal }
         : { ...deadline, signal: AbortSignal.any([deadline.signal, signal]) };
   signal?.throwIfAborted();
-  const opened = await openUpload(target, bound);
 
   let token = opened.token;
   const parts: PartReceipt[] = [];
-  for (let part = 1; part <= target.totalParts; part += 1) {
+  for (let part = 1; part <= opened.totalParts; part += 1) {
     signal?.throwIfAborted();
-    const start = (part - 1) * target.partSize;
-    const slice = bytes.slice(start, start + target.partSize);
+    const start = (part - 1) * opened.partSize;
+    const slice = bytes.slice(start, start + opened.partSize);
     const landed = await sendPart(
-      target,
+      opened,
       opened.uploadId,
       part,
       slice,
@@ -680,29 +704,41 @@ export async function askWorker<T>(
 }
 
 /**
- * Open a multipart upload for this ticket's key.
+ * Open a multipart upload for a ticket's key (inner#1595).
+ *
+ * Only our services call this: the Worker opens an upload only for a request
+ * carrying the shared secret, so the ticket never has to leave our server and
+ * each ticket is opened exactly once, here.
  * @param target - The signed ticket and where to send it.
- * @param bound - The upload's deadline and the caller's stop signal, when held.
+ * @param secret - The secret the Worker also holds.
+ * @param bound - The caller's deadline and stop signal, or a timeout alone.
  * @returns The upload's id and its first session token.
- * @throws {UploadHttpError} When the Worker refuses the ticket.
+ * @throws {UploadHttpError} When the Worker refuses to open it.
+ * @throws {unknown} The transport's own failure when no delivery produced a
+ *   response.
  */
-async function openUpload(
+export async function openUploadAtIngest(
   target: IngestTarget,
-  bound: PartBound | undefined,
+  secret: string,
+  bound: PartBound | { timeoutMs: number },
 ): Promise<OpenedUpload> {
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,
-    { method: "POST", headers: { "x-upload-ticket": target.ticket } },
+    {
+      method: "POST",
+      headers: { "x-upload-ticket": target.ticket, "x-ingest-secret": secret },
+    },
     // This request carries no upload id: it mints one, and the Worker opens a
     // fresh multipart upload on every delivery. A replay leaves the first one
-    // abandoned, holding parts R2 charges for.
-    { replaySafe: false, ...(bound !== undefined && { bound }) },
+    // abandoned, holding parts R2 charges for. The transport still resends a
+    // 408 or 429, which say the Worker did not take the request.
+    { replaySafe: false, bound },
   );
 }
 
 /**
  * Write one part and take the token that lets the next one through.
- * @param target - The signed ticket and where to send it.
+ * @param target - The open upload's address and how its parts are sent.
  * @param uploadId - The upload these parts belong to.
  * @param part - This part's number, counting from one.
  * @param bytes - This part's bytes.
@@ -713,7 +749,7 @@ async function openUpload(
  * @throws {UploadHttpError} When the Worker refuses the part.
  */
 async function sendPart(
-  target: IngestTarget,
+  target: OpenedIngestTarget,
   uploadId: string,
   part: number,
   bytes: Blob,
