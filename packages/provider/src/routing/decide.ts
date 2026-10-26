@@ -24,6 +24,8 @@ export type Decision = "switch" | "retry" | "stop";
  * @returns The next step.
  */
 export function decide(failure: Failure, phase: Phase, retriesUsed: number, maxRetries: number): Decision {
-  void failure; void phase; void retriesUsed; void maxRetries;
-  throw new Error("decide is not implemented");
+  if (failure.kind === "not_sent" || failure.kind === "model_not_found") return "switch";
+  if (failure.kind !== "http_status") return "stop";
+  if (failure.status !== 429 && failure.status < 500) return "stop";
+  return phase === "llm_before_content" && retriesUsed < maxRetries ? "retry" : "switch";
 }

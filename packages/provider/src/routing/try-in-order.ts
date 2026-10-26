@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { Failure, Phase } from "@provider/routing/decide.js";
+import { NoUpstreamAvailable, type UnavailableReason } from "@provider/errors.js";
+import { decide, type Failure, type Phase } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
 
 /** What served the call. */
@@ -28,6 +29,21 @@ export interface Attempts<T> {
  * @throws {unknown} The attempt's own error when the decision is to stop.
  */
 export async function tryInOrder<T>(plan: RoutePlan, attempts: Attempts<T>): Promise<Served<T>> {
-  void plan; void attempts;
-  throw new Error("tryInOrder is not implemented");
+  const reasons: UnavailableReason[] = [...plan.skipped];
+  for (const candidate of plan.order) {
+    for (let retries = 0; ; retries++) {
+      try {
+        return { value: await attempts.attempt(candidate), servedBy: candidate.upstream };
+      } catch (error) {
+        const failure = attempts.classify(error);
+        if (failure === null) throw error;
+        const decision = decide(failure, attempts.phase, retries, attempts.maxRetries);
+        if (decision === "stop") throw error;
+        if (decision === "retry") continue;
+        reasons.push({ upstream: candidate.upstream, kind: "failed", failure: failure.kind });
+        break;
+      }
+    }
+  }
+  throw new NoUpstreamAvailable(plan.model, reasons);
 }

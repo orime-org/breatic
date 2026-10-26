@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { UnavailableReason } from "@provider/errors.js";
+import { NoUpstreamAvailable, UpstreamRequestRejected, type UnavailableReason } from "@provider/errors.js";
 import type { Route } from "@provider/pricing/estimate.js";
 
 export type { Route } from "@provider/pricing/estimate.js";
@@ -36,6 +36,21 @@ export interface RoutePlan {
  * @throws {UpstreamRequestRejected} When the route names an upstream the model has no binding for.
  */
 export function planRoute(model: string, route: Route, candidates: readonly Candidate[]): RoutePlan {
-  void model; void route; void candidates;
-  throw new Error("planRoute is not implemented");
+  let pool = [...candidates].sort((a, b) => a.weight - b.weight);
+  if (route.mode === "upstream") {
+    pool = pool.filter((c) => c.upstream === route.upstream);
+    if (pool.length === 0) {
+      const bound = candidates.map((c) => c.upstream).join(", ");
+      throw new UpstreamRequestRejected(model, route.upstream, `${model} has no binding to ${route.upstream}; it is bound to ${bound}`);
+    }
+  }
+  if (route.mode === "cheapest") {
+    pool.sort((a, b) => (a.estimateUsd ?? Infinity) - (b.estimateUsd ?? Infinity) || a.weight - b.weight);
+  }
+  const skipped: UnavailableReason[] = pool
+    .filter((c) => !c.configured)
+    .map((c) => ({ upstream: c.upstream, kind: "missing_key", envVar: c.envVar }));
+  const order = pool.filter((c) => c.configured);
+  if (order.length === 0) throw new NoUpstreamAvailable(model, skipped);
+  return { model, order, skipped };
 }
