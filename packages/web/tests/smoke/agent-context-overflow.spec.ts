@@ -155,10 +155,20 @@ test('a reply that folds memory partway carries on in the same reply', async ({ 
 });
 
 test('a turn too long to fit says so and does not ask to be sent again', async ({ page }) => {
-  await answerWith(page, [{ type: 'data-failed', data: { reason: 'too_long' } }, { type: 'finish' }]);
+  // The server says how long the turn thought before it ends as too long,
+  // the way a turn that finishes does.
+  await answerWith(page, [
+    { type: 'reasoning-start', id: 'r1' },
+    { type: 'reasoning-delta', id: 'r1', delta: 'weighing it up' },
+    { type: 'reasoning-end', id: 'r1' },
+    { type: 'data-thinking-time', data: { ms: 3_000 } },
+    { type: 'data-failed', data: { reason: 'too_long' } },
+    { type: 'finish' },
+  ]);
   await sendOne(page);
 
   await expect(page.getByTestId('message-bubble-error')).toHaveText(TOO_LONG);
+  await expect(page.getByTestId('thinking-fold')).toContainText('Thought for 3 s');
   // The ordinary failure's only offer to retry is its sentence; TurnEnding
   // draws no button for either ending.
   const reply = page.getByTestId('message-bubble').last();
