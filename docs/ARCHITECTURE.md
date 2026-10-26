@@ -453,7 +453,7 @@ pnpm test / typecheck / lint
 | 画布 | @xyflow/react 12 |
 | 富文本编辑器 | **BlockNote**(document space 的正文)+ **TipTap 3**(画布上的文本节点正文和生成 prompt)。两者共底:BlockNote 建在 ProseMirror 上,块不互相嵌套 —— 文档是 `blockGroup > blockContainer > blockContent` 三层,缩进另开一个组。document 正文在这个形状上把引用和标题序号做成了块的属性(库自带的是一个 `quote` 块类型,我们剔掉它、改挂 `quoted`;`numbered` / `number` 同样是我们加的) |
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库);剪切面板的音频波形带子用 wavesurfer.js(BSD-3-Clause)只画不播 |
-| 3D | Three.js + @react-three/fiber |
+| 3D | Three.js r173 with native OrbitControls and TransformControls |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
 | i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [web 的规则](../packages/web/AGENTS.md#product-terms-are-never-translated)。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半也在**,少了它源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头** —— `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,`t("server.error.notFound")` 这类拼错的 id 由它接住(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
 | 路由 | React Router 7 |
@@ -522,6 +522,13 @@ panel close action dismiss it. Locking changes the normal header icon without
 adding an active background. AI generation and annotations remain development
 entries; this editor does not submit generation jobs.
 
+`SceneViewportRuntime` owns a native Three.js renderer, camera, OrbitControls,
+TransformControls, model resources and the overview. React owns its visible
+effect lifetime. The native transform helper renders with the world scene.
+`SceneTransformControls173` adapts centre scaling and multiselect handle masks.
+The AI dialog uses a localized project Button for its reference-image field and
+a hidden file input; its prompt, reference picker and submission remain disabled.
+
 Scene name editing follows Canvas node and group renaming: trim and clip a
 nonblank draft, commit on Enter or leaving the field, and cancel on Escape.
 The scene schema supplies its existing length limit. The shared
@@ -535,6 +542,11 @@ panel or overlay, selection changes and editor disposal end the corresponding
 input. The panel portals into its scene allocation so Space-tab activation
 preserves field focus until Activity hides it. The editor's memory owns this
 temporary interface state.
+
+`SceneRightPanel` records permitted outside interactions for each open cycle.
+When dismissal hands focus to an external control or another overlay, that
+control retains focus. Explicit closure and dismissal without an external focus
+target return focus to the connected opener, falling back to the scene canvas.
 
 ### Brand home links
 

@@ -1172,9 +1172,10 @@ export function renderProductGuide(): string {
     `The floating left rail starts with a plus icon, ${quoted(t("spaces.threeD.add"))}. Its menu offers ` +
       `${quoted(t("spaces.threeD.addBox"))} and ${quoted(t("spaces.threeD.addFigure"))}, which place a ` +
       `${quoted(t("spaces.threeD.box"))} or ${quoted(t("spaces.threeD.figure"))}. ` +
-      `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog with disabled ` +
-      `${quoted(t("spaces.threeD.prompt"))}, ${quoted(t("spaces.threeD.reference"))} and ${quoted(t("spaces.threeD.submit"))} controls ` +
-      `and the description ${quoted(t("spaces.threeD.generationDev"))}; ` +
+      `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
+      `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
+      `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
+      `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
       `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
       `The question-mark icon opens ${quoted(t("spaces.threeD.help"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
@@ -1182,6 +1183,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
+      "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
       `The tasks panel currently says ${quoted(t("spaces.threeD.generationDev"))}; the minimap button toggles the scene's top view; ` +
       "clicking that map navigates your personal viewing camera.",
     `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
