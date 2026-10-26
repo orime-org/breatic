@@ -1844,6 +1844,7 @@
       "generationDev": "3D 模型生成正在开发中",
       "prompt": "描述你想生成的 3D 模型",
       "reference": "参考图（可选）",
+      "chooseReference": "选择参考图",
       "submit": "生成",
       "helpBody": "点击对象选中；拖动空白处旋转视角；滚轮缩放。选中对象后，使用浮动菜单移动、旋转与缩放。",
       "closePanel": "关闭"

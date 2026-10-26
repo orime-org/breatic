@@ -7,7 +7,6 @@ import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
-import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Textarea } from '@web/components/ui/textarea';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
@@ -53,7 +52,10 @@ export const SceneCreationMenu = React.memo(function SceneCreationMenu({ canEdit
     </nav>
     <Dialog open={aiOpen} onOpenChange={setAiOpen}><DialogContent onCloseAutoFocus={returnFocus}><DialogHeader><DialogTitle>{t('spaces.threeD.generate')}</DialogTitle><DialogDescription>{t('spaces.threeD.generationDev')}</DialogDescription></DialogHeader>
       <div className='space-y-4 px-4 py-3'><div className='space-y-2'><Label htmlFor={`${id}:prompt`}>{t('spaces.threeD.prompt')}</Label><Textarea id={`${id}:prompt`} className='min-h-24' disabled /></div>
-        <div className='space-y-2'><Label htmlFor={`${id}:reference`}>{t('spaces.threeD.reference')}</Label><Input id={`${id}:reference`} type='file' accept='image/*' disabled /></div></div>
+        <div className='space-y-2'><Label htmlFor={`${id}:reference`}>{t('spaces.threeD.reference')}</Label><div>
+          <Button variant='outline' disabled>{t('spaces.threeD.chooseReference')}</Button>
+          <input id={`${id}:reference`} type='file' accept='image/*' hidden disabled />
+        </div></div></div>
       <DialogFooter><Button variant='outline' onClick={() => setAiOpen(false)}>{t('common.cancel')}</Button><Button disabled>{t('spaces.threeD.submit')}</Button></DialogFooter>
     </DialogContent></Dialog>
     <Dialog open={helpOpen} onOpenChange={setHelpOpen}><DialogContent onCloseAutoFocus={returnFocus}><DialogHeader><DialogTitle>{t('spaces.threeD.help')}</DialogTitle><DialogDescription>{t('spaces.threeD.helpBody')}</DialogDescription></DialogHeader></DialogContent></Dialog>

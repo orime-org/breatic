@@ -36,6 +36,8 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
   actions?: React.ReactNode;
 }): React.JSX.Element {
   const t = useTranslation();
+  const interactedOutside = React.useRef(false);
+  React.useEffect(() => { if (open) interactedOutside.current = false; }, [open]);
   /**
    * Close the active panel through its owner.
    * @throws {never} Never.
@@ -52,6 +54,9 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
       onCloseAutoFocus={(event) => {
         event.preventDefault();
         if (useUIStore.getState().activeOverlayId !== null) return;
+        const active = document.activeElement;
+        if (interactedOutside.current && active instanceof HTMLElement && active !== document.body
+          && !active.closest('[data-testid="scene-right-panel"]')) return;
         const target = returnTarget.current;
         if (target?.isConnected && !target.closest('[data-testid="scene-right-panel"]') && !target.matches(':disabled')) target.focus();
         else stage.current?.querySelector<HTMLElement>('canvas')?.focus();
@@ -60,6 +65,7 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
         if (event.target instanceof Node && stage.current?.contains(event.target)) event.preventDefault();
         // Space activation owns hiding; dismissing on its pointerdown would end an unfinished edit first.
         if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+        if (!event.defaultPrevented) interactedOutside.current = true;
       }}>
       <div className='flex shrink-0 items-center justify-between gap-2 border-b border-border p-3' data-testid='scene-panel-header'><h2 className='min-w-0 truncate text-sm font-medium'>{title}</h2>
         <div className='flex shrink-0 items-center gap-1'>{actions}<SceneIconButton label={t('spaces.threeD.closePanel')} onClick={close}>{closeIcon}</SceneIconButton></div>

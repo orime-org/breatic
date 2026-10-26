@@ -147,6 +147,15 @@ describe('approved scene layout (inner#1724)', () => {
     expect(within(dialog).getByLabelText(t('spaces.threeD.reference'))).toBeDisabled();
     expect(within(dialog).getByRole('button', { name: t('spaces.threeD.submit') })).toBeDisabled();
   });
+  it('shows a translated reference button and hides the browser file control', async () => {
+    setup(); await screen.findByTestId('scene-native-boundary');
+    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
+    const dialog = await screen.findByRole('dialog');
+    const file = within(dialog).getByLabelText(t('spaces.threeD.reference'));
+    expect(file).not.toBeVisible();
+    expect(file).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: t('spaces.threeD.chooseReference') })).toBeDisabled();
+  });
   it('keeps focus in the shared panel when an object row opens its properties', async () => {
     setup(); await screen.findByTestId('scene-native-boundary');
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));

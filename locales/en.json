@@ -1844,6 +1844,7 @@
       "generationDev": "3D model generation is in development",
       "prompt": "Describe the 3D model you want to generate",
       "reference": "Reference image (optional)",
+      "chooseReference": "Choose reference image",
       "submit": "Generate",
       "helpBody": "Click an object to select it. Drag empty space to orbit; use the wheel to zoom. Use the floating selection menu to move, rotate or scale objects.",
       "closePanel": "Close"

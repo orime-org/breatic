@@ -1844,6 +1844,7 @@
       "generationDev": "3D 模型生成正在開發中",
       "prompt": "描述你想生成的 3D 模型",
       "reference": "參考圖（選填）",
+      "chooseReference": "選擇參考圖",
       "submit": "生成",
       "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
       "closePanel": "關閉"
