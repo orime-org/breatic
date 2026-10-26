@@ -6,9 +6,11 @@
  *
  * Whoever holds the bytes sends them: the browser for a file a person picked,
  * and our own backend for what it produced itself (a transport's audio, a
- * frame ffmpeg lifted out of a video). Both go through the same three steps —
- * open with the ticket, PUT each part, ask to complete — so both go through
- * this, and the Worker needs no idea which one it is talking to.
+ * frame ffmpeg lifted out of a video). Our services open every upload with the
+ * ticket and the shared secret; whoever holds the bytes then PUTs each part
+ * from the first session token, and our services ask to complete — so both
+ * senders go through this, and the Worker needs no idea which one sends the
+ * parts.
  *
  * A URL is the third way, and it moves no bytes through the caller at all: the
  * Worker fetches it where R2 already is. Lifting all of them here is what makes
@@ -587,7 +589,7 @@ export async function readStoredMediaAtIngest(
  * The shared secret goes with it because only our services may make the
  * Worker fetch an address or open an upload; tickets never leave them.
  * @param sourceUrl - Where the bytes are now.
- * @param target - What the ticket endpoint issued for them.
+ * @param target - The ticket our backend signed for them, and where to send it.
  * @param secret - The secret the Worker also holds.
  * @param run - The cover key, and the task deadline the Worker holds the
  *   transfer and the container to, and the wait ends at.

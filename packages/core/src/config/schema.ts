@@ -325,8 +325,9 @@ export const coreConfigSchema = z.object({
     .string()
     .default("")
     .transform((value) => value.replace(/\/+$/, "")),
-  // Signs the ticket the browser carries to the Worker, and verifies
-  // the report the Worker sends back. The Worker holds the same value
+  // Signs the upload ticket our server opens each upload with, and goes
+  // with that open, the finish and every other call our services make to
+  // the Worker as `x-ingest-secret`. The Worker holds the same value
   // through `wrangler secret put` (`.dev.vars` locally); both sides
   // read it from their own runtime's injection point.
   INGEST_SHARED_SECRET: z.string().default(""),

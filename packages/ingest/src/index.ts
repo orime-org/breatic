@@ -398,7 +398,8 @@ function refused(
  * The permission is taken before R2 is touched, because what it stops is a
  * write: a replayed ticket opening a second multipart upload over a key the
  * ledger already describes.
- * @param request - The browser's request, carrying the token and the parts.
+ * @param request - Our service's request, carrying the shared secret, the
+ *   token and the parts.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
  * @returns The outcome, or why it was refused.
