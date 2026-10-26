@@ -4,7 +4,7 @@
 /**
  * How long the thing about to go to the model is.
  *
- * The budget is drawn around the assembled request, which is three things:
+ * A fold is sized against the assembled request, which is three things:
  * the instructions, the tool definitions, and the messages. The tool
  * definitions are the segment that lives in neither of the other two — they
  * reach the provider as their own argument — so a measurement that adds up
@@ -17,8 +17,8 @@
  * this estimate covers the rest, including the current question and any
  * instructions or tools outside that coverage.
  * A character is never more than a token in the tokenizers
- * this build meets, so counting one as a token can only make a fold come
- * early. There is no library that counts tokens for a model reached through
+ * this build meets, so counting one as a token can only make a fold take
+ * more than it needs. There is no library that counts tokens for a model reached through
  * OpenRouter — see the design's DD section.
  */
 
@@ -100,8 +100,8 @@ function measureTool(name: string, definition: Tool): number {
 /**
  * Estimate a run of messages in tokens using text characters and picture costs.
  *
- * The same ruler the budget is read with, applied to one part of what it
- * measures: a consolidation decides how many turns to take by what each of
+ * The same ruler the assembled request is sized with, applied to one part of
+ * it: a consolidation decides how many turns to take by what each of
  * them costs the assembled request.
  * @param messages - The messages to measure.
  * @returns Their combined fallback token estimate.

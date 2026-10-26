@@ -24,6 +24,7 @@ import { writeUpright } from "@ingest/media-container.js";
 import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import { UPRIGHT_OBJECT_HOST, type UprightOutcome } from "@ingest/upright-run.js";
+import { openForTest } from "./helpers/open-upload.js";
 
 /** `TRANSFER_MEDIA_TYPE`, pinned to the shared export by TF01. */
 const TMT = "application/vnd.breatic.transfer";
@@ -149,18 +150,8 @@ async function uploaded(bytes: Uint8Array, contentType: string, storageKey: stri
     },
     env.INGEST_SHARED_SECRET,
   );
-  let ctx = createExecutionContext();
-  const opened = await worker.fetch(
-    new Request("https://ingest.example.com/uploads", {
-      method: "POST",
-      headers: { "x-upload-ticket": ticket },
-    }),
-    env,
-    ctx,
-  );
-  await waitOnExecutionContext(ctx);
-  const session = await opened.json<{ uploadId: string; token: string }>();
-  ctx = createExecutionContext();
+  const session = await openForTest(ticket);
+  const ctx = createExecutionContext();
   const sent = await worker.fetch(
     new Request(`https://ingest.example.com/uploads/${session.uploadId}/parts/1`, {
       method: "PUT",

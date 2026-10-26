@@ -78,6 +78,19 @@ const replyForModel = z.object({
   prefixHash: z.string(),
   turnTokens: z.number(),
   endTokens: z.number(),
+  /**
+   * Where `endTokens` came from: the provider's own count, or the character
+   * fallback when no call reported one. Rows written before inner#1567 have
+   * neither, and their count is not trusted to decide a fold.
+   */
+  endTokensFrom: z.enum(["provider", "chars"]).optional(),
+  /**
+   * The turn's last call whose usage the provider reported: the hash of the
+   * whole request it sent, and how many of this row's messages that request
+   * held. The next turn trusts `endTokens` only while its replay of the same
+   * prefix hashes the same (inner#1567, design 6.2).
+   */
+  lastRequest: z.object({ hash: z.string(), messages: z.number().int().nonnegative() }).optional(),
   /** The open Space a resumed segment's own message carried (inner#1542). */
   snapshot: snapshot.optional(),
   pictures: z.array(picture).optional(),
@@ -189,6 +202,8 @@ export interface ReplayedRow {
   turnCoverageHash?: string;
   /** Hash of the entire projected conversation through this row. */
   endCoverageHash?: string;
+  /** The reply's `lastRequest` is the prefix this replay lays down, byte for byte. */
+  lastRequestMatches?: boolean;
 }
 
 /**
@@ -276,6 +291,11 @@ export function replayRows(
       const segment = [...(turnsWithReply.has(row.turnIndex) ? [] : turnUsers.get(row.turnIndex) ?? []), ...replayed.messages];
       replayed.turnCoverageHash = prefixHash(prefix, segment);
       turnsWithReply.add(row.turnIndex);
+    }
+    const last = replayed.reply?.lastRequest;
+    if (last !== undefined) {
+      replayed.lastRequestMatches = last.messages <= replayed.messages.length &&
+        replayed.messages.slice(0, last.messages).reduce(extendHash, hash) === last.hash;
     }
     for (const message of replayed.messages) hash = extendHash(hash, message);
     sentPrefix.push(...replayed.messages);

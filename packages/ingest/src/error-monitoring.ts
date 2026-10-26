@@ -89,6 +89,15 @@ export function monitoringOptions(env: MonitoringEnv): MonitoringOptions {
 export interface FailureKind {
   /** The reader's own input caused it; it is logged and not reported. */
   userInput?: boolean;
+  /**
+   * Report every occurrence as its own event, still grouped as one issue.
+   *
+   * The SDK's default dedupe drops an event whose message, fingerprint and
+   * stack equal the previous one in this isolate, whatever its contexts say.
+   * A failure that has to leave a record each time it happens passes a
+   * message unique to the occurrence and a fingerprint that groups them.
+   */
+  perOccurrence?: { message: string; fingerprint: string[] };
 }
 
 /**
@@ -101,7 +110,8 @@ export interface FailureKind {
  * @param label - What failed, as one searchable token.
  * @param ctx - The key, ids and status that name this attempt.
  * @param err - The error that said so, when there was one.
- * @param kind - Whether the reader's own input caused it.
+ * @param kind - Whether the reader's own input caused it, and whether each
+ *   occurrence is its own event.
  */
 export function noteFailure(
   label: string,
@@ -116,7 +126,11 @@ export function noteFailure(
   if (kind.userInput === true) return;
   const hint = { tags: { label }, contexts: { ingest: ctx } };
   if (err === undefined) {
-    Sentry.captureMessage(label, { level: "error", ...hint });
+    Sentry.captureMessage(kind.perOccurrence?.message ?? label, {
+      level: "error",
+      ...hint,
+      ...(kind.perOccurrence !== undefined && { fingerprint: kind.perOccurrence.fingerprint }),
+    });
   } else {
     Sentry.captureException(err, hint);
   }

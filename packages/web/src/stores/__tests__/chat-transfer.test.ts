@@ -79,7 +79,8 @@ const LONG = 'x'.repeat(2000);
 const SHORT = 'hi';
 
 const TICKET: UploadTicket = {
-  ticket: 'signed-ticket',
+  uploadId: 'upload-1',
+  token: 'token-1',
   storageKey: KEY,
   uploadUrl: 'https://ingest.test.invalid',
   kind: 'file',

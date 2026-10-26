@@ -49,7 +49,8 @@ export interface QueuedFinish {
  * Asking again is safe and is the whole recovery for an answer that never
  * arrived: the key is the finish job's id, so a repeat queues nothing more.
  * @param file - What the person picked, or the bytes a page wrote.
- * @param ticket - What the ticket endpoint issued for it.
+ * @param ticket - The upload our server opened for it; the parts start from
+ *   its token, and no upload is opened here.
  * @param cfg - The upload knobs, which set the idle window on each part.
  * @param onPartLanded - Told how many bytes have landed, after each part.
  * @param signal - Raised when the caller no longer wants the upload: handed

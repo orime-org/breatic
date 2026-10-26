@@ -91,10 +91,10 @@ const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 /**
- * The window as the caller hands it over, converted.
- * @returns The window, in the shape `foldIfOverBudget` builds it.
+ * The window as the caller hands it over, converted, turn by turn.
+ * @returns The window, in the shape `foldIfTooLong` builds it.
  */
-async function handedWindow(): Promise<ModelMessage[]> {
+async function handedWindow(): Promise<Array<{ turnIndex: number; messages: ModelMessage[] }>> {
   const { toModelMessages } = await import("@server/agent/model-messages.js");
   const history = [1, 2, 3, 4].flatMap((n) => [
     {
@@ -122,10 +122,10 @@ async function handedWindow(): Promise<ModelMessage[]> {
       turnIndex: n,
     },
   ]);
-  return toModelMessages(history);
+  return [1, 2, 3, 4].map((n) => ({ turnIndex: n, messages: toModelMessages(history.filter((row) => row.turnIndex === n)) }));
 }
 
-const TRANSCRIPT: ModelMessage[] = await handedWindow();
+const TURNS = await handedWindow();
 
 /**
  * Ask for one consolidation, with everything the caller would have worked out.
@@ -137,7 +137,7 @@ async function consolidate(over: Record<string, unknown> = {}) {
     userId: USER,
     conversationId: CONVERSATION,
     projectId: PROJECT,
-    transcript: TRANSCRIPT,
+    turns: TURNS,
     watermarkBefore: 7,
     newWatermark: 19,
     ...over,
@@ -304,7 +304,7 @@ describe("a consolidation that works", () => {
       { role: "user" as const, content: "my regex is $`abc$& and $' too" },
     ];
 
-    await consolidate({ transcript: withDollars });
+    await consolidate({ turns: [{ turnIndex: 19, messages: withDollars }] });
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
@@ -342,7 +342,7 @@ describe("a consolidation that works", () => {
       },
     ];
 
-    await consolidate({ transcript: window });
+    await consolidate({ turns: [{ turnIndex: 19, messages: window }] });
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })

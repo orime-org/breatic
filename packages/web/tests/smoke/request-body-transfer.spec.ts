@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 
 import { expect } from 'playwright/test';
 import { test } from '../helpers/slot';
+import { expectOnlyPartsTo, expectOpenedUpload, recordRequests } from '../helpers/upload';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import {
@@ -76,11 +77,20 @@ test('SM1 pasting a 1.2 MB text node that opens with <svg sends a transfer and p
   expect(Buffer.byteLength(LARGE_WORDS)).toBeGreaterThan(1_048_576);
   const before = await nodeIds(page, projectId, spaceId);
 
+  // inner#1595: the server opens the transfer upload; the page only sends parts.
+  const sent = recordRequests(page);
+  const ticketAnswer = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === TRANSFER_TICKET && r.request().method() === 'POST',
+    { timeout: 120_000 },
+  );
   const pasted = page.waitForResponse((r) => new URL(r.url()).pathname === PASTE && r.request().method() === 'POST', {
     timeout: 120_000,
   });
   await copyAndPaste(page, original);
   const answer = await pasted;
+  const { data: opened } = (await (await ticketAnswer).json()) as { data: Record<string, unknown> };
+  expectOpenedUpload(opened);
+  expect(expectOnlyPartsTo(sent, String(opened.uploadUrl))).toBeGreaterThan(0);
 
   expect(answer.status()).toBe(200);
   expect(answer.request().postData()).toMatch(TRANSFER_REFERENCE);

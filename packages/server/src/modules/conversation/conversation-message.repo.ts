@@ -452,8 +452,9 @@ export async function getMessages(
  * fields it names — so withholding them here reached nobody, and it cost a cast that
  * told the compiler a message with no timestamp was a whole one.
  *
- * What it did reach is the budget, which prices the history one turn at a
- * time (`request-size.ts`, `costPerTurn`) and hands a fold the turns it took.
+ * What it did reach is the fold, which prices the history one turn at a time
+ * (`request-size.ts`, `costPerTurn`) and hands the consolidation the turns it
+ * took.
  * Both key on this field, and a consolidation that cannot tell one turn from
  * another takes nothing at all.
  * @param id - Conversation UUID

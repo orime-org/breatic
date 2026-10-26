@@ -139,38 +139,22 @@ describe("the figures on the path from pressing send to the first frame", () => 
   });
 });
 
-describe("the two memory lines", () => {
-  it("refuses a keep line at or above the budget", () => {
-    // A pass runs when the request is over the budget and takes turns until
-    // what remains is at or under the keep line. With keep the higher of the
-    // two, the loop stops before it has taken anything, the plan comes back
-    // empty, and folding never happens again — with nothing said anywhere.
-    expect(
-      agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: 500_000,
-        memory_keep_tokens: 500_000,
-      }).success,
-    ).toBe(false);
-    expect(
-      agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: 400_000,
-        memory_keep_tokens: 500_000,
-      }).success,
-    ).toBe(false);
-  });
-
-  it("takes the pair the file ships with", () => {
+describe("the memory keep line", () => {
+  it("takes the keep line and the overflow numbers the file ships with", () => {
     const config = shippedConfig();
-    // Both read off disk, so editing either line in the file is what this
-    // answers. Their presence is asserted first: absent, the schema hands
-    // back its own defaults and the pair being checked would be one nobody
-    // ships.
-    expect(typeof config.memory_budget_tokens).toBe("number");
+    // Read off disk, so editing a line in the file is what this answers.
+    // Presence is asserted first: absent, the schema hands back its own
+    // defaults and the values checked would be ones nobody ships.
     expect(typeof config.memory_keep_tokens).toBe("number");
+    expect(config.context_window_fallback_tokens).toBe(1_000_000);
+    expect(config.overflow_folds_per_turn).toBe(2);
+    expect(config.consolidation_shrink_attempts).toBe(6);
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: config.memory_budget_tokens,
         memory_keep_tokens: config.memory_keep_tokens,
+        context_window_fallback_tokens: config.context_window_fallback_tokens,
+        overflow_folds_per_turn: config.overflow_folds_per_turn,
+        consolidation_shrink_attempts: config.consolidation_shrink_attempts,
       }).success,
     ).toBe(true);
   });
@@ -182,7 +166,6 @@ describe("the two memory lines", () => {
     // turn there is. Doubled, because the reserve is counted in code units.
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: 850_000,
         memory_keep_tokens: 500_000,
         memory_conversation_max_size: 125_000,
         memory_project_max_size: 125_000,
@@ -192,7 +175,6 @@ describe("the two memory lines", () => {
     // boundary rather than a range.
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: 850_000,
         memory_keep_tokens: 500_000,
         memory_conversation_max_size: 125_000,
         memory_project_max_size: 124_999,
@@ -207,7 +189,6 @@ describe("the two memory lines", () => {
     // and the line goes negative, which the loop reads as "never stop".
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: 850_000,
         memory_keep_tokens: 500_000,
         memory_conversation_max_size: 250_000,
         memory_project_max_size: 250_000,
@@ -215,7 +196,6 @@ describe("the two memory lines", () => {
     ).toBe(false);
     expect(
       agentConfigSchemaForTests.safeParse({
-        memory_budget_tokens: 850_000,
         memory_keep_tokens: 500_000,
         memory_conversation_max_size: 400_000,
         memory_project_max_size: 200_000,
