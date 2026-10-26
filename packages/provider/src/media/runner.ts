@@ -3,15 +3,15 @@
 
 import { candidatesOf, parseProviderConfig, type MediaBinding, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "@provider/errors.js";
+import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
-import { ask, billed, gone, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
+import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
 import { buildBody } from "@provider/media/wavespeed/body.js";
 import { orderByPrice } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, type Failure } from "@provider/routing/decide.js";
-import { planRoute, type Candidate, type Route } from "@provider/routing/route.js";
+import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 
 /**
  * Everything provider knows about one media run. The caller stores it as JSON
@@ -176,6 +176,8 @@ interface Ticket {
   upstream: string;
   /** Upstreams the run may move to before a step is accepted, in order. */
   next: string[];
+  /** Why the upstreams before this one could not take the run. */
+  reasons: UnavailableReason[];
   /** Whether a step was accepted, which fixes the upstream. */
   accepted: boolean;
   steps: Step[];
@@ -217,7 +219,7 @@ function classify(error: unknown): Failure | null {
   if (error instanceof NotSent) return { kind: "not_sent" };
   if (error instanceof NoAnswer) return { kind: "no_answer" };
   if (error instanceof Aborted) return { kind: "aborted" };
-  if (error instanceof HttpStatus) return { kind: "http_status", status: error.status };
+  if (error instanceof HttpStatus) return modelNotFound(error) ? { kind: "model_not_found" } : { kind: "http_status", status: error.status };
   return null;
 }
 
@@ -611,7 +613,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @throws {NoUpstreamAvailable} When no upstream is configured.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
-  const route = async (model: string, input: MediaInput, route: Route): Promise<Candidate[]> => {
+  const route = async (model: string, input: MediaInput, route: Route): Promise<RoutePlan> => {
     let candidates = candidatesOf(config, model, keyOf);
     if (route.mode === "cheapest") {
       const estimates = await orderByPrice(provider.pricingRules(model), provider.availability(model), {
@@ -623,7 +625,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       });
       candidates = candidates.map((c) => ({ ...c, estimateUsd: estimates.find((e) => e.upstream === c.upstream)?.costUsd }));
     }
-    return planRoute(model, route, candidates).order;
+    return planRoute(model, route, candidates);
   };
 
   /**
@@ -643,13 +645,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     planOptions: PlanOptions,
     pick: (order: Candidate[]) => Candidate,
   ): Promise<Omit<Ticket, "steps"> | MediaAnswer> => {
-    let order: Candidate[];
+    let plan: RoutePlan;
     try {
-      order = await route(model, input, chosen);
+      plan = await route(model, input, chosen);
     } catch (error) {
       if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common() };
       throw error;
     }
+    const order = plan.order;
     const first = pick(order);
     return {
       version: 1,
@@ -662,6 +665,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       clones: planOptions.clones,
       upstream: first.upstream,
       next: order.filter((c) => c !== first).map((c) => c.upstream),
+      reasons: plan.skipped,
       accepted: false,
       costs: [],
     };
@@ -738,9 +742,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (decide(failure, "media_submit", 0, 0) === "stop") {
           return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "")));
         }
+        const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), { upstream: ticket.upstream, kind: "failed", failure: failure.kind }];
         const [to, ...rest] = ticket.next;
-        if (ticket.accepted || ticket.route.mode === "upstream" || to === undefined) throw new SendNotAccepted(ticket.upstream, error);
-        const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, costs: [] });
+        if (ticket.accepted || ticket.route.mode === "upstream" || to === undefined) {
+          // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.
+          if (failure.kind === "model_not_found") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
+          throw new SendNotAccepted(ticket.upstream, error);
+        }
+        const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons, costs: [] });
         return waiting(moved, { warnings: [{ code: "upstream_switched", detail: { model: ticket.model, from: ticket.upstream, to, failure: failure.kind } }] });
       }
       if (answer.outputs !== undefined) {

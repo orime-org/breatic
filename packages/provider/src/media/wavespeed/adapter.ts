@@ -160,6 +160,24 @@ export async function billed(reach: Reach, predictionId: string, bounds: Request
   return { cost: { state: "known", usd: read.usd, source: "billing" }, warnings: read.warnings };
 }
 
+/** WaveSpeed's message for a model id it does not serve (measured 2026-10-26, a 400). */
+const MODEL_NOT_FOUND = "Model not found.";
+
+/**
+ * Whether a refused submit says the upstream has no such model, rather than
+ * refusing the request's params: both are 400s, told apart by the message.
+ * @param error - The refusal.
+ * @returns True for WaveSpeed's model-not-found answer.
+ */
+export function modelNotFound(error: HttpStatus): boolean {
+  if (error.status !== 400) return false;
+  try {
+    return (JSON.parse(error.bodySnippet) as { message?: unknown } | null)?.message === MODEL_NOT_FOUND;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Whether the upstream's failure says a cached clone is gone.
  * @param kind - The clone's kind.
