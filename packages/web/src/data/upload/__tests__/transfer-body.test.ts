@@ -52,7 +52,8 @@ const SIGNATURE = 'BREATIC-TRANSFER/1\n';
 const LIMIT = 1048576;
 
 const TICKET: UploadTicket = {
-  ticket: 'signed-ticket',
+  uploadId: 'upload-1',
+  token: 'token-1',
   storageKey: KEY,
   uploadUrl: 'https://ingest.test.invalid',
   kind: 'file',
@@ -519,5 +520,40 @@ describe('bodyOrTransfer: the threshold decides, for any body (P03)', () => {
       }),
       { numRuns: 100 },
     );
+  });
+});
+
+// inner#1595 §3.5: the server opens the transfer upload at the ingest Worker
+// before it answers, so the ticket request waits for that answer with no
+// client timeout. Every other request keeps the client's own.
+describe('bodyOrTransfer: request timeouts (inner#1595 W09, W10)', () => {
+  const big = (): { t: string } => ({ t: 'a'.repeat(1048569) });
+
+  it('W09 asks for the transfer ticket with timeout 0, with and without a signal', async () => {
+    await bodyOrTransfer(P, big());
+    expect(postsTo(isTicket)[0]?.[2]).toEqual({ timeout: 0 });
+
+    vi.mocked(apiPost).mockClear();
+    const controller = new AbortController();
+    await bodyOrTransfer(P, big(), { signal: controller.signal });
+    expect(postsTo(isTicket)[0]?.[2]).toEqual({ signal: controller.signal, timeout: 0 });
+    expect(signalOf(postsTo(isFinish)[0])).toBe(controller.signal);
+  });
+
+  it('W10 leaves the finish its client timeout, and does not ask again for a ticket the server failed', async () => {
+    const controller = new AbortController();
+    await bodyOrTransfer(P, big(), { signal: controller.signal });
+    expect(postsTo(isFinish)[0]?.[2]).not.toHaveProperty('timeout');
+
+    vi.mocked(apiPost).mockClear();
+    const failure = new ApiException({ status: 500, message: 'Internal error', fromServer: true });
+    vi.mocked(apiPost).mockImplementation(async (url: string) => {
+      if (isTicket(url)) throw failure;
+      throw new Error(`unexpected POST ${url}`);
+    });
+
+    await expect(bodyOrTransfer(P, big())).rejects.toBe(failure);
+    expect(postsTo(isTicket)).toHaveLength(1);
+    expect(vi.mocked(sendBytesToIngest)).toHaveBeenCalledTimes(0);
   });
 });
