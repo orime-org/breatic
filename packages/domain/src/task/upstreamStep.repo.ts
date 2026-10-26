@@ -137,12 +137,13 @@ export async function listSteps(taskId: string, tx?: DbTx): Promise<UpstreamStep
 }
 
 /**
- * Write a task's steps on its first run and answer what is stored. A task
- * that already has steps keeps them: a redelivered job resumes the list it
- * started with, whatever plan it would draw now.
+ * Insert missing step positions and answer the stored list. Existing positions
+ * retain their original descriptors; callers extending a plan carry that stored
+ * prefix before appending newly discovered steps.
  * @param taskId - The task.
  * @param plan - The steps in order.
  * @returns The stored steps, by position.
+ * @throws {Error} When step persistence or reading fails.
  */
 export async function ensureSteps(taskId: string, plan: readonly PlannedStep[]): Promise<UpstreamStep[]> {
   if (plan.length > 0) {
