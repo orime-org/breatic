@@ -14,6 +14,7 @@ import { completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-pr
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
+import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 
 /** Queue transport carries a discriminator and task identity, never a second frozen plan. */
 export interface MiniToolExecutionJob {
@@ -217,11 +218,31 @@ async function requireRegistered(output: MiniToolExecutionOutput): Promise<void>
 
 /**
  * Preserve the accepted execution and actual expenses when admission fails or loses its queue acknowledgement.
- * @param _taskId - The original SQL-claimed execution task.
- * @param _error - The admission failure observed by the existing start adapter.
+ * @param taskId - The original SQL-claimed execution task.
+ * @param error - The admission failure observed by the existing start adapter.
  * @returns The preserved terminal or newly failed public record.
- * @throws {Error} Until the planned admission failure owner is implemented.
+ * @throws {Error} When the original plan, failure record or atomic persistence is invalid.
  */
-export async function failMiniToolExecutionAdmission(_taskId: string, _error: NonNullable<MiniToolExecutionRecord["error"]>): Promise<MiniToolExecutionRecord> {
-  throw new Error("Planned mini-tool admission failure is not implemented");
+export async function failMiniToolExecutionAdmission(taskId: string, error: NonNullable<MiniToolExecutionRecord["error"]>): Promise<MiniToolExecutionRecord> {
+  const id = z.uuid().parse(taskId);
+  const failure = z.record(z.string(), z.json()).parse(error);
+  return db.transaction(async (tx) => {
+    const plan = await lockedPlan(id, tx);
+    const current = recordFromPlan(plan);
+    if (current.status !== "pending" && current.status !== "running") return current;
+    const record = miniToolExecutionRecordSchema.parse({
+      ...current, status: "failed", resultVersion: current.resultVersion + 1, error: failure,
+      outputs: current.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure }, late: false })),
+    });
+    await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx, {
+      status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "internal", finish: true,
+    });
+    // Original intents register settlement under this same lock before paid IO.
+    // An acknowledgement failure cannot release their hold or close their set.
+    if (plan.task.result?.settlement === undefined) {
+      await completeMiniToolConsumptionSet(id, tx);
+      await creditHoldRepo.releaseHold(id, tx);
+    }
+    return recordFromPlan({ ...plan, task: await currentTask(id, tx) });
+  });
 }

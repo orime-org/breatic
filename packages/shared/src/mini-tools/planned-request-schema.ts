@@ -46,7 +46,7 @@ export const miniToolPlannedRequestSchema: z.ZodType<MiniToolPlannedRequest> = z
 /** Existing submissions retain their original public contract. */
 export type MiniToolSubmission = MiniToolRequest | MiniToolPlannedRequest;
 
-/** The eventual admission union; the route retains its legacy schema until execution is wired. */
+/** The admission union preserves legacy requests alongside complete planned submissions. */
 export const miniToolSubmissionSchema: z.ZodType<MiniToolSubmission> = z.union([
   miniToolRequestSchema,
   miniToolPlannedRequestSchema,

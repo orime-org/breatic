@@ -174,6 +174,8 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 `acceptMiniToolExecution` 在首个异步步骤前复制完整请求，先查目标 Project 当前编辑权限，再按 run UUID 读取原 SQL 任务。相同 actor、Project、Space 和完整请求指纹直接回放原身份及状态，不重新读取源资产或当前模型配置；不同身份或正文冲突。新执行从 `config/mini-tools.yaml` 的 `executions` 读取内部模型映射，准备真实源和报价，按工具重建输出 recipe，并把完整计划及独立计划指纹存入 `tasks.params.miniToolExecution`。task 主键唯一约束认领胜出者，只有胜出者调用应用层节点任务、hold 与排队适配器；SQL 事务不包含这些外部操作，后续计算不重写原计划。
 
+`POST /mini-tools` 用该联合 schema 保留原入口，计划请求经 `startPlannedMiniToolRun` 复用 `startRowedRun`：先开原目标的任务行，再冻结真实报价，最后按原 task UUID 排窄计划 job；consent 来自当前请求。`failMiniToolExecutionAdmission` 与计算和消费共用 task 主键锁，已完成结果保持；尚未产生消费周期的失败与空集合闭合、hold 释放同事务提交，已有提交 intent 或消费周期的任务保留原费用与 hold，不因队列回执异常猜测没有消耗。
+
 `readMiniToolExecutionPlan` 核对原任务所属通道、Project、Space、输出映射与完整计划指纹。视频去背景执行步骤从该 SQL 计划取得固定供应商请求，在网络提交前持久化 intent；已有 prediction 按原身份和截止时间查询，原供应商结果先保存到步骤，再经 backend upload 按 URL 登记。已登记结果以资产 ID 保存 receipt，重入读取仍存活的登记胜出行及封面，沿用其实际时长、MIME 和归属；展示派生失败由独立展示流程处理。
 
 `startMiniToolExecution` 在原任务锁内校验计划与父模型、初始化完整输出槽，再进入计算。`finishMiniToolExecution` 按同一锁合并 `tasks.result.miniToolExecution`，保留其他结果字段和结算周期；完整登记结果或失败槽形成初份媒体版本，重复结果保持版本，原失败任务的合法迟到登记以版本检查补入并保留原终态。费用身份、确认成本和 usage 记录的三个写入口在各自原事务内同步窄公共费用投影；媒体版本与费用周期独立。`getMiniToolExecution` 检查真实父 Project 的当前成员读权，从 tasks 投影结果及实际结算状态，读取过程不访问 worker 的上游步骤或触发媒体计算。

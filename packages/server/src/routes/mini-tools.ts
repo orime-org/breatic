@@ -9,10 +9,10 @@
  * export uploads like any other file.
  */
 
-import { currentConsent } from "@breatic/core";
+import { ConflictError, currentConsent, logger } from "@breatic/core";
 import { Hono } from "hono";
 import { createQueue, defaultJobOpts } from "@breatic/core";
-import { taskService } from "@breatic/domain";
+import { acceptMiniToolExecution, taskService } from "@breatic/domain";
 import { miniToolById, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
@@ -21,7 +21,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
-import { projectService } from "@server/modules";
+import { miniToolPlannedRunService, projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
 import { startRowedRun } from "@server/modules/task/generation-task.js";
 
@@ -48,7 +48,16 @@ miniTools.post(
   async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
-  if ("run_id" in body) throw new Error("Planned mini-tool HTTP admission is not implemented");
+  if ("run_id" in body) {
+    try {
+      const record = await acceptMiniToolExecution(body, user.id, (accepted) => miniToolPlannedRunService.startPlannedMiniToolRun(accepted, user.id));
+      return c.json({ data: { task_id: record.taskId, status: record.status } }, 201);
+    } catch (err) {
+      logger.error({ err, ctx: { userId: user.id, projectId: body.project_id, spaceId: body.space_id, runId: body.run_id, tool: body.tool } },
+        err instanceof ConflictError ? "mini_tool_planned_identity_conflict" : "mini_tool_planned_admission_failed");
+      throw err;
+    }
+  }
   const spec = miniToolById(body.tool)!;
 
   await projectService.assertAccess(body.project_id, user.id, "editor");
