@@ -66,6 +66,8 @@ export function ThinkingFold({
       data-testid='thinking-fold'
       className='mb-2 text-xs'
     >
+      {/* Pulled left by the blank the chevron glyph draws before its stroke,
+          so the stroke sits on the reply's left edge. */}
       <Button
         type='button'
         variant={null}
@@ -77,7 +79,7 @@ export function ThinkingFold({
           if (!open) onOpen?.();
           setOpen(!open);
         }}
-        className='inline-flex items-center gap-1 p-0 text-muted-foreground hover:text-foreground'
+        className='-ml-1 inline-flex items-center gap-1 p-0 text-muted-foreground hover:text-foreground'
         aria-expanded={open}
         data-testid='thinking-fold-toggle'
       >
