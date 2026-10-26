@@ -17,7 +17,7 @@ import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 import { instructionsForAgentMemory, type Instructions } from "@domain/agent/instructions.js";
 import { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
-import { resolveModelContextWindow, windowOrFallback } from "@domain/agent/model-context-window.js";
+import { resolveModelContextWindow } from "@domain/agent/model-context-window.js";
 import type { AgentPicturePolicy } from "@domain/agent/project-agent-request.js";
 import {
   BASELINE_TOOLS,
@@ -105,7 +105,7 @@ export async function buildAgentConfig(
     tools: buildToolSet(toolNames, { ...toolContext, mediaUrlAllowed: toolContext?.mediaUrlAllowed ?? (() => false), seesPictures }),
     seesPictures,
     picturePolicy,
-    contextWindow: windowOrFallback(resolvedWindow, config.context_window_fallback_tokens),
+    contextWindow: resolvedWindow ?? config.context_window_fallback_tokens,
     ...(resolvedWindow === undefined ? { contextWindowFallback: true as const } : {}),
   };
 }

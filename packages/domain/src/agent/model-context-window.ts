@@ -46,17 +46,6 @@ export function minEndpointContext(endpoints: readonly unknown[]): number | unde
 }
 
 /**
- * The window a turn plans with: the resolved one, or the configured fallback.
- * @param window - The resolved window, when the lookup answered.
- * @param fallback - `context_window_fallback_tokens`.
- * @returns The window.
- * @throws {never} Never.
- */
-export function windowOrFallback(window: number | undefined, fallback: number): number {
-  return window ?? fallback;
-}
-
-/**
  * Refresh one model's window under its own deadline.
  * @param modelId - The OpenRouter model id.
  * @param entry - Its cache entry, updated in place.

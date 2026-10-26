@@ -81,7 +81,6 @@ function toMessageData(row: StoredRow): MessageData {
     ...(thoughtFor === undefined ? {} : { thinkingMs: thoughtFor }),
     ...(parts.some((p) => p.type === "interrupted") ? { interrupted: true as const } : {}),
     ...(parts.some((p) => p.type === "failed") ? { failed: true as const } : {}),
-    ...(parts.some((p) => p.type === "failed" && p.reason === "too_long") ? { failedReason: "too_long" as const } : {}),
   };
 }
 

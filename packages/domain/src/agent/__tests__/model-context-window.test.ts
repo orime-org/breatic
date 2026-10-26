@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { minEndpointContext, windowOrFallback } from "@domain/agent/model-context-window.js";
+import { minEndpointContext } from "@domain/agent/model-context-window.js";
 
 describe("minEndpointContext", () => {
   it("takes the smallest endpoint context length (H5)", () => {
@@ -45,15 +45,5 @@ describe("minEndpointContext", () => {
 
   it("has no answer for an empty endpoint list", () => {
     expect(minEndpointContext([])).toBeUndefined();
-  });
-});
-
-describe("windowOrFallback", () => {
-  it("keeps a resolved window", () => {
-    expect(windowOrFallback(200_000, 1_000_000)).toBe(200_000);
-  });
-
-  it("uses the fallback when the window is unknown", () => {
-    expect(windowOrFallback(undefined, 1_000_000)).toBe(1_000_000);
   });
 });

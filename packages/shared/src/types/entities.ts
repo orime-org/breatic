@@ -299,8 +299,6 @@ export interface MessageData {
    * Only ever `true`, for the same reason as {@link MessageData.interrupted}.
    */
   failed?: true;
-  /** Why the turn could not be finished, when its failed part says (inner#1567). */
-  failedReason?: "too_long";
 }
 
 /**
