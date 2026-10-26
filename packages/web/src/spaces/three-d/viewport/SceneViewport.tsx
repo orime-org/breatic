@@ -9,7 +9,7 @@ import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-view
  * The lazy Three boundary; Activity owns its visible resource lifetime.
  * @param props - Plain scene snapshots and session callbacks.
  * @returns The measured viewport host.
- * @throws {never} Renderer construction failures go to the session's error UI.
+ * @throws {never} Renderer construction failures go to the editor's error UI.
  */
 const SceneViewport = React.memo(function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   const host = React.useRef<HTMLDivElement>(null);

@@ -94,7 +94,7 @@ Refusal key lookups include soft-deleted refusal rows, so their keys remain owne
 - **成员资格变了,已打开的协作连接跟着变**:collab 只在握手时读一次 `project_members` 定角色,之后靠通知撤权。`project_members` 上的触发器 `notify_project_member_change`(迁移 `0095`)在每次增、删,以及改 `role` / `deleted_at` / `project_id` / `user_id` 时 `pg_notify('project_member_changed', {projectId, userId})`,主键变化时旧的那一对也发一条;只改 `updated_at` 不发。通知在事务提交时投递、回滚不投递,跟哪段代码写的这一行无关。core 的 `listenProjectMemberChanges`(`infra/member-change-listener.ts`)用业务库 `rawPg.listen` 开的一条专用连接收,payload 按 `CANONICAL_UUID` 校验。collab 的 `services/member-change-sync.ts` 在 `index.ts` 里先于 `server.listen()` 启动(第一次 LISTEN 失败就退出进程):收到一条就以 4403、原因 `permissionChanged` 关掉本实例上这个人在该项目的全部连接;postgres.js 每次开始监听(含断开后重连)调 `onListening`,collab 对本实例每条已登记连接按当前角色复查,不同的关掉,补上断开期间漏收的通知。collab `/healthz` 的 `postgres_member_listen` 在探测频道上发一个随机串、1 秒内收回来才算健康。
 - **API → collab 的项目级控制面通知走 Redis pub/sub**(`packages/core/src/infra/control-events.ts`,连接在 stream 那个库 DB2):频道 `{REDIS_KEY_PREFIX}:project:{pid}:activity:new`(server / worker 写了一行项目活动)、`{REDIS_KEY_PREFIX}:project:{pid}:credits:changed`(server / worker 在这个项目里的一笔扣费提交了)和 `{REDIS_KEY_PREFIX}:project:{pid}:connections:close`(collab 的生命周期消费者处理完复制 / 归档 / 恢复后发,每个实例关掉自己在这个项目上的连接),collab 用 `{REDIS_KEY_PREFIX}:project:*` 一个模式订阅全部。频道构造器在 `@breatic/shared` 的 `redis-events.ts`,前缀只在 core 的 `projectControlChannelPattern` 和各个 publish 函数里注入。只是通知、不重放。collab 侧在 `services/project-control-sync.ts`(`index.ts` 启动时 `startProjectControlSync`):收到 `activity:new` / `credits:changed`,在 meta 文档上 `relayStateless` 一条同名信号;收到 `connections:close`,按原因关掉本实例在这个项目上的全部连接。三条都只作用于本实例的连接:每个实例都订阅了这些频道;发信号用 `relayStateless`,用 `broadcastStateless` 还会经 Redis extension 再转一遍,客户端每多一个实例就多收一份。多路复用的 socket 上,这里和上一条的关闭到了浏览器是一条按文档的 CLOSE 消息,Hocuspocus provider 把它的关闭码写成 1000,**浏览器认的是关闭原因,不是关闭码**:原因落在 `@breatic/shared` 的 `COLLAB_REAUTH_REASONS` 里(成员变更、项目复制后刷新、归档、恢复、会话结束)时,`collab-socket.tsx` 在同一条 socket 上重新发令牌鉴权,`use-socket.ts` 不把它标成 `disconnected`,`use-refresh-on-reauth.ts` 让项目详情重新拉取,于是归档横幅、只读和角色随之变化;其他原因的关闭照常标成 `disconnected`。`authFailed` 只由 `authenticationFailed` 事件进入,之后一次鉴权成功会把它清掉。连接登记之后 collab 还会用 `role-recheck.ts` 再读一次角色,跟握手时读到的不一样就以「权限已变」的原因关闭,补上握手和踢连接之间的空窗。
 - **会话结束了,用它打开的协作连接跟着关**:collab 在原生升级准入和每个文档的 `onAuthenticate` 中读取当前会话(`hooks/auth.ts` 把会话的 token 和它的 SHA-256 id 记进连接上下文)。会话结束只有一个出口:core 的 `revokeSession`(退出登录)和 `revokeAllSessions`(登出其他设备保留当前这一个;两种重置密码全删),删掉 DB0 的会话键,再在 `{REDIS_KEY_PREFIX}:sessions:revoked` 上发这批会话的 id(不发 token);发布失败不影响删除,结果交回路由记 `session_revocation_signal_failed`。collab 的 `services/session-revocation.ts` 先于 `server.listen()` 订阅成功(失败就退出进程),收到一条就以 4401、原因 `sessionEnded` 关掉本实例上用这些会话打开的连接;漏收的由三次复查补上:每次订阅确认后(含断线重连)、每隔 `session_recheck_interval_ms`(也是过期会话被关掉的途径)、以及 `connected` 钩子在连接注册后,会话已不在或换了主人的连接按同一原因关掉。浏览器收到这个原因照常重新发令牌,被拒后进入 `authFailed` 并显示重新登录横幅;「会话已结束」记在 `collab-socket.tsx` 共享 socket 那一层(整个标签页一个 cookie),之后的拒绝和全部文档被拒后 socket 空闲断开都是预期结果,不上报 Sentry,任一文档鉴权成功即清除。
-- **改变 Space 数的三个 RPC(create / restore / delete)是跨实例 read-modify-write**,两道守卫:「项目至少留一个 Space」和「项目最多 `MAX_SPACES_PER_PROJECT`(200)个未删除的 Space」。三者走同一把 `REDIS_COLLAB_URL` 分布式锁(`services/space-count-lock.ts`,fencing 唯一 token + Lua check-and-del,TTL 30s 兜底;拿锁最多等约 5 秒,拿不到答 `BUSY`)串行化 + 锁内读 PG 权威 Space 数(只数 `project-{id}/{canvas|document|timeline}-{id}` 这类 Space 内容文档的未删除行,规则是 shared 的 `spaceContentRowPattern`),满了 create / restore 答 `SPACE_LIMIT`、什么都不写。这个计数要等于 meta 里的 Space 数,所以存盘(`upsertDocData`)不清 `deleted_at`,复制只拷源 meta 列出的那些 Space 的内容行。前端按 meta 里的 Space 数提前把「新建」和「恢复」变暗(`aria-disabled`,仍可获得焦点,悬停和按下都说明已达上限),服务端那道检查才是准的;服务端的 `SPACE_LIMIT` 和 `BUSY` 在界面上是一行 warning toast
+- **改变 Space 数的三个 RPC(create / restore / delete)是跨实例 read-modify-write**,两道守卫:「项目至少留一个 Space」和「项目最多 `MAX_SPACES_PER_PROJECT`(200)个未删除的 Space」。三者走同一把 `REDIS_COLLAB_URL` 分布式锁(`services/space-count-lock.ts`,fencing 唯一 token + Lua check-and-del,TTL 30s 兜底;拿锁最多等约 5 秒,拿不到答 `BUSY`)串行化 + 锁内读 PG 权威 Space 数(只数 `project-{id}/{canvas|document|timeline|3d}-{id}` 这类 Space 内容文档的未删除行,规则是 shared 的 `spaceContentRowPattern`),满了 create / restore 答 `SPACE_LIMIT`、什么都不写。这个计数要等于 meta 里的 Space 数,所以存盘(`upsertDocData`)不清 `deleted_at`,复制只拷源 meta 列出的那些 Space 的内容行。前端按 meta 里的 Space 数提前把「新建」和「恢复」变暗(`aria-disabled`,仍可获得焦点,悬停和按下都说明已达上限),服务端那道检查才是准的;服务端的 `SPACE_LIMIT` 和 `BUSY` 在界面上是一行 warning toast
 - **「这个 Space 现在存不存在」由本进程持有的那份 Space 名单回答** —— 内容文档握手时那道「这个 Space 还在不在 `meta.spaces`、类型对不对」的检查读的是 `services/project-space-list.ts` 的 `readListedContentDocNames`(按 meta 条目的 id 和类型拼出完整文档名,跟复制、修复脚本用同一个 core 函数 `listedContentDocNames`):先看 `onAuthenticate` 载荷里的 `instance.documents` 有没有这个 project 的 meta 文档,**没有就调 `instance.createDocument` 把它载入**,然后只读这一份。**没有第二个来源** —— 判定自己一次库都不读,唯一那次读库发生在框架的载入里(持久化扩展读 `yjs_documents`,随后 `@hocuspocus/extension-redis` 向别的实例要更新的状态)。理由是**判定的依据必须跟广播出去的依据是同一份**:`space:create` 改的是内存里那份 meta 文档、广播的也是它,客户端正是收到这条广播才来连的;而库行要等下一个 `store_interval_ms`(10 秒)的定时轮才更新 —— **不是因为创建路径没触发存盘**:`space-rpc.ts` 每条 RPC 结尾的 `conn.disconnect()` 会立刻跑框架的存盘钩子(`hocuspocus-server.cjs:1170`,debounce 0),是我们自己的闸门把它挡回去了(`services/persistence.ts` 的 `consumeTimedStoreArm`,只有定时轮和卸载闸放行),读它等于我们自己刚说「有」、转头拿另一份数据说「没有」。`space:delete` 是镜像的另一半:id 立刻离开内存,而读库会继续放行到下一个定时轮。**内存那份新不新不进入判定** —— 就算它旧,客户端看到的也是那份旧的;让它保持最新是 `@hocuspocus/extension-redis` 跨实例转发的职责。**一份名单里一个 Space 都没有,是结论不是「没有答案」**,不会因此再去载入或读库。**重连也走这条**:已经同步过的客户端本地握着 meta 文档,socket 一断一连它把 meta 和全部已打开 Space 的内容文档在同一毫秒里一起发,内容文档的握手跑在 meta 载入完成之前 —— 由「没有就载入」覆盖。**载入完读完就调 `instance.unloadDocument` 卸载**(载入和卸载配对;没有连接的文档不会自己卸载,`Server.destroy()` 会一直等文档数归零),该调用不 await —— 卸载要等 Redis 扩展的 `disconnectDelay`(1 秒),那是内部开销、不占握手。**跟 `space-rpc.ts` 里删除时那个「至少留一个」的计数不是一回事** —— 那个数要跟一个跨实例共享的下限比大小,必须取自 PG
 - **collab 给 `@hocuspocus/server` 4.6.0 打了一个补丁**(`patches/@hocuspocus__server@4.6.0.patch`) — 文档鉴权之前到达的帧,库会先排进队列;不打补丁时排的是 `ws` 给的视图,跟这条 socket 的读缓冲(最多 64 KB)共用内存,一个几十字节的帧就能拖住整块缓冲。补丁在 esm 和 cjs 两份产物里都改成排一份复制(`new Uint8Array(data)`);`socket-ceilings.test.ts` 里「keeps only its own bytes」那条在补丁丢失时会红,`infra/socket-ceilings.ts` 的排队帧数上限按打补丁后的每帧开销推导
 - 单文档**并发可写**连接数上限(满了**降级只读**非拒绝)取自**拥有这个 project 的 studio 的当前 admin 的档位**(`config/membership.yaml` 的 `concurrent_editors`)。**单位是连接不是人**:一个账号能在多处登录,按人算等于一个账号被任意多人共用只记一个,上限失去意义。**只有可写连接占席位**——只读的那条改不了任何东西,把它算进去会让上限 2 的文档在一个 owner 加一个 viewer 看着时就满,而本该拿到第二个席位的编辑者被推成只读。计数是**跨实例**的:每条可写连接在 `REDIS_COLLAB_URL`(DB3)一个 sorted set(key `{env}:collab:seats:{docName}`,member `{userId}:{connectedAtMs}:{instanceId}:{socketId}`,score = 这条连接最后一次回乓的时刻)登记,`onAuthenticate` 读 cluster-wide `ZCARD`(剪枝过期后)判 `>= cap` → 降级 + 永久日志 `connection_cap_degraded`;本地 `getConnectionsCount()` 只数本实例、多实例部署会到 N×cap 才触发,故不用。取不到档位(project 不存在等)一律按满处理 → 只读 + `connection_limit_unresolved`,因为算不出上限时放行等于没有上限。Redis 抖动 fail-open(计数返回 0 不误锁);**meta 文档豁免**(项目基础设施人人必连,从来不是「几个人能协作」的度量)。**登记绑 `connected` 生命周期钩子**(非 `onAuthenticate`)——`connected` 只在 Hocuspocus 建好 Connection 对象(已挂 `onClose → onDisconnect`)后触发,与 `onDisconnect` 注销对称,避免 auth 通过但文档加载失败的连接漏注销
@@ -586,15 +586,15 @@ uses native state even before React receives the event; switching one node does
 not reset another node, volume, or mute. Browser tests must decode actual audio
 and video, not mock `play()` or synthesize their load events.
 
-### Run (web only)
+### Frontend development commands
 
-全量起服务(api / worker / collab / web,web 跑在 `VITE_DEV_PORT`,默认 :8000)见 [Backend 的 Run](#run);dev server 的 `/api` `/ws` 代理目标由 `PORT` / `COLLAB_PORT` 推导,前后端端口永远同源。只跑 web 用:
+从仓库根目录起服务(api / worker / collab / web,web 跑在 `VITE_DEV_PORT`,默认 :8000)见 [Backend 的 Run](#run)。dev server 的 `/api` `/ws` 代理目标由 `PORT` / `COLLAB_PORT` 推导，浏览器通过web同源入口访问服务。构建与单测经根Turbo准备依赖，Playwright使用web专有脚本：
 
 ```bash
-pnpm -F @breatic/web dev          # 只起 web
-pnpm -F @breatic/web test         # vitest
-pnpm -F @breatic/web test:smoke   # Playwright 端到端
-pnpm -F @breatic/web build        # vite 构建 → dist/breatic/
+pnpm dev                                      # 根目录启动依赖构建及服务监听
+pnpm test                                     # 根Turbo执行单测
+pnpm --filter @breatic/web test:smoke           # Playwright端到端
+pnpm build                                    # 根Turbo构建依赖及web → packages/web/dist/breatic/
 ```
 
 ### Layered architecture
@@ -604,7 +604,7 @@ pnpm -F @breatic/web build        # vite 构建 → dist/breatic/
 ```
 app/        Vite 入口 · 路由 · Provider 编排 · ErrorBoundary
 pages/      路由页 + 页面专属子模块(chrome / chat / members / tweaks)
-spaces/     Canvas / Document / Timeline 内容实现(open enum)
+spaces/     Canvas / Document / 3D / Timeline 内容实现(open enum)
 features/   真·跨页模块(credits / membership / notifications / preferences)+ 跨页共用、绑全局 store 的 hook(active-region / exclusive-overlay)
 stores/     Zustand store(一文件一 store,互不 import)
 data/       I/O 边界(api / yjs / stream / upload)+ 各自的数据类型与转换
@@ -692,7 +692,7 @@ packages/web/
 ├── src/
 │   ├── app/                 # 入口 + provider + error boundary
 │   ├── pages/               # 路由页 + 页面专属子模块
-│   ├── spaces/              # Canvas / Document / Timeline
+│   ├── spaces/              # Canvas / Document / 3D / Timeline
 │   ├── features/            # 跨页 feature
 │   ├── stores/              # Zustand store(一文件一 store)
 │   ├── data/                # api / yjs / stream / upload + 各自的类型与转换

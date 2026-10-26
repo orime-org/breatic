@@ -287,8 +287,8 @@ export class SceneViewportRuntime {
   }
 
   /**
-   * Check a view tuple exactly; the session echoes this camera's own snapshot.
-   * @param view - The personal camera position and orbit target received from the session.
+   * Check a view tuple exactly; the owning editor echoes this camera's own snapshot.
+   * @param view - The personal camera position and orbit target received from the editor.
    * @returns Whether every camera-position and orbit-target coordinate exactly matches the current view.
    * @throws {never} Never.
    */

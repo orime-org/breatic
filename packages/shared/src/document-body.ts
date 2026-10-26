@@ -140,7 +140,7 @@ function buildInitialDocumentBlock(): Y.XmlElement {
 export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   const doc = new Y.Doc();
   // Returning from inside each branch keeps the switch exhaustive: TypeScript
-  // reports a missing return path when a fourth kind is added, which is the
+  // reports a missing return path when another kind is added, which is the
   // point — a new kind must state its initial content on purpose.
   switch (kind) {
     case "document":

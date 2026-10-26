@@ -16,8 +16,8 @@ export interface SpaceBodyProps {
   /**
    * Read-only mode for the current user (viewer role). Sourced from the
    * project's `myRole` and threaded through `SpaceOutlet` — space bodies gate
-   * their writes on it (e.g. the canvas blocks node creation). Defaults to
-   * editable when omitted.
+   * their writes on it (e.g. the canvas blocks node creation). An omitted
+   * value follows the individual Space's permission owner.
    */
   readOnly?: boolean;
   /**

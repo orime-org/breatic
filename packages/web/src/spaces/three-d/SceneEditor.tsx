@@ -42,7 +42,7 @@ export interface SceneEditorProps extends SpaceBodyProps {
 
 /**
  * Render the approved object list, shared scene and property inspector against real services.
- * @param root0 - Scene identity and document bindings supplied across the lazy boundary.
+ * @param root0 - Scene identity and document bindings supplied by the Space host.
  * @param root0.projectId - Project whose scene is being edited.
  * @param root0.spaceId - Space that owns the current scene.
  * @param root0.userId - Signed-in account owning this personal view.
@@ -176,7 +176,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   }, []);
 
   /**
-   * Place one built-in source using the same command used by model result adapters.
+   * Place one built-in source through the scene create command.
    * @param kind - Built-in figure or stage-block source to place.
    */
   const addBuiltin = React.useCallback((kind: 'figure' | 'box'): void => {

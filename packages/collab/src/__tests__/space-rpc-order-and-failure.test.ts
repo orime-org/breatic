@@ -622,7 +622,7 @@ describe("re-reading the target fails — the content rows are rolled back", () 
       order: 1,
       locked: false,
     });
-    // Only the canvas variant existed and was flipped; the other two were
+    // Only the canvas variant existed and was flipped; the other variants were
     // already gone, so un-deleting them would resurrect somebody else's row.
     softDeleteByNameMock.mockImplementation(async (name: string) =>
       name === spaceContentDocName(PID, SID, "canvas"),
