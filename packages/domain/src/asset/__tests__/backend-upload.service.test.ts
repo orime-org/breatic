@@ -235,8 +235,8 @@ describe("uploadBytesToStorage — lane ②", () => {
       { signal?: AbortSignal; timeoutMs?: number },
     ];
     expect(secret).toBe("secret");
-    expect(bound.signal).toBeInstanceOf(AbortSignal);
-    expect(bound.signal?.aborted).toBe(false);
+    // inner#1595 R1: a timeout alone; a deadline signal would outlive the open.
+    expect(bound).not.toHaveProperty("signal");
     expect(bound.timeoutMs).toBeGreaterThan(0);
     expect(bound.timeoutMs).toBeLessThanOrEqual(DEADLINE_AT - before);
 

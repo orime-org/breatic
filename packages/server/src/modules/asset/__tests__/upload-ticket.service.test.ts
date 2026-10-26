@@ -223,16 +223,15 @@ describe("T28: issueTransferTicket", () => {
     const issued = await issueTransferTicket(SCOPE, SIZE);
 
     expect(openSignedUpload).toHaveBeenCalledTimes(1);
-    const [request, bound] = openSignedUpload.mock.calls[0] as [
+    // inner#1595 R1: the opener bounds itself by the request's deadline.
+    expect(openSignedUpload.mock.calls[0]).toHaveLength(1);
+    const [request] = openSignedUpload.mock.calls[0] as [
       { contentType: string; declaredSize: number; storageKey: string; deadlineAt: number },
-      { signal: unknown; timeoutMs: unknown },
     ];
     expect(request.contentType).toBe(TRANSFER_TYPE);
     expect(request.declaredSize).toBe(1500019);
     expect(request.storageKey).toBe(K);
     expect(request.deadlineAt).toBe(DL);
-    expect(bound.signal).toBeInstanceOf(AbortSignal);
-    expect(typeof bound.timeoutMs).toBe("number");
     expect(issued).toMatchObject({ kind: "ticket", uploadId: "u-1", token: "t-1", storageKey: K });
     expect(issued).not.toHaveProperty("ticket");
     expect(infoLine("transfer_ticket_issued")).toMatchObject({ uploadId: "u-1" });
@@ -261,21 +260,18 @@ describe("inner#1595: issueUploadTicket opens the upload itself", () => {
   it("T52: opens once under the task row's own deadline and answers the upload id and token", async () => {
     const DL = Date.now() + 3_600_000;
     uploadDeadlineByKey.mockResolvedValue(DL);
-    const before = Date.now();
 
     const outcome = await issueUploadTicket(SCOPE, ITEM, async () => true);
 
     expect(openSignedUpload).toHaveBeenCalledTimes(1);
-    const [request, bound] = openSignedUpload.mock.calls[0] as [
+    // inner#1595 R1: the opener bounds itself by the request's deadline.
+    expect(openSignedUpload.mock.calls[0]).toHaveLength(1);
+    const [request] = openSignedUpload.mock.calls[0] as [
       { deadlineAt: number; storageKey: string; contentType: string },
-      { signal: AbortSignal; timeoutMs: number },
     ];
     expect(request.deadlineAt).toBe(DL);
     expect(request.storageKey).toBe(K);
     expect(request.contentType).toBe("image/png");
-    expect(bound.signal).toBeInstanceOf(AbortSignal);
-    expect(bound.timeoutMs).toBeGreaterThan(0);
-    expect(bound.timeoutMs).toBeLessThanOrEqual(DL - before);
     expect(outcome).toEqual({
       kind: "ticket",
       uploadId: "u-1",
@@ -466,6 +462,8 @@ describe("inner#1595: issueUploadTicketBatch", () => {
     expect(outcomes[3]).toMatchObject({ kind: "ticket", storageKey: Kd, taskId: "task-d" });
     const keys = openSignedUpload.mock.calls.map((call) => (call[0] as { storageKey: string }).storageKey);
     expect(keys.sort()).toEqual([Ka, Kb, Kd].sort());
+    // inner#1595 R1: the opener bounds itself by each request's deadline.
+    for (const call of openSignedUpload.mock.calls) expect(call).toHaveLength(1);
     expect(assertStudioStorageAllowance).toHaveBeenCalledTimes(1);
     const lines = openFailedLines();
     expect(lines).toHaveLength(1);

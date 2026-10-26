@@ -60,6 +60,7 @@ const {
   INGEST_FAILURE_CODES,
   INGEST_NO_ANSWER,
   INGEST_REFUSED_UNNAMED,
+  MAX_TIMER_MS,
   UploadHttpError,
   verifyUploadTicket,
 } = await import("@breatic/shared");
@@ -77,7 +78,6 @@ const REQ = {
   expiresAt: NOW + 300_000,
   deadlineAt: NOW + 7_200_000,
 };
-const BOUND = { signal: new AbortController().signal, timeoutMs: 1234 };
 /** What settling an aborted grant decided, as registration answers it. */
 const SETTLED = { status: "voided" as const, countsPublishFailed: true };
 
@@ -87,7 +87,7 @@ const SETTLED = { status: "voided" as const, countsPublishFailed: true };
  * @returns The rejection.
  */
 async function rejectionOf(request: typeof REQ = REQ): Promise<InstanceType<typeof UploadOpenFailed>> {
-  const err: unknown = await openSignedUpload(request, BOUND).then(
+  const err: unknown = await openSignedUpload(request).then(
     () => {
       throw new Error("expected openSignedUpload to reject");
     },
@@ -108,7 +108,8 @@ beforeEach(() => {
 
 describe("openSignedUpload — opening", () => {
   it("T36: opens once with the signed ticket and the secret, and returns no ticket", async () => {
-    const opened = await openSignedUpload(REQ, BOUND);
+    const before = Date.now();
+    const opened = await openSignedUpload(REQ);
 
     expect(openUploadAtIngest).toHaveBeenCalledTimes(1);
     const [target, secret, bound] = openUploadAtIngest.mock.calls[0] as [
@@ -131,7 +132,12 @@ describe("openSignedUpload — opening", () => {
     });
     expect(target.uploadUrl).toBe(INGEST_URL);
     expect(secret).toBe(SECRET);
-    expect(bound).toBe(BOUND);
+    // inner#1595 R1: one request, bounded by a timeout to the task's deadline
+    // and no signal, so nothing outlives the call.
+    expect(bound).not.toHaveProperty("signal");
+    const { timeoutMs } = bound as { timeoutMs: number };
+    expect(timeoutMs).toBeGreaterThan(0);
+    expect(timeoutMs).toBeLessThanOrEqual(REQ.deadlineAt - before);
 
     expect(opened).toEqual({
       uploadUrl: INGEST_URL,
@@ -144,13 +150,19 @@ describe("openSignedUpload — opening", () => {
     expect(applyIngestReport).not.toHaveBeenCalled();
   });
 
+  it("T36: caps the timeout at the longest a timer can wait", async () => {
+    await openSignedUpload({ ...REQ, deadlineAt: Date.now() + MAX_TIMER_MS + 60_000 });
+
+    expect(openUploadAtIngest.mock.calls[0]?.[2]).toEqual({ timeoutMs: MAX_TIMER_MS });
+  });
+
   it.each([
     [0, 1],
     [1, 1],
     [PART, 1],
     [PART + 1, 2],
   ])("T37: a declared size of %i travels as %i part(s)", async (declaredSize, totalParts) => {
-    const opened = await openSignedUpload({ ...REQ, declaredSize }, BOUND);
+    const opened = await openSignedUpload({ ...REQ, declaredSize });
 
     expect(opened.totalParts).toBe(totalParts);
     expect(openUploadAtIngest.mock.calls[0]?.[0]).toMatchObject({ totalParts, partSize: PART });
@@ -208,6 +220,37 @@ describe("openSignedUpload — failing to open", () => {
       reason: INGEST_NO_ANSWER,
     });
     expect(openUploadAtIngest).toHaveBeenCalledTimes(1);
+  });
+
+  // inner#1595 R1: the deadline is checked inside the opener, so an upload
+  // whose task already ran out is settled like any other open that failed.
+  it.each([
+    ["gone a millisecond ago", -1, false],
+    ["reached exactly", 0, false],
+    ["gone, with settling failing too", -1, true],
+  ])("T91: a task whose deadline is %s settles as ingest_no_answer and opens nothing", async (_label, offset, settleFails) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const now = Date.now();
+      const unsettled = new Error("db down");
+      if (settleFails) applyIngestReport.mockRejectedValue(unsettled);
+
+      const failed = await rejectionOf({ ...REQ, deadlineAt: now + offset });
+
+      expect(failed.reason).toBe(INGEST_NO_ANSWER);
+      expect(failed.cause).toBeInstanceOf(DeadlinePassed);
+      expect(openUploadAtIngest).not.toHaveBeenCalled();
+      expect(signUploadTicket).not.toHaveBeenCalled();
+      expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
+        storageKey: REQ.storageKey,
+        outcome: "aborted",
+        reason: INGEST_NO_ANSWER,
+      });
+      if (settleFails) expect(failed.settleError).toBe(unsettled);
+      else expect(failed.settled).toBe(SETTLED);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("T41: when settling fails too, carries the settling error itself and no outcome", async () => {
@@ -279,6 +322,7 @@ describe("openSignedUpload — any ending", () => {
     | "net"
     | "late"
     | "signFails"
+    | "pastDeadline"
     | { status: number; code: (typeof INGEST_FAILURE_CODES)[number] | null };
 
   it("P05: opens at most once, and every failure settles once and throws UploadOpenFailed", async () => {
@@ -293,6 +337,7 @@ describe("openSignedUpload — any ending", () => {
           fc.constant<Mode>("net"),
           fc.constant<Mode>("late"),
           fc.constant<Mode>("signFails"),
+          fc.constant<Mode>("pastDeadline"),
         ),
         fc.boolean(),
         async (mode: Mode, settleFails) => {
@@ -308,7 +353,7 @@ describe("openSignedUpload — any ending", () => {
             thrown = new TypeError("fetch failed");
           } else if (mode === "late") {
             thrown = new DeadlinePassed();
-          } else if (mode !== "ok") {
+          } else if (typeof mode === "object") {
             thrown = new UploadHttpError(mode.status, mode.code);
           }
           if (thrown !== undefined && mode !== "signFails") openUploadAtIngest.mockRejectedValue(thrown);
@@ -317,12 +362,21 @@ describe("openSignedUpload — any ending", () => {
           if (settleFails) applyIngestReport.mockRejectedValue(unsettled);
           else applyIngestReport.mockResolvedValue(settled);
 
-          const result = await openSignedUpload(REQ, BOUND).then(
+          const request = mode === "pastDeadline" ? { ...REQ, deadlineAt: Date.now() - 1 } : REQ;
+          const before = Date.now();
+          const result = await openSignedUpload(request).then(
             (opened) => ({ ok: true as const, opened }),
             (err: unknown) => ({ ok: false as const, err }),
           );
 
-          expect(openUploadAtIngest).toHaveBeenCalledTimes(mode === "signFails" ? 0 : 1);
+          const opensNothing = mode === "signFails" || mode === "pastDeadline";
+          expect(openUploadAtIngest).toHaveBeenCalledTimes(opensNothing ? 0 : 1);
+          if (!opensNothing) {
+            const bound = openUploadAtIngest.mock.calls[0]?.[2] as { timeoutMs: number };
+            expect(bound).not.toHaveProperty("signal");
+            expect(bound.timeoutMs).toBeGreaterThan(0);
+            expect(bound.timeoutMs).toBeLessThanOrEqual(REQ.deadlineAt - before);
+          }
           if (mode === "ok") {
             expect(result.ok).toBe(true);
             expect(applyIngestReport).not.toHaveBeenCalled();
@@ -336,7 +390,8 @@ describe("openSignedUpload — any ending", () => {
           expect(result.err).toBeInstanceOf(UploadOpenFailed);
           const failed = result.err as InstanceType<typeof UploadOpenFailed>;
           expect(failed.reason).toBe(reason);
-          expect(failed.cause).toBe(thrown);
+          if (mode === "pastDeadline") expect(failed.cause).toBeInstanceOf(DeadlinePassed);
+          else expect(failed.cause).toBe(thrown);
           expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
             storageKey: REQ.storageKey,
             outcome: "aborted",

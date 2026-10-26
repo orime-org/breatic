@@ -1197,8 +1197,8 @@ describe("POST /assets/upload-ticket — the server opens the upload (inner#1595
 
     const call = onlyOpenOf(data.storageKey);
     expect(call.secret).toBe(INGEST_SECRET);
-    expect(call.bound?.signal).toBeInstanceOf(AbortSignal);
-    expect(call.bound?.signal?.aborted).toBe(false);
+    // inner#1595 R1: a timeout alone; a deadline signal would outlive the open.
+    expect(call.bound).not.toHaveProperty("signal");
     const timeoutMs = call.bound?.timeoutMs ?? 0;
     expect(timeoutMs).toBeGreaterThan(0);
     expect(timeoutMs).toBeLessThanOrEqual(call.payload.deadlineAt - before);

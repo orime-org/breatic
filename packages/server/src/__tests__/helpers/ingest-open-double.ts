@@ -30,7 +30,7 @@
 
 import type * as Shared from "@breatic/shared";
 
-/** What the caller bounds the open with. */
+/** What the opener bounds the call with: a timeout alone (inner#1595 R1). */
 export interface OpenBound {
   signal?: AbortSignal | undefined;
   timeoutMs?: number | undefined;
@@ -46,7 +46,7 @@ export interface OpenCall {
   payload: Shared.UploadTicketPayload;
   /** The secret the server sent alongside. */
   secret: string;
-  /** The deadline and stop signal the server bound the call with. */
+  /** The bound the opener passed; a signal here would outlive the call. */
   bound: OpenBound | undefined;
   /** When the call arrived, in epoch ms. */
   at: number;
@@ -86,7 +86,7 @@ export async function sharedWithOpenDouble(
    * The double itself: verify, record, answer.
    * @param target - The upload to open, ticket included.
    * @param secret - The shared secret the server sends.
-   * @param bound - The caller's deadline and stop signal.
+   * @param bound - The bound the opener passed.
    * @returns The upload id and first session token, as the Worker answers.
    * @throws {Error} When the ticket does not verify against the server's secret.
    * @throws {unknown} Whatever the current mode answers instead of `"ok"`.
