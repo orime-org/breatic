@@ -51,7 +51,7 @@ describe("GET project-scoped planned executions (independent Q/B oracle)", () =>
   });
   it.each(["owner", "editor"] as const)("Q02 permits archived-project %s through the current read role", async (role) => {
     const f = await seedExecution(pg); await pg`UPDATE project_members SET role=${role} WHERE project_id=${f.projectId} AND user_id=${f.userId}`;
-    await pg`UPDATE projects SET archived_at=clock_timestamp() WHERE id=${f.projectId}`;
+    await pg`UPDATE projects SET archived_at=clock_timestamp(),archived_by_user_id=${f.userId} WHERE id=${f.projectId}`;
     const response = await get(f, f.userId); expect(response.status).toBe(200); expect(await response.json()).toEqual({ data: f.record });
   });
   it("Q03 returns the original protected-route 401 without auth", async () => {
