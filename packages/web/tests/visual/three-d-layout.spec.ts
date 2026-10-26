@@ -25,6 +25,11 @@ test('scene floating panels preserve the approved stage, Escape and development 
     await page.getByRole('menuitem', { name: 'Add figure', exact: true }).click();
     const name = page.getByTestId('scene-properties-panel').getByLabel('Name', { exact: true });
     await expect(name).toHaveValue('Figure');
+    await name.fill('  Figure  '); await name.press('Enter');
+    await expect(name).toHaveValue('Figure');
+    await name.fill('   '); await name.press('Tab');
+    await expect(name).toHaveValue('Figure');
+    await expect(name).toHaveAttribute('aria-invalid', 'false');
     const panel = page.getByTestId('scene-right-panel');
     await expect.poll(() => panel.evaluate((element) => element.getAnimations().every((animation) => animation.playState === 'finished'))).toBe(true);
     await page.screenshot({ path: test.info().outputPath('scene-properties.png'), animations: 'disabled' });

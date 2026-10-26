@@ -11,6 +11,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useUIStore } from '@web/stores/ui';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 
+const closeIcon = <X className='size-4' />;
+
 /**
  * Anchor one non-modal panel to the scene edge and arbitrate its Escape and focus ownership.
  * @param root0 - Scene controls and their current owner bindings.
@@ -27,13 +29,18 @@ import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
  * @returns The scene-edge shared floating panel.
  * @throws {never} Never directly.
  */
-export function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions }: {
+export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; automatic: React.RefObject<boolean>;
   stage: React.RefObject<HTMLDivElement | null>; returnTarget: React.RefObject<HTMLElement | null>; children: React.ReactNode; cancelGesture: () => boolean;
   contentRef: React.RefObject<HTMLDivElement | null>;
   actions?: React.ReactNode;
 }): React.JSX.Element {
   const t = useTranslation();
+  /**
+   * Close the active panel through its owner.
+   * @throws {never} Never.
+   */
+  const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   return <Popover open={open} onOpenChange={onOpenChange}>
     <Anchor asChild><div className='pointer-events-none absolute bottom-[calc(61px_+_142px_+_var(--space-5))] right-[var(--space-5)] top-[var(--space-5)] w-0' /></Anchor>
     <PopoverContent ref={contentRef} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
@@ -51,9 +58,9 @@ export function SceneRightPanel({ open, onOpenChange, title, automatic, stage, r
       }}
       onInteractOutside={(event) => { if (event.target instanceof Node && stage.current?.contains(event.target)) event.preventDefault(); }}>
       <div className='flex shrink-0 items-center justify-between gap-2 border-b border-border p-3' data-testid='scene-panel-header'><h2 className='min-w-0 truncate text-sm font-medium'>{title}</h2>
-        <div className='flex shrink-0 items-center gap-1'>{actions}<SceneIconButton label={t('spaces.threeD.closePanel')} onClick={() => onOpenChange(false)}><X className='size-4' /></SceneIconButton></div>
+        <div className='flex shrink-0 items-center gap-1'>{actions}<SceneIconButton label={t('spaces.threeD.closePanel')} onClick={close}>{closeIcon}</SceneIconButton></div>
       </div>
       <ScrollArea className='min-h-0 flex-1'>{children}</ScrollArea>
     </PopoverContent>
   </Popover>;
-}
+});

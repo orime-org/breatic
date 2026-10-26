@@ -16,15 +16,18 @@ import { toast } from '@web/lib/toast';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
+import { SceneField } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
-import type { SceneModelState, SceneTransformMode, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneModelState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
+const lockIcon = <Lock className='size-4' />;
+const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
 export interface SceneEditorProps extends SpaceBodyProps {
   userId: string;
@@ -52,9 +55,15 @@ export interface SceneEditorProps extends SpaceBodyProps {
  * @param root0.UnlockIcon - The host's existing unlocked-state icon.
  * @returns The object list, shared scene, inspector and error feedback.
  */
-export default function SceneEditor({ projectId, spaceId, userId, session, snapshot, connection,
+const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId, session, snapshot, connection,
   namedPeers, readObjects, ownsKeyboard, UnlockIcon }: SceneEditorProps): React.JSX.Element {
   const t = useTranslation();
+  const figureName = t('spaces.threeD.figure');
+  const boxName = t('spaces.threeD.box');
+  const loadingText = t('spaces.threeD.loading');
+  const tasksText = t('spaces.threeD.generationDev');
+  const lockText = t('spaces.threeD.lock');
+  const unlockText = t('spaces.threeD.unlock');
   const controls = useQuery({ queryKey: ['scene-controls', projectId, userId],
     queryFn: ({ signal }) => getSceneControls(projectId, signal) });
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
@@ -157,14 +166,14 @@ export default function SceneEditor({ projectId, spaceId, userId, session, snaps
    * Place one built-in source using the same command used by model result adapters.
    * @param kind - Built-in figure or stage-block source to place.
    */
-  const addBuiltin = (kind: 'figure' | 'box'): void => {
+  const addBuiltin = React.useCallback((kind: 'figure' | 'box'): void => {
     const id = crypto.randomUUID();
     pendingFocusIds.current.add(id);
     const object: SceneObject = { id, model: { kind: 'builtin', id: kind },
-      name: t(kind === 'figure' ? 'spaces.threeD.figure' : 'spaces.threeD.box'),
-      position: [snapshot.objects.length * 1.6, kind === 'box' ? 0.5 : 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true };
+      name: kind === 'figure' ? figureName : boxName,
+      position: [session.getSnapshot().objects.length * 1.6, kind === 'box' ? 0.5 : 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, exists: true };
     if (!session.execute({ type: 'create', objects: [object] }).ok) pendingFocusIds.current.delete(id);
-  };
+  }, [session, figureName, boxName]);
 
   const stage = React.useRef<HTMLDivElement>(null);
   const rightPanel = React.useRef<HTMLDivElement>(null);
@@ -191,22 +200,22 @@ export default function SceneEditor({ projectId, spaceId, userId, session, snaps
    * @param next - The requested right panel.
    * @throws {never} Never directly.
    */
-  const showPanel = (next: ScenePanel): void => {
+  const showPanel = React.useCallback((next: ScenePanel): void => {
     automaticPanel.current = false;
     returnTarget.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (panel === next && rightOpen) { setRightOpen(false); return; }
     setPanel(next); setRightOpen(true);
-  };
+  }, [panel, rightOpen, setRightOpen]);
   /**
    * Give an in-progress native transform ownership of its cancellation key.
    * @returns Whether this press cancelled the current personal gesture.
    * @throws {never} Cancellation uses the existing session owner.
    */
-  const cancelGesture = (): boolean => {
+  const cancelGesture = React.useCallback((): boolean => {
     if (!session.getSnapshot().gestureActive) return false;
     session.endGesture(false);
     return true;
-  };
+  }, [session]);
   /**
    * Keep keyboard ownership in the persistent panel before its selected row unmounts.
    * @throws {never} Never directly.
@@ -226,21 +235,87 @@ export default function SceneEditor({ projectId, spaceId, userId, session, snaps
     if (objects.length === 0) return;
     session.execute({ type: 'lock', ids: current.selectedIds, locked: !objects.every((object) => object.locked) });
   }, [session]);
+
+  /**
+   * Select against the current document session.
+   * @throws {never} Never.
+   */
+  const onSelect = React.useCallback<SceneViewportProps['onSelect']>((id, additive) => session.select(id, additive), [session]);
+  /**
+   * Begin the personal native transform draft.
+   * @throws {never} Never.
+   */
+  const onGestureStart = React.useCallback<SceneViewportProps['onGestureStart']>(() => session.beginGesture(), [session]);
+  /**
+   * Preview complete transform fields without committing.
+   * @throws {never} Never.
+   */
+  const onGestureChange = React.useCallback<SceneViewportProps['onGestureChange']>((patches) => session.previewGesture(patches), [session]);
+  /**
+   * Finish or cancel the current personal draft.
+   * @throws {never} Never.
+   */
+  const onGestureEnd = React.useCallback<SceneViewportProps['onGestureEnd']>((commit) => session.endGesture(commit), [session]);
+  /**
+   * Present native renderer failure through the editor.
+   * @throws {never} Never.
+   */
+  const onError = React.useCallback((): void => setRendererFailed(true), []);
+  /**
+   * Apply a personal history step to the current session.
+   * @throws {never} Never.
+   */
+  const onHistory = React.useCallback((step: 'undo' | 'redo'): void => { session.historyStep(step); }, [session]);
+  /**
+   * Toggle the personal minimap.
+   * @throws {never} Never.
+   */
+  const toggleMinimap = React.useCallback((): void => setMinimap((value) => !value), []);
+  /**
+   * Release the current draft before switching tools.
+   * @throws {never} Never.
+   */
+  const onMode = React.useCallback((next: SceneTransformMode): void => { session.endGesture(false); setMode(next); }, [session]);
+  /**
+   * Frame the current selection.
+   * @throws {never} Never.
+   */
+  const onFocus = React.useCallback((): void => setFocusRevision((value) => value + 1), []);
+  /**
+   * Delete the latest selection rather than a captured snapshot.
+   * @throws {never} Never.
+   */
+  const onDelete = React.useCallback((): void => { session.execute({ type: 'delete', ids: session.getSnapshot().selectedIds }); }, [session]);
+  const unlockedIcon = React.useMemo(() => <UnlockIcon className='size-4' />, [UnlockIcon]);
+  const panelActions = React.useMemo(() => panel === 'properties' && selected.length > 0
+    ? <SceneIconButton label={allSelectedLocked ? unlockText : lockText} data-testid='scene-selection-lock'
+      aria-pressed={allSelectedLocked} disabled={!snapshot.canEdit} onClick={toggleSelectionLock}>
+      {allSelectedLocked ? lockIcon : unlockedIcon}
+    </SceneIconButton> : null, [panel, selected.length, allSelectedLocked, unlockText, lockText, snapshot.canEdit, toggleSelectionLock, unlockedIcon]);
+  const inspectorFallback = React.useMemo(() => <p className='p-4 text-sm text-muted-foreground'>{loadingText}</p>, [loadingText]);
+  const viewportFallback = React.useMemo(() => <div className='grid h-full place-items-center text-sm'>{loadingText}</div>, [loadingText]);
+  const panelContent = React.useMemo(() => panel === 'properties'
+    ? <React.Suspense fallback={inspectorFallback}>
+      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} />
+    </React.Suspense>
+    : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
+      : <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{tasksText}</p>,
+  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, modelStates, showSelectedProperties, tasksText]);
   return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
-    <div className='absolute inset-0' data-testid='scene-stage' style={{ '--color-background': 'var(--color-canvas)' } as React.CSSProperties}>
+    <div className='absolute inset-0' data-testid='scene-stage' style={stageStyle}>
       {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>
         : snapshot.status === 'loading' ? <div className='grid h-full place-items-center p-4 text-sm'>{connection.status === 'authFailed' ? t('spaces.threeD.refused') : t('spaces.threeD.loading')}</div>
           : controls.isError || rendererFailed ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => {
             setRendererFailed(false); setRendererRevision((value) => value + 1); void controls.refetch();
           }}>{t('spaces.threeD.retry')}</Button></div>
             : controls.isPending ? <div className='grid h-full place-items-center text-sm'>{t('spaces.threeD.loading')}</div>
-              : <React.Suspense fallback={<div className='grid h-full place-items-center text-sm'>{t('spaces.threeD.loading')}</div>}>
+              : <React.Suspense fallback={viewportFallback}>
                 <SceneViewport key={`${userId}:${spaceId}:${rendererRevision}`} objects={snapshot.objects} selectedIds={snapshot.selectedIds}
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
                   remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} modelRetryRevision={modelRetryRevision}
-                  onSelect={(id, additive) => session.select(id, additive)} onGestureStart={() => session.beginGesture()}
-                  onGestureChange={(patches) => session.previewGesture(patches)} onGestureEnd={(commit) => session.endGesture(commit)}
-                  onViewChange={onViewChange} onError={() => setRendererFailed(true)} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} />
+                  onSelect={onSelect} onGestureStart={onGestureStart}
+                  onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
+                  onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} />
               </React.Suspense>}
       {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%-6rem)] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span>{t('spaces.threeD.modelFailed')}</span><Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>
@@ -249,23 +324,17 @@ export default function SceneEditor({ projectId, spaceId, userId, session, snaps
     <SceneCreationMenu canEdit={snapshot.canEdit} onAdd={addBuiltin} />
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
       title={panel === 'properties' ? t('spaces.threeD.properties') : panel === 'objects' ? t('spaces.threeD.objects') : t('spaces.threeD.tasks')}
-      actions={panel === 'properties' && selected.length > 0 ? <SceneIconButton label={allSelectedLocked ? t('spaces.threeD.unlock') : t('spaces.threeD.lock')}
-        data-testid='scene-selection-lock' aria-pressed={allSelectedLocked} disabled={!snapshot.canEdit} onClick={toggleSelectionLock}>
-        {allSelectedLocked ? <Lock className='size-4' /> : <UnlockIcon className='size-4' />}
-      </SceneIconButton> : null}>
-      {panel === 'properties' ? <React.Suspense fallback={<p className='p-4 text-sm text-muted-foreground'>{t('spaces.threeD.loading')}</p>}>
-        <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} />
-      </React.Suspense>
-        : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
-          : <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{t('spaces.threeD.generationDev')}</p>}
+      actions={panelActions}>
+      {panelContent}
     </SceneRightPanel>
     <div className='absolute bottom-[61px] right-[var(--space-5)] z-10'>
       {minimap ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
     </div>
     <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
-      onHistory={(step) => session.historyStep(step)} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} onMinimap={() => setMinimap((value) => !value)} />
+      onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} onMinimap={toggleMinimap} />
     {selected.length > 0 ? <SceneObjectToolbar mode={mode} mutable={mutable} canDuplicate={snapshot.canEdit}
-      onMode={(next) => { session.endGesture(false); setMode(next); }} onFocus={() => setFocusRevision((value) => value + 1)} onDuplicate={duplicate}
-      onDelete={() => session.execute({ type: 'delete', ids: snapshot.selectedIds })} /> : null}
+      onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
-}
+});
+
+export default SceneEditor;

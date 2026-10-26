@@ -11,7 +11,7 @@ import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-view
  * @returns The measured viewport host.
  * @throws {never} Renderer construction failures go to the session's error UI.
  */
-export default function SceneViewport(props: SceneViewportProps): React.JSX.Element {
+const SceneViewport = React.memo(function SceneViewport(props: SceneViewportProps): React.JSX.Element {
   const host = React.useRef<HTMLDivElement>(null);
   const runtime = React.useRef<SceneViewportRuntime | null>(null);
   const latest = React.useRef(props);
@@ -36,4 +36,6 @@ export default function SceneViewport(props: SceneViewportProps): React.JSX.Elem
   }, [props]);
 
   return <div ref={host} className='relative h-full min-h-0 w-full min-w-0' data-testid='three-d-viewport-host' />;
-}
+});
+
+export default SceneViewport;

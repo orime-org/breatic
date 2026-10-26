@@ -34,7 +34,7 @@ function ownsSceneKeyboard(target: EventTarget | null): boolean {
  * @param props - Space identity and the resolved signed-in account.
  * @returns The editor with its current document projection and connection.
  */
-function ConnectedSceneEditor(props: SpaceBodyProps & { userId: string }): React.JSX.Element {
+const ConnectedSceneEditor = React.memo(function ConnectedSceneEditor(props: SpaceBodyProps & { userId: string }): React.JSX.Element {
   const { projectId, spaceId } = props;
   const name = docName.threeDSpace(projectId, spaceId);
   const doc = React.useMemo(() => getDoc(name), [name]);
@@ -47,14 +47,14 @@ function ConnectedSceneEditor(props: SpaceBodyProps & { userId: string }): React
   }, [doc, name]);
   if (session?.doc !== doc) return <div className='grid h-full place-items-center text-sm text-muted-foreground'>{t('spaces.threeD.loading')}</div>;
   return <BoundSceneEditor {...props} session={session} />;
-}
+});
 
 /**
  * Subscribe only after the document-owned session has been resolved outside rendering.
  * @param props - Space identity and its live cached session.
  * @returns The editor with the current session projection.
  */
-function BoundSceneEditor(props: SpaceBodyProps & { userId: string; session: SceneSession }): React.JSX.Element {
+const BoundSceneEditor = React.memo(function BoundSceneEditor(props: SpaceBodyProps & { userId: string; session: SceneSession }): React.JSX.Element {
   const { session, ...space } = props;
   const snapshot = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
   const connection = useSpaceConnection();
@@ -73,25 +73,29 @@ function BoundSceneEditor(props: SpaceBodyProps & { userId: string; session: Sce
   const readObjects = React.useCallback((): readonly SceneObject[] => readSceneDocument(session.doc).objects, [session]);
   return <SceneEditor {...space} session={session} snapshot={snapshot} connection={connection}
     namedPeers={namedPeers} readObjects={readObjects} ownsKeyboard={ownsSceneKeyboard} UnlockIcon={Unlock} />;
-}
+});
 
 /**
  * Render scene controls in the Project while the viewport remains lazy.
  * @param props - Space properties supplied by the Project host.
  * @returns Document-bound editor or its loading and error feedback.
  */
-export function ThreeDSpace(props: SpaceBodyProps): React.JSX.Element {
+export const ThreeDSpace = React.memo(function ThreeDSpace(props: SpaceBodyProps): React.JSX.Element {
   const t = useTranslation();
   const userId = useCurrentUserStore((state) => state.user?.id);
-  const loading = <div className='grid h-full place-items-center text-sm text-muted-foreground'>{t('spaces.threeD.loading')}</div>;
+  const loadingText = t('spaces.threeD.loading');
+  const failedText = t('spaces.threeD.loadFailed');
+  const reloadText = t('spaces.threeD.reload');
+  const loading = React.useMemo(() => <div className='grid h-full place-items-center text-sm text-muted-foreground'>{loadingText}</div>, [loadingText]);
+  const fallback = React.useMemo(() => <div className='grid h-full place-items-center p-4'><div className='flex flex-col items-center gap-3'>
+    <p>{failedText}</p><Button onClick={() => window.location.reload()}>{reloadText}</Button>
+  </div></div>, [failedText, reloadText]);
   if (!userId) return loading;
   return (
-    <ErrorBoundary key={`${userId}:${props.projectId}:${props.spaceId}`} fallback={<div className='grid h-full place-items-center p-4'><div className='flex flex-col items-center gap-3'>
-      <p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button>
-    </div></div>}>
+    <ErrorBoundary key={`${userId}:${props.projectId}:${props.spaceId}`} fallback={fallback}>
       <React.Suspense fallback={loading}>
         <ConnectedSceneEditor {...props} userId={userId} />
       </React.Suspense>
     </ErrorBoundary>
   );
-}
+});

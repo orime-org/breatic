@@ -5,7 +5,7 @@ import * as React from 'react';
 import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { t, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -43,7 +43,9 @@ function setup(): { session: SceneSession; doc: Y.Doc; page: ReturnType<typeof r
 function tree(session: SceneSession, client: QueryClient, mode: 'visible' | 'hidden' = 'visible'): React.JSX.Element {
   return <QueryClientProvider client={client}><TooltipProvider><React.Activity mode={mode}><Bound session={session} /></React.Activity></TooltipProvider></QueryClientProvider>;
 }
-afterEach(() => { cleanup(); for (const owner of owners.splice(0)) { owner.session.destroy(); owner.doc.destroy(); owner.client.clear(); } useUIStore.getState().setActiveOverlayId(null); });
+// jsdom clears its focused element before dispatching blur, unlike the browser.
+beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true); });
+afterEach(() => { cleanup(); for (const owner of owners.splice(0)) { owner.session.destroy(); owner.doc.destroy(); owner.client.clear(); } useUIStore.getState().setActiveOverlayId(null); vi.restoreAllMocks(); });
 
 describe('approved scene layout (inner#1724)', () => {
   it('keeps viewport actions conditional and orders the bottom-right controls', async () => {
@@ -221,7 +223,7 @@ describe('approved scene layout (inner#1724)', () => {
     const field = within(within(inspector).getByRole('group', { name: t('spaces.threeD.position') })).getByLabelText('X', { exact: true });
     field.focus(); fireEvent.change(field, { target: { value: '2.5' } });
     act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [0, 7, 0] }] }, Symbol('peer'), true); });
-    fireEvent.blur(field);
+    await act(async () => { fireEvent.blur(field); });
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)?.position).toEqual([2.5, 7, 0]);
   });
 

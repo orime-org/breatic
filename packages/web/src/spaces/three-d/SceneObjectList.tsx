@@ -18,7 +18,7 @@ import type { SceneModelState } from '@web/spaces/three-d/viewport/scene-viewpor
  * @returns Current scene object rows and empty feedback.
  * @throws {never} Selection delegates to the document-scoped session.
  */
-export function SceneObjectList({ session, snapshot, modelStates, onSelect }: Pick<SceneEditorProps, 'session' | 'snapshot'> & {
+export const SceneObjectList = React.memo(function SceneObjectList({ session, snapshot, modelStates, onSelect }: Pick<SceneEditorProps, 'session' | 'snapshot'> & {
   modelStates: ReadonlyMap<string, SceneModelState>; onSelect: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
@@ -33,4 +33,4 @@ export function SceneObjectList({ session, snapshot, modelStates, onSelect }: Pi
     {snapshot.invalidObjects.map((item) => <p key={item.id} className='break-all p-2 text-xs text-destructive'>{t('spaces.threeD.invalidObject', { id: item.id })}</p>)}
     {snapshot.status === 'ready' && snapshot.objects.length === 0 ? <p className='px-2 py-3 text-xs text-muted-foreground'>{t('spaces.threeD.empty')}</p> : null}
   </div>;
-}
+});

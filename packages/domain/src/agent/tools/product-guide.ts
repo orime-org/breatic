@@ -1198,6 +1198,7 @@ export function renderProductGuide(): string {
       `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
       `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
       "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
+      "Names follow Canvas renaming: trim surrounding whitespace, leave the existing name for a blank draft, and keep composition-confirming or repeated keys in the input. " +
       `Escape cancels its draft. A rejected value stays in the box, which shows ${quoted(t("spaces.threeD.valueFailed"))} Correct it or cancel. ` +
       `For several objects the panel shows a selection count, ${quoted(t("spaces.threeD.mixed"))} where their values differ, and ` +
       `${quoted(t("spaces.threeD.multiTransform"))} Use the viewport handles to change them together.`,

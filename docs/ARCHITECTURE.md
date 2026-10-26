@@ -522,6 +522,13 @@ panel close action dismiss it. Locking changes the normal header icon without
 adding an active background. AI generation and annotations remain development
 entries; this editor does not submit generation jobs.
 
+Scene name editing follows Canvas node and group renaming: trim and clip a
+nonblank draft, commit on Enter or leaving the field, and cancel on Escape.
+The scene schema supplies its existing length limit. The shared
+`lib/inline-edit-exit.ts` handles composition and held-key exits;
+`lib/blur-left.ts` keeps drafts when the browser loses focus or the Space hides.
+The inspector submits accepted names through the same scene command owner.
+
 ### Brand home links
 
 The Studio and Project top-left brand links always navigate to `https://breatic.ai/`,

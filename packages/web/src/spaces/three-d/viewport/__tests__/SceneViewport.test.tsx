@@ -38,6 +38,28 @@ afterEach(cleanup);
 beforeEach(() => { mocks.construct.mockReset(); mocks.instances.length = 0; });
 
 describe('viewport effect ownership under React Activity (inner#1689)', () => {
+  it('skips unchanged inputs while forwarding every changed viewport contract', () => {
+    const initial = props();
+    const page = render(<SceneViewport {...initial} />);
+    const runtime = mocks.instances[0];
+    runtime.update.mockClear();
+    page.rerender(<SceneViewport {...initial} />);
+    expect(runtime.update).not.toHaveBeenCalled();
+    for (const change of [
+      { focusRevision: 1 }, { cancelRevision: 1 }, { modelRetryRevision: 1 },
+      { overviewHost: document.createElement('div') },
+      { view: { position: [1, 2, 3] as [number, number, number], target: [0, 0, 0] as [number, number, number] } },
+      { selectedIds: ['selected'] }, { objects: [...initial.objects] }, { remotePeers: [...initial.remotePeers] },
+      { readOnly: true }, { mode: 'rotate' as const }, { scaleSensitivity: 0.02 },
+    ]) {
+      runtime.update.mockClear();
+      const next = { ...initial, ...change };
+      page.rerender(<SceneViewport {...next} />);
+      expect(runtime.update).toHaveBeenCalledOnce();
+      expect(runtime.update).toHaveBeenCalledWith(next);
+    }
+  });
+
   it('rebuilds visible resources after Activity cleanup while retaining the host and camera input', async () => {
     const initial = props();
     const page = render(<React.Activity mode='visible'><SceneViewport {...initial} /></React.Activity>);

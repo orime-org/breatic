@@ -14,15 +14,16 @@ import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-docume
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import type * as ToastModule from '@web/lib/toast';
+import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
-const { reportError } = vi.hoisted(() => ({ reportError: vi.fn() }));
+const { reportError, viewportInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn() }));
 
 vi.mock('@web/data/api/scene', () => ({
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1 })),
   resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary' })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
-  default: (): React.JSX.Element => <div data-testid='scene-viewport-boundary' />,
+  default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },
 }));
 vi.mock('@web/lib/scene-view-storage', () => ({
   readSceneView: vi.fn(() => null),
@@ -89,7 +90,7 @@ async function pressDelete(): Promise<void> {
   });
 }
 
-beforeEach(() => { reportError.mockClear(); });
+beforeEach(() => { reportError.mockClear(); viewportInputs.mockClear(); });
 afterEach(() => {
   cleanup();
   for (const { session, doc, client } of owners.splice(0)) {
@@ -100,6 +101,26 @@ afterEach(() => {
 });
 
 describe('scene command failure feedback (inner#1724)', () => {
+  it('keeps viewport callbacks stable through peer content and local panel changes', async () => {
+    const { doc, session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const initial = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => {
+      expect(applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, Symbol('peer-unlock'), true)).toEqual({ ok: true, ids: [ID] });
+      expect(applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true)).toEqual({ ok: true, ids: [ID] });
+    });
+    fireEvent.click(screen.getByTestId('scene-tasks-trigger'));
+    await screen.findByTestId('scene-tasks-panel');
+    const next = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    expect(next.objects[0].name).toBe('Peer name');
+    for (const key of ['onSelect', 'onGestureStart', 'onGestureChange', 'onGestureEnd', 'onViewChange', 'onError', 'onModelStateChange', 'resolveAsset'] as const) {
+      expect(next[key]).toBe(initial[key]);
+    }
+    act(() => { initial.onSelect(null, false); });
+    expect(session.getSnapshot().selectedIds).toEqual([]);
+  });
+
   it('reports each independent failed Delete even when both refusals have the same cause', async () => {
     const { doc, session, client } = fixture();
     render(editorTree(session, client, 'visible'));
