@@ -1,6 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { BodyTooLarge } from "@provider/http/errors.js";
+import { reachable } from "@provider/http/private-address.js";
+import { readBody, send } from "@provider/http/request.js";
+
+/** How many redirects one address may go through. */
+const MAX_HOPS = 10;
+
 /** Why a media address was not read. */
 export type MediaRefusal = "unreachable" | "too_large" | "unavailable";
 
@@ -43,8 +50,35 @@ export interface FetchedMedia {
  * @returns The bytes and their declared type.
  * @throws {MediaRefused} When an address is not public, the body is over the limit, or the address answers non-2xx.
  * @throws {Aborted} When the deadline or the signal ends the read.
+ * @throws {NotSent} When the address could not be reached.
+ * @throws {NoAnswer} When the address stopped answering.
  */
 export async function fetchMedia(request: FetchMediaRequest): Promise<FetchedMedia> {
-  void request;
-  throw new Error("fetchMedia is not implemented");
+  const bounds = { replaySafe: true, deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) };
+  let target = request.url;
+  for (let hop = 0; hop <= MAX_HOPS; hop++) {
+    if (!(await reachable(target))) throw new MediaRefused("unreachable");
+    const response = await send({ url: target, method: "GET" }, bounds);
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
+    if (location === null) {
+      if (response.status < 200 || response.status >= 300) {
+        await response.body?.cancel();
+        throw new MediaRefused("unavailable", response.status);
+      }
+      try {
+        const bytes = await readBody(target, response, request.maxBytes, Math.max(0, request.deadlineAt - Date.now()), bounds);
+        return { bytes, contentType: response.headers.get("content-type") ?? "application/octet-stream" };
+      } catch (error) {
+        if (error instanceof BodyTooLarge) throw new MediaRefused("too_large");
+        throw error;
+      }
+    }
+    await response.body?.cancel();
+    try {
+      target = new URL(location, target).toString();
+    } catch {
+      throw new MediaRefused("unreachable", response.status);
+    }
+  }
+  throw new MediaRefused("unreachable");
 }
