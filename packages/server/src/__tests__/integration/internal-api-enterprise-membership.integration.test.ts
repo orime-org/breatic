@@ -8,6 +8,7 @@ import { db, getMembershipConfig, getMembershipReadingForUser } from "@breatic/c
 import { tierLimitsSchema } from "@breatic/shared";
 import type { SubscriptionWrite } from "@breatic/core";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
+import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
@@ -53,6 +54,67 @@ function subscriptionFact(userId: string, subscriptionId: string, status: "activ
 }
 
 describe("enterprise membership signed internal API", () => {
+  describe.each(["new", "existing"] as const)("UTC expiry domain for %s membership", (state) => {
+    it.each(["0000-01-01T00:00:00Z", "0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-14:00"])("refuses %s before writes and accepts a corrected request under the same key", async (expiresAt) => {
+      const id = await user();
+      if (state === "existing") {
+        const opened = await call(suite.baseUrl, path(id), { body, idempotencyKey: key() });
+        expect(opened.status).toBe(200);
+        expect(opened.json.status).toBe("applied");
+      }
+      const accounts = await suite.sql`select * from users where id=${id}`;
+      const memberships = await suite.sql`select * from enterprise_memberships where user_id=${id}`;
+      const history = await suite.sql`select * from membership_tier_changes where user_id=${id} order by id`;
+      const requestKey = key();
+      const write = { ...body, expiresAt, expectedRevision: state === "existing" ? 1 : null, expectedStoredTier: state === "existing" ? "enterprise" : "pro" };
+      const observed: { status: number; code: unknown }[] = [];
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rejected = await call(suite.baseUrl, path(id), { body: write, idempotencyKey: requestKey });
+        observed.push({ status: rejected.status, code: rejected.json.code });
+        expect(await suite.sql`select * from users where id=${id}`).toEqual(accounts);
+        expect(await suite.sql`select * from enterprise_memberships where user_id=${id}`).toEqual(memberships);
+        expect(await suite.sql`select * from membership_tier_changes where user_id=${id} order by id`).toEqual(history);
+        expect(await operationCount(requestKey)).toBe(0);
+      }
+      const corrected = { ...write, expiresAt: "2099-11-01T00:00:00.000Z" };
+      const saved = await call(suite.baseUrl, path(id), { body: corrected, idempotencyKey: requestKey });
+      expect(saved.status).toBe(200);
+      expect(saved.json).toMatchObject({ status: "applied", after: { enterprise: { expiresAt: corrected.expiresAt, revision: state === "existing" ? 2 : 1 } } });
+      expect(await operationCount(requestKey)).toBe(1);
+      const repeated = await call(suite.baseUrl, path(id), { body: corrected, idempotencyKey: requestKey });
+      expect(repeated.status).toBe(200);
+      expect(repeated.json).toEqual(saved.json);
+      expect(observed).toEqual([{ status: 422, code: "invalid_body" }, { status: 422, code: "invalid_body" }]);
+    });
+  });
+
+  it.each([
+    ["0001-01-01T14:00:00+14:00", "0001-01-01T00:00:00.000Z"],
+    ["0001-01-01T00:00:00-14:00", "0001-01-01T14:00:00.000Z"],
+    ["9999-12-31T09:59:59.999-14:00", "9999-12-31T23:59:59.999Z"],
+    ["9999-12-31T23:59:59+14:00", "9999-12-31T09:59:59.000Z"],
+    ["2027-10-26T00:00:00.123456789Z", "2027-10-26T00:00:00.123Z"],
+  ])("keeps supported expiry %s in the operation body and fingerprint", async (expiresAt, storedExpiry) => {
+    const id = await user();
+    const requestKey = key();
+    const request = { ...body, expiresAt };
+    const response = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
+    expect(response.status).toBe(200);
+    expect(response.json).toMatchObject({ status: "applied", after: { enterprise: { expiresAt: storedExpiry, revision: 1 } } });
+    expect((await storedTimestamps(id)).expiresAt).toBe(storedExpiry);
+    const [operation] = await suite.sql<{ request_body: unknown; request_hash: string; result: unknown }[]>`select request_body,request_hash,result from enterprise_membership_operations where key=${requestKey}`;
+    expect(operation!.request_body).toEqual(request);
+    expect(operation!.request_hash).toBe(fingerprint("POST", "/internal/v1/accounts/:userId/enterprise-membership", id, request));
+    expect(operation!.result).toEqual(response.json);
+    const replay = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
+    expect(replay.status).toBe(200);
+    expect(replay.json).toEqual(response.json);
+    const canonicalized = await call(suite.baseUrl, path(id), { body: { ...request, expiresAt: storedExpiry }, idempotencyKey: requestKey });
+    expect(canonicalized.status).toBe(409);
+    expect(canonicalized.json.code).toBe("idempotency_conflict");
+    expect(await operationCount(requestKey)).toBe(1);
+  });
+
   it.each(["0001", "0013", "0049", "0050", "0099", "0100", "0999", "1000", "2026"])("preserves year %s through signed save, current profile and immutable operation replay", async (year) => {
     const id = await user();
     const requestKey = key();

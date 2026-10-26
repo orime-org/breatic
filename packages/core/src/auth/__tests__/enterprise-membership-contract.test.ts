@@ -15,6 +15,27 @@ describe("enterprise membership contract", () => {
   it("accepts a complete write and normalizes the contract", () => {
     expect(enterpriseMembershipWriteSchema.parse({ ...body, contractNumber: "  DEMO-ENT-29  " })).toEqual(body);
   });
+  it.each(["0000-01-01T00:00:00Z", "0001-01-01T00:00:00+14:00", "9999-12-31T23:59:59-14:00"])("rejects expiry %s outside the normalized UTC year range", (expiresAt) => {
+    const parsed = enterpriseMembershipWriteSchema.safeParse({ ...body, expiresAt });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) expect(parsed.error.issues.map((issue) => issue.path)).toEqual([["expiresAt"]]);
+  });
+  it.each([
+    "0001-01-01T00:00:00.000Z", "0001-01-01T14:00:00+14:00", "0001-01-01T00:00:00-14:00",
+    "9999-12-31T23:59:59.999Z", "9999-12-31T09:59:59.999-14:00", "9999-12-31T23:59:59+14:00",
+    "2027-10-26T00:00:00.123456789Z",
+  ])("preserves the original supported expiry string %s", (expiresAt) => {
+    const input = { ...body, expiresAt };
+    expect(enterpriseMembershipWriteSchema.parse(input)).toEqual(input);
+  });
+  it("keeps the existing instant domain for stored records and response metadata", () => {
+    const stored = { ...record, expiresAt: "0000-01-01T00:00:00Z", createdAt: "0000-01-01T00:00:00Z", updatedAt: "9999-12-31T23:59:59-14:00" };
+    expect(enterpriseRecordSchema.parse(stored)).toEqual(stored);
+    const reading = { asOf: stored.createdAt, enterpriseState: "expired", effectiveTier: "base", limits, storageBytes: limits.storage_bytes, revision: 1, expiresAt: stored.expiresAt, fallbackTier: "base", settlementProtected: false };
+    expect(enterpriseMembershipReadingSchema.parse(reading)).toEqual(reading);
+    const response = { ...result, operation: { ...result.operation, recordedAt: stored.updatedAt }, after: { ...result.after, enterprise: stored } };
+    expect(enterpriseMembershipResultSchema.parse(response)).toEqual(response);
+  });
   it.each(["", " ", "x\u0000", "x".repeat(129)])("rejects invalid contract %j", (contractNumber) => {
     expect(enterpriseMembershipWriteSchema.safeParse({ ...body, contractNumber }).success).toBe(false);
   });

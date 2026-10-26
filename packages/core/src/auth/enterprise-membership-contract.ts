@@ -34,7 +34,10 @@ export const enterpriseMembershipLimitsSchema = z.object({
 
 export const enterpriseMembershipWriteSchema = z.object({
   targetTier: z.literal("enterprise"),
-  expiresAt: instant,
+  expiresAt: instant.refine((value) => {
+    const at = new Date(value);
+    return Number.isFinite(at.getTime()) && at.getUTCFullYear() >= 1 && at.getUTCFullYear() <= 9999;
+  }, { message: "Expiry must be within UTC years 0001 through 9999" }),
   entryTimezone: z.string().max(64).refine(validZone),
   contractNumber: z.string().trim().min(1).max(128).refine((s) => !s.includes("\u0000")),
   limits: enterpriseMembershipLimitsSchema,
