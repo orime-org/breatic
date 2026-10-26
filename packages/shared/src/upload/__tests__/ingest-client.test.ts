@@ -162,7 +162,7 @@ describe('opening an upload at the ingest Worker', () => {
 
   it('T20: posts the ticket and the secret once, unsafe to replay, bounded by the caller', async () => {
     mockedRequest.mockResolvedValueOnce(answers(200, { uploadId: 'u-1', token: 't-1' }));
-    const bound = { signal: new AbortController().signal, timeoutMs: 1234 };
+    const bound = { timeoutMs: 1234 };
 
     const answer = await openUploadAtIngest(TICKET_TARGET, SECRET, bound);
 
@@ -171,7 +171,8 @@ describe('opening an upload at the ingest Worker', () => {
     expect(mockedRequest.mock.calls[0]?.[1]?.method).toBe('POST');
     expect(headersOf(0)).toEqual({ 'x-upload-ticket': 'signed-ticket', 'x-ingest-secret': SECRET });
     expect(optionsOf(0).replaySafe).toBe(false);
-    expect(optionsOf(0).signal).toBe(bound.signal);
+    // inner#1595 R1: a timeout alone, so nothing outlives the open.
+    expect(optionsOf(0)).not.toHaveProperty('signal');
     expect(optionsOf(0).timeoutMs).toBe(1234);
     expect(answer).toEqual({ uploadId: 'u-1', token: 't-1' });
   });
