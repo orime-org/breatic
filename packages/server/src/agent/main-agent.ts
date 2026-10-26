@@ -748,13 +748,13 @@ export class MainAgent {
     /**
      * Run one model stream of the turn and write it to the reader.
      *
-     * Everything goes out as it comes except three chunks: the error of a call
-     * the provider turned away as too long, which the turn answers by folding;
-     * and the `finish` and the first other error, held until it is known that
-     * this stream ends the turn. The SDK carries on past a provider's error
-     * chunk when the step's tool calls ran, and the panel reads nothing after
-     * an error frame, so the error goes out last, after the thinking figure;
-     * any later error is dropped, as the panel would never read it.
+     * Everything goes out as it comes except the `finish` and the first error,
+     * held until the stream ends. When that first error is a call the provider
+     * turned away as too long, the turn folds instead and neither goes out.
+     * Otherwise the error goes out last, after the thinking figure: the SDK
+     * carries on past a provider's error chunk when the step's tool calls ran,
+     * and the panel reads nothing after an error frame. Any later error is
+     * dropped, as the panel would never read it.
      * @param writer - The stream the turn is written to.
      * @param run - What this stream starts from.
      * @param run.first - Whether this is the turn's first stream, which opens the reply.
