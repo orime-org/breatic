@@ -61,7 +61,7 @@ describe("switching before the first content (design 5.5)", () => {
     expect(result.text).toBe("ok");
     expect(posted(fakes.deepseek)).toHaveLength(3);
     expect(posted(fakes.openrouter)).toHaveLength(1);
-    expect(posted(fakes.openrouter)[0]).toMatchObject({ model: "deepseek/deepseek-v4-pro", reasoning: { effort: "high" } });
+    expect(posted(fakes.openrouter)[0]).toMatchObject({ model: "deepseek/deepseek-v4-pro", reasoning: { effort: "max" } });
     expect(result.providerMetadata?.breatic?.upstream).toBe("openrouter");
   });
 
@@ -125,7 +125,7 @@ describe("one call stays on the upstream that first served it (design 5.5)", () 
     await twoSteps(() => ({ status: 200, body: CHAT_REPLY }));
     expect(posted(fakes.deepseek)).toHaveLength(1);
     expect(posted(fakes.openrouter)).toHaveLength(2);
-    expect(posted(fakes.openrouter)[1]).toMatchObject({ reasoning: { effort: "high" } });
+    expect(posted(fakes.openrouter)[1]).toMatchObject({ reasoning: { effort: "max" } });
   });
 
   it("only retries the fixed upstream on a 429 at the second step, then fails without moving", async () => {

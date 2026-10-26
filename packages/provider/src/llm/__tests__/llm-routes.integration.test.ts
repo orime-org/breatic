@@ -268,7 +268,7 @@ describe("the system prompt in parts", () => {
 
   it("sends the prompt whole, as one message, for a model that caches a prefix on its own", async () => {
     expect(systemMessages((await call({ OPENROUTER_API_KEY: "or" }, "deepseek/deepseek-v4-pro", { thinking: true, cache: "1h" }, PARTS)).body)).toEqual([
-      { role: "system", content: WHOLE },
+      { role: "system", content: [{ type: "text", text: WHOLE }] },
     ]);
   });
 

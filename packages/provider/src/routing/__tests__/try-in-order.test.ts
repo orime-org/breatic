@@ -128,7 +128,9 @@ describe("tryInOrder", () => {
         const { attempt, calls } = scripted(script);
         await tryInOrder(plan(names), { phase, maxRetries: 1, attempt, classify }).catch(() => undefined);
         expect(calls[0]).toBe("u0");
-        const firstStop = steps.findIndex((s) => typeof s !== "string" && isStop(s));
+        // Only a stop met before any success ends the walk there.
+        const firstSuccess = steps.findIndex((s) => typeof s === "string");
+        const firstStop = steps.findIndex((s, i) => typeof s !== "string" && isStop(s) && (firstSuccess < 0 || i < firstSuccess));
         if (firstStop >= 0) {
           expect(calls.every((c) => names.indexOf(c) <= firstStop)).toBe(true);
           expect(calls.at(-1)).toBe(names[firstStop]);

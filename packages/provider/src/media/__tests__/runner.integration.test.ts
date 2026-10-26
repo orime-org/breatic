@@ -168,7 +168,7 @@ describe("plan", () => {
   });
 
   it("throws UpstreamRequestRejected for an upstream the model is not bound to", async () => {
-    await expect(await runner().plan("voice-clone", video, { mode: "upstream", upstream: "ws_b" }, options())).rejects.toThrow(UpstreamRequestRejected);
+    await expect(runner().plan("voice-clone", video, { mode: "upstream", upstream: "ws_b" }, options())).rejects.toThrow(UpstreamRequestRejected);
   });
 });
 

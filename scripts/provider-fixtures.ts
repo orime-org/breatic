@@ -145,11 +145,11 @@ const contracts: Record<string, Contract> = {};
 for (const modality of MODALITIES) {
   const file = parse(readFileSync(resolve(ROOT, `config/models/${modality}/models.yaml`), "utf8")) as { models: RawModel[] };
   for (const model of file.models) {
-    const contracts: [string, RawPricing][] = [
+    const modelContracts: [string, RawPricing][] = [
       ...(model.providers ?? []).map((p): [string, RawPricing] => [`model:${p.name}`, p.pricing]),
       ...(model.extra_steps ?? []).map((s, i): [string, RawPricing] => [`step:${i}:${s.kind ?? "step"}`, s.pricing]),
     ];
-    for (const [contract, raw] of contracts) {
+    for (const [contract, raw] of modelContracts) {
       const pricing = contractOf(raw);
       const id = `${model.name}#${contract}`;
       contracts[id] = pricing;
