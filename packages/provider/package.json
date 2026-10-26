@@ -17,7 +17,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "zod": "catalog:"
