@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { env, createExecutionContext } from "cloudflare:test";
+import { env, createExecutionContext, runDurableObjectAlarm } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { computeLongMediaInputsDigest, computeLongMediaJobRequestDigest, type LongMediaPlanRequest } from "@breatic/shared";
@@ -41,6 +41,7 @@ const payload = {
     audioCoreSeconds: 300,
     videoCoreSeconds: 60,
     maxActiveLeaves: 512,
+    maxConcurrentSegments: 1,
   },
   deadlineAt: Date.now() + 60_000,
 };
@@ -454,6 +455,58 @@ describe("POST /long-media/jobs", () => {
       status: "encoding",
       version: 1,
     })));
+    const segmentId = plan.intervals[0]?.id;
+    const storageKey = plan.grants[0]?.storageKey;
+    if (segmentId === undefined || storageKey === undefined) throw new Error("The root write grant is missing");
+    const firstPermit = await stub.claimSegmentWritePermit(storageKey);
+    expect(firstPermit).toMatchObject({ segmentId, expectedVersion: 1 });
+    await expect(stub.applySegmentEvent(segmentId, 1, { type: "transient" })).resolves.toMatchObject({
+      kind: "accepted",
+      status: "planned",
+      version: 2,
+    });
+    await expect(stub.startMediaSegments()).resolves.toMatchObject({ phase: "running" });
+    const retryPermit = await stub.claimSegmentWritePermit(storageKey);
+    expect(retryPermit).toMatchObject({ segmentId, expectedVersion: 3 });
+  });
+
+  it("starts no more encoders than the job concurrency limit and admits the next planned segment on completion", async () => {
+    const limitedPayload = { ...payload, jobId: "operation-limited-segments:source-0", operationId: "operation-limited-segments" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(limitedPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(limitedPayload.jobId));
+    await stub.startAttempt("limited-segments-probe", Date.now());
+    await stub.applyAttemptEvent({ type: "accepted", attemptId: "limited-segments-probe", epoch: 1 }, Date.now());
+    await stub.applyProbeReport("limited-segments-probe", 1, probeReport, Date.now());
+    const plan = await rootInputPlan(0, 0, [
+      { startUs: "0", endUs: "5000000" },
+      { startUs: "5000000", endUs: "10000000" },
+    ]);
+    await expect(stub.applyLongMediaPlan(plan)).resolves.toMatchObject({ kind: "accepted", complete: true });
+
+    await expect(stub.startMediaSegments()).resolves.toMatchObject({ phase: "running" });
+    const firstSegment = plan.intervals[0];
+    const nextSegment = plan.intervals[1];
+    if (firstSegment === undefined || nextSegment === undefined) throw new Error("The split plan is incomplete");
+    await expect(stub.readSegments()).resolves.toMatchObject([
+      { id: firstSegment.id, status: "encoding", version: 1 },
+      { id: nextSegment.id, status: "planned", version: 0 },
+    ]);
+
+    const firstGrant = plan.grants[0];
+    if (firstGrant === undefined) throw new Error("The first segment grant is missing");
+    await expect(stub.claimSegmentWritePermit(firstGrant.storageKey)).resolves.toMatchObject({
+      segmentId: firstSegment.id,
+      expectedVersion: 1,
+    });
+    await expect(stub.applySegmentEvent(firstSegment.id, 1, {
+      type: "measured",
+      measured: { sha256: "b".repeat(64), sizeBytes: 100, contentType: "audio/mp4" },
+    })).resolves.toMatchObject({ kind: "accepted", status: "stored", version: 2 });
+    await expect(stub.startMediaSegments()).resolves.toMatchObject({ phase: "running" });
+    await expect(stub.readSegments()).resolves.toMatchObject([
+      { id: firstSegment.id, status: "stored", version: 2 },
+      { id: nextSegment.id, status: "encoding", version: 1 },
+    ]);
   });
 
   it("replaces only an oversize parent with an exact same-input child partition", async () => {
@@ -556,11 +609,90 @@ describe("POST /long-media/jobs", () => {
   });
 });
 
-/** Create one complete root interval mutation for a required media input. */
-async function rootInputPlan(inputIndex: number, expectedVersion: number): Promise<LongMediaPlanRequest> {
+describe("POST /long-media/jobs/{id}/cancel", () => {
+  it("requires backend authentication and records cancellation for a submitted job", async () => {
+    const cancelPayload = { ...payload, jobId: "operation-cancel:source-0", operationId: "operation-cancel" };
+    await call("/long-media/jobs", { method: "POST", body: await requestBody(cancelPayload) });
+    const path = `/long-media/jobs/${encodeURIComponent(cancelPayload.jobId)}/cancel`;
+
+    const body = JSON.stringify({ deadlineAt: cancelPayload.deadlineAt });
+    const unauthorized = await call(path, { method: "POST", body }, false);
+    const response = await call(path, { method: "POST", body });
+
+    expect(unauthorized.status).toBe(401);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ jobId: cancelPayload.jobId, phase: "cancelled" });
+  });
+
+  it("keeps a cancellation that arrives before submit from starting a late probe", async () => {
+    const cancelPayload = { ...payload, jobId: "operation-cancel-before-submit:source-0", operationId: "operation-cancel-before-submit" };
+    const path = `/long-media/jobs/${encodeURIComponent(cancelPayload.jobId)}/cancel`;
+
+    const cancelled = await call(path, {
+      method: "POST",
+      body: JSON.stringify({ deadlineAt: cancelPayload.deadlineAt }),
+    });
+    const lateSubmit = await call("/long-media/jobs", { method: "POST", body: await requestBody(cancelPayload) });
+    const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(cancelPayload.jobId));
+
+    expect(cancelled.status).toBe(200);
+    await expect(cancelled.json()).resolves.toMatchObject({
+      jobId: cancelPayload.jobId,
+      phase: "cancelled",
+      beforeSubmit: true,
+    });
+    expect(lateSubmit.status).toBe(410);
+    await expect(stub.report()).resolves.toBeNull();
+    expect(await stub.startProbe()).toBeNull();
+
+    const expiredPayload = {
+      ...cancelPayload,
+      jobId: "operation-cancel-expiry:source-0",
+      operationId: "operation-cancel-expiry",
+      deadlineAt: Date.now() + 1_000,
+    };
+    const expiredPath = `/long-media/jobs/${encodeURIComponent(expiredPayload.jobId)}/cancel`;
+    const expiredCancel = await call(expiredPath, {
+      method: "POST",
+      body: JSON.stringify({ deadlineAt: expiredPayload.deadlineAt }),
+    });
+    expect(expiredCancel.status).toBe(200);
+    const expiredStub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(expiredPayload.jobId));
+    await runDurableObjectAlarm(expiredStub);
+    const submitBeforeDeadline = await call("/long-media/jobs", { method: "POST", body: await requestBody(expiredPayload) });
+    expect(submitBeforeDeadline.status).toBe(410);
+    await expect(submitBeforeDeadline.text()).resolves.toContain("cancelled before submission");
+    await new Promise<void>((resolve) => setTimeout(resolve, Math.max(0, expiredPayload.deadlineAt - Date.now() + 20)));
+    await runDurableObjectAlarm(expiredStub);
+    const submitAfterCleanup = await call("/long-media/jobs", { method: "POST", body: await requestBody(expiredPayload) });
+    expect(submitAfterCleanup.status).toBe(410);
+    await expect(submitAfterCleanup.text()).resolves.toBe("Long media job expired");
+  });
+
+  it("rejects cancellation requests without a valid operation deadline", async () => {
+    const invalid = await call("/long-media/jobs/invalid-deadline/cancel", { method: "POST", body: "{}" });
+    expect(invalid.status).toBe(400);
+  });
+});
+
+/** Create one complete root interval mutation for a required media input.
+ * @throws {Error} when the probe report does not contain the requested input.
+ */
+async function rootInputPlan(
+  inputIndex: number,
+  expectedVersion: number,
+  ranges: readonly { startUs: string; endUs: string }[] = [{ startUs: "0", endUs: "10000000" }],
+): Promise<LongMediaPlanRequest> {
   const input = probeReport.mediaInputs[inputIndex];
   if (input === undefined) throw new Error(`No probe input at index ${inputIndex}`);
-  const segmentId = `${input.mediaInputId}:0:10000000`;
+  const intervals = ranges.map(({ startUs, endUs }) => ({
+    id: `${input.mediaInputId}:${startUs}:${endUs}`,
+    mediaInputId: input.mediaInputId,
+    descriptor: input.descriptor,
+    core: { startUs, endUs },
+    decode: { startUs, endUs },
+    mode: "prepare" as const,
+  }));
   return {
     expectedVersion,
     mutationId: `root-plan-${inputIndex}`,
@@ -568,19 +700,12 @@ async function rootInputPlan(inputIndex: number, expectedVersion: number): Promi
     requiredMediaInputsDigest: await computeLongMediaInputsDigest(payload.source.sha256, payload.profileVersion, probeReport.mediaInputs),
     mediaInputId: input.mediaInputId,
     parentId: null,
-    intervals: [{
-      id: segmentId,
-      mediaInputId: input.mediaInputId,
-      descriptor: input.descriptor,
-      core: { startUs: "0", endUs: "10000000" },
-      decode: { startUs: "0", endUs: "10000000" },
-      mode: "prepare",
-    }],
-    grants: [{
-      segmentId,
-      candidateId: `candidate-${inputIndex}`,
-      grantId: `grant-${inputIndex}`,
-      storageKey: `understand/root-${inputIndex}.mp3`,
-    }],
+    intervals,
+    grants: intervals.map((segment, index) => ({
+      segmentId: segment.id,
+      candidateId: intervals.length === 1 ? `candidate-${inputIndex}` : `candidate-${inputIndex}-${index}`,
+      grantId: intervals.length === 1 ? `grant-${inputIndex}` : `grant-${inputIndex}-${index}`,
+      storageKey: intervals.length === 1 ? `understand/root-${inputIndex}.mp3` : `understand/root-${inputIndex}-${index}.mp3`,
+    })),
   };
 }

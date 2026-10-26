@@ -32,7 +32,15 @@ describe("runLongMediaSegment", () => {
     expect(readLongMediaSegmentRunRequest(request)).toEqual(request);
     expect(readLongMediaSegmentRunRequest({
       ...request,
+      interval: { startUs: "-500000", endUs: "59500000" },
+    })).toMatchObject({ interval: { startUs: "-500000", endUs: "59500000" } });
+    expect(readLongMediaSegmentRunRequest({
+      ...request,
       interval: { startUs: "1", endUs: "1" },
+    })).toBeNull();
+    expect(readLongMediaSegmentRunRequest({
+      ...request,
+      interval: { startUs: "-0", endUs: "1" },
     })).toBeNull();
     expect(readLongMediaSegmentRunRequest({ ...request, unexpected: true })).toBeNull();
   });
@@ -84,6 +92,16 @@ describe("runLongMediaSegment", () => {
     await runLongMediaSegment(request, deps);
 
     expect(deps.report).toHaveBeenCalledWith(request.reportUrl, "failed");
+  });
+
+  it("leaves transient output retry to the authenticated output route", async () => {
+    const deps = dependencies();
+    deps.encode.mockResolvedValue(Buffer.from("segment"));
+    deps.write.mockResolvedValue(503);
+
+    await runLongMediaSegment(request, deps);
+
+    expect(deps.report).not.toHaveBeenCalled();
   });
 
   it("reports an expired deadline without starting the encoder", async () => {

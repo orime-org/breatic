@@ -37,7 +37,7 @@ export function readLongMediaSegmentRunRequest(value: unknown): LongMediaSegment
   if (typeof sent.interval !== "object" || sent.interval === null || Array.isArray(sent.interval)) return null;
   const interval = sent.interval as Record<string, unknown>;
   if (Object.keys(interval).length !== 2 || typeof interval.startUs !== "string" || typeof interval.endUs !== "string" ||
-      !/^(0|[1-9][0-9]*)$/u.test(interval.startUs) || !/^(0|[1-9][0-9]*)$/u.test(interval.endUs) ||
+      !/^(0|-?[1-9][0-9]*)$/u.test(interval.startUs) || !/^(0|-?[1-9][0-9]*)$/u.test(interval.endUs) ||
       BigInt(interval.startUs) >= BigInt(interval.endUs)) return null;
   if (typeof sent.profile !== "object" || sent.profile === null || Array.isArray(sent.profile)) return null;
   const profile = sent.profile as Record<string, unknown>;
@@ -130,6 +130,7 @@ export async function runLongMediaSegment(
     return;
   }
   if (status === 200 || status === 409 || status === 413) return;
+  if (status === 503) return;
   await deps.report(request.reportUrl, "failed");
 }
 

@@ -19,24 +19,35 @@ const request = {
     key: "studio/project/source.mp4",
     sha256: "a".repeat(64),
     sizeBytes: 1_000_000,
-    etag: "etag-1",
   },
-  profileId: "channel-v1",
-  profileVersion: "channel-v1",
+  profileId: "source-file-v1",
+  profileVersion: "source-file-v1",
+  encodingProfile: {
+    audioCodec: "libmp3lame",
+    audioBitrate: "128k",
+    videoCodec: "libx264",
+    videoCrf: 23,
+    videoAudioCodec: "aac",
+    videoAudioBitrate: "128k",
+  },
   limitsSnapshot: {
     maxSourceBytes: 2_147_483_648,
     maxSources: 10,
     maxSegmentBytes: 20_000_000,
     audioCoreSeconds: 300,
     videoCoreSeconds: 60,
-    overlapSeconds: 2,
     maxActiveLeaves: 512,
+    maxConcurrentSegments: 1,
   },
   deadlineAt: 1_800_000_000_000,
   requestDigest: "b".repeat(64),
 };
 
 describe("long media job requests", () => {
+  it("identifies an immutable source by its key, measured hash, and size", () => {
+    expect(LongMediaJobRequestSchema.safeParse(request).success).toBe(true);
+  });
+
   it("accepts the versioned immutable source and budget snapshot", () => {
     expect(readLongMediaJobRequest(request)).toEqual(request);
   });
@@ -65,5 +76,29 @@ describe("long media job requests", () => {
     await expect(verifyLongMediaJobRequest({ ...payload, requestDigest: "c".repeat(64) })).rejects.toThrow(
       "The long media job request digest does not match its payload",
     );
+  });
+
+  it("binds the encoding profile to the immutable job digest", async () => {
+    const { requestDigest: _requestDigest, ...payload } = request;
+    const digest = await computeLongMediaJobRequestDigest(payload);
+
+    await expect(verifyLongMediaJobRequest({ ...payload, requestDigest: digest })).resolves.toMatchObject(payload);
+    await expect(verifyLongMediaJobRequest({
+      ...payload,
+      encodingProfile: { ...payload.encodingProfile, videoCrf: 24 },
+      requestDigest: digest,
+    })).rejects.toThrow("The long media job request digest does not match its payload");
+  });
+
+  it("binds the per-job segment concurrency limit to the immutable job digest", async () => {
+    const { requestDigest: _requestDigest, ...payload } = request;
+    const digest = await computeLongMediaJobRequestDigest(payload);
+
+    await expect(verifyLongMediaJobRequest({ ...payload, requestDigest: digest })).resolves.toMatchObject(payload);
+    await expect(verifyLongMediaJobRequest({
+      ...payload,
+      limitsSnapshot: { ...payload.limitsSnapshot, maxConcurrentSegments: 2 },
+      requestDigest: digest,
+    })).rejects.toThrow("The long media job request digest does not match its payload");
   });
 });

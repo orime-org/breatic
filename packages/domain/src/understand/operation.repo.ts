@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import {
   db,
+  mediaUnderstandingAttempts,
   mediaUnderstandingOperations,
+  mediaUnderstandingSteps,
 } from "@breatic/core";
+import type { UnderstandAtAnswer } from "@domain/understand/understand-at.js";
+import type { LongMediaBatchStart } from "@domain/understand/understand-segment-batches.js";
 import type { UnderstandOperationEvent, UnderstandOperationStatus } from "@domain/understand/operation-state.js";
 import { reduceUnderstandOperation } from "@domain/understand/operation-state.js";
 import type { UnderstandDispatchEvent, UnderstandDispatchState } from "@domain/understand/dispatch-state.js";
@@ -14,6 +18,7 @@ import { reduceUnderstandDispatch } from "@domain/understand/dispatch-state.js";
 
 /** Immutable identity and execution inputs for opening one long-media operation. */
 export interface OpenUnderstandOperationInput {
+  id?: string;
   actorUserId: string;
   projectId?: string | null;
   originKind: "agent_turn" | "canvas_task";
@@ -29,9 +34,11 @@ export interface OpenUnderstandOperationInput {
   recoveryGroupId: string;
   logicalRequestId: string;
   userActionId: string;
+  dispatchState?: "pending" | "sent" | "claimed" | "retired";
 }
 
 type OperationRow = typeof mediaUnderstandingOperations.$inferSelect;
+type BatchAnswer = Pick<UnderstandAtAnswer, "text" | "kind" | "kinds">;
 
 /** A worker's exclusive execution lease, fenced by operation epoch. */
 export type UnderstandOperationLease =
@@ -60,7 +67,7 @@ export async function openUnderstandOperation(
   input: OpenUnderstandOperationInput,
 ): Promise<OperationRow> {
   return db.transaction(async (tx) => {
-    const id = randomUUID();
+    const id = input.id ?? randomUUID();
     const inserted = await tx
       .insert(mediaUnderstandingOperations)
       .values({
@@ -81,6 +88,7 @@ export async function openUnderstandOperation(
         logicalRequestId: input.logicalRequestId,
         logicalRootOperationId: id,
         userActionId: input.userActionId,
+        ...(input.dispatchState === undefined ? {} : { dispatchState: input.dispatchState }),
         rootDeadlineAt: input.deadlineAt,
       })
       .onConflictDoNothing()
@@ -102,6 +110,337 @@ export async function openUnderstandOperation(
     }
     return existing[0];
   });
+}
+
+/**
+ * Reserve a batch's single model request or return its durable state.
+ * @param operationId - Stable long-media operation identity.
+ * @param batchKey - Ordered batch key within the operation.
+ * @param inputDigest - Digest of the question, model and ordered segment inputs.
+ * @param leaseToken - Current operation lease token, or null for read-only recovery.
+ * @param leaseEpoch - Current operation lease epoch.
+ * @returns A send permit, persisted answer, unknown outcome or active-owner result.
+ * @throws {Error} when inputs conflict, the lease is stale, or persisted data is malformed.
+ */
+export async function beginUnderstandBatchAttempt(
+  operationId: string,
+  batchKey: string,
+  inputDigest: string,
+  leaseToken: string | null,
+  leaseEpoch: number,
+): Promise<LongMediaBatchStart> {
+  return db.transaction(async (tx) => {
+    const operationRows = await tx.select().from(mediaUnderstandingOperations)
+      .where(and(eq(mediaUnderstandingOperations.id, operationId), isNull(mediaUnderstandingOperations.deletedAt)))
+      .for("update").limit(1);
+    const operation = operationRows[0];
+    if (!operation) throw new Error("The media-understanding operation does not exist.");
+    const existingRows = await tx.select().from(mediaUnderstandingSteps).where(and(
+      eq(mediaUnderstandingSteps.operationId, operationId),
+      eq(mediaUnderstandingSteps.stepKey, batchKey),
+      isNull(mediaUnderstandingSteps.deletedAt),
+    )).for("update").limit(1);
+    const existing = existingRows[0];
+    if (existing && existing.inputDigest !== inputDigest) {
+      throw new Error("The long-media batch key is already bound to different request inputs.");
+    }
+    if (operation.status === "blocked" || operation.status === "ready") {
+      if (!existing) throw new Error("The long-media batch step is missing from its closed operation.");
+      if (existing.status === "ready") return { kind: "ready", answer: parseBatchAnswer(existing.result) };
+      if (operation.status === "blocked" && existing.activeAttemptId !== null) {
+        const attemptRows = await tx.select().from(mediaUnderstandingAttempts).where(and(
+          eq(mediaUnderstandingAttempts.id, existing.activeAttemptId),
+          isNull(mediaUnderstandingAttempts.deletedAt),
+        )).for("update").limit(1);
+        if (attemptRows[0]?.requestState === "unknown") return { kind: "unknown" };
+      }
+      throw new Error("The long-media operation is closed without a complete batch answer.");
+    }
+    if (leaseToken === null || operation.status !== "running" || operation.leaseToken !== leaseToken ||
+      operation.leaseEpoch !== leaseEpoch) {
+      throw new Error("The long-media batch does not hold the current operation lease.");
+    }
+    if (!existing) {
+      await tx.insert(mediaUnderstandingSteps).values({
+        operationId,
+        stepKey: batchKey,
+        kind: "read_batch",
+        inputDigest,
+      }).onConflictDoNothing();
+    }
+    const stepRows = await tx.select().from(mediaUnderstandingSteps).where(and(
+      eq(mediaUnderstandingSteps.operationId, operationId),
+      eq(mediaUnderstandingSteps.stepKey, batchKey),
+      isNull(mediaUnderstandingSteps.deletedAt),
+    )).for("update").limit(1);
+    const step = stepRows[0];
+    if (!step) throw new Error("The long-media batch step could not be created.");
+    if (step.status === "ready") return { kind: "ready", answer: parseBatchAnswer(step.result) };
+    if (step.activeAttemptId !== null) {
+      const attemptRows = await tx.select().from(mediaUnderstandingAttempts).where(and(
+        eq(mediaUnderstandingAttempts.id, step.activeAttemptId),
+        isNull(mediaUnderstandingAttempts.deletedAt),
+      )).for("update").limit(1);
+      const attempt = attemptRows[0];
+      if (!attempt || attempt.inputDigest !== inputDigest) {
+        throw new Error("The active long-media batch attempt is missing or has different inputs.");
+      }
+      if (attempt.requestState === "unknown") return { kind: "unknown" };
+      if (attempt.requestState === "prepared") {
+        if (attempt.sendAuthorityEpoch === leaseEpoch) return { kind: "busy" };
+        if (attempt.sendAuthorityEpoch > leaseEpoch) {
+          throw new Error("The prepared long-media attempt belongs to a newer lease.");
+        }
+        await tx.update(mediaUnderstandingAttempts).set({ requestState: "rejected" })
+          .where(eq(mediaUnderstandingAttempts.id, attempt.id));
+        await tx.update(mediaUnderstandingSteps).set({ status: "pending", activeAttemptId: null })
+          .where(eq(mediaUnderstandingSteps.id, step.id));
+      } else if (attempt.requestState !== "sending") {
+        throw new Error("The active long-media batch attempt has an invalid request state.");
+      } else {
+        if (attempt.sendAuthorityEpoch === leaseEpoch) return { kind: "busy" };
+        if (attempt.sendAuthorityEpoch > leaseEpoch) {
+          throw new Error("The active long-media batch attempt belongs to a newer lease.");
+        }
+        await tx.update(mediaUnderstandingAttempts).set({ requestState: "unknown" })
+          .where(eq(mediaUnderstandingAttempts.id, attempt.id));
+        await tx.update(mediaUnderstandingSteps).set({ status: "failed" })
+          .where(eq(mediaUnderstandingSteps.id, step.id));
+        const clockRows = await tx.execute(sql`SELECT clock_timestamp() AS now`);
+        if (!clockRows[0]) throw new Error("The database clock could not be read.");
+        const atMs = new Date(String(clockRows[0].now)).getTime();
+        const unknownEvent: UnderstandOperationEvent = atMs >= operation.deadlineAt.getTime()
+          ? { type: "deadline", expectedRevision: operation.revision, atMs }
+          : { type: "unknown", expectedRevision: operation.revision, atMs };
+        const nextOperation = reduceUnderstandOperation({
+          status: operation.status,
+          revision: operation.revision,
+          deadlineAtMs: operation.deadlineAt.getTime(),
+        }, unknownEvent);
+        const updated = await tx.update(mediaUnderstandingOperations)
+          .set({ status: nextOperation.status, revision: nextOperation.revision })
+          .where(and(eq(mediaUnderstandingOperations.id, operationId), eq(mediaUnderstandingOperations.revision, operation.revision)))
+          .returning({ id: mediaUnderstandingOperations.id });
+        if (!updated[0]) throw new Error("The operation changed while its batch outcome was being blocked.");
+        return { kind: "unknown" };
+      }
+    }
+    const priorAttempts = await tx.select({ attemptNo: mediaUnderstandingAttempts.attemptNo })
+      .from(mediaUnderstandingAttempts).where(and(
+        eq(mediaUnderstandingAttempts.stepId, step.id),
+        isNull(mediaUnderstandingAttempts.deletedAt),
+      )).orderBy(desc(mediaUnderstandingAttempts.attemptNo)).limit(1);
+    const attemptNo = (priorAttempts[0]?.attemptNo ?? 0) + 1;
+    const inserted = await tx.insert(mediaUnderstandingAttempts).values({
+      operationId,
+      stepId: step.id,
+      attemptNo,
+      inputDigest,
+      epoch: leaseEpoch,
+      requestState: "prepared",
+      sendAuthorityEpoch: leaseEpoch,
+    }).returning({ id: mediaUnderstandingAttempts.id });
+    const attemptId = inserted[0]?.id;
+    if (!attemptId) throw new Error("The long-media batch attempt could not be created.");
+    await tx.update(mediaUnderstandingSteps).set({ status: "running", activeAttemptId: attemptId })
+      .where(eq(mediaUnderstandingSteps.id, step.id));
+    return { kind: "prepared", attemptId };
+  });
+}
+
+/**
+ * Persist model-send authority immediately before issuing the provider request.
+ * @param operationId - Stable long-media operation identity.
+ * @param batchKey - Ordered batch key within the operation.
+ * @param inputDigest - Digest of the question, model and ordered segment inputs.
+ * @param attemptId - The prepared attempt receiving send authority.
+ * @param leaseToken - Current operation lease token.
+ * @param leaseEpoch - Current operation lease epoch.
+ * @returns Nothing after send authority is durable.
+ * @throws {Error} when the lease, step or attempt is no longer current.
+ */
+export async function markUnderstandBatchAttemptSending(
+  operationId: string,
+  batchKey: string,
+  inputDigest: string,
+  attemptId: string,
+  leaseToken: string,
+  leaseEpoch: number,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const operationRows = await tx.select().from(mediaUnderstandingOperations).where(and(
+      eq(mediaUnderstandingOperations.id, operationId),
+      isNull(mediaUnderstandingOperations.deletedAt),
+    )).for("update").limit(1);
+    const operation = operationRows[0];
+    if (!operation || operation.status !== "running" || operation.leaseToken !== leaseToken ||
+      operation.leaseEpoch !== leaseEpoch) {
+      throw new Error("The long-media operation lease changed before model send authority was recorded.");
+    }
+    const stepRows = await tx.select().from(mediaUnderstandingSteps).where(and(
+      eq(mediaUnderstandingSteps.operationId, operationId),
+      eq(mediaUnderstandingSteps.stepKey, batchKey),
+      eq(mediaUnderstandingSteps.inputDigest, inputDigest),
+      eq(mediaUnderstandingSteps.activeAttemptId, attemptId),
+      eq(mediaUnderstandingSteps.status, "running"),
+      isNull(mediaUnderstandingSteps.deletedAt),
+    )).for("update").limit(1);
+    const step = stepRows[0];
+    if (!step) throw new Error("The long-media batch attempt lost its send slot.");
+    const attempts = await tx.select().from(mediaUnderstandingAttempts).where(and(
+      eq(mediaUnderstandingAttempts.id, attemptId),
+      eq(mediaUnderstandingAttempts.stepId, step.id),
+      eq(mediaUnderstandingAttempts.sendAuthorityEpoch, leaseEpoch),
+      eq(mediaUnderstandingAttempts.requestState, "prepared"),
+      isNull(mediaUnderstandingAttempts.deletedAt),
+    )).for("update").limit(1);
+    if (!attempts[0]) throw new Error("The long-media batch attempt is not prepared for this lease.");
+    await tx.update(mediaUnderstandingAttempts).set({ requestState: "sending" })
+      .where(eq(mediaUnderstandingAttempts.id, attemptId));
+  });
+}
+
+/**
+ * Atomically accept a full model answer and its batch checkpoint.
+ * @param operationId - Stable long-media operation identity.
+ * @param batchKey - Ordered batch key within the operation.
+ * @param inputDigest - Digest of the question, model and ordered segment inputs.
+ * @param attemptId - The attempt that held the send authority.
+ * @param leaseToken - Current operation lease token.
+ * @param leaseEpoch - Current operation lease epoch.
+ * @param answer - Complete answer text and its media kinds.
+ * @returns Nothing after the result is durably saved.
+ * @throws {Error} when the lease or attempt is stale, its input changed, or its update loses.
+ */
+export async function saveUnderstandBatchAttemptResult(
+  operationId: string,
+  batchKey: string,
+  inputDigest: string,
+  attemptId: string,
+  leaseToken: string,
+  leaseEpoch: number,
+  answer: BatchAnswer,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const operationRows = await tx.select().from(mediaUnderstandingOperations).where(and(
+      eq(mediaUnderstandingOperations.id, operationId),
+      isNull(mediaUnderstandingOperations.deletedAt),
+    )).for("update").limit(1);
+    const operation = operationRows[0];
+    if (!operation || operation.status !== "running" || operation.leaseToken !== leaseToken ||
+      operation.leaseEpoch !== leaseEpoch) {
+      throw new Error("The long-media operation lease changed before its answer was saved.");
+    }
+    const stepRows = await tx.select().from(mediaUnderstandingSteps).where(and(
+      eq(mediaUnderstandingSteps.operationId, operationId),
+      eq(mediaUnderstandingSteps.stepKey, batchKey),
+      eq(mediaUnderstandingSteps.inputDigest, inputDigest),
+      isNull(mediaUnderstandingSteps.deletedAt),
+    )).for("update").limit(1);
+    const step = stepRows[0];
+    if (!step || step.activeAttemptId !== attemptId || step.status !== "running") {
+      throw new Error("The long-media batch attempt lost its active result slot.");
+    }
+    const attemptRows = await tx.select().from(mediaUnderstandingAttempts).where(and(
+      eq(mediaUnderstandingAttempts.id, attemptId),
+      eq(mediaUnderstandingAttempts.stepId, step.id),
+      eq(mediaUnderstandingAttempts.sendAuthorityEpoch, leaseEpoch),
+      eq(mediaUnderstandingAttempts.requestState, "sending"),
+      isNull(mediaUnderstandingAttempts.deletedAt),
+    )).for("update").limit(1);
+    if (!attemptRows[0]) throw new Error("The long-media batch attempt lost its send authority.");
+    await tx.update(mediaUnderstandingAttempts).set({
+      requestState: "responded",
+      response: answer,
+      finishReason: "stop",
+    }).where(eq(mediaUnderstandingAttempts.id, attemptId));
+    await tx.update(mediaUnderstandingSteps).set({
+      status: "ready",
+      acceptedAttemptId: attemptId,
+      result: answer,
+    }).where(eq(mediaUnderstandingSteps.id, step.id));
+  });
+}
+
+/**
+ * Mark an attempt's external outcome unknown while its lease still owns the operation.
+ * @param operationId - Stable long-media operation identity.
+ * @param batchKey - Ordered batch key within the operation.
+ * @param inputDigest - Digest of the question, model and ordered segment inputs.
+ * @param attemptId - The attempt whose response could not be durably accepted.
+ * @param leaseToken - Current operation lease token.
+ * @param leaseEpoch - Current operation lease epoch.
+ * @returns Nothing after the unknown state is durably recorded.
+ * @throws {Error} when persisted attempt facts are inconsistent.
+ */
+export async function markUnderstandBatchAttemptUnknown(
+  operationId: string,
+  batchKey: string,
+  inputDigest: string,
+  attemptId: string,
+  leaseToken: string,
+  leaseEpoch: number,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const operationRows = await tx.select().from(mediaUnderstandingOperations).where(and(
+      eq(mediaUnderstandingOperations.id, operationId),
+      isNull(mediaUnderstandingOperations.deletedAt),
+    )).for("update").limit(1);
+    const operation = operationRows[0];
+    if (!operation) throw new Error("The media-understanding operation does not exist.");
+    if (operation.leaseToken !== leaseToken || operation.leaseEpoch !== leaseEpoch) return;
+    const stepRows = await tx.select().from(mediaUnderstandingSteps).where(and(
+      eq(mediaUnderstandingSteps.operationId, operationId),
+      eq(mediaUnderstandingSteps.stepKey, batchKey),
+      eq(mediaUnderstandingSteps.inputDigest, inputDigest),
+      eq(mediaUnderstandingSteps.activeAttemptId, attemptId),
+      isNull(mediaUnderstandingSteps.deletedAt),
+    )).for("update").limit(1);
+    const step = stepRows[0];
+    if (!step || step.status === "ready") return;
+    const attemptRows = await tx.select().from(mediaUnderstandingAttempts).where(and(
+      eq(mediaUnderstandingAttempts.id, attemptId),
+      eq(mediaUnderstandingAttempts.stepId, step.id),
+      eq(mediaUnderstandingAttempts.requestState, "sending"),
+      isNull(mediaUnderstandingAttempts.deletedAt),
+    )).for("update").limit(1);
+    if (!attemptRows[0]) return;
+    await tx.update(mediaUnderstandingAttempts).set({ requestState: "unknown" })
+      .where(eq(mediaUnderstandingAttempts.id, attemptId));
+    await tx.update(mediaUnderstandingSteps).set({ status: "failed" })
+      .where(eq(mediaUnderstandingSteps.id, step.id));
+    const clockRows = await tx.execute(sql`SELECT clock_timestamp() AS now`);
+    if (!clockRows[0]) throw new Error("The database clock could not be read.");
+    const atMs = new Date(String(clockRows[0].now)).getTime();
+    const unknownEvent: UnderstandOperationEvent = atMs >= operation.deadlineAt.getTime()
+      ? { type: "deadline", expectedRevision: operation.revision, atMs }
+      : { type: "unknown", expectedRevision: operation.revision, atMs };
+    const nextOperation = reduceUnderstandOperation({
+      status: operation.status as UnderstandOperationStatus,
+      revision: operation.revision,
+      deadlineAtMs: operation.deadlineAt.getTime(),
+    }, unknownEvent);
+    const updated = await tx.update(mediaUnderstandingOperations)
+      .set({ status: nextOperation.status, revision: nextOperation.revision })
+      .where(and(eq(mediaUnderstandingOperations.id, operationId), eq(mediaUnderstandingOperations.revision, operation.revision)))
+      .returning({ id: mediaUnderstandingOperations.id });
+    if (!updated[0]) throw new Error("The operation changed while its batch outcome was being blocked.");
+  });
+}
+
+/**
+ * Validate one persisted batch answer before returning it to the caller.
+ * @param result - Stored JSON value from a ready batch step.
+ * @returns A validated immutable answer.
+ * @throws {Error} when the saved long-media batch result is malformed.
+ */
+function parseBatchAnswer(result: Record<string, unknown> | null): BatchAnswer {
+  if (!result || typeof result.text !== "string" ||
+    (result.kind !== "audio" && result.kind !== "video" && result.kind !== "image") ||
+    !Array.isArray(result.kinds) || result.kinds.some((kind) => kind !== "audio" && kind !== "video" && kind !== "image")) {
+    throw new Error("The saved long-media batch result is malformed.");
+  }
+  return { text: result.text, kind: result.kind, kinds: result.kinds };
 }
 
 /**
@@ -149,6 +488,36 @@ export async function claimUnderstandOperationLease(
       current.status === "cancelled" || current.status === "expired";
     if (terminal) return { kind: "closed" };
     if (now.getTime() >= current.deadlineAt.getTime()) {
+      const steps = await tx.select().from(mediaUnderstandingSteps).where(and(
+        eq(mediaUnderstandingSteps.operationId, id),
+        isNull(mediaUnderstandingSteps.deletedAt),
+      )).orderBy(asc(mediaUnderstandingSteps.stepKey)).for("update");
+      const activeSteps = steps.filter((step) => step.status === "running" && step.activeAttemptId !== null);
+      const activeAttemptIds = activeSteps.map((step) => step.activeAttemptId!);
+      const activeAttempts = activeAttemptIds.length === 0
+        ? []
+        : await tx.select().from(mediaUnderstandingAttempts).where(and(
+          inArray(mediaUnderstandingAttempts.id, activeAttemptIds),
+          isNull(mediaUnderstandingAttempts.deletedAt),
+        )).orderBy(asc(mediaUnderstandingAttempts.attemptNo), asc(mediaUnderstandingAttempts.id)).for("update");
+      const attemptsById = new Map(activeAttempts.map((attempt) => [attempt.id, attempt]));
+      for (const step of activeSteps) {
+        const attempt = attemptsById.get(step.activeAttemptId!);
+        if (!attempt || attempt.stepId !== step.id) {
+          throw new Error("The active long-media step has no matching attempt at operation expiry.");
+        }
+        if (attempt.requestState === "sending") {
+          await tx.update(mediaUnderstandingAttempts).set({ requestState: "unknown" })
+            .where(eq(mediaUnderstandingAttempts.id, attempt.id));
+        } else if (attempt.requestState === "prepared") {
+          await tx.update(mediaUnderstandingAttempts).set({ requestState: "rejected" })
+            .where(eq(mediaUnderstandingAttempts.id, attempt.id));
+        } else {
+          throw new Error("The active long-media step has an invalid attempt state at operation expiry.");
+        }
+        await tx.update(mediaUnderstandingSteps).set({ status: "failed" })
+          .where(eq(mediaUnderstandingSteps.id, step.id));
+      }
       const expired = reduceUnderstandOperation({
         status: current.status as UnderstandOperationStatus,
         revision: current.revision,

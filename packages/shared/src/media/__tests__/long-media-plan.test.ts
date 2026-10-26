@@ -6,10 +6,9 @@ import { describe, expect, it } from "vitest";
 import { computeLongMediaInputsDigest, LongMediaPlanRequestSchema } from "@shared/media/long-media-plan.js";
 
 const input = {
-  mediaInputId: "audio-0-0",
-  descriptor: { inputKind: "audio_channel" as const, audioStreamIndex: 0, audioChannelIndex: 0 },
+  mediaInputId: "source-file-1",
+  descriptor: { inputKind: "source_file" as const, mediaKind: "audio" as const },
   sourceRange: { startUs: "0", endUs: "10000000" },
-  audioRange: { startUs: "0", endUs: "10000000" },
 };
 
 const plan = {
@@ -58,14 +57,13 @@ describe("LongMediaPlanRequestSchema", () => {
   });
 
   it("binds the full input identity to the source and conversion profile", async () => {
-    const first = await computeLongMediaInputsDigest("a".repeat(64), "channel-v1", [input]);
-    const reordered = await computeLongMediaInputsDigest("A".repeat(64), "channel-v1", [{
-      audioRange: input.audioRange,
+    const first = await computeLongMediaInputsDigest("a".repeat(64), "source-file-v1", [input]);
+    const reordered = await computeLongMediaInputsDigest("A".repeat(64), "source-file-v1", [{
       sourceRange: input.sourceRange,
       descriptor: input.descriptor,
       mediaInputId: input.mediaInputId,
     }]);
-    const changedProfile = await computeLongMediaInputsDigest("a".repeat(64), "channel-v2", [input]);
+    const changedProfile = await computeLongMediaInputsDigest("a".repeat(64), "source-file-v2", [input]);
 
     expect(reordered).toBe(first);
     expect(changedProfile).not.toBe(first);

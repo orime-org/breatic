@@ -231,6 +231,11 @@ export {
   UNDERSTAND_PINS,
   UnderstandRefused,
   understandMediaInBatches,
+  LongMediaBatchFailureError,
+  openLongMediaBatchOperation,
+  longMediaInputDigest,
+  longMediaOperationId,
+  advanceLongMediaSegmentation,
   understandMediaAt,
   readingLimitsUntil,
 } from "@domain/understand/index.js";
@@ -243,6 +248,10 @@ export {
   claimUnderstandOperationLease,
   renewUnderstandOperationLease,
   releaseUnderstandOperationLease,
+  beginUnderstandBatchAttempt,
+  markUnderstandBatchAttemptSending,
+  markUnderstandBatchAttemptUnknown,
+  saveUnderstandBatchAttemptResult,
 } from "@domain/understand/operation.repo.js";
 export type {
   DueUnderstandDispatch,
@@ -251,6 +260,11 @@ export type {
   UnderstandOperationLeaseMutation,
 } from "@domain/understand/operation.repo.js";
 export type {
+  LongMediaBatchCheckpoint,
+  LongMediaBatchOperation,
+  LongMediaBatchOperationInput,
+  LongMediaBatchInterval,
+  LongMediaBatchStart,
   LongMediaBatchLimits,
   LongMediaSegmentReference,
   MediaKind,

@@ -16,6 +16,7 @@ import {
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from "@ingest/media-object-route.js";
 import { LONG_MEDIA_PROBE_PATH, LONG_MEDIA_SEGMENT_PATH, PROBE_PORT } from "@ingest/probe-answer.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
+import { hashStoredObject, sniffStoredObject } from "@ingest/stored-object.js";
 import {
   computeLongMediaInputsDigest,
   readLongMediaJobRequest,
@@ -72,7 +73,15 @@ export interface LongMediaJobSnapshot {
 export type LongMediaJobSubmitResult =
   | { kind: "accepted" | "replayed"; snapshot: LongMediaJobSnapshot }
   | { kind: "conflict" }
-  | { kind: "expired" };
+  | { kind: "expired" }
+  | { kind: "cancelled" };
+
+/** Cancellation acknowledged before its matching submit request reached the Durable Object. */
+export interface LongMediaPreSubmitCancellation {
+  jobId: string;
+  phase: "cancelled";
+  beforeSubmit: true;
+}
 
 /** One row returned from the Durable Object job table. */
 interface LongMediaJobRow extends Record<string, SqlStorageValue> {
@@ -168,6 +177,20 @@ const JOB_TABLE = `
     updated_at INTEGER NOT NULL
   )
 `;
+
+const CANCELLED_BEFORE_SUBMIT_TABLE = `
+  CREATE TABLE IF NOT EXISTS long_media_cancelled_before_submit (
+    job_id TEXT PRIMARY KEY NOT NULL,
+    cancelled_at INTEGER NOT NULL
+  )
+`;
+
+const PRE_SUBMIT_CANCELLATION_KEY = "longMediaPreSubmitCancellation";
+
+interface LongMediaPreSubmitCancellationDeadline {
+  jobId: string;
+  deadlineAt: number;
+}
 
 const EFFECT_TABLE = `
   CREATE TABLE IF NOT EXISTS long_media_effects (
@@ -319,6 +342,94 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    */
   transition(event: LongMediaJobEvent, now: number): LongMediaTransitionResult | null {
     return this.jobStore.transition(event, now);
+  }
+
+  /**
+   * Cancel this durable job and stop its active Container before returning.
+   * @param jobId - The immutable Durable Object identity from the route.
+   * @returns The latest job state or a marker for cancellation before submit.
+   * @throws {Error} When the job disappears during cancellation or its durable state is missing.
+   */
+  async cancel(jobId: string, deadlineAt: number): Promise<LongMediaJobSnapshot | LongMediaPreSubmitCancellation> {
+    const now = Date.now();
+    const transition = this.jobStore.cancel(jobId, now, deadlineAt);
+    if ("beforeSubmit" in transition) {
+      if (deadlineAt > now) {
+        const marker = { jobId, deadlineAt };
+        await this.ctx.storage.put(PRE_SUBMIT_CANCELLATION_KEY, marker);
+        try {
+          this.deleteSchedules("expirePreSubmitCancellation");
+          await this.schedule(new Date(deadlineAt), "expirePreSubmitCancellation", marker);
+        } catch (err) {
+          await this.ctx.storage.setAlarm(deadlineAt);
+          throw err;
+        }
+      }
+      return transition;
+    }
+    if (transition.effects.includes("stopContainer")) {
+      await this.destroy();
+    } else if (transition.snapshot.phase === "stopping") {
+      this.jobStore.transition({ type: "stopped" }, Date.now());
+    }
+    const snapshot = this.jobStore.report();
+    if (snapshot === null) throw new Error("The cancelled long-media job is missing its durable state.");
+    return snapshot;
+  }
+
+  /**
+   * Remove a pre-submit cancellation after its exact deadline.
+   * @param payload - The tombstoned job identity and its absolute deadline.
+   * @returns Nothing after its tombstone is removed or the callback is safely rescheduled.
+   */
+  async expirePreSubmitCancellation(payload: { jobId: string; deadlineAt: number }): Promise<void> {
+    if (Date.now() < payload.deadlineAt) {
+      await this.schedule(
+        new Date(Math.ceil(payload.deadlineAt / 1_000) * 1_000),
+        "expirePreSubmitCancellation",
+        payload,
+      );
+      return;
+    }
+    await this.schedule(new Date(Date.now() + 60_000), "expirePreSubmitCancellation", payload);
+    this.jobStore.expirePreSubmitCancellation(payload.jobId);
+    this.deleteSchedules("expirePreSubmitCancellation");
+  }
+
+  /**
+   * Reconcile the durable cancellation deadline after Container alarm processing.
+   * @param alarmProps - Cloudflare's alarm retry metadata.
+   * @returns Nothing after the marker is cleaned or its alarm is restored.
+   */
+  override async alarm(alarmProps?: Parameters<Container<LongMediaEnv>["alarm"]>[0]): Promise<void> {
+    try {
+      await super.alarm(alarmProps);
+    } finally {
+      const marker = await this.ctx.storage.get<LongMediaPreSubmitCancellationDeadline>(PRE_SUBMIT_CANCELLATION_KEY);
+      if (marker !== undefined) {
+        if (Date.now() >= marker.deadlineAt) {
+          this.jobStore.expirePreSubmitCancellation(marker.jobId);
+          this.deleteSchedules("expirePreSubmitCancellation");
+          await this.ctx.storage.delete(PRE_SUBMIT_CANCELLATION_KEY);
+        } else {
+          const schedules = await this.listSchedules<LongMediaPreSubmitCancellationDeadline>(
+            "expirePreSubmitCancellation",
+          );
+          if (!schedules.some((schedule) => schedule.payload?.jobId === marker.jobId)) {
+            await this.schedule(
+              new Date(Math.ceil(marker.deadlineAt / 1_000) * 1_000),
+              "expirePreSubmitCancellation",
+              marker,
+            );
+          } else {
+            const alarmAt = await this.ctx.storage.getAlarm();
+            if (alarmAt === null || alarmAt === undefined) {
+              await this.ctx.storage.setAlarm(Math.ceil(marker.deadlineAt / 1_000) * 1_000);
+            }
+          }
+        }
+      }
+    }
   }
 
   /**
@@ -501,7 +612,7 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
         }
       }
 
-      const runnable = this.jobStore.markPlannedSegmentsEncoding();
+      const runnable = this.jobStore.markPlannedSegmentsEncoding(job.limitsSnapshot.maxConcurrentSegments);
       for (const segment of runnable) {
         const request = longMediaSegmentContainerRequest(job, segment, {
           output: LONG_MEDIA_SEGMENT_OUTPUT_HOST,
@@ -644,6 +755,11 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
    * @returns Nothing.
    */
   override async onStop(_params: StopParams): Promise<void> {
+    const snapshot = this.jobStore.report();
+    if (snapshot !== null && (snapshot.phase === "planning" || snapshot.phase === "running") &&
+      snapshot.terminalIntent === null) {
+      await this.recoverInterruptedSegments(snapshot.jobId);
+    }
     const attempt = this.jobStore.latestAttempt();
     if (attempt !== null) {
       this.jobStore.applyAttemptEvent({ type: "stop" }, Date.now());
@@ -657,6 +773,37 @@ export class LongMediaContainer extends Container<LongMediaEnv> {
     }
     this.jobStore.transition({ type: "stopped" }, Date.now());
     await this.setOutboundByHosts({});
+  }
+
+  /**
+   * Reconcile segment writes interrupted by a Container stop.
+   * @param jobId - The live durable job identity.
+   * @returns Nothing after completed objects are measured and unfinished writes are retryable.
+   * @throws {Error} When R2 or durable state cannot be reconciled.
+   */
+  private async recoverInterruptedSegments(jobId: string): Promise<void> {
+    for (const segment of this.jobStore.readSegments()) {
+      if (segment.status !== "encoding" || segment.storageKey === null) continue;
+      const permit = this.jobStore.prepareSegmentWriteRecovery(segment.id);
+      if (permit === null) continue;
+      const stored = await this.env.BUCKET.head(permit.storageKey);
+      if (stored === null) {
+        this.jobStore.applyCurrentSegmentEvent(segment.id, { type: "transient" });
+        continue;
+      }
+      const contentType = await sniffStoredObject(this.env.BUCKET, permit.storageKey);
+      if (!contentType.startsWith(`${permit.mediaKind}/`) || stored.size > permit.maxBytes) {
+        noteFailure("ingest_long_media_segment_recovery_invalid", { jobId, segmentId: segment.id });
+        this.jobStore.applyCurrentSegmentEvent(segment.id, { type: "fatal" });
+        continue;
+      }
+      const measured = {
+        sha256: await hashStoredObject(this.env.BUCKET, permit.storageKey),
+        sizeBytes: stored.size,
+        contentType,
+      };
+      this.jobStore.applyCurrentSegmentEvent(segment.id, { type: "measured", measured });
+    }
   }
 }
 
@@ -797,11 +944,13 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
-   * Move grant-backed planned or paused segments into encoding under the current plan.
+   * Move grant-backed planned or paused segments into encoding up to the job limit.
    * @returns The segments whose output requests may be sent to the Container.
    */
   markPlannedSegmentsEncoding(): LongMediaSegmentSnapshot[] {
-    return this.jobStore.markPlannedSegmentsEncoding();
+    const job = this.jobStore.request();
+    if (job === null) return [];
+    return this.jobStore.markPlannedSegmentsEncoding(job.limitsSnapshot.maxConcurrentSegments);
   }
 
   /**
@@ -904,6 +1053,43 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   }
 
   /**
+   * Cancel this protocol test job without starting a platform Container.
+   * @param jobId - The immutable Durable Object identity from the route.
+   * @returns The latest job state or a marker for cancellation before submit.
+   * @throws {Error} When the job disappears during cancellation or its durable state is missing.
+   */
+  async cancel(jobId: string, deadlineAt: number): Promise<LongMediaJobSnapshot | LongMediaPreSubmitCancellation> {
+    const now = Date.now();
+    const transition = this.jobStore.cancel(jobId, now, deadlineAt);
+    if ("beforeSubmit" in transition && deadlineAt > now) {
+      await this.ctx.storage.put("cancelledBeforeSubmitJobId", jobId);
+      await this.ctx.storage.put("cancelledBeforeSubmitDeadlineAt", deadlineAt);
+      await this.ctx.storage.setAlarm(deadlineAt);
+    }
+    if ("beforeSubmit" in transition) return transition;
+    if (transition.snapshot.phase === "stopping") this.jobStore.transition({ type: "stopped" }, Date.now());
+    const snapshot = this.jobStore.report();
+    if (snapshot === null) throw new Error("The cancelled long-media job is missing its durable state.");
+    return snapshot;
+  }
+
+  /**
+   * Clear the protocol test object's tombstone after its alarm deadline.
+   * @returns Nothing after that marker and its stored alarm key are removed.
+   */
+  override async alarm(): Promise<void> {
+    const jobId = await this.ctx.storage.get<string>("cancelledBeforeSubmitJobId");
+    const deadlineAt = await this.ctx.storage.get<number>("cancelledBeforeSubmitDeadlineAt");
+    if (jobId !== undefined && deadlineAt !== undefined && Date.now() < deadlineAt) {
+      await this.ctx.storage.setAlarm(deadlineAt);
+      return;
+    }
+    if (jobId !== undefined) this.jobStore.expirePreSubmitCancellation(jobId);
+    await this.ctx.storage.delete("cancelledBeforeSubmitJobId");
+    await this.ctx.storage.delete("cancelledBeforeSubmitDeadlineAt");
+  }
+
+  /**
    * Mark a submitted job as ready to probe without starting an image in protocol tests.
    * @returns The state transition created for the probe.
    */
@@ -918,7 +1104,7 @@ export class LongMediaJobTestObject extends DurableObject<LongMediaEnv> {
   startMediaSegments(): LongMediaJobSnapshot | null {
     const transition = this.jobStore.transition({ type: "planAck", hasRunnableSegments: true }, Date.now());
     if (transition === null || transition.snapshot.phase !== "running") return this.jobStore.report();
-    this.jobStore.markPlannedSegmentsEncoding();
+    this.markPlannedSegmentsEncoding();
     return this.jobStore.report();
   }
 }
@@ -998,7 +1184,25 @@ class LongMediaJobStore {
    */
   constructor(ctx: LongMediaState) {
     this.ctx = ctx;
+    this.initialize();
+  }
+
+  /**
+   * Delete one pre-submit cancellation marker after its absolute deadline.
+   * @param jobId - The cancelled job identity whose late submit is no longer possible.
+   * @returns Nothing after its tombstone row is removed.
+   */
+  expirePreSubmitCancellation(jobId: string): void {
+    this.ctx.storage.sql.exec("DELETE FROM long_media_cancelled_before_submit WHERE job_id = ?", jobId);
+  }
+
+  /**
+   * Ensure the Durable Object job tables exist.
+   * @returns Nothing after the schema is ready for protocol requests.
+   */
+  initialize(): void {
     this.ctx.storage.sql.exec(JOB_TABLE);
+    this.ctx.storage.sql.exec(CANCELLED_BEFORE_SUBMIT_TABLE);
     this.ctx.storage.sql.exec(EFFECT_TABLE);
     this.ctx.storage.sql.exec(ATTEMPT_TABLES);
     this.ctx.storage.sql.exec(PROBE_TABLE);
@@ -1023,6 +1227,11 @@ class LongMediaJobStore {
         }
         return { row: held, replayed: true };
       }
+      const cancelled = this.ctx.storage.sql.exec(
+        "SELECT job_id FROM long_media_cancelled_before_submit WHERE job_id = ?",
+        request.jobId,
+      ).toArray()[0];
+      if (cancelled !== undefined) return { row: null, replayed: false, cancelled: true };
       if (request.deadlineAt <= now) return { row: null, replayed: false, expired: true };
 
       const state: LongMediaJobState = {
@@ -1055,8 +1264,40 @@ class LongMediaJobStore {
       return { row: created, replayed: false };
     });
 
-    if (result.row === null) return { kind: result.expired === true ? "expired" : "conflict" };
+    if (result.row === null) {
+      if (result.cancelled === true) return { kind: "cancelled" };
+      return { kind: result.expired === true ? "expired" : "conflict" };
+    }
     return { kind: result.replayed ? "replayed" : "accepted", snapshot: snapshotOf(result.row) };
+  }
+
+  /**
+   * Cancel an existing job or persist a tombstone so a late submit cannot start it.
+   * @param jobId - The immutable job identity.
+   * @param now - The cancellation time in epoch milliseconds.
+   * @returns The job transition or a before-submit cancellation marker.
+   * @throws {Error} When a persisted job disappears during the transition.
+   */
+  cancel(jobId: string, now: number, deadlineAt: number): LongMediaTransitionResult | LongMediaPreSubmitCancellation {
+    const row = this.ctx.storage.sql.exec<LongMediaJobRow>(
+      "SELECT * FROM long_media_jobs WHERE job_id = ?",
+      jobId,
+    ).toArray()[0];
+    if (row !== undefined) {
+      const transition = this.transition({ type: "cancel" }, now);
+      if (transition === null) throw new Error("The long-media job disappeared during cancellation.");
+      return transition;
+    }
+    if (deadlineAt > now) {
+      this.ctx.storage.transactionSync(() => {
+        this.ctx.storage.sql.exec(
+          "INSERT OR IGNORE INTO long_media_cancelled_before_submit (job_id, cancelled_at) VALUES (?, ?)",
+          jobId,
+          now,
+        );
+      });
+    }
+    return { jobId, phase: "cancelled", beforeSubmit: true };
   }
 
   /**
@@ -1356,12 +1597,17 @@ class LongMediaJobStore {
   }
 
   /**
-   * Move grant-backed planned or paused segments into encoding under the current plan.
+   * Move grant-backed planned or paused segments into encoding up to the frozen limit.
+   * @param maxConcurrentSegments - The frozen encoder concurrency ceiling.
    * @returns The segments whose output requests may be sent to the Container.
    */
-  markPlannedSegmentsEncoding(): LongMediaSegmentSnapshot[] {
+  markPlannedSegmentsEncoding(maxConcurrentSegments: number): LongMediaSegmentSnapshot[] {
     const started: LongMediaSegmentSnapshot[] = [];
+    const activeCount = this.readSegments().filter((segment) => segment.status === "encoding").length;
+    let available = Math.max(0, maxConcurrentSegments - activeCount);
+    if (available === 0) return started;
     for (const segment of this.readSegments()) {
+      if (available === 0) break;
       if (segment.storageKey === null || (segment.status !== "planned" && segment.status !== "paused")) continue;
       let current = segment;
       if (current.status === "paused") {
@@ -1373,7 +1619,10 @@ class LongMediaJobStore {
       const result = this.applySegmentEvent(current.id, current.version, { type: "run" });
       if (result.kind !== "accepted") continue;
       const encoding = this.readSegments().find((item) => item.id === segment.id);
-      if (encoding !== undefined && encoding.status === "encoding") started.push(encoding);
+      if (encoding !== undefined && encoding.status === "encoding") {
+        started.push(encoding);
+        available -= 1;
+      }
     }
     return started;
   }
@@ -1455,6 +1704,45 @@ class LongMediaJobStore {
   }
 
   /**
+   * Reclaim one interrupted segment's output authority for durable-state inspection.
+   * @param segmentId - The encoding segment identity.
+   * @returns Its exact permit when the live job still owns the segment.
+   * @throws {Error} When persisted job or segment data is invalid.
+   */
+  prepareSegmentWriteRecovery(segmentId: string): LongMediaSegmentWritePermit | null {
+    return this.ctx.storage.transactionSync(() => {
+      const job = this.ctx.storage.sql.exec<LongMediaJobRow>("SELECT * FROM long_media_jobs LIMIT 1").toArray()[0];
+      const row = this.ctx.storage.sql.exec<LongMediaSegmentRow>(
+        "SELECT * FROM long_media_segments WHERE job_id = ? AND segment_id = ? AND status = 'encoding'",
+        job?.job_id ?? "",
+        segmentId,
+      ).toArray()[0];
+      if (job === undefined || row === undefined || row.storage_key === null) return null;
+      const state = stateOf(job);
+      if ((state.phase !== "planning" && state.phase !== "running") || state.terminalIntent !== null) return null;
+      const descriptor = JSON.parse(row.descriptor_json) as Record<string, unknown>;
+      if (descriptor.mediaKind !== "audio" && descriptor.mediaKind !== "video") {
+        throw new Error("The persisted long media segment has an invalid media kind");
+      }
+      const request = readLongMediaJobRequest(JSON.parse(job.request_json) as unknown);
+      const changed = this.ctx.storage.sql.exec(
+        `UPDATE long_media_write_permits SET status = 'writing'
+         WHERE job_id = ? AND segment_id = ? AND status IN ('pending', 'writing')`,
+        job.job_id,
+        segmentId,
+      );
+      if (changed.rowsWritten !== 1) return null;
+      return {
+        segmentId,
+        storageKey: row.storage_key,
+        expectedVersion: row.version,
+        maxBytes: request.limitsSnapshot.maxSegmentBytes,
+        mediaKind: descriptor.mediaKind,
+      };
+    });
+  }
+
+  /**
    * Compare-and-set one segment event inside a Durable Object transaction.
    * @param segmentId - The durable segment identity.
    * @param expectedVersion - The version the caller observed.
@@ -1507,6 +1795,14 @@ class LongMediaJobStore {
         );
         this.ctx.storage.sql.exec(
           "UPDATE long_media_write_permits SET status = 'written' WHERE job_id = ? AND segment_id = ? AND status = 'writing'",
+          job.job_id,
+          segmentId,
+        );
+      }
+      if (event.type === "transient") {
+        this.ctx.storage.sql.exec(
+          `UPDATE long_media_write_permits SET status = 'pending'
+           WHERE job_id = ? AND segment_id = ? AND status = 'writing'`,
           job.job_id,
           segmentId,
         );

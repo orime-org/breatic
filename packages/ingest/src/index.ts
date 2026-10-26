@@ -42,6 +42,7 @@ import { fromOurBackend } from "@ingest/backend-secret.js";
 import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
   LONG_MEDIA_JOB_PATH,
+  LONG_MEDIA_CANCEL_PATH,
   LONG_MEDIA_PLAN_PATH,
   LONG_MEDIA_PROBE_REPORT_PATH,
   LONG_MEDIA_RUN_PATH,
@@ -49,6 +50,7 @@ import {
   LONG_MEDIA_SEGMENTS_PATH,
   applyLongMediaPlan,
   acknowledgeLongMediaSegmentRegistration,
+  cancelLongMediaJob,
   readLongMediaJob,
   readLongMediaProbeReport,
   readLongMediaSegments,
@@ -1415,6 +1417,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   const longMediaJob = LONG_MEDIA_JOB_PATH.exec(pathname);
   if (request.method === "GET" && longMediaJob) {
     return readLongMediaJob(request, env, longMediaJob[1] ?? "");
+  }
+
+  const longMediaCancel = LONG_MEDIA_CANCEL_PATH.exec(pathname);
+  if (request.method === "POST" && longMediaCancel) {
+    return cancelLongMediaJob(request, env, longMediaCancel[1] ?? "");
   }
 
   const longMediaProbeReport = LONG_MEDIA_PROBE_REPORT_PATH.exec(pathname);

@@ -9,7 +9,7 @@ import { noteFailure } from "@ingest/error-monitoring.js";
 import { buildLongMediaProbeReport } from "@ingest/long-media-probe-report.js";
 import { askedKey } from "@ingest/object-url.js";
 import { serveOneObject } from "@ingest/media-object-route.js";
-import { hashStoredObject, sniffStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
+import { hashStoredObject, sniffStoredObject, SourceReadError, writeStreamedObject } from "@ingest/stored-object.js";
 import type {
   LongMediaContainer,
   LongMediaEnv,
@@ -36,6 +36,9 @@ export const LONG_MEDIA_PLAN_PATH = /^\/long-media\/jobs\/([^/]+)\/plan$/;
 
 /** `/long-media/jobs/{id}/run`. */
 export const LONG_MEDIA_RUN_PATH = /^\/long-media\/jobs\/([^/]+)\/run$/;
+
+/** `/long-media/jobs/{id}/cancel`. */
+export const LONG_MEDIA_CANCEL_PATH = /^\/long-media\/jobs\/([^/]+)\/cancel$/;
 
 /** `/long-media/jobs/{id}/segments/{segmentId}/registered`. */
 export const LONG_MEDIA_SEGMENT_REGISTERED_PATH = /^\/long-media\/jobs\/([^/]+)\/segments\/([^/]+)\/registered$/;
@@ -92,6 +95,7 @@ export async function submitLongMediaJob(request: Request, env: LongMediaRoutesE
     const result = await stub.submit(job);
     if (result.kind === "conflict") return new Response("Long media job id conflict", { status: 409 });
     if (result.kind === "expired") return new Response("Long media job expired", { status: 410 });
+    if (result.kind === "cancelled") return new Response("Long media job was cancelled before submission", { status: 410 });
     try {
       await stub.startProbe();
     } catch (err) {
@@ -231,6 +235,46 @@ export async function runLongMediaSegments(
       : Response.json(snapshot, { status: 202 });
   } catch (err) {
     noteFailure("ingest_long_media_segment_start_failed", { jobId: decodedJobId }, err);
+    throw err;
+  }
+}
+
+/**
+ * Cancel one durable long-media operation and stop any active Container.
+ * @param request - The authenticated backend request.
+ * @param env - The Worker's bindings.
+ * @param jobId - The URL-encoded job identity.
+ * @returns The terminal or stopping state, or a durable marker when cancellation beats submission.
+ */
+export async function cancelLongMediaJob(
+  request: Request,
+  env: LongMediaRoutesEnv,
+  jobId: string,
+): Promise<Response> {
+  if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
+  let deadlineAt: number;
+  try {
+    const body: unknown = await request.json();
+    if (typeof body !== "object" || body === null || Array.isArray(body) ||
+        Object.keys(body).length !== 1 || !("deadlineAt" in body) ||
+        !Number.isSafeInteger(body.deadlineAt) || (body.deadlineAt as number) < 1) {
+      return new Response("Invalid long media cancellation", { status: 400 });
+    }
+    deadlineAt = body.deadlineAt as number;
+  } catch {
+    return new Response("Invalid long media cancellation", { status: 400 });
+  }
+  let decodedJobId: string;
+  try {
+    decodedJobId = decodeURIComponent(jobId);
+  } catch {
+    return new Response("No such job", { status: 404 });
+  }
+  const stub = env.LONG_MEDIA.get(env.LONG_MEDIA.idFromName(decodedJobId));
+  try {
+    return Response.json(await stub.cancel(decodedJobId, deadlineAt));
+  } catch (err) {
+    noteFailure("ingest_long_media_cancel_failed", { jobId: decodedJobId }, err);
     throw err;
   }
 }
@@ -467,6 +511,10 @@ async function storeAuthorizedLongMediaSegment(
     return result.kind === "accepted" ? new Response(null, { status: 200 }) : new Response("Stale output", { status: 409 });
   } catch (err) {
     noteFailure("ingest_long_media_segment_write_failed", { jobId, segmentId: permit.segmentId }, err);
+    if (err instanceof SourceReadError) {
+      const result = await stub.applySegmentEvent(permit.segmentId, permit.expectedVersion, { type: "transient" });
+      return result.kind === "accepted" ? new Response("Retry segment", { status: 503 }) : new Response("Stale output", { status: 409 });
+    }
     await stub.applySegmentEvent(permit.segmentId, permit.expectedVersion, { type: "fatal" }).catch((recordError: unknown) => {
       noteFailure("ingest_long_media_segment_failure_record_failed", { jobId, segmentId: permit.segmentId }, recordError);
     });

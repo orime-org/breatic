@@ -68,6 +68,7 @@ function segmentEvent(event: (typeof events)[number]): LongMediaSegmentEvent {
     case "resume-planned": return { type: "resume", checkpoint: "planned" };
     case "resume-oversize": return { type: "resume", checkpoint: "oversize" };
     case "resume-stored": return { type: "resume", checkpoint: "stored" };
+    case "measured": return { type: "measured", measured: { sha256: "a".repeat(64), sizeBytes: 1, contentType: "audio/mpeg" } };
     default: return { type: event };
   }
 }

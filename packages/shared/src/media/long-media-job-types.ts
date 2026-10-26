@@ -29,6 +29,7 @@ export interface LongMediaJobRequest {
     audioCoreSeconds: number;
     videoCoreSeconds: number;
     maxActiveLeaves: number;
+    maxConcurrentSegments: number;
   };
   deadlineAt: number;
   requestDigest: string;

@@ -14,6 +14,7 @@ const limitsSnapshot = z.object({
   audioCoreSeconds: z.number().int().positive(),
   videoCoreSeconds: z.number().int().positive(),
   maxActiveLeaves: z.number().int().positive(),
+  maxConcurrentSegments: z.number().int().positive(),
 }).strict();
 
 const encodingProfile = z.object({
@@ -87,6 +88,7 @@ export async function computeLongMediaJobRequestDigest(request: LongMediaJobPayl
       audioCoreSeconds: request.limitsSnapshot.audioCoreSeconds,
       videoCoreSeconds: request.limitsSnapshot.videoCoreSeconds,
       maxActiveLeaves: request.limitsSnapshot.maxActiveLeaves,
+      maxConcurrentSegments: request.limitsSnapshot.maxConcurrentSegments,
     },
     deadlineAt: request.deadlineAt,
   };

@@ -29,6 +29,7 @@ const job: LongMediaJobRequest = {
     audioCoreSeconds: 30,
     videoCoreSeconds: 10,
     maxActiveLeaves: 10,
+    maxConcurrentSegments: 1,
   },
   deadlineAt: 20_000,
   requestDigest: "b".repeat(64),

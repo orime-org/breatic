@@ -11,45 +11,19 @@ export interface MediaCoreInterval {
   endUs: string;
 }
 
-/** A core range and the wider source range a decoder may need to read. */
+/** A core range and its exact source range for decoding. */
 export interface MediaDecodeWindow {
-  /** The disjoint interval whose result contributes coverage. */
+  /** The interval whose result contributes coverage. */
   core: MediaCoreInterval;
-  /** The overlapped interval decoded to provide boundary context. */
+  /** The interval read by the decoder. */
   decode: MediaCoreInterval;
 }
 
-/** A selected manifest leaf tied to one independently covered media input. */
-export interface MediaManifestLeaf extends MediaCoreInterval {
-  /** Stable identity of this selected leaf in the manifest revision. */
-  id: string;
-  /** Stable identity of the required source stream or channel. */
-  mediaInputId: string;
-}
-
-/** One immutable ordered manifest snapshot. */
-export interface MediaManifestSnapshot {
-  /** Monotonically increasing snapshot revision. */
-  revision: number;
-  /** The selected leaves in deterministic source order. */
-  leaves: readonly MediaManifestLeaf[];
-}
-
-/** A compare-and-set replacement of one active leaf by complete children. */
-export interface MediaManifestLeafReplacement {
-  /** Snapshot revision the caller planned against. */
-  expectedRevision: number;
-  /** Active leaf whose coverage is being repartitioned. */
-  parentLeafId: string;
-  /** Ordered children that must cover the exact parent interval. */
-  children: readonly MediaManifestLeaf[];
-}
-
-/** One trusted media input and its measured source-time range. */
+/** One trusted source file and its measured timeline. */
 export interface LongMediaInputRange {
-  /** Stable identity of this audio channel or video view. */
+  /** Stable identity of this complete media file. */
   mediaInputId: string;
-  /** Probe-derived stream and channel identity. */
+  /** Probe-derived audio or video file kind. */
   descriptor: MediaInputDescriptor;
   /** The exact source-time range that this input must cover. */
   sourceRange: MediaCoreInterval;
@@ -57,17 +31,15 @@ export interface LongMediaInputRange {
 
 /** Frozen limits for creating a complete media segment plan. */
 export interface LongMediaPlanLimits {
-  /** Maximum source-time core width for audio-only channel inputs. */
+  /** Maximum source-time core width for an audio file. */
   audioCoreSeconds: number;
-  /** Maximum source-time core width for video views, including their audio channel. */
+  /** Maximum source-time core width for a video file. */
   videoCoreSeconds: number;
-  /** Decoder context added on either side of each core. */
-  overlapSeconds: number;
-  /** Maximum active leaves across every supplied media input. */
+  /** Maximum segment count for the source file. */
   maxActiveLeaves: number;
 }
 
-/** One ordered plan leaf with separate coverage and decoder intervals. */
+/** One ordered source-file segment with the interval sent to the decoder. */
 export interface LongMediaPlannedSegment {
   /** Stable identity derived from media input and source-time core. */
   id: string;
@@ -75,91 +47,65 @@ export interface LongMediaPlannedSegment {
   mediaInputId: string;
   /** Probe-derived source streams and channel for this leaf. */
   descriptor: MediaInputDescriptor;
-  /** Disjoint interval counted toward coverage. */
+  /** Source interval covered by this segment. */
   core: MediaCoreInterval;
-  /** Overlapped source interval decoded to provide boundary context. */
+  /** Source interval decoded for this segment. */
   decode: MediaCoreInterval;
 }
 
-/** Measured local output window and its source timeline origins. */
-export interface MediaLocalTimeMapping {
-  /** Source-timeline timestamp corresponding to the output timeline origin. */
-  sourceOriginUs: string;
-  /** Timestamp origin used by the encoded output clip. */
-  outputTimelineOriginUs: string;
-  /** First local output timestamp admitted for event mapping. */
-  outputStartUs: string;
-  /** Exclusive local output timestamp end. */
-  outputEndUs: string;
-  /** Model or transcript event timestamp in the output's local timeline. */
-  localTimeUs: string;
-}
-
 /**
- * Plan contiguous source-time cores for every required media input.
+ * Plan contiguous source-time cores for one complete media file.
  *
- * Each input keeps its own channel identity and coverage range. Audio-only
- * inputs use the audio core limit; video views use the video core limit even
- * when they also carry one isolated audio channel. The leaf limit applies to
- * the complete returned plan, so adding channels cannot multiply capacity.
- * @param inputs - Probe-derived inputs in their required deterministic order.
+ * Audio files use the audio core limit and video files use the video core limit.
+ * Decoded ranges equal their covered ranges, so adjacent segments have no overlap.
+ * @param inputs - The single probe-derived source file.
  * @param limits - The immutable operation processing limits.
  * @returns Ordered leaves whose cores exactly cover each input range.
- * @throws {RangeError} when an input, limit, range, or global leaf budget is invalid.
+ * @throws {RangeError} when the source, limit, range, or segment budget is invalid.
  */
 export function planLongMediaSegments(
   inputs: readonly LongMediaInputRange[],
   limits: LongMediaPlanLimits,
 ): LongMediaPlannedSegment[] {
   if (
-    inputs.length === 0 ||
+    inputs.length !== 1 ||
     !Number.isSafeInteger(limits.audioCoreSeconds) || limits.audioCoreSeconds <= 0 ||
     !Number.isSafeInteger(limits.videoCoreSeconds) || limits.videoCoreSeconds <= 0 ||
-    !Number.isSafeInteger(limits.overlapSeconds) || limits.overlapSeconds < 0 ||
     !Number.isSafeInteger(limits.maxActiveLeaves) || limits.maxActiveLeaves <= 0
   ) {
-    throw new RangeError("Long media segment limits and required inputs must be valid.");
+    throw new RangeError("Long media planning requires one source file and valid limits.");
   }
 
-  const seenInputIds = new Set<string>();
   const segments: LongMediaPlannedSegment[] = [];
-  const overlapUs = BigInt(limits.overlapSeconds) * 1_000_000n;
+  const input = inputs[0]!;
+  if (input.mediaInputId.length === 0) throw new RangeError("A long media source identity must be non-empty.");
+  const parsedDescriptor = MediaInputDescriptorSchema.safeParse(input.descriptor);
+  if (!parsedDescriptor.success) throw new RangeError("The long media source descriptor is invalid.");
+  const sourceStartUs = integerUs(input.sourceRange.startUs);
+  const sourceEndUs = integerUs(input.sourceRange.endUs);
+  if (sourceEndUs <= sourceStartUs) throw new RangeError("A long media source range must have positive duration.");
 
-  for (const input of inputs) {
-    if (input.mediaInputId.length === 0 || seenInputIds.has(input.mediaInputId)) {
-      throw new RangeError("Long media input identities must be non-empty and unique.");
+  const coreSeconds = parsedDescriptor.data.mediaKind === "audio"
+    ? limits.audioCoreSeconds
+    : limits.videoCoreSeconds;
+  const coreWidthUs = BigInt(coreSeconds) * 1_000_000n;
+  let coreStartUs = sourceStartUs;
+
+  while (coreStartUs < sourceEndUs) {
+    if (segments.length >= limits.maxActiveLeaves) {
+      throw new RangeError("The long media plan exceeds the source segment limit.");
     }
-    seenInputIds.add(input.mediaInputId);
-
-    const parsedDescriptor = MediaInputDescriptorSchema.safeParse(input.descriptor);
-    if (!parsedDescriptor.success) throw new RangeError("The long media input descriptor is invalid.");
-
-    const sourceStartUs = integerUs(input.sourceRange.startUs);
-    const sourceEndUs = integerUs(input.sourceRange.endUs);
-    if (sourceEndUs <= sourceStartUs) throw new RangeError("A long media input range must have positive duration.");
-
-    const coreSeconds = parsedDescriptor.data.inputKind === "audio_channel"
-      ? limits.audioCoreSeconds
-      : limits.videoCoreSeconds;
-    const coreWidthUs = BigInt(coreSeconds) * 1_000_000n;
-    let coreStartUs = sourceStartUs;
-
-    while (coreStartUs < sourceEndUs) {
-      if (segments.length >= limits.maxActiveLeaves) {
-        throw new RangeError("The long media plan exceeds the operation active-leaf limit.");
-      }
-      const coreEndUs = coreStartUs + coreWidthUs < sourceEndUs ? coreStartUs + coreWidthUs : sourceEndUs;
-      const core = { startUs: String(coreStartUs), endUs: String(coreEndUs) };
-      const window = expandMediaDecodeWindow(core, input.sourceRange, String(overlapUs));
-      segments.push({
-        id: `${input.mediaInputId}:${core.startUs}:${core.endUs}`,
-        mediaInputId: input.mediaInputId,
-        descriptor: parsedDescriptor.data,
-        core: window.core,
-        decode: window.decode,
-      });
-      coreStartUs = coreEndUs;
-    }
+    const coreEndUs = coreStartUs + coreWidthUs < sourceEndUs ? coreStartUs + coreWidthUs : sourceEndUs;
+    const core = { startUs: String(coreStartUs), endUs: String(coreEndUs) };
+    const window = expandMediaDecodeWindow(core, input.sourceRange, "0");
+    segments.push({
+      id: `${input.mediaInputId}:${core.startUs}:${core.endUs}`,
+      mediaInputId: input.mediaInputId,
+      descriptor: parsedDescriptor.data,
+      core: window.core,
+      decode: window.decode,
+    });
+    coreStartUs = coreEndUs;
   }
 
   return segments;
@@ -216,77 +162,6 @@ export function expandMediaDecodeWindow(
       endUs: String(coreEndUs + overlap < sourceEndUs ? coreEndUs + overlap : sourceEndUs),
     },
   };
-}
-
-/**
- * Build a successor manifest revision by replacing one leaf with full-coverage children.
- * @param current - The immutable current snapshot.
- * @param replacement - The expected revision, parent and ordered child leaves.
- * @returns A new snapshot; the current snapshot and its leaves remain unchanged.
- * @throws {RangeError} when the revision is stale or children do not exactly cover the parent input and interval.
- */
-export function replaceMediaManifestLeaf(
-  current: MediaManifestSnapshot,
-  replacement: MediaManifestLeafReplacement,
-): MediaManifestSnapshot {
-  if (!Number.isSafeInteger(current.revision) || current.revision < 0 || replacement.expectedRevision !== current.revision) {
-    throw new RangeError("The media manifest revision changed before replacement.");
-  }
-  const parentIndex = current.leaves.findIndex((leaf) => leaf.id === replacement.parentLeafId);
-  const parent = current.leaves[parentIndex];
-  if (parent === undefined || replacement.children.length < 2) {
-    throw new RangeError("A manifest replacement needs an active parent and at least two children.");
-  }
-
-  const parentStartUs = integerUs(parent.startUs);
-  const parentEndUs = integerUs(parent.endUs);
-  let previousEndUs = parentStartUs;
-  for (const child of replacement.children) {
-    const childStartUs = integerUs(child.startUs);
-    const childEndUs = integerUs(child.endUs);
-    if (
-      child.mediaInputId !== parent.mediaInputId ||
-      childStartUs !== previousEndUs ||
-      childEndUs <= childStartUs
-    ) {
-      throw new RangeError("Manifest children must be ordered, contiguous, and belong to the parent's media input.");
-    }
-    previousEndUs = childEndUs;
-  }
-  if (previousEndUs !== parentEndUs) {
-    throw new RangeError("Manifest children must cover the parent's complete core interval.");
-  }
-
-  const leaves = [
-    ...current.leaves.slice(0, parentIndex),
-    ...replacement.children,
-    ...current.leaves.slice(parentIndex + 1),
-  ];
-  if (new Set(leaves.map((leaf) => leaf.id)).size !== leaves.length) {
-    throw new RangeError("Manifest leaf ids must be unique within a revision.");
-  }
-  if (current.revision === Number.MAX_SAFE_INTEGER) {
-    throw new RangeError("The media manifest revision cannot be incremented safely.");
-  }
-  return { revision: current.revision + 1, leaves };
-}
-
-/**
- * Map an output-local timestamp onto the measured original source timeline.
- * @param mapping - Source/output origins and the measured output bounds.
- * @returns The exact source timestamp in decimal microseconds.
- * @throws {RangeError} when timestamps are malformed or the local event is outside the measured output window.
- */
-export function mapMediaLocalTimeToSource(mapping: MediaLocalTimeMapping): string {
-  const sourceOriginUs = integerUs(mapping.sourceOriginUs);
-  const outputTimelineOriginUs = integerUs(mapping.outputTimelineOriginUs);
-  const outputStartUs = integerUs(mapping.outputStartUs);
-  const outputEndUs = integerUs(mapping.outputEndUs);
-  const localTimeUs = integerUs(mapping.localTimeUs);
-  if (outputEndUs <= outputStartUs || localTimeUs < outputStartUs || localTimeUs >= outputEndUs) {
-    throw new RangeError("A media event timestamp must fall inside its measured output window.");
-  }
-  return String(sourceOriginUs + localTimeUs - outputTimelineOriginUs);
 }
 
 /**

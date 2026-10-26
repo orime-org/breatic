@@ -23,8 +23,16 @@ export interface LongMediaSegmentPlan {
 
 /** An already validated segment lifecycle event. */
 export type LongMediaSegmentEvent =
-  | { type: "run" | "oversize" | "measured" | "registered" | "split" | "transient" | "fatal" | "stop" | "adopt" | "length-repartition" }
+  | { type: "run" | "oversize" | "registered" | "split" | "transient" | "fatal" | "stop" | "adopt" | "length-repartition" }
+  | { type: "measured"; measured: LongMediaSegmentMeasurement }
   | { type: "resume"; checkpoint: "planned" | "oversize" | "stored" };
+
+/** Facts measured from the bytes written to the authorized R2 object. */
+export interface LongMediaSegmentMeasurement {
+  sha256: string;
+  sizeBytes: number;
+  contentType: string;
+}
 
 /** Reduce one segment phase after its event evidence has been checked. */
 export function transitionLongMediaSegment(

@@ -36,7 +36,7 @@ const grant = z.object({
 export const LongMediaPlanRequestSchema = z.object({
   expectedVersion: z.number().int().nonnegative().safe(),
   mutationId: z.string().min(1),
-  requiredMediaInputs: z.array(LongMediaInputSchema).min(1),
+  requiredMediaInputs: z.array(LongMediaInputSchema).length(1),
   requiredMediaInputsDigest: sha256,
   mediaInputId: z.string().min(1),
   parentId: z.string().min(1).nullable(),
@@ -85,7 +85,7 @@ export type LongMediaPlanRequest = z.infer<typeof LongMediaPlanRequestSchema>;
  * Compute the stable identity of the complete required input set for one source.
  * @param sourceFingerprint - The immutable source content hash.
  * @param profileVersion - The frozen channel-preserving conversion profile.
- * @param requiredMediaInputs - Probe-derived inputs in their fixed probe order.
+ * @param requiredMediaInputs - The one probe-derived complete source-file input.
  * @returns A lowercase SHA-256 digest.
  * @throws {z.ZodError} When the input list or its identities are invalid.
  * @throws {DOMException} When the runtime cannot compute SHA-256.
@@ -95,7 +95,7 @@ export async function computeLongMediaInputsDigest(
   profileVersion: string,
   requiredMediaInputs: LongMediaPlanRequest["requiredMediaInputs"],
 ): Promise<string> {
-  const parsedInputs = z.array(LongMediaInputSchema).min(1).parse(requiredMediaInputs);
+  const parsedInputs = z.array(LongMediaInputSchema).length(1).parse(requiredMediaInputs);
   const canonical = {
     version: 1,
     sourceFingerprint: sha256.parse(sourceFingerprint).toLowerCase(),

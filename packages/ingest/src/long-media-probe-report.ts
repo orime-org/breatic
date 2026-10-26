@@ -2,20 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { readLongMediaProbeReport, type LongMediaProbeReport } from "@shared/media/long-media-probe.js";
-import type { MediaInputDescriptor } from "@shared/media/long-media-schema.js";
-
 import { realVideoStream } from "@ingest/media-metadata.js";
 import { readProbeOutput } from "@ingest/probe-command.js";
 
 interface RawStream {
   index?: number;
   codec_type?: string;
-  codec_name?: string;
-  width?: number;
-  height?: number;
-  channels?: number;
-  channel_layout?: string;
-  sample_rate?: string;
   start_pts?: string | number;
   duration_ts?: string | number;
   time_base?: string;
@@ -24,16 +16,15 @@ interface RawStream {
 interface StreamTiming {
   startUs: string;
   endUs: string;
-  timeBase: { numerator: string; denominator: string };
 }
 
 /**
- * Convert measured ffprobe facts into a validated long-media report.
+ * Convert measured ffprobe facts into one complete source-file report.
  * @param stdout - The JSON output from ffprobe.
  * @param sourceFingerprint - The hash measured for the immutable R2 source.
  * @param profileVersion - The frozen media conversion profile version.
- * @returns A strict report with one required input per audio channel.
- * @throws {Error} When stream timing or media facts are incomplete or invalid.
+ * @returns A report with one source timeline for the complete file.
+ * @throws {Error} When the source media or stream timing facts are incomplete.
  */
 export function buildLongMediaProbeReport(
   stdout: string,
@@ -47,92 +38,50 @@ export function buildLongMediaProbeReport(
   } catch {
     throw new Error("The long media ffprobe output is invalid");
   }
+
   const probedStreams = raw.streams ?? [];
   const selectedVideo = realVideoStream(readProbeOutput(stdout));
-  type ProbeStreamFact = LongMediaProbeReport["streams"][number];
-  const streams: ProbeStreamFact[] = probedStreams.flatMap((item): ProbeStreamFact[] => {
-    if (item.codec_type !== "audio" && item.codec_type !== "video") return [];
-    if (item.index === undefined || !Number.isSafeInteger(item.index) || item.index < 0) {
+  const selectedVideoRaw = selectedVideo === undefined
+    ? undefined
+    : probedStreams.find((stream) => stream.index === selectedVideo.index && stream.codec_type === "video");
+  const sourceStreams = [
+    ...probedStreams.filter((stream) => stream.codec_type === "audio"),
+    ...(selectedVideoRaw === undefined ? [] : [selectedVideoRaw]),
+  ];
+  if (sourceStreams.length === 0) throw new Error("The long media source has no audio or video stream");
+
+  const streams: LongMediaProbeReport["streams"] = sourceStreams.map((stream) => {
+    if (stream.index === undefined || !Number.isSafeInteger(stream.index) || stream.index < 0) {
       throw new Error("The long media stream index is missing");
     }
-    const timing = streamTiming(item);
-    if (item.codec_name === undefined || item.codec_name.length === 0) {
-      throw new Error("The long media stream codec is missing");
+    if (stream.codec_type !== "audio" && stream.codec_type !== "video") {
+      throw new Error("The long media stream kind is invalid");
     }
-    if (item.codec_type === "audio") {
-      const sampleRate = Number(item.sample_rate);
-      if (item.channels === undefined || item.channels < 1 || !Number.isSafeInteger(sampleRate) || sampleRate < 1) {
-        throw new Error("The long media audio channel count or sample rate is missing");
-      }
-      return [{
-        index: item.index,
-        kind: "audio",
-        codec: item.codec_name,
-        channels: item.channels,
-        channelLayout: item.channel_layout ?? "unknown",
-        channelMembers: Array.from({ length: item.channels }, (_unused, channelIndex) => ({ channelIndex, member: "unknown" })),
-        sampleRate,
-        ...timing,
-      }];
-    }
-    if (item.width === undefined || item.width < 1 || item.height === undefined || item.height < 1) {
-      throw new Error("The long media video dimensions are missing");
-    }
-    return [{
-      index: item.index,
-      kind: "video",
-      codec: item.codec_name,
-      width: item.width,
-      height: item.height,
-      ...timing,
-    }];
+    return { index: stream.index, kind: stream.codec_type, ...streamTiming(stream) };
   });
-  const videoStreamIndex = selectedVideo?.index ?? null;
-  const audioStreams = streams.filter((item) => item.kind === "audio");
-  const mediaInputs: LongMediaProbeReport["mediaInputs"] = audioStreams.flatMap((audio): LongMediaProbeReport["mediaInputs"] => {
-    const audioRange = { startUs: audio.startUs, endUs: audio.endUs };
-    return Array.from({ length: audio.channels }, (_unused, audioChannelIndex) => {
-      const descriptor: MediaInputDescriptor = videoStreamIndex === null
-        ? { inputKind: "audio_channel", audioStreamIndex: audio.index, audioChannelIndex }
-        : { inputKind: "video_channel", videoStreamIndex, audioStreamIndex: audio.index, audioChannelIndex };
-      const mediaInputId = JSON.stringify({ sourceFingerprint, descriptor, profileVersion });
-      const video = streams.find((item) => item.kind === "video" && item.index === videoStreamIndex);
-      return video?.kind === "video"
-        ? {
-            mediaInputId,
-            descriptor,
-            sourceRange: rangeEnvelope({ startUs: video.startUs, endUs: video.endUs }, audioRange),
-            videoRange: { startUs: video.startUs, endUs: video.endUs },
-            audioRange,
-          }
-        : { mediaInputId, descriptor, sourceRange: audioRange, audioRange };
-    });
-  });
-  if (videoStreamIndex !== null && audioStreams.length === 0) {
-    const video = streams.find((item) => item.kind === "video" && item.index === videoStreamIndex);
-    if (video?.kind === "video") {
-      const descriptor = { inputKind: "video_silent" as const, videoStreamIndex };
-      mediaInputs.push({
-        mediaInputId: JSON.stringify({ sourceFingerprint, descriptor, profileVersion }),
-        descriptor,
-        sourceRange: { startUs: video.startUs, endUs: video.endUs },
-        videoRange: { startUs: video.startUs, endUs: video.endUs },
-      });
-    }
-  }
+  const sourceRange = sourceTimeEnvelope(streams);
+  const descriptor = {
+    inputKind: "source_file" as const,
+    mediaKind: selectedVideo === undefined ? "audio" as const : "video" as const,
+  };
+
   return readLongMediaProbeReport({
     version: 1,
     sourceFingerprint,
-    selectedVideoStreamIndex: videoStreamIndex,
+    selectedVideoStreamIndex: selectedVideo?.index ?? null,
     streams,
-    mediaInputs,
+    mediaInputs: [{
+      mediaInputId: JSON.stringify({ sourceFingerprint, descriptor, profileVersion }),
+      descriptor,
+      sourceRange,
+    }],
   });
 }
 
 /**
  * Convert exact stream PTS facts to integer microseconds.
  * @param raw - One ffprobe stream.
- * @returns Its measured start, end and source time base.
+ * @returns Its measured start and end on the source timeline.
  * @throws {Error} When PTS, duration or time base is unavailable.
  */
 function streamTiming(raw: RawStream): StreamTiming {
@@ -151,7 +100,6 @@ function streamTiming(raw: RawStream): StreamTiming {
   return {
     startUs: ticksToMicroseconds(BigInt(startPts), numerator, denominator),
     endUs: ticksToMicroseconds(BigInt(startPts) + BigInt(durationTicks), numerator, denominator),
-    timeBase: { numerator: parts[0]!, denominator: parts[1]! },
   };
 }
 
@@ -172,6 +120,26 @@ function exactIntegerText(value: string | number | undefined, signed: boolean): 
 }
 
 /**
+ * Find the one time range spanning the complete source file.
+ * @param streams - Audio streams and the selected video stream.
+ * @returns The earliest source start and latest source end.
+ * @throws {RangeError} When the stream list is empty or its ranges are invalid.
+ */
+function sourceTimeEnvelope(streams: readonly LongMediaProbeReport["streams"][number][]): { startUs: string; endUs: string } {
+  const first = streams[0];
+  if (first === undefined) throw new RangeError("A long media source needs at least one stream.");
+  let startUs = BigInt(first.startUs);
+  let endUs = BigInt(first.endUs);
+  for (const stream of streams.slice(1)) {
+    const streamStartUs = BigInt(stream.startUs);
+    const streamEndUs = BigInt(stream.endUs);
+    if (streamStartUs < startUs) startUs = streamStartUs;
+    if (streamEndUs > endUs) endUs = streamEndUs;
+  }
+  return { startUs: String(startUs), endUs: String(endUs) };
+}
+
+/**
  * Convert PTS ticks to the nearest integer microsecond.
  * @param ticks - The PTS value in the stream time base.
  * @param numerator - The time base numerator.
@@ -183,20 +151,4 @@ function ticksToMicroseconds(ticks: bigint, numerator: bigint, denominator: bigi
   const magnitude = scaled < 0n ? -scaled : scaled;
   const rounded = (magnitude + denominator / 2n) / denominator;
   return String(scaled < 0n ? -rounded : rounded);
-}
-
-/**
- * Find the time envelope of video and audio ranges.
- * @param video - The selected video stream range.
- * @param audio - One audio channel's stream range.
- * @returns The minimum start and maximum end.
- */
-function rangeEnvelope(
-  video: { startUs: string; endUs: string },
-  audio: { startUs: string; endUs: string },
-): { startUs: string; endUs: string } {
-  return {
-    startUs: BigInt(video.startUs) < BigInt(audio.startUs) ? video.startUs : audio.startUs,
-    endUs: BigInt(video.endUs) > BigInt(audio.endUs) ? video.endUs : audio.endUs,
-  };
 }

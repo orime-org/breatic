@@ -13,6 +13,7 @@
  */
 
 import type { ChatSpaceContext } from "@breatic/shared";
+import { canonicalMediaSourceFor } from "@server/agent/canonical-media-source.js";
 import {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
@@ -34,6 +35,8 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
  * @param turn - What this turn's project lends its tools.
  * @param turn.saveToStorage - How a found picture is stored for this project and reader.
  * @param turn.studioId - The studio whose material a proposal may name.
+ * @param turn.projectId - The project owning the long-media operation, when supplied.
+ * @param turn.actorUserId - The user who owns the long-media operation, when supplied.
  * @param turn.openDocument - The document the reader has open, which a
  *   document proposal goes to, or null when none can be read.
  * @param turn.records - The user's records this turn may read (inner#1469).
@@ -43,11 +46,27 @@ type UsageRecorder = Parameters<typeof usageContextFor>[1];
 export function turnToolsContext(
   tools: Readonly<Record<string, unknown>>,
   usage: UsageRecorder,
-  turn: { saveToStorage: SaveToStorage; studioId: string; openDocument: OpenDocument | null; records: ProjectRecords },
+  turn: {
+    saveToStorage: SaveToStorage;
+    studioId: string;
+    projectId?: string;
+    actorUserId?: string;
+    openDocument: OpenDocument | null;
+    records: ProjectRecords;
+  },
 ): Record<string, Record<string, unknown>> {
   const context: Record<string, Record<string, unknown>> = { ...usageContextFor(tools, usage) };
   if (context[SAVE_IMAGE]) context[SAVE_IMAGE] = { ...context[SAVE_IMAGE], saveToStorage: turn.saveToStorage };
-  if (context[UNDERSTAND_MEDIA]) context[UNDERSTAND_MEDIA] = { ...context[UNDERSTAND_MEDIA], saveToStorage: turn.saveToStorage };
+  if (context[UNDERSTAND_MEDIA]) {
+    context[UNDERSTAND_MEDIA] = {
+      ...context[UNDERSTAND_MEDIA],
+      saveToStorage: turn.saveToStorage,
+      studioId: turn.studioId,
+      ...(turn.projectId ? { projectId: turn.projectId } : {}),
+      ...(turn.actorUserId ? { actorUserId: turn.actorUserId } : {}),
+      resolveCanonicalMediaSource: (url: string) => canonicalMediaSourceFor(url, turn.studioId),
+    };
+  }
   if (context[PROPOSE_CANVAS_ACTION]) {
     context[PROPOSE_CANVAS_ACTION] = { ...context[PROPOSE_CANVAS_ACTION], studioId: turn.studioId };
   }

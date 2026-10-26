@@ -18,9 +18,47 @@ import {
   previewArgs,
   readProbeOutput,
   peaksArgs,
+  longMediaSegmentArgs,
 } from "@ingest/probe-command.js";
 
 const URL_FOR_KEY = "http://r2.local/video/2026-09-10/1_clip.mp4";
+const ENCODING_PROFILE = {
+  audioCodec: "libmp3lame",
+  audioBitrate: "128k",
+  videoCodec: "libx264",
+  videoCrf: 23,
+  videoAudioCodec: "aac",
+  videoAudioBitrate: "128k",
+};
+
+describe("what FFmpeg is asked to encode for long media", () => {
+  it("cuts an audio segment on the absolute source timeline and encodes its audio streams together", () => {
+    const args = longMediaSegmentArgs(URL_FOR_KEY, "audio", { startUs: "1250000", endUs: "3012500" }, ENCODING_PROFILE);
+
+    expect(args.slice(args.indexOf("-seek_timestamp"), args.indexOf("-i"))).toEqual([
+      "-seek_timestamp", "1", "-ss", "1.250000",
+    ]);
+    expect(args.slice(args.indexOf("-t"), args.indexOf("-map"))).toEqual(["-t", "1.762500"]);
+    expect(args).toContain("0:a?");
+    expect(args).toContain("libmp3lame");
+    expect(args).toContain("128k");
+    expect(args).toContain("pipe:1");
+    expect(args).not.toContain("0:a:0");
+  });
+
+  it("cuts a video segment with its audio on the same source timeline", () => {
+    const args = longMediaSegmentArgs(URL_FOR_KEY, "video", { startUs: "-500000", endUs: "59500000" }, ENCODING_PROFILE);
+
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual(["-ss", "-0.500000"]);
+    expect(args.slice(args.indexOf("-t"), args.indexOf("-map"))).toEqual(["-t", "60.000000"]);
+    expect(args.filter((value) => value === "-map")).toHaveLength(2);
+    expect(args).toContain("0:v?");
+    expect(args).toContain("0:a?");
+    expect(args).toContain("libx264");
+    expect(args).toContain("23");
+    expect(args).toContain("+frag_keyframe+empty_moov");
+  });
+});
 
 describe("what ffprobe is asked", () => {
   it("asks for the stream fields and the format duration in one call", () => {
@@ -199,27 +237,19 @@ describe("reading ffprobe's answer", () => {
         },
       ],
     });
-    const report = buildLongMediaProbeReport(probeOutput, "a".repeat(64), "channel-v1");
-    const replay = buildLongMediaProbeReport(probeOutput, "a".repeat(64), "channel-v1");
+    const report = buildLongMediaProbeReport(probeOutput, "a".repeat(64), "source-file-v1");
+    const replay = buildLongMediaProbeReport(probeOutput, "a".repeat(64), "source-file-v1");
 
     expect(report).toMatchObject({
       version: 1,
       sourceFingerprint: "a".repeat(64),
       selectedVideoStreamIndex: 0,
-      mediaInputs: [
-        {
-          descriptor: { inputKind: "video_channel", videoStreamIndex: 0, audioStreamIndex: 1, audioChannelIndex: 0 },
-          videoRange: { startUs: "0", endUs: "12000000" },
-          audioRange: { startUs: "2000000", endUs: "8000000" },
-          sourceRange: { startUs: "0", endUs: "12000000" },
-        },
-        {
-          descriptor: { inputKind: "video_channel", videoStreamIndex: 0, audioStreamIndex: 1, audioChannelIndex: 1 },
-        },
-      ],
+      mediaInputs: [{
+        descriptor: { inputKind: "source_file", mediaKind: "video" },
+        sourceRange: { startUs: "0", endUs: "12000000" },
+      }],
     });
     expect(report.mediaInputs.map((input) => input.mediaInputId)).toEqual(replay.mediaInputs.map((input) => input.mediaInputId));
-    expect(report.mediaInputs[0]?.mediaInputId).not.toBe(report.mediaInputs[1]?.mediaInputId);
   });
 
   it("refuses stream times that lack PTS or duration ticks", async () => {
@@ -237,7 +267,7 @@ describe("reading ffprobe's answer", () => {
         duration_ts: "N/A",
         time_base: "1/48000",
       }],
-    }), "b".repeat(64), "channel-v1")).toThrow(/stream time is not measured/i);
+    }), "b".repeat(64), "source-file-v1")).toThrow(/stream time is not measured/i);
   });
 
   it("refuses numeric PTS values that JSON cannot represent without precision loss", async () => {
@@ -254,7 +284,7 @@ describe("reading ffprobe's answer", () => {
         duration_ts: 1,
         time_base: "1/48000",
       }],
-    }), "c".repeat(64), "channel-v1")).toThrow(/precision/i);
+    }), "c".repeat(64), "source-file-v1")).toThrow(/precision/i);
   });
 
   it("normalises the streams and the duration", () => {

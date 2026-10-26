@@ -3,15 +3,23 @@
 
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import postgres from "postgres";
-import { db, initCore, users } from "@breatic/core";
+import {
+  db,
+  initCore,
+  mediaUnderstandingAttempts,
+  mediaUnderstandingOperations,
+  mediaUnderstandingSteps,
+  users,
+} from "@breatic/core";
 import {
   applyUnderstandDispatchEvent,
   applyUnderstandOperationEvent,
   claimUnderstandOperationLease,
   getUnderstandOperation,
   listDueUnderstandDispatches,
+  openLongMediaBatchOperation,
   openUnderstandOperation,
   releaseUnderstandOperationLease,
   renewUnderstandOperationLease,
@@ -143,6 +151,241 @@ describe("long-media persistence migration", () => {
     });
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.revision).toBe(3);
+  });
+
+  it("atomically accepts a completed batch answer and rejects changed batch inputs", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-checkpoint-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const opened = await openLongMediaBatchOperation({
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn",
+      originKey: `turn:${randomUUID()}`,
+      userActionKey: "batch-checkpoint",
+      source: {
+        key: `test/${randomUUID()}.mp3`,
+        sha256: "a".repeat(64),
+        sizeBytes: 1_000,
+        mimeType: "audio/mpeg",
+      },
+      question: "Describe the recording.",
+      model: "test-model",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+    }, 60_000);
+    const inputDigest = "sha256:batch-input";
+    const batchKey = "0:0:60000000";
+    const interval = { startUs: "0", endUs: "60000000" };
+
+    const attempt = await opened.checkpoint.begin(batchKey, inputDigest, interval);
+    expect(attempt.kind).toBe("prepared");
+    if (attempt.kind !== "prepared") throw new Error("The first batch access must reserve its model request.");
+    await opened.checkpoint.markSending(batchKey, inputDigest, attempt.attemptId);
+    await opened.checkpoint.saveAttempt(batchKey, inputDigest, attempt.attemptId, {
+      text: "A person says hello.",
+      kind: "audio",
+      kinds: ["audio", "audio"],
+    });
+    await expect(opened.checkpoint.begin(batchKey, "sha256:changed-input", interval))
+      .rejects.toThrow("already bound to different request inputs");
+    await opened.release();
+  });
+
+  it("reuses durable batch results across operation retries and completed operation replay", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-retry-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const input = {
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn" as const,
+      originKey: `turn:${randomUUID()}`,
+      userActionKey: "stable-tool-call",
+      source: {
+        key: `test/${randomUUID()}.mp3`,
+        sha256: "a".repeat(64),
+        sizeBytes: 1_000,
+        mimeType: "audio/mpeg",
+      },
+      question: "Describe the recording.",
+      model: "test-model",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+    const digest = "b".repeat(64);
+    const batchKey = "0:0:60000000";
+    const interval = { startUs: "0", endUs: "60000000" };
+    const first = await openLongMediaBatchOperation(input, 60_000);
+    expect((await listDueUnderstandDispatches(50)).map(({ operationId }) => operationId))
+      .not.toContain(first.operationId);
+    const attempt = await first.checkpoint.begin(batchKey, digest, interval);
+    expect(attempt.kind).toBe("prepared");
+    if (attempt.kind !== "prepared") throw new Error("The first batch access must reserve its model request.");
+    await first.checkpoint.markSending(batchKey, digest, attempt.attemptId);
+    await first.checkpoint.saveAttempt(batchKey, digest, attempt.attemptId, {
+      text: "A person says hello.",
+      kind: "audio",
+      kinds: ["audio", "audio"],
+    });
+    expect(await first.checkpoint.begin(batchKey, digest, interval)).toMatchObject({ kind: "ready" });
+    await first.release();
+
+    const retry = await openLongMediaBatchOperation(input, 60_000);
+    expect(await retry.checkpoint.begin(batchKey, digest, interval)).toMatchObject({
+      kind: "ready",
+      answer: { text: "A person says hello.", kind: "audio", kinds: ["audio", "audio"] },
+    });
+    await retry.complete();
+    await retry.release();
+
+    const replay = await openLongMediaBatchOperation(input, 60_000);
+    expect(await replay.checkpoint.begin(batchKey, digest, interval)).toMatchObject({ kind: "ready" });
+    await replay.release();
+  });
+
+  it("blocks a recovered sending attempt and fences its late response", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-unknown-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const input = {
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn" as const,
+      originKey: `turn:${randomUUID()}`,
+      userActionKey: "stable-tool-call",
+      source: {
+        key: `test/${randomUUID()}.mp3`,
+        sha256: "c".repeat(64),
+        sizeBytes: 1_000,
+        mimeType: "audio/mpeg",
+      },
+      question: "Describe the recording.",
+      model: "test-model",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+    const digest = "d".repeat(64);
+    const batchKey = "0:0:60000000";
+    const interval = { startUs: "0", endUs: "60000000" };
+    const first = await openLongMediaBatchOperation(input, 60_000);
+    const attempt = await first.checkpoint.begin(batchKey, digest, interval);
+    expect(attempt.kind).toBe("prepared");
+    if (attempt.kind !== "prepared") throw new Error("The first batch access must reserve its model request.");
+    await first.checkpoint.markSending(batchKey, digest, attempt.attemptId);
+    await first.release();
+
+    const recovered = await openLongMediaBatchOperation(input, 60_000);
+    expect(await recovered.checkpoint.begin(batchKey, digest, interval)).toEqual({ kind: "unknown" });
+    expect((await getUnderstandOperation(recovered.operationId))?.status).toBe("blocked");
+    expect((await listDueUnderstandDispatches(50)).map(({ operationId }) => operationId))
+      .not.toContain(recovered.operationId);
+    const persistedAttempt = await db.select().from(mediaUnderstandingAttempts)
+      .where(eq(mediaUnderstandingAttempts.id, attempt.attemptId)).limit(1);
+    const persistedStep = await db.select().from(mediaUnderstandingSteps)
+      .where(eq(mediaUnderstandingSteps.activeAttemptId, attempt.attemptId)).limit(1);
+    expect(persistedAttempt[0]?.requestState).toBe("unknown");
+    expect(persistedStep[0]?.status).toBe("failed");
+    await expect(first.checkpoint.saveAttempt(batchKey, digest, attempt.attemptId, {
+      text: "A late model answer.",
+      kind: "audio",
+      kinds: ["audio"],
+    })).rejects.toThrow("lease changed");
+    await recovered.release();
+  });
+
+  it.each([
+    { attemptState: "sending", expectedAttemptState: "unknown", markSending: true },
+    { attemptState: "prepared", expectedAttemptState: "rejected", markSending: false },
+  ] as const)("closes a $attemptState attempt when the operation deadline expires", async ({
+    expectedAttemptState,
+    markSending,
+  }) => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-deadline-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const input = {
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn" as const,
+      originKey: `turn:${randomUUID()}`,
+      userActionKey: "stable-tool-call",
+      source: {
+        key: `test/${randomUUID()}.mp3`,
+        sha256: "1".repeat(64),
+        sizeBytes: 1_000,
+        mimeType: "audio/mpeg",
+      },
+      question: "Describe the recording.",
+      model: "test-model",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+    const digest = "2".repeat(64);
+    const batchKey = "0:0:60000000";
+    const interval = { startUs: "0", endUs: "60000000" };
+    const first = await openLongMediaBatchOperation(input, 60_000);
+    const attempt = await first.checkpoint.begin(batchKey, digest, interval);
+    expect(attempt.kind).toBe("prepared");
+    if (attempt.kind !== "prepared") throw new Error("The first batch access must reserve its model request.");
+    if (markSending) await first.checkpoint.markSending(batchKey, digest, attempt.attemptId);
+    await first.release();
+    await db.update(mediaUnderstandingOperations).set({ deadlineAt: new Date("2000-01-01T00:00:00.000Z") })
+      .where(eq(mediaUnderstandingOperations.id, first.operationId));
+
+    await expect(openLongMediaBatchOperation(input, 60_000)).rejects.toThrow("expired");
+
+    const operation = await getUnderstandOperation(first.operationId);
+    const persistedAttempt = await db.select().from(mediaUnderstandingAttempts)
+      .where(eq(mediaUnderstandingAttempts.id, attempt.attemptId)).limit(1);
+    const persistedStep = await db.select().from(mediaUnderstandingSteps)
+      .where(eq(mediaUnderstandingSteps.activeAttemptId, attempt.attemptId)).limit(1);
+    expect(operation?.status).toBe("expired");
+    expect(persistedAttempt[0]?.requestState).toBe(expectedAttemptState);
+    expect(persistedStep[0]?.status).toBe("failed");
+    if (markSending) {
+      await expect(first.checkpoint.saveAttempt(batchKey, digest, attempt.attemptId, {
+        text: "A late model answer.",
+        kind: "audio",
+        kinds: ["audio"],
+      })).rejects.toThrow("lease changed");
+    }
+  });
+
+  it("reuses a batch when recovery proves the old attempt never received send authority", async () => {
+    const userRows = await db.insert(users).values({
+      email: `long-media-prepared-${randomUUID()}@example.test`,
+      emailVerified: true,
+    }).returning({ id: users.id });
+    const input = {
+      actorUserId: userRows[0]!.id,
+      originKind: "agent_turn" as const,
+      originKey: `turn:${randomUUID()}`,
+      userActionKey: "stable-tool-call",
+      source: {
+        key: `test/${randomUUID()}.mp3`,
+        sha256: "e".repeat(64),
+        sizeBytes: 1_000,
+        mimeType: "audio/mpeg",
+      },
+      question: "Describe the recording.",
+      model: "test-model",
+      deadlineAt: new Date("2099-01-01T00:00:00.000Z"),
+    };
+    const digest = "f".repeat(64);
+    const batchKey = "0:0:60000000";
+    const interval = { startUs: "0", endUs: "60000000" };
+    const first = await openLongMediaBatchOperation(input, 60_000);
+    const prepared = await first.checkpoint.begin(batchKey, digest, interval);
+    expect(prepared.kind).toBe("prepared");
+    if (prepared.kind !== "prepared") throw new Error("The first batch access must reserve its model request.");
+    await first.release();
+
+    const recovered = await openLongMediaBatchOperation(input, 60_000);
+    const resumed = await recovered.checkpoint.begin(batchKey, digest, interval);
+    expect(resumed.kind).toBe("prepared");
+    if (resumed.kind !== "prepared") throw new Error("A prepared-only attempt must be safe to replace.");
+    expect(resumed.attemptId).not.toBe(prepared.attemptId);
+    const attempts = await db.select().from(mediaUnderstandingAttempts)
+      .where(eq(mediaUnderstandingAttempts.operationId, recovered.operationId));
+    expect(attempts.map(({ requestState }) => requestState)).toEqual(["rejected", "prepared"]);
+    await recovered.release();
   });
 
   it("persists outbox delivery and advances the wake only after a claimed step ends", async () => {

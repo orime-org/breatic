@@ -38,7 +38,8 @@ describe("turnToolsContext", () => {
   });
 
   it("hands media understanding the same canonical storage capability", () => {
-    expect(context.understand_media).toMatchObject({ usage, saveToStorage });
+    expect(context.understand_media).toMatchObject({ usage, saveToStorage, studioId: "s1" });
+    expect(context.understand_media?.resolveCanonicalMediaSource).toEqual(expect.any(Function));
   });
 
   it("hands the proposal check the studio", () => {

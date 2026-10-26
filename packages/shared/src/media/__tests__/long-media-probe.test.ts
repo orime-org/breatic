@@ -2,200 +2,48 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, expect, it } from "vitest";
-import {
-  readLongMediaProbeReport,
-  type LongMediaProbeReport,
-} from "@shared/media/long-media-probe.js";
+import { readLongMediaProbeReport, type LongMediaProbeReport } from "@shared/media/long-media-probe.js";
 
-const stereoReport: LongMediaProbeReport = {
+const report: LongMediaProbeReport = {
   version: 1,
   sourceFingerprint: "a".repeat(64),
-  selectedVideoStreamIndex: null,
+  selectedVideoStreamIndex: 0,
   streams: [
-    {
-      index: 2,
-      kind: "audio",
-      codec: "pcm_s16le",
-      channels: 2,
-      channelLayout: "stereo",
-      channelMembers: [
-        { channelIndex: 0, member: "FL" },
-        { channelIndex: 1, member: "FR" },
-      ],
-      sampleRate: 48000,
-      startUs: "100000",
-      endUs: "5100000",
-      timeBase: { numerator: "1", denominator: "48000" },
-    },
+    { index: 0, kind: "video", startUs: "0", endUs: "10000000" },
+    { index: 1, kind: "audio", startUs: "100000", endUs: "9000000" },
+    { index: 2, kind: "audio", startUs: "200000", endUs: "9500000" },
   ],
-  mediaInputs: [
-    {
-      mediaInputId: "source-audio-2-channel-0",
-      descriptor: { inputKind: "audio_channel", audioStreamIndex: 2, audioChannelIndex: 0 },
-      sourceRange: { startUs: "100000", endUs: "5100000" },
-      audioRange: { startUs: "100000", endUs: "5100000" },
-    },
-    {
-      mediaInputId: "source-audio-2-channel-1",
-      descriptor: { inputKind: "audio_channel", audioStreamIndex: 2, audioChannelIndex: 1 },
-      sourceRange: { startUs: "100000", endUs: "5100000" },
-      audioRange: { startUs: "100000", endUs: "5100000" },
-    },
-  ],
+  mediaInputs: [{
+    mediaInputId: "source-file-1",
+    descriptor: { inputKind: "source_file", mediaKind: "video" },
+    sourceRange: { startUs: "0", endUs: "10000000" },
+  }],
 };
 
 describe("readLongMediaProbeReport", () => {
-  it("accepts verified per-channel inputs whose stream ranges use integer microseconds", () => {
-    expect(readLongMediaProbeReport(stereoReport)).toEqual(stereoReport);
+  it("accepts the complete source file as one input over one shared timeline", () => {
+    expect(readLongMediaProbeReport(report)).toEqual(report);
   });
 
-  it("rejects a channel descriptor that points beyond the probed channel count", () => {
-    const invalid = structuredClone(stereoReport);
-    invalid.mediaInputs[1]!.descriptor = {
-      inputKind: "audio_channel",
-      audioStreamIndex: 2,
-      audioChannelIndex: 2,
-    };
-
-    expect(() => readLongMediaProbeReport(invalid)).toThrow(/channel/i);
+  it("rejects multiple understanding inputs derived from one source", () => {
+    expect(() => readLongMediaProbeReport({
+      ...report,
+      mediaInputs: [report.mediaInputs[0], { ...report.mediaInputs[0], mediaInputId: "source-file-2" }],
+    })).toThrow();
   });
 
-  it("rejects missing channel mappings instead of treating an unknown layout as mono", () => {
-    const invalid = structuredClone(stereoReport);
-    const audio = invalid.streams[0];
-    if (audio?.kind !== "audio") throw new Error("Expected audio stream fixture");
-    audio.channelMembers = [{ channelIndex: 0, member: "unknown" }];
-
-    expect(() => readLongMediaProbeReport(invalid)).toThrow(/mapping/i);
+  it("requires the selected video and input kind to match probe facts", () => {
+    expect(() => readLongMediaProbeReport({ ...report, selectedVideoStreamIndex: 9 })).toThrow(/selected video/i);
+    expect(() => readLongMediaProbeReport({
+      ...report,
+      mediaInputs: [{ ...report.mediaInputs[0], descriptor: { inputKind: "source_file", mediaKind: "audio" } }],
+    })).toThrow(/file kind/i);
   });
 
-  it("allows unknown layout member names when channel indexes are fully measured", () => {
-    const measuredUnknownLayout = structuredClone(stereoReport);
-    const audio = measuredUnknownLayout.streams[0];
-    if (audio?.kind !== "audio") throw new Error("Expected audio stream fixture");
-    audio.channelLayout = "unknown";
-    audio.channelMembers = [
-      { channelIndex: 0, member: "unknown" },
-      { channelIndex: 1, member: "unknown" },
-    ];
-
-    expect(readLongMediaProbeReport(measuredUnknownLayout)).toEqual(measuredUnknownLayout);
-  });
-
-  it("requires exactly one understanding input for each probed audio channel", () => {
-    const missingChannel = structuredClone(stereoReport);
-    missingChannel.mediaInputs.pop();
-
-    expect(() => readLongMediaProbeReport(missingChannel)).toThrow(/missing required input/i);
-
-    const duplicateChannel = structuredClone(stereoReport);
-    duplicateChannel.mediaInputs[1]!.descriptor = {
-      inputKind: "audio_channel",
-      audioStreamIndex: 2,
-      audioChannelIndex: 0,
-    };
-
-    expect(() => readLongMediaProbeReport(duplicateChannel)).toThrow(/duplicate audio channel/i);
-  });
-
-  it("keeps the selected video in each channel input and represents silent video explicitly", () => {
-    const videoSource: LongMediaProbeReport = {
-      version: 1,
-      sourceFingerprint: "b".repeat(64),
-      selectedVideoStreamIndex: 0,
-      streams: [{
-        index: 0,
-        kind: "video",
-        codec: "h264",
-        width: 1920,
-        height: 1080,
-        startUs: "0",
-        endUs: "10000000",
-        timeBase: { numerator: "1", denominator: "90000" },
-      }],
-      mediaInputs: [{
-        mediaInputId: "video-0",
-        descriptor: { inputKind: "video_silent", videoStreamIndex: 0 },
-        sourceRange: { startUs: "0", endUs: "10000000" },
-        videoRange: { startUs: "0", endUs: "10000000" },
-      }],
-    };
-
-    expect(readLongMediaProbeReport(videoSource)).toEqual(videoSource);
-
-    const ignoredVideo = structuredClone(stereoReport);
-    ignoredVideo.streams.push({
-      index: 0,
-      kind: "video",
-      codec: "h264",
-      width: 1920,
-      height: 1080,
-      startUs: "0",
-      endUs: "5100000",
-      timeBase: { numerator: "1", denominator: "90000" },
-    });
-
-    expect(() => readLongMediaProbeReport(ignoredVideo)).toThrow(/selected video/i);
-  });
-
-  it("preserves separate video and channel audio ranges inside their source envelope", () => {
-    const videoChannelReport: unknown = {
-      version: 1,
-      sourceFingerprint: "c".repeat(64),
-      selectedVideoStreamIndex: 0,
-      streams: [
-        {
-          index: 0,
-          kind: "video",
-          codec: "h264",
-          width: 1920,
-          height: 1080,
-          startUs: "0",
-          endUs: "12000000",
-          timeBase: { numerator: "1", denominator: "90000" },
-        },
-        {
-          index: 1,
-          kind: "audio",
-          codec: "aac",
-          channels: 1,
-          channelLayout: "mono",
-          channelMembers: [{ channelIndex: 0, member: "FC" }],
-          sampleRate: 48000,
-          startUs: "2000000",
-          endUs: "8000000",
-          timeBase: { numerator: "1", denominator: "48000" },
-        },
-      ],
-      mediaInputs: [{
-        mediaInputId: "video-0-audio-1-channel-0",
-        descriptor: { inputKind: "video_channel", videoStreamIndex: 0, audioStreamIndex: 1, audioChannelIndex: 0 },
-        sourceRange: { startUs: "0", endUs: "12000000" },
-        videoRange: { startUs: "0", endUs: "12000000" },
-        audioRange: { startUs: "2000000", endUs: "8000000" },
-      }],
-    };
-
-    expect(readLongMediaProbeReport(videoChannelReport)).toEqual(videoChannelReport);
-
-    const invalidEnvelope = {
-      ...(videoChannelReport as Record<string, unknown>),
-      mediaInputs: [{
-        ...((videoChannelReport as { mediaInputs: Record<string, unknown>[] }).mediaInputs[0]),
-        sourceRange: { startUs: "2000000", endUs: "8000000" },
-      }],
-    };
-
-    expect(() => readLongMediaProbeReport(invalidEnvelope)).toThrow(/envelope/i);
-  });
-
-  it("rejects non-positive source ranges and imprecise numeric timestamps", () => {
-    const invalid = structuredClone(stereoReport);
-    invalid.mediaInputs[0]!.sourceRange = { startUs: "100", endUs: "100" };
-
-    expect(() => readLongMediaProbeReport(invalid)).toThrow(/range/i);
-    expect(() => readLongMediaProbeReport({ ...stereoReport, streams: [{
-      ...stereoReport.streams[0], startUs: 1,
-    }] })).toThrow();
+  it("requires the file range to cover the complete timeline", () => {
+    expect(() => readLongMediaProbeReport({
+      ...report,
+      mediaInputs: [{ ...report.mediaInputs[0], sourceRange: { startUs: "100000", endUs: "9500000" } }],
+    })).toThrow(/complete file timeline/i);
   });
 });

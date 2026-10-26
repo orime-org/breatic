@@ -733,18 +733,12 @@ export { assetNameFromUrl } from "@shared/media/asset-name.js";
 export {
   bisectMediaCore,
   expandMediaDecodeWindow,
-  mapMediaLocalTimeToSource,
   planLongMediaSegments,
-  replaceMediaManifestLeaf,
   type MediaCoreInterval,
   type MediaDecodeWindow,
   type LongMediaInputRange,
   type LongMediaPlanLimits,
   type LongMediaPlannedSegment,
-  type MediaLocalTimeMapping,
-  type MediaManifestLeaf,
-  type MediaManifestLeafReplacement,
-  type MediaManifestSnapshot,
 } from "@shared/media/long-media-interval.js";
 export {
   MediaInputDescriptorSchema,
@@ -769,6 +763,7 @@ export {
   verifyLongMediaJobRequest,
   type LongMediaJobPayload,
   type LongMediaJobRequest,
+  type LongMediaSourceReference,
 } from "@shared/media/long-media-job.js";
 // The media fields a result puts on a node, written the same way by collab
 // when a task settles and by the canvas when a reader restores one.

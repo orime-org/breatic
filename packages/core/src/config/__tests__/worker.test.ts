@@ -36,21 +36,21 @@ describe("worker concurrency", () => {
     expect(getUnderstandConfig().max_concurrent).toBe(5);
   });
 
-  it("loads the approved long-media limits and versioned channel-preserving profile", () => {
+  it("loads the approved long-media limits and source-file profile", () => {
     expect(getUnderstandConfig().long_media).toEqual({
       max_source_bytes: 2_147_483_648,
       max_sources: 10,
       max_segment_bytes: 20_000_000,
       audio_core_seconds: 300,
       video_core_seconds: 60,
-      overlap_seconds: 2,
       max_active_leaves: 512,
+      max_concurrent_encoders: 2,
       delivery_concurrency: 2,
       per_operation_delivery_concurrency: 1,
       operation_lease_ms: 30_000,
       container_class: "LongMediaContainerStd4",
       container_max_instances: 2,
-      profile_version: "channel-v1",
+      profile_version: "source-file-v1",
       audio_codec: "libmp3lame",
       audio_bitrate: "128k",
       video_codec: "libx264",
