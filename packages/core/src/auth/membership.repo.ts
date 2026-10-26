@@ -401,15 +401,13 @@ export type TierChangeReason = (typeof TIER_CHANGE_REASONS)[number];
 /**
  * Move an account to a tier, and write down that it moved.
  *
- * The only writer of `users.membership_tier` outside registration. Everything
- * that enforces a ceiling reads that column at the moment of the action, so
- * this one write is the whole of "the account may now do more" — there is no
- * cache to invalidate and no second step.
- *
- * There is deliberately no step after it either. The ratified rule is that
- * ceilings are judged when an action is taken and nothing already created is
- * corrected, so a downgrade removes nothing: the studios, projects and members
- * that exist stay, and only the next attempt to add one is refused.
+ * The only writer of `users.membership_tier` outside registration. It records
+ * the raw tier and its history; the enterprise management transaction also
+ * saves negotiated information. Same-tier edits can update that information
+ * while this writer returns without another tier-change row. Capacity checks
+ * resolve the current complete membership snapshot at the time of an action.
+ * Existing Studios, Projects and members remain after a downgrade; subsequent
+ * additions use the newly effective capacity.
  *
  * **Concurrency.** The read takes `FOR UPDATE` on the account row, so two
  * changes arriving together queue rather than both reading the same starting
