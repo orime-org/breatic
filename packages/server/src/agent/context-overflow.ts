@@ -188,8 +188,7 @@ function readOne(err: unknown): ContextOverflow | undefined {
  * @throws {never} Never.
  */
 export function readContextOverflow(err: unknown): ContextOverflow | undefined {
-  if (!RetryError.isInstance(err)) return readOne(err);
-  for (const one of [err.lastError, ...err.errors]) {
+  for (const one of RetryError.isInstance(err) ? err.errors : [err]) {
     const found = readOne(one);
     if (found !== undefined) return found;
   }
@@ -227,6 +226,6 @@ export function providerErrorOf(err: unknown): Record<string, unknown> {
  * @throws {never} Never.
  */
 export function unrecognised400(err: unknown): Record<string, unknown> | undefined {
-  const one = RetryError.isInstance(err) ? err.lastError : err;
-  return APICallError.isInstance(one) && one.statusCode === 400 ? providerErrorOf(one) : undefined;
+  const said = providerErrorOf(err);
+  return said.statusCode === 400 ? said : undefined;
 }
