@@ -37,6 +37,18 @@ const VERBATIM_TEXTS = new Set([
 ]);
 
 /**
+ * This upstream whitespace class contains an intentional Mongolian vowel
+ * separator. The minified vendor diff repeats this unchanged expression in
+ * its removed and inserted lines; the removed bytes must match upstream for
+ * pnpm to apply it. Exempt only that character's exact position in this
+ * complete unchanged expression, not the patch or the code point generally.
+ */
+const VERBATIM_WHITESPACE = {
+  file: "patches/@blocknote__core@0.56.0.patch",
+  expression: "Z=`[\\0- \\xA0\u1680\u180E\u2000-\\u2029\u205F\u3000]`",
+};
+
+/**
  * No bidirectional overrides or invisible control characters in source.
  *
  * This is CVE-2021-42574. A contributor can hide a logic flip — an early
@@ -54,8 +66,9 @@ const VERBATIM_TEXTS = new Set([
  * CLI unconditionally calls `process.stdin.unref()`, which throws on Node 24
  * whenever stdin is not a pipe — that is, in CI.
  *
- * Scope is every tracked file whose bytes are text, minus the verbatim licence
- * texts listed below. An earlier version skipped the env templates, which is
+ * Scope is every tracked file whose bytes are text, with only the verbatim
+ * licences and exact upstream expression character listed above exempted.
+ * An earlier version skipped the env templates, which is
  * backwards: a bidi override in a template that becomes a deployed environment
  * reads one way and sets another, and nothing else looks at those files.
  */
@@ -75,8 +88,20 @@ export const noTrojanSource = {
     for (const report of reports ?? []) {
       const relative = toRepoRelative(context.repoRoot, report.file);
       if (VERBATIM_TEXTS.has(relative)) continue;
+      const lines = relative === VERBATIM_WHITESPACE.file
+        ? context.read(relative).split("\n")
+        : [];
       for (const hit of report.findings) {
         if (hit.category === HARMLESS_CATEGORY) continue;
+        if (hit.codePoint === "U+180E") {
+          const line = lines[hit.line - 1] ?? "";
+          const start = line.indexOf(VERBATIM_WHITESPACE.expression);
+          if (
+            (line.startsWith("+") || line.startsWith("-")) &&
+            start >= 0 &&
+            hit.column === start + VERBATIM_WHITESPACE.expression.indexOf("\u180E") + 1
+          ) continue;
+        }
         findings.push({
           file: relative,
           line: hit.line,
