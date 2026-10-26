@@ -25,6 +25,7 @@ import {
   MONITORED,
   sentEnvelopes,
   sentEvents,
+  type SentEvent,
 } from "./helpers/reported-events.js";
 
 const LABEL = "ingest_open_without_secret";
@@ -51,6 +52,45 @@ function labelled(): unknown[][] {
   return logged.mock.calls.filter((call) => call[0] === LABEL);
 }
 
+/**
+ * The refusal reports the SDK sent, told apart by their label tag.
+ * @returns Those events, in the order sent.
+ */
+function reports(): SentEvent[] {
+  return sentEvents().filter((event) => event.tags?.label === LABEL);
+}
+
+/**
+ * The request id a refusal report's message ends in, after its label and key.
+ * @param event - The report.
+ * @param storageKey - The key it should name.
+ * @returns The id, or undefined when the message does not have that shape.
+ */
+function idOf(event: SentEvent | undefined, storageKey: string): string | undefined {
+  const prefix = `${LABEL} ${storageKey} `;
+  const message = event?.message ?? "";
+  if (!message.startsWith(prefix)) return undefined;
+  const id = message.slice(prefix.length);
+  return id.length > 0 && !id.includes(" ") ? id : undefined;
+}
+
+/**
+ * Assert one report names this key, user and studio, under its own request id.
+ * @param event - The report.
+ * @param who - The key, user and studio the ticket named.
+ * @returns The request id it carried.
+ */
+function expectReport(
+  event: SentEvent | undefined,
+  who: { storageKey: string; userId: string; studioId: string },
+): string {
+  const id = idOf(event, who.storageKey);
+  expect(id).toBeDefined();
+  expect(event?.fingerprint).toEqual([LABEL]);
+  expect(event?.contexts?.ingest).toEqual({ ...who, requestId: id });
+  return id ?? "";
+}
+
 describe("a valid ticket without our secret", () => {
   it("T08: is refused and reported with the key, user and studio it names", async () => {
     const { ticket, storageKey } = await mint({ userId: "user-7", studioId: "studio-7" });
@@ -58,16 +98,11 @@ describe("a valid ticket without our secret", () => {
     const answer = await askUploads({ "x-upload-ticket": ticket });
 
     expect(answer.status).toBe(401);
-    const events = sentEvents();
+    const events = reports();
     expect(events).toHaveLength(1);
-    expect(events[0]?.message).toBe(LABEL);
-    expect(events[0]?.tags?.label).toBe(LABEL);
-    expect(events[0]?.contexts?.ingest).toEqual({
-      storageKey,
-      userId: "user-7",
-      studioId: "studio-7",
-    });
-    expect(labelled()).toEqual([[LABEL, { storageKey, userId: "user-7", studioId: "studio-7" }]]);
+    const who = { storageKey, userId: "user-7", studioId: "studio-7" };
+    const id = expectReport(events[0], who);
+    expect(labelled()).toEqual([[LABEL, { ...who, requestId: id }]]);
   });
 
   it("T09: with a wrong secret is reported the same way", async () => {
@@ -76,16 +111,11 @@ describe("a valid ticket without our secret", () => {
     const answer = await askUploads({ "x-ingest-secret": SAME_LENGTH_WRONG, "x-upload-ticket": ticket });
 
     expect(answer.status).toBe(401);
-    const events = sentEvents();
+    const events = reports();
     expect(events).toHaveLength(1);
-    expect(events[0]?.message).toBe(LABEL);
-    expect(events[0]?.tags?.label).toBe(LABEL);
-    expect(events[0]?.contexts?.ingest).toEqual({
-      storageKey,
-      userId: "user-7",
-      studioId: "studio-7",
-    });
-    expect(labelled()).toEqual([[LABEL, { storageKey, userId: "user-7", studioId: "studio-7" }]]);
+    const who = { storageKey, userId: "user-7", studioId: "studio-7" };
+    const id = expectReport(events[0], who);
+    expect(labelled()).toEqual([[LABEL, { ...who, requestId: id }]]);
   });
 
   it("T11: carries neither the ticket nor the secret it was sent", async () => {
@@ -138,8 +168,69 @@ describe("a valid ticket with our secret", () => {
     const answer = await askUploads({ "x-ingest-secret": SECRET_W, "x-upload-ticket": ticket });
 
     expect(answer.status).toBe(200);
-    expect(sentEvents().filter((event) => event.message === LABEL)).toHaveLength(0);
+    expect(reports()).toHaveLength(0);
     expect(labelled()).toHaveLength(0);
+  });
+});
+
+// inner#1595 B2: the SDK's dedupe drops an event equal to the previous one in
+// this isolate, so every refusal carries its own request id in its message.
+describe("refusals in a row, in one isolate", () => {
+  it("T87: three different tickets each leave their own report", async () => {
+    const people = ["a", "b", "c"].map((x) => ({ userId: `user-${x}`, studioId: `studio-${x}` }));
+    const tickets = [await mint(people[0]), await mint(people[1]), await mint(people[2])];
+
+    await askUploads({ "x-upload-ticket": tickets[0]!.ticket });
+    await askUploads({ "x-ingest-secret": SAME_LENGTH_WRONG, "x-upload-ticket": tickets[1]!.ticket });
+    await askUploads({ "x-upload-ticket": tickets[2]!.ticket });
+
+    const events = reports();
+    expect(events).toHaveLength(3);
+    const ids = tickets.map((t, i) => expectReport(events[i], { storageKey: t.storageKey, ...people[i]! }));
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it("T88: the same ticket refused twice leaves two reports", async () => {
+    const t = await mint({ userId: "user-7", studioId: "studio-7" });
+    const who = { storageKey: t.storageKey, userId: "user-7", studioId: "studio-7" };
+
+    await askUploads({ "x-upload-ticket": t.ticket });
+    await askUploads({ "x-upload-ticket": t.ticket });
+
+    const events = reports();
+    expect(events).toHaveLength(2);
+    expect(expectReport(events[0], who)).not.toBe(expectReport(events[1], who));
+    expect(labelled()).toHaveLength(2);
+  });
+
+  it("T88: an opened upload in between does not merge the two reports", async () => {
+    const t = await mint({ userId: "user-7", studioId: "studio-7" });
+    const who = { storageKey: t.storageKey, userId: "user-7", studioId: "studio-7" };
+
+    await askUploads({ "x-upload-ticket": t.ticket });
+    expect((await askUploads({ "x-ingest-secret": SECRET_W, "x-upload-ticket": t.ticket })).status).toBe(200);
+    await askUploads({ "x-upload-ticket": t.ticket });
+
+    const events = reports();
+    expect(events).toHaveLength(2);
+    expect(expectReport(events[0], who)).not.toBe(expectReport(events[1], who));
+    expect(labelled()).toHaveLength(2);
+  });
+
+  it.each([
+    ["without a secret", {}],
+    ["with a wrong secret", { "x-ingest-secret": SAME_LENGTH_WRONG }],
+  ])("T90: takes Cloudflare's ray id as the request id (%s)", async (_label, secret) => {
+    const RAY = "8f1e2d3c4b5a6978-SJC";
+    const t = await mint({ userId: "user-7", studioId: "studio-7" });
+
+    await askUploads({ ...secret, "x-upload-ticket": t.ticket, "cf-ray": RAY });
+
+    const events = reports();
+    expect(events).toHaveLength(1);
+    expect(events[0]?.message).toBe(`${LABEL} ${t.storageKey} ${RAY}`);
+    expect(events[0]?.contexts?.ingest?.requestId).toBe(RAY);
+    expect((labelled()[0]?.[1] as { requestId?: string } | undefined)?.requestId).toBe(RAY);
   });
 });
 
@@ -173,7 +264,7 @@ describe("a session token sent as a ticket", () => {
     expect(withSecret.status).toBe(401);
     expect(fetched.status).toBe(401);
     expect(Object.values(bucket.opens).reduce((a, b) => a + b, 0)).toBe(opened);
-    expect(sentEvents().filter((event) => event.message === LABEL)).toHaveLength(0);
+    expect(reports()).toHaveLength(0);
     expect(labelled()).toHaveLength(0);
   });
 });

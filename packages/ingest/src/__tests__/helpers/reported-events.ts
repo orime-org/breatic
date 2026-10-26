@@ -37,6 +37,7 @@ export interface SentEvent {
   release?: string;
   environment?: string;
   message?: string;
+  fingerprint?: string[];
   tags?: Record<string, string>;
   exception?: { values: { value?: string }[] };
   request?: { headers?: Record<string, string> };

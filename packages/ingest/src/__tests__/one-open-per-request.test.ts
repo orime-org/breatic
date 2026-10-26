@@ -233,11 +233,21 @@ describe("POST /uploads under any mix of requests", () => {
           const sent = await sendRound(reqs, "sequential", { ...env, ...MONITORED }, r);
 
           const refusedValid = sent.filter((s) => s.secret !== "correct" && s.valid !== null);
-          const reports = sentEvents().filter((event) => event.message === LABEL);
+          // Told apart by the label tag: each message carries its own request id.
+          const reports = sentEvents().filter((event) => event.tags?.label === LABEL);
           expect(reports).toHaveLength(refusedValid.length);
-          expect(reports.map((event) => event.contexts?.ingest?.storageKey)).toEqual(
-            refusedValid.map((s) => r.valid[s.valid ?? -1]?.storageKey),
-          );
+          const keys = refusedValid.map((s) => r.valid[s.valid ?? -1]?.storageKey);
+          expect(reports.map((event) => event.contexts?.ingest?.storageKey)).toEqual(keys);
+          const ids = reports.map((event, i) => {
+            const prefix = `${LABEL} ${keys[i]} `;
+            expect(event.message?.startsWith(prefix)).toBe(true);
+            const id = event.message?.slice(prefix.length) ?? "";
+            expect(id).not.toBe("");
+            expect(event.contexts?.ingest?.requestId).toBe(id);
+            expect(event.fingerprint).toEqual([LABEL]);
+            return id;
+          });
+          expect(new Set(ids).size).toBe(ids.length);
         },
       ),
       { numRuns: 20 },
