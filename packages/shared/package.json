@@ -38,7 +38,7 @@
   "dependencies": {
     "file-type": "^22",
     "intl-messageformat": "^11.2.13",
-    "jsonata": "2.2.2",
+    "jsonata": "catalog:",
     "uuid": "^11.1.1",
     "yaml": "catalog:",
     "yjs": "catalog:",

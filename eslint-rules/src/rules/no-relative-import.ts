@@ -27,6 +27,7 @@ export const PACKAGE_ROOTS: ReadonlyArray<readonly [string, string]> = [
   ["packages/worker/src/", "@worker"],
   ["packages/collab/src/", "@collab"],
   ["packages/integration-tests/src/", "@integration-tests"],
+  ["packages/provider/src/", "@provider"],
   ["packages/web/src/", "@web"],
   ["eslint-rules/src/", "#rules"],
   ["repo-lint/src/", "#repo-lint"],

@@ -38,7 +38,7 @@
     "@openrouter/ai-sdk-provider": "catalog:",
     "ai": "catalog:",
     "ipaddr.js": "catalog:",
-    "jsonata": "2.2.2",
+    "jsonata": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
