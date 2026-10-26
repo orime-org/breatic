@@ -76,6 +76,42 @@ export function taskActionKey(
   return `${projectId}/${spaceId}/${taskId}/${request}`;
 }
 
+/** The existing run-once actions that belong to a Space. */
+export type SpaceTaskAction = 'generate' | 'understand' | 'transcribe' | 'mini-tool';
+const SPACE_TASK_ACTIONS: readonly SpaceTaskAction[] = ['generate', 'understand', 'transcribe', 'mini-tool'];
+
+/**
+ * Build the existing Space intent shared by buttons and status readers.
+ * @param action - Existing run-once action.
+ * @param spaceId - Owning Space.
+ * @param nodeId - Target node, or empty for a Space prefix.
+ * @param toolId - Mini-tool identity when present.
+ * @returns The existing intent key.
+ * @throws {never} Never.
+ */
+export function spaceTaskIntent(action: SpaceTaskAction, spaceId: string, nodeId: string, toolId?: string): string {
+  return `${action}:${spaceId}:${nodeId}${toolId === undefined ? '' : `:${toolId}`}`;
+}
+
+/**
+ * Read existing Space requests and Retry waits without changing their lifetimes.
+ * @param state - Existing request store snapshot.
+ * @param projectId - Owning Project.
+ * @param spaceId - Observed Space.
+ * @returns Whether a request or Retry is pending.
+ * @throws {never} Never.
+ */
+export function hasSpaceTaskRequests(
+  state: Pick<TaskActionsInFlightState, 'running' | 'inFlight'>,
+  projectId: string,
+  spaceId: string,
+): boolean {
+  const pending = [...state.running.keys()].some((intent) =>
+    SPACE_TASK_ACTIONS.some((action) => intent.startsWith(spaceTaskIntent(action, spaceId, ''))));
+  const rowPrefix = `${projectId}/${spaceId}/`;
+  return pending || [...state.inFlight].some((key) => key.startsWith(rowPrefix) && key.endsWith('/retry'));
+}
+
 /**
  * Hold a request as waiting until the work behind its press settles, either
  * way.
@@ -107,8 +143,8 @@ export interface RunOnceSpec<B, R> {
   send: (key: string, body: B) => Promise<R>;
   /** The final success; `leaving` keeps the button waiting while the page navigates away. */
   onDone?: (result: R) => 'leaving' | undefined;
-  /** The final failure, for the press to tell the reader. */
-  onFailure?: (err: unknown) => void;
+  /** The final failure, for the press to tell the reader; the press ends once it has. */
+  onFailure?: (err: unknown) => void | Promise<void>;
 }
 
 /**
@@ -280,7 +316,7 @@ async function drive<B, R>(
   } catch (err) {
     if (!current()) return RELEASED;
     release(intentId, press);
-    spec.onFailure?.(err);
+    await spec.onFailure?.(err);
     return { kind: 'failed', error: err };
   }
   if (!current()) return RELEASED;
@@ -306,7 +342,7 @@ async function drive<B, R>(
       const ms = resendWait(err, attempt);
       if (ms === null) {
         release(intentId, press);
-        spec.onFailure?.(err);
+        await spec.onFailure?.(err);
         return { kind: 'failed', error: err };
       }
       if (!(await wait(press, ms)) || !current()) return RELEASED;

@@ -8,6 +8,8 @@
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
+      "payload_too_large": "This request is larger than {limit}. Shorten the prompt or the text it refers to.",
+      "transfer_invalid": "The uploaded content could not be used. Please try again.",
       "internal": "Internal server error"
     },
     "credit": {
@@ -671,6 +673,7 @@
       "errorCredits": "Not enough credits to generate.",
       "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
       "errorFailed": "Couldn't start generation. Please try again.",
+      "errorTooLargeNoLimit": "This request is too large. Shorten the prompt or the text it refers to.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference {kind, select, video {videos} audio {audio clips} other {images}} — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",

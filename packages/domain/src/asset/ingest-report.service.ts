@@ -226,8 +226,11 @@ export type IngestReportOutcome = IngestSideEffects &
     } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
+  /** A transfer upload (inner#1006) finished: no row was written for it. */
+  | { status: "transferred" }
   /**
-   * Nothing to answer with when the consumed grant's original asset is gone.
+   * The consumed grant's original asset is unavailable, or a transfer finish
+   * has a grant that was already voided.
    */
     | { status: "stale" });
 
@@ -657,6 +660,10 @@ export async function applyIngestReport(
     const reason = expired ? "expired" : (report.reason ?? "aborted");
     return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason }));
   }
+
+  // A transfer (inner#1006) never becomes a row: its own finish settles it,
+  // so a completed report for one has nothing to register.
+  if (grant.assetSource === "transfer") return { status: "stale" };
 
   const adapter = await getStorageAdapter();
   const contentType = report.contentType;

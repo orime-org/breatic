@@ -38,6 +38,14 @@ export interface StorageAdapter {
    * and base-path match, including equivalent host and default-port spellings.
    */
   keyFromUrl(url: string): string | null;
+
+  /**
+   * Read at most `maxBytes` of an object, through the API rather than the
+   * public address (inner#1006: transfer files are not served publicly).
+   * @throws {ObjectTooLarge} When the object holds more than `maxBytes`.
+   * @throws {ObjectMissing} When no object is stored under the key.
+   */
+  read(key: string, maxBytes: number): Promise<Uint8Array>;
 }
 
 // Singleton

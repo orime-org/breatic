@@ -11,8 +11,9 @@
  * node_history.
  */
 
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { env } from "@core/config/env.js";
+import { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 import type { StorageAdapter } from "@core/infra/storage/index.js";
 
 /** Everything needed to reach one S3-compatible bucket. */
@@ -107,6 +108,31 @@ export class S3StorageAdapter implements StorageAdapter {
     );
 
     return `${this.publicBaseUrl}/${key}`;
+  }
+
+  /**
+   * Read at most `maxBytes` of an object. Asks for one byte more than that
+   * with a Range, so an object holding exactly `maxBytes` is told apart from
+   * a larger one without reading the rest of it.
+   * @param key - The object's key.
+   * @param maxBytes - The most bytes the caller takes.
+   * @returns The object's bytes.
+   * @throws {ObjectTooLarge} When the object holds more than `maxBytes`.
+   * @throws {ObjectMissing} When no object is stored under the key.
+   */
+  async read(key: string, maxBytes: number): Promise<Uint8Array> {
+    let bytes: Uint8Array;
+    try {
+      const out = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=0-${maxBytes}` }),
+      );
+      bytes = (await out.Body?.transformToByteArray()) ?? new Uint8Array(0);
+    } catch (err) {
+      if (err instanceof NoSuchKey) throw new ObjectMissing(key);
+      throw err;
+    }
+    if (bytes.length > maxBytes) throw new ObjectTooLarge(key);
+    return bytes;
   }
 
   /**

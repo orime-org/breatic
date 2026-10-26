@@ -33,6 +33,8 @@ async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
     return { key, state: "failed", reason: grant.failureReason ?? "aborted" };
   }
   if (grant.consumedAt !== null) {
+    // A transfer (inner#1006) finishes without a row; it is referenced by key.
+    if (grant.assetSource === "transfer") return { key, state: "transferred" };
     const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
     // A consumed grant always names its row; one that does not, or names a row
     // since deleted, has nothing to hand over.
