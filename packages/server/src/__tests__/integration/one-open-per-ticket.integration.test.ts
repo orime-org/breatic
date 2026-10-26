@@ -104,11 +104,11 @@ async function seedEditor(): Promise<{ userId: string; studioId: string; project
   const userId = u!.id;
   const [st] = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
-    VALUES (${userId}, ${`oop-s-${seq++}-${crypto.randomUUID()}`}, 'personal', 'Personal') RETURNING id
+    VALUES (${userId}, ${`oop-s-${seq++}-${crypto.randomUUID().slice(0, 8)}`}, 'personal', 'Personal') RETURNING id
   `;
   const studioId = st!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'admin')`;
-  const slug = `oop-p-${seq++}-${crypto.randomUUID()}`;
+  const slug = `oop-p-${seq++}-${crypto.randomUUID().slice(0, 8)}`;
   const [p] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studioId}, ${userId}, ${`P ${slug}`}, ${slug}) RETURNING id
