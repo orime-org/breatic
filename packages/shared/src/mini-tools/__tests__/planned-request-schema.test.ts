@@ -1,0 +1,240 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import fc from "fast-check";
+import { describe, expect, it } from "vitest";
+import {
+  hashMiniToolValue,
+  miniToolPlannedRequestSchema,
+  miniToolRequestSchema,
+  miniToolSubmissionSchema,
+  videoToolAnalysisRefs,
+  type MiniToolPlannedRequest,
+  type MiniToolRequest,
+  type MiniToolSubmission,
+  type VideoToolAnalysisRef,
+} from "@shared/mini-tools/index.js";
+
+// inner#1306: the independent HTTP contract supplies this complete literal and digest.
+const BODY: MiniToolPlannedRequest = {
+  tool: "video.remove-bg",
+  project_id: "10000000-0000-4000-8000-000000000001",
+  space_id: "20000000-0000-4000-8000-000000000001",
+  run_id: "50000000-0000-4000-8000-000000000001",
+  draft: {
+    version: 1,
+    draftId: "60000000-0000-4000-8000-000000000001",
+    revision: "70000000-0000-4000-8000-000000000001",
+    source: {
+      nodeId: "30000000-0000-4000-8000-000000000001",
+      canonicalURL: "https://assets.example.test/video/source.mp4",
+      mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" },
+    },
+    inputs: [],
+    params: {},
+  },
+  analysis_refs: [],
+  outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
+};
+const BODY_HASH = "f5ed98e04016b9001c24d0d525eccd576898e5c454dc529cc0715712b1ec135e";
+
+const LEGACY_MODEL: MiniToolRequest = {
+  tool: "image.remove-bg",
+  project_id: BODY.project_id,
+  space_id: BODY.space_id,
+  node_ids: [BODY.outputs[0]!.nodeId],
+  source: { url: "https://assets.example.test/image/source.png" },
+  params: {},
+  slots: {},
+};
+const LEGACY_CONTAINER: MiniToolRequest = {
+  tool: "audio.cut",
+  project_id: BODY.project_id,
+  space_id: BODY.space_id,
+  node_ids: [BODY.outputs[0]!.nodeId],
+  source: { url: "https://assets.example.test/audio/source.m4a", duration: 12 },
+  params: { range: { start: 1, end: 3 } },
+  slots: {},
+};
+const REFERENCE: VideoToolAnalysisRef = {
+  version: 1,
+  draftId: BODY.draft.draftId,
+  toolId: "video.erase",
+  kind: "tracked_mask",
+  analysisRunId: "90000000-0000-4000-8000-000000000001",
+  inputFingerprint: "a".repeat(64),
+};
+
+/** Removes one required property without filling it from the schema. @throws {never} Never. */
+function without<T extends object>(value: T, key: keyof T): Partial<T> {
+  const copy: Partial<T> = { ...value };
+  delete copy[key];
+  return copy;
+}
+
+/** Checks a domain-value rejection without asserting an HTTP wrapper. @throws {Error} On an unexpected parse result. */
+function expectValueRejection(value: unknown): void {
+  const result = miniToolPlannedRequestSchema.safeParse(value);
+  expect(result.success).toBe(false);
+  if (result.success) throw new Error("Expected the planned value to be rejected");
+  const issues = result.error.issues.filter((issue) => issue.code === "custom");
+  expect(issues.map((issue) => issue.code)).toContain("custom");
+  for (const issue of issues) expect(issue.params?.requestShape).not.toBe(true);
+}
+
+describe("planned video submission schema", () => {
+  it("H01 preserves the complete literal draft and indexed public recipe", () => {
+    const parsed: MiniToolPlannedRequest = miniToolPlannedRequestSchema.parse(BODY);
+    expect(parsed).toEqual(BODY);
+    const submission: MiniToolSubmission = miniToolSubmissionSchema.parse(BODY);
+    expect(submission).toEqual(BODY);
+    expect(miniToolRequestSchema.safeParse(BODY).success).toBe(false);
+  });
+
+  it("keeps the independently supplied canonical whole-body hash", async () => {
+    expect(await hashMiniToolValue(BODY)).toBe(BODY_HASH);
+    const reordered = {
+      outputs: BODY.outputs,
+      analysis_refs: BODY.analysis_refs,
+      draft: { params: {}, inputs: [], source: BODY.draft.source, revision: BODY.draft.revision, draftId: BODY.draft.draftId, version: 1 },
+      run_id: BODY.run_id,
+      space_id: BODY.space_id,
+      project_id: BODY.project_id,
+      tool: BODY.tool,
+    };
+    expect(await hashMiniToolValue(reordered)).toBe(BODY_HASH);
+  });
+
+  it.each<keyof MiniToolPlannedRequest>(["tool", "project_id", "space_id", "run_id", "draft", "analysis_refs", "outputs"])("H02 requires outer field %s", (key) => {
+    const candidate = without(BODY, key);
+    expect(miniToolPlannedRequestSchema.safeParse(candidate).success).toBe(false);
+    expect(miniToolSubmissionSchema.safeParse(candidate).success).toBe(false);
+  });
+
+  it.each(["project_id", "space_id", "run_id"])("H02 rejects a malformed %s UUID", (field) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, [field]: "not-a-uuid" }).success).toBe(false);
+  });
+
+  it("H03 rejects the legacy-shaped body for a planned tool", () => {
+    const oldShape = {
+      tool: "video.remove-bg", project_id: BODY.project_id, space_id: BODY.space_id,
+      node_ids: [BODY.outputs[0]!.nodeId], source: { url: BODY.draft.source.canonicalURL }, params: {}, slots: {},
+    };
+    expect(miniToolPlannedRequestSchema.safeParse(oldShape).success).toBe(false);
+    expect(miniToolSubmissionSchema.safeParse(oldShape).success).toBe(false);
+  });
+
+  it("H04 refuses an unsupported draft version instead of rebuilding it", () => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, draft: { ...BODY.draft, version: 2 } }).success).toBe(false);
+  });
+
+  it.each<keyof MiniToolPlannedRequest["draft"]>(["draftId", "revision", "source", "inputs", "params"])("H04 requires draft field %s", (field) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, draft: without(BODY.draft, field) }).success).toBe(false);
+  });
+
+  it.each(["draftId", "revision"])("H04 rejects a malformed draft %s UUID", (field) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, draft: { ...BODY.draft, [field]: "not-a-uuid" } }).success).toBe(false);
+  });
+
+  it.each([
+    { anchor: { frameIndex: 0, pts: 0 } },
+    { argv: ["ffmpeg", "-version"] },
+    { model: "another-model" },
+  ])("H04 refuses undeclared remove-bg params %j", (params) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, draft: { ...BODY.draft, params } }).success).toBe(false);
+  });
+
+  it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1])("H05 rejects invalid output index %s", (outputIndex) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, outputs: [{ ...BODY.outputs[0], outputIndex }] }).success).toBe(false);
+  });
+
+  it("H05 requires the target node UUID", () => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, outputs: [{ ...BODY.outputs[0], nodeId: "not-a-uuid" }] }).success).toBe(false);
+  });
+
+  it.each([
+    {},
+    { kind: "frame" },
+    { kind: "remove-bg", argv: ["ffmpeg", "-version"] },
+    { kind: "remove-bg", model: "another-model" },
+    { kind: "remove-bg", schemaVersion: 2 },
+  ])("H05 rejects a non-public or widened recipe %j", (recipe) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, outputs: [{ ...BODY.outputs[0], recipe }] }).success).toBe(false);
+  });
+
+  it.each([
+    { name: "no output", outputs: [] },
+    { name: "two different outputs", outputs: [BODY.outputs[0], { ...BODY.outputs[0], outputIndex: 1, nodeId: "40000000-0000-4000-8000-000000000002" }] },
+    { name: "duplicate index", outputs: [BODY.outputs[0], { ...BODY.outputs[0], nodeId: "40000000-0000-4000-8000-000000000002" }] },
+    { name: "duplicate target", outputs: [BODY.outputs[0], { ...BODY.outputs[0], outputIndex: 1 }] },
+  ])("H06 rejects $name as a value error", ({ outputs }) => {
+    expectValueRejection({ ...BODY, outputs });
+  });
+
+  it("H06 rejects positive nonzero output indices as value errors", () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 1_000_000 }), (outputIndex) => {
+      expectValueRejection({ ...BODY, outputs: [{ ...BODY.outputs[0], outputIndex }] });
+    }));
+  });
+
+  it("H07 refuses the source node as the output without marking the request structurally old", () => {
+    expectValueRejection({ ...BODY, outputs: [{ ...BODY.outputs[0], nodeId: BODY.draft.source.nodeId }] });
+  });
+
+  it("H08 preserves valid client-declared media values for the domain resolver to judge", () => {
+    const candidate = {
+      ...BODY,
+      draft: { ...BODY.draft, source: { ...BODY.draft.source, mediaInfo: { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" } } },
+    };
+    expect(miniToolPlannedRequestSchema.parse(candidate)).toEqual(candidate);
+  });
+
+  it("H10 constructs the normal empty-ref request after selecting this tool's node references", () => {
+    const nodeData = {
+      [`miniToolAnalysis:${REFERENCE.analysisRunId}`]: REFERENCE,
+      "miniToolAnalysis:90000000-0000-4000-8000-000000000002": {
+        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000002", toolId: "video.lip-sync", kind: "people",
+      },
+      "miniToolAnalysis:90000000-0000-4000-8000-000000000003": {
+        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000003", toolId: "video.split", kind: "scene_cuts",
+      },
+    };
+    const references = videoToolAnalysisRefs(nodeData);
+    expect(references.map((reference) => reference.kind)).toEqual(["tracked_mask", "people", "scene_cuts"]);
+    const tool: string = BODY.tool;
+    const selected = references.filter((reference) => reference.toolId === tool);
+    expect(selected).toEqual([]);
+    expect(miniToolPlannedRequestSchema.parse({ ...BODY, analysis_refs: selected })).toEqual(BODY);
+  });
+
+  it("preserves valid additional draft inputs and references without inventing a zero-count cap", () => {
+    const candidate = {
+      ...BODY,
+      draft: {
+        ...BODY.draft,
+        inputs: [{ inputId: "a0000000-0000-4000-8000-000000000001", url: "https://assets.example.test/audio/extra.m4a" }],
+      },
+      analysis_refs: [REFERENCE],
+    };
+    expect(miniToolPlannedRequestSchema.parse(candidate)).toEqual(candidate);
+  });
+
+  it("still validates additional references against their existing typed shape", () => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, analysis_refs: [{ ...REFERENCE, analysisRunId: "not-a-uuid" }] }).success).toBe(false);
+  });
+});
+
+describe("legacy submissions retain their original request contract", () => {
+  it.each([LEGACY_MODEL, LEGACY_CONTAINER])("accepts $tool through both legacy and eventual submission schemas", (body) => {
+    const legacy: MiniToolRequest = miniToolRequestSchema.parse(body);
+    expect(legacy).toEqual(body);
+    const submission: MiniToolSubmission = miniToolSubmissionSchema.parse(body);
+    expect(submission).toEqual(body);
+    expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(false);
+  });
+
+  it.each([LEGACY_MODEL, LEGACY_CONTAINER])("preserves the node-count refusal for $tool", (body) => {
+    expect(miniToolRequestSchema.safeParse({ ...body, node_ids: [] }).success).toBe(false);
+    expect(miniToolSubmissionSchema.safeParse({ ...body, node_ids: [] }).success).toBe(false);
+  });
+});
