@@ -20,8 +20,8 @@
  * which landing mentions it in. Each edge says which on `into`.
  *
  * Every character of this tool's description and its field descriptions goes
- * out with every turn of every conversation, and is measured against the same
- * budget the messages are (`payload-size.ts`). The descriptions carry the
+ * out with every turn of every conversation, and counts toward the request a
+ * fold is sized with (`payload-size.ts`) and the window the provider checks. The descriptions carry the
  * rules a first attempt needs to take the right shape; a refusal below says
  * what is wrong, the rule it breaks and the facts of the proposal (design
  * 5.10), and the agent puts the proposal right from that.

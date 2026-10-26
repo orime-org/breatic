@@ -51,7 +51,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   };
 });
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext: h.context }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget: h.fold }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: h.fold }));
 vi.mock("@server/agent/prepare-pictures.js", () => ({
   picturePreparerFor: h.makePreparer,
   pictureSourcesForTurn: (chips: readonly ChatAttachedChip[]) => chips.flatMap((chip, index) =>
@@ -141,7 +141,7 @@ beforeEach(() => {
   h.turnIndex = 7;
   h.add.mockReset().mockImplementation(async () => h.turnIndex);
   h.setUser.mockReset().mockResolvedValue(undefined);
-  h.fold.mockReset().mockResolvedValue(false);
+  h.fold.mockReset().mockResolvedValue("none");
   h.context.mockReset().mockImplementation(async () => ({ memoryContext: { projectMemory: "", conversationMemory: "" }, history: h.history, watermark: 0 }));
   h.makePreparer.mockReset().mockReturnValue(h.prepare);
   h.prepare.mockReset().mockImplementation(async (sources: Array<{ label: string; sourceUrl: string }>): Promise<PreparedAgentPicture[]> => sources.map((source) => {
@@ -152,7 +152,7 @@ beforeEach(() => {
 
 describe("MainAgent picture preparation and each actual model request", () => {
   it("prepares attachments once before the model even when a fold reassembles the turn", async () => {
-    h.fold.mockResolvedValueOnce(true);
+    h.fold.mockResolvedValueOnce("moved");
 
     await run([chip(0)]);
 

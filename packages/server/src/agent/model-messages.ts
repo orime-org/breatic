@@ -121,6 +121,15 @@ const STOP_NOTE = "[This turn did not finish: the connection to the user closed.
 const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 
 /**
+ * The note for a turn that ended because there was too much to process: what
+ * it was asked, with its own attachments and tool results, did not fit the
+ * model's context window, and folding earlier history into memory could not
+ * make it fit (or the turn's folds reached `overflow_folds_per_turn`).
+ * Nothing broke, so the model is not told to look for a fault.
+ */
+const TOO_LONG_NOTE = "[This turn could not be finished: there was too much to process at once, so its request was too long for the model.]";
+
+/**
  * The note that says a turn ran out of room rather than out of things to say.
  *
  * Apart from both above because it leads somewhere neither does: what the
@@ -141,6 +150,7 @@ const TRUNCATED_NOTE = "[This turn was cut off at the output limit, mid-sentence
  */
 export function endingNote(parts: readonly MessagePart[]): string | undefined {
   if (parts.some((p) => p.type === "interrupted")) return STOP_NOTE;
+  if (parts.some((p) => p.type === "failed" && p.reason === "too_long")) return TOO_LONG_NOTE;
   if (parts.some((p) => p.type === "failed")) return FAILED_NOTE;
   if (parts.some((p) => p.type === "truncated")) return TRUNCATED_NOTE;
   return undefined;

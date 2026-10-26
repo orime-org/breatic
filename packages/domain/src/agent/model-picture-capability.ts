@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { httpRequest } from "@breatic/shared";
+import { waitForShared } from "@domain/agent/wait-for-shared.js";
 
 /** The fixed configuration snapshot used for this turn's capability lookup. */
 export interface ModelPictureCapabilityPolicy {
@@ -74,28 +75,6 @@ async function refreshCatalog(policy: ModelPictureCapabilityPolicy): Promise<voi
 }
 
 /**
- * Wait for the shared refresh while allowing just this caller to leave.
- * @param pending - The shared request, which this function never cancels.
- * @param signal - This turn's stop signal.
- * @returns Completion of the query for a caller still waiting.
- * @throws {unknown} The stop signal's reason when the turn ends.
- */
-async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Promise<void> {
-  signal?.throwIfAborted();
-  if (signal === undefined) return pending;
-  return new Promise<void>((resolve, reject) => {
-    /**
-     * Reject only this wait and leave the directory refresh alive.
-     * @throws {never} Never.
-     */
-    const stop = (): void => { reject(signal.reason); };
-    signal.addEventListener("abort", stop, { once: true });
-    void pending.then(resolve, reject).finally(() => { signal.removeEventListener("abort", stop); });
-    if (signal.aborted) stop();
-  });
-}
-
-/**
  * Resolve picture capability once for the turn's selected model.
  * @param modelId - The exact model identifier selected by the agent factory.
  * @param policy - Explicit override and model-directory cache settings.
@@ -113,9 +92,9 @@ export async function resolveModelPictureCapability(
   const now = Date.now();
   if (now >= freshUntil && now >= retryAfter) {
     refreshing ??= refreshCatalog(policy).finally(() => { refreshing = undefined; });
-    await waitForCatalog(refreshing, signal);
+    await waitForShared(refreshing, signal);
   } else if (refreshing !== undefined) {
-    await waitForCatalog(refreshing, signal);
+    await waitForShared(refreshing, signal);
   }
   signal?.throwIfAborted();
   return catalog?.get(modelId) === true;

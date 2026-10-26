@@ -9,7 +9,7 @@
 import { measureInstructionsAndTools, measureMessages } from "@server/agent/payload-size.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
 import type { ReplayedRow } from "@server/agent/history-replay.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 /**
  * What each turn in the history added to the conversation, oldest first.
@@ -84,4 +84,20 @@ export function requestTokens(
     return sized.endTokens + measureMessages(after) + question;
   }
   return measureInstructionsAndTools(assembly.agentConfig) + turns.reduce((sum, turn) => sum + turn.tokens, 0) + question;
+}
+
+/**
+ * The provider's count a turn starts from: the newest reply's `endTokens`,
+ * only when the provider reported it and that reply's last request is still
+ * the prefix this turn replays (inner#1567, design 6.2). Anything else --
+ * a character fallback, a row from before the count had a source, a system
+ * prompt, memory or model that changed since -- leaves nothing to check.
+ * @param replayed - The history, row by row, as it is replayed.
+ * @returns The count, or undefined when there is none to trust.
+ * @throws {never} Never.
+ */
+export function knownTokensAtStart(replayed: readonly ReplayedRow[]): number | undefined {
+  const newest = replayed.findLast((one) => one.row.role === "assistant");
+  if (newest?.reply?.endTokensFrom !== "provider" || newest.lastRequestMatches !== true) return undefined;
+  return newest.reply.endTokens;
 }
