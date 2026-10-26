@@ -49,7 +49,8 @@ export function bindDocSync(name: string, doc: Y.Doc, provider: HocuspocusProvid
   }
 
   /**
-   * Sends at most one receipt after the provider has sent the covered updates.
+   * Requests a receipt after the provider has sent the covered updates,
+   * with at most one request pending.
    * @throws {Error} Propagates provider send failures after invalidating the request.
    */
   function sendConfirmation(): void {

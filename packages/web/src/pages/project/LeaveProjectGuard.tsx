@@ -71,7 +71,7 @@ export function isLandingAfterLeave(
  * Confirms refresh and leave actions against this Project's current work.
  * @param props - Page-owned handle for the connection banner action.
  * @param props.ref - Receives the refresh action.
- * @returns The confirmation dialog (open only while a leave is blocked).
+ * @returns The confirmation dialog for a blocked leave or requested refresh.
  * @throws {Error} When a browser reload fails.
  */
 export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHandle> }): React.JSX.Element {
