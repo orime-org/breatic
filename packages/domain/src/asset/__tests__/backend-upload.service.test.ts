@@ -14,6 +14,11 @@
  * state their length; lane ③ has a link, which says nothing, so the configured
  * maximum travels as the ceiling the Worker holds the transfer to.
  *
+ * Lane ② no longer hands the ticket to the parts sender: the upload is opened
+ * by `openSignedUpload` with the shared secret first (inner#1595), and the
+ * parts go to that opened upload. Lane ③ still hands the ticket to the Worker,
+ * which opens the upload inside its own fetch.
+ *
  * Nothing real is reached — the grant, the ticket and both transports are
  * mocked.
  */
@@ -24,6 +29,7 @@ import type * as IngestReportModule from "@domain/asset/ingest-report.service.js
 
 const issueUploadGrant = vi.fn();
 const signUploadTicket = vi.fn();
+const openUploadAtIngest = vi.fn();
 const sendBytesToIngest = vi.fn();
 const finishUploadAtIngest = vi.fn();
 const fetchUrlToIngest = vi.fn();
@@ -61,11 +67,12 @@ vi.mock("@breatic/core", () => ({
   }),
   idleSocketDispatcher,
 }));
-// Real but for the four calls driven here, so the rule deciding which media
+// Real but for the five calls driven here, so the rule deciding which media
 // has a frame to cut is the shared one rather than a copy typed in a test.
 vi.mock("@breatic/shared", async (importOriginal) => ({
   ...(await importOriginal<typeof sharedModule>()),
   signUploadTicket,
+  openUploadAtIngest,
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
@@ -78,7 +85,20 @@ vi.mock("@domain/asset/ingest-report.service.js", async (importOriginal) => ({
 
 const { uploadBytesToStorage, transferUrlToStorage, transferReaderUrlToStorage, ReaderUrlTransferError } =
   await import("@domain/asset/backend-upload.service.js");
-const { DeadlinePassed, INGEST_NO_ANSWER, INGEST_TYPE_NOT_REPORTED, UploadHttpError } = await import("@breatic/shared");
+const { DeadlinePassed, INGEST_NO_ANSWER, INGEST_REFUSED_UNNAMED, INGEST_TYPE_NOT_REPORTED, UploadHttpError } =
+  await import("@breatic/shared");
+const { UploadOpenFailed } = await import("@domain/asset/upload-open-failure.js");
+
+/** The target the upload was opened with, as the last open saw it. */
+type OpeningTarget = { ticket: string; uploadUrl: string; partSize: number; totalParts: number };
+
+/**
+ * The target the last open at the Worker was handed.
+ * @returns It, or undefined when nothing was opened.
+ */
+function openingTarget(): OpeningTarget | undefined {
+  return openUploadAtIngest.mock.calls.at(-1)?.[0] as OpeningTarget | undefined;
+}
 
 /**
  * The deadline the last signed ticket carries.
@@ -118,6 +138,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   issueUploadGrant.mockResolvedValue({ key: "image/2026-01-01/k.png", studioId: "s1" });
   signUploadTicket.mockResolvedValue("signed-ticket");
+  openUploadAtIngest.mockResolvedValue({ uploadId: "upload-1", token: "token-1" });
   sendBytesToIngest.mockResolvedValue({
     uploadId: "upload-1",
     token: "token-1",
@@ -170,6 +191,8 @@ describe("uploadBytesToStorage — lane ②", () => {
       }),
       "secret",
     );
+    // T47: the signed ticket is what the upload is opened with.
+    expect(openingTarget()).toMatchObject({ ticket: "signed-ticket", totalParts: 1 });
     // Registration is what produces this, and it is what the caller pins.
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
   });
@@ -179,16 +202,100 @@ describe("uploadBytesToStorage — lane ②", () => {
 
     await uploadBytesToStorage(bytes, CTX);
 
-    const [blob, target] = sendBytesToIngest.mock.calls[0] as [Blob, { ticket: string }];
+    const [blob, target] = sendBytesToIngest.mock.calls[0] as [Blob, Record<string, unknown>];
     // The very Blob it was handed: a caller whose bytes are on disk hands over
     // a file-backed one, and re-wrapping it here would read the whole file.
     expect(blob).toBe(bytes);
-    expect(target).toMatchObject({
+    // The ticket went to the open; the parts go to the upload it opened.
+    expect(openingTarget()).toMatchObject({
       ticket: "signed-ticket",
       uploadUrl: "https://ingest.example",
       partSize: PART_SIZE,
       totalParts: 1,
     });
+    expect(target).toMatchObject({
+      uploadUrl: "https://ingest.example",
+      uploadId: "upload-1",
+      token: "token-1",
+      partSize: PART_SIZE,
+      totalParts: 1,
+    });
+    expect(target).not.toHaveProperty("ticket");
+  });
+
+  it("T43: opens the upload with the secret under the deadline, then sends the parts to it", async () => {
+    const before = Date.now();
+
+    await uploadBytesToStorage(new Blob([Buffer.alloc(1024, 7)]), CTX);
+
+    expect(openUploadAtIngest).toHaveBeenCalledTimes(1);
+    const [, secret, bound] = openUploadAtIngest.mock.calls[0] as [
+      unknown,
+      string,
+      { signal?: AbortSignal; timeoutMs?: number },
+    ];
+    expect(secret).toBe("secret");
+    expect(bound.signal).toBeInstanceOf(AbortSignal);
+    expect(bound.signal?.aborted).toBe(false);
+    expect(bound.timeoutMs).toBeGreaterThan(0);
+    expect(bound.timeoutMs).toBeLessThanOrEqual(DEADLINE_AT - before);
+
+    expect(sendBytesToIngest).toHaveBeenCalledTimes(1);
+    const target = sendBytesToIngest.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(target).toEqual({
+      uploadUrl: "https://ingest.example",
+      uploadId: "upload-1",
+      token: "token-1",
+      partSize: PART_SIZE,
+      totalParts: 1,
+      dispatcher: IDLE_DISPATCHER,
+    });
+    expect(Object.hasOwn(target, "ticket")).toBe(false);
+    expect(openUploadAtIngest.mock.invocationCallOrder[0]).toBeLessThan(
+      sendBytesToIngest.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(finishUploadAtIngest).toHaveBeenCalledTimes(1);
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ storageKey: "image/2026-01-01/k.png", outcome: "completed" }),
+    );
+  });
+
+  it("T44: settles the grant and throws UploadOpenFailed when the Worker will not open", async () => {
+    const refused = new UploadHttpError(502, "store_failed");
+    const settled = { status: "voided" };
+    openUploadAtIngest.mockRejectedValue(refused);
+    applyIngestReport.mockResolvedValue(settled);
+
+    const failed = await uploadBytesToStorage(new Blob(["x"]), CTX).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(UploadOpenFailed);
+    const open = failed as InstanceType<typeof UploadOpenFailed>;
+    expect(open.reason).toBe("store_failed");
+    expect(open.settled).toBe(settled);
+    expect(open.cause).toBe(refused);
+    expect(sendBytesToIngest).not.toHaveBeenCalled();
+    expect(finishUploadAtIngest).not.toHaveBeenCalled();
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
+      storageKey: "image/2026-01-01/k.png",
+      outcome: "aborted",
+      reason: "store_failed",
+    });
+    expect(openUploadAtIngest).toHaveBeenCalledTimes(1);
+  });
+
+  it("T44: keeps the settling error itself when settling the unopened upload fails too", async () => {
+    const unsettled = new Error("db down");
+    openUploadAtIngest.mockRejectedValue(new UploadHttpError(502, "store_failed"));
+    applyIngestReport.mockRejectedValue(unsettled);
+
+    const failed = await uploadBytesToStorage(new Blob(["x"]), CTX).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(UploadOpenFailed);
+    expect(failed).not.toBeInstanceOf(AggregateError);
+    const open = failed as InstanceType<typeof UploadOpenFailed>;
+    expect(open.settleError).toBe(unsettled);
+    expect(open.settled).toBeUndefined();
+    expect(sendBytesToIngest).not.toHaveBeenCalled();
   });
 
   // A part is cut once its bytes stop moving (inner#1367). Node judges that on
@@ -217,6 +324,8 @@ describe("uploadBytesToStorage — lane ②", () => {
       uploadBytesToStorage(new Blob(["x"]), { ...CTX, deadlineAt: Date.now() - 1 }),
     ).rejects.toBeInstanceOf(DeadlinePassed);
     expect(issueUploadGrant).not.toHaveBeenCalled();
+    // T45: nothing is opened at the Worker either.
+    expect(openUploadAtIngest).not.toHaveBeenCalled();
   });
 
   it("counts the parts a large output needs", async () => {
@@ -226,6 +335,8 @@ describe("uploadBytesToStorage — lane ②", () => {
     await uploadBytesToStorage(new Blob([Buffer.alloc(PART_SIZE + 1)]), CTX);
 
     expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({ totalParts: 2 });
+    // T47: and that layout is the one the upload is opened with.
+    expect(openingTarget()).toMatchObject({ totalParts: 2, partSize: PART_SIZE });
   });
 
   it("still asks for one part when there is nothing to send", async () => {
@@ -235,6 +346,8 @@ describe("uploadBytesToStorage — lane ②", () => {
     await uploadBytesToStorage(new Blob([]), CTX);
 
     expect(signUploadTicket.mock.calls[0]?.[0]).toMatchObject({ totalParts: 1 });
+    // T47: and that layout is the one the upload is opened with.
+    expect(openingTarget()).toMatchObject({ totalParts: 1 });
   });
 
   it("fails the upload when the report filed nothing", async () => {
@@ -365,6 +478,19 @@ describe("transferUrlToStorage — lane ③", () => {
     );
     expect(sendBytesToIngest).not.toHaveBeenCalled();
     expect(out.fileUrl).toBe("https://our-bucket/k.png");
+  });
+
+  // T46: lane ③ hands the ticket to the Worker's fetch, which opens the
+  // upload itself; nothing here opens one beforehand.
+  it("T46: opens nothing ahead of a link transfer, and still hands the Worker the ticket", async () => {
+    await transferUrlToStorage("https://provider.example/tmp/out.png", CTX);
+    await transferReaderUrlToStorage("https://imgs.example/cat.jpg", { projectId: "p1", actingUserId: "u1" });
+
+    expect(openUploadAtIngest).not.toHaveBeenCalled();
+    expect(fetchUrlToIngest).toHaveBeenCalledTimes(2);
+    for (const call of fetchUrlToIngest.mock.calls) {
+      expect(call[1]).toMatchObject({ ticket: "signed-ticket" });
+    }
   });
 
   // A generated video reaches R2 down this lane, and its cover has to come
@@ -515,6 +641,20 @@ describe("transferReaderUrlToStorage — a reader's link (inner#1315)", () => {
 
     expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_NO_ANSWER);
     expect(applyIngestReport).toHaveBeenCalledWith(expect.objectContaining({ outcome: "aborted" }));
+  });
+
+  it("T34: settles the grant as the unnamed refusal when the Worker answered without a name", async () => {
+    fetchUrlToIngest.mockRejectedValue(new UploadHttpError(500, null));
+
+    const failed = await transferReaderUrlToStorage(LINK, WHO).catch((err: unknown) => err);
+
+    expect(failed).toBeInstanceOf(ReaderUrlTransferError);
+    expect((failed as InstanceType<typeof ReaderUrlTransferError>).reason).toBe(INGEST_REFUSED_UNNAMED);
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith({
+      storageKey: "image/2026-01-01/k.png",
+      outcome: "aborted",
+      reason: INGEST_REFUSED_UNNAMED,
+    });
   });
 
   it("settles the grant when the stored type is not one we take", async () => {
