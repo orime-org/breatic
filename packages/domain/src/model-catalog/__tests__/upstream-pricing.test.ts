@@ -12,6 +12,8 @@
  * `bytedance/avatar-omni-human-1.5` (readme $0.25/s, formula base_price
  * 160000/s) and `sonilo/video-to-music` (readme bills 5s as 5s, formula bills
  * at least 10s). A smoke run's actual charge settles which one is right.
+ * Bria FIBO video removal's whole-second rounding likewise follows its
+ * official model formula; the descriptive readme states only a per-second rate.
  */
 import { describe, expect, it } from "vitest";
 import { upstreamPriceUsd, type ClipDurations } from "@breatic/shared/pricing";
@@ -56,6 +58,7 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   ],
   "bria/eraser": [{ input: {}, usd: 0.04 }],
   "bria/fibo-edit/genfill": [{ input: {}, usd: 0.04 }],
+  "bria/fibo/video-background-remover": [{ input: { video: "v", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true }, durations: { video: [5.055] }, usd: 0.3 }],
   "bria/remove-background": [{ input: {}, usd: 0.018 }],
   "bytedance/avatar-omni-human-1.5": [{ input: { audio: "a" }, durations: { audio: [10] }, usd: 1.6 }],
   "bytedance/dreamactor-v2": [{ input: { video: "v" }, durations: { video: [10] }, usd: 0.5 }],
@@ -228,12 +231,12 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 66 endpoints of the finalized catalog", () => {
+  it("covers exactly the 67 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 
   for (const [endpoint, cases] of Object.entries(CASES)) {
-    it(`prices ${endpoint} as its readme does`, async () => {
+    it(`prices ${endpoint} as its published contract does`, async () => {
       const pricing = endpoints.get(endpoint)?.pricing;
       expect(pricing, `${endpoint} declares no pricing`).toBeDefined();
       const { base_price, formula, discount_rate } = pricing as {

@@ -103,6 +103,47 @@ models:
           formula: "{\"total_price\": $max([3, $min([$ceil(get_duration(video)), 600])]) * base_price}"
           discount_rate: 100
 
+  - name: "bria-fibo-video-background-remover"
+    display_name: "Bria FIBO Video Background Remover"
+    mode: "edit"
+    takes_prompt: false
+    tier: "internal"
+    description: "Transparent cutout with source audio"
+    guide: "Remove a video's background and return transparent VP9 WebM while preserving its source audio."
+    generation_time: 600
+    output_type: "video/webm"
+    icon: "bria"
+    params:
+      video:
+        description: "Source video"
+        default: null
+        accepts: "video"
+        fill: "tool"
+        max_total_duration: 60
+      background_color:
+        description: "Transparent background"
+        default: "Transparent"
+        values: ["Transparent"]
+        fill: "tool"
+      output_container_and_codec:
+        description: "Transparent video format"
+        default: "webm_vp9"
+        values: ["webm_vp9"]
+        fill: "tool"
+      preserve_audio:
+        description: "Preserve source audio"
+        default: true
+        values: [true]
+        fill: "tool"
+    providers:
+      - name: "wavespeed"
+        model_id: "bria/fibo/video-background-remover"
+        priority: 1
+        pricing:
+          base_price: 50000
+          formula: '{"total_price": $min([$ceil(get_duration(video)), 60]) * base_price}'
+          discount_rate: 100
+
   - name: "gemini-omni-1.1-flash-text-to-video"
     display_name: "Gemini Omni 1.1 Flash"
     variant: "Text-to-Video"

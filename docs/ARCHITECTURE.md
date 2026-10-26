@@ -168,6 +168,8 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 `mini-tool-settlement` 队列只唤醒 SQL 费用周期，载荷是 taskId 与 settlementVersion；发现任务使用原精度游标逐页补投。worker 启动时先注册恢复 worker、安装持久周期调度并投一次立即扫描，失败则关闭该 worker 并让启动失败；单个实例退出不删除共享调度。一次认领最多记录一项消费，随后读取新周期再投递，known 费用跳过外部查询；已确认费用遇到 usage 写入失败仍保持 known。队列投递失败由周期扫描重发现，最终扣费后的通知失败只记应用层错误。发现周期、页大小和查询预算来自 `config/mini-tools.yaml`，队列并发统一来自 `config/worker.yaml`；这些恢复期限不替换原计算的两小时期限。
 
+`prepareVideoRemoveBackground` 只准备执行事实：复用 live 视频注册绑定和存储 key，以内部选定目录模型核对唯一可用的 WaveSpeed Bria FIBO endpoint，按实测时长检查模型上限。供应商输入固定透明背景、VP9 WebM 和保留音轨；完整源时长交现有模型目录估价，保留已应用倍率的报价。源引用在异步解析前复制，provider 值在异步估价前固定；准备器不创建任务、不提交模型、不登记媒体或扣费。
+
 计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求。提交前重新检查原期限并用它限定传输；两次查询间隔的最终报告窗口只供读取。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。
 
 `advanceRegisteredMiniToolPlanJob` 保存原终态报告与实测用量后，逐项登记实际写出的产物；原步骤缓存每个索引的 canonical assetId，重入复用报告和已登记兄弟项。分析 JSON 从该真实资产行的 canonical URL 有限读取，字节界取登记大小，读取仍受原任务期限约束。领域装配器保留受理身份和六位微秒时间：场景结果核对完整源帧账本、原区间映射与切点；人物结果核对 display 锚帧和保存的整数像素区域，按原 detectionIndex 关联缩略图计划、实测报告及登记行。人物 ID 由原 analysisRunId 与检测编号确定，去重允许多个人引用同一资产；引用的 URL、hash、MIME、kind 和大小取登记胜出行。显式 display 人物检测与缩略图使用同向 PNG，裁切保持奇数尺寸、单像素和透明分量。
