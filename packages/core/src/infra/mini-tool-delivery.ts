@@ -12,7 +12,7 @@ export interface MiniToolDeliveryWake { taskId: string; deliveryVersion: number 
 /** Discovery continues by the exact SQL task primary key. */
 export interface MiniToolDeliveryDiscovery { cursor?: { taskId: string } }
 
-/** RED placeholder: the adopted wake parser has no accepting implementation yet. */
-export const miniToolDeliveryWakeSchema: z.ZodType<MiniToolDeliveryWake> = z.never();
-/** RED placeholder: the adopted discovery parser has no accepting implementation yet. */
-export const miniToolDeliveryDiscoverySchema: z.ZodType<MiniToolDeliveryDiscovery> = z.never();
+/** The original delivery identity is validated before any SQL recovery. */
+export const miniToolDeliveryWakeSchema: z.ZodType<MiniToolDeliveryWake> = z.strictObject({ taskId: z.uuid(), deliveryVersion: z.number().int().positive() });
+/** Discovery carries the exact primary-key continuation of its SQL page. */
+export const miniToolDeliveryDiscoverySchema: z.ZodType<MiniToolDeliveryDiscovery> = z.strictObject({ cursor: z.strictObject({ taskId: z.uuid() }).optional() });

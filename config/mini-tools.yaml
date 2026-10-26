@@ -27,6 +27,11 @@ presentation:
   crf: 18
   preset: "medium"
 
+# Canonical results remain discoverable until their delivery is acknowledged.
+delivery:
+  discovery_interval_ms: 30000
+  discovery_page_size: 100
+
 # A billing lookup lease and retry delay; neither changes the node task budget.
 settlement:
   lease_ms: 60000

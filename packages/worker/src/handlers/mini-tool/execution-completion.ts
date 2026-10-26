@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { logger, type getStreamRedis } from "@breatic/core";
-import { miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion } from "@breatic/domain";
+import { miniToolDeliveryService, miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
-import { recordGenerationForNodes } from "@worker/handlers/dispatch.js";
-import { generationMetadata } from "@worker/handlers/persisted-output.js";
+import { deliverMiniToolOutput, wakePendingMiniToolDelivery } from "@worker/handlers/mini-tool/delivery-worker.js";
 
 /**
  * Commit indexed execution media before restoring history and original target notifications.
@@ -23,24 +22,14 @@ export async function finishMiniToolExecutionAndNotify(taskId: string, completio
     logger.error({ err, ctx: { taskId, phase: "execution-commit" } }, "mini_tool_execution_commit_failed");
     throw err;
   }
-  const { task, execution, record } = finished;
+  const { execution, record } = finished;
   const docName = canvasSpaceDocName(execution.projectId, execution.spaceId);
   try {
-    const outputs = record.outputs.flatMap((output) => output.result?.status !== "registered" ? [] : [{
-      nodeId: output.nodeId, content: output.result.canonicalURL,
-      coverUrl: output.result.kind === "video" ? output.result.cover?.canonicalURL : undefined,
-      width: output.result.width, height: output.result.height, duration: output.result.duration,
-      mimeType: output.result.mimeType, size: output.result.size,
-      resultOrigin: { kind: "mini-tool-output" as const, runId: execution.taskId, planFingerprint: execution.planFingerprint, outputIndex: output.outputIndex },
-    }]);
-    await recordGenerationForNodes(streamRedis, docName, {
-      taskId, projectId: execution.projectId, userId: task.userId, taskType: task.taskType,
-      metadata: generationMetadata({
-        reportedModel: undefined, jobModel: execution.model, credits: task.billedCredits ?? undefined,
-        durationMs: task.durationMs ?? undefined, toolId: execution.tool,
-        params: { tool: execution.tool, draft: execution.draft, analysis_refs: execution.analysisRefs, outputs: execution.outputs },
-      }),
-    }, outputs, { rethrowOnRecordFailure: true });
+    let context = await miniToolDeliveryService.readMiniToolDelivery(taskId);
+    for (const output of record.outputs) {
+      if (output.result?.status === "registered") context = await deliverMiniToolOutput(context, output.outputIndex, streamRedis);
+    }
+    await wakePendingMiniToolDelivery(context);
     for (const output of record.outputs) {
       if (output.result?.status !== "failed") continue;
       const error = output.result.error;

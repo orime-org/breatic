@@ -20,6 +20,8 @@ import { runContainerJob } from "@worker/handlers/container/run-container-job.js
 import { runMiniToolAnalysisTask } from "@worker/handlers/mini-tool/run-analysis-task.js";
 import { runMiniToolExecutionTask } from "@worker/handlers/mini-tool/run-execution-task.js";
 import { runMiniToolContainerAnalysis } from "@worker/handlers/mini-tool/run-container-analysis.js";
+import { runMiniToolDeliveryJob } from "@worker/handlers/mini-tool/delivery-worker.js";
+import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
@@ -152,8 +154,10 @@ export interface TaskJobData {
   retryReported?: number;
 }
 
-/** The tasks queue preserves each producer's original execution payload. */
+/** Task-identified computation producers retain their original execution payloads. */
 export type TasksJobData = TaskJobData | MiniToolAnalysisJob | MiniToolExecutionJob;
+/** The existing tasks queue also transports pure delivery and discovery identities. */
+export type TasksQueueJobData = TasksJobData | MiniToolDeliveryWake | MiniToolDeliveryDiscovery;
 
 /**
  * Whether a failure in the currently-running attempt leaves no retry
@@ -306,10 +310,12 @@ function resolveCanvasDocName(
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 export async function runTask(
-  job: Job<TasksJobData>,
+  job: Job<TasksQueueJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => {
+  if (job.name === MINI_TOOL_DELIVERY_JOB || job.name === MINI_TOOL_DELIVERY_DISCOVERY_JOB) return runMiniToolDeliveryJob(job);
+  const analyticsConsent = "analyticsConsent" in job.data ? job.data.analyticsConsent : undefined;
+  return await runWithConsent(analyticsConsent ?? NO_CONSENT, () => {
     if (job.name === MINI_TOOL_ANALYSIS_JOB) {
       return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, runMiniToolContainerAnalysis);
     }
@@ -1001,6 +1007,8 @@ const NO_RESULT: TaskFailureReason = "no_result";
  *   idempotently). When false (terminal crash-net, no retry left), the
  *   failure is best-effort/swallowed. The settle that carries the result
  *   follows the same rule, being the only path the result takes to the node.
+ * @param opts.onHistoryRecorded - Observe the persisted history before attempting publication.
+ * @param opts.onNodeSettled - Observe the original verdict after successful publication, including an absent row.
  * @returns Resolves once every node has been recorded + emitted.
  */
 export async function recordGenerationForNodes(
@@ -1034,7 +1042,11 @@ export async function recordGenerationForNodes(
     size?: number | null;
     resultOrigin?: NodeTaskCountsEvent["resultOrigin"];
   }>,
-  opts: { rethrowOnRecordFailure?: boolean } = {},
+  opts: {
+    rethrowOnRecordFailure?: boolean;
+    onHistoryRecorded?: () => void;
+    onNodeSettled?: (verdict: { landed: boolean } | null) => void;
+  } = {},
 ): Promise<void> {
   for (const o of outputs) {
     const content = typeof o.content === "string" ? o.content : null;
@@ -1067,6 +1079,7 @@ export async function recordGenerationForNodes(
           media: result,
         });
         historyId = entry.id;
+        opts.onHistoryRecorded?.();
       } catch (err) {
         // #1618 A: a billed generation MUST land in node_history. On a live run
         // (rethrowOnRecordFailure) re-throw so BullMQ redelivers and the
@@ -1099,7 +1112,8 @@ export async function recordGenerationForNodes(
             ...(o.resultOrigin !== undefined && { resultOrigin: o.resultOrigin }),
           };
     try {
-      await settleTaskForNode(streamRedis, docName, ending);
+      const verdict = await settleTaskForNode(streamRedis, docName, ending);
+      opts.onNodeSettled?.(verdict ?? null);
     } catch (err) {
       // This call is the only way the result reaches the node, so on a live
       // run it fails the job: BullMQ redelivers, and `settle` reports the

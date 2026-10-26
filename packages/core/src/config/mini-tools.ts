@@ -60,6 +60,10 @@ export const miniToolsConfigSchema = z
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),
       stderrTailBytes: miniToolPlanLimitsSchema.shape.stderrTailBytes.default(65_536),
     }).default({ probeStdoutBytes: 268_435_456, analysisStdoutBytes: 16_777_216, stderrTailBytes: 65_536 }),
+    delivery: z.strictObject({
+      discovery_interval_ms: z.number().int().positive().default(30_000),
+      discovery_page_size: z.number().int().positive().default(100),
+    }).default({ discovery_interval_ms: 30_000, discovery_page_size: 100 }),
     settlement: z.strictObject({
       lease_ms: z.number().int().positive().default(60_000),
       retry_ms: z.number().int().positive().default(30_000),

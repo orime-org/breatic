@@ -55,12 +55,13 @@ import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { isTranscription } from "@worker/handlers/transcribe-question.js";
 import { miniToolExecutionService, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
 import { MINI_TOOL_ANALYSIS_JOB } from "@breatic/shared/mini-tools";
+import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
 import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
-  data: TaskJobData | MiniToolAnalysisJob | MiniToolExecutionJob;
+  data: TaskJobData | MiniToolAnalysisJob | MiniToolExecutionJob | MiniToolDeliveryWake | MiniToolDeliveryDiscovery;
   name?: string;
   /**
    * Terminal-completion timestamp (epoch ms). BullMQ sets `finishedOn` for
@@ -93,6 +94,8 @@ export async function cleanupFailedJobNodes(
   reason: string,
 ): Promise<number> {
   if (!job) return 0;
+  if (job.name === MINI_TOOL_DELIVERY_JOB || job.name === MINI_TOOL_DELIVERY_DISCOVERY_JOB) return 0;
+  if ("deliveryVersion" in job.data || !("taskId" in job.data)) throw new Error("Delivery cleanup requires its original job name");
   // Only reclaim on a TERMINAL failure. BullMQ's 'failed' event also fires
   // for retryable attempts (worker.js emits after every moveToFailed) — and
   // writing idle then would fight the upcoming retry. `finishedOn` is set

@@ -37,6 +37,8 @@ import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
  * @param opts.errorMessage - What the list shows for a failure.
  * @param opts.result - The content fields, on the transition into `done`.
  * @param opts.resultOrigin - Immutable planned media identity, preserved on a landed replay.
+ * @returns The original node verdict after publication, or null when this run opened no row.
+ * @throws {Error} When persistence, recounting or stream publication fails.
  */
 export async function settleTaskForNode(
   streamRedis: ReturnType<typeof getStreamRedis>,
@@ -50,9 +52,9 @@ export async function settleTaskForNode(
     result?: NodeTaskResult;
     resultOrigin?: NodeTaskCountsEvent["resultOrigin"];
   },
-): Promise<void> {
+): Promise<{ landed: boolean } | null> {
   const row = await repo.findByTaskAndNode(opts.taskId, opts.nodeId);
-  if (row === null) return;
+  if (row === null) return null;
 
   const settled = await service.settle({
     taskId: row.id,
@@ -76,4 +78,5 @@ export async function settleTaskForNode(
     settled.landed ? opts.result : undefined,
     ...origin,
   );
+  return { landed: settled.landed };
 }

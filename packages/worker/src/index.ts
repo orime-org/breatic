@@ -128,6 +128,7 @@ import { runVideoPresentation } from '@worker/handlers/video-presentation.js';
 import { runUploadFinish } from "@worker/handlers/upload-finish.js";
 import { runMail } from "@worker/handlers/mail.js";
 import { startMiniToolSettlementWorker } from "@worker/handlers/mini-tool/settlement-worker.js";
+import { startMiniToolDeliveryRecovery } from "@worker/handlers/mini-tool/delivery-worker.js";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -145,7 +146,7 @@ const WORKER_QUEUES: readonly string[] = [
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
-import type { TasksJobData } from "@worker/handlers/dispatch.js";
+import type { TasksQueueJobData } from "@worker/handlers/dispatch.js";
 import type { Job } from "bullmq";
 
 // Health probe port from the validated config (default 9101).
@@ -196,7 +197,14 @@ export async function startWorker(): Promise<void> {
   assertKnownQueues(WORKER_QUEUES);
 
   const miniToolSettlement = await startMiniToolSettlementWorker();
-  const worker = createWorker<TasksJobData>("tasks", runTask);
+  const worker = createWorker<TasksQueueJobData>("tasks", runTask);
+  try {
+    await startMiniToolDeliveryRecovery(worker);
+  } catch (err) {
+    logger.error({ err, ctx: { phase: "delivery-start" } }, "mini_tool_delivery_start_failed");
+    await miniToolSettlement.close();
+    throw err;
+  }
 
   // Its own queue: the ordinary generation branches record a provider result,
   // bill the studio and write generation activity. Pasted links follow their
@@ -343,7 +351,7 @@ export async function startWorker(): Promise<void> {
   });
 
   worker.on("completed", (job) => {
-    logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
+    logger.info({ jobId: job.id, taskId: "taskId" in job.data ? job.data.taskId : undefined }, "job_completed");
   });
 
   // Local telemetry only. The node write-back is NOT done here:
