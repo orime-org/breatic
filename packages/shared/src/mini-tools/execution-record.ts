@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import type { MiniToolSourceBinding } from "@shared/mini-tools/analysis-record.js";
+import { miniToolSourceBindingSchema, type MiniToolSourceBinding } from "@shared/mini-tools/analysis-record.js";
 import type { MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
 
 /** Public registered cover facts, independent from provider presentation derivatives. */
@@ -38,5 +38,62 @@ export interface MiniToolExecutionRecord {
   error: Record<string, z.infer<ReturnType<typeof z.json>>> | null;
 }
 
-/** Loadable RED schema; the independent execution-record contract is not implemented yet. */
-export const miniToolExecutionRecordSchema = z.custom<MiniToolExecutionRecord>(() => false, "Execution record schema is not implemented");
+const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const jsonObject = z.record(z.string(), z.json());
+const dimension = z.number().int().positive().nullable();
+const assetFields = {
+  assetId: z.uuid(), canonicalURL: z.url(), mimeType: z.string().min(1),
+  size: z.number().int().nonnegative(), contentHash: hashSchema, width: dimension, height: dimension,
+};
+const registeredSchema = z.strictObject({
+  ...assetFields, status: z.literal("registered"), kind: z.enum(["image", "video", "audio", "document", "file"]),
+  duration: z.number().nonnegative().nullable(), cover: z.strictObject({ ...assetFields, kind: z.literal("image") }).nullable(),
+});
+
+/** Complete stable slot facts; private provider and storage capabilities are rejected. */
+export const miniToolExecutionOutputSchema = z.strictObject({
+  outputIndex: z.number().int().nonnegative(), nodeId: z.uuid(),
+  recipe: z.strictObject({ kind: z.literal("remove-bg") }), late: z.boolean(),
+  result: z.discriminatedUnion("status", [registeredSchema, z.strictObject({ status: z.literal("failed"), error: jsonObject })]).nullable(),
+});
+
+/** Actual consumption preserves its original amount's confirmation and recording state. */
+export const miniToolExecutionUsageSchema = z.strictObject({
+  consumptionKey: hashSchema, state: z.enum(["pending", "known", "recorded"]), chargeTo: z.enum(["user", "platform"]),
+  costUsd: z.number().nonnegative().nullable(), credits: z.number().nonnegative().nullable(),
+}).superRefine((usage, ctx) => {
+  const valid = usage.state === "pending" ? usage.costUsd === null && usage.credits === null
+    : usage.state === "known" ? usage.costUsd !== null && usage.credits === null
+      : usage.costUsd !== null && usage.credits !== null && (usage.chargeTo !== "platform" || usage.credits === 0);
+  if (!valid) ctx.addIssue({ code: "custom", message: "Amounts differ from their actual consumption state" });
+});
+
+/** Versioned project-readable state, with media completion independent from billing. */
+export const miniToolExecutionRecordSchema: z.ZodType<MiniToolExecutionRecord> = z.strictObject({
+  schemaVersion: z.literal(1), runId: z.uuid(), status: z.enum(["pending", "running", "completed", "failed", "cancelled"]),
+  planFingerprint: hashSchema, resultVersion: z.number().int().nonnegative(),
+  sourceBindings: z.array(miniToolSourceBindingSchema).min(1), outputs: z.array(miniToolExecutionOutputSchema).min(1),
+  usage: z.array(miniToolExecutionUsageSchema), billingState: z.enum(["idle", "waiting", "checking", "settled"]), error: jsonObject.nullable(),
+}).superRefine((record, ctx) => {
+  if (new Set(record.outputs.map((output) => output.outputIndex)).size !== record.outputs.length
+    || new Set(record.outputs.map((output) => output.nodeId)).size !== record.outputs.length
+    || new Set(record.usage.map((usage) => usage.consumptionKey)).size !== record.usage.length) {
+    ctx.addIssue({ code: "custom", message: "Output and consumption identities must be unique" });
+  }
+  if (record.status === "pending" || record.status === "running") {
+    if (record.resultVersion !== 0 || record.error !== null || record.outputs.some((output) => output.result !== null || output.late)) {
+      ctx.addIssue({ code: "custom", message: "Active execution has no terminal media snapshot" });
+    }
+  } else if (record.status !== "cancelled") {
+    if (record.resultVersion === 0 || record.outputs.some((output) => output.result === null)) {
+      ctx.addIssue({ code: "custom", message: "Terminal execution requires every planned output" });
+    }
+    if (record.status === "completed" && (record.error !== null || record.outputs.some((output) => output.result?.status !== "registered" || output.late))) {
+      ctx.addIssue({ code: "custom", message: "Completed execution requires its canonical registered outputs" });
+    }
+    if (record.status === "failed" && record.error === null) ctx.addIssue({ code: "custom", message: "Failed execution retains its original error" });
+  }
+  if (record.outputs.some((output) => output.late && (record.status !== "failed" || output.result?.status !== "registered"))) {
+    ctx.addIssue({ code: "custom", message: "Late media belongs to a preserved failed execution" });
+  }
+});

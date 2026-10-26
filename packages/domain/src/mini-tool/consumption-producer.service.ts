@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { db, type DbTx } from "@breatic/core";
+import { mirrorMiniToolExecutionConsumption } from "@domain/mini-tool/execution-usage.service.js";
 import { canonicalMiniToolValue, miniToolConsumptionKey, hashMiniToolValue } from "@breatic/shared/mini-tools";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
@@ -104,6 +105,7 @@ async function produceConsumption(request: OpenMiniToolConsumptionInput, tx: DbT
     pendingConsumptionKeys: await pendingKeys(task.id, tx), nextAttemptAt: await taskRepo.miniToolSettlementDatabaseNow(task.id, tx),
     leaseToken: null, leaseUntil: null, lastError: null,
   }), tx);
+  await mirrorMiniToolExecutionConsumption(task, fact, tx);
   return fact;
 }
 

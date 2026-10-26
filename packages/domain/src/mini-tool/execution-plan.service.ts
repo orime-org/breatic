@@ -30,7 +30,19 @@ export interface MiniToolExecutionPlan { task: TaskEntity; execution: AcceptedMi
  */
 export async function readMiniToolExecutionPlan(taskId: string): Promise<MiniToolExecutionPlan> {
   const task = await taskRepo.getMiniToolExecutionTask(taskId);
-  if (task === null || task.source !== "mini_tool" || task.taskType !== "video" || task.mode !== "append") {
+  if (task === null) throw new Error("Planned video execution has no owning task");
+  return executionPlanFromTask(task);
+}
+
+/**
+ * Validate the complete frozen plan against a parent read under its caller's lock.
+ * @param task - The current physical task, never a replacement queue payload.
+ * @returns The original parent and verified immutable execution.
+ * @throws {z.ZodError} When persisted fields violate their versioned contract.
+ * @throws {Error} When its lane, parent, model, output mapping or plan hash differs.
+ */
+export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolExecutionPlan> {
+  if (task.source !== "mini_tool" || task.taskType !== "video" || task.mode !== "append") {
     throw new Error("Planned video execution has no owning task");
   }
   const stored = storedPlanSchema.parse(task.params.miniToolExecution);
@@ -40,7 +52,7 @@ export async function readMiniToolExecutionPlan(taskId: string): Promise<MiniToo
   });
   const execution: AcceptedMiniToolExecution = { ...stored, draft: request.draft, analysisRefs: request.analysis_refs, outputs: request.outputs };
   const { requestFingerprint: _requestFingerprint, planFingerprint, ...projection } = execution;
-  if (execution.taskId !== task.id || execution.projectId !== task.projectId || execution.spaceId !== task.spaceId
+  if (execution.taskId !== task.id || execution.projectId !== task.projectId || execution.spaceId !== task.spaceId || execution.model !== task.model
     || canonicalMiniToolValue(execution.targetNodeIds) !== canonicalMiniToolValue(execution.outputs.map((output) => output.nodeId))
     || await hashMiniToolValue(projection) !== planFingerprint) {
     throw new Error("Planned execution differs from its original parent or complete plan");

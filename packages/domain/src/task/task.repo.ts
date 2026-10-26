@@ -360,11 +360,51 @@ export async function getTaskById(id: string): Promise<TaskEntity | null> {
  * Read a durable execution identity even after its user-facing history is hidden.
  * @param id - The immutable task/run UUID.
  * @returns The original parent, including an occupied non-execution identity for collision checks.
+ * @param transaction - The caller's existing computation transaction, when present.
  * @throws {Error} When the database read fails.
  */
-export async function getMiniToolExecutionTask(id: string): Promise<TaskEntity | null> {
-  const rows = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+export async function getMiniToolExecutionTask(id: string, transaction?: DbTx): Promise<TaskEntity | null> {
+  const rows = await (transaction ?? db).select().from(tasks).where(eq(tasks.id, id)).limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Serialize planned media and its public expense projection by the original task.
+ * @param id - The immutable accepted task identity.
+ * @param tx - The transaction retaining the task lock.
+ * @returns Its complete current parent, including hidden worker history.
+ * @throws {Error} When the database read fails.
+ */
+export async function lockMiniToolExecutionTask(id: string, tx: DbTx): Promise<TaskEntity | null> {
+  const [row] = await tx.select().from(tasks).where(eq(tasks.id, id)).for("update");
+  return row ? toEntity(row) : null;
+}
+
+/**
+ * Merge only the execution namespace and its optional computation transition.
+ * @param id - The original task whose lock the caller retains.
+ * @param record - Validated public execution state.
+ * @param tx - The same transaction as media or consumption persistence.
+ * @param ending - The computation transition; absent for expense-only updates.
+ * @param ending.status - The terminal computation state.
+ * @param ending.errorMessage - The original failure summary, or null for success.
+ * @param ending.finish - Whether this transition first ends active computation.
+ * @returns Nothing after the namespace has been committed to this transaction.
+ * @throws {Error} When the original parent disappears or persistence fails.
+ */
+export async function storeMiniToolExecutionRecord(id: string, record: Record<string, unknown>, tx: DbTx, ending?: {
+  status: "completed" | "failed"; errorMessage: string | null; finish: boolean;
+}): Promise<void> {
+  const patch = sql.param({ miniToolExecution: record }, tasks.result);
+  const rows = await tx.update(tasks).set({
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+    ...(ending === undefined ? {} : {
+      status: ending.status, errorMessage: ending.errorMessage,
+      completedAt: ending.finish ? sql`coalesce(${tasks.completedAt}, clock_timestamp())` : tasks.completedAt,
+    }),
+  }).where(eq(tasks.id, id)).returning({ id: tasks.id });
+  if (rows.length !== 1) throw new Error("Planned execution parent disappeared");
 }
 
 /**

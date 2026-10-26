@@ -2,8 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
-import type { MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
+import { t } from "@breatic/shared";
+import { z } from "zod";
+import { ConflictError, NotFoundError, db, projectAuthService, type DbTx } from "@breatic/core";
+import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
+import { executionPlanFromTask, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
+import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
+import { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
+import { completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
+import * as taskRepo from "@domain/task/task.repo.js";
+import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
+import * as assetRepo from "@domain/asset/asset.repo.js";
 
 /** Queue transport carries a discriminator and task identity, never a second frozen plan. */
 export interface MiniToolExecutionJob {
@@ -20,29 +30,187 @@ export interface MiniToolExecutionCompletion {
 }
 /**
  * Enter the SQL-owned planned lane before any provider or transfer boundary.
- * @param _taskId - The original accepted SQL task.
- * @param _jobId - The queue identity picking up that task.
- * @throws {Error} Until the execution lifecycle owner is implemented.
+ * @param taskId - The original accepted SQL task.
+ * @param jobId - The queue identity picking up that task.
+ * @returns Its original inputs and initialized public metadata.
+ * @throws {Error} When original identity or atomic initialization fails.
  */
-export async function startMiniToolExecution(_taskId: string, _jobId: string): Promise<MiniToolExecution> {
-  throw new Error("Planned execution start is not implemented");
+export async function startMiniToolExecution(taskId: string, jobId: string): Promise<MiniToolExecution> {
+  const [id, queueId] = z.tuple([z.uuid(), z.string().min(1).max(255)]).parse([taskId, jobId]);
+  return db.transaction(async (tx) => {
+    const plan = await lockedPlan(id, tx);
+    let record = recordFromPlan(plan);
+    if (plan.task.status !== "pending" && plan.task.status !== "running") return { ...plan, record };
+    await taskRepo.markRunning(id, queueId, new Date(), tx);
+    record = miniToolExecutionRecordSchema.parse({ ...record, status: "running" });
+    await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
+    return { task: await currentTask(id, tx), execution: plan.execution, record };
+  });
 }
 /**
  * Commit a complete indexed result and its call-set proof under the original task lock.
- * @param _taskId - The original accepted SQL task.
- * @param _completion - The complete indexed observation and closure proof.
- * @throws {Error} Until the execution lifecycle owner is implemented.
+ * @param taskId - The original accepted SQL task.
+ * @param completion - The complete indexed observation and closure proof.
+ * @returns The committed or preserved terminal state and original context.
+ * @throws {Error} When original mapping, registration, media CAS or persistence fails.
  */
-export async function finishMiniToolExecution(_taskId: string, _completion: MiniToolExecutionCompletion): Promise<MiniToolExecution> {
-  throw new Error("Planned execution completion is not implemented");
+export async function finishMiniToolExecution(taskId: string, completion: MiniToolExecutionCompletion): Promise<MiniToolExecution> {
+  const id = z.uuid().parse(taskId);
+  const incoming = z.strictObject({
+    planFingerprint: z.string().regex(/^[a-f0-9]{64}$/), expectedVersion: z.number().int().nonnegative(),
+    outputs: z.array(miniToolExecutionOutputSchema).min(1), error: z.record(z.string(), z.json()).nullable(), consumptionSet: z.enum(["complete", "uncertain"]),
+  }).parse(completion);
+  return db.transaction(async (tx) => {
+    const plan = await lockedPlan(id, tx);
+    const current = recordFromPlan(plan);
+    if (incoming.planFingerprint !== plan.execution.planFingerprint || !sameMapping(incoming.outputs, plan.execution)) {
+      throw new ConflictError(t("server.idempotency.mismatch"));
+    }
+    if (plan.task.status === "cancelled") throw new Error("Cancelled execution cannot begin another computation");
+    const outputs: MiniToolExecutionOutput[] = [];
+    for (const [index, output] of incoming.outputs.entries()) {
+      const held = current.outputs[index]!;
+      if (held.result?.status === "registered") {
+        if (canonicalMiniToolValue(held.result) !== canonicalMiniToolValue(output.result)) throw new ConflictError(t("server.idempotency.mismatch"));
+        outputs.push(held);
+      } else if (output.result?.status === "registered") {
+        await requireRegistered(output);
+        if (plan.task.status === "failed") await requireLateReceipt(id, output, tx);
+        outputs.push({ ...output, late: plan.task.status === "failed" });
+      } else {
+        outputs.push(plan.task.status === "failed" ? held : { ...output, late: false });
+      }
+    }
+    const changed = canonicalMiniToolValue(current.outputs) !== canonicalMiniToolValue(outputs);
+    if (current.resultVersion > 0 && !changed) {
+      if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
+      return { task: await currentTask(id, tx), execution: plan.execution, record: recordFromPlan({ ...plan, task: await currentTask(id, tx) }) };
+    }
+    if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
+    const failed = plan.task.status === "failed" || outputs.some((output) => output.result?.status === "failed");
+    const status = failed ? "failed" : "completed";
+    const error = plan.task.status === "failed" ? current.error : failed ? incoming.error ?? { code: "mini_tool_failed" } : null;
+    const record = miniToolExecutionRecordSchema.parse({ ...current, status, error, outputs, resultVersion: current.resultVersion + 1 });
+    await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx, {
+      status, errorMessage: error === null ? null : typeof error.code === "string" ? error.code : "mini_tool_failed",
+      finish: plan.task.status === "pending" || plan.task.status === "running",
+    });
+    if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
+    const task = await currentTask(id, tx);
+    return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
+  });
 }
 /**
  * Read only original tasks and current project membership for a collaborator.
- * @param _projectId - The Project in the route path.
- * @param _runId - The immutable execution run.
- * @param _userId - The currently authenticated collaborator.
- * @throws {Error} Until the project-scoped execution reader is implemented.
+ * @param projectId - The Project in the route path.
+ * @param runId - The immutable execution run.
+ * @param userId - The currently authenticated collaborator.
+ * @returns Current computation, registered outputs and public actual expenses.
+ * @throws {NotFoundError} When the task or project is hidden from this collaborator.
+ * @throws {Error} When persisted planning or public metadata is inconsistent.
  */
-export async function getMiniToolExecution(_projectId: string, _runId: string, _userId: string): Promise<MiniToolExecutionRecord> {
-  throw new Error("Planned execution read is not implemented");
+export async function getMiniToolExecution(projectId: string, runId: string, userId: string): Promise<MiniToolExecutionRecord> {
+  const task = await taskRepo.getMiniToolExecutionTask(runId);
+  if (task === null || task.deletedAt !== null || task.projectId !== projectId || task.source !== "mini_tool"
+    || task.params.miniToolExecution === undefined || await projectAuthService.loadProjectRole(userId, projectId) === null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  return recordFromPlan(await executionPlanFromTask(task));
+}
+
+/**
+ * Require the original physical parent after a write in its caller's transaction.
+ * @param id - The original task identity.
+ * @param tx - The transaction holding its parent lock.
+ * @returns The current physical parent.
+ * @throws {Error} When the parent disappeared.
+ */
+async function currentTask(id: string, tx: DbTx): Promise<TaskEntity> {
+  const task = await taskRepo.getMiniToolExecutionTask(id, tx);
+  if (task === null) throw new Error("Planned execution parent disappeared");
+  return task;
+}
+
+/**
+ * Acquire the single computation/consumption lock before interpreting its frozen plan.
+ * @param id - The original accepted task identity.
+ * @param tx - The computation transaction acquiring its lock.
+ * @returns The locked parent and complete verified plan.
+ * @throws {NotFoundError} When the original parent is absent.
+ * @throws {Error} When the complete frozen plan is invalid.
+ */
+async function lockedPlan(id: string, tx: DbTx): Promise<MiniToolExecutionPlan> {
+  const task = await taskRepo.lockMiniToolExecutionTask(id, tx);
+  if (task === null) throw new NotFoundError(t("server.error.not_found"));
+  return executionPlanFromTask(task);
+}
+
+/**
+ * Compare the complete ordered slot identity without interpreting client recipes again.
+ * @param outputs - The proposed complete output mapping.
+ * @param execution - The original accepted plan.
+ * @returns Whether every ordered slot matches the original plan.
+ * @throws {TypeError} When an internal mapping is not canonical JSON.
+ */
+function sameMapping(outputs: readonly MiniToolExecutionOutput[], execution: AcceptedMiniToolExecution): boolean {
+  return canonicalMiniToolValue(outputs.map(({ outputIndex, nodeId, recipe }) => ({ outputIndex, nodeId, recipe }))) === canonicalMiniToolValue(execution.outputs);
+}
+
+/**
+ * Project only persisted task facts; the read path never queries provider steps.
+ * @param plan - The verified physical parent and immutable execution.
+ * @returns Its current project-readable computation and expense state.
+ * @throws {Error} When a stored namespace conflicts with its immutable parent.
+ */
+function recordFromPlan(plan: MiniToolExecutionPlan): MiniToolExecutionRecord {
+  const { task, execution } = plan;
+  const billingState = task.result?.settlement === undefined ? "idle" : miniToolSettlementSchema.parse(task.result.settlement).state;
+  const stored = task.result?.miniToolExecution;
+  const record = miniToolExecutionRecordSchema.parse(stored ?? {
+    schemaVersion: 1, runId: task.id, status: task.status, planFingerprint: execution.planFingerprint, resultVersion: 0,
+    sourceBindings: [execution.binding], outputs: execution.outputs.map((output) => ({ ...output, result: null, late: false })),
+    usage: [], billingState, error: null,
+  });
+  if (record.runId !== task.id || record.planFingerprint !== execution.planFingerprint || record.status !== task.status
+    || canonicalMiniToolValue(record.sourceBindings) !== canonicalMiniToolValue([execution.binding]) || !sameMapping(record.outputs, execution)) {
+    throw new Error("Public execution differs from its original SQL plan");
+  }
+  return { ...record, billingState };
+}
+
+/**
+ * Verify a late observation against its original returned step and durable asset receipt.
+ * @param taskId - The original accepted run.
+ * @param output - The proposed late registered slot.
+ * @param tx - The transaction holding the original parent lock.
+ * @throws {Error} When no original returned step owns this registered slot.
+ */
+async function requireLateReceipt(taskId: string, output: MiniToolExecutionOutput, tx: DbTx): Promise<void> {
+  const steps = await upstreamStepRepo.listSteps(taskId, tx);
+  const owned = steps.some((step) => step.itemIndex === output.outputIndex && step.output.miniToolStep !== undefined
+    && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done"
+    && output.result?.status === "registered" && step.output[`miniToolAsset:${output.outputIndex}`] === output.result.assetId);
+  if (!owned) throw new Error("Late canonical output has no original returned receipt");
+}
+
+/**
+ * Compare public output metadata with its live canonical registration and cover.
+ * @param output - The worker's complete registered slot observation.
+ * @throws {Error} When the original canonical row is missing or differs from the observation.
+ */
+async function requireRegistered(output: MiniToolExecutionOutput): Promise<void> {
+  const media = output.result;
+  if (media?.status !== "registered") throw new Error("Output has no canonical registration");
+  const asset = await assetRepo.findById(media.assetId);
+  if (asset === null || asset.deletedAt !== null) throw new Error("Canonical output is unavailable");
+  const cover = await assetRepo.findCoverOf(asset.id);
+  const actual = {
+    status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, mimeType: asset.mimeType,
+    size: asset.sizeBytes, contentHash: asset.contentHash, width: asset.width, height: asset.height, duration: asset.durationSeconds,
+    cover: cover === null ? null : {
+      assetId: cover.id, canonicalURL: cover.fileUrl, kind: cover.kind, mimeType: cover.mimeType,
+      size: cover.sizeBytes, contentHash: cover.contentHash, width: cover.width, height: cover.height,
+    },
+  };
+  if (canonicalMiniToolValue(media) !== canonicalMiniToolValue(actual)) throw new Error("Output differs from its registered canonical winner");
 }

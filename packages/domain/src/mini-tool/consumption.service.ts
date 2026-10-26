@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { db } from "@breatic/core";
+import { mirrorMiniToolExecutionConsumption } from "@domain/mini-tool/execution-usage.service.js";
 import { canonicalMiniToolValue, miniToolConsumptionKey } from "@breatic/shared/mini-tools";
 import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
 import { createUsageRecorder } from "@domain/credit/usage-recorder.js";
@@ -102,6 +103,7 @@ export async function recordMiniToolConsumption(input: RecordMiniToolConsumption
     const databaseNow = await taskRepo.miniToolSettlementDatabaseNow(task.id, tx);
     const terminal = task.status === "completed" || task.status === "failed" || task.status === "cancelled";
     await taskRepo.storeMiniToolSettlement(task.id, afterRecorded(settlement, pendingConsumptionKeys, terminal, databaseNow), tx);
+    await mirrorMiniToolExecutionConsumption(task, recorded, tx);
     return recorded;
   });
 }
@@ -135,6 +137,7 @@ export async function confirmMiniToolConsumption(input: ConfirmMiniToolConsumpti
       ...consumption, state: "known", costUsd: request.costUsd, costSource: request.costSource, raw: request.raw,
     });
     await upstreamStepRepo.storeMiniToolConsumption(task.id, step.id, known, tx);
+    await mirrorMiniToolExecutionConsumption(task, known, tx);
     if (!await taskRepo.hasMiniToolSettlementLease(task.id, request.claim, tx)) {
       throw new Error("Mini-tool settlement lease expired before cost confirmation");
     }
