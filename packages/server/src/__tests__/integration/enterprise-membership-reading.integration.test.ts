@@ -4,7 +4,8 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { db, initCore, getHonouredTierForUser, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, lockLimitsForUser } from "@breatic/core";
+import { db, initCore, getHonouredTierForUser, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, getMembershipConfig, lockLimitsForUser } from "@breatic/core";
+import { tierLimitsSchema } from "@breatic/shared";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -40,6 +41,60 @@ beforeAll(() => {
 afterAll(async () => { await sql?.end({ timeout: 1 }); });
 
 describe("enterprise membership unified reads", () => {
+  it("reads ordinary account and Studio entitlements with database-valid non-RFC identities", async () => {
+    const userId = `00000000-0000-0000-0000-${randomUUID().slice(-12)}`;
+    const studioId = `00000000-0000-0000-0000-${randomUUID().slice(-12)}`;
+    await sql`insert into users(id,email,membership_tier) values(${userId},${`${userId}@example.test`},'pro')`;
+    await sql`insert into studios(id,created_by_user_id,slug,name,type) values(${studioId},${userId},${studioId},'Legacy identity test','team')`;
+    await sql`insert into studio_members(studio_id,user_id,role) values(${studioId},${userId},'admin')`;
+    const configured = getMembershipLimits("pro");
+    expect(await getMembershipReadingForUser(userId)).toMatchObject({ subject: { accountId: userId }, storedTier: "pro", effectiveTier: "pro", limits: configured, enterpriseState: "ordinary", revision: null, expiresAt: null, settlementProtected: false });
+    expect(await getHonouredTierForUser(userId)).toBe("pro");
+    expect(await getLimitsForStudio(studioId)).toEqual(configured);
+    expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
+    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes });
+  });
+
+  it("does not impose management mailbox validation on ordinary entitlements", async () => {
+    const { userId, studioId } = await account("pro");
+    await sql`update users set email=${`legacy-mailbox-${userId}`} where id=${userId}`;
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "pro", limits: getMembershipLimits("pro") });
+    expect(await getLimitsForStudio(studioId)).toEqual(getMembershipLimits("pro"));
+  });
+
+  it.each([
+    ["self_hosted", "self_hosted", "ordinary"],
+    ["enterprise", "self_hosted", "expired"],
+    ["enterprise", "base", "expired"],
+  ] as const)("reads configured safe-integer limits from %s through %s as %s", async (storedTier, effectiveTier, enterpriseState) => {
+    const config = getMembershipConfig();
+    const original = config.tiers[effectiveTier];
+    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER });
+    const { userId, studioId } = await account(storedTier);
+    if (storedTier === "enterprise") await enterprise(userId, "2000-01-01T00:00:00Z", effectiveTier);
+    config.tiers[effectiveTier] = configured;
+    try {
+      expect(await getMembershipReadingForUser(userId)).toMatchObject({ storedTier, effectiveTier, enterpriseState, limits: configured, storageBytes: configured.storage_bytes, settlementProtected: effectiveTier === "self_hosted" });
+      expect(await getMembershipForUser(userId)).toEqual({ tier: effectiveTier, limits: configured });
+      expect(await getLimitsForStudio(studioId)).toEqual(configured);
+      expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
+      expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes });
+    } finally {
+      config.tiers[effectiveTier] = original;
+    }
+  });
+
+  it("rejects malformed stored enterprise facts in account and Studio reads", async () => {
+    const { userId, studioId } = await account("enterprise");
+    await enterprise(userId, "2070-01-01T00:00:00Z");
+    // The database accepts a textual zone; membership reads must validate its meaning.
+    await sql`update enterprise_memberships set entry_timezone='No/Such_Zone' where user_id=${userId}`;
+    const invalidZone = { issues: expect.arrayContaining([expect.objectContaining({ path: ["entryTimezone"], code: "custom" })]) };
+    await expect(getMembershipReadingForUser(userId)).rejects.toMatchObject(invalidZone);
+    await expect(getLimitsForStudio(studioId)).rejects.toMatchObject(invalidZone);
+    await expect(db.transaction((tx) => lockLimitsForUser(userId, tx))).rejects.toMatchObject(invalidZone);
+  });
+
   it.each(["missing", "deleted"])("refuses a %s membership subject", async (state) => {
     const userId = state === "missing" ? randomUUID() : (await account("pro")).userId;
     if (state === "deleted") await sql`update users set deleted_at=now() where id=${userId}`;

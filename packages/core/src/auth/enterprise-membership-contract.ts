@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import { MEMBERSHIP_TIERS } from "@breatic/shared";
+import { MEMBERSHIP_TIERS, tierLimitsSchema } from "@breatic/shared";
 
 const tier = z.enum(MEMBERSHIP_TIERS);
 const instant = z.string().datetime({ offset: true });
@@ -87,13 +87,16 @@ export const enterpriseMembershipReadingSchema = z.object({
   asOf: instant,
   enterpriseState: z.enum(["ordinary", "missing", "active", "expired"]),
   effectiveTier: tier,
-  limits: enterpriseMembershipLimitsSchema.nullable(),
+  limits: tierLimitsSchema.strict().nullable(),
   storageBytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable(),
   revision: z.number().int().positive().nullable(),
   expiresAt: instant.nullable(),
   fallbackTier: z.enum(["base", "self_hosted"]).nullable(),
   settlementProtected: z.boolean(),
-}).strict();
+}).strict().refine(
+  (reading) => reading.enterpriseState !== "active" || enterpriseMembershipLimitsSchema.safeParse(reading.limits).success,
+  { path: ["limits"], message: "Invalid active enterprise limits" },
+);
 
 export const enterpriseMembershipProfileSchema = z.object({
   account: z.object({ id: z.string().uuid(), email: z.string().email() }).strict(),

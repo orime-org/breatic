@@ -517,7 +517,7 @@ async function readMembershipProfile(target: { userId: string } | { studioId: st
   const storedTier = asKnownTier(row.storedTier, subject);
   const enterprise = row.enterprise === null ? null : enterpriseRecordOf(row.enterprise);
   const reading = resolveMembershipReading(storedTier, enterprise, row.facts, { ...subscriptionClock(), now: new Date(row.asOf) });
-  return { subject, profile: enterpriseMembershipProfileSchema.parse({ account: { id: row.userId, email: row.email }, snapshot: { userId: row.userId, storedTier, enterprise }, reading }) };
+  return { subject, profile: { account: { id: row.userId, email: row.email }, snapshot: { userId: row.userId, storedTier, enterprise }, reading } };
 }
 
 /**
@@ -528,7 +528,8 @@ async function readMembershipProfile(target: { userId: string } | { studioId: st
  * @throws {Error} When stored data or configuration is invalid.
  */
 export async function getEnterpriseMembershipProfile(userId: string, tx?: DbTx): Promise<EnterpriseMembershipProfile | null> {
-  return (await readMembershipProfile({ userId }, tx))?.profile ?? null;
+  const found = await readMembershipProfile({ userId }, tx);
+  return found === null ? null : enterpriseMembershipProfileSchema.parse(found.profile);
 }
 
 /**

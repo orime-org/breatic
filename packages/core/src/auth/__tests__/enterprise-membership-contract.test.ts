@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { enterpriseMembershipWriteSchema, enterpriseMembershipResultSchema, enterpriseMembershipProfileSchema } from "../enterprise-membership-contract.js";
+import { enterpriseMembershipWriteSchema, enterpriseMembershipResultSchema, enterpriseMembershipProfileSchema, enterpriseMembershipReadingSchema, enterpriseRecordSchema } from "../enterprise-membership-contract.js";
 
 const id = "00000000-0000-4000-8000-000000000029";
 const limits = { team_studios: 8, projects_per_studio: 500, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 };
@@ -57,5 +57,57 @@ describe("enterprise membership contract", () => {
     }
     const ordinary = { ...profile, snapshot: result.before, reading: { ...reading, enterpriseState: "ordinary", effectiveTier: "pro", revision: null, expiresAt: null, fallbackTier: null, settlementProtected: false } };
     expect(enterpriseMembershipProfileSchema.parse(ordinary)).toEqual(ordinary);
+  });
+
+  it.each(["base", "pro", "team", "self_hosted"] as const)("preserves ordinary %s count limits above the negotiated count range", (effectiveTier) => {
+    fc.assert(fc.property(fc.integer({ min: 2147483648, max: Number.MAX_SAFE_INTEGER }), (count) => {
+      const configured = { team_studios: count, projects_per_studio: count, concurrent_editors: count, studio_members: count, project_members: count, storage_bytes: Number.MAX_SAFE_INTEGER };
+      const profile = {
+        account: { id, email: "owner@example.test" },
+        snapshot: { userId: id, storedTier: effectiveTier, enterprise: null },
+        reading: { asOf: record.createdAt, enterpriseState: "ordinary", effectiveTier, limits: configured, storageBytes: configured.storage_bytes, revision: null, expiresAt: null, fallbackTier: null, settlementProtected: effectiveTier === "self_hosted" },
+      };
+      expect(enterpriseMembershipProfileSchema.parse(profile)).toEqual(profile);
+    }), { examples: [[2147483648], [Number.MAX_SAFE_INTEGER]] });
+  });
+
+  it.each(["base", "self_hosted"] as const)("preserves large configured limits after expiry to %s", (fallbackTier) => {
+    const configured = { team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER };
+    const expired = { ...record, expiresAt: "2000-01-01T00:00:00.000Z", fallbackTier };
+    const profile = {
+      account: { id, email: "owner@example.test" },
+      snapshot: { userId: id, storedTier: "enterprise", enterprise: expired },
+      reading: { asOf: record.createdAt, enterpriseState: "expired", effectiveTier: fallbackTier, limits: configured, storageBytes: configured.storage_bytes, revision: expired.revision, expiresAt: expired.expiresAt, fallbackTier, settlementProtected: fallbackTier === "self_hosted" },
+    };
+    expect(enterpriseMembershipProfileSchema.parse(profile)).toEqual(profile);
+  });
+
+  it.each(["team_studios", "projects_per_studio", "concurrent_editors", "studio_members", "project_members"] as const)("retains the enterprise int32 bound for %s at every contract boundary", (field) => {
+    const oversized = { ...limits, [field]: 2147483648 };
+    const malformed = { ...record, limits: oversized };
+    const active = { asOf: record.createdAt, enterpriseState: "active", effectiveTier: "enterprise", limits: oversized, storageBytes: null, revision: record.revision, expiresAt: record.expiresAt, fallbackTier: record.fallbackTier, settlementProtected: true };
+    expect(enterpriseMembershipWriteSchema.safeParse({ ...body, limits: oversized }).success).toBe(false);
+    expect(enterpriseRecordSchema.safeParse(malformed).success).toBe(false);
+    expect(enterpriseMembershipResultSchema.safeParse({ ...result, after: { ...result.after, enterprise: malformed } }).success).toBe(false);
+    expect(enterpriseMembershipReadingSchema.safeParse(active).success).toBe(false);
+    expect(enterpriseMembershipProfileSchema.safeParse({ account: { id, email: "owner@example.test" }, snapshot: result.after, reading: active }).success).toBe(false);
+  });
+
+  it("retains strict ordinary reading fields and numeric validity", () => {
+    const ordinary = { asOf: record.createdAt, enterpriseState: "ordinary", effectiveTier: "self_hosted", limits, storageBytes: limits.storage_bytes, revision: null, expiresAt: null, fallbackTier: null, settlementProtected: true };
+    for (const value of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1, Infinity, NaN]) {
+      expect(enterpriseMembershipReadingSchema.safeParse({ ...ordinary, limits: { ...limits, projects_per_studio: value } }).success).toBe(false);
+    }
+    expect(enterpriseMembershipReadingSchema.safeParse({ ...ordinary, limits: { ...limits, extra: 1 } }).success).toBe(false);
+  });
+
+  it("retains management profile identity and mailbox validation", () => {
+    const profile = {
+      account: { id, email: "owner@example.test" }, snapshot: result.before,
+      reading: { asOf: record.createdAt, enterpriseState: "ordinary", effectiveTier: "pro", limits, storageBytes: limits.storage_bytes, revision: null, expiresAt: null, fallbackTier: null, settlementProtected: false },
+    };
+    const legacyId = "00000000-0000-0000-0000-0000000e0029";
+    expect(enterpriseMembershipProfileSchema.safeParse({ ...profile, account: { ...profile.account, id: legacyId }, snapshot: { ...profile.snapshot, userId: legacyId } }).success).toBe(false);
+    expect(enterpriseMembershipProfileSchema.safeParse({ ...profile, account: { ...profile.account, email: "legacy-mailbox" } }).success).toBe(false);
   });
 });

@@ -4,7 +4,8 @@
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { db } from "@breatic/core";
+import { db, getMembershipConfig, getMembershipReadingForUser } from "@breatic/core";
+import { tierLimitsSchema } from "@breatic/shared";
 import type { SubscriptionWrite } from "@breatic/core";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
@@ -52,6 +53,72 @@ describe("enterprise membership signed internal API", () => {
   it.each(["/internal/v1/accounts/not-a-uuid/enterprise-membership", "/internal/v1/enterprise-membership-operations/not-a-key"])("rejects an invalid path identity at %s", async (target) => {
     const response = await call(suite.baseUrl, target);
     expect(response.status).toBe(422); expect(response.json.code).toBe("invalid_body");
+  });
+
+  it.each(["GET", "POST"] as const)("retains RFC identity validation for a signed %s with a database-valid legacy identity", async (method) => {
+    const id = `00000000-0000-0000-0000-${randomUUID().slice(-12)}`;
+    const requestKey = key();
+    await suite.sql`insert into users(id,email,membership_tier) values(${id},${`${id}@example.test`},'pro')`;
+    const response = await call(suite.baseUrl, path(id), { method, ...(method === "POST" ? { body, idempotencyKey: requestKey } : {}) });
+    expect(response.status).toBe(422);
+    expect(response.json.code).toBe("invalid_body");
+    expect(await operationCount(requestKey)).toBe(0);
+    expect(await suite.sql`select user_id from enterprise_memberships where user_id=${id}`).toEqual([]);
+    expect(await suite.sql`select membership_tier from users where id=${id}`).toEqual([{ membership_tier: "pro" }]);
+    expect(await suite.sql`select id from membership_tier_changes where user_id=${id}`).toEqual([]);
+  });
+
+  it("retains management profile validation while ordinary reading ignores mailbox transport format", async () => {
+    const id = await user();
+    await suite.sql`update users set email=${`legacy-mailbox-${id}`} where id=${id}`;
+    expect(await getMembershipReadingForUser(id)).toMatchObject({ storedTier: "pro", effectiveTier: "pro", enterpriseState: "ordinary", revision: null, expiresAt: null });
+    const response = await call(suite.baseUrl, path(id));
+    expect(response.status).toBe(500);
+    expect(response.json).toEqual({ code: "internal_error" });
+  });
+
+  it.each([
+    ["self_hosted", "self_hosted", "ordinary"],
+    ["enterprise", "self_hosted", "expired"],
+    ["enterprise", "base", "expired"],
+  ] as const)("serves large configured limits for raw %s with effective %s in a signed %s profile", async (storedTier, effectiveTier, enterpriseState) => {
+    const id = await user(effectiveTier);
+    const config = getMembershipConfig();
+    const original = config.tiers[effectiveTier];
+    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER });
+    if (storedTier === "enterprise") {
+      const opened = await call(suite.baseUrl, path(id), { body: { ...body, expiresAt: "2000-01-01T00:00:00.000Z", expectedStoredTier: effectiveTier }, idempotencyKey: key() });
+      expect(opened.status).toBe(200);
+      expect(opened.json).toMatchObject({ status: "applied", after: { storedTier: "enterprise", enterprise: { fallbackTier: effectiveTier, revision: 1 } } });
+    }
+    config.tiers[effectiveTier] = configured;
+    try {
+      const response = await call(suite.baseUrl, path(id));
+      expect(response.status).toBe(200);
+      expect(response.json.account).toEqual({ id, email: expect.stringMatching(/@example\.test$/) });
+      expect(response.json.snapshot).toMatchObject({ userId: id, storedTier });
+      expect(response.json.reading).toEqual({
+        asOf: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/), enterpriseState, effectiveTier, limits: configured,
+        storageBytes: configured.storage_bytes, revision: storedTier === "enterprise" ? 1 : null,
+        expiresAt: storedTier === "enterprise" ? "2000-01-01T00:00:00.000Z" : null,
+        fallbackTier: storedTier === "enterprise" ? effectiveTier : null, settlementProtected: effectiveTier === "self_hosted",
+      });
+      expect(response.json.snapshot.enterprise).toEqual(storedTier === "enterprise" ? expect.objectContaining({ limits, revision: 1, fallbackTier: effectiveTier }) : null);
+    } finally {
+      config.tiers[effectiveTier] = original;
+    }
+  });
+
+  it.each(["team_studios", "projects_per_studio", "concurrent_editors", "studio_members", "project_members"] as const)("rejects an oversized negotiated %s before any membership write", async (field) => {
+    const id = await user();
+    const requestKey = key();
+    const response = await call(suite.baseUrl, path(id), { body: { ...body, limits: { ...limits, [field]: 2147483648 } }, idempotencyKey: requestKey });
+    expect(response.status).toBe(422);
+    expect(response.json.code).toBe("invalid_body");
+    expect(await operationCount(requestKey)).toBe(0);
+    expect(await suite.sql`select user_id from enterprise_memberships where user_id=${id}`).toEqual([]);
+    expect(await suite.sql`select membership_tier from users where id=${id}`).toEqual([{ membership_tier: "pro" }]);
+    expect(await suite.sql`select id from membership_tier_changes where user_id=${id}`).toEqual([]);
   });
 
   it.each([undefined, "not-a-key"])("rejects a missing or malformed write key %s", async (requestKey) => {
