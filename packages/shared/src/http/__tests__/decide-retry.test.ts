@@ -27,6 +27,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import fc from "fast-check";
 
 import { decideRetry, parseRetryAfter } from "@shared/http/decide-retry.js";
 import {
@@ -392,5 +393,26 @@ describe("parseRetryAfter — the same rule for both forms the header allows", (
     const started = performance.now();
     expect(parseRetryAfter(hostile, NOW)).toBeNull();
     expect(performance.now() - started).toBeLessThan(100);
+  });
+});
+
+// inner#1595 P03: opening an upload at the ingest Worker is declared
+// `replaySafe: false`, because the Worker opens a fresh multipart upload on
+// every delivery. What the transport may still resend it on is exactly the two
+// answers stating the request was never processed (408, 429): neither a 5xx,
+// nor no answer at all, nor any other status.
+describe("P03 decideRetry — a replay-unsafe request is resent only on 408 and 429", () => {
+  it("retries iff the status is 408 or 429", () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.constant(undefined), fc.integer({ min: 200, max: 599 })),
+        fc.integer({ min: 1, max: MAX_RETRIES }),
+        (status, attempt) => {
+          const d = decideRetry({ ...base, status, attempt, bodyReplayable: true, replaySafe: false });
+          expect(d.retry).toBe(status === 408 || status === 429);
+        },
+      ),
+      { numRuns: 200 },
+    );
   });
 });

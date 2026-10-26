@@ -3,6 +3,7 @@
 
 import {
   isAlreadyStored,
+  isOpenFailed,
   isRefused,
   type BatchTicketAnswer,
   type BatchTicketRequest,
@@ -182,8 +183,9 @@ export interface MediaUploadDeps {
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
-   * The server answered: a ticket, which opened the upload's task row, or a
-   * copy the studio already holds. Told once, before any bytes move.
+   * The server answered: an opened upload or one it could not open, either of
+   * which opened the upload's task row, or a copy the studio already holds.
+   * Told once, before any bytes move.
    */
   onAnswered?: () => void;
   /**
@@ -275,8 +277,9 @@ type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onSucces
 type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
 
 /**
- * The half after the ticket: settle a dedup hit, or send the bytes, have the
- * finish queued and, for an upload with no node, wait for its ending.
+ * The half after the ticket: settle a dedup hit or an open our server could
+ * not make, or send the bytes, have the finish queued and, for an upload with
+ * no node, wait for its ending.
  * @param file - The file.
  * @param answer - What the ticket request answered for it.
  * @param cfg - The upload knobs.
@@ -306,6 +309,14 @@ async function deliverTicket(
   }
 
   const { taskId } = answer;
+  if (isOpenFailed(answer)) {
+    // Our server could not open the upload at the Worker and has settled the
+    // row itself; to the page it is the same as bytes that never got out, so
+    // the File is kept for a retry.
+    sinks.onFailure({ reason: 'transfer', ...(taskId !== undefined && { taskId }) });
+    return;
+  }
+
   let queued: QueuedFinish;
   try {
     const { onProgress } = sinks;

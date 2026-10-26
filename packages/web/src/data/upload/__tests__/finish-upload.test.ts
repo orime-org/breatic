@@ -39,7 +39,8 @@ const CFG: UploadClientConfig = {
 };
 
 const TICKET = {
-  ticket: 'signed',
+  uploadId: 'upload-1',
+  token: 'token-1',
   storageKey: 'image/2026-09-09/x.png',
   uploadUrl: 'https://ingest.example.com',
   kind: 'image',
@@ -178,5 +179,43 @@ describe('finishing an upload our server drives', () => {
     expect(apiPost).toHaveBeenCalledTimes(CFG.clientMaxAttempts);
     await expect(settled).resolves.toBe('rejected');
     expect(reason).not.toBeInstanceOf(BytesNotDelivered);
+  });
+});
+
+// inner#1595 §3.5: the server has already opened the upload, so the ticket
+// endpoint answers its id and first token instead of a ticket. The browser
+// hands the transport an opened upload and never opens one itself.
+describe('sending an upload our server opened (inner#1595)', () => {
+  it('W11 hands sendBytesToIngest the opened upload, with no ticket, and finishes with the last token', async () => {
+    apiPost.mockResolvedValue({ storageKey: TICKET.storageKey });
+    const file = new File(['x'], 'x.png', { type: 'image/png' });
+    const issued = {
+      uploadId: 'u1',
+      token: 'tok1',
+      storageKey: TICKET.storageKey,
+      uploadUrl: TICKET.uploadUrl,
+      kind: 'image',
+      partSize: TICKET.partSize,
+      totalParts: 2,
+      taskId: 't1',
+    };
+
+    await sendFileAndFinish(file, issued, CFG);
+
+    expect(sendBytesToIngest).toHaveBeenCalledOnce();
+    const [bytes, opened] = sendBytesToIngest.mock.calls[0]!;
+    expect(bytes).toBe(file);
+    expect(opened).toMatchObject({
+      uploadUrl: TICKET.uploadUrl,
+      uploadId: 'u1',
+      token: 'tok1',
+      partSize: TICKET.partSize,
+      totalParts: 2,
+    });
+    expect(opened).not.toHaveProperty('ticket');
+    const h = held();
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(apiPost.mock.calls[0]?.[0]).toBe(`/assets/uploads/${h.uploadId}/complete`);
+    expect(apiPost.mock.calls[0]?.[2]).toEqual({ headers: { 'x-upload-token': h.token } });
   });
 });

@@ -124,4 +124,66 @@ describe('fillNodesFromFiles', () => {
     fillNodesFromFiles(tiles(2), 'p1', deps(['node-1']));
     expect([markOf('node-0')?.state, markOf('node-1')]).toEqual(['waiting', undefined]);
   });
+
+  // inner#1595 §3.4–§3.5: the server could not open one tile's upload at the
+  // ingest Worker. Every tile's wait ends on its answer; only that tile fails,
+  // handed to the caller with its own File, and only the others are sent.
+  it('W14 one tile answered openFailed: every mark clears, only it fails, the others are sent', async () => {
+    const actual = await vi.importActual<typeof import('@web/data/upload/media-upload')>(
+      '@web/data/upload/media-upload',
+    );
+    vi.mocked(runMediaUploadBatch).mockClear().mockImplementationOnce(actual.runMediaUploadBatch);
+    useUploadMarksStore.setState({ marks: {} });
+    const handed = tiles(3);
+    /**
+     * A ticket for one tile in the new shape.
+     * @param i - The tile.
+     * @returns The ticket.
+     */
+    const ticketFor = (i: number): Record<string, unknown> => ({
+      uploadId: `upload-${i}`,
+      token: `token-${i}`,
+      storageKey: `image/k${i}.png`,
+      uploadUrl: 'https://ingest.example.com',
+      kind: 'image',
+      partSize: 5 * 1024 * 1024,
+      totalParts: 1,
+      taskId: `task-${i}`,
+    });
+    let work: Promise<void> | undefined;
+    const d: FillNodesDeps = {
+      ...deps(),
+      getUploadConfig: vi.fn().mockResolvedValue({
+        maxUploadBytes: 2147483648,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        uploadIdleTimeoutMs: 60000,
+      }),
+      hashFile: vi.fn().mockResolvedValue('a'.repeat(64)),
+      requestTicketBatch: vi.fn().mockResolvedValue([
+        ticketFor(0),
+        { openFailed: { reason: 'store_failed' }, taskId: 't2' },
+        ticketFor(2),
+      ]),
+      sendToIngest: vi.fn().mockImplementation(async (_file: File, t: { storageKey: string }) => ({
+        storageKey: t.storageKey,
+      })),
+      // A node's ending arrives through Yjs; these tests stop at the send.
+      waitForEnding: vi.fn(() => new Promise<never>(() => undefined)),
+      track: vi.fn((_nodeId: string, w: Promise<void>) => {
+        work = w;
+      }),
+      sleep: () => Promise.resolve(),
+    };
+
+    fillNodesFromFiles(handed, 'p1', d);
+    await work;
+
+    expect(handed.map((t) => markOf(t.nodeId))).toEqual([undefined, undefined, undefined]);
+    expect(d.onUploadFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', taskId: 't2' }, handed[1]!.file);
+    const sent = vi.mocked(d.sendToIngest).mock.calls.map(([file]) => file);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toBe(handed[0]!.file);
+    expect(sent[1]).toBe(handed[2]!.file);
+  });
 });

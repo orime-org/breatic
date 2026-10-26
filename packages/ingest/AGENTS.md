@@ -16,7 +16,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 | Endpoint | Who calls it |
 |---|---|
-| `POST /uploads`, `POST /fetch`, `PUT` part, `POST` finish | The upload path: the browser opens an upload and sends parts, our services pull a source URL (`/fetch`) and finish |
+| `POST /uploads`, `POST /fetch`, `PUT` part, `POST` finish | The upload path: our services open an upload, pull a source URL (`/fetch`) and finish; the browser only sends parts |
 | `POST /media` | Our services: read stored media numbers, audio peaks, display previews or the Agent's static JPEG |
 | `POST /jobs`, `GET /jobs/{class}/{id}` | Our worker: submit and poll container mini-tool jobs (`src/jobs/`) |
 
@@ -24,7 +24,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **A finish with `deferMediaRead: true` skips the media read, except for still images with EXIF orientation 2 to 8, which still go through the container to be turned upright.**
 
-**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** Finish, `/fetch`, `/media` and both `/jobs` endpoints require the shared secret (401 otherwise); the browser never holds it, so only our services can call them. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
+**Every refusal on the four upload-path endpoints has a definite status: ticket or token fails 401, bad part length or unfinished part 400, manifest missing parts 409, stored or source type refused 415, `/fetch` source over the ticket cap 413, R2 write or hash failure 502.** `POST /uploads`, finish, `/fetch`, `/media` and both `/jobs` endpoints require the shared secret (401 otherwise); the browser never holds it, so only our services can call them, and CORS allows a page nothing but `PUT` parts. A ticket that verifies on `POST /uploads` without the secret is reported as `ingest_open_without_secret`, one event per request. `/fetch` answers 400 for a non-https source; `/media` answers 400 for a bad body and 404 when the key has no object.
 
 ## The only outbound request
 
