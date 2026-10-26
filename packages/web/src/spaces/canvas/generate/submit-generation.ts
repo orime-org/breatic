@@ -16,7 +16,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { canvasSessions, type CanvasSessionState } from '@web/stores/canvas-session';
-import { getRunning, runOnce, useRunning } from '@web/stores/task-actions-in-flight';
+import { getRunning, runOnce, spaceTaskIntent, useRunning } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 
@@ -33,7 +33,7 @@ type GeneratePanelKind = Extract<
  * @returns The intent id.
  */
 function generateIntent(spaceId: string, nodeId: string): string {
-  return `generate:${spaceId}:${nodeId}`;
+  return spaceTaskIntent('generate', spaceId, nodeId);
 }
 
 /**

@@ -24,7 +24,7 @@ import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
-import { runOnce, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
+import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
@@ -338,7 +338,7 @@ function groupResults(
  * @returns The intent id.
  */
 export function miniToolIntent(spaceId: string, nodeId: string, toolId: string): string {
-  return `mini-tool:${spaceId}:${nodeId}:${toolId}`;
+  return spaceTaskIntent('mini-tool', spaceId, nodeId, toolId);
 }
 
 /**
@@ -464,7 +464,7 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
   const settle: Settle = (message) => {
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {
-      const op = ops[index]!;
+      const op = ops[index];
       if (message === undefined) now.answer(spaceId, node.id, op);
       else now.fail(spaceId, node.id, op, message);
     });
@@ -474,8 +474,8 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
       nodes.map((node, index) => ({
         id: node.id,
         position: node.position,
-        width: placements[index]!.width,
-        height: placements[index]!.height,
+        width: placements[index].width,
+        height: placements[index].height,
       })),
       group,
     );
@@ -509,7 +509,7 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
         const made = files[index];
         if (made === undefined) return [];
         handed.add(index);
-        return [{ nodeId: built.id, file: made.file, markOp: ops[index]! }];
+        return [{ nodeId: built.id, file: made.file, markOp: ops[index] }];
       });
       run.fillUploads(entries, tag);
     } else {
@@ -517,12 +517,12 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
       const [only] = files;
       if (node !== undefined && only !== undefined && output.modality !== 'text') {
         handed.add(0);
-        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]!);
+        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]);
       }
     }
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {
-      if (!handed.has(index)) now.answer(spaceId, node.id, ops[index]!);
+      if (!handed.has(index)) now.answer(spaceId, node.id, ops[index]);
     });
     return null;
   }

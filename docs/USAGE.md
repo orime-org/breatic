@@ -15,6 +15,8 @@ After completing installation:
 5. Switch between Spaces using their tabs; use the Space list to find and manage the project's other Spaces. Use chat and the canvas tools to generate and refine assets with a configured provider.
 6. Share the project with permitted collaborators and choose their access permissions.
 
+A small spinning mark at the far left of a Space tab means this browser currently knows of ongoing work in that Space, including collaborator tasks reflected in its current state. It keeps updating while another Space is shown. Hover a busy tab to see its full name and running status.
+
 If you are joining an existing instance, use the address provided by its operator and start with account registration; you do not need to deploy another copy. Operators should complete the deployment guide's login, persistence, collaboration, upload and generation checks before inviting users.
 
 ## Working in Breatic
