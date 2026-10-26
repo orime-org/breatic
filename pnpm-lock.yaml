@@ -624,6 +624,24 @@ importers:
 
   packages/provider:
     dependencies:
+      '@ai-sdk/anthropic':
+        specifier: 'catalog:'
+        version: 4.0.37(zod@4.4.3)
+      '@ai-sdk/deepseek':
+        specifier: 'catalog:'
+        version: 3.0.39(zod@4.4.3)
+      '@ai-sdk/google':
+        specifier: 'catalog:'
+        version: 4.0.41(zod@4.4.3)
+      '@ai-sdk/openai':
+        specifier: 'catalog:'
+        version: 4.0.37(zod@4.4.3)
+      '@openrouter/ai-sdk-provider':
+        specifier: 'catalog:'
+        version: 3.0.0(ai@7.0.68(zod@4.4.3))(zod@4.4.3)
+      ai:
+        specifier: 'catalog:'
+        version: 7.0.68(zod@4.4.3)
       ipaddr.js:
         specifier: 'catalog:'
         version: 2.5.0

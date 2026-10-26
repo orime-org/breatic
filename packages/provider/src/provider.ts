@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ProviderConfigInput } from "@provider/config/schema.js";
+import type { Cost, CostLookup } from "@provider/cost.js";
+import type { LlmApi } from "@provider/llm/api.js";
 
 /** What the caller hands provider (design 3.1). */
 export interface ProviderOptions {
@@ -14,9 +16,14 @@ export interface ProviderOptions {
   cleanText: (text: string) => string;
 }
 
-/** One provider instance; its parts are added by the modules that use it. */
+/** One provider instance (design 3). */
 export interface Provider {
   readonly options: ProviderOptions;
+  readonly llm: LlmApi;
+  readonly cost: {
+    /** Ask the upstream again for a cost that was pending; the last attempt answers known or missing. */
+    lookup(lookup: CostLookup, options: { lastAttempt: boolean }): Promise<Cost>;
+  };
 }
 
 /**

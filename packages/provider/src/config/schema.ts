@@ -79,6 +79,17 @@ export interface LlmConfigInput {
   understand_routes?: LlmRoute[];
   vendor_ids?: Record<string, Record<string, string>>;
   openrouter_backends?: Record<string, { only: string[]; allow_fallbacks: boolean }>;
+  /** Direct token prices in USD per million tokens, by our model id (from `config/usage-pricing.yaml`). */
+  prices?: Record<string, LlmPrice>;
+}
+
+/** One model's direct token prices, USD per million tokens. */
+export interface LlmPrice {
+  input_cache_miss_per_mtok: number;
+  input_cache_hit_per_mtok?: number;
+  input_cache_write_5m_per_mtok?: number;
+  input_cache_write_1h_per_mtok?: number;
+  output_per_mtok: number;
 }
 
 /** The validated configuration, with deployment overrides applied. */
