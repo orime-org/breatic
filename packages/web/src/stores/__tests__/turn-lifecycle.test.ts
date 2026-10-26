@@ -480,20 +480,21 @@ describe('the thinking figure on a turn that fails', () => {
   }
 
   it('keeps the figure live when it comes before the error frame, which is the order the server writes', async () => {
-    // The SDK's Chat stops reading at an error frame, so anything after it
-    // reaches the reply only after a reload (`main-agent.ts`, streamOnce).
-    const before = await failedReplyParts([
+    const parts = await failedReplyParts([
       { type: 'data-thinking-time', data: { ms: 3000 } },
       { type: 'error', errorText: 'The turn could not be run.' },
     ]);
-    evictAllChatSessions();
-    vi.unstubAllGlobals();
-    const after = await failedReplyParts([
+
+    expect(parts).toContain('data-thinking-time');
+  });
+
+  it('drops a figure that comes after the error frame: the SDK Chat stops reading there', async () => {
+    const parts = await failedReplyParts([
       { type: 'error', errorText: 'The turn could not be run.' },
       { type: 'data-thinking-time', data: { ms: 3000 } },
     ]);
 
-    expect(before).toContain('data-thinking-time');
-    expect(after).not.toContain('data-thinking-time');
+    expect(parts).toContain('reasoning');
+    expect(parts).not.toContain('data-thinking-time');
   });
 });

@@ -38,6 +38,7 @@ import {
   toolPairsOf,
   typesOf,
   world,
+  type ScriptedCall,
 } from "../helpers/overflow-turn.js";
 
 vi.mock("@breatic/core", async (importOriginal) => (await import("../helpers/overflow-turn.js")).overflowCore(importOriginal));
@@ -98,6 +99,42 @@ function stored(): Array<{ type: string; [key: string]: unknown }> {
  */
 function contextReads(): number {
   return world.events.filter((e) => e === "context").length;
+}
+
+/**
+ * What an ordinary failure looks like, live and stored.
+ * @param chunks - The turn's chunks.
+ * @throws {never} Never.
+ */
+function expectFailed(chunks: readonly UIMessageChunk[]): void {
+  expect(count(chunks, "error")).toBe(1);
+  expect(stored().filter((part) => part.type === "failed")).toEqual([{ type: "failed" }]);
+}
+
+/**
+ * The thinking figure of a failed turn: said once, before the error frame the
+ * panel stops reading at, and stored once.
+ * @param chunks - The turn's chunks.
+ * @throws {never} Never.
+ */
+function expectSaidThoughtOnceBeforeError(chunks: readonly UIMessageChunk[]): void {
+  expect(count(chunks, "data-thinking-time")).toBe(1);
+  expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
+  expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+}
+
+/**
+ * A provider refusing the call for a reason other than its length.
+ * @returns The error.
+ */
+function unauthorized(): APICallError {
+  return new APICallError({
+    message: "Unauthorized",
+    url: "https://openrouter.test/v1/chat/completions",
+    requestBodyValues: {},
+    statusCode: 401,
+    isRetryable: false,
+  });
 }
 
 describe("a first call over the window (A2)", () => {
@@ -295,16 +332,6 @@ describe("a turn that cannot be made to fit ends as too long (A5)", () => {
 });
 
 describe("folds that leave nothing to send end as failed (A5)", () => {
-  /**
-   * What an ordinary failure looks like, live and stored.
-   * @param chunks - The turn's chunks.
-   * @throws {never} Never.
-   */
-  function expectFailed(chunks: readonly UIMessageChunk[]): void {
-    expect(count(chunks, "error")).toBe(1);
-    expect(stored().filter((part) => part.type === "failed")).toEqual([{ type: "failed" }]);
-  }
-
   it("an overflow fold that touched nothing does not resend the rejected request", async () => {
     history(2, 30_000);
     world.foldOutcomes = ["untouched"];
@@ -327,63 +354,6 @@ describe("folds that leave nothing to send end as failed (A5)", () => {
     expect(world.folds).toHaveLength(1);
     expect(world.prompts).toHaveLength(1);
     expectFailed(chunks);
-  });
-
-  it.each([
-    ["an overflow fold that touched nothing", (): void => {
-      world.foldOutcomes = ["untouched"];
-    }],
-    ["a reassembly that throws after an overflow fold", (): void => {
-      world.failReadsAfter = 1;
-    }],
-  ])("says how long it thought, live, when %s ends the turn as failed", async (_name, arrange) => {
-    history(2, 30_000);
-    arrange();
-    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
-
-    const chunks = await sendMessage();
-
-    expectFailed(chunks);
-    expect(count(chunks, "data-thinking-time")).toBe(1);
-    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
-    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
-  });
-
-  it("says how long it thought, live, when the call after an overflow fold fails for another reason", async () => {
-    history(2, 30_000);
-    const refused = new APICallError({
-      message: "Unauthorized",
-      url: "https://openrouter.test/v1/chat/completions",
-      requestBodyValues: {},
-      statusCode: 401,
-      isRetryable: false,
-    });
-    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, { reject: refused }];
-
-    const chunks = await sendMessage();
-
-    expect(world.folds).toHaveLength(1);
-    expectFailed(chunks);
-    expect(count(chunks, "data-thinking-time")).toBe(1);
-    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
-    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
-  });
-
-  it("says how long it thought, live and before the error, on an ordinary failed turn", async () => {
-    const refused = new APICallError({
-      message: "Unauthorized",
-      url: "https://openrouter.test/v1/chat/completions",
-      requestBodyValues: {},
-      statusCode: 401,
-      isRetryable: false,
-    });
-    world.script = [callsFetch("c1", 311, 50, true), { reject: refused }];
-
-    const chunks = await sendMessage();
-
-    expectFailed(chunks);
-    expect(count(chunks, "data-thinking-time")).toBe(1);
-    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
   });
 
   it("a reassembly that throws after a precheck fold sends nothing more", async () => {
@@ -477,5 +447,66 @@ describe("another tab folding first", () => {
     expect(systemOf(world.prompts[1])).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "text", text: "after the other tab" });
+  });
+});
+
+describe("the thinking figure on a failed turn", () => {
+  it.each([
+    ["an overflow fold that touched nothing", (): void => {
+      world.foldOutcomes = ["untouched"];
+    }],
+    ["a reassembly that throws after an overflow fold", (): void => {
+      world.failReadsAfter = 1;
+    }],
+  ])("is said live when %s ends the turn as failed", async (_name, arrange) => {
+    history(2, 30_000);
+    arrange();
+    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
+
+    const chunks = await sendMessage();
+
+    expectFailed(chunks);
+    expectSaidThoughtOnceBeforeError(chunks);
+  });
+
+  it("is said live when the call after an overflow fold fails for another reason", async () => {
+    history(2, 30_000);
+    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, { reject: unauthorized() }];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(1);
+    expectFailed(chunks);
+    expectSaidThoughtOnceBeforeError(chunks);
+  });
+
+  it("is said live on an ordinary failed turn", async () => {
+    world.script = [callsFetch("c1", 311, 50, true), { reject: unauthorized() }];
+
+    const chunks = await sendMessage();
+
+    expectFailed(chunks);
+    expectSaidThoughtOnceBeforeError(chunks);
+  });
+
+  it("covers the thinking after a provider error the stream carried on past, and the error goes last", async () => {
+    // A provider error chunk mid-step does not end the stream: the step's
+    // tool call still runs and the next step thinks and answers.
+    const step = callsFetch("c1", 311, 50, true) as Extract<ScriptedCall, { parts: unknown }>;
+    world.script = [
+      { parts: [...step.parts.slice(0, -1), { type: "error", error: new Error("upstream hiccup") }, finish("error", 311, 50)] },
+      thinksThenAnswers("later answer"),
+    ];
+
+    const chunks = await sendMessage();
+    const types = typesOf(chunks);
+
+    expect(world.toolRuns).toBe(1);
+    expectFailed(chunks);
+    expectSaidThoughtOnceBeforeError(chunks);
+    expect(types.lastIndexOf("text-delta")).toBeLessThan(types.indexOf("data-thinking-time"));
+    expect(types.filter((type) => type !== "finish").at(-1)).toBe("error");
+    const said = chunks.find((chunk) => chunk.type === "data-thinking-time") as { data: { ms: number } } | undefined;
+    expect(stored().find((part) => part.type === "thinking-time")).toMatchObject({ ms: said?.data.ms });
   });
 });

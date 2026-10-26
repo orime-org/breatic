@@ -748,9 +748,12 @@ export class MainAgent {
     /**
      * Run one model stream of the turn and write it to the reader.
      *
-     * Everything goes out as it comes except two chunks: the error of a call
-     * the provider turned away as too long, which the turn answers by folding,
-     * and the `finish`, held until it is known that this stream ends the turn.
+     * Everything goes out as it comes except three chunks: the error of a call
+     * the provider turned away as too long, which the turn answers by folding;
+     * and the `finish` and any other error, held until it is known that this
+     * stream ends the turn. The SDK carries on past a provider's error chunk
+     * when the step's tool calls ran, and the panel reads nothing after an
+     * error frame, so the error goes out last, after the thinking figure.
      * @param writer - The stream the turn is written to.
      * @param run - What this stream starts from.
      * @param run.first - Whether this is the turn's first stream, which opens the reply.
@@ -1005,10 +1008,10 @@ export class MainAgent {
           }
           // Said on the wire for the same reason as the one above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
-          // the reader as the turn ends. A stream that failed said it before
-          // its error chunk; a turn that never gets here is told at the end
-          // of `execute`, or, when stopped, has the figure written into its
-          // stored parts at the exit below.
+          // the reader as the turn ends, ahead of an error the stream held.
+          // A turn that never gets here is told after the stream, or at the
+          // end of `execute`, or, when stopped, has the figure written into
+          // its stored parts at the exit below.
           sayThoughtFor(writer);
           // The step stopped at a questionnaire when it holds an `ask_user`
           // call the schema took and nothing has answered. The first is the
@@ -1048,14 +1051,13 @@ export class MainAgent {
         .toUIMessageStream({ sendStart: run.first, onError: (err) => wireLineOf(endingOf(err)) })
         .getReader();
       let finished: UIMessageChunk | undefined;
+      let failed: UIMessageChunk | undefined;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         if (value.type === "error") {
-          if (seen.turnedAway !== undefined) continue;
-          // An error chunk ends the turn, and the panel reads nothing after
-          // it: the thinking figure goes first.
-          if (signal?.aborted !== true) sayThoughtFor(writer);
+          if (seen.turnedAway === undefined) failed ??= value;
+          continue;
         }
         if (value.type === "finish") {
           finished = value;
@@ -1064,6 +1066,10 @@ export class MainAgent {
         writer.write(value);
       }
       if (seen.turnedAway !== undefined) return seen.turnedAway;
+      if (failed !== undefined) {
+        if (signal?.aborted !== true) sayThoughtFor(writer);
+        writer.write(failed);
+      }
       if (finished !== undefined) writer.write(finished);
       return undefined;
     };
