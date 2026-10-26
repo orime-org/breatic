@@ -4,6 +4,7 @@
 import { generateText, stepCountIs, streamText, tool } from "ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
+import { NoUpstreamAvailable } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, llmProvider, posted, startFakes, stopFakes, vendorReply, type LlmFakes } from "./llm-harness.js";
 
@@ -88,6 +89,24 @@ describe("switching before the first content (design 5.5)", () => {
     await expect(generateText({ model: prepared.model, prompt: "hi", ...prepared.options })).rejects.toThrow();
     expect(posted(fakes.deepseek)).toHaveLength(1);
     expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
+  // Measured 2026-10-26: OpenRouter answers an unknown model id with this 400 (design 13.3).
+  it("reports a model OpenRouter does not have as model_not_found, not as a refused request", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: "no/such-model is not a valid model ID", code: 400 } } }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("no/such-model", THINK);
+    const error = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NoUpstreamAvailable);
+    expect((error as NoUpstreamAvailable).reasons).toContainEqual({ upstream: "openrouter", kind: "failed", failure: "model_not_found" });
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("keeps OpenRouter's parameter 400 as a refused request", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: 'Input required: specify "prompt" or "messages"', code: 400 } } }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const error = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options }).catch((e: unknown) => e);
+    expect(error).not.toBeInstanceOf(NoUpstreamAvailable);
+    expect(posted(fakes.openrouter)).toHaveLength(1);
   });
 
   it("moves a stream on before any content arrived", async () => {

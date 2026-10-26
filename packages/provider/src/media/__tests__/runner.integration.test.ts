@@ -214,6 +214,37 @@ describe("send", () => {
     expect(submits(b.seen)).toHaveLength(1);
   });
 
+  // Measured 2026-10-26: WaveSpeed answers an unknown model id with this 400 (design 13.3).
+  const MODEL_NOT_FOUND = { status: 400, body: { code: 400, message: "Model not found." } };
+
+  it("moves to the next upstream when this one says it has no such model, without sending there yet", async () => {
+    a.answer(() => MODEL_NOT_FOUND);
+    b.answer(() => accepted("p1"));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const moved = expectState(await r.send(stored(planned.ticket), live()), "send");
+    expect(moved.warnings.map((w) => w.code)).toContain("upstream_switched");
+    expect(b.seen).toHaveLength(0);
+  });
+
+  it("answers failed with NoUpstreamAvailable naming model_not_found when no upstream has the model", async () => {
+    a.answer(() => MODEL_NOT_FOUND);
+    const r = runner({ WS_A_KEY: "key-a" });
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const failed = expectState(await r.send(stored(planned.ticket), live()), "failed");
+    expect(failed.reason).toBeInstanceOf(NoUpstreamAvailable);
+    expect((failed.reason as NoUpstreamAvailable).reasons).toContainEqual({ upstream: "ws_a", kind: "failed", failure: "model_not_found" });
+  });
+
+  it("keeps a parameter 400 as a refusal of the request, not a missing model", async () => {
+    a.answer(() => ({ status: 400, body: { code: 400, message: 'Invalid request body: field "prompt" is required; please provide a value' } }));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const failed = expectState(await r.send(stored(planned.ticket), live()), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamRequestRejected);
+    expect(b.seen).toHaveLength(0);
+  });
+
   it("throws SendNotAccepted on a 503 when there is no next upstream", async () => {
     a.answer(() => ({ status: 503, body: {} }));
     const r = runner({ WS_A_KEY: "key-a" });
