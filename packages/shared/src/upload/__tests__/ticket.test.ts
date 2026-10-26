@@ -8,8 +8,15 @@
  * runtimes that share no Node API. Both sides call the same functions from
  * this package, which is the only workspace package free of `node:` imports.
  */
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
+import {
+  signSessionToken,
+  verifySessionToken,
+  type SessionTokenPayload,
+} from "@shared/upload/session-token.js";
+import { signPayload } from "@shared/upload/signed-payload.js";
 import {
   MIN_PART_SIZE_BYTES,
   signUploadTicket,
@@ -114,5 +121,113 @@ describe("signUploadTicket / verifyUploadTicket", () => {
       ok: true,
       payload: small,
     });
+  });
+});
+
+/** A session token's payload, the fields the Worker's `issueToken` signs. */
+function tokenPayload(over: Partial<SessionTokenPayload> = {}): SessionTokenPayload {
+  return {
+    storageKey: "image/2026-10-26/1_k.png",
+    uploadId: "upload-1",
+    contentType: "image/png",
+    expiresAt: NOW + 900_000,
+    partSize: 8 * 1024 * 1024,
+    totalParts: 2,
+    ...over,
+  };
+}
+
+const MALFORMED = { ok: false, reason: "malformed" };
+
+// inner#1595 B1: both credentials are signed by one secret, so the ticket
+// check must refuse anything shaped like a session token.
+describe("a ticket check refuses what is not a ticket (inner#1595 B1)", () => {
+  it.each(["upload-1", "", null])(
+    "T81: refuses a validly signed ticket payload carrying uploadId %j",
+    async (uploadId) => {
+      const token = await signPayload({ ...payload(), uploadId }, SECRET);
+
+      await expect(verifyUploadTicket(token, SECRET, NOW)).resolves.toEqual(MALFORMED);
+    },
+  );
+
+  it("T81: refuses a real session token, and one that also carries every ticket field", async () => {
+    const real = await signSessionToken(tokenPayload(), SECRET);
+    const both = await signPayload(
+      { ...tokenPayload(), studioId: "s", userId: "u", deadlineAt: NOW + 7_200_000 },
+      SECRET,
+    );
+
+    await expect(verifyUploadTicket(real, SECRET, NOW)).resolves.toEqual(MALFORMED);
+    await expect(verifyUploadTicket(both, SECRET, NOW)).resolves.toEqual(MALFORMED);
+  });
+
+  const fields = ["userId", "studioId", "storageKey"] as const;
+  const bad: [string, (p: Record<string, unknown>, f: string) => void][] = [
+    ["missing", (p, f) => { delete p[f]; }],
+    ["empty", (p, f) => { p[f] = ""; }],
+    ["null", (p, f) => { p[f] = null; }],
+    ["a number", (p, f) => { p[f] = 42; }],
+  ];
+  it.each(fields.flatMap((f) => bad.map(([how, edit]) => [f, how, edit] as const)))(
+    "T82: refuses a ticket whose %s is %s",
+    async (field, _how, edit) => {
+      const p: Record<string, unknown> = { ...payload() };
+      edit(p, field);
+      const token = await signPayload(p, SECRET);
+
+      await expect(verifyUploadTicket(token, SECRET, NOW)).resolves.toEqual(MALFORMED);
+    },
+  );
+
+  it.each([null, 42, "s", []])(
+    "T82: refuses a signed payload that is not an object (%j) without throwing",
+    async (body) => {
+      const token = await signPayload(body, SECRET);
+
+      await expect(verifyUploadTicket(token, SECRET, NOW)).resolves.toEqual(MALFORMED);
+    },
+  );
+
+  it("T84: still verifies the tickets our server signs, and neither reads as a session token", async () => {
+    const plain = payload();
+    const fromSource = payload({ typeFromSource: true });
+    for (const p of [plain, fromSource]) {
+      const token = await signUploadTicket(p, SECRET);
+
+      await expect(verifyUploadTicket(token, SECRET, NOW)).resolves.toEqual({ ok: true, payload: p });
+      await expect(verifySessionToken(token, SECRET, NOW)).resolves.toBeNull();
+    }
+  });
+
+  it("P08: no session token payload, with or without ticket fields, verifies as a ticket", async () => {
+    const token = fc.record({
+      storageKey: fc.string({ minLength: 1 }),
+      uploadId: fc.string({ minLength: 1 }),
+      contentType: fc.string(),
+      expiresAt: fc.integer({ min: NOW, max: NOW + 10 ** 9 }),
+      partSize: fc.integer({ min: 1, max: 2 ** 31 }),
+      totalParts: fc.integer({ min: 1, max: 10_000 }),
+    });
+    const extra = fc.option(
+      fc.record({
+        userId: fc.string({ minLength: 1 }),
+        studioId: fc.string({ minLength: 1 }),
+        deadlineAt: fc.integer({ min: NOW }),
+      }),
+    );
+    await fc.assert(
+      fc.asyncProperty(token, extra, async (p, more) => {
+        const signed = more === null
+          ? await signSessionToken(p, SECRET)
+          : await signPayload({ ...p, ...more }, SECRET);
+
+        expect(await verifyUploadTicket(signed, SECRET, NOW)).toEqual(MALFORMED);
+        if (more === null) {
+          expect(await verifySessionToken(signed, SECRET, NOW)).toEqual(p);
+        }
+      }),
+      { numRuns: 200 },
+    );
   });
 });
