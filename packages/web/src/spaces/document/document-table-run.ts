@@ -18,6 +18,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import {
   EditorState,
   TextSelection,
+  type Command,
   type Selection,
   type Transaction,
 } from '@tiptap/pm/state';
@@ -39,6 +40,14 @@ import {
 } from '@tiptap/pm/tables';
 
 import { NO_COLOUR } from '@web/spaces/document/document-colour-run';
+import {
+  BODY_OPERATION_META,
+  BodyOriginMirror,
+  BodyProvenanceError,
+  bodyInlineOccurrences,
+  recordBodyOperation,
+  transferBodyOperations,
+} from '@web/spaces/document/document-body-provenance';
 import {
   alignFaceOf,
   writeAlignment,
@@ -217,6 +226,8 @@ export function headerOn(doc: PMNode, cellPos: number, kind: 'row' | 'column'): 
  * @param tr - The transaction.
  * @param cellPos - The cell.
  * @param command - The command.
+ * @throws {BodyProvenanceError} If the child metadata cannot be rebased.
+ * @throws {RangeError} If a child step or cell position is invalid.
  */
 function runInCell(
   tr: Transaction,
@@ -228,8 +239,57 @@ function runInCell(
     selection: TextSelection.near(tr.doc.resolve(cellPos + 1)),
   });
   command(inCell, (made) => {
+    const stepOffset = tr.steps.length;
     made.steps.forEach((step) => tr.step(step));
+    transferBodyOperations(made, tr, { stepOffset, transaction: 0 });
   });
+}
+
+/**
+ * Adapts a known source-preserving table command through the installed fitter.
+ * The mirror names are private occurrence tags; published ranges let the journal
+ * capture the actual current names, including fresh names from earlier steps.
+ * @param command - The existing installed command, including its product cleanup.
+ * @param name - The explicit table operation being performed.
+ * @param from - The current table body start.
+ * @param to - The current table body end.
+ * @param kind - Whether the command moves or preserves its table content.
+ * @returns A command with exact step-boundary source declarations.
+ * @throws {BodyProvenanceError} If the fitter diverges or changes inline content.
+ * @throws {RangeError} If ProseMirror rejects a source position or step.
+ */
+function tableBodyCommand(
+  command: Command,
+  name: string,
+  from: number,
+  to: number,
+  kind: 'move' | 'preserve',
+): Command {
+  return (state, dispatch) => {
+    if (dispatch === undefined) return command(state);
+    if (!command(state)) return false;
+    const sourceAt = new Map(bodyInlineOccurrences(state.doc).map((unit) => [unit.pos, `table-source:${unit.pos}`]));
+    const mirror = new BodyOriginMirror(state.tr, { sourceAt });
+    const operation = mirror.nativeMove(name, from, to, state.selection, command);
+    if (operation.created.length > 0 || (operation.dropped?.length ?? 0) > 0) {
+      throw new BodyProvenanceError('A source-preserving table command changed its inline content');
+    }
+    const transaction = mirror.tr.setMeta(BODY_OPERATION_META, []);
+    recordBodyOperation(transaction, {
+      id: operation.id,
+      name: operation.name,
+      source: operation.source,
+      target: operation.target,
+      handoffs: operation.handoffs.map((handoff) => ({
+        kind,
+        source: handoff.source,
+        target: handoff.target,
+      })),
+      created: [],
+    });
+    dispatch(transaction);
+    return true;
+  };
 }
 
 /**
@@ -248,10 +308,14 @@ export function isMerged(doc: PMNode, cellPos: number): boolean {
  * the top-left one.
  * @param editor - The editor to write to.
  * @param cellPos - The cell.
+ * @throws {BodyProvenanceError} If the installed split loses a source or diverges.
+ * @throws {RangeError} If ProseMirror rejects a source position or step.
  */
 export function splitCellAt(editor: TableEditor, cellPos: number): void {
-  runOnTable(editor, cellPos, (tr) => {
-    runInCell(tr, cellPos, splitCell);
+  runOnTable(editor, cellPos, (tr, at) => {
+    runInCell(tr, cellPos, tableBodyCommand(
+      splitCell, 'table split', at.tableStart, at.tableStart + at.table.content.size, 'preserve',
+    ));
   });
 }
 
@@ -500,18 +564,20 @@ function isEmptyCell(cell: PMNode): boolean {
  * its first child is an empty text block (`isEmpty`), which a cell holding
  * blocks never has, so the empty paragraphs it brings along are taken out in
  * the same transaction.
- * @param editor - The editor to write to.
+ * @param state - The actual command state or its structurally equal private mirror.
+ * @param dispatch - Receives the command's original steps and empty-block cleanup.
+ * @returns Whether the selected cells can be merged.
+ * @throws {RangeError} If ProseMirror rejects a merge step.
  */
-export function mergeSelectedCells(editor: TableEditor): void {
-  const view = editor.prosemirrorView;
-  if (view === undefined) return;
-  const { selection } = view.state;
-  if (!(selection instanceof CellSelection)) return;
+function mergeTableBlocks(state: EditorState, dispatch?: (transaction: Transaction) => void): boolean {
+  const { selection } = state;
+  if (!(selection instanceof CellSelection)) return false;
+  if (dispatch === undefined) return mergeCells(state);
   const emptied = new Set<unknown>();
   selection.forEachCell((cell) => {
     if (isEmptyCell(cell)) emptied.add(cell.firstChild!.attrs['id']);
   });
-  mergeCells(view.state, (tr) => {
+  return mergeCells(state, (tr) => {
     const merged = tr.selection instanceof CellSelection ? tr.selection.$anchorCell.pos : null;
     const cell = merged === null ? null : tr.doc.nodeAt(merged);
     if (merged !== null && cell !== null) {
@@ -525,8 +591,26 @@ export function mergeSelectedCells(editor: TableEditor): void {
       if (drop.length === cell.childCount) drop.shift();
       for (const { from, to } of drop.reverse()) tr.delete(from, to);
     }
-    view.dispatch(tr);
+    dispatch(tr);
   });
+}
+
+/**
+ * Merges selected cells while declaring their original block occurrences.
+ * @param editor - The editor to write to.
+ * @throws {BodyProvenanceError} If the installed command loses a source or diverges.
+ * @throws {RangeError} If ProseMirror rejects a source position or step.
+ */
+export function mergeSelectedCells(editor: TableEditor): void {
+  const view = editor.prosemirrorView;
+  if (view === undefined) return;
+  const { selection } = view.state;
+  if (!(selection instanceof CellSelection)) return;
+  const at = cellAt(view.state.doc, selection.$anchorCell.pos);
+  if (at === null) return;
+  tableBodyCommand(
+    mergeTableBlocks, 'table merge', at.tableStart, at.tableStart + at.table.content.size, 'move',
+  )(view.state, (transaction) => { view.dispatch(transaction); });
 }
 
 /**
@@ -563,6 +647,8 @@ export function wholeEmptyTableSelected(state: EditorState): string | null {
  * @param cellPos - A cell of the row or column.
  * @param orientation - Row or column.
  * @param to - The index it ends up at.
+ * @throws {BodyProvenanceError} If the installed move loses a source or diverges.
+ * @throws {RangeError} If ProseMirror rejects a source position or step.
  */
 export function moveLineAt(
   editor: TableEditor,
@@ -574,6 +660,9 @@ export function moveLineAt(
     const from = orientation === 'row' ? at.top : at.left;
     if (from === to) return;
     const move = orientation === 'row' ? moveTableRow : moveTableColumn;
-    runInCell(tr, cellPos, move({ from, to, select: false, pos: cellPos + 1 }));
+    runInCell(tr, cellPos, tableBodyCommand(
+      move({ from, to, select: false, pos: cellPos + 1 }),
+      `table ${orientation} move`, at.tableStart, at.tableStart + at.table.content.size, 'move',
+    ));
   });
 }
