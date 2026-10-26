@@ -175,8 +175,9 @@ describe("the reader is told of a precheck fold once", () => {
   });
 
   it("keeps the count coverage of a turn that folded only before it called", async () => {
-    await secondTurn(LINE - 616, 616);
+    const turn = await secondTurn(LINE - 616, 616);
 
+    expect(turn.folds).toBe(1);
     expect(world.replies.at(-1)?.forModel?.countCoverage).toMatchObject({ turnHash: expect.any(String), endHash: expect.any(String) });
   });
 

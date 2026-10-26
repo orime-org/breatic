@@ -345,6 +345,7 @@ describe("folds that leave nothing to send end as failed (A5)", () => {
 
     expectFailed(chunks);
     expect(count(chunks, "data-thinking-time")).toBe(1);
+    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
     expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
   });
 
@@ -364,7 +365,25 @@ describe("folds that leave nothing to send end as failed (A5)", () => {
     expect(world.folds).toHaveLength(1);
     expectFailed(chunks);
     expect(count(chunks, "data-thinking-time")).toBe(1);
+    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
     expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+  });
+
+  it("says how long it thought, live and before the error, on an ordinary failed turn", async () => {
+    const refused = new APICallError({
+      message: "Unauthorized",
+      url: "https://openrouter.test/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode: 401,
+      isRetryable: false,
+    });
+    world.script = [callsFetch("c1", 311, 50, true), { reject: refused }];
+
+    const chunks = await sendMessage();
+
+    expectFailed(chunks);
+    expect(count(chunks, "data-thinking-time")).toBe(1);
+    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("error"));
   });
 
   it("a reassembly that throws after a precheck fold sends nothing more", async () => {

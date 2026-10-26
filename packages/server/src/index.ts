@@ -101,9 +101,9 @@ try {
 
 // And config/agent.yaml, which rejects a memory reserve at or above
 // memory_keep_tokens — a fold would have no line to run down to. Lazy like
-// the rest, so without this
-// the first person to say something is the one who finds out, mid-request,
-// with a 500 and a healthy-looking process behind it.
+// the rest, so without this the first person to say something is the one
+// who finds out, mid-request, with a 500 and a healthy-looking process
+// behind it.
 try {
   getAgentConfig();
 } catch (err) {

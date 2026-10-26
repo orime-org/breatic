@@ -795,9 +795,11 @@ export class MainAgent {
           // so the next turn can reconstruct all original picture facts.
           let logical = stepMessages;
           let instructions: ReturnType<typeof systemFor> | undefined;
-          // The provider's count for the previous call; a fold voids it until
-          // the next call reports, so two folds always have a call between them.
-          if (lastCallTotal !== undefined) {
+          // Checked against the provider's count for this turn's previous call
+          // (the first call was checked before the stream); a fold voids it
+          // until the next call reports, so two folds always have a call
+          // between them.
+          if (steps.length > 0) {
             const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
               kind: "precheck",
               at: "step",
@@ -1003,9 +1005,10 @@ export class MainAgent {
           }
           // Said on the wire for the same reason as the one above: the SDK
           // turns the frame into a part of the reply, so the figure reaches
-          // the reader as the turn ends. A turn that never gets here -- one
-          // stopped mid-answer -- has the same figure written into its
-          // stored parts at the exit below, which runs however it ended.
+          // the reader as the turn ends. A stream that failed said it before
+          // its error chunk; a turn that never gets here is told at the end
+          // of `execute`, or, when stopped, has the figure written into its
+          // stored parts at the exit below.
           sayThoughtFor(writer);
           // The step stopped at a questionnaire when it holds an `ask_user`
           // call the schema took and nothing has answered. The first is the
@@ -1048,7 +1051,12 @@ export class MainAgent {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        if (value.type === "error" && seen.turnedAway !== undefined) continue;
+        if (value.type === "error") {
+          if (seen.turnedAway !== undefined) continue;
+          // An error chunk ends the turn, and the panel reads nothing after
+          // it: the thinking figure goes first.
+          if (signal?.aborted !== true) sayThoughtFor(writer);
+        }
         if (value.type === "finish") {
           finished = value;
           continue;
@@ -1082,9 +1090,9 @@ export class MainAgent {
           if (signal?.aborted === true && err === signal.reason) writer.write({ type: "abort" });
           else throw err;
         } finally {
-          // However the turn ended, unless the reader stopped it, as on any
-          // stop. A stream that recorded no step never reaches its `onFinish`:
-          // one the provider turned away, or one whose first call failed.
+          // Whatever ended the turn without saying it: a throw of our own,
+          // which the SDK turns into the error frame after this. Not on a
+          // stop, as on any stop.
           if (signal?.aborted !== true) sayThoughtFor(writer);
         }
       },

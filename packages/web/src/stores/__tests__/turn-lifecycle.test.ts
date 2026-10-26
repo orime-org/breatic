@@ -454,3 +454,46 @@ describe('这一轮停下来整理记忆', () => {
     expect(folding()).toBe(false);
   });
 });
+
+describe('the thinking figure on a turn that fails', () => {
+  /**
+   * Run one turn that thought and then failed, its frames in the given order.
+   * @param ending - The frames after the thinking, in wire order.
+   * @returns The parts the reply holds once the turn has settled.
+   */
+  async function failedReplyParts(ending: Array<Record<string, unknown>>): Promise<string[]> {
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', 'find references');
+    await settle();
+    wire.current()?.push(OPENING_BEAT);
+    wire.current()?.push({ type: 'start', messageId: 'm-reply' });
+    wire.current()?.push({ type: 'start-step' });
+    wire.current()?.push({ type: 'reasoning-start', id: 'r1' });
+    wire.current()?.push({ type: 'reasoning-delta', id: 'r1', delta: 'weighing it up' });
+    wire.current()?.push({ type: 'reasoning-end', id: 'r1' });
+    wire.current()?.push({ type: 'finish-step' });
+    for (const chunk of ending) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+    return (chat.messages.at(-1)?.parts ?? []).map((part) => part.type);
+  }
+
+  it('keeps the figure live when it comes before the error frame, which is the order the server writes', async () => {
+    // The SDK's Chat stops reading at an error frame, so anything after it
+    // reaches the reply only after a reload (`main-agent.ts`, streamOnce).
+    const before = await failedReplyParts([
+      { type: 'data-thinking-time', data: { ms: 3000 } },
+      { type: 'error', errorText: 'The turn could not be run.' },
+    ]);
+    evictAllChatSessions();
+    vi.unstubAllGlobals();
+    const after = await failedReplyParts([
+      { type: 'error', errorText: 'The turn could not be run.' },
+      { type: 'data-thinking-time', data: { ms: 3000 } },
+    ]);
+
+    expect(before).toContain('data-thinking-time');
+    expect(after).not.toContain('data-thinking-time');
+  });
+});
