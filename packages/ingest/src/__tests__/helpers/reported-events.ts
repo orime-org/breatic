@@ -18,6 +18,7 @@ import {
 } from "cloudflare:test";
 import { signUploadTicket, type UploadTicketPayload } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
+import { ask, mint, openForTest, type OpenAnswer } from "./open-upload.js";
 
 const SENTRY_ORIGIN = "https://sentry.test.example";
 const DSN = "https://publickey@sentry.test.example/1";
@@ -43,7 +44,7 @@ export interface SentEvent {
 }
 
 /** The monitoring settings every request runs under. */
-const MONITORED: Pick<Env, "SENTRY_DSN" | "SENTRY_RELEASE" | "SENTRY_ENVIRONMENT"> = {
+export const MONITORED: Pick<Env, "SENTRY_DSN" | "SENTRY_RELEASE" | "SENTRY_ENVIRONMENT"> = {
   SENTRY_DSN: DSN,
   SENTRY_RELEASE: SHA,
   SENTRY_ENVIRONMENT: "production",
@@ -82,6 +83,24 @@ export function sentEvents(): SentEvent[] {
     }
     return events;
   });
+}
+
+/**
+ * The envelopes the SDK posted, as raw text.
+ * @returns Every envelope, in the order sent.
+ */
+export function sentEnvelopes(): string[] {
+  return [...envelopes];
+}
+
+/**
+ * Send `POST /uploads` with exactly the given headers, under the monitoring
+ * settings.
+ * @param headers - The request headers.
+ * @returns The status and, on a 200, the upload id and token.
+ */
+export async function askUploads(headers: Record<string, string>): Promise<OpenAnswer> {
+  return ask(headers, { ...env, ...MONITORED });
 }
 
 /**
@@ -126,34 +145,12 @@ export async function pull(
 }
 
 /**
- * Open an upload the way the browser does.
+ * Open an upload the way our server does, under the monitoring settings.
  * @returns The upload's id and the token its first part carries.
  */
 export async function openUpload(): Promise<{ uploadId: string; token: string }> {
-  const ticket = await signUploadTicket(
-    {
-      storageKey: `video/2026-10-06/${seq++}_part.mp4`,
-      studioId: "studio-1",
-      userId: "user-1",
-      totalParts: 2,
-      partSize: 5 * 1024 * 1024,
-      contentType: "video/mp4",
-      expiresAt: Date.now() + 300_000,
-      deadlineAt: Date.now() + 7_200_000,
-    },
-    env.INGEST_SHARED_SECRET,
-  );
-  const ctx = createExecutionContext();
-  const response = await worker.fetch(
-    new Request("https://ingest.example.com/uploads", {
-      method: "POST",
-      headers: { "x-upload-ticket": ticket },
-    }),
-    { ...env, ...MONITORED },
-    ctx,
-  );
-  await waitOnExecutionContext(ctx);
-  return response.json<{ uploadId: string; token: string }>();
+  const { ticket } = await mint();
+  return openForTest(ticket, { ...env, ...MONITORED });
 }
 
 /**
