@@ -584,9 +584,8 @@ export async function readStoredMediaAtIngest(
  * be gigabytes; pulling it at the edge keeps it inside Cloudflare's network,
  * where the wait costs no CPU time and the egress is free.
  *
- * The shared secret goes with it because this is the one Worker endpoint that
- * fetches an address its caller names, and a ticket alone is something every
- * browser holds.
+ * The shared secret goes with it because only our services may make the
+ * Worker fetch an address or open an upload; tickets never leave them.
  * @param sourceUrl - Where the bytes are now.
  * @param target - What the ticket endpoint issued for them.
  * @param secret - The secret the Worker also holds.
@@ -697,7 +696,9 @@ export async function askWorker<T>(
  * each ticket is opened exactly once, here.
  * @param target - The signed ticket and where to send it.
  * @param secret - The secret the Worker also holds.
- * @param bound - The caller's deadline and stop signal, or a timeout alone.
+ * @param bound - How long the open may take. A timeout alone: opening is one
+ *   request, and a deadline signal's timer would outlive it.
+ * @param bound.timeoutMs - The time the open may take, in ms.
  * @returns The upload's id and its first session token.
  * @throws {UploadHttpError} When the Worker refuses to open it.
  * @throws {unknown} The transport's own failure when no delivery produced a
@@ -706,7 +707,7 @@ export async function askWorker<T>(
 export async function openUploadAtIngest(
   target: IngestTarget,
   secret: string,
-  bound: PartBound | { timeoutMs: number },
+  bound: { timeoutMs: number },
 ): Promise<OpenedUpload> {
   return askWorker<OpenedUpload>(
     `${target.uploadUrl}/uploads`,

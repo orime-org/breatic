@@ -981,10 +981,9 @@ function storedTypeFor(
  * Cloudflare's network, where the wait costs no CPU time and the egress is
  * free. Waiting is nearly all this does.
  *
- * It takes the shared secret as well as a ticket. A ticket alone authorises
- * the key being written to, which is all the other endpoints need — but this
- * one also makes the Worker fetch whatever address the body names, and every
- * browser holds a ticket. The secret is what only our own backend has.
+ * It takes the shared secret as well as a ticket: it makes the Worker fetch
+ * whatever address the body names, and like opening an upload it is ours
+ * alone to ask for. The secret is what only our own backend has.
  * @param request - The backend's request, carrying the ticket and the URL.
  * @param env - The Worker's bindings.
  * @returns What the server registered, or why the transfer did not finish.

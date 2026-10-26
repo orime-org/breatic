@@ -15,7 +15,10 @@ import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js
 export interface UploadOpenFailure {
   /** The key the upload would have written. */
   storageKey: string;
-  /** Why it was not opened, as the grant and task row were settled with. */
+  /**
+   * Why it was not opened, as reported when settling; past the task's
+   * deadline, registration records the grant and task row as expired instead.
+   */
   reason: string;
   /** What settling decided, when settling went through. */
   settled?: IngestReportOutcome;

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Upload ticket: what our server hands the browser so the ingest Worker will
- * accept its bytes (#173 design §4.1).
+ * Upload ticket: what our server signs so the ingest Worker will open one
+ * upload for it (#173 design §4.1). It never leaves our services: our server
+ * opens the upload with it and hands the browser the upload id and first
+ * session token (inner#1595).
  *
  * Signed by our server, verified by the ingest Worker. Those two runtimes
  * share no Node API, so both the signing and the verification here go through
@@ -100,7 +102,7 @@ export async function signUploadTicket(
  *
  * Never throws on bad input — a malformed token is something an attacker can
  * send at will, so it comes back as a rejection like any other.
- * @param token - The ticket as handed to the browser.
+ * @param token - The ticket as our server signed it.
  * @param secret - The shared secret.
  * @param now - Current time in epoch ms, supplied by the caller.
  * @returns The payload when the ticket verifies, otherwise why it did not.

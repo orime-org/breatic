@@ -169,7 +169,7 @@ export interface BackendUploadContext {
  * @returns The key this upload writes to and what its ticket is signed from.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
-async function openBackendUpload(
+async function grantBackendUpload(
   ctx: BackendUploadContext,
   declaredSize: number,
   typeFromSource = false,
@@ -233,7 +233,7 @@ export async function uploadBytesToStorage(
   // A part is cut once its bytes stop moving for the idle window, which Node
   // reads off the socket.
   const uploadIdleTimeoutMs = getStorageConfig().upload.upload_idle_timeout_seconds * 1000;
-  const { storageKey, request } = await openBackendUpload(ctx, bytes.size);
+  const { storageKey, request } = await grantBackendUpload(ctx, bytes.size);
   const opened = await openSignedUpload(request);
   const held = await sendBytesToIngest(
     bytes,
@@ -279,16 +279,16 @@ export async function transferUrlToStorage(
 ): Promise<StoredAsset> {
   assertBeforeDeadline(ctx.deadlineAt);
   const { upload } = getStorageConfig();
-  const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
+  const granted = await grantBackendUpload(ctx, upload.max_upload_bytes);
   const measured = await fetchUrlToIngest(
     sourceUrl,
-    await signTicketFor(opened.request),
+    await signTicketFor(granted.request),
     env.INGEST_SHARED_SECRET,
-    ingestRunFor(opened.storageKey, ctx.deadlineAt),
+    ingestRunFor(granted.storageKey, ctx.deadlineAt),
   );
   return landed(
     await applyIngestReport({
-      storageKey: opened.storageKey,
+      storageKey: granted.storageKey,
       outcome: "completed",
       ...measured,
     }),
@@ -344,7 +344,7 @@ export async function transferReaderUrlToStorage(
   const { upload } = getStorageConfig();
   // The grant this opens runs out where any upload's does: two hours on.
   const deadlineAt = budgetDeadlineFrom(Date.now());
-  const opened = await openBackendUpload(
+  const granted = await grantBackendUpload(
     {
       ...who,
       assetSource: "agent",
@@ -357,14 +357,14 @@ export async function transferReaderUrlToStorage(
     true,
   );
 
-  const target = await signTicketFor(opened.request);
-  const pulled = await pullReaderLink(opened.storageKey, target, sourceUrl, deadlineAt, signal);
+  const target = await signTicketFor(granted.request);
+  const pulled = await pullReaderLink(granted.storageKey, target, sourceUrl, deadlineAt, signal);
   if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason, pulled.reported);
   // A rejected report turned down what the link sent (nothing, or too much):
   // the same link gets the same answer again.
   if (pulled.outcome.status === "rejected") throw new ReaderUrlTransferError(pulled.outcome.reason);
   const stored = landed(pulled.outcome, `the transfer of ${sourceUrl}`);
-  return { ...stored, storageKey: opened.storageKey };
+  return { ...stored, storageKey: granted.storageKey };
 }
 
 /**
