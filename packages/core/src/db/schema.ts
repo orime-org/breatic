@@ -1529,6 +1529,26 @@ export const creditRefundOperations = pgTable(
 );
 
 /**
+ * Final internal-API refusals retain their request key and literal response.
+ * Targets deliberately have no foreign key: a missing target is recordable.
+ * Contract CHECKs live in migration 0104_credit_refund_refusals.
+ */
+export const creditRefundRefusals = pgTable("credit_refund_refusals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestKind: varchar("request_kind", { length: 20 }).notNull(),
+  targetKind: varchar("target_kind", { length: 20 }).notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestReason: text("request_reason").notNull(),
+  responseStatus: smallint("response_status").notNull(),
+  responseBody: jsonb("response_body").$type<{ code: string; detail?: string; reason?: string }>().notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/**
  * Every step of every disposition, appended in the same transaction as the
  * step itself. `from_status` is NULL for the step that created the row.
  */
@@ -2700,9 +2720,10 @@ export const uploadGrants = pgTable(
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by registration AFTER its
-     * studio_assets INSERT. Null while unconsumed. A consumed grant no longer
-     * resolves as live.
+     * Completed — set exactly once. An ordinary upload sets it with its
+     * studio_assets row (registration, AFTER the INSERT); a transfer
+     * (inner#1006) sets it with none. Null while unconsumed. A consumed grant
+     * no longer resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /**

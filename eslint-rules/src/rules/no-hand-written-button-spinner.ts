@@ -26,6 +26,26 @@ function elementName(name: TSESTree.JSXTagNameExpression): string | null {
 }
 
 /**
+ * Whether this Button explicitly renders a navigation tab. Its activity icon
+ * describes work in the destination; navigation must remain enabled (inner#1649).
+ * @param node - The Button's opening element.
+ * @returns Whether the final statically known role is tab.
+ * @throws {never} This function does not throw.
+ */
+function isNavigationTab(node: TSESTree.JSXOpeningElement): boolean {
+  for (const attribute of [...node.attributes].reverse()) {
+    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) return false;
+    if (attribute.name.type !== AST_NODE_TYPES.JSXIdentifier || attribute.name.name !== "role") continue;
+    const value = attribute.value;
+    if (value?.type === AST_NODE_TYPES.Literal) return value.value === "tab";
+    return value?.type === AST_NODE_TYPES.JSXExpressionContainer
+      && value.expression.type === AST_NODE_TYPES.Literal
+      && value.expression.value === "tab";
+  }
+  return false;
+}
+
+/**
  * A button that waits for the server says so through `loading` on the Button
  * primitive, which disables presses, keeps focus and draws the spinner in one
  * place (inner#1374). A spinner written into a button by hand is a second
@@ -34,7 +54,8 @@ function elementName(name: TSESTree.JSXTagNameExpression): string | null {
  *
  * Anything rendered inside a `Button` or an `AlertDialogAction` counts,
  * including the JSX passed as its `icon`, because all of it ends up inside the
- * one `<button>` element.
+ * one `<button>` element. A Button with an explicit static tab role is a
+ * navigation destination and may show that destination's ongoing activity.
  */
 export const noHandWrittenButtonSpinner = createRule({
   name: "no-hand-written-button-spinner",
@@ -62,6 +83,7 @@ export const noHandWrittenButtonSpinner = createRule({
           if (parent.type !== AST_NODE_TYPES.JSXElement) continue;
           const outer = elementName(parent.openingElement.name);
           if (outer !== null && BUTTONS.has(outer)) {
+            if (outer === "Button" && isNavigationTab(parent.openingElement)) continue;
             context.report({ node, messageId: "handWrittenSpinner" });
             return;
           }

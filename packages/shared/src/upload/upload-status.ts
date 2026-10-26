@@ -31,5 +31,7 @@ export interface UploadStatusResult {
 export type UploadStatus =
   | { key: string; state: "finishing" }
   | { key: string; state: "completed"; result: UploadStatusResult }
+  /** A transfer upload (inner#1006) finished: it registers no asset. */
+  | { key: string; state: "transferred" }
   | { key: string; state: "failed"; reason: string }
   | { key: string; state: "unknown" };

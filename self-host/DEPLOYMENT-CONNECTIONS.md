@@ -90,7 +90,31 @@ Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.upd
 | `STRIPE_SECRET_KEY` | Refunds are created (`refunds.create`) and listed (`refunds.list`); the preview and restoring credits also read `paymentIntents.retrieve` with `expand: ["latest_charge"]` for the charge's `disputed`. A restricted key needs write on Refunds and read on PaymentIntents and Charges. |
 | Operators' and support staff's Stripe Dashboard accounts | No refund permission: a read-only role, or a custom role without "Process refunds". A credit pack is refunded in full or not at all, only through the back office; a refund made in the Dashboard is never booked automatically, and the disposition that meets it stops for a person. |
 
-The back office reads the refund records through its own read-only role: the five tables and the two views migration `0094` adds (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`). That role gets SELECT on new tables and views through `ALTER DEFAULT PRIVILEGES` bound to the role that runs the product's migrations (see the back office's deployment notes). If `0094` ran as a different role, grant SELECT on those five tables and two views to the back office role by hand.
+The back office reads refund records through its own read-only role: the five tables and two views created by migration `0094` (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`), plus `credit_refund_refusals` created by migration `0104`. Migration `0104` creates the refusal table and its constraints; access depends on the database's grants.
+
+Before running the migration, configure default privileges for the role that will actually create the table. Default privileges cover future tables created by that role in the named schema. Use the deployment's actual migration and read-only role names in these statements:
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE migration_role IN SCHEMA public
+  GRANT SELECT ON TABLES TO backoffice_ro;
+```
+
+For an existing refusal table, its owner or a database administrator can grant access directly:
+
+```sql
+GRANT SELECT ON TABLE public.credit_refund_refusals TO backoffice_ro;
+```
+
+If migration `0094` used another creating role, also grant SELECT on its five tables and two views to the read-only role. After migration and grants, connect using the actual back office database account. Verify the query succeeds and the privilege check reports SELECT true and INSERT, UPDATE and DELETE false:
+
+```sql
+SELECT id FROM public.credit_refund_refusals LIMIT 0;
+SELECT
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'SELECT') AS can_select,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'INSERT') AS can_insert,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'UPDATE') AS can_update,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'DELETE') AS can_delete;
+```
 
 ## Scope and verification
 

@@ -8,6 +8,8 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
+      "payload_too_large": "请求内容超过 {limit}，请缩短提示词或减少引用的文字。",
+      "transfer_invalid": "上传的内容无法使用，请重试。",
       "internal": "服务器内部错误"
     },
     "credit": {
@@ -659,6 +661,7 @@
       "errorCredits": "积分不足，无法生成。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
+      "errorTooLargeNoLimit": "请求内容过大，请缩短提示词或减少引用的文字。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
       "errorTooManyReferences": "该模型最多接受 {limit} {kind, select, video {段参考视频} audio {段参考音频} other {张参考图}} —— 移除一些再生成。",
       "referenceAddFailed": "无法添加参考——该节点已不存在。",

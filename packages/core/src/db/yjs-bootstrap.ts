@@ -239,9 +239,9 @@ export function encodeInitialMetaState(
  * The seed runs in collab with no i18n context, so it uses the kind's
  * English label; the creating user renames the Space afterwards.
  * @param kind - The Space type being seeded
- * @returns The default Space name (`"Canvas"` / `"Document"` / `"Timeline"`)
+ * @returns The default Space name (`"Canvas"` / `"Document"` / `"Timeline"` / `"3D"`)
  */
-export function defaultSpaceName(kind: SpaceKind): string {
+export function defaultSpaceName(kind: SpaceKind | "3d"): string {
   switch (kind) {
     case "canvas":
       return "Canvas";
@@ -249,5 +249,7 @@ export function defaultSpaceName(kind: SpaceKind): string {
       return "Document";
     case "timeline":
       return "Timeline";
+    case "3d":
+      return "3D";
   }
 }

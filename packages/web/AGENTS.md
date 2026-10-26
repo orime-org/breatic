@@ -16,6 +16,8 @@
 **The agent chat panel is per-user and never bound to Yjs; only a GenerativeNode's prompt is collaborative.** Chat history belongs to one reader.
 
 ## Production standards
+**Scene object commands use `planSceneCommand` and `applySceneCommand` in `data/yjs/scene-document.ts`; edits append complete field values to existing sequences.** The stable-record format and personal-history origins are described in [docs/ARCHITECTURE.md#scene-document-format-and-commands](../../docs/ARCHITECTURE.md#scene-document-format-and-commands).
+
 **Critical paths and invariants (StrictMode-safe resource hooks, Yjs collaboration, optimistic-update races) have 100% tests; markup is semantic, focus is visible and every action is keyboard-reachable; all copy is ICU in the five locales, never hard-coded; colours come from semantic tokens.** Raw brand colours are for the logo only; repo-lint `no-brand-usage` scans `src` `.ts/.tsx/.css` with comments stripped.
 
 **A web change is done only after a real-browser pass in light and dark themes (plus collaboration and the auth flow when touched), the main flow walked by keyboard, and no bundle regression (`pnpm build && pnpm --filter @breatic/web verify:chunks`).** Unit tests do not see themes, focus order or chunk splits.
@@ -94,7 +96,7 @@ ESLint `breatic/no-raw-button` scans `src/**/*.{ts,tsx}` and exempts only `compo
 **A link inside content uses `color: var(--color-content-link)` plus an underline.** Rich text also has an underline mark, so colour separates links from text and the underline keeps colour from being the only signal. `src/theme/__tests__/content-link-contrast.test.ts` measures its contrast. Chrome links (navigation, breadcrumbs, button-like links) stay neutral. Check: is this link inside running text and must it read as clickable? → content-link plus underline.
 
 ## Locked colours and motion
-**`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It measures 4.00:1 (light) and 3.87:1 (dark) on menu surfaces, below AA, because raising it to 4.5:1 turns the dark-theme red pink. A contrast finding against this red is not a defect: a review drops it, gives it no number and draws no demo for it, and may say so in one line citing this rule.
+**`--color-palette-red` and every `--color-status-error*` token are locked.** Only this red is locked; every other colour may be tuned. It measures 4.00:1 (light) and 3.87:1 (dark) on menu surfaces, below AA, because raising it to 4.5:1 turns the dark-theme red pink. Its contrast is not a defect: a review that measures it judges the finding not a problem, citing this rule, and proposes nothing.
 
 **No component adds a `prefers-reduced-motion` fallback.** Motion is part of the product; keyboard, semantics and contrast still apply.
 

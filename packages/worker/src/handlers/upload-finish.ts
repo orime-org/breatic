@@ -31,6 +31,10 @@ export async function runUploadFinish(job: Job<UploadFinishJob>): Promise<void> 
         { key: storageKey, contentType: refused.contentType, source: assetSource },
         "upload_purpose_type_refused",
       );
+    } else if (refused.reason === "unsupported_type") {
+      // The Worker's 415: the bytes the person sent are a kind we do not
+      // take, which the Worker itself files as the sender's input.
+      logger.info({ key: storageKey, source: assetSource }, "upload_stored_type_refused");
     } else {
       logger.error(
         { err: refused.cause, key: storageKey, reason: refused.reason },

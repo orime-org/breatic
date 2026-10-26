@@ -54,7 +54,7 @@ Check: will a user read this sentence? Then it must come from `t()`.
 
 **SSE is used only by agent chat (`routes/chat.ts`, `/message`) and the text mini-tool (`routes/text-tools.ts`); each request gets its own private stream, and event `data` carries no ownership ids.** Ownership is held by the `conversations` row (`user_id`, `project_id`); per-operation audit goes to the application logger, not onto the wire.
 
-**Every SSE entry subscribes to `s.onAbort` and passes that signal down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user.
+**Every SSE entry opens its stream with `streamUntilClientLeaves` (`src/utils/sse-stream.ts`) and passes the signal it hands `run` down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user; and on Node `s.onAbort` alone never hears a client that left before the body began (a read-lock wait), whose writes then hang.
 
 Check: will this stream's producer stop by itself when nobody is listening? If not, it must receive the signal.
 

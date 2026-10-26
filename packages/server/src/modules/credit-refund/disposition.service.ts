@@ -6,11 +6,11 @@
  *
  * Every disposition write replays a known key, then reads Stripe outside any
  * transaction and copies what it read in a transaction of its own (§6.4).
- * Then one transaction takes the key's advisory lock and the lot's row lock,
- * looks the key up again, judges against the copies, and inserts the
- * disposition through `transitionOperation`. A refusal throws
- * {@link RefundRefusal} inside that transaction: no disposition and no key
- * are stored; the copies stay. The mail resend reads no Stripe state.
+ * Then one transaction locks the key, looks it up again, locks the lot,
+ * judges against the copies, and inserts the
+ * disposition through `transitionOperation`, or saves a final refusal in
+ * the same transaction. Refusals are emitted only after commit; Stripe
+ * copies stay. The mail resend reads no Stripe state.
  */
 
 import { db, logger } from "@breatic/core";
@@ -42,7 +42,9 @@ import type { RefundMail, RefundMailKind } from "@server/modules/credit-refund/r
 import { sendRefundMailLater } from "@server/modules/credit-refund/refund-mail.js";
 import { followUpOperationLater } from "@server/modules/credit-refund/refund-follow-up.js";
 import { applyRefundSnapshot } from "@server/modules/credit-refund/refund-snapshot.js";
-import { RefundRefusal, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
+import * as refusalRepo from "@server/modules/credit-refund/refusal.repo.js";
+import type { RefusalRequest } from "@server/modules/credit-refund/refusal.repo.js";
+import { RefundRefusal, refusalBodyOf, stripeUnavailable } from "@server/modules/credit-refund/refusal.js";
 import {
   StripeReadError,
   listRefundsForPayment,
@@ -131,7 +133,8 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
       })),
       disputed,
       refundFailure: await isOnRefundFailureList(lot.id, tx),
-      restoreCredits: restoreAnswerOf(judged.restoreCredits),
+      restoreCredits: oneShotAnswerOf(judged.restoreCredits),
+      oneShot: Object.fromEntries(Object.entries(judged.oneShot).map(([kind, verdict]) => [kind, oneShotAnswerOf(verdict)])),
       action:
         judged.kind === null
           ? null
@@ -143,11 +146,11 @@ export async function preview(lotId: string): Promise<Record<string, unknown>> {
 }
 
 /**
- * What the preview reports about restoring credits.
- * @param verdict - The restore rule's answer.
+ * What the preview reports about a one-shot action.
+ * @param verdict - The one-shot rule's answer.
  * @returns `allowed`, or `blocked` with the code (and Stripe reason) the endpoint would answer.
  */
-function restoreAnswerOf(verdict: OneShotResult): Record<string, unknown> {
+function oneShotAnswerOf(verdict: OneShotResult): Record<string, unknown> {
   return verdict.outcome === "proceed" ? { outcome: "allowed" } : verdict;
 }
 
@@ -166,13 +169,13 @@ export async function requestRefund(
   req: WriteRequest,
   body: { confirmedRefundIds?: string[] },
 ): Promise<Answer<unknown>> {
-  const outcome = await decide(req, (facts) => {
+  const outcome = await decide(kind, req, (facts) => {
     const verdict = assessRefundCreate({
       kind,
       ...assessFacts(facts),
       confirmedRefundIds: body.confirmedRefundIds ?? [],
     });
-    if (verdict.outcome === "blocked") throw refusalOf(verdict);
+    if (verdict.outcome === "blocked") return refusalOf(verdict);
     return { ...newOperation(kind, req, facts.payment), confirmedRefundIds: body.confirmedRefundIds };
   });
   if ("replay" in outcome) return answerReplay(outcome.replay);
@@ -198,7 +201,7 @@ export async function requestOneShot(
   req: WriteRequest,
   body: { notify?: boolean; confirmedSucceededCents?: number; failedRefundIds?: string[] },
 ): Promise<Answer<unknown>> {
-  const outcome = await decide(req, (facts, disputed) => {
+  const outcome = await decide(kind, req, (facts, disputed) => {
     const verdict = assessOneShot({
       kind,
       ...assessFacts(facts),
@@ -207,7 +210,7 @@ export async function requestOneShot(
       disputed,
       ...body,
     });
-    if (verdict.outcome === "blocked") throw refusalOf(verdict);
+    if (verdict.outcome === "blocked") return refusalOf(verdict);
     return { ...newOperation(kind, req, facts.payment), ...body };
   }, { readDisputed: kind === "restore_credits" });
   if ("replay" in outcome) return answerReplay(outcome.replay);
@@ -216,33 +219,69 @@ export async function requestOneShot(
 }
 
 /**
- * Phase 1 of every disposition (§4.6, §5.2, §5.3): replay a known key; copy
- * what Stripe holds; then in one transaction take the key's lock and the
- * lot's, look the key up again, judge and insert (E1). A refusal stores no
- * disposition and no key; the copy stays (§6.4).
- * @param req - The request.
- * @param judge - Turns the facts (and whether the charge is disputed) into
- *   the new disposition, or throws its refusal.
- * @param options - What else to read from Stripe.
- * @param options.readDisputed - Read the charge's `disputed` after copying the refunds.
- * @returns What to replay, or the new disposition.
+ * Prepare Stripe facts outside the key lock, then commit a disposition or
+ * final refusal through the common key decision transaction.
+ * @param kind - The requested disposition.
+ * @param req - Original request identity.
+ * @param judge - Pure judgement made before any business write.
+ * @param options - Additional external reads.
+ * @param options.readDisputed - Whether to read the charge's disputed flag.
+ * @returns A replay or newly committed disposition.
+ * @throws {RefundRefusal} A key conflict or failed external read.
  */
 async function decide(
+  kind: NewOperation["kind"],
   req: WriteRequest,
-  judge: (facts: Facts, disputed: boolean) => NewOperation,
+  judge: (facts: Facts, disputed: boolean) => NewOperation | RefundRefusal,
   { readDisputed: wantsDisputed = false }: { readDisputed?: boolean } = {},
 ): Promise<{ replay: Replay } | { op: CreditRefundOperation }> {
+  const identity: RefusalRequest = { ...req, requestKind: kind, targetKind: "lot", targetId: req.lotId };
   const replay = await lookupKey(req.key, req.hash);
   if (replay) return { replay };
-  const { payment } = await loadTarget(req.lotId);
+  let target = await findTarget(req.lotId);
+  if (target === null) {
+    const rechecked = await withKeyDecision(identity, async (tx) =>
+      (await findTarget(req.lotId, tx)) ?? new RefundRefusal(404, "not_found", "lot_not_found"));
+    if ("replay" in rechecked) return rechecked;
+    target = rechecked.value;
+  }
+  const { payment } = target;
   await copyStripe(payment);
   const disputed = wantsDisputed ? await readDisputed(payment) : false;
-  return db.transaction(async (tx) => {
-    const locked = await lockAndRecheck(tx, req);
-    if ("replay" in locked) return { replay: locked.replay };
-    const create = judge(await readFacts(tx, locked.lot, payment), disputed);
+  const decided = await withKeyDecision(identity, async (tx) => {
+    const current = await findTarget(req.lotId, tx);
+    if (current === null) return new RefundRefusal(404, "not_found", "lot_not_found");
+    const create = judge(await readFacts(tx, current.lot, current.payment), disputed);
+    if (create instanceof RefundRefusal) return create;
     const op = await transitionOperation(tx, null, { type: "E1", create, actor: "request" });
     return { op: op! };
+  });
+  return "replay" in decided ? decided : decided.value;
+}
+
+/**
+ * Serialize all eight writes in their shared key namespace. The callback
+ * returns a refusal before business writes; SQL failures always roll back.
+ * @param req - The original identity to persist for a refusal.
+ * @param decideValue - A transaction-local judgement and optional business write.
+ * @returns The committed value or a saved result to replay after commit.
+ * @throws {RefundRefusal} Key reuse or a currently executing original request.
+ */
+async function withKeyDecision<T>(
+  req: RefusalRequest,
+  decideValue: (tx: DbTx) => Promise<T | RefundRefusal>,
+): Promise<{ value: T } | { replay: Replay }> {
+  return db.transaction(async (tx) => {
+    await operationRepo.lockIdempotencyKey(req.key, tx);
+    const replay = await lookupKey(req.key, req.hash, tx);
+    if (replay) return { replay };
+    const value = await decideValue(tx);
+    if (value instanceof RefundRefusal) {
+      if (value.status !== 404 && value.status !== 409) throw value;
+      const refusal = await refusalRepo.insert(req, value.status, refusalBodyOf(value), tx);
+      return { replay: { kind: "refusal", refusal } };
+    }
+    return { value };
   });
 }
 
@@ -310,31 +349,36 @@ export async function resendMail(
 ): Promise<Answer<unknown>> {
   const replay = await lookupKey(req.key, req.hash);
   if (replay) return answerReplay(replay);
-  const op = await operationRepo.findById(req.operationId);
-  if (op === null) throw new RefundRefusal(404, "not_found", "operation_not_found");
-
-  const outcome = await db.transaction(async (tx) => {
-    const locked = await lockAndRecheck(tx, { ...req, lotId: op.lotId });
-    if ("replay" in locked) return { replay: locked.replay };
-    const current = (await operationRepo.lockById(op.id, tx))!;
+  const identity: RefusalRequest = {
+    ...req, requestKind: "resend_mail", targetKind: "operation", targetId: req.operationId,
+  };
+  let op = await operationRepo.findById(req.operationId);
+  if (op === null) {
+    const rechecked = await withKeyDecision(identity, async (tx) =>
+      (await operationRepo.findById(req.operationId, tx)) ?? new RefundRefusal(404, "not_found", "operation_not_found"));
+    if ("replay" in rechecked) return answerReplay(rechecked.replay);
+    op = rechecked.value;
+  }
+  const original = op;
+  const outcome = await withKeyDecision(identity, async (tx) => {
+    const lot = await creditLotRepo.lockLot(original.lotId, tx);
+    if (lot === null) return new RefundRefusal(404, "not_found", "lot_not_found");
+    const current = await operationRepo.lockById(original.id, tx);
+    if (current === null) return new RefundRefusal(404, "not_found", "operation_not_found");
     const kind = current.result === null ? undefined : MAIL_KIND[current.result];
-    if (kind === undefined) throw new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
-    const mail = await refundMailRepo.insertResend(
-      {
-        operationId: op.id,
-        kind,
-        requestedBy: req.adminId,
-        reason: req.reason,
-        idempotencyKey: req.key,
-        requestHash: req.hash,
-      },
-      tx,
-    );
-    return { mail };
+    if (kind === undefined) return new RefundRefusal(409, "mail_not_resendable", "mail_not_resendable");
+    return refundMailRepo.insertResend({
+      operationId: current.id,
+      kind,
+      requestedBy: req.adminId,
+      reason: req.reason,
+      idempotencyKey: req.key,
+      requestHash: req.hash,
+    }, tx);
   });
-  if (outcome.replay) return answerReplay(outcome.replay);
-  sendRefundMailLater(outcome.mail.id);
-  return answerMail(outcome.mail);
+  if ("replay" in outcome) return answerReplay(outcome.replay);
+  sendRefundMailLater(outcome.value.id);
+  return answerMail(outcome.value);
 }
 
 // ── shared steps ─────────────────────────────────────────────────────
@@ -346,29 +390,25 @@ export async function resendMail(
  * @throws {RefundRefusal} 404 when there is no such lot, or nobody paid for it.
  */
 async function loadTarget(lotId: string): Promise<{ lot: CreditLotEntity; payment: PaymentEntity }> {
-  const lot = await creditLotRepo.findLotById(lotId);
-  const payment = lot && isPurchased(lot.sourceKind) ? await paymentRepo.getPaymentById(lot.sourceId) : null;
-  if (lot === null || payment === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
-  return { lot, payment };
+  const target = await findTarget(lotId);
+  if (target === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
+  return target;
 }
 
 /**
- * The first steps of every write transaction (§4.6, §9): the key's
- * advisory lock, the lot's row lock, the second lookup of the key.
- * @param tx - The write transaction.
- * @param req - The request.
- * @returns What to replay, or the locked lot to go on with.
- * @throws {RefundRefusal} 404 when the lot is gone; the key refusals.
+ * Read a live purchased lot and payment, locking the live target inside a
+ * key decision. Preparation and final judgement share this availability rule.
+ * @param lotId - The logical target.
+ * @param tx - The key decision transaction, if present.
+ * @returns The target or null when the lot is soft-deleted or either record is absent.
  */
-async function lockAndRecheck(
-  tx: DbTx,
-  req: WriteRequest,
-): Promise<{ replay: Replay } | { lot: CreditLotEntity }> {
-  await operationRepo.lockIdempotencyKey(req.key, tx);
-  const lot = await creditLotRepo.lockLot(req.lotId, tx);
-  if (lot === null) throw new RefundRefusal(404, "not_found", "lot_not_found");
-  const replay = await lookupKey(req.key, req.hash, tx);
-  return replay ? { replay } : { lot };
+async function findTarget(
+  lotId: string,
+  tx?: DbTx,
+): Promise<{ lot: CreditLotEntity; payment: PaymentEntity } | null> {
+  const lot = tx ? await creditLotRepo.lockLiveLot(lotId, tx) : await creditLotRepo.findLotById(lotId);
+  const payment = lot && isPurchased(lot.sourceKind) ? await paymentRepo.getPaymentById(lot.sourceId, tx) : null;
+  return lot && payment ? { lot, payment } : null;
 }
 
 /**
@@ -483,8 +523,13 @@ function answerMail(mail: RefundMail): Answer<RefundMail> {
 /**
  * The answer for a repeated request.
  * @param replay - What an earlier request under the same key left.
- * @returns Its current snapshot.
+ * @returns Its current snapshot, or the literal committed refusal.
+ * @throws {RefundRefusal} The original committed refusal after the transaction finishes.
  */
 function answerReplay(replay: Replay): Answer<unknown> {
+  if (replay.kind === "refusal") {
+    const { responseStatus, responseBody } = replay.refusal;
+    throw new RefundRefusal(responseStatus, responseBody.code, undefined, responseBody.reason, responseBody);
+  }
   return replay.kind === "operation" ? answerOperation(replay.op) : answerMail(replay.mail);
 }

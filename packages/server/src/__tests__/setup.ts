@@ -5,8 +5,6 @@
 
 import { afterAll, vi } from "vitest";
 
-// Unit tests mock `@breatic/core` with `MONOREPO_ROOT="/tmp"`, so any
-// config loader that `readFileSync`s from `config/` would ENOENT.
 // Stub the rate-limits loader globally with permissive windows —
 // WHETHER a request is throttled is governed by the mocked
 // `core.checkRateLimit` (see mock-core / auth.ratelimit.test), so this

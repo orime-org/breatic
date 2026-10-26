@@ -22,6 +22,7 @@ const toastSpy = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: toastSpy.error, success: vi.fn(), info: vi.fn() } }));
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type * as ChatApiModule from '@web/data/api/chat';
+import type * as AssetsApiModule from '@web/data/api/assets';
 
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
@@ -36,6 +37,29 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
     deleteConversation: vi.fn(),
   },
 }));
+
+// Chat sends every body through bodyOrTransfer, which first asks for the
+// upload config. Answer it here with the shipped request-body limit, so the
+// real threshold runs (these bodies are small and go as they are) and no
+// request reaches the network, where fake timers would never settle it.
+vi.mock('@web/data/api/assets', async (importOriginal) => {
+  const actual = await importOriginal<typeof AssetsApiModule>();
+  return {
+    ...actual,
+    assetsApi: {
+      ...actual.assetsApi,
+      fetchUploadConfig: async () => ({
+        maxUploadBytes: 2 * 1024 * 1024 * 1024,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        uploadIdleTimeoutMs: 30_000,
+        assetUrlPrefix: 'https://assets.test.invalid/',
+        uploadStatusPollSeconds: 5,
+        maxRequestBodyBytes: 1048576,
+      }),
+    },
+  };
+});
 
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';

@@ -101,8 +101,9 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  *
  * Says the connection ended rather than that the user pressed stop, because
  * pressing stop is not what this side is told. The route has one signal for
- * it (`s.onAbort`, raised when the client goes away) and it covers the stop
- * button, a closed tab, a dropped network and a sleeping laptop alike. Told
+ * it (the one `streamUntilClientLeaves` raises when the client goes away) and
+ * it covers the stop button, a closed tab, a dropped network and a sleeping
+ * laptop alike. Told
  * the first when it was the third, the model opens the next turn apologising
  * for something the user never did. Telling the two apart needs the browser
  * to say which it was, which is task #149.

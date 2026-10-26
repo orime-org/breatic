@@ -37,8 +37,8 @@ vi.mock("@server/modules", async (importOriginal) => {
 
 // The route layer only translates HTTP → the config accessor, so the
 // accessor is mocked here (the loader itself — real yaml read + schema —
-// is covered by src/config/__tests__/limits.test.ts; the core mock points
-// MONOREPO_ROOT at /tmp, so the real loader cannot run in this harness).
+// is covered by src/config/__tests__/limits.test.ts; these values differ from
+// the shipped yaml so the test proves the route reads the accessor).
 vi.mock("../../config/limits.js", () => ({
   getCanvasReferencePoolCap: vi.fn(() => 42),
   getNodeHistoryPageSize: vi.fn(() => 15),
