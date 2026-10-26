@@ -512,7 +512,14 @@ describe('registered content edits drive project leave protection (inner#1641)',
     await handshake(item.name, item.provider);
     expect(requests(item.provider)).toHaveLength(1);
     const oldId = requests(item.provider)[0].id;
-    act(() => { item.provider.emit(event === 'authenticationFailed' ? event : 'close', event === 'reauth' ? { event: { reason: COLLAB_REAUTH_REASONS.permissionChanged } } : { reason: 'refused' }); });
+    const bytes = Y.encodeStateAsUpdate(item.doc);
+    act(() => {
+      item.provider.emit(event === 'authenticationFailed' ? event : 'close', event === 'authenticationFailed'
+        ? { reason: 'refused' }
+        : { event: { reason: event === 'reauth' ? COLLAB_REAUTH_REASONS.permissionChanged : 'Reset Connection' } });
+    });
+    expect(blocked()).toBe(true);
+    expect(Y.encodeStateAsUpdate(item.doc)).toEqual(bytes);
     await confirm(item.provider, oldId);
     expect(blocked()).toBe(true);
     expect(requests(item.provider)).toHaveLength(1);
@@ -520,6 +527,7 @@ describe('registered content edits drive project leave protection (inner#1641)',
     expect(requests(item.provider)).toHaveLength(2);
     await confirm(item.provider, requests(item.provider)[1].id);
     expect(blocked()).toBe(false);
+    expect(Y.encodeStateAsUpdate(item.doc)).toEqual(bytes);
   });
 
   it('invalidates a queued Step1 callback when the connection closes in the same turn', async () => {

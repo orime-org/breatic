@@ -194,6 +194,7 @@ import {
   statelessFrame,
   syncFrame,
   waitFor as waitForLive,
+  WIRE,
 } from "./helpers/live-hocuspocus.js";
 import { SOCKET_CEILINGS } from "../infra/socket-ceilings.js";
 
@@ -845,12 +846,14 @@ describe("createCollabServer — content sync receipts (inner#1641)", () => {
     expect(connection.sendStateless).toHaveBeenCalledTimes(0);
   });
 
-  it("waits for the real Connection queue to apply the preceding update before confirming", async () => {
+  it.each(["applied", "rejected"] as const)("settles the preceding real Connection update as %s before handling its receipt", async (outcome) => {
     const hook = await dispatcher();
     const documentName = `project-${PID}/document-${SID}`;
     let releaseUpdate: (() => void) | undefined;
+    let rejectUpdate: ((reason: Error) => void) | undefined;
     let updateEntered = false;
-    const heldUpdate = new Promise<void>((resolve) => { releaseUpdate = resolve; });
+    const heldUpdate = new Promise<void>((resolve, reject) => { releaseUpdate = resolve; rejectUpdate = reject; });
+    const failure = new Error("Injected preceding-update failure");
     const appliedAtReply: string[] = [];
     const server = createLiveServer({
       onAuthenticate: async (): Promise<Record<string, never>> => ({}),
@@ -864,7 +867,9 @@ describe("createCollabServer — content sync receipts (inner#1641)", () => {
       },
     });
     const client = await connectLiveClient(server, documentName);
+    const document = server.documents.get(documentName)!;
     const local = new Y.Doc();
+    const errors = vi.spyOn(console, "error");
     try {
       local.getText('body').insert(0, 'pending content');
       client.send(syncFrame(documentName, 0, 2, Y.encodeStateAsUpdate(local)));
@@ -872,6 +877,17 @@ describe("createCollabServer — content sync receipts (inner#1641)", () => {
       await waitForLive(() => updateEntered, 'the preceding update entered the real queue');
       expect(appliedAtReply).toEqual([]);
       expect(client.frames().filter((frame) => frame.stateless !== undefined)).toEqual([]);
+      if (outcome === "rejected") {
+        rejectUpdate?.(failure);
+        await waitForLive(() => client.frames().some((frame) => frame.type === WIRE.close || frame.stateless !== undefined), 'the failed update reached a close or receipt outcome');
+        expect(client.frames().filter((frame) => frame.stateless !== undefined)).toEqual([]);
+        expect(client.frames().filter((frame) => frame.type === WIRE.close).map((frame) => frame.docName)).toEqual([documentName]);
+        expect(document.getText('body').toString()).toBe('');
+        expect(document.getConnectionsCount()).toBe(0);
+        expect(appliedAtReply).toEqual([]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining('closing connection'), failure);
+        return;
+      }
       releaseUpdate?.();
       await waitForLive(() => appliedAtReply.length === 1, 'the confirmation entered the real dispatcher');
       expect(appliedAtReply).toEqual(['pending content']);
@@ -881,6 +897,7 @@ describe("createCollabServer — content sync receipts (inner#1641)", () => {
       releaseUpdate?.();
       client.close();
       local.destroy();
+      errors.mockRestore();
     }
   });
 });
