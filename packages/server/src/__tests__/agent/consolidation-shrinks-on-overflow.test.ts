@@ -20,6 +20,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fc from "fast-check";
 import type { ModelMessage } from "ai";
 import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
@@ -240,5 +241,66 @@ describe("a consolidation call turned away as too long", () => {
     expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
     expect(chargeOnceForGeneration.mock.calls[0]?.[0]).toBe(`consolidate:${CONVERSATION}:4`);
     expect(chargeOnceForGeneration.mock.calls[0]?.[1]).toMatchObject({ amount: 400 });
+  });
+});
+
+describe("halving under any window and any run of overflows (A6)", () => {
+  /**
+   * The turns a call was handed, read off the markers in its prompt.
+   * @param n - Which call, from 0.
+   * @param turnIndices - Every turn of the window.
+   * @returns The turns whose question is in the prompt.
+   */
+  function turnsIn(n: number, turnIndices: readonly number[]): number[] {
+    return turnIndices.filter((turnIndex) => promptOf(n).includes(`TURN-${String(turnIndex)}-ASKED`));
+  }
+
+  it("hands over an oldest-first run of whole turns and commits the watermark at its last turn, or discards past the cap", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 1, max: 12 }), fc.integer({ min: 0, max: SHRINK_ATTEMPTS + 1 }), async (count, rejections) => {
+        vi.clearAllMocks();
+        generateTextRetry.mockReset();
+        commitConsolidation.mockResolvedValue("written");
+        discardConsolidation.mockResolvedValue(true);
+        for (let i = 0; i < rejections; i += 1) generateTextRetry.mockRejectedValueOnce(h2());
+        generateTextRetry.mockResolvedValueOnce(GOOD_ANSWER);
+        const turnIndices = Array.from({ length: count }, (_, i) => 5 + i);
+
+        const outcome = await consolidateWindow({
+          userId: "11111111-1111-4111-8111-111111111111",
+          conversationId: CONVERSATION,
+          projectId: "33333333-3333-4333-8333-333333333333",
+          turns: turnIndices.map((turnIndex) => ({
+            turnIndex,
+            messages: [
+              { role: "user" as const, content: `TURN-${String(turnIndex)}-ASKED` },
+              { role: "assistant" as const, content: `TURN-${String(turnIndex)}-SAID ${"y".repeat(200)}` },
+            ],
+          })),
+          watermarkBefore: 4,
+          newWatermark: turnIndices.at(-1)!,
+        });
+
+        // Every call was handed the oldest turns, contiguous, never more than the call before.
+        let kept = count;
+        for (let n = 0; n < generateTextRetry.mock.calls.length; n += 1) {
+          expect(turnsIn(n, turnIndices)).toEqual(turnIndices.slice(0, kept));
+          if (kept > 1) kept = Math.floor(kept / 2);
+        }
+        if (rejections > SHRINK_ATTEMPTS) {
+          expect(outcome).toBe("discarded");
+          expect(generateTextRetry).toHaveBeenCalledTimes(1 + SHRINK_ATTEMPTS);
+          expect(commitConsolidation).not.toHaveBeenCalled();
+          expect(discardConsolidation).toHaveBeenCalledWith(CONVERSATION, turnIndices.at(-1));
+          expect(chargeOnceForGeneration).not.toHaveBeenCalled();
+        } else {
+          const last = turnsIn(rejections, turnIndices);
+          expect(outcome).toBe("written");
+          expect(commitConsolidation.mock.calls[0]?.[0]).toMatchObject({ newWatermark: last.at(-1) });
+          expect(chargeOnceForGeneration).toHaveBeenCalledTimes(1);
+        }
+      }),
+      { numRuns: 60 },
+    );
   });
 });
