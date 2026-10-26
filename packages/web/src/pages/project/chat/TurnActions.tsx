@@ -104,6 +104,10 @@ export const TurnActions = React.memo(function TurnActions({
             size='icon'
             className={cn(
               'size-[var(--btn-compact)] text-muted-foreground',
+              // Under a reply the glyph, not the button's padding, lines up
+              // with the reply's left edge: half of what the button adds
+              // around its icon.
+              own !== true && '-ml-[calc((var(--btn-compact)-0.875rem)/2)]',
               // Transparent alone is not enough: it would keep taking clicks
               // and keep its place in the tab order, so a blank would copy
               // when pressed with nothing visible there.

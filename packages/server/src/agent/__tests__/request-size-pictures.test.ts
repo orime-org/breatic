@@ -8,7 +8,7 @@ import { costPerTurn, requestTokens } from "@server/agent/request-size.js";
 import { prefixHash, replayRows } from "@server/agent/history-replay.js";
 import type { ReplayedRow, ReplayRow, ReplyForModel, RequestPrefix } from "@server/agent/history-replay.js";
 import { measureMessages } from "@server/agent/payload-size.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 vi.mock("@breatic/domain", () => ({
   AGENT_TOOL_PICTURE_MARKER: "[Agent pictures from tool results]",
@@ -42,7 +42,7 @@ function row(turnIndex: number, role: "user" | "assistant", messages: ModelMessa
 /** The actual assembly whose last message is this turn's question. */
 function assembly(replayed: ReplayedRow[]): Assembly {
   return {
-    agentConfig: { ...PREFIX, seesPictures: false },
+    agentConfig: { ...PREFIX, seesPictures: false, contextWindow: 1_000_000 },
     replayed,
     watermark: 0,
     userKept: { messages: [QUESTION] },

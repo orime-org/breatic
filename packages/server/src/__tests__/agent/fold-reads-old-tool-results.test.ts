@@ -7,14 +7,14 @@
  * the fold too. Pricing each turn and building the fold's transcript both go
  * through the replay conversion, so a structured result stored before the
  * model's copy was kept reaches the fold as the note, and the fold runs
- * (inner#1481).
+ * (inner#1481). The fold here is set off by an overflow (inner#1567).
  */
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type { ReplayRow } from "@server/agent/history-replay.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
-const AGENT = { modelId: "test", instructions: { base: "system" }, tools: {}, seesPictures: false };
+const AGENT = { modelId: "test", instructions: { base: "system" }, tools: {}, seesPictures: false, contextWindow: 1_000_000 };
 const QUESTION = { role: "user" as const, content: "and now?" };
 
 /**
@@ -37,21 +37,26 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     ...actual,
-    // Any request is over budget, so the fold runs.
-    getAgentConfig: () => ({ ...actual.getAgentConfig(), memory_budget_tokens: 1, memory_keep_tokens: 1 }),
-    effectiveKeepTokens: () => 1,
+    getAgentConfig: () => ({ ...actual.getAgentConfig(), memory_keep_tokens: 1 }),
+    // The fold's own log lines (inner#1567, A8); this suite reads the fold.
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 });
 
-const consolidateWindow = vi.fn(async (_request: { transcript: unknown[] }) => ({ kind: "skipped" }));
+const consolidateWindow = vi.fn(async (_request: { turns: Array<{ messages: unknown[] }> }) => "written");
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 vi.mock("@server/agent/consolidation-window.js", () => ({
   planConsolidation: () => ({ newWatermark: 1 }),
 }));
 
-const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { foldIfTooLong } = await import("@server/agent/turn-fold.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
+
+/** Turn 2 asking, with turn 1 the history a fold may take. */
+const WHO = { userId: "u", conversationId: "c", projectId: "p", turnIndex: 2 };
+/** The provider turned the call away as too long, stating no size: the fold runs. */
+const OVERFLOW = { kind: "overflow" as const, overflow: { lowerBound: false }, known: undefined, attempt: 1, error: undefined };
 
 /** A turn whose model listing was written before the listing carried `needs`. */
 const HISTORY: ReplayRow[] = [
@@ -90,13 +95,10 @@ const HISTORY: ReplayRow[] = [
 
 describe("folding a history that holds an old tool result", () => {
   it("runs, and hands the fold the note in place of the old result", async () => {
-    await foldIfOverBudget(
-      assembled(HISTORY),
-      { userId: "u", conversationId: "c", projectId: "p" },
-    );
+    await foldIfTooLong(assembled(HISTORY), [], WHO, OVERFLOW);
 
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
-    const transcript = consolidateWindow.mock.calls[0]?.[0].transcript ?? [];
+    const transcript = consolidateWindow.mock.calls[0]?.[0].turns.flatMap((turn) => turn.messages) ?? [];
     const toolMessage = transcript.find((m) => (m as { role: string }).role === "tool") as
       | { content: Array<{ output: unknown }> }
       | undefined;
@@ -134,12 +136,9 @@ describe("folding a history kept as it was sent", () => {
       },
     ];
 
-    await foldIfOverBudget(
-      assembled(kept),
-      { userId: "u", conversationId: "c", projectId: "p" },
-    );
+    await foldIfTooLong(assembled(kept), [], WHO, OVERFLOW);
 
-    const transcript = JSON.stringify(consolidateWindow.mock.calls[0]?.[0].transcript);
+    const transcript = JSON.stringify(consolidateWindow.mock.calls[0]?.[0].turns);
     expect(transcript).toContain("what was sent");
     expect(transcript).toContain("the answer");
     expect(transcript).not.toContain("private working");

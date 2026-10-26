@@ -245,6 +245,7 @@ describe("defaultSpaceName", () => {
     expect(defaultSpaceName("canvas")).toBe("Canvas");
     expect(defaultSpaceName("document")).toBe("Document");
     expect(defaultSpaceName("timeline")).toBe("Timeline");
+    expect(defaultSpaceName("3d")).toBe("3D");
   });
 });
 

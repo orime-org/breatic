@@ -108,19 +108,27 @@ current_space_max_chars: 100000
 # newest this many and tells the model how many it left off.
 space_list_max_items: 200
 
-# How long an assembled request may be before a consolidation runs, in
-# tokens: 85% of the smallest context window among the providers that serve
-# the model. Measured against everything about to go to the model: system
-# prompt, memory, tool definitions, history and this turn's question. The
-# size comes from the provider's own count on the last turn; where there is
-# none, a character is counted as a token, which can only fire early.
-memory_budget_tokens: 850000
-
-# What one consolidation leaves behind, in tokens. A pass takes whole turns
-# from the oldest end until what remains is under this, less the room the
-# fold may add to memory -- the two memory ceilings, doubled, counted as
-# tokens at a character each.
+# What one consolidation leaves behind, in tokens. A fold runs only when the
+# provider's last reported count (input + output) leaves no room under the main
+# model's window less max_output_tokens, or when the provider turns a request
+# away as over its context window. It takes whole turns from the oldest end,
+# at least one, until what remains is under the lower of this line and the
+# window less max_output_tokens, less the room the fold may add to memory --
+# the two memory ceilings, doubled, counted as tokens at a character each.
 memory_keep_tokens: 500000
+
+# The main model's context window when the model directory cannot say: the
+# smallest window among the providers that serve the default model.
+context_window_fallback_tokens: 1000000
+
+# How many folds a provider's "context too long" may set off in one turn.
+# Past it the turn ends as too long instead of paying for another fold.
+overflow_folds_per_turn: 2
+
+# How many times one fold halves what it hands the consolidation model after
+# that call is turned away as too long (six halvings leave 1/64). Past it the
+# window is discarded the way a failed fold is.
+consolidation_shrink_attempts: 6
 
 # ── Tools ─────────────────────────────────────────────────
 # How much page text one web_search asks for, in tokens. The service refuses
