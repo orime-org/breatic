@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { candidatesOf, parseProviderConfig, type MediaBinding, type ProviderConfigInput } from "@provider/config/schema.js";
-import type { Cost, CostLookup } from "@provider/cost.js";
+import { lookupCost, type Cost, type CostLookup } from "@provider/cost.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
-import { lookupCost } from "@provider/llm/costs.js";
 import {
   estimateCost,
   type Availability,
