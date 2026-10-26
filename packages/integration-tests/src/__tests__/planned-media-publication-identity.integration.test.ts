@@ -166,9 +166,20 @@ describe("planned publication keeps SQL output identity across real Redis entrie
     const firstHistory = await expectPersistence(f, source, "done");
     if (first === undefined) throw new Error("The first completion did not return its committed result");
     const held = await executionSnapshot(pg, f);
+    const pendingDelivery = { schemaVersion: 1, planFingerprint: f.plan.planFingerprint, version: 1,
+      outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: "delivery_publish_failed" };
+    expect(held.result.miniToolDelivery).toEqual(pendingDelivery);
     const recovered = await finishMiniToolExecutionAndNotify(f.taskId, { planFingerprint: first.record.planFingerprint,
       expectedVersion: first.record.resultVersion, outputs: structuredClone(first.record.outputs), error: first.record.error, consumptionSet: "complete" }, redis);
-    expect(recovered.record).toEqual(first.record); expect(await executionSnapshot(pg, f)).toEqual(held);
+    expect(recovered.record).toEqual(first.record);
+    const after = await executionSnapshot(pg, f);
+    const publishedDelivery = { schemaVersion: 1, planFingerprint: f.plan.planFingerprint, version: 2,
+      outputs: [{ outputIndex: 0, state: "published" }], lastErrorCode: null };
+    expect(after.result.miniToolDelivery).toEqual(publishedDelivery);
+    expect(after).toEqual({ status: held.status, params: held.params,
+      result: { ...held.result, miniToolDelivery: publishedDelivery },
+      started_at: held.started_at, completed_at: held.completed_at, billed_at: held.billed_at,
+      billed_credits: held.billed_credits, error_message: held.error_message });
     const actual = await events(f); expect(actual).toHaveLength(1); expectMediaEvent(actual[0]!.payload, f);
     expect(await expectPersistence(f, source, "done")).toBe(firstHistory);
   });
