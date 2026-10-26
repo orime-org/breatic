@@ -375,13 +375,16 @@ export async function consolidateWindow(
 
   // From here on the model is involved, so every ending below has a call
   // behind it that has to be paid for and cannot be repeated for free.
+  // How many times the window was halved before the call ended, for the
+  // failure line below.
+  let shrinks = 0;
   try {
     // One call, and the retrying happens inside it: `generateTextRetry` is
     // handed `llm_max_retries`, so this is one original and two retries.
     // Turned away as too long, it is sent again with half the window, up to
     // `consolidation_shrink_attempts` times.
     let result: Awaited<ReturnType<typeof generateTextRetry>>;
-    for (let shrinks = 0; ; shrinks += 1) {
+    for (; ; shrinks += 1) {
       try {
         result = await generateTextRetry({
           model,
@@ -401,10 +404,7 @@ export async function consolidateWindow(
       } catch (err) {
         // A rejected call reports no usage and is not charged; only the
         // call that comes back is.
-        if (readContextOverflow(err) === undefined || shrinks >= config.consolidation_shrink_attempts) {
-          if (shrinks > 0) logger.error({ err, ...where, shrinks }, "memory_consolidation_shrinks_exhausted");
-          throw err;
-        }
+        if (readContextOverflow(err) === undefined || shrinks >= config.consolidation_shrink_attempts) throw err;
         if (turns.length > 1) {
           // The older half of the whole turns, and the watermark back to match.
           turns = turns.slice(0, Math.floor(turns.length / 2));
@@ -498,7 +498,7 @@ export async function consolidateWindow(
       // reason this fails too. Both errors go in the line: the one that lost
       // the window and the one that could not record it.
       logger.error(
-        { err, discardErr, ...where },
+        { err, discardErr, ...where, shrinks },
         "memory_consolidation_discard_failed",
       );
       return "untouched";
@@ -509,7 +509,7 @@ export async function consolidateWindow(
     // whether this turn's window went with it depends on whether anyone else
     // had already folded it, and `windowLost` is that answer.
     logger.error(
-      { err, ...where, windowLost: lost },
+      { err, ...where, windowLost: lost, shrinks },
       "memory_consolidation_failed",
     );
     return lost ? "discarded" : "superseded";
