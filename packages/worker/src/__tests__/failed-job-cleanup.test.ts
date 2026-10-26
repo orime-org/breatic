@@ -16,12 +16,14 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
 
 const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof coreModule>(),
   publishNodeEvent: mockPublishNodeEvent,
   publishActivityNew: vi.fn(),
   projectActivitiesRepo: {

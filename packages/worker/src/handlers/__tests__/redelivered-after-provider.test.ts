@@ -18,6 +18,8 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
+import type * as sharedModule from "@breatic/shared";
 
 const mockMarkFailed = vi.hoisted(() => vi.fn());
 const mockRecordFailure = vi.hoisted(() => vi.fn());
@@ -26,7 +28,8 @@ const mockGetByIdInternal = vi.hoisted(() => vi.fn());
 const mockWarn = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async () => undefined));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof coreModule>(),
   // Product analytics (inner#1442) runs the job under its consent and reports
   // milestones; neither is what these cases are about.
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
@@ -69,7 +72,8 @@ vi.mock("@breatic/domain", () => ({
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
 }));
-vi.mock("@breatic/shared", () => ({
+vi.mock("@breatic/shared", async (importOriginal) => ({
+  ...await importOriginal<typeof sharedModule>(),
   NO_CONSENT: { analytics: false, ads: false },
   canvasSpaceDocName: (p: string, s: string) => `project-${p}/canvas-${s}`,
   extractPromptText: vi.fn(),

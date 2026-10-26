@@ -14,6 +14,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
 
 const h = vi.hoisted(() => {
   /** Stand-in for the real class, matched by `instanceof` in the dispatcher. */
@@ -76,7 +77,8 @@ vi.mock("@worker/handlers/understand-slots.js", () => ({
 vi.mock("@worker/handlers/prompt-params.js", () => ({
   takePromptAndValidate: (params: Record<string, unknown>) => ["a cat", undefined, params],
 }));
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof coreModule>(),
   // Product analytics (inner#1442) runs the job under its consent and reports
   // milestones; neither is what these cases are about.
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
