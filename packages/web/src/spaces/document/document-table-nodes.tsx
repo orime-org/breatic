@@ -31,6 +31,7 @@ import { deriveId } from '@breatic/shared';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
+import { BODY_OPERATION_META, BodyOriginMirror, BodyProvenanceError, bodyInlineOccurrences, bodyOperations, recordBodyOperation } from '@web/spaces/document/document-body-provenance';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 
 /** The narrowest a column can be dragged. */
@@ -330,10 +331,23 @@ const unfoldCellTables = new Plugin({
       return false;
     });
     if (tables.length === 0) return null;
-    const tr = state.tr;
+    const sourceAt = new Map(bodyInlineOccurrences(state.doc).map((unit) => [unit.pos, `table-unfold:${unit.pos}`]));
+    const mirror = new BodyOriginMirror(state.tr, { sourceAt });
     for (const { pos, node } of tables.reverse()) {
-      tr.replaceWith(pos, pos + node.nodeSize, unfoldTables(Fragment.from(node)));
+      const operation = mirror.replaceFromCurrent(pos, pos + node.nodeSize, (current) => {
+        const table = current.nodeAt(pos);
+        if (table === null) throw new BodyProvenanceError('The table being unfolded is absent');
+        return unfoldTables(Fragment.from(table));
+      });
+      if (operation.created.length > 0 || (operation.dropped?.length ?? 0) > 0) throw new BodyProvenanceError('Unfolding a table changed its inline content');
     }
+    const operations = bodyOperations(mirror.tr);
+    const tr = mirror.tr.setMeta(BODY_OPERATION_META, []);
+    for (const operation of operations) recordBodyOperation(tr, {
+      id: operation.id, name: operation.name, source: operation.source, target: operation.target,
+      handoffs: operation.handoffs.map((handoff) => ({ kind: handoff.kind, source: handoff.source, target: handoff.target })),
+      created: [],
+    });
     return tr;
   },
 });

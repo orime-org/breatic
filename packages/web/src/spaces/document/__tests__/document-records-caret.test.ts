@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { act } from '@testing-library/react';
-import { TextSelection, type Selection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection, type Selection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -185,6 +185,43 @@ describe('records caret through the existing document caret entry', () => {
       expect(wire.status).toBe('active');
       expect(wire.focused).toBe(true);
     }
+  });
+
+  it('publishes native inline-node names and renders their JSON peer cursor', async () => {
+    const seed = codecFixture([{ id: 'A', text: 'AB' }]);
+    documentBodySource(seed, 'S:A').insertEmbed(2, { bodyInline: { type: 'futureToken', attrs: { payload: ['keep', 7] } } }, { ctx: 'base' });
+    const { editor, awareness, root, doc } = open(seed);
+    const view = editor.prosemirrorView;
+    const selection = NodeSelection.create(view.state.doc, 4);
+    expect(selection.node.type.name).toBe('unsupportedInline');
+    act(() => view.dispatch(view.state.tr.setSelection(selection)));
+    act(() => view.focus());
+    const cursor = cursorOf(awareness);
+    const binding = bodyBindingOf(view.state);
+    if (binding === null) throw new Error('Missing records binding');
+    const token = binding.read(view.state).index.units.find((unit) => unit.pos === 4)!.token;
+    expect(cursor.selection).toMatchObject({ kind: 'inlineNode',
+      anchor: { kind: 'text', source: 'S:A', token, assoc: 1 },
+      head: { kind: 'text', source: 'S:A', token, assoc: -1 },
+    });
+    const resolved = resolveBodySelection(binding.read(view.state).index, JSON.parse(JSON.stringify(cursor.selection)) as DocumentBodyCursor['selection']);
+    expect(resolved.status).toBe('resolved');
+    if (resolved.status !== 'resolved') throw new Error('Published inline-node selection must resolve');
+    expect(resolved.selection.toJSON()).toEqual(selection.toJSON());
+    act(() => remote(awareness, cursor));
+    await act(async () => { await new Promise<void>((resolve) => { setTimeout(resolve, 0); }); });
+    const caret = root.querySelector<HTMLElement>('.collaboration-carets__caret');
+    expect(caret).not.toBeNull();
+    if (caret === null) throw new Error('Missing inline-node remote caret');
+    expect(view.posAtDOM(caret, 0)).toBe(5);
+    expect(root.querySelector('.collaboration-carets__selection')).not.toBeNull();
+    act(() => documentBodySource(doc, 'S:A').insert(1, 'Z', { ctx: 'base' }));
+    const moved = root.querySelector<HTMLElement>('.collaboration-carets__caret');
+    if (moved === null) throw new Error('Native insertion removed the inline-node caret');
+    expect(view.posAtDOM(moved, 0)).toBe(6);
+    const next = resolveBodySelection(binding.read(view.state).index, cursor.selection);
+    expect(next.status).toBe('resolved');
+    if (next.status === 'resolved') expect(next.selection.toJSON()).toEqual({ type: 'node', anchor: 5 });
   });
 
   it.each(['waiting', 'failed', 'disposed'] as const)('withdraws synchronously on %s without another PM transaction', (status) => {
