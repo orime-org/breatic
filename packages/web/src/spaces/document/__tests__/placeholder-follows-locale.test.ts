@@ -23,6 +23,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { act } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { TextSelection } from '@tiptap/pm/state';
 
@@ -50,6 +51,7 @@ async function openOn(
 ): Promise<{ handle: DocumentEditorHandle; container: HTMLElement }> {
   setLocale(locale);
   const doc = new Y.Doc();
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const awareness = new Awareness(doc);
   const rendered = renderHook(() =>
     useDocumentEditor({
@@ -81,6 +83,7 @@ describe('the document placeholder', () => {
   it('changes language without the user touching the document', async () => {
     setLocale('en');
     const doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     const awareness = new Awareness(doc);
     const rendered = renderHook(() =>
       useDocumentEditor({
@@ -149,7 +152,7 @@ describe('the document placeholder', () => {
     handle.editor.replaceBlocks(handle.editor.document, [
       { type: 'paragraph', content: 'something worth keeping' },
     ] as never);
-    const view = handle.editor.prosemirrorView!;
+    const view = handle.editor.prosemirrorView;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 7)),
     );
@@ -165,7 +168,7 @@ describe('the document placeholder', () => {
 
     expect(handle.editor, 'the same editor instance').toBe(editorBefore);
     expect(handle.undoManager.undoStack).toHaveLength(depthBefore);
-    const after = handle.editor.prosemirrorView!.state.selection;
+    const after = handle.editor.prosemirrorView.state.selection;
     expect({ from: after.from, to: after.to }).toEqual(selectionBefore);
     expect(container.textContent).toContain('something worth keeping');
   });

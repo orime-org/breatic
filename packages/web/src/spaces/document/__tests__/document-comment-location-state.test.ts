@@ -7,6 +7,7 @@ import { act } from '@testing-library/react';
 import { TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 import type { DocumentProposal } from '@breatic/shared';
 
@@ -72,6 +73,7 @@ async function open(): Promise<Fixture> {
   nextDocument += 1;
   const name = `project-p/document-location-state-${String(nextDocument)}`;
   const doc = new Y.Doc();
+  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const awareness = new Awareness(doc);
   const handle = getDocumentEditor(doc, name, {
     caretProvider: { awareness },
@@ -243,7 +245,7 @@ describe('the current explicit comment command', () => {
 
     act(() => {
       hoverThread(editor, fixture.otherThreadId);
-      const view = editor.prosemirrorView!;
+      const view = editor.prosemirrorView;
       view.dispatch(view.state.tr.insertText('prefix ', firstRun(fixture.handle).from));
       hoverThread(editor, null);
     });
@@ -279,7 +281,7 @@ describe('the current explicit comment command', () => {
     const fixture = await open();
     const editor = fixture.handle.editor;
     act(() => {
-      const view = editor.prosemirrorView!;
+      const view = editor.prosemirrorView;
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, firstRun(fixture.handle).from + 2)));
     });
     const before = {

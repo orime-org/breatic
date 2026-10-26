@@ -88,7 +88,7 @@ export interface CommentsApi {
     createThread(options: {
       initialComment: { body: unknown; metadata?: Record<string, unknown> };
       metadata?: Record<string, unknown>;
-    }): Promise<{ id: string }>;
+    }): Promise<ThreadData>;
     resolveThread(options: { threadId: string }): Promise<unknown>;
     unresolveThread(options: { threadId: string }): Promise<unknown>;
     deleteThread(options: { threadId: string }): Promise<unknown>;

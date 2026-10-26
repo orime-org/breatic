@@ -20,11 +20,12 @@ import * as React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { TextSelection } from '@tiptap/pm/state';
 
 import { Awareness } from 'y-protocols/awareness';
 
-import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
+import { deriveId, type DocumentProposal } from '@breatic/shared';
 
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
@@ -33,6 +34,9 @@ import { landedAt, landProposal, type Landed } from '@web/spaces/document/docume
 import type { ProposalLocation } from '@web/spaces/document/document-proposal-location';
 import {
   _resetDocumentEditorCacheForTests,
+  adoptDocumentEditor,
+  evictDocumentEditor,
+  getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
 import type { DocumentUploader } from '@web/spaces/document/document-uploads';
@@ -54,7 +58,7 @@ describe('DocumentEditor', () => {
   function writtenLocation(): ProposalLocation {
     const proposalId = '33333333-3333-4333-8333-333333333333';
     const blockId = deriveId(`document-proposal:${proposalId}:0`);
-    const view = handle.editor.prosemirrorView!;
+    const view = handle.editor.prosemirrorView;
     const first = view.state.doc.firstChild!.firstChild!;
     act(() => view.dispatch(view.state.tr.setNodeMarkup(1, undefined, { ...first.attrs, id: blockId })));
     return publication({ how: 'write', blockId }, {
@@ -65,6 +69,7 @@ describe('DocumentEditor', () => {
 
   beforeEach(async () => {
     doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
     const { result } = renderHook(() =>
       useDocumentEditor({
@@ -91,7 +96,7 @@ describe('DocumentEditor', () => {
       start: () => Promise.resolve(),
       retry: () => undefined,
       remove: () => undefined,
-    } as unknown as DocumentUploader;
+    };
     const { container, rerender } = render(
       <DocumentEditor handle={handle} uploader={uploader} />,
     );
@@ -115,7 +120,7 @@ describe('DocumentEditor', () => {
     const shell = [...container.firstElementChild!.children];
     expect(shell).toHaveLength(1);
 
-    const columns = [...shell[0]!.children];
+    const columns = [...shell[0].children];
     expect(columns).toHaveLength(1);
     expect(columns[0]).toHaveClass(BODY_SCROLLER_CLASS);
   });
@@ -176,7 +181,7 @@ describe('DocumentEditor', () => {
     });
     // The caret raises the toolbar only while the body holds the focus
     // (inner#1127 A20).
-    editor.prosemirrorView!.dom.focus();
+    editor.prosemirrorView.dom.focus();
     editor.transact((tr) => {
       tr.setSelection(TextSelection.create(tr.doc, inside));
     });
@@ -211,16 +216,26 @@ describe('DocumentEditor', () => {
 
   /**
    * Let a co-editor write into the shared document.
-   * @param write - What the peer does to the paragraph's first text node.
+   * @param write - What the peer does through the actual records editor.
+   * @throws {Error} If peer construction or its real editing command fails.
    */
-  const peerWrites = (write: (text: Y.XmlText) => void): void => {
+  const peerWrites = (write: (editor: DocumentEditorHandle['editor']) => void): void => {
     const peer = new Y.Doc();
     Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-    const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
-    const container = group.get(0) as Y.XmlElement;
-    const paragraph = container.get(0) as Y.XmlElement;
-    write(paragraph.get(0) as Y.XmlText);
-    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
+    const peerAwareness = new Awareness(peer);
+    const peerName = `${NAME}-peer`;
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    try {
+      const opened = getDocumentEditor(peer, peerName, { caretProvider: { awareness: peerAwareness }, readWho: () => ({ role: 'editor', viewerId: 'u2' }), editable: true });
+      act(() => { adoptDocumentEditor(opened, root); write(opened.editor); });
+      act(() => Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer)));
+    } finally {
+      act(() => evictDocumentEditor(peerName));
+      peerAwareness.destroy();
+      peer.destroy();
+      root.remove();
+    }
   };
 
   it('keeps the toolbar on the same link when a peer writes before it', async () => {
@@ -233,8 +248,8 @@ describe('DocumentEditor', () => {
       expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
     );
 
-    peerWrites((text) => {
-      text.insert(0, 'AAA ');
+    peerWrites((editor) => {
+      editor.transact((transaction) => transaction.insertText('AAA ', 3));
     });
 
     await waitFor(() =>
@@ -257,8 +272,8 @@ describe('DocumentEditor', () => {
       expect(screen.getByTestId('doc-link-toolbar')).toBeInTheDocument(),
     );
 
-    peerWrites((text) => {
-      text.delete(0, text.length);
+    peerWrites((editor) => {
+      editor.transact((transaction) => transaction.delete(3, 3 + transaction.doc.textContent.length));
     });
 
     await waitFor(() =>
@@ -303,7 +318,7 @@ describe('DocumentEditor', () => {
     const blockId = location.blockId;
     const block = handle.surface.querySelector<HTMLElement>(`[data-id="${blockId}"]`)!;
     const own = kind === 'table' ? block : block.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content')!;
-    const nested = block.querySelectorAll<HTMLElement>('.bn-block-content')[kind === 'table' ? 0 : 1]!;
+    const nested = block.querySelectorAll<HTMLElement>('.bn-block-content')[kind === 'table' ? 0 : 1];
     expect(nested).not.toBe(own);
     const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
     const spies = [
@@ -400,7 +415,7 @@ describe('DocumentEditor', () => {
       if (ending === 'replacement') {
         const proposalId = '55555555-5555-4555-8555-555555555555';
         const blockId = deriveId(`document-proposal:${proposalId}:0`);
-        const view = handle.editor.prosemirrorView!;
+        const view = handle.editor.prosemirrorView;
         const secondPos = 1 + view.state.doc.firstChild!.firstChild!.nodeSize;
         const second = view.state.doc.nodeAt(secondPos)!;
         act(() => view.dispatch(view.state.tr.setNodeMarkup(secondPos, undefined, { ...second.attrs, id: blockId })));

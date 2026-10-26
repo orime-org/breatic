@@ -76,6 +76,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 
 import { undoRedo } from '@web/spaces/document/document-yjs-origin';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 /** The bound Yjs document, carrying the transaction-lifecycle events. */
 interface YDocLike {
@@ -202,6 +203,31 @@ export function namesOnUndoStack<T>(current: (state: EditorState) => T | null): 
   return {
     handedFor: (tr) => (undoRedo(tr) ? handed : null),
     attach: (view) => {
+      const records = bodyBindingOf(view.state);
+      if (records !== null) {
+        const stopKeeping = keepOnUndoStack(records.doc, records.history, {}, () => before, (stored) => {
+          handed = (stored as T | undefined) ?? null;
+        });
+        /**
+         * Captures the same contributor's current names before native writes.
+         * @throws {Error} If the contributor cannot read the current state.
+         */
+        const onBeforeAll = (): void => { before = current(view.state); };
+        /**
+         * Clears the early handover after the completed native projection.
+         * @throws {never}
+         */
+        const onPopped = (): void => { handed = null; };
+        records.doc.on('beforeAllTransactions', onBeforeAll);
+        records.history.on('stack-item-popped', onPopped);
+        return (): void => {
+          stopKeeping();
+          records.doc.off('beforeAllTransactions', onBeforeAll);
+          records.history.off('stack-item-popped', onPopped);
+          before = null;
+          handed = null;
+        };
+      }
       const stack = undoStackOf(view.state);
       if (stack === null) return () => undefined;
       const { doc } = stack.binding;

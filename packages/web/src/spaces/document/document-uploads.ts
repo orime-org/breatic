@@ -12,6 +12,8 @@
  */
 
 import type { EditorView } from '@tiptap/pm/view';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
+import type { DocumentBodyBindingAccess } from '@web/spaces/document/document-body-binding-types';
 
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
 import {
@@ -114,6 +116,17 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
   const held = new Map<string, File>();
 
   /**
+   * Rechecks the actual input owner's handle, runtime and permission at a writer boundary.
+   * @param view - The original upload destination.
+   * @param owner - The binding captured before asynchronous work.
+   * @returns Whether this exact destination may still accept the upload.
+   * @throws {never}
+   */
+  function mayWrite(view: EditorView, owner: DocumentBodyBindingAccess | null): boolean {
+    return !view.isDestroyed && view.editable && bodyBindingOf(view.state) === owner && owner?.canWrite() !== false;
+  }
+
+  /**
    * Runs one upload to its end.
    * @param view - The editor view.
    * @param slotId - Which slot.
@@ -121,6 +134,8 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
   async function run(view: EditorView, slotId: string): Promise<void> {
     const file = held.get(slotId);
     if (file === undefined) return;
+    const owner = bodyBindingOf(view.state);
+    if (!mayWrite(view, owner)) return;
     deps.register(slotId);
     let stored: StoredUpload;
     try {
@@ -141,8 +156,8 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       });
       return;
     }
-    if (!view.editable) {
-      patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
+    if (!mayWrite(view, owner)) {
+      if (!view.isDestroyed) patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
       return;
     }
     insertSlotBlock(
@@ -161,12 +176,15 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       },
       deps.undo,
     );
-    held.delete(slotId);
+    if (mayWrite(view, owner)) held.delete(slotId);
   }
 
   return {
     async start(view, files, place, aimed) {
+      const owner = bodyBindingOf(view.state);
+      if (!mayWrite(view, owner)) return;
       const maxBytes = await deps.maxUploadBytes();
+      if (!mayWrite(view, owner)) return;
       const admitted: File[] = [];
       for (const file of files) {
         const rejection = rejectionOf(file, maxBytes);
@@ -184,12 +202,13 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       if (gap === null) return;
       const ids = addUploadBatch(view, gap, admitted.map((file) => file.name), aimed, deps.undo);
       ids.forEach((slotId, k) => {
-        held.set(slotId, admitted[k]!);
+        held.set(slotId, admitted[k]);
         void run(view, slotId);
       });
     },
 
     retry(view, slotId) {
+      if (!mayWrite(view, bodyBindingOf(view.state))) return;
       const slot = uploadSlots(view.state).find((s) => s.id === slotId);
       if (slot?.phase !== 'failed' || slot.failure?.retryable !== true) return;
       patchUploadSlot(view, slotId, { phase: 'uploading', progress: null, failure: null });

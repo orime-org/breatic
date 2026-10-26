@@ -30,7 +30,7 @@ import {
   _resetDocumentEditorCacheForTests,
   adoptDocumentEditor,
 } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment, importCurrentDocumentBody, DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 const REMOTE_CLIENT_ID = 4242;
@@ -44,7 +44,12 @@ describe('a collaborator caret', () => {
     const body = documentBodyFragment(doc);
     const para = new Y.XmlElement('paragraph');
     para.insert(0, [new Y.XmlText('shared sentence')]);
-    body.insert(0, [para]);
+    const holder = new Y.XmlElement('blockContainer');
+    holder.insert(0, [para]);
+    const group = new Y.XmlElement('blockGroup');
+    group.insert(0, [holder]);
+    body.insert(0, [group]);
+    importCurrentDocumentBody(doc, 'project-p/document-carets');
 
     const rendered = renderHook(
       () =>
@@ -93,16 +98,15 @@ describe('a collaborator caret', () => {
         .querySelector('.collaboration-carets__label')
         ?.textContent?.trim() ?? '';
 
-    // Someone else joins and puts their caret in the paragraph. Awareness
-    // carries positions in their JSON form — that is what the cursor plugin
-    // reads back with `createRelativePositionFromJSON`.
+    // The peer names the body's start, matching the original root-relative
+    // cursor, in the current versioned awareness protocol.
     act(() => {
-      const cursor = Y.relativePositionToJSON(
-        Y.createRelativePositionFromTypeIndex(documentBodyFragment(doc), 0),
-      );
+      const point = { version: 1, document: 'project-p/document-carets', kind: 'bodyEdge', edge: 'start' };
       (awareness.states as Map<number, unknown>).set(REMOTE_CLIENT_ID, {
         user: { id: 'u-them' },
-        cursor: { anchor: cursor, head: cursor },
+        cursor: { format: DOCUMENT_BODY_FORMAT, version: DOCUMENT_BODY_FORMAT_VERSION,
+          document: 'project-p/document-carets', selection: { version: 1, document: 'project-p/document-carets',
+            kind: 'text', anchor: point, head: point } },
       });
       awareness.emit('change', [
         { added: [REMOTE_CLIENT_ID], updated: [], removed: [] },

@@ -55,11 +55,11 @@ function tableTargetPlugin(): Plugin<Target> {
     key: tableTargetKey,
     state: {
       init: (): Target => null,
-      apply: (tr, value, before): Target => {
+      apply: (tr, value, before, after): Target => {
         const set = tr.getMeta(tableTargetKey) as Target | undefined;
         if (set !== undefined) return set;
         if (value === null || !tr.docChanged) return value;
-        const pos = followCell(tr, before, value.pos, named);
+        const pos = followCell(tr, before, value.pos, named, after);
         return pos === null ? null : { pos, line: value.line };
       },
     },

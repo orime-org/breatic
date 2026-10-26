@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { captionDraftsFor, createCaptionDrafts } from '@web/spaces/document/document-caption-drafts';
@@ -231,6 +232,7 @@ describe('document caption drafts', () => {
 
   it('releases the handle-owned draft store when the document editor is evicted', () => {
     const doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     const awareness = new Awareness(doc);
     const handle = getDocumentEditor(doc, 'caption-cache', { caretProvider: { awareness }, readWho: () => ({ role: 'editor', viewerId: 'u1' }), editable: true });
     try {

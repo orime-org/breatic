@@ -18,7 +18,7 @@
 
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodyFragment, importCurrentDocumentBody, readBodyTree } from '@breatic/shared';
 
 /** The attributes every block node in this schema declares a default for. */
 const BLOCK_ATTRS = {
@@ -63,6 +63,7 @@ export function seedParagraphs(doc: Y.Doc, texts: string[]): void {
     );
     fragment.insert(0, [group]);
   });
+  importCurrentDocumentBody(doc, 'document:paragraph-fixture');
 }
 
 /**
@@ -71,6 +72,8 @@ export function seedParagraphs(doc: Y.Doc, texts: string[]): void {
  * @returns The count, zero when the body has no group at all.
  */
 export function blockCount(doc: Y.Doc): number {
+  const body = readBodyTree(doc);
+  if (body.status === 'ready') return body.view.owners.length;
   const group = documentBodyFragment(doc).get(0);
   return group instanceof Y.XmlElement ? group.length : 0;
 }
@@ -81,6 +84,8 @@ export function blockCount(doc: Y.Doc): number {
  * @returns Each block's text in document order.
  */
 export function blockTexts(doc: Y.Doc): string[] {
+  const body = readBodyTree(doc);
+  if (body.status === 'ready') return body.view.owners.map((owner) => owner.units.map((unit) => unit.value).join(''));
   const group = documentBodyFragment(doc).get(0);
   if (!(group instanceof Y.XmlElement)) {
     return [];

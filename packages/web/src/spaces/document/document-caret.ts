@@ -26,6 +26,8 @@ import { yCursorPlugin } from 'y-prosemirror';
 import type { Awareness } from 'y-protocols/awareness';
 
 import { textEnds } from '@web/spaces/document/document-body-edge-selection';
+import type { DocumentCaretBodyOptions } from '@web/spaces/document/document-caret-types';
+import { documentRecordsCaretPlugin } from '@web/spaces/document/document-records-caret';
 import {
   renderCollabCaret,
   renderCollabSelection,
@@ -41,15 +43,18 @@ import {
  *   building it; the presence hook repaints existing carets when the roster
  *   moves, and which of the two lands first is a race.
  * @returns The extension, for the assembly to register.
+ * @param body - The same records handle's identity and runtime, when supplied.
+ * @throws {Error} If caret plugin construction fails.
  */
 export function documentCaretExtension(
   awareness: Awareness,
   resolveCollaboratorName?: ResolveCollaboratorName,
+  body?: DocumentCaretBodyOptions,
 ): ExtensionFactoryInstance {
   return createExtension(() => ({
     key: 'documentCaret',
     prosemirrorPlugins: [
-      yCursorPlugin(awareness, {
+      body === undefined ? yCursorPlugin(awareness, {
         cursorBuilder: (user: unknown, clientId: number) =>
           renderCollabCaret(user as CaretUser, clientId, resolveCollaboratorName),
         selectionBuilder: (user: unknown) =>
@@ -58,7 +63,7 @@ export function documentCaretExtension(
         // edge of the body, inside that block but outside its content (#124);
         // collaborators get the nearest text there, where a caret can be drawn.
         getSelection: (state: EditorState) => textEnds(state.selection),
-      }),
+      }) : documentRecordsCaretPlugin(awareness, body, resolveCollaboratorName),
     ],
   }) as never)();
 }

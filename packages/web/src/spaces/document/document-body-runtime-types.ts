@@ -29,7 +29,8 @@ export interface DocumentBodyRuntimeSnapshot {
 export interface DocumentBodyRuntime {
   readonly incarnation: symbol;
   readonly read: () => DocumentBodyRuntimeSnapshot;
-  readonly subscribe: (listener: () => void) => () => void;
+  /** Input capture runs after state latching and before readonly/presentation listeners. */
+  readonly subscribe: (listener: () => void, options?: { readonly captureInput?: boolean }) => () => void;
   readonly wait: (missing: readonly string[]) => void;
   readonly resume: () => void;
   readonly fail: (failure: DocumentBodyFailure) => void;

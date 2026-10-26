@@ -73,7 +73,7 @@ export function canDragFrom(doc: PMNode, cellPos: number, orientation: DragOrien
   const slots = orientation === 'row' ? map.width : map.height;
   for (let i = 0; i < slots; i += 1) {
     const index = orientation === 'row' ? at.top * map.width + i : i * map.width + at.left;
-    const cell = map.findCell(map.map[index]!);
+    const cell = map.findCell(map.map[index]);
     const fits =
       orientation === 'row'
         ? cell.top === at.top && cell.bottom === at.top + 1
@@ -92,7 +92,7 @@ export function canDragFrom(doc: PMNode, cellPos: number, orientation: DragOrien
 export function dropGapAt(edges: readonly number[], pointer: number): number {
   let nearest = 0;
   edges.forEach((edge, index) => {
-    if (Math.abs(edge - pointer) < Math.abs(edges[nearest]! - pointer)) nearest = index;
+    if (Math.abs(edge - pointer) < Math.abs(edges[nearest] - pointer)) nearest = index;
   });
   return nearest;
 }
@@ -198,7 +198,7 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
     const rows = Array.from(table.querySelectorAll(':scope > tbody > tr, :scope > tr'));
     if (rows.length === 0) return null;
     const boxes = rows.map((row) => row.getBoundingClientRect());
-    return [...boxes.map((box) => box.top), boxes[boxes.length - 1]!.bottom];
+    return [...boxes.map((box) => box.top), boxes[boxes.length - 1].bottom];
   }
   const at = cellAt(view.state.doc, drag.source);
   if (at === null) return null;
@@ -206,7 +206,7 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
   const edges: number[] = [];
   let right = 0;
   for (let col = 0; col < at.map.width; col += 1) {
-    const rel = at.map.map[col]!;
+    const rel = at.map.map[col];
     const element = view.nodeDOM(at.tableStart + rel);
     if (!(element instanceof Element)) return null;
     const box = element.getBoundingClientRect();
@@ -261,7 +261,7 @@ function gapUnder(view: EditorView, drag: Drag, event: MouseEvent): number | nul
   // A pixel either way: a table flush with its frame has its outer edges on
   // the frame's own, at fractional positions.
   const gaps = edges.flatMap((edge, gap) => (edge >= start - 1 && edge <= end + 1 ? [gap] : []));
-  return gaps.length === 0 ? null : gaps[dropGapAt(gaps.map((gap) => edges[gap]!), pointer)]!;
+  return gaps.length === 0 ? null : gaps[dropGapAt(gaps.map((gap) => edges[gap]), pointer)];
 }
 
 /**
@@ -345,7 +345,7 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
     key: tableDragKey,
     state: {
       init: (): Drag | null => null,
-      apply: (tr, value, before): Drag | null => {
+      apply: (tr, value, before, after): Drag | null => {
         const command = tr.getMeta(tableDragKey) as DragCommand | undefined;
         if (command !== undefined) {
           if ('end' in command) return null;
@@ -353,7 +353,7 @@ function tableDragPlugin(editor: DropEditor): Plugin<Drag | null> {
           return value === null ? null : { ...value, gap: command.gap };
         }
         if (value === null || !tr.docChanged) return value;
-        const source = followCell(tr, before, value.source, named);
+        const source = followCell(tr, before, value.source, named, after);
         // The cell the drag started on is gone: the drag has nothing to move.
         return source === null ? null : { ...value, source };
       },

@@ -59,6 +59,33 @@ const statuses = ['active', 'waiting', 'failed', 'disposed'] as const;
 const events = ['write', 'complete', 'missing', 'error', 'role-visibility', 'close', 'old-async'] as const;
 
 describe('document body runtime', () => {
+  it.each(['waiting', 'failed'] as const)('captures inputs after latching %s and before readonly notification', (status) => {
+    const { runtime, originalFailure } = fixture();
+    const order: string[] = [];
+    runtime.subscribe(() => { order.push('readonly'); });
+    runtime.subscribe(() => {
+      expect(runtime.read().status).toBe(status);
+      expect(runtime.canWrite(true, runtime.incarnation)).toBe(false);
+      if (status === 'failed') expect(runtime.read().failure).toBe(originalFailure);
+      order.push('capture');
+    }, { captureInput: true });
+    if (status === 'waiting') runtime.wait(['context:later']);
+    else runtime.fail(originalFailure);
+    expect(order).toEqual(['capture', 'readonly']);
+  });
+
+  it('isolates an input capture error while preserving the first failure and notifying readonly', () => {
+    const { runtime, originalFailure, report } = fixture();
+    const order: string[] = [];
+    const error = new Error('input capture failure');
+    runtime.subscribe(() => { order.push('readonly'); });
+    runtime.subscribe(() => { order.push('capture'); throw error; }, { captureInput: true });
+    expect(() => runtime.fail(originalFailure)).not.toThrow();
+    expect(runtime.read().failure).toBe(originalFailure);
+    expect(report).toHaveBeenCalledExactlyOnceWith(error);
+    expect(order).toEqual(['capture', 'readonly']);
+  });
+
   it('starts active with a stable snapshot and an independent incarnation', () => {
     const first = fixture();
     const second = fixture();

@@ -1444,6 +1444,12 @@
     "readOnlyNotice": "這個 Space 現在只能檢視 —— 你做的變更不會被儲存。",
     "lockedAria": "已鎖定",
     "document": {
+      "runtime": {
+        "waiting": "正在等待內容，編輯暫不可用；本機輸入保留。",
+        "failed": "編輯已暫停。請複製目前輸入後重新整理核對。",
+        "accepted": "目前輸入（純文字）",
+        "lastGood": "上次顯示的內容（純文字）"
+      },
       "loading": "正在載入編輯器…",
       "unavailable": {
         "text": "這個 Document 開不了。它可能已被刪除，或者你已經沒有存取權限了。",

@@ -333,6 +333,9 @@ export function commitPreparedBodyBatch(environment: BodyBatchEnvironment, prepa
   assertAdmission(environment, evidence.incarnation);
   requireBatch(environment.runtime.revision() === prepared.revision, 'Batch source revision changed after preflight');
   preparedBatches.delete(prepared);
+  environment.onCommitPhase?.('registering');
+  assertAdmission(environment, evidence.incarnation);
+  requireBatch(environment.runtime.revision() === prepared.revision, 'Batch source revision changed before registration');
   const registrationOrigin = Object.freeze({ registration: BODY_REGISTRATION_ORIGIN, batch: prepared });
   let ownUpdates = 0;
   let externalUpdate = false;
@@ -354,8 +357,14 @@ export function commitPreparedBodyBatch(environment: BodyBatchEnvironment, prepa
   }
   requireBatch(!externalUpdate && environment.runtime.revision() === prepared.revision + ownUpdates, 'Batch source revision changed during registration');
   verifyProjection(environment.project(environment.doc), evidence.before);
+  environment.onCommitPhase?.('committing');
   assertAdmission(environment, evidence.incarnation);
+  requireBatch(environment.runtime.revision() === prepared.revision + ownUpdates, 'Batch source revision changed before USER');
+  if (environment.writeState !== undefined) environment.writeState.started = true;
   applyUser(environment.doc, evidence.plan, environment.userOrigin);
+  if (environment.writeState !== undefined) environment.writeState.returned = true;
+  environment.onCommitPhase?.('written');
+  environment.onCommitPhase?.('projecting');
   const aliases = freshAliases(environment.doc, evidence.plan);
   const projection = environment.project(environment.doc);
   verifyProjection(projection, evidence.plan.expected, aliases);

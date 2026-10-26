@@ -28,11 +28,13 @@ import {
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { CommentsExtension } from '@blocknote/core/comments';
+import { TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
+import { documentCommentThreads } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
@@ -54,8 +56,11 @@ import {
 } from '@web/spaces/document/document-comment-extension';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
-import { rowById } from '@web/spaces/document/document-row-by-id';
+import { contentRangeOf, rowById } from '@web/spaces/document/document-row-by-id';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
+import { isNamedCharacterAlive, nameBodyPoint } from '@web/spaces/document/document-body-positions';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import type * as DocumentCommentPostModule from '@web/spaces/document/document-comment-post';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 vi.mock('@web/lib/toast', () => ({
@@ -66,7 +71,7 @@ vi.mock('@web/lib/toast', () => ({
 // gives when there is no range left to aim at.
 vi.mock('@web/spaces/document/document-comment-post', async (real) => {
   const actual =
-    await real<typeof import('@web/spaces/document/document-comment-post')>();
+    await real<typeof DocumentCommentPostModule>();
   return { ...actual, postComment: vi.fn(actual.postComment) };
 });
 
@@ -78,6 +83,7 @@ describe('the comment panel', () => {
 
   beforeEach(async () => {
     doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
     const { result } = renderHook(() =>
       useDocumentEditor({
@@ -169,30 +175,29 @@ describe('the comment panel', () => {
 
   /**
    * Makes an edit on a second replica and brings it in, the way a peer's
-   * edit arrives: through Yjs, not through a ProseMirror transaction.
+   * edit arrives: its real editor commits records before the update is delivered.
    * @param edit - What the peer does to the first line's text.
+   * @throws {Error} If the actual peer has no text block or its edit fails.
    */
-  function peerEdits(edit: (line: Y.XmlText) => void): void {
-    const peer = new Y.Doc();
-    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-    const find = (at: Y.XmlElement | Y.XmlFragment): Y.XmlText | null => {
-      for (const child of at.toArray()) {
-        if (child instanceof Y.XmlText) return child;
-        if (child instanceof Y.XmlElement) {
-          const inner = find(child);
-          if (inner !== null) return inner;
-        }
-      }
-      return null;
-    };
-    const line = find(documentBodyFragment(peer))!;
-    peer.transact(() => {
-      edit(line);
-    });
-    act(() => {
-      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
-    });
-    peer.destroy();
+  async function peerEdits(edit: (line: Pick<Y.XmlText, 'length' | 'insert' | 'delete'>) => void): Promise<void> {
+    const peer = await peerEditor();
+    act(() => peer.editor.transact((transaction) => {
+      const blocks: { from: number }[] = [];
+      transaction.doc.descendants((node, pos) => {
+        if (blocks.length !== 0 || !node.isTextblock) return blocks.length === 0;
+        blocks.push({ from: pos + 1 });
+        return false;
+      });
+      const first = blocks[0];
+      if (first === undefined) throw new Error('Expected the peer records text block');
+      const from = first.from;
+      edit({
+        /** Reads the actual first text block after preceding edits in this batch. */
+        get length(): number { return transaction.doc.resolve(from).parent.content.size; },
+        insert: (index, text): void => { transaction.insertText(text, from + index); },
+        delete: (index, length): void => { transaction.delete(from + index, from + index + length); },
+      });
+    }));
   }
 
   /** The words the open draft is aimed at, as the body stands. */
@@ -205,7 +210,7 @@ describe('the comment panel', () => {
 
   /** Puts the focus somewhere the reader could have put it: the body. */
   async function clickTheBody(): Promise<void> {
-    await userEvent.click(handle.editor.prosemirrorView!.dom);
+    await userEvent.click(handle.editor.prosemirrorView.dom);
   }
 
   /**
@@ -229,15 +234,15 @@ describe('the comment panel', () => {
    * the reader's the way a co-editor's does. Its own editor makes the changes,
    * so a block split or joined is rebuilt in the shared document exactly as a
    * peer's would be.
+   * @param buffered - Optional network updates to deliver together later.
    * @returns The peer's editor.
    */
-  async function peerEditor(): Promise<DocumentEditorHandle> {
+  async function peerEditor(buffered?: Uint8Array[]): Promise<DocumentEditorHandle> {
     const peerDoc = new Y.Doc();
     Y.applyUpdate(peerDoc, Y.encodeStateAsUpdate(doc));
     peerDoc.on('update', (update: Uint8Array) => {
-      act(() => {
-        Y.applyUpdate(doc, update);
-      });
+      if (buffered !== undefined) buffered.push(update);
+      else act(() => { Y.applyUpdate(doc, update); });
     });
     const peerAwareness = new Awareness(peerDoc);
     const { result } = renderHook(() =>
@@ -259,10 +264,22 @@ describe('the comment panel', () => {
     return peer;
   }
 
+  /**
+   * Delivers accepted peer writes together as one ordinary native network update.
+   * @param updates - The real peer updates collected since its last delivery.
+   * @returns Nothing after the receiving editor projects the merged update.
+   * @throws {Error} If native update application fails.
+   */
+  function flushPeerUpdates(updates: Uint8Array[]): void {
+    if (updates.length === 0) return;
+    const merged = Y.mergeUpdates(updates.splice(0));
+    act(() => { Y.applyUpdate(doc, merged); });
+  }
+
   /** The peers' awareness, destroyed with the case. */
   const peers: Awareness[] = [];
   afterEach(() => {
-    for (const peer of peers.splice(0)) peer.destroy();
+    for (const peer of peers.splice(0)) { peer.destroy(); peer.doc.destroy(); }
   });
 
   /**
@@ -278,7 +295,7 @@ describe('the comment panel', () => {
   ): Promise<void> {
     const { TextSelection } = await import('@tiptap/pm/state');
     act(() => {
-      const view = editor.editor.prosemirrorView!;
+      const view = editor.editor.prosemirrorView;
       view.dispatch(
         view.state.tr.setSelection(TextSelection.create(view.state.doc, at)),
       );
@@ -288,11 +305,46 @@ describe('the comment panel', () => {
     });
   }
 
+  /**
+   * Presses the project's row-move shortcut through its installed key handlers.
+   * @param editor - The reader's or peer's actual editor handle.
+   * @param key - The row's movement direction.
+   * @returns Nothing after the installed handler accepts the shortcut.
+   * @throws {Error} If no installed key handler accepts the move.
+   */
+  function moveFromKeyboard(editor: DocumentEditorHandle, key: 'ArrowUp' | 'ArrowDown'): void {
+    const view = editor.editor.prosemirrorView;
+    const event = new KeyboardEvent('keydown', {
+      key,
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    expect(view.someProp('handleKeyDown', (handler) => handler(view, event))).toBe(true);
+  }
+
+  /** The actual inline-text rows used by these paragraph and heading fixtures. */
+  interface FixtureRow {
+    readonly id: string;
+    readonly content: readonly { readonly text: string }[];
+    readonly children: readonly FixtureRow[];
+  }
+
+  /**
+   * Reads only the row fields these inline-text fixtures use.
+   * @param editor - The actual editor whose public schema type is erased.
+   * @returns Its actual rows, without inventing a BlockNote schema type.
+   * @throws {never}
+   */
+  function fixtureRows(editor: DocumentEditorHandle): readonly FixtureRow[] {
+    return editor.editor.document;
+  }
+
   /** The body's lines as the reader's editor has them. */
   function lines(): readonly string[] {
-    return handle.editor.document.map((block) =>
-      (block.content as unknown as readonly { text: string }[])
-        .map((run) => run.text)
+    return fixtureRows(handle).map((block) =>
+      block.content.map((run) => run.text)
         .join(''),
     );
   }
@@ -342,8 +394,8 @@ describe('the comment panel', () => {
       const thread = await comments.threadStore.createThread({
         initialComment: { body: asCommentBody(body) },
       });
-      const view = handle.editor.prosemirrorView!;
-      const mark = view.state.schema.marks[COMMENT_MARK]!.create({
+      const view = handle.editor.prosemirrorView;
+      const mark = view.state.schema.marks[COMMENT_MARK].create({
         threadId: thread.id,
         orphan: false,
       });
@@ -369,7 +421,7 @@ describe('the comment panel', () => {
 
   /** The body's paint over the words a draft is aimed at, if any. */
   function draftPaint(): HTMLElement | null {
-    return handle.editor.prosemirrorView!.dom.querySelector<HTMLElement>(
+    return handle.editor.prosemirrorView.dom.querySelector<HTMLElement>(
       '.doc-comment-draft-mark',
     );
   }
@@ -472,7 +524,7 @@ describe('the comment panel', () => {
       'false',
     ]);
 
-    const second = cards[1]!.getAttribute('data-thread')!;
+    const second = cards[1].getAttribute('data-thread')!;
     act(() => {
       selectThreads(handle.editor, [second]);
     });
@@ -495,7 +547,7 @@ describe('the comment panel', () => {
         .getExtension(CommentsExtension)!
         .threadStore.getThreads()
         .keys(),
-    ][0]!;
+    ][0];
 
     act(() => {
       selectThreads(handle.editor, [threadId]);
@@ -518,7 +570,7 @@ describe('the comment panel', () => {
         .getExtension(CommentsExtension)!
         .threadStore.getThreads()
         .keys(),
-    ][0]!;
+    ][0];
 
     act(() => {
       selectThreads(handle.editor, [threadId]);
@@ -565,7 +617,7 @@ describe('the comment panel', () => {
         .getExtension(CommentsExtension)!
         .threadStore.getThreads()
         .keys(),
-    ][0]!;
+    ][0];
 
     await act(async () => {
       await handle.editor
@@ -590,7 +642,7 @@ describe('the comment panel', () => {
     const run = firstRun();
     handle.undoManager.stopCapturing();
     act(() => {
-      const view = handle.editor.prosemirrorView!;
+      const view = handle.editor.prosemirrorView;
       view.dispatch(view.state.tr.delete(run.from, run.from + 5));
     });
 
@@ -617,9 +669,9 @@ describe('the comment panel', () => {
     await comment(6, 11, 'about bravo');
     await pressCommentsRow();
     const cards = await screen.findAllByTestId('doc-comment-card');
-    const second = cards[1]!.getAttribute('data-thread')!;
+    const second = cards[1].getAttribute('data-thread')!;
 
-    await userEvent.click(cards[1]!);
+    await userEvent.click(cards[1]);
 
     await waitFor(() => {
       expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([
@@ -751,7 +803,7 @@ describe('the comment panel', () => {
         .keys(),
     ];
     act(() => {
-      selectThreads(handle.editor, [ids[1]!]);
+      selectThreads(handle.editor, [ids[1]]);
     });
     await waitFor(() => {
       expect(deepened()).toBe(1);
@@ -759,7 +811,7 @@ describe('the comment panel', () => {
 
     const comments = handle.editor.getExtension(CommentsExtension)!;
     await act(async () => {
-      await comments.threadStore.resolveThread({ threadId: ids[0]! });
+      await comments.threadStore.resolveThread({ threadId: ids[0] });
     });
 
     await waitFor(() => {
@@ -937,7 +989,7 @@ describe('the comment panel', () => {
 
       const run = firstRun();
       act(() => {
-        const view = handle.editor.prosemirrorView!;
+        const view = handle.editor.prosemirrorView;
         view.dispatch(view.state.tr.insertText('L', run.from + 1, run.from + 2));
       });
 
@@ -1044,7 +1096,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
 
       act(() => {
-        handle.editor.prosemirrorView!.focus();
+        handle.editor.prosemirrorView.focus();
       });
 
       expect(screen.getByTestId('doc-comment-draft-card')).toBeInTheDocument();
@@ -1058,7 +1110,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(line.length, 'x');
       });
 
@@ -1072,7 +1124,7 @@ describe('the comment panel', () => {
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(0, 6);
       });
 
@@ -1089,7 +1141,7 @@ describe('the comment panel', () => {
       // Its own undo step, apart from the line `show` wrote.
       handle.undoManager.stopCapturing();
       act(() => {
-        const view = handle.editor.prosemirrorView!;
+        const view = handle.editor.prosemirrorView;
         view.dispatch(view.state.tr.insertText('!', view.state.doc.content.size - 3));
       });
       handle.undoManager.stopCapturing();
@@ -1108,7 +1160,7 @@ describe('the comment panel', () => {
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(11, 'QQ');
       });
 
@@ -1123,11 +1175,11 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const run = firstRun();
       act(() => {
-        const view = handle.editor.prosemirrorView!;
+        const view = handle.editor.prosemirrorView;
         view.dispatch(view.state.tr.insertText('zz', run.from + 11));
       });
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(0, 'q');
       });
 
@@ -1142,13 +1194,13 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
       act(() => {
-        handle.editor.updateBlock(handle.editor.document[0]!, {
+        handle.editor.updateBlock(handle.editor.document[0], {
           type: 'heading',
           props: { level: 2 },
         } as never);
       });
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(line.length, '!');
       });
 
@@ -1165,11 +1217,11 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const run = firstRun();
       act(() => {
-        const view = handle.editor.prosemirrorView!;
+        const view = handle.editor.prosemirrorView;
         view.dispatch(view.state.tr.delete(run.from + 10, run.from + 11));
       });
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(0, 'q');
       });
 
@@ -1181,10 +1233,10 @@ describe('the comment panel', () => {
       // it covers are still only the ones on the first line.
       show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second!);
+      aimAt(first + 6, second);
       await screen.findByTestId('doc-comment-draft-card');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(0, 'Z');
       });
 
@@ -1196,14 +1248,14 @@ describe('the comment panel', () => {
       // line; the next peer edit must still see only the first line's words.
       show('editor', ['alpha bravo charlie', 'delta echo foxtrot']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 4);
+      aimAt(first + 6, second + 4);
       await screen.findByTestId('doc-comment-draft-card');
       act(() => {
-        const view = handle.editor.prosemirrorView!;
-        view.dispatch(view.state.tr.delete(second!, second! + 4));
+        const view = handle.editor.prosemirrorView;
+        view.dispatch(view.state.tr.delete(second, second + 4));
       });
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(0, 'Z');
       });
 
@@ -1215,7 +1267,7 @@ describe('the comment panel', () => {
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(6, 5);
       });
 
@@ -1229,7 +1281,7 @@ describe('the comment panel', () => {
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(8, 1);
       });
 
@@ -1252,7 +1304,7 @@ describe('the comment panel', () => {
         await screen.findByTestId('doc-comment-draft-card');
         await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
 
-        peerEdits((line) => {
+        await peerEdits((line) => {
           line.delete(at, length);
           if (typed !== '') line.insert(at, typed);
         });
@@ -1268,24 +1320,44 @@ describe('the comment panel', () => {
       // Only the text is left to find the words by, and nothing is guessed
       // from the text (A21).
       show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
-      const second = lineStarts()[1]!;
+      const second = lineStarts()[1];
       aimAt(second + 6, second + 10);
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
-      const peer = await peerEditor();
+      const originalState = handle.editor.prosemirrorState;
+      const body = bodyBindingOf(originalState);
+      if (body === null) throw new Error('Expected the actual records binding');
+      const original = body.read(originalState).index;
+      const units = original.units.filter((unit) => unit.pos >= second + 6 && unit.pos + unit.width <= second + 10);
+      expect(units.map((unit) => unit.value).join('')).toBe('echo');
+      const names = units.map((unit) => nameBodyPoint(original, { kind: 'text', pos: unit.pos, assoc: 1 }));
+      const updates: Uint8Array[] = [];
+      const peer = await peerEditor(updates);
 
       act(() => {
-        peer.editor.transact(() => {
-          peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-          peer.editor.moveBlocksDown();
-          peer.editor.updateBlock(peer.editor.document[2]!, {
-            content: 'delta ekko foxtrot',
-          } as never);
-        });
+        const moved = fixtureRows(peer)[1];
+        peer.editor.setTextCursorPosition(moved);
+        moveFromKeyboard(peer, 'ArrowDown');
+        // Retype the entire selected line. updateBlock(content) deliberately
+        // preserves equal prefix/suffix characters and is a different input.
+        const view = peer.editor.prosemirrorView;
+        const row = rowById(view.state.doc, moved.id);
+        const range = row === undefined ? undefined : contentRangeOf(row);
+        if (range === undefined) throw new Error('Expected the moved inline owner');
+        const replacement = view.state.tr
+          .setSelection(TextSelection.create(view.state.doc, range.from, range.to))
+          .insertText('delta ekko foxtrot');
+        expect(replacement.steps).toHaveLength(1);
+        expect(replacement.steps[0].toJSON()).toMatchObject({ stepType: 'replace', from: range.from, to: range.to });
+        view.dispatch(replacement);
       });
+      flushPeerUpdates(updates);
 
+      const final = body.read(handle.editor.prosemirrorState).index;
+      expect(names.map((name) => isNamedCharacterAlive(final, name))).toEqual([false, false, false, false]);
+      expect(lines()).toEqual(['alpha bravo charlie', 'golf', 'delta ekko foxtrot']);
       expect(screen.getByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
-      const again = lineStarts()[0]!;
+      const again = lineStarts()[0];
       aimAt(again, again + 3);
       expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
     });
@@ -1295,7 +1367,7 @@ describe('the comment panel', () => {
         'turns their line into a heading',
         async (peer: DocumentEditorHandle): Promise<void> => {
           act(() => {
-            peer.editor.updateBlock(peer.editor.document[1]!, {
+            peer.editor.updateBlock(peer.editor.document[1], {
               type: 'heading',
               props: { level: 2 },
             } as never);
@@ -1306,8 +1378,8 @@ describe('the comment panel', () => {
         'moves their line to the end',
         async (peer: DocumentEditorHandle): Promise<void> => {
           act(() => {
-            peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-            peer.editor.moveBlocksDown();
+            peer.editor.setTextCursorPosition(peer.editor.document[1]);
+            moveFromKeyboard(peer, 'ArrowDown');
           });
         },
       ],
@@ -1315,8 +1387,8 @@ describe('the comment panel', () => {
         'moves the line below up past theirs',
         async (peer: DocumentEditorHandle): Promise<void> => {
           act(() => {
-            peer.editor.setTextCursorPosition(peer.editor.document[2]!);
-            peer.editor.moveBlocksUp();
+            peer.editor.setTextCursorPosition(peer.editor.document[2]);
+            moveFromKeyboard(peer, 'ArrowUp');
           });
         },
       ],
@@ -1324,8 +1396,8 @@ describe('the comment panel', () => {
         'moves the last line to the top, across theirs',
         async (peer: DocumentEditorHandle): Promise<void> => {
           act(() => {
-            const view = peer.editor.prosemirrorView!;
-            const last = peer.editor.document[2]!;
+            const view = peer.editor.prosemirrorView;
+            const last = fixtureRows(peer)[2];
             peer.editor.setTextCursorPosition(last);
             let row: { from: number; to: number; node: never } | null = null;
             view.state.doc.descendants((node, pos) => {
@@ -1343,11 +1415,10 @@ describe('the comment panel', () => {
     ])(
       'stays on its words when a peer %s',
       async (_what, change) => {
-        // The peer's editor writes each of these back into Yjs by deleting
-        // lines' letters and writing them again, while every line keeps its
-        // id and its words.
+        // The peer changes the row kind or moves rows through the project's
+        // installed keyboard shortcut, keeping each row's id and words.
         show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
-        const second = lineStarts()[1]!;
+        const second = lineStarts()[1];
         aimAt(second + 6, second + 10);
         await screen.findByTestId('doc-comment-draft-card');
         await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
@@ -1370,12 +1441,12 @@ describe('the comment panel', () => {
        */
       async function afterPeerRewrite(): Promise<DocumentEditorHandle> {
         show('editor', ['one', 'alpha bravo charlie', 'three']);
-        const second = lineStarts()[1]!;
+        const second = lineStarts()[1];
         aimAt(second + 6, second + 11);
         await screen.findByTestId('doc-comment-draft-card');
         const peer = await peerEditor();
         act(() => {
-          peer.editor.updateBlock(peer.editor.document[1]!, {
+          peer.editor.updateBlock(peer.editor.document[1], {
             type: 'heading',
             props: { level: 2 },
           } as never);
@@ -1387,8 +1458,8 @@ describe('the comment panel', () => {
         const peer = await afterPeerRewrite();
 
         act(() => {
-          const view = peer.editor.prosemirrorView!;
-          const at = lineStarts(peer.editor.prosemirrorState)[0]!;
+          const view = peer.editor.prosemirrorView;
+          const at = lineStarts(peer.editor.prosemirrorState)[0];
           view.dispatch(view.state.tr.insertText('ZZ', at));
         });
 
@@ -1401,8 +1472,8 @@ describe('the comment panel', () => {
         const peer = await afterPeerRewrite();
 
         act(() => {
-          const view = peer.editor.prosemirrorView!;
-          const at = lineStarts(peer.editor.prosemirrorState)[1]! + 6;
+          const view = peer.editor.prosemirrorView;
+          const at = lineStarts(peer.editor.prosemirrorState)[1] + 6;
           view.dispatch(view.state.tr.delete(at, at + 1));
         });
 
@@ -1415,16 +1486,16 @@ describe('the comment panel', () => {
         show('editor', ['one', 'alpha bravo charlie', 'three']);
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
-          view.dispatch(view.state.tr.insertText('Q', lineStarts()[2]!));
+          const view = handle.editor.prosemirrorView;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts()[2]));
         });
         handle.undoManager.stopCapturing();
-        const second = lineStarts()[1]!;
+        const second = lineStarts()[1];
         aimAt(second + 6, second + 11);
         await screen.findByTestId('doc-comment-draft-card');
         const peer = await peerEditor();
         act(() => {
-          peer.editor.updateBlock(peer.editor.document[1]!, {
+          peer.editor.updateBlock(peer.editor.document[1], {
             type: 'heading',
             props: { level: 2 },
           } as never);
@@ -1450,12 +1521,12 @@ describe('the comment panel', () => {
         // as ProseMirror maps a deletion and CKEditor 5's live ranges shrink.
         show('editor', ['l0 aa', 'l1 bb', 'l2 cc', 'l3 dd']);
         const [s0, , s2] = lineStarts();
-        aimAt(s0! + 3, s2! + 2);
+        aimAt(s0 + 3, s2 + 2);
         await screen.findByTestId('doc-comment-draft-card');
         const peer = await peerEditor();
 
         act(() => {
-          peer.editor.removeBlocks([peer.editor.document[row]!]);
+          peer.editor.removeBlocks([peer.editor.document[row]]);
         });
 
         expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -1465,7 +1536,7 @@ describe('the comment panel', () => {
       it('keeps what is left of its words when that line is nested', async () => {
         show('editor', ['p0 zz', 'p1', 'p2 cc']);
         act(() => {
-          handle.editor.updateBlock(handle.editor.document[1]!, {
+          handle.editor.updateBlock(handle.editor.document[1], {
             children: [
               { type: 'paragraph', content: 'c0 aa' },
               { type: 'paragraph', content: 'c1 bb' },
@@ -1473,10 +1544,10 @@ describe('the comment panel', () => {
           } as never);
         });
         const starts = lineStarts();
-        aimAt(starts[2]!, starts[4]! + 2);
+        aimAt(starts[2], starts[4] + 2);
         await screen.findByTestId('doc-comment-draft-card');
         const peer = await peerEditor();
-        const c0 = peer.editor.document[1]!.children[0]!;
+        const c0 = fixtureRows(peer)[1].children[0];
 
         act(() => {
           peer.editor.removeBlocks([c0]);
@@ -1497,7 +1568,7 @@ describe('the comment panel', () => {
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
+          const view = handle.editor.prosemirrorView;
           view.dispatch(view.state.tr.delete(firstRun().from + from, firstRun().from + to));
         });
         handle.undoManager.stopCapturing();
@@ -1516,7 +1587,7 @@ describe('the comment panel', () => {
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
+          const view = handle.editor.prosemirrorView;
           view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
         });
         handle.undoManager.stopCapturing();
@@ -1541,7 +1612,7 @@ describe('the comment panel', () => {
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
+          const view = handle.editor.prosemirrorView;
           view.dispatch(view.state.tr.insertText('XYZ', firstRun().from + 9, firstRun().from + 11));
         });
         handle.undoManager.stopCapturing();
@@ -1580,11 +1651,11 @@ describe('the comment panel', () => {
       it('covers a whole line again when the reader undoes deleting it', async () => {
         show('editor', ['aa0 xx', 'bb1 yy', 'cc2 zz']);
         const [s0, s1] = lineStarts();
-        aimAt(s0! + 4, s1! + 3);
+        aimAt(s0 + 4, s1 + 3);
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
         act(() => {
-          handle.editor.removeBlocks([handle.editor.document[1]!]);
+          handle.editor.removeBlocks([handle.editor.document[1]]);
         });
         handle.undoManager.stopCapturing();
 
@@ -1602,7 +1673,7 @@ describe('the comment panel', () => {
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
+          const view = handle.editor.prosemirrorView;
           view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
         });
         handle.undoManager.stopCapturing();
@@ -1622,7 +1693,7 @@ describe('the comment panel', () => {
         await screen.findByTestId('doc-comment-draft-card');
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
+          const view = handle.editor.prosemirrorView;
           view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
         });
         handle.undoManager.stopCapturing();
@@ -1645,7 +1716,7 @@ describe('the comment panel', () => {
         const peer = await peerEditor();
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
+          const view = handle.editor.prosemirrorView;
           view.dispatch(view.state.tr.delete(firstRun().from + 6, firstRun().from + 8));
         });
         handle.undoManager.stopCapturing();
@@ -1655,8 +1726,8 @@ describe('the comment panel', () => {
         aimDraft(12, 19);
 
         act(() => {
-          const view = peer.editor.prosemirrorView!;
-          view.dispatch(view.state.tr.insertText('Q', lineStarts(view.state)[0]!));
+          const view = peer.editor.prosemirrorView;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts(view.state)[0]));
         });
 
         expect(aimedWords()).toBe('charlie');
@@ -1677,12 +1748,12 @@ describe('the comment panel', () => {
           await pressIn(handle, firstRun().from + 6, 'Enter');
           if (typing) {
             act(() => {
-              const view = handle.editor.prosemirrorView!;
-              view.dispatch(view.state.tr.insertText('b', lineStarts()[1]!));
+              const view = handle.editor.prosemirrorView;
+              view.dispatch(view.state.tr.insertText('b', lineStarts()[1]));
             });
           }
           handle.undoManager.stopCapturing();
-          const second = lineStarts()[1]!;
+          const second = lineStarts()[1];
           aimAt(second + (typing ? 1 : 0), second + (typing ? 6 : 5));
           await screen.findByTestId('doc-comment-draft-card');
           await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
@@ -1693,7 +1764,7 @@ describe('the comment panel', () => {
 
           expect(lines()).toEqual(['alpha bravo charlie']);
           expect(screen.getByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
-          const again = lineStarts()[0]!;
+          const again = lineStarts()[0];
           aimAt(again, again + 3);
           expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
         },
@@ -1717,7 +1788,7 @@ describe('the comment panel', () => {
 
         expect(lines()).toEqual(['alpha ', 'bravo charlie']);
         expect(screen.getByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
-        const again = lineStarts()[0]!;
+        const again = lineStarts()[0];
         aimAt(again, again + 3);
         expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
       });
@@ -1726,11 +1797,11 @@ describe('the comment panel', () => {
         show('editor', ['w', 'bravo charlie', 'z']);
         handle.undoManager.stopCapturing();
         act(() => {
-          handle.editor.setTextCursorPosition(handle.editor.document[1]!);
-          handle.editor.moveBlocksUp();
+          handle.editor.setTextCursorPosition(handle.editor.document[1]);
+          moveFromKeyboard(handle, 'ArrowUp');
         });
         handle.undoManager.stopCapturing();
-        const first = lineStarts()[0]!;
+        const first = lineStarts()[0];
         aimAt(first, first + 5);
         await screen.findByTestId('doc-comment-draft-card');
 
@@ -1745,19 +1816,19 @@ describe('the comment panel', () => {
 
       it('stays on its words when a peer moved its line between the reader\'s edit and the undo', async () => {
         show('editor', ['w', 'alpha bravo', 'z']);
-        const second = lineStarts()[1]!;
+        const second = lineStarts()[1];
         aimAt(second + 6, second + 11);
         await screen.findByTestId('doc-comment-draft-card');
         const peer = await peerEditor();
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
-          view.dispatch(view.state.tr.insertText('Q', lineStarts()[2]!));
+          const view = handle.editor.prosemirrorView;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts()[2]));
         });
         handle.undoManager.stopCapturing();
         act(() => {
-          peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-          peer.editor.moveBlocksUp();
+          peer.editor.setTextCursorPosition(peer.editor.document[1]);
+          moveFromKeyboard(peer, 'ArrowUp');
         });
 
         act(() => {
@@ -1772,22 +1843,22 @@ describe('the comment panel', () => {
       it('stays on its two lines when a peer moved another line across them between the reader\'s edit and the undo', async () => {
         show('editor', ['alpha bravo', 'charlie delta', 'echo', 'z']);
         const [first, second] = lineStarts();
-        aimAt(first! + 6, second! + 7);
+        aimAt(first + 6, second + 7);
         await screen.findByTestId('doc-comment-draft-card');
-        const peer = await peerEditor();
+        const updates: Uint8Array[] = [];
+        const peer = await peerEditor(updates);
         handle.undoManager.stopCapturing();
         act(() => {
-          const view = handle.editor.prosemirrorView!;
-          view.dispatch(view.state.tr.insertText('Q', lineStarts()[3]!));
+          const view = handle.editor.prosemirrorView;
+          view.dispatch(view.state.tr.insertText('Q', lineStarts()[3]));
         });
         handle.undoManager.stopCapturing();
         act(() => {
-          peer.editor.transact(() => {
-            peer.editor.setTextCursorPosition(peer.editor.document[2]!);
-            peer.editor.moveBlocksUp();
-            peer.editor.moveBlocksUp();
-          });
+          peer.editor.setTextCursorPosition(peer.editor.document[2]);
+          moveFromKeyboard(peer, 'ArrowUp');
+          moveFromKeyboard(peer, 'ArrowUp');
         });
+        flushPeerUpdates(updates);
 
         act(() => {
           handle.undoManager.undo();
@@ -1800,16 +1871,16 @@ describe('the comment panel', () => {
     });
 
     it('stays on its words when a peer moves up a line that starts with the same letter', async () => {
-      // Rewriting "two…" into "three" keeps their shared first letter, so the
-      // letter the start names survives, but in the other line.
+      // Both neighboring lines start with the same letter. The draft follows
+      // its own row through the project's keyboard move.
       show('editor', ['one', 'two carrying the comment', 'three']);
-      aimAt(lineStarts()[1]!, lineStarts()[1]! + 24);
+      aimAt(lineStarts()[1], lineStarts()[1] + 24);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
       act(() => {
-        peer.editor.setTextCursorPosition(peer.editor.document[2]!);
-        peer.editor.moveBlocksUp();
+        peer.editor.setTextCursorPosition(peer.editor.document[2]);
+        moveFromKeyboard(peer, 'ArrowUp');
       });
 
       expect(lines()).toEqual(['one', 'three', 'two carrying the comment']);
@@ -1820,18 +1891,18 @@ describe('the comment panel', () => {
     it('stays on its words across two lines when a peer moves another line across both', async () => {
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
+      const updates: Uint8Array[] = [];
+      const peer = await peerEditor(updates);
 
-      // One transaction: in two, the line would first land between them.
+      // One network delivery: separate deliveries would first put the line between them.
       act(() => {
-        peer.editor.transact(() => {
-          peer.editor.setTextCursorPosition(peer.editor.document[2]!);
-          peer.editor.moveBlocksUp();
-          peer.editor.moveBlocksUp();
-        });
+        peer.editor.setTextCursorPosition(peer.editor.document[2]);
+        moveFromKeyboard(peer, 'ArrowUp');
+        moveFromKeyboard(peer, 'ArrowUp');
       });
+      flushPeerUpdates(updates);
 
       expect(lines()).toEqual(['echo', 'alpha bravo', 'charlie delta']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -1841,13 +1912,13 @@ describe('the comment panel', () => {
     it('says so when a peer moves its last line above its first', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
       act(() => {
-        peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-        peer.editor.moveBlocksUp();
+        peer.editor.setTextCursorPosition(peer.editor.document[1]);
+        moveFromKeyboard(peer, 'ArrowUp');
       });
 
       expect(lines()).toEqual(['charlie delta', 'alpha bravo']);
@@ -1859,14 +1930,14 @@ describe('the comment panel', () => {
     it('takes in a line a peer adds between its two lines', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
       act(() => {
         peer.editor.insertBlocks(
           [{ type: 'paragraph', content: 'echo' }] as never,
-          peer.editor.document[0]!,
+          peer.editor.document[0],
           'after',
         );
       });
@@ -1881,13 +1952,13 @@ describe('the comment panel', () => {
       // is everywhere; here the peer's move puts "echo" there.
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
       act(() => {
-        peer.editor.setTextCursorPosition(peer.editor.document[1]!);
-        peer.editor.moveBlocksDown();
+        peer.editor.setTextCursorPosition(peer.editor.document[1]);
+        moveFromKeyboard(peer, 'ArrowDown');
       });
 
       expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
@@ -1900,33 +1971,24 @@ describe('the comment panel', () => {
       // between them is its range, whichever line that now is.
       show('editor', ['alpha bravo', 'mike', 'charlie delta', 'november']);
       const [first, , third] = lineStarts();
-      aimAt(first! + 6, third! + 7);
+      aimAt(first + 6, third + 7);
       await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
+      const updates: Uint8Array[] = [];
+      const peer = await peerEditor(updates);
 
       act(() => {
-        const view = peer.editor.prosemirrorView!;
-        const [, mike, , november] = peer.editor.document;
-        const rows = new Map<string, { from: number; to: number; node: never }>();
-        view.state.doc.descendants((node, pos) => {
-          const id: unknown = node.attrs['id'];
-          if (typeof id === 'string' && (id === mike!.id || id === november!.id)) {
-            rows.set(id, { from: pos, to: pos + node.nodeSize, node: node as never });
-            return false;
-          }
-          return true;
-        });
-        const m = rows.get(mike!.id)!;
-        const n = rows.get(november!.id)!;
-        const charlie = peer.editor.document[2]!;
-        peer.editor.transact((tr) => {
-          tr.replaceWith(n.from, n.to, m.node).replaceWith(m.from, m.to, n.node);
-          peer.editor.updateBlock(charlie, {
-            type: 'heading',
-            props: { level: 2 },
-          } as never);
-        });
+        const [, mike, charlie, november] = peer.editor.document;
+        peer.editor.setTextCursorPosition(november);
+        moveFromKeyboard(peer, 'ArrowUp');
+        moveFromKeyboard(peer, 'ArrowUp');
+        peer.editor.setTextCursorPosition(mike);
+        moveFromKeyboard(peer, 'ArrowDown');
+        peer.editor.updateBlock(charlie, {
+          type: 'heading',
+          props: { level: 2 },
+        } as never);
       });
+      flushPeerUpdates(updates);
 
       expect(lines()).toEqual(['alpha bravo', 'november', 'charlie delta', 'mike']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -1944,12 +2006,12 @@ describe('the comment panel', () => {
         // follows its own line, and whatever lies between them is the range.
         show('editor', ['zero', 'alpha bravo', 'charlie delta', 'echo']);
         const starts = lineStarts();
-        aimAt(starts[1]! + 6, starts[2]! + 7);
+        aimAt(starts[1] + 6, starts[2] + 7);
         await screen.findByTestId('doc-comment-draft-card');
 
         act(() => {
-          const view = handle.editor.prosemirrorView!;
-          handle.editor.setTextCursorPosition(handle.editor.document[row]!);
+          const view = handle.editor.prosemirrorView;
+          handle.editor.setTextCursorPosition(handle.editor.document[row]);
           view.someProp('handleKeyDown', (handler) =>
             handler(
               view,
@@ -1966,12 +2028,12 @@ describe('the comment panel', () => {
     it('says so when the reader moves its last line above its first', async () => {
       show('editor', ['alpha bravo', 'charlie delta']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
 
       act(() => {
-        const view = handle.editor.prosemirrorView!;
-        handle.editor.setTextCursorPosition(handle.editor.document[1]!);
+        const view = handle.editor.prosemirrorView;
+        handle.editor.setTextCursorPosition(handle.editor.document[1]);
         view.someProp('handleKeyDown', (handler) =>
           handler(
             view,
@@ -1993,13 +2055,13 @@ describe('the comment panel', () => {
     it('keeps each end on its own line when the reader drags its last line down', async () => {
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
-      const [, charlie, echo] = handle.editor.document;
+      const [, charlie, echo] = fixtureRows(handle);
 
       act(() => {
-        const view = handle.editor.prosemirrorView!;
-        moveRowTo(view, charlie!.id, rowById(view.state.doc, echo!.id)!.to);
+        const view = handle.editor.prosemirrorView;
+        moveRowTo(view, charlie.id, rowById(view.state.doc, echo.id)!.to);
       });
 
       expect(lines()).toEqual(['alpha bravo', 'echo', 'charlie delta']);
@@ -2012,19 +2074,20 @@ describe('the comment panel', () => {
       // outside the range, its start letter is still there.
       show('editor', ['alpha bravo', 'charlie delta', 'echo']);
       const [first, second] = lineStarts();
-      aimAt(first! + 6, second! + 7);
+      aimAt(first + 6, second + 7);
       await screen.findByTestId('doc-comment-draft-card');
-      const peer = await peerEditor();
+      const updates: Uint8Array[] = [];
+      const peer = await peerEditor(updates);
 
-      const at = lineStarts(peer.editor.prosemirrorState)[0]!;
-      const charlie = peer.editor.document[1]!;
+      const at = lineStarts(peer.editor.prosemirrorState)[0];
+      const charlie = peer.editor.document[1];
       act(() => {
-        peer.editor.transact((tr) => {
-          tr.insertText('!', at);
-          peer.editor.setTextCursorPosition(charlie);
-          peer.editor.moveBlocksDown();
-        });
+        const view = peer.editor.prosemirrorView;
+        view.dispatch(view.state.tr.insertText('!', at));
+        peer.editor.setTextCursorPosition(charlie);
+        moveFromKeyboard(peer, 'ArrowDown');
       });
+      flushPeerUpdates(updates);
 
       expect(lines()).toEqual(['!alpha bravo', 'echo', 'charlie delta']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -2037,8 +2100,8 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
 
       act(() => {
-        const view = handle.editor.prosemirrorView!;
-        handle.editor.setTextCursorPosition(handle.editor.document[0]!);
+        const view = handle.editor.prosemirrorView;
+        handle.editor.setTextCursorPosition(handle.editor.document[0]);
         view.someProp('handleKeyDown', (handler) =>
           handler(
             view,
@@ -2058,12 +2121,12 @@ describe('the comment panel', () => {
 
     it('stays on its words when the reader undoes moving another line across them', async () => {
       show('editor', ['w', 'bravo charlie', 'z']);
-      aimAt(lineStarts()[1]!, lineStarts()[1]! + 5);
+      aimAt(lineStarts()[1], lineStarts()[1] + 5);
       await screen.findByTestId('doc-comment-draft-card');
       handle.undoManager.stopCapturing();
       act(() => {
-        handle.editor.setTextCursorPosition(handle.editor.document[2]!);
-        handle.editor.moveBlocksUp();
+        handle.editor.setTextCursorPosition(handle.editor.document[2]);
+        moveFromKeyboard(handle, 'ArrowUp');
       });
       handle.undoManager.stopCapturing();
 
@@ -2078,12 +2141,12 @@ describe('the comment panel', () => {
 
     it('stays on its words when a peer presses Enter at the start of their line', async () => {
       show('editor', ['one', 'two carrying three']);
-      const second = lineStarts()[1]!;
+      const second = lineStarts()[1];
       aimAt(second + 4, second + 12);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Enter');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1], 'Enter');
 
       expect(lines()).toEqual(['one', '', 'two carrying three']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -2092,7 +2155,7 @@ describe('the comment panel', () => {
 
     it('stays on its words when the reader presses Enter at the start of their line and undoes it', async () => {
       show('editor', ['one', 'two carrying three']);
-      const second = lineStarts()[1]!;
+      const second = lineStarts()[1];
       aimAt(second + 4, second + 12);
       await screen.findByTestId('doc-comment-draft-card');
       handle.undoManager.stopCapturing();
@@ -2114,9 +2177,9 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       handle.undoManager.stopCapturing();
       act(() => {
-        const view = handle.editor.prosemirrorView!;
-        view.dispatch(view.state.tr.insertText('X', lineStarts()[0]!));
-        handle.editor.setTextCursorPosition(handle.editor.document[0]!);
+        const view = handle.editor.prosemirrorView;
+        view.dispatch(view.state.tr.insertText('X', lineStarts()[0]));
+        handle.editor.setTextCursorPosition(handle.editor.document[0]);
         view.someProp('handleKeyDown', (handler) =>
           handler(
             view,
@@ -2143,12 +2206,12 @@ describe('the comment panel', () => {
       // The peer's editor writes the second half as new letters in a new row,
       // so the end stands where its last letter was.
       show('editor', ['alpha bravo charlie', 'delta echo foxtrot', 'golf']);
-      const second = lineStarts()[1]!;
+      const second = lineStarts()[1];
       aimAt(second + 6, second + 10);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 8, 'Enter');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1] + 8, 'Enter');
 
       expect(lines()).toEqual(['alpha bravo charlie', 'delta ec', 'ho foxtrot', 'golf']);
       expect(screen.queryByTestId('doc-comment-draft-dropped')).toBeNull();
@@ -2165,24 +2228,24 @@ describe('the comment panel', () => {
       ['deletes a stretch across the break above its line', ''],
     ] as const)('says so and keeps what was written when a peer %s', async (_what, typed) => {
       show('editor', ['aa0 xx', 'bb1 yy', 'zz']);
-      const second = lineStarts()[1]!;
+      const second = lineStarts()[1];
       aimAt(second + 4, second + 6);
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
       const peer = await peerEditor();
 
       if (typed === null) {
-        await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]!, 'Backspace');
+        await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1], 'Backspace');
       } else {
         act(() => {
-          const view = peer.editor.prosemirrorView!;
+          const view = peer.editor.prosemirrorView;
           const [first, next] = lineStarts(view.state);
-          view.dispatch(view.state.tr.insertText(typed, first! + 5, next! + 2));
+          view.dispatch(view.state.tr.insertText(typed, first + 5, next + 2));
         });
       }
 
       expect(await screen.findByTestId('doc-comment-draft-dropped')).toBeInTheDocument();
-      const again = lineStarts()[0]!;
+      const again = lineStarts()[0];
       aimAt(again, again + 3);
       expect(await screen.findByTestId('doc-comment-draft-input')).toHaveValue('half');
     });
@@ -2192,12 +2255,12 @@ describe('the comment panel', () => {
       // letters in a new row; the reader's own selection comes back empty
       // from the same change (y-prosemirror #204).
       show('editor', ['one', 'alpha bravo charlie', 'three']);
-      const second = lineStarts()[1]!;
+      const second = lineStarts()[1];
       aimAt(second + 6, second + 11);
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
 
-      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1]! + 3, 'Enter');
+      await pressIn(peer, lineStarts(peer.editor.prosemirrorState)[1] + 3, 'Enter');
 
       expect(lines()).toEqual(['one', 'alp', 'ha bravo charlie', 'three']);
       expect(
@@ -2213,8 +2276,8 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       const peer = await peerEditor();
       act(() => {
-        const view = peer.editor.prosemirrorView!;
-        const at = lineStarts(peer.editor.prosemirrorState)[0]! + 10;
+        const view = peer.editor.prosemirrorView;
+        const at = lineStarts(peer.editor.prosemirrorState)[0] + 10;
         view.dispatch(view.state.tr.delete(at, at + 1));
       });
       peer.undoManager.stopCapturing();
@@ -2236,9 +2299,9 @@ describe('the comment panel', () => {
       const peer = await peerEditor();
 
       act(() => {
-        const view = peer.editor.prosemirrorView!;
-        const at = lineStarts(peer.editor.prosemirrorState)[0]!;
-        view.dispatch(view.state.tr.delete(at, at + 4));
+        const view = peer.editor.prosemirrorView;
+        const at = lineStarts(peer.editor.prosemirrorState)[0];
+        view.dispatch(view.state.tr.delete(at + 4, at + 8));
       });
 
       expect(lines()).toEqual(['the cat']);
@@ -2252,8 +2315,8 @@ describe('the comment panel', () => {
       show('editor', ['alpha bravo']);
       handle.undoManager.stopCapturing();
       act(() => {
-        const view = handle.editor.prosemirrorView!;
-        view.dispatch(view.state.tr.insertText('new ', lineStarts()[0]!));
+        const view = handle.editor.prosemirrorView;
+        view.dispatch(view.state.tr.insertText('new ', lineStarts()[0]));
       });
       handle.undoManager.stopCapturing();
       aimDraft(0, 9);
@@ -2273,7 +2336,7 @@ describe('the comment panel', () => {
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(6, 5);
       });
 
@@ -2331,7 +2394,7 @@ describe('the comment panel', () => {
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
       unmountBody();
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(6, 5);
       });
       mountBody();
@@ -2345,7 +2408,7 @@ describe('the comment panel', () => {
       show();
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(6, 5);
       });
       await screen.findByTestId('doc-comment-draft-dropped');
@@ -2500,7 +2563,7 @@ describe('the comment panel', () => {
       const box = screen.getByTestId('doc-comment-draft-input');
       await userEvent.type(box, 'half');
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.insert(0, 'q');
       });
 
@@ -2513,7 +2576,7 @@ describe('the comment panel', () => {
       aimDraft(6, 11);
       await screen.findByTestId('doc-comment-draft-card');
       await userEvent.type(screen.getByTestId('doc-comment-draft-input'), 'half');
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(6, 5);
       });
       await screen.findByTestId('doc-comment-draft-dropped');
@@ -2536,7 +2599,7 @@ describe('the comment panel', () => {
       await clickTheBody();
       unmountBody();
 
-      peerEdits((line) => {
+      await peerEdits((line) => {
         line.delete(6, 5);
       });
       mountBody();
@@ -2575,7 +2638,7 @@ describe('the comment panel', () => {
       expect(paint?.textContent).toBe('alpha');
       expect(paint?.classList.contains('doc-comment-mark-reading')).toBe(true);
       expect(
-        handle.editor.prosemirrorView!.dom.querySelector('[data-show-selection]'),
+        handle.editor.prosemirrorView.dom.querySelector('[data-show-selection]'),
       ).toBeNull();
       expect(
         screen.getByTestId('doc-comment-draft-card').dataset.selected,
@@ -2715,7 +2778,7 @@ describe('the comment panel', () => {
       // A comment on the page, so the panel draws its column of cards — the
       // draft card lives in that column.
       await comment(0, 5, 'already here');
-      const view = handle.editor.prosemirrorView!;
+      const view = handle.editor.prosemirrorView;
       const dispatch = view.dispatch.bind(view);
       const drafts: unknown[] = [];
       view.dispatch = (tr) => {
@@ -2904,7 +2967,7 @@ describe('the comment panel', () => {
       await screen.findByTestId('doc-comment-draft-card');
       expect(aimedWords()).toBe('bravo');
 
-      const view = handle.editor.prosemirrorView!;
+      const view = handle.editor.prosemirrorView;
       act(() => {
         view.dispatch(view.state.tr.insertText('xx ', firstRun().from));
       });
@@ -2927,7 +2990,7 @@ describe('the comment panel', () => {
         'about this',
       );
 
-      const view = handle.editor.prosemirrorView!;
+      const view = handle.editor.prosemirrorView;
       act(() => {
         view.dispatch(view.state.tr.delete(run.from, run.from + 5));
       });
@@ -2951,7 +3014,7 @@ describe('the comment panel', () => {
         screen.getByTestId('doc-comment-draft-input'),
         'about this',
       );
-      const view = handle.editor.prosemirrorView!;
+      const view = handle.editor.prosemirrorView;
       act(() => {
         view.dispatch(view.state.tr.delete(run.from, run.from + 5));
       });

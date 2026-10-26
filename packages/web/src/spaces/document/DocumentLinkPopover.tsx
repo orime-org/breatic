@@ -42,6 +42,8 @@ import {
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { DocumentLinkRead } from '@web/spaces/document/DocumentLinkRead';
 import { DocumentLinkForm } from '@web/spaces/document/DocumentLinkForm';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
+import { useDocumentBodyRuntime } from '@web/spaces/document/use-document-body-runtime';
 import { LINK_PANEL_SURFACE } from '@web/spaces/document/document-link-panel';
 import { panelReference } from '@web/spaces/document/document-link-anchor';
 import { BUBBLE_ICON_BUTTON_SIZE, PRESSED_CLASS } from '@web/spaces/document/document-tool-button';
@@ -142,6 +144,8 @@ export function DocumentLinkPopover({
   editor: LinkEditor;
   onPanelOpenChange: (open: boolean) => void;
 }): React.JSX.Element | null {
+  const runtime = useDocumentBodyRuntime(editor);
+  const paused = runtime !== null && runtime.status !== 'active';
   const t = useTranslation();
   const [mode, setMode] = React.useState<LinkMode>('closed');
   // The button names the panel it opened, which is how the body counts the
@@ -206,11 +210,13 @@ export function DocumentLinkPopover({
   /** Write the address the field handed over, and put the panel away. */
   const submit = React.useCallback(
     (href: string): void => {
+      if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
       const range = target.range ?? {
         from: editor.prosemirrorState.selection.from,
         to: editor.prosemirrorState.selection.to,
       };
       applyLink(editor, range, href);
+      if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
       close();
     },
     [close, editor, target.range],
@@ -223,6 +229,7 @@ export function DocumentLinkPopover({
 
   /** Take the link off, and put the panel away. */
   const unlink = React.useCallback((): void => {
+    if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
     if (target.range) removeLink(editor, target.range);
     close();
   }, [close, editor, target.range]);
@@ -331,6 +338,8 @@ export function DocumentLinkPopover({
      * under a user who is typing is not something the panel reacts to.
      */
     const follow = (): void => {
+      const currentRuntime = bodyBindingOf(editor.prosemirrorState)?.runtime;
+      if (currentRuntime !== undefined && currentRuntime.read().status !== 'active') return;
       // `create` opened on a selection holding no link, and that selection is
       // what it writes to. A link a co-editor makes inside it belongs to them:
       // adopting it would narrow the write to their span and put this user's
@@ -411,12 +420,14 @@ export function DocumentLinkPopover({
                   href={target.href}
                   onEdit={startEdit}
                   onRemove={unlink}
+                  readOnly={paused}
                 />
               ) : (
                 <DocumentLinkForm
                   initial={mode === 'edit' ? (target.href ?? '') : ''}
                   onSubmit={submit}
                   inputRef={inputRef}
+                  readOnly={paused}
                 />
               )}
             </div>

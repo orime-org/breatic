@@ -37,6 +37,9 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { blockTexts } from '@web/spaces/document/__tests__/document-body-fixtures';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 const NAME = 'project-p/document-s';
 
@@ -131,11 +134,8 @@ describe('a document opened straight from the backend seed', () => {
     // `(string, string)`. A seeded attribute the schema reads differently is
     // one it overwrites on the first edit, and that write goes to every peer
     // saying nothing about what the reader did.
-    // Looked up by position each time rather than held: typing into an empty
-    // document leaves a second block behind it, and the write-back reuses the
-    // element the seed wrote for the block that ends up second. A held
-    // reference therefore changes what it stands for, while the seeded block
-    // — the first one — keeps its own attributes.
+    // Keep the retained XML defaults separate from the live records source.
+    // The normal first keystroke must reach that source without failing binding.
     const seededNodes = (): Record<string, Y.XmlElement> => {
       const group = documentBodyFragment(doc).get(0) as Y.XmlElement;
       const container = group.get(0) as Y.XmlElement;
@@ -173,9 +173,12 @@ describe('a document opened straight from the backend seed', () => {
         ]),
       );
     const before = attributesNow();
-    const view = editor.prosemirrorView!;
-    view.dispatch(view.state.tr.insertText('typing', 2));
+    const view = editor.prosemirrorView;
+    act(() => view.dispatch(view.state.tr.insertText('typing')));
     expect(attributesNow()).toEqual(before);
+    expect(blockTexts(doc)).toEqual(['typing']);
+    expect(view.state.doc.textContent).toBe('typing');
+    expect(bodyBindingOf(view.state)?.runtime.read().status).toBe('active');
   });
 
   it('gives the user nothing to undo — the seed is not their edit', async () => {
@@ -208,7 +211,7 @@ describe('a document opened straight from the backend seed', () => {
     // stack was cleared. Undo now lands on the seed's own block, which is a
     // document both ends agree on, so there is nothing to reconcile.
     act(() => {
-      const view = editor.prosemirrorView!;
+      const view = editor.prosemirrorView;
       view.dispatch(view.state.tr);
     });
     expect(undoManager.redoStack).toHaveLength(1);
@@ -228,7 +231,7 @@ describe('a document opened straight from the backend seed', () => {
     // writes through — a mismatch in the key would leave this fragment empty
     // while the editor looked fine.
     await waitFor(() =>
-      expect(documentBodyFragment(doc).toString()).toContain(
+      expect(blockTexts(doc).join('')).toContain(
         'typed into the editor',
       ),
     );
@@ -248,6 +251,7 @@ describe('a seed written with node names this schema does not use', () => {
   let doc: Y.Doc;
   let awareness: Awareness;
   const containers: HTMLElement[] = [];
+  const legacyEditors: ReturnType<typeof buildDocumentEditor>[] = [];
 
   beforeEach(() => {
     doc = new Y.Doc();
@@ -266,6 +270,7 @@ describe('a seed written with node names this schema does not use', () => {
   });
 
   afterEach(() => {
+    for (const editor of legacyEditors.splice(0)) editor.unmount();
     _resetDocumentEditorCacheForTests();
     containers.splice(0).forEach((element) => {
       element.remove();
@@ -275,25 +280,19 @@ describe('a seed written with node names this schema does not use', () => {
   });
 
   it('loses the seeded text on the first edit, and says so in the bytes', async () => {
-    const rendered = renderHook(() =>
-      useDocumentEditor({
-        doc,
-        name: NAME,
-        caretProvider: { awareness },
-        readWho: () => ({ role: 'editor', viewerId: 'u1' }),
-      }),
-    );
-    await waitFor(() => expect(rendered.result.current).not.toBeNull());
-    const handle = rendered.result.current as DocumentEditorHandle;
+    // This deliberately invalid XML belongs to the explicit legacy branch.
+    // The production records factory requires a completed loading snapshot.
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [documentFallbackExtension()] });
+    legacyEditors.push(editor);
     const container = document.createElement('div');
     document.body.appendChild(container);
     containers.push(container);
-    adoptDocumentEditor(handle, container);
+    editor.mount(container);
 
     expect(documentBodyFragment(doc).toString()).toContain('hello');
 
     act(() => {
-      const view = handle.editor.prosemirrorView;
+      const view = editor.prosemirrorView;
       view.dispatch(view.state.tr);
     });
 

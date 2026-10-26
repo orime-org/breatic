@@ -36,6 +36,11 @@ import {
   bodyEdgeBetween,
   textOrEdge,
 } from '@web/spaces/document/document-body-edge-selection';
+import {
+  bodyInlineOccurrences,
+  recordBodyOperation,
+  type BodyHandoff,
+} from '@web/spaces/document/document-body-provenance';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import {
@@ -106,12 +111,12 @@ function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] 
   const firstCell = around[0]?.cell ?? null;
   const oneCell =
     firstCell !== null &&
-    blocks.every((block, index) => !TABLE_PARTS.has(block.type) && around[index]!.cell === firstCell);
+    blocks.every((block, index) => !TABLE_PARTS.has(block.type) && around[index].cell === firstCell);
   if (oneCell) return [...blocks];
   const units: BlockLike[] = [];
   const seen = new Set<string>();
   blocks.forEach((block, index) => {
-    const tableId = around[index]!.table;
+    const tableId = around[index].table;
     const unit = tableId === null ? block : editor.getBlock(tableId);
     if (unit !== undefined && !seen.has(unit.id)) {
       seen.add(unit.id);
@@ -229,6 +234,8 @@ function selectionAfter(
  * Moves the selected rows, or the caret's row, one place up or down.
  * @param editor - The editor.
  * @param direction - Which way.
+ * @throws {BodyProvenanceError} If the source declaration is invalid.
+ * @throws {RangeError} If ProseMirror rejects a move or selection position.
  */
 export function moveRowsFromKeyboard(
   editor: MoveEditor,
@@ -269,6 +276,27 @@ export function moveRowsFromKeyboard(
     at,
     moved.map((row) => row.node),
   );
+  const source = { transaction: 0, step: 0 };
+  const target = { transaction: 0, step: tr.steps.length };
+  // The producer carries these exact node occurrences to the insertion, so
+  // declare their positions before any deletion and after the full move.
+  const handoffs = bodyInlineOccurrences(doc).flatMap((unit): BodyHandoff[] => {
+    const from = carried(unit.pos, moved, at);
+    if (from === null) return [];
+    return [{
+      kind: 'move',
+      source: { boundary: source, from: unit.pos, to: unit.pos + unit.width, block: unit.block },
+      target: { boundary: target, from, to: from + unit.width, block: unit.block },
+    }];
+  });
+  recordBodyOperation(tr, {
+    id: `keyboard-${direction}:${source.step}:${target.step}`,
+    name: `keyboard-move-${direction}`,
+    source,
+    target,
+    handoffs,
+    created: [],
+  });
   const kept = selectionAfter(tr.doc, selection, moved, at);
   if (kept !== null) tr.setSelection(kept);
   view.dispatch(tr.scrollIntoView());
@@ -281,11 +309,19 @@ export function moveRowsFromKeyboard(
 export const documentKeyboardMoveExtension = createExtension(() => ({
   key: 'document-keyboard-move',
   keyboardShortcuts: {
-    'Shift-Mod-ArrowUp': ({ editor }: { editor: MoveEditor }): boolean => {
+    'Shift-Ctrl-ArrowUp': ({ editor }: { editor: MoveEditor }): boolean => {
       moveRowsFromKeyboard(editor, 'up');
       return true;
     },
-    'Shift-Mod-ArrowDown': ({ editor }: { editor: MoveEditor }): boolean => {
+    'Shift-Ctrl-ArrowDown': ({ editor }: { editor: MoveEditor }): boolean => {
+      moveRowsFromKeyboard(editor, 'down');
+      return true;
+    },
+    'Shift-Meta-ArrowUp': ({ editor }: { editor: MoveEditor }): boolean => {
+      moveRowsFromKeyboard(editor, 'up');
+      return true;
+    },
+    'Shift-Meta-ArrowDown': ({ editor }: { editor: MoveEditor }): boolean => {
       moveRowsFromKeyboard(editor, 'down');
       return true;
     },

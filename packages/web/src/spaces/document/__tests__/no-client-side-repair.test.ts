@@ -47,12 +47,14 @@ import {
 import {
   documentBodyFragment,
   encodeInitialSpaceContent,
+  importCurrentDocumentBody,
 } from '@breatic/shared';
 import {
   blockTexts,
   seedParagraphs,
 } from '@web/spaces/document/__tests__/document-body-fixtures';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
+import { documentBodyBindingKey } from '@web/spaces/document/document-body-binding-key';
 
 const NAME = 'project-p/document-s';
 
@@ -86,7 +88,14 @@ describe('opening a document does not write to it', () => {
     para.insert(0, [new Y.XmlText('real body text')]);
     const last = new Y.XmlElement(lastNodeName);
     last.insert(0, [new Y.XmlText('A heading')]);
-    body.insert(0, [para, last]);
+    const group = new Y.XmlElement('blockGroup');
+    for (const block of [para, last]) {
+      const wrapper = new Y.XmlElement('blockContainer');
+      wrapper.insert(0, [block]);
+      group.push([wrapper]);
+    }
+    body.insert(0, [group]);
+    importCurrentDocumentBody(source, NAME);
     // A remote origin: this is someone else's content arriving, not our edit.
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
     source.destroy();
@@ -114,7 +123,7 @@ describe('opening a document does not write to it', () => {
     const body = documentBodyFragment(doc);
     const before = body.toString();
     // paragraph + heading
-    expect(body.length).toBe(2);
+    expect((body.get(0) as Y.XmlElement).length).toBe(2);
 
     const rendered = mount(true);
     await waitFor(() => expect(rendered.result.current).not.toBeNull());
@@ -122,7 +131,7 @@ describe('opening a document does not write to it', () => {
     // and the binding dispatches one of its own on bind.
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(body.length).toBe(2);
+    expect((body.get(0) as Y.XmlElement).length).toBe(2);
     expect(body.toString()).toBe(before);
   });
 
@@ -140,6 +149,7 @@ describe('opening a document does not write to it', () => {
     const group = new Y.XmlElement('blockGroup');
     group.insert(0, [holder]);
     body.insert(0, [group]);
+    importCurrentDocumentBody(source, NAME);
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
     source.destroy();
 
@@ -195,10 +205,7 @@ describe('opening a document does not write to it', () => {
 
     expect(editor.pmSchema.marks['unsupportedMark']).toBeDefined();
     expect(editor.pmSchema.nodes['unsupportedBlock']).toBeDefined();
-    const keys = editor.prosemirrorState.plugins.map((plugin) =>
-      String((plugin as unknown as { key: string }).key),
-    );
-    expect(keys.some((key) => key.includes('y-sync'))).toBe(true);
+    expect(documentBodyBindingKey.getState(editor.prosemirrorState)?.owner.document).toBe(NAME);
   });
 
   it('writes nothing at all from a read-only client', async () => {
@@ -255,6 +262,7 @@ describe('editability is settled before the first paint', () => {
 
   beforeEach(() => {
     doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
   });
   afterEach(() => {
@@ -360,7 +368,6 @@ describe('the setEditable paths write nothing (#108)', () => {
 
   it('a document with content survives the flips unchanged, and the probe sees a real edit', () => {
     const source = new Y.Doc();
-    Y.applyUpdate(source, encodeInitialSpaceContent('document'));
     seedParagraphs(source, ['shared text']);
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(source), 'remote-provider');
     source.destroy();

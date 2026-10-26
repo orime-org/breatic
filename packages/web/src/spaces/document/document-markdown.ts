@@ -33,13 +33,24 @@ export interface MarkdownBlock {
  * The blocks a Markdown body parses into, each with its plain text.
  * @param markdown - The body.
  * @returns The top-level blocks, in order; none for a body holding nothing.
+ * @throws {Error} If constructing, parsing or releasing the temporary editor fails.
  */
 export async function markdownBlocks(markdown: string): Promise<MarkdownBlock[]> {
   if (markdown.trim() === '') return [];
-  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()), extensions: [] });
-  const parsed = await editor.tryParseMarkdownToBlocks(markdown);
-  editor.replaceBlocks(editor.document, parsed);
-  const nodes: string[] = [];
-  editor.prosemirrorState.doc.firstChild?.forEach((node) => nodes.push(blockPlainText(node)));
-  return parsed.map((block, i) => ({ block, text: nodes[i] ?? '' }));
+  const doc = new Y.Doc();
+  let editor: ReturnType<typeof buildDocumentEditor> | null = null;
+  try {
+    editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), mode: 'parse', extensions: [] });
+    const parsed = await editor.tryParseMarkdownToBlocks(markdown);
+    editor.replaceBlocks(editor.document, parsed);
+    const nodes: string[] = [];
+    editor.prosemirrorState.doc.firstChild?.forEach((node) => nodes.push(blockPlainText(node)));
+    return parsed.map((block, i) => ({ block, text: nodes[i] ?? '' }));
+  } finally {
+    try {
+      editor?.unmount();
+    } finally {
+      doc.destroy();
+    }
+  }
 }

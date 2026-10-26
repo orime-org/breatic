@@ -41,6 +41,8 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { isCommentMarkWrite } from '@web/spaces/document/document-comment-undo-filter';
 import { documentUndoSelectionPlugin } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
+import type { DocumentBodyRuntime } from '@web/spaces/document/document-body-runtime-types';
+import { documentBodyHistoryExtension } from '@web/spaces/document/document-body-history';
 
 /** Computed once; the schema is fixed for the lifetime of the bundle. */
 let protectedNodesCache: Set<string> | null = null;
@@ -114,6 +116,12 @@ export interface DocumentUndo {
   readonly extension: ExtensionFactoryInstance;
 }
 
+/** Existing handle resources used by the native records history adapter. */
+export interface DocumentUndoOptions {
+  readonly origin: object;
+  readonly runtime: DocumentBodyRuntime;
+}
+
 /**
  * Builds an undo manager for a document's body, with its extension.
  *
@@ -140,9 +148,15 @@ export interface DocumentUndo {
  * the same test — the first doc-changing, non-appended transaction of a
  * dispatch is the one that speaks for it.
  * @param doc - The document Space's Y.Doc.
+ * @param options - The records handle's origin and runtime, when supplied.
  * @returns The manager bound to that document's body, and its extension.
+ * @throws {Error} If native history or extension construction fails.
  */
-export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
+export function createDocumentUndo(doc: Y.Doc, options?: DocumentUndoOptions): DocumentUndo {
+  if (options !== undefined) {
+    const manager = withDestroyListenerCleanup(doc, () => new Y.UndoManager(doc, { trackedOrigins: new Set([options.origin]) }));
+    return { manager, extension: documentBodyHistoryExtension(manager, options) };
+  }
   const marker: UserDrivenMarker = { userDriven: true };
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and

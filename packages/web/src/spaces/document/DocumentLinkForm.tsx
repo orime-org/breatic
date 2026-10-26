@@ -39,29 +39,33 @@ import { Input } from '@web/components/ui/input';
  *   records where the focus was when it opens, so a field that took the focus
  *   on its own mount would be recorded as the place to hand it back to.
  * @returns The column.
+ * @param props.readOnly - Keeps the current URL selectable while refusing changes and submission.
  */
 export function DocumentLinkForm({
   initial,
   onSubmit,
   inputRef,
+  readOnly = false,
 }: {
   initial: string;
   onSubmit: (href: string) => void;
   inputRef?: React.Ref<HTMLInputElement>;
+  readOnly?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
   const [draft, setDraft] = React.useState(initial);
   const [showInvalid, setShowInvalid] = React.useState(false);
   // Whether the draft is shaped like an address is the field's own question.
-  const canSubmit = isLinkUrlShaped(draft);
+  const canSubmit = !readOnly && isLinkUrlShaped(draft);
   /** Hand the address over, or say why it is not one. */
   const submit = React.useCallback((): void => {
+    if (readOnly) return;
     if (!isLinkUrlShaped(draft)) {
       setShowInvalid(true);
       return;
     }
     onSubmit(normalizeLinkUrl(draft));
-  }, [draft, onSubmit]);
+  }, [draft, onSubmit, readOnly]);
   return (
     <div className='flex flex-col gap-1.5'>
       <div className='flex items-center gap-1.5'>
@@ -70,9 +74,11 @@ export function DocumentLinkForm({
           data-testid='doc-link-input'
           ref={inputRef}
           value={draft}
+          readOnly={readOnly}
           aria-invalid={showInvalid}
           placeholder={t('spaces.document.link.placeholder')}
           onChange={(event) => {
+            if (readOnly) return;
             setDraft(event.target.value);
             // A refusal is about the address that earned it.
             setShowInvalid(false);
@@ -95,6 +101,7 @@ export function DocumentLinkForm({
           variant='outline'
           size='sm'
           aria-disabled={!canSubmit}
+          disabled={readOnly}
           onClick={submit}
           data-testid='doc-link-confirm'
           className='bg-transparent aria-disabled:opacity-50'

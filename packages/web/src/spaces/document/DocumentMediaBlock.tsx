@@ -42,6 +42,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popo
 import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
 import { documentBarsOf, mediaEvent, mediaPanelShown, useDocumentBars } from '@web/spaces/document/document-bars';
 import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
+import type { DocumentBodyRuntime } from '@web/spaces/document/document-body-runtime-types';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
@@ -83,6 +84,7 @@ interface DocumentMediaBlockProps {
   editor: object;
   blockId: string;
   readOnly: boolean;
+  runtime?: DocumentBodyRuntime;
   viewport: HTMLElement | null;
   type: MediaBlockType;
   props: MediaBlockProps;
@@ -243,6 +245,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   editor,
   blockId,
   readOnly,
+  runtime,
   viewport,
   type,
   props,
@@ -364,6 +367,13 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   }, [readOnly, handoffAfterRoleChange, editingCaption, editor, host, actions]);
   const captionSession = React.useRef(0);
   if (editingCaption && draft !== undefined) captionSession.current = draft.session;
+  React.useLayoutEffect(() => runtime?.subscribe(() => {
+    const status = runtime.read().status;
+    if (status !== 'waiting' && status !== 'failed') return;
+    const field = captionField.current;
+    if (field === null) return;
+    drafts.event(blockId, { type: 'pause', session: captionSession.current, value: field.value });
+  }, { captureInput: true }), [runtime, drafts, blockId]);
   /** Saves the last DOM value when this presentation is hidden or removed. */
   const detachCaption = React.useCallback((): void => {
     const value = captionField.current?.value;

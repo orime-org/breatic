@@ -37,9 +37,12 @@ import type * as Y from 'yjs';
 import { syncBindingOf } from '@web/spaces/document/document-link-tracking';
 import { cellAt } from '@web/spaces/document/document-table-run';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
+import { nameBodyPoint, resolveBodyPoint } from '@web/spaces/document/document-body-positions';
+import type { BodyPointName } from '@web/spaces/document/document-body-positions-types';
 
 /** The Yjs element a cell is bound to. */
-export type CellName = Y.AbstractType<unknown>;
+export type CellName = Y.AbstractType<unknown> | Extract<BodyPointName, { readonly kind: 'node' }>;
 
 /**
  * Names the cell at a position by its Yjs element.
@@ -49,6 +52,14 @@ export type CellName = Y.AbstractType<unknown>;
  *   not in it yet.
  */
 export function nameCell(state: EditorState, cellPos: number): CellName | null {
+  const body = bodyBindingOf(state);
+  if (body !== null) {
+    if (cellAt(state.doc, cellPos) === null) return null;
+    const index = body.read(state).index;
+    const node = [...index.nodes.values()].find((entry) => entry.from === cellPos && (entry.type === 'docTableCell' || entry.type === 'docTableHeader'));
+    if (node === undefined) return null;
+    return nameBodyPoint(index, { kind: 'node', node: node.id, side: 'before' }) as Extract<BodyPointName, { readonly kind: 'node' }>;
+  }
   const bound = syncBindingOf(state);
   const node = state.doc.nodeAt(cellPos);
   if (bound === null || node === null) return null;
@@ -66,6 +77,13 @@ export function nameCell(state: EditorState, cellPos: number): CellName | null {
  * @returns The position before the cell, or null once it is gone.
  */
 export function cellNamed(state: EditorState, doc: PMNode, name: CellName): number | null {
+  if ('kind' in name) {
+    const body = bodyBindingOf(state);
+    if (body === null) return null;
+    const index = body.read(state).index;
+    const found = resolveBodyPoint(index, name, { runtime: body.runtime.read().status });
+    return found.status === 'resolved' && index.doc === doc && cellAt(doc, found.pos) !== null ? found.pos : null;
+  }
   const bound = syncBindingOf(state);
   const item = name._item;
   if (bound === null || item === null || item.deleted) return null;
@@ -86,6 +104,7 @@ export function cellNamed(state: EditorState, doc: PMNode, name: CellName): numb
  * @param before - The state it applies to, whose sync binding is the live one.
  * @param cellPos - The position before the cell, before the transaction.
  * @param name - The cell's Yjs element as of the last change to the body.
+ * @param after - The new state with its matching common index already installed.
  * @returns The position before the cell after it, or null once it is gone.
  */
 export function followCell(
@@ -93,7 +112,16 @@ export function followCell(
   before: EditorState,
   cellPos: number,
   name: CellName | null,
+  after: EditorState = before,
 ): number | null {
+  const body = bodyBindingOf(after);
+  if (body !== null && body.runtime.read().status !== 'active') return cellPos;
+  if (fromYjs(tr) && body !== null) {
+    if (name === null || !('kind' in name)) return null;
+    const result = resolveBodyPoint(body.read(after).index, name, { runtime: body.runtime.read().status });
+    if (result.status === 'resolved') return cellAt(tr.doc, result.pos) === null ? null : result.pos;
+    return result.status === 'hidden' || result.status === 'gone' || result.status === 'otherDocument' ? null : cellPos;
+  }
   if (fromYjs(tr)) return name === null ? null : cellNamed(before, tr.doc, name);
   const inside = tr.mapping.mapResult(cellPos + 1, 1);
   if (inside.deleted) return null;
@@ -119,6 +147,8 @@ export function renameCell(
   name: CellName | null,
 ): CellName | null {
   if (pos === null) return null;
+  const body = bodyBindingOf(state);
+  if (body !== null && body.runtime.read().status !== 'active') return name;
   if (state.doc === prev.doc && pos === prevPos && name !== null) return name;
   return nameCell(state, pos);
 }

@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
 import { useTranslation } from '@web/i18n/use-translation';
 import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
+import type { DocumentBodyRuntime } from '@web/spaces/document/document-body-runtime-types';
 import { mediaBarShown, mediaEvent, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
 import {
   mediaViewKey,
@@ -24,6 +25,8 @@ interface DocumentMediaViewsProps {
   editor: object & { readonly focus: () => void };
   /** Current project edit permission. */
   readOnly?: boolean;
+  /** The existing records handle, used to capture input before readonly publication. */
+  runtime?: DocumentBodyRuntime;
   /** The document's vertical viewport, owned by its ScrollArea. */
   viewport?: HTMLElement | null;
 }
@@ -33,10 +36,11 @@ interface DocumentMediaViewsProps {
  * @param props - See {@link DocumentMediaViewsProps}.
  * @param props.editor - The editor.
  * @param props.readOnly - Current project edit permission.
+ * @param props.runtime - The existing records handle's input capture subscription.
  * @param props.viewport - The document's own scroll boundary.
  * @returns The portals.
  */
-export function DocumentMediaViews({ editor, readOnly = false, viewport = null }: DocumentMediaViewsProps): React.JSX.Element {
+export function DocumentMediaViews({ editor, readOnly = false, runtime, viewport = null }: DocumentMediaViewsProps): React.JSX.Element {
   const subscribe = React.useCallback(
     (listener: () => void) => onMediaViewsChange(editor, listener),
     [editor],
@@ -71,6 +75,7 @@ export function DocumentMediaViews({ editor, readOnly = false, viewport = null }
             editor={editor}
             blockId={entry.blockId}
             readOnly={readOnly}
+            runtime={runtime}
             viewport={viewport}
             type={entry.type}
             props={entry.props}

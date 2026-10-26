@@ -35,6 +35,7 @@ export function createDocumentBodyRuntime(
 ): DocumentBodyRuntime {
   const incarnation = Symbol('document-body-runtime');
   const listeners = new Set<() => void>();
+  const inputCaptures = new Set<() => void>();
   let snapshot = ACTIVE;
   let sourceRevision = 0;
 
@@ -56,7 +57,7 @@ export function createDocumentBodyRuntime(
    * @throws {never}
    */
   function notify(): void {
-    for (const listener of [...listeners]) {
+    for (const listener of [...inputCaptures, ...listeners]) {
       try {
         listener();
       } catch (error) {
@@ -85,13 +86,16 @@ export function createDocumentBodyRuntime(
   /**
    * Subscribes to runtime state changes for the current handle lifetime.
    * @param listener - Called after a new state has been installed.
+   * @param options - Captures current input before readonly subscribers run.
+   * @param options.captureInput - Runs this subscriber before ordinary state presentation subscribers.
    * @returns An idempotent subscription release.
    * @throws {never}
    */
-  function subscribe(listener: () => void): () => void {
-    if (snapshot.status !== 'disposed') listeners.add(listener);
+  function subscribe(listener: () => void, options?: { readonly captureInput?: boolean }): () => void {
+    const subscribers = options?.captureInput === true ? inputCaptures : listeners;
+    if (snapshot.status !== 'disposed') subscribers.add(listener);
     return (): void => {
-      listeners.delete(listener);
+      subscribers.delete(listener);
     };
   }
 
@@ -151,6 +155,7 @@ export function createDocumentBodyRuntime(
     doc.off('destroy', dispose);
     snapshot = DISPOSED;
     notify();
+    inputCaptures.clear();
     listeners.clear();
   }
 

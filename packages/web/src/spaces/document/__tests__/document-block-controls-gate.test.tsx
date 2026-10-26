@@ -24,6 +24,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { Awareness } from 'y-protocols/awareness';
 
@@ -62,6 +63,7 @@ describe('who the strip is mounted for', () => {
 
   beforeEach(async () => {
     doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
     const { result } = renderHook(() =>
       useDocumentEditor({

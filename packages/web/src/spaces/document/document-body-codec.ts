@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { Fragment, Mark, type Node as PMNode, type NodeType, type Schema } from '@tiptap/pm/model';
-import { EditorState } from '@tiptap/pm/state';
-import { fixTables } from '@tiptap/pm/tables';
 import type * as Y from 'yjs';
 
 import {
@@ -24,6 +22,7 @@ import type {
   BodyProjectionOptions,
   BodyProjectionRead,
 } from '@web/spaces/document/document-body-codec-types';
+import { bodyGeometryCoverage, completeBodyGeometry, repairBodyGeometry } from '@web/spaces/document/document-body-codec-geometry';
 import { bodyInlineOccurrences } from '@web/spaces/document/document-body-provenance';
 import { UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE } from '@web/spaces/document/document-unsupported-blocknote';
 
@@ -183,7 +182,11 @@ function renderRecord(builder: ProjectionBuilder, id: string): PMNode[] {
   }
   const children = childrenFor(builder, id);
   if (type.spec.tableRole === 'table' && !children.some((row) => row.childCount > 0)) return [];
-  if (props.type === 'blockGroup' && children.length === 0) return [];
+  if (props.type === 'blockGroup' && children.length === 0) {
+    const group = syntheticGroup(builder.schema, id);
+    builder.ids.set(group, id);
+    return [group];
+  }
   const attrs = Object.hasOwn(type.spec.attrs ?? {}, 'id') ? { ...props.attrs, id } : props.attrs;
   const node = type.createAndFill(attrs, children);
   if (node === null) throw new DocumentBodyFormatError(`Invalid body container children:${id}`);
@@ -223,34 +226,6 @@ function originalPositions(doc: PMNode, builder: ProjectionBuilder): Map<string,
 }
 
 /**
- * Indexes final table-repaired boundaries using the local repair's actual mapping.
- * @param doc - The document being inspected.
- * @param builder - The local read-only projection context.
- * @param initial - Registered positions before local table repair.
- * @param map - The local table repair position mapping.
- * @returns Final registered node and owner boundaries.
- * @throws {DocumentBodyFormatError} If a repair removed a registered content owner.
- */
-function nodePositions(doc: PMNode, builder: ProjectionBuilder, initial: ReadonlyMap<string, number>, map: (position: number) => number): { nodes: Map<string, BodyNodePosition>; owners: Map<string, BodyNodePosition> } {
-  const nodes = new Map<string, BodyNodePosition>();
-  const owners = new Map<string, BodyNodePosition>();
-  nodes.set(builder.view.root, { id: builder.view.root, type: 'doc', from: 0, to: doc.content.size, contentFrom: 0, contentTo: doc.content.size });
-  for (const [id, position] of initial) {
-    const from = map(position);
-    const node = doc.nodeAt(from);
-    if (node === null) throw new DocumentBodyFormatError(`Body repair lost a registered node:${id}`);
-    const record = builder.view.body.records.get(id)!;
-    const owner = record.kind === 'owner';
-    const contentFrom = from + (owner ? 2 : 1);
-    const contentTo = owner ? contentFrom + node.firstChild!.content.size : from + node.nodeSize - 1;
-    const entry = { id, type: bodyTreeRecordProperties(builder.view, id).type, from, to: from + node.nodeSize, contentFrom, contentTo };
-    nodes.set(id, entry);
-    if (owner) owners.set(id, entry);
-  }
-  return { nodes, owners };
-}
-
-/**
  * Binds displayed occurrences to their original units without matching by text.
  * @param doc - The document being inspected.
  * @param builder - The local read-only projection context.
@@ -273,7 +248,8 @@ function indexedUnits(doc: PMNode, builder: ProjectionBuilder, owners: ReadonlyM
     cursors.set(owner.id, cursor + 1);
   }
   for (const [id] of owners) {
-    if (!builder.opaque.has(id) && (cursors.get(id) ?? 0) !== builder.owners.get(id)!.units.length) throw new DocumentBodyFormatError(`Body projection lost native owner content:${id}`);
+    const original = builder.owners.get(id);
+    if (original !== undefined && !builder.opaque.has(id) && (cursors.get(id) ?? 0) !== original.units.length) throw new DocumentBodyFormatError(`Body projection lost native owner content:${id}`);
   }
   if (new Set(result.map((unit) => unit.token)).size !== result.length) throw new DocumentBodyFormatError('Body projection duplicated native identity');
   return result;
@@ -297,15 +273,27 @@ export function projectBodyTree(sourceDoc: Y.Doc, schema: Schema, options: BodyP
   if (root.kind !== 'root') throw new DocumentBodyFormatError('The body root must be a root record');
   let children = childrenFor(builder, view.root);
   const synthetic = children.length === 0;
-  if (synthetic) children = [syntheticGroup(schema, options.document)];
+  if (synthetic) {
+    const group = syntheticGroup(schema, options.document);
+    const originalGroup = (view.tree.children.get(view.root) ?? []).find((id) => {
+      const record = view.body.records.get(id);
+      return record?.kind === 'container' && record.type === 'blockGroup';
+    });
+    if (originalGroup !== undefined) builder.ids.set(group, originalGroup);
+    children = [group];
+  }
   const before = schema.topNodeType.create(root.attrs, children);
   const initial = originalPositions(before, builder);
-  const repair = fixTables(EditorState.create({ doc: before }));
-  const doc = repair?.doc ?? before;
-  doc.check();
-  const positions = nodePositions(doc, builder, initial, (position) => repair?.mapping.map(position, 1) ?? position);
-  const units = indexedUnits(doc, builder, positions.owners);
-  const index = { ...options, sourceDoc, doc, view, units, ...positions, opaque: builder.opaque };
+  const coverage = bodyGeometryCoverage(before);
+  const repair = repairBodyGeometry(before);
+  const mapped = new Map([...initial].map(([id, position]) => [repair.mapping.map(position, 1), id]));
+  const completed = completeBodyGeometry(repair.doc, view, mapped, coverage);
+  const { doc, nodes, owners, derived } = completed;
+  if (synthetic) {
+    for (const [id, record] of derived) if (record.kind === 'owner') owners.delete(id);
+  }
+  const units = indexedUnits(doc, builder, owners);
+  const index = { ...options, sourceDoc, doc, view, units, nodes, owners, derived, opaque: builder.opaque };
   const occurrences = units.map(({ pos, width, value, block, token, origin }) => ({ pos, width, value, block, token, origin }));
   return { status: 'ready', projection: { doc, units: occurrences, view, index, epoch: options.epoch, synthetic } };
 }

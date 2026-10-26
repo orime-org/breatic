@@ -26,6 +26,7 @@
 
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 import { Selection, TextSelection } from '@tiptap/pm/state';
 
@@ -80,7 +81,7 @@ function openBrokenLine(): Open {
   editor.replaceBlocks(editor.document, [
     { type: 'paragraph', content: 'abcdef' } as never,
   ]);
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   view.dispatch(
     view.state.tr.setSelection(TextSelection.create(view.state.doc, 6, 6)),
   );
@@ -117,7 +118,7 @@ function inlineShape(editor: DocumentEditor): string[] {
  * @param to - Where it ends.
  */
 function select(editor: DocumentEditor, from: number, to: number): void {
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   view.dispatch(
     view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)),
   );
@@ -130,7 +131,7 @@ function select(editor: DocumentEditor, from: number, to: number): void {
  * @returns Whether a binding handled it.
  */
 function chord(editor: DocumentEditor, key: string, shift = false): boolean {
-  const view = editor.prosemirrorView!;
+  const view = editor.prosemirrorView;
   return (
     view.someProp('handleKeyDown', (fn) =>
       fn(view, new KeyboardEvent('keydown', { key, ctrlKey: true, shiftKey: shift })),
@@ -172,7 +173,7 @@ describe('a keyboard chord leaves the break bare', () => {
     chord(editor, 'b');
     undo.manager.undo();
 
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     let breakAt = -1;
     view.state.doc.descendants((node, pos) => {
       if (node.type.name === 'hardBreak') {
@@ -199,11 +200,11 @@ describe('typing where a break interrupts a styled line', () => {
    * @param at - Where the caret goes first.
    */
   function typeAt(editor: DocumentEditor, at: number): void {
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)),
     );
-    const next = editor.prosemirrorView!;
+    const next = editor.prosemirrorView;
     next.dispatch(next.state.tr.insertText('X', at, at));
   }
 
@@ -277,7 +278,7 @@ describe('typing where a break interrupts a styled line', () => {
     // Shift+Enter twice. The style still comes from the text before them.
     const { editor } = openBrokenLine();
     const second = breakAt(editor) + 1;
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(
       view.state.tr.setSelection(
         TextSelection.create(view.state.doc, second, second),
@@ -325,11 +326,11 @@ describe('what the caret reads is what ProseMirror reads, one node further back'
    * @param at - Where.
    */
   function typeAt(editor: DocumentEditor, at: number): void {
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)),
     );
-    const next = editor.prosemirrorView!;
+    const next = editor.prosemirrorView;
     next.dispatch(next.state.tr.insertText('X', at, at));
   }
 
@@ -394,7 +395,7 @@ describe('what the caret reads is what ProseMirror reads, one node further back'
     editor.replaceBlocks(editor.document, [
       { type: 'paragraph', content: 'abc' } as never,
     ]);
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, 3)),
     );
@@ -447,6 +448,7 @@ describe('the editor a reader actually gets', () => {
     // they say what the rule does and not that anyone gets it. This one goes
     // through the assembly a document Space mounts.
     const doc = new Y.Doc();
+    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     const handle = getDocumentEditor(doc, 'project-p/document-marks-on-text', {
       caretProvider: { awareness: new Awareness(doc) },
       readWho: () => ({ role: 'editor', viewerId: 'u1' }),
@@ -455,12 +457,12 @@ describe('the editor a reader actually gets', () => {
     const root = document.createElement('div');
     document.body.appendChild(root);
     adoptDocumentEditor(handle, root);
-    const editor = handle.editor as unknown as DocumentEditor;
+    const editor = handle.editor;
     editor.replaceBlocks(editor.document, [
       { type: 'paragraph', content: 'abcdef' } as never,
     ]);
 
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     view.dispatch(
       view.state.tr.setSelection(TextSelection.create(view.state.doc, 6, 6)),
     );
@@ -529,7 +531,7 @@ describe('every other writer obeys the same rule', () => {
     editor.mount(document.createElement('div'));
     mounted.push(editor);
 
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     select(editor, 3, Selection.atEnd(view.state.doc).from);
     chord(editor, 'b');
 

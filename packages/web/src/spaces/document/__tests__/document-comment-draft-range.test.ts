@@ -6,7 +6,7 @@
  *
  * These pin the plugin's own states — open, move, close, and the range carried
  * across the reader's own edits by ProseMirror mapping. How the range follows
- * changes that come in through Yjs is pinned in `document-comment-rail.test.tsx`,
+ * changes that come in through Yjs is pinned in `DocumentCommentRail.test.tsx`,
  * with a second editor as the peer.
  */
 
@@ -157,7 +157,7 @@ describe('the draft range plugin', () => {
 
   it('holds the range a draft opened on', () => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
     const target = { from: run.from, to: run.from + 5 };
 
@@ -168,7 +168,7 @@ describe('the draft range plugin', () => {
 
   it('moves the range as the body is edited under it', () => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
     const target = { from: run.from + 6, to: run.from + 11 };
 
@@ -182,7 +182,7 @@ describe('the draft range plugin', () => {
 
   it('drops the range when the text it pointed at is deleted', () => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
     const target = { from: run.from, to: run.from + 5 };
 
@@ -194,7 +194,7 @@ describe('the draft range plugin', () => {
 
   it('clears the range when the draft closes', () => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
 
     view.dispatch(
@@ -213,7 +213,7 @@ describe('the draft range plugin', () => {
     // has not changed, so an equal-but-new object per transaction would read
     // as a change on every keystroke anywhere in the body.
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
 
     view.dispatch(
@@ -232,7 +232,7 @@ describe('the draft range plugin', () => {
     // The editor's own events do not cover opening: that transaction carries
     // nothing but the meta, so neither the document nor the selection moves.
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
     let heard = 0;
     const stop = onDraftChange(() => {
@@ -265,7 +265,7 @@ describe('the draft range plugin', () => {
 
   it('stays quiet when nothing about the range changed', () => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
     view.dispatch(
       view.state.tr.setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, [{
@@ -290,7 +290,7 @@ describe('the draft range plugin', () => {
     // (`canCommentOver`), so one arriving here means a caller is wrong —
     // and holding it would let a comment be written with nothing under it.
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
 
     view.dispatch(
@@ -305,7 +305,7 @@ describe('the draft range plugin', () => {
 
   it('refuses to open on a reversed range', () => {
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
 
     view.dispatch(
@@ -322,7 +322,7 @@ describe('the draft range plugin', () => {
     // Moving the caret is not an edit, and a reader clicking elsewhere before
     // typing their comment must not lose where it goes.
     const editor = open();
-    const view = editor.prosemirrorView!;
+    const view = editor.prosemirrorView;
     const run = firstRun(editor);
     const target = { from: run.from, to: run.from + 5 };
 

@@ -2,16 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import { Activity } from 'react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { toast } from '@web/lib/toast';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import type * as SpaceConnectionModule from '@web/data/yjs/space-connection';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment } from '@breatic/shared';
+import { documentBodySource, encodeInitialSpaceContent, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 // The editor is only built once its caret wiring exists — both the provider and
@@ -48,7 +49,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 }));
 vi.mock('@web/data/yjs/space-connection', async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import('@web/data/yjs/space-connection')>();
+    await importOriginal<typeof SpaceConnectionModule>();
   const { useSocket } = await import('@web/data/yjs/use-socket');
   return {
     ...actual,
@@ -65,6 +66,14 @@ vi.mock('@web/lib/toast', () => ({
 
 describe('DocumentSpace', () => {
   beforeEach(() => {
+    for (const [projectId, spaceId] of [
+      ['p1', 'doc-revoked'], ['p1', 'doc-revoked-shown'],
+      ['p1', 'doc-capped'], ['p1', 'doc-tabswitch'],
+      ['p1', 'doc-reconnect'], ['p1', 'doc-1'],
+      ['alpha', 'beta'], ['p', 's'], ['proj', 'space-7'],
+    ]) {
+      Y.applyUpdate(getDoc(docName.documentSpace(projectId, spaceId)), encodeInitialSpaceContent('document'));
+    }
     vi.mocked(toast.error).mockClear();
     vi.mocked(toast.warning).mockClear();
     useCurrentUserStore.setState({
@@ -76,6 +85,7 @@ describe('DocumentSpace', () => {
     });
   });
   afterEach(() => {
+    cleanup();
     _resetDocumentEditorCacheForTests();
     _resetForTests();
     useCurrentUserStore.setState({ user: null });
@@ -291,13 +301,14 @@ describe('DocumentSpace', () => {
 
     // Reach the very document the container resolved — the manager hands out
     // one Y.Doc per name, so this is the same instance the editor is bound to.
-    const fragment = documentBodyFragment(
-      getDoc(docName.documentSpace('proj', 'space-7')),
-    );
+    const doc = getDoc(docName.documentSpace('proj', 'space-7'));
+    const body = readBodyTree(doc);
+    if (body.status !== 'ready') throw new Error('Expected the loaded body');
+    const facet = body.view.owners[0].facet;
+    const source = [...body.view.body.sources.values()].find((item) => item.facet === facet)!;
     act(() => {
-      const para = new Y.XmlElement('paragraph');
-      para.insert(0, [new Y.XmlText('written straight into the Y.Doc')]);
-      fragment.push([para]);
+      registerDocumentBodyRecords(doc, { contexts: [{ id: 'base', dependencies: [] }] });
+      documentBodySource(doc, source.id).insert(1, 'written straight into the Y.Doc', { ctx: 'base' });
     });
 
     // If the container had resolved the wrong document (or built its own), the

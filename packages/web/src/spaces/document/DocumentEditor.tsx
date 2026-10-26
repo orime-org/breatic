@@ -28,6 +28,9 @@ import {
 } from '@web/spaces/document/document-comment-selection';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
 import { DocumentLinkToolbar } from '@web/spaces/document/DocumentLinkToolbar';
+import { DocumentBodyRuntimeNotice } from '@web/spaces/document/DocumentBodyRuntimeNotice';
+import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
+import { useDocumentBodyRuntime } from '@web/spaces/document/use-document-body-runtime';
 import { DocumentTableCellButton } from '@web/spaces/document/DocumentTableCellButton';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
 import { viewOf } from '@web/spaces/document/document-editor-view';
@@ -112,6 +115,9 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   uploader = null,
   landed = null,
 }: DocumentEditorProps): React.JSX.Element {
+  const runtime = bodyBindingOf(handle.editor.prosemirrorState)?.runtime;
+  const runtimeState = useDocumentBodyRuntime(handle.editor);
+  const paused = runtimeState !== null && runtimeState.status !== 'active';
   const body = React.useRef<HTMLDivElement>(null);
   // The one bit that says whether the panel is on screen, and the reader is
   // the only one who writes it: a comment arriving from a peer marks the `⋯`
@@ -333,6 +339,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
               className='flex min-w-0 flex-1 flex-col pr-[var(--doc-body-gutter)]'
               style={GUTTER_START}
             >
+              <DocumentBodyRuntimeNotice editor={handle.editor} />
               <DocumentMenuEntry
                 commentsOpen={railOpen}
                 onOpenComments={openRail}
@@ -375,7 +382,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
       {/* Every image, video and audio block, drawn into its node view's
           container from inside this tree (inner#1127). A viewer sees them
           too; editing controls follow permission while playback stays available. */}
-      <DocumentMediaViews editor={handle.editor} readOnly={readOnly} viewport={viewport} />
+      <DocumentMediaViews editor={handle.editor} readOnly={readOnly || paused} runtime={runtime} viewport={viewport} />
       {/* What each upload in flight shows, in the body where it will land
           (inner#1127 A4). Kept for a body that turned read-only meanwhile:
           a failed file still has its placeholder to remove. */}
