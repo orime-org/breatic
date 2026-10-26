@@ -315,9 +315,10 @@ export const coreConfigSchema = z.object({
   // Where the browser sends its parts. The Worker, not the bucket:
   // it is what computes the content hash over the bytes that really
   // landed, and what reports the upload back to us.
-  // Normalised here because four places downstream append to it — the ticket
-  // endpoint hands it to the browser, the browser appends `/uploads`, and the
-  // Worker routes on the exact pathname. A base ending in a slash makes that
+  // Normalised here because several places downstream append to it — our
+  // server appends `/uploads` to open an upload, the ticket endpoint hands it
+  // to the browser, which appends `/uploads/<id>/parts/<n>`, and the Worker
+  // routes on the exact pathname. A base ending in a slash makes that
   // `//uploads`, which routes nowhere, and every upload fails with a 404 that
   // names nothing.
   INGEST_BASE_URL: z
