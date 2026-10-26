@@ -191,6 +191,12 @@ describe("readContextOverflow", () => {
     });
   });
 
+  it("does not read a 400 in other words as an overflow, whatever its body", () => {
+    expect(readContextOverflow(apiError(400, "Invalid tool schema"))).toBeUndefined();
+    expect(readContextOverflow(apiError(400, "Invalid tool schema", "<html/>"))).toBeUndefined();
+    expect(readContextOverflow(apiError(400, "Provider returned error", '{"error":{"metadata":{"error_type":"invalid_request"}}}'))).toBeUndefined();
+  });
+
   it("never reads a message with an exclusion phrase as an overflow, even with overflow wording", () => {
     fc.assert(
       fc.property(
@@ -227,7 +233,8 @@ describe("what a failed call says about itself", () => {
     expect(providerErrorOf("plain")).toEqual({ message: "plain" });
   });
 
-  it("leaves the upstream fields empty when the body is not JSON", () => {
+  it("leaves the upstream fields empty when the body is not JSON, or there is none", () => {
+    expect(providerErrorOf(apiError(400, "Bad Request"))).toMatchObject({ statusCode: 400, provider_name: undefined, raw: undefined });
     expect(providerErrorOf(apiError(400, "Bad Request", "<html/>"))).toEqual({
       statusCode: 400,
       message: "Bad Request",

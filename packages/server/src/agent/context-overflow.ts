@@ -172,9 +172,9 @@ function metadataOf(body: string | undefined): Record<string, unknown> | undefin
 function readOne(err: unknown): ContextOverflow | undefined {
   if (!APICallError.isInstance(err) || err.statusCode !== 400) return undefined;
   const texts = [err.message, ...(err.responseBody === undefined ? [] : [err.responseBody])];
-  if (texts.some(readsAsOverflow)) return statedCount(texts);
-  if (metadataOf(err.responseBody)?.error_type === "context_length_exceeded") return statedCount(texts);
-  return undefined;
+  // OpenRouter's `error_type: "context_length_exceeded"` is in the body text,
+  // where the wording list reads it.
+  return texts.some(readsAsOverflow) ? statedCount(texts) : undefined;
 }
 
 /**
