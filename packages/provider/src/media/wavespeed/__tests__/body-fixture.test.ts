@@ -38,3 +38,23 @@ describe("buildBody — equal to today's WaveSpeed body on every case (design 13
     expect(buildBody(bindings.get(c.model)!, { params: c.params, prompt: c.prompt })).toEqual(c.body);
   });
 });
+
+/** WaveSpeed model ids delisted in the 2026-07-15 catalog audit (moved from the worker's model-config-liveness test). */
+const DELISTED_WAVESPEED_IDS: ReadonlySet<string> = new Set([
+  "midjourney/image-to-image",
+  "midjourney/image-to-video",
+  "midjourney/niji/image-to-image",
+  "midjourney/niji/text-to-image",
+  "midjourney/text-to-image",
+  "reve/2.1/text-to-image",
+  "topaz/image/enhance",
+  "wavespeed-ai/rife/video-interpolation",
+]);
+
+describe("WaveSpeed bindings stay live", () => {
+  it("bind no model to a WaveSpeed id that was delisted", () => {
+    const steps = [...bindings.values()].flatMap((b) => [b.model_id, ...(b.extra_steps ?? []).map((s) => s.endpoint)]);
+    expect(steps.filter((id) => DELISTED_WAVESPEED_IDS.has(id))).toEqual([]);
+  });
+});
+

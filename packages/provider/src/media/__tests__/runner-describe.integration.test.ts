@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../config/schema.js";
 import { MediaRefused } from "../../http/fetch-media.js";
 import { createProvider } from "../../provider.js";
-import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../runner.js";
+import { UpstreamTaskFailed } from "../../errors.js";
+import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
 // The loopback image server stands in for a public host; 10.0.0.5 is private.
@@ -191,3 +192,75 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
     expect(wavespeed.seen).toHaveLength(0);
   });
 });
+
+describe("cached elements", () => {
+  const second = "https://cdn.example/cat.png";
+
+  it("reuses this upstream's cached element without describing or creating it again", async () => {
+    const r = runner();
+    wavespeed.answer(({ method }) => (method === "POST" ? accepted("p-gen") : result("p-gen", "processing")));
+    const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-img:Element 1", upstreamId: "el-cached" }];
+    const planned = expectState(
+      r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+        idempotencyKey: "task-1",
+        sourceKeys: { [imageUrl]: "sha-img" },
+        clones: cached,
+      }),
+      "send",
+    );
+    expect(planned.step.kind).toBe("generate");
+    await r.send(stored(planned.ticket), live());
+    expect(submits(wavespeed.seen).map((s) => s.body)).toEqual([{ prompt: "Element 1 walks", elements: [{ element_id: "el-cached" }] }]);
+    expect(openrouter.seen).toHaveLength(0);
+  });
+
+  it("retires only the cached element the upstream names as gone", async () => {
+    const r = runner();
+    wavespeed.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      return method === "POST" ? accepted("p-gen") : result("p-gen", "failed", [], "Element id not found: el-2");
+    });
+    const cached: MediaClone[] = [
+      { upstream: "wavespeed", kind: "element", sourceKey: "sha-img:Element 1", upstreamId: "el-1" },
+      { upstream: "wavespeed", kind: "element", sourceKey: "sha-cat:Element 2", upstreamId: "el-2" },
+    ];
+    const planned = expectState(
+      r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, second] } }, { mode: "default" }, {
+        idempotencyKey: "task-1",
+        sourceKeys: { [imageUrl]: "sha-img", [second]: "sha-cat" },
+        clones: cached,
+      }),
+      "send",
+    );
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    const failed = expectState(await r.poll(stored(running.ticket), live()), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
+    expect(failed.retiredClones).toEqual([cached[1]]);
+  });
+
+  it("describes and creates one element per reference image, in the images' order, before the video", async () => {
+    const r = runner();
+    let element = 0;
+    wavespeed.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      if (method === "POST" && path === "/kwaivgi/kling-elements") return accepted(`p-el-${++element}`);
+      if (method === "POST") return accepted("p-gen");
+      const id = path.split("/")[2] ?? "";
+      return id.startsWith("p-el-") ? result(id, "completed", [{ element_id: `el-${id.slice(5)}` }]) : result(id, "processing");
+    });
+    let answer: MediaAnswer = r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, imageUrl] } }, { mode: "default" }, {
+      idempotencyKey: "task-1",
+      sourceKeys: {},
+      clones: [],
+    });
+    const kinds: string[] = [];
+    while (answer.state === "send" || (answer.state === "running" && kinds.at(-1) !== "generate")) {
+      if (answer.state === "send") kinds.push(answer.step.kind);
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+    }
+    expect(kinds).toEqual(["describe", "element", "describe", "element", "generate"]);
+    expect(submits(wavespeed.seen).map((s) => (s.body as { name?: string }).name)).toEqual(["Element 1", "Element 2", undefined]);
+    expect(submits(wavespeed.seen)[2]?.body).toMatchObject({ elements: [{ element_id: "el-1" }, { element_id: "el-2" }] });
+  });
+});
+

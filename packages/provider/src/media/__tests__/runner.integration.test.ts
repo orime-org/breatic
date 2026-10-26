@@ -42,6 +42,23 @@ const voiceClone: MediaBinding[] = [
   },
 ];
 
+/** Mureka's song model: each source it carries is uploaded or cloned first, and the song reads their ids. */
+const mureka: MediaBinding[] = [
+  {
+    upstream: "ws_a",
+    weight: 1,
+    model_id: "mureka-ai/mureka-v9.5/generate-song",
+    prompt_field: "prompt",
+    params: { lyrics: { field: "lyrics" }, song: { field: "reference_id" }, melody: { field: "melody_id" }, vocal: { field: "vocal_id" } },
+    extra_steps: [
+      { kind: "upload_reference", endpoint: "mureka-ai/create-upload-id", at: "before", for_param: "song" },
+      { kind: "upload_melody", endpoint: "mureka-ai/create-upload-id", at: "before", for_param: "melody" },
+      { kind: "vocal", endpoint: "mureka-ai/vocal-clone", at: "before", for_param: "vocal" },
+    ],
+    pricing,
+  },
+];
+
 let a: FakeUpstream;
 let b: FakeUpstream;
 
@@ -64,7 +81,7 @@ function config(): ProviderConfigInput {
       ws_a: { kind: "wavespeed", base_url: a.url, key_env: "WS_A_KEY" },
       ws_b: { kind: "wavespeed", base_url: b.url, key_env: "WS_B_KEY" },
     },
-    media: { models: { seedance: { upstreams: seedance() }, "voice-clone": { upstreams: voiceClone } } },
+    media: { models: { seedance: { upstreams: seedance() }, "voice-clone": { upstreams: voiceClone }, mureka: { upstreams: mureka } } },
   };
 }
 
@@ -414,3 +431,239 @@ describe("ticketFromLegacy", () => {
     expect(done.costs).toHaveLength(2);
   });
 });
+
+describe("poll — answers that are not the task's ending", () => {
+  /**
+   * Plan and send the video run on ws_a, then make every result question answer as given.
+   * @param r - The runner.
+   * @param reply - The answer to each result question.
+   * @returns The running ticket.
+   */
+  async function sentThen(r: MediaRunner, reply: () => ReturnType<typeof result> | "reset"): Promise<MediaTicket> {
+    a.answer(({ method }) => (method === "POST" ? accepted("p1") : reply()));
+    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    return stored(expectState(await r.send(stored(planned.ticket), live()), "running").ticket);
+  }
+
+  it.each([500, 502, 503, 429])("answers running when the question got a %i", async (status) => {
+    const r = runner();
+    const ticket = await sentThen(r, () => ({ status, body: {} }));
+    expectState(await r.poll(ticket, live()), "running");
+    expect(b.seen).toHaveLength(0);
+  });
+
+  it("answers running when the question got no answer", async () => {
+    const r = runner();
+    const ticket = await sentThen(r, () => "reset");
+    expectState(await r.poll(ticket, live()), "running");
+  });
+
+  it.each([401, 403, 404])("throws on a %i, the upstream's own refusal of the question", async (status) => {
+    const r = runner();
+    const ticket = await sentThen(r, () => ({ status, body: { message: "no" } }));
+    await expect(r.poll(ticket, live())).rejects.toThrow();
+  });
+
+  it("throws on a 200 answer that is not JSON", async () => {
+    const r = runner();
+    const ticket = await sentThen(r, () => ({ status: 200, body: undefined }));
+    await expect(r.poll(ticket, live())).rejects.toThrow();
+  });
+});
+
+describe("the outputs of a finished run", () => {
+  it("keeps every output, in the order the upstream gave them", async () => {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
+      return method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/1.png", "https://out.example/2.png"]);
+    });
+    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    const done = expectState(await r.poll(stored(running.ticket), live()), "done");
+    expect(done.outputs).toEqual([{ kind: "url", url: "https://out.example/1.png" }, { kind: "url", url: "https://out.example/2.png" }]);
+  });
+
+  it("answers failed when the last step finished with no output", async () => {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
+      return method === "POST" ? accepted("p1") : result("p1", "completed", []);
+    });
+    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    expectState(await r.poll(stored(running.ticket), live()), "failed");
+  });
+
+  it("answers done with no cost for a submit that finished at once without an id to bill", async () => {
+    const r = runner();
+    a.answer(({ path }) => (path === "/billings/search" ? billing([]) : { status: 200, body: { code: 200, data: { status: "completed", outputs: ["https://out.example/v.mp4"] } } }));
+    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const done = expectState(await r.send(stored(planned.ticket), live()), "done");
+    expect(done.costs).toEqual([]);
+    expect(billedIds(a.seen)).toEqual([]);
+  });
+
+  it("throws when the submit answer carries neither an id nor outputs", async () => {
+    const r = runner();
+    a.answer(() => ({ status: 200, body: { code: 200, data: { status: "created" } } }));
+    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    await expect(r.send(stored(planned.ticket), live())).rejects.toThrow();
+  });
+});
+
+describe("WaveSpeed billing (design 6.2)", () => {
+  /**
+   * Run the video model to its end with the billing search answering as given.
+   * @param answer - The billing answer.
+   * @returns The done answer.
+   */
+  async function billedWith(answer: ReturnType<typeof billing> | { status: number; body: unknown }): Promise<Extract<MediaAnswer, { state: "done" }>> {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return answer;
+      return method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/v.mp4"]);
+    });
+    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    return expectState(await r.poll(stored(running.ticket), live()), "done");
+  }
+
+  it("adds up every line when one prediction was billed more than once", async () => {
+    const done = await billedWith(billing([{ type: "deduct", price: 0.01 }, { type: "deduct", price: 0.02 }]));
+    expect((done.costs[0] as { usd: number }).usd).toBeCloseTo(0.03, 12);
+  });
+
+  it("leaves out lines that are neither a deduction nor a refund", async () => {
+    const done = await billedWith({
+      status: 200,
+      body: { code: 200, data: { items: [{ billing_type: "deduct", order: { price: 0.0026 } }, { billing_type: "adjust", order: { price: 5 } }] } },
+    });
+    expect((done.costs[0] as { usd: number }).usd).toBeCloseTo(0.0026, 12);
+  });
+
+  it("warns about a deducting line without a price and counts the rest", async () => {
+    const done = await billedWith({
+      status: 200,
+      body: { code: 200, data: { items: [{ billing_type: "deduct", order: { price: 0.01 } }, { billing_type: "deduct", order: {} }] } },
+    });
+    expect((done.costs[0] as { usd: number }).usd).toBeCloseTo(0.01, 12);
+    expect(done.warnings.map((w) => w.code)).toContain("billing_line_without_price");
+  });
+
+  it("answers pending with a warning when the lookup is refused", async () => {
+    const done = await billedWith({ status: 500, body: {} });
+    expect(done.costs[0]).toMatchObject({ state: "pending" });
+    expect(done.warnings.map((w) => w.code)).toContain("billing_query_rejected");
+  });
+
+  it("does not read the shape it used to assume", async () => {
+    const done = await billedWith({ status: 200, body: { data: [{ price: 9.99 }] } });
+    expect(done.costs[0]).toMatchObject({ state: "pending" });
+  });
+});
+
+describe("Mureka's steps", () => {
+  const song = { prompt: "pop", params: { lyrics: "la la", song: "https://cdn.example/song.mp3", vocal: "https://cdn.example/vocal.mp3" } };
+  const keys = { idempotencyKey: "task-1", sourceKeys: { "https://cdn.example/vocal.mp3": "sha-vocal" } };
+
+  it("uploads the reference, clones the vocal, then sends the song with their ids", async () => {
+    const r = runner();
+    a.answer(({ method, path, body }) => {
+      if (path === "/billings/search") return billing([{ type: "deduct", price: 0.01 }]);
+      if (method === "POST" && path === "/mureka-ai/create-upload-id") return accepted("p-up");
+      if (method === "POST" && path === "/mureka-ai/vocal-clone") return accepted("p-voc");
+      if (method === "POST") return accepted("p-song");
+      if (path === "/predictions/p-up/result") return result("p-up", "completed", [{ id: "u1", purpose: "reference", reference_id: "ref-1" }]);
+      if (path === "/predictions/p-voc/result") return result("p-voc", "completed", [{ id: "v1", vocal_id: "voc-1" }]);
+      void body;
+      return result("p-song", "completed", ["https://out.example/song.mp3"]);
+    });
+    let answer: MediaAnswer = r.plan("mureka", song, DEFAULT, { ...keys, clones: [] });
+    const kinds: string[] = [];
+    while (answer.state === "send" || answer.state === "running") {
+      if (answer.state === "send") kinds.push(answer.step.kind);
+      answer = answer.state === "send" ? await r.send(stored(answer.ticket), live()) : await r.poll(stored(answer.ticket), live());
+      if (answer.clones.length > 0) expect(answer.clones).toEqual([{ upstream: "ws_a", kind: "vocal", sourceKey: "sha-vocal", upstreamId: "voc-1" }]);
+    }
+    expect(kinds).toEqual(["upload_reference", "vocal", "generate"]);
+    const bodies = submits(a.seen).map((s) => s.body);
+    expect(bodies[0]).toEqual({ audio: "https://cdn.example/song.mp3", purpose: "reference" });
+    expect(bodies[1]).toEqual({ audio: "https://cdn.example/vocal.mp3" });
+    expect(bodies[2]).toEqual({ prompt: "pop", lyrics: "la la", reference_id: "ref-1", vocal_id: "voc-1" });
+    expect(expectState(answer, "done").costs).toHaveLength(3);
+  });
+
+  it("goes straight to the song when the run carries no source", () => {
+    const answer = expectState(runner().plan("mureka", { prompt: "pop", params: { lyrics: "la la" } }, DEFAULT, { ...keys, clones: [] }), "send");
+    expect(answer.step.kind).toBe("generate");
+  });
+
+  it("uses a cached vocal and keeps it through Mureka's general refusal", async () => {
+    const r = runner();
+    a.answer(({ method, path }) => {
+      if (path === "/billings/search") return billing([]);
+      return method === "POST"
+        ? accepted("p-song")
+        : result("p-song", "failed", [], "The provider rejected the request. Please check your inputs and try again.");
+    });
+    const cached: MediaClone[] = [{ upstream: "ws_a", kind: "vocal", sourceKey: "sha-vocal", upstreamId: "163346152292353" }];
+    const planned = expectState(r.plan("mureka", { prompt: "a song", params: { vocal: "https://cdn.example/vocal.mp3" } }, DEFAULT, { ...keys, clones: cached }), "send");
+    expect(planned.step.kind).toBe("generate");
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    expect(submits(a.seen)[0]?.body).toMatchObject({ vocal_id: "163346152292353" });
+    const failed = expectState(await r.poll(stored(running.ticket), live()), "failed");
+    expect(failed.retiredClones).toEqual([]);
+  });
+});
+
+describe("ticketFromLegacy — what earlier pickups left", () => {
+  const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
+
+  it("continues a 3D task by its stored provider task id", async () => {
+    const r = runner();
+    a.answer(() => result("p-3d", "processing"));
+    const answer = expectState(r.ticketFromLegacy("seedance", video, DEFAULT, options(), { providerTaskId: "p-3d" }), "running");
+    await r.poll(stored(answer.ticket), live());
+    expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-3d/result"]);
+  });
+
+  it("answers failed with the upstream's own words for a step that already failed", () => {
+    const legacy = {
+      steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "failed" as const, predictionId: "p1", output: { error: "content policy" }, inlineCostUsd: 0 }],
+    };
+    const failed = expectState(runner().ticketFromLegacy("seedance", video, DEFAULT, options(), legacy), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
+    expect((failed.reason as UpstreamTaskFailed).upstreamError).toBe("content policy");
+  });
+
+  it("continues a submitted clone step by its own prediction even with a cached clone", async () => {
+    const r = runner();
+    a.answer(() => result("p-voice", "processing"));
+    const legacy = {
+      steps: [
+        { position: 0, kind: "voice" as const, endpoint: "minimax/voice-clone", itemIndex: null, status: "submitted" as const, predictionId: "p-voice", output: {}, inlineCostUsd: 0 },
+        { position: 1, kind: "speak" as const, endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 },
+      ],
+    };
+    const cached: MediaClone[] = [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "voice-on-a" }];
+    const answer = expectState(r.ticketFromLegacy("voice-clone", speech, DEFAULT, options(cached), legacy), "running");
+    await r.poll(stored(answer.ticket), live());
+    expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-voice/result"]);
+  });
+
+  it.each([
+    ["a list of urls", { urls: ["https://out.example/1.png", "https://out.example/2.png"], prediction: "p1" }, ["https://out.example/1.png", "https://out.example/2.png"]],
+    ["one url, as steps stored it before lists", { url: "https://out.example/1.png", prediction: "p1" }, ["https://out.example/1.png"]],
+  ])("answers done from a finished generate step that stored %s", async (_name, output, urls) => {
+    const r = runner();
+    a.answer(({ path }) => (path === "/billings/search" ? billing([{ type: "deduct", price: 0.1 }]) : undefined));
+    const legacy = {
+      steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "done" as const, predictionId: "p1", output, inlineCostUsd: 0 }],
+    };
+    let answer = r.ticketFromLegacy("seedance", video, DEFAULT, options(), legacy);
+    if (answer.state === "running") answer = await r.poll(stored(answer.ticket), live());
+    expect(expectState(answer, "done").outputs).toEqual(urls.map((url) => ({ kind: "url", url })));
+  });
+});
+
