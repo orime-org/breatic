@@ -722,6 +722,13 @@
       "when": 1792915245829,
       "tag": "0102_mini_tool_settlement_due_index",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1793016652640,
+      "tag": "0103_mini_tool_delivery_pending_index",
+      "breakpoints": true
     }
   ]
 }
