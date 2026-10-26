@@ -25,6 +25,7 @@ import { test } from '../helpers/slot';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { openTool, seedNode } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { expectOnlyPartsTo, expectOpenedUpload, PART_PATH, recordRequests } from '../helpers/upload';
 
 /**
  * A public JPEG served with CORS, 400×300, so the browser can draw it onto a
@@ -407,13 +408,20 @@ test('a grid tile whose upload failed uploads again on Retry @needs-ingest @need
   // Every transfer to the ingest Worker is cut, so each tile fails as an
   // upload that stopped before it finished.
   let cut = 0;
+  const cutRequests: { method: string; url: string }[] = [];
   await page.route('**/uploads**', (route) => {
     cut += 1;
+    cutRequests.push({ method: route.request().method(), url: route.request().url() });
     return route.abort('connectionfailed');
   });
   await page.getByTestId('mini-tool-run').click();
   await expect(results()).toHaveCount(4, { timeout: 20_000 });
   await expect.poll(() => cut, { timeout: 60_000 }).toBeGreaterThan(0);
+  // What was cut is a part: the server opens every tile's upload (inner#1595).
+  for (const request of cutRequests) {
+    expect(request.method).toBe('PUT');
+    expect(new URL(request.url).pathname).toMatch(PART_PATH);
+  }
   const tile = results().first();
   const failed = tile.getByTestId('task-count-failed');
   await expect(failed).toBeVisible({ timeout: 60_000 });
@@ -484,6 +492,11 @@ test('a grid cuts only the tiles picked on the node, each at its own place @need
 
 test('an 8×8 grid uploads all sixty-four tiles @needs-ingest @needs-internet @needs-storage', async () => {
   test.setTimeout(300_000);
+  // inner#1595: the server opens all sixty-four uploads; the page only sends parts.
+  const sent = recordRequests(page);
+  const batchAnswer = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && /\/assets\/upload-ticket$/.test(new URL(r.url()).pathname),
+  );
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowRight', 5);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowRight', 5);
@@ -501,6 +514,10 @@ test('an 8×8 grid uploads all sixty-four tiles @needs-ingest @needs-internet @n
     .toBe(true);
   const urls = await storedResults(64);
   expect(new Set(urls).size).toBe(64);
+  const { data } = (await (await batchAnswer).json()) as { data: { items: Record<string, unknown>[] } };
+  const opened = data.items.filter((item) => !('alreadyExists' in item));
+  for (const item of opened) expectOpenedUpload(item);
+  if (opened[0] !== undefined) expect(expectOnlyPartsTo(sent, String(opened[0].uploadUrl))).toBeGreaterThan(0);
 });
 
 test('the expand grows past the picture and runs the model to a larger picture @needs-ingest @needs-internet @needs-model @needs-storage', async () => {
