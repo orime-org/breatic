@@ -287,11 +287,17 @@ const uploadTicketBatchSchema = z
   });
 
 /**
- * The wire shape of a ticket or a dedup hit.
+ * The wire shape of an opened upload, a dedup hit or an upload that did not
+ * open.
  * @param outcome - The answer, other than a refusal.
  * @returns What the browser reads.
  */
 function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Record<string, unknown> {
+  if (outcome.kind === "openFailed") {
+    // The grant and the row are already settled; the row is what the node
+    // shows failed, and the browser keeps the File under it for a retry.
+    return { openFailed: { reason: outcome.reason }, taskId: outcome.taskId };
+  }
   return outcome.kind === "alreadyExists"
     ? {
         alreadyExists: true,
@@ -304,7 +310,8 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         height: outcome.height,
       }
     : {
-        ticket: outcome.ticket,
+        uploadId: outcome.uploadId,
+        token: outcome.token,
         storageKey: outcome.storageKey,
         uploadUrl: outcome.uploadUrl,
         kind: outcome.assetKind,
@@ -318,8 +325,8 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
 }
 
 /**
- * `POST /assets/upload-ticket` — the permission slip the browser carries to
- * the ingest Worker (design §4.1).
+ * `POST /assets/upload-ticket` — opens the upload the browser sends its parts
+ * to (design §4.1, inner#1595).
  *
  * It runs the whole gate — project access, the upload cap, the dedup pass, the
  * storage allowance — and then leaves behind the one row that survives until
@@ -337,7 +344,8 @@ assets.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    // A batch answers every file in order, each a ticket, a hit or a refusal.
+    // A batch answers every file in order, each an opened upload, a hit, a
+    // refusal or an upload that did not open.
     if ("items" in body) {
       await projectService.assertAccess(body.project_id, user.id, "editor");
       const studioId = await assetService.resolveOwnerStudioId(body.project_id);
@@ -381,7 +389,9 @@ assets.post(
     if (outcome.kind === "refused") {
       return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
     }
-    return c.json({ data: ticketBody(outcome) }, outcome.kind === "alreadyExists" ? 200 : 201);
+    // An upload that did not open is still an answered request: the grant and
+    // row were written and settled, and a retry asks for a new one.
+    return c.json({ data: ticketBody(outcome) }, outcome.kind === "ticket" ? 201 : 200);
   },
 );
 

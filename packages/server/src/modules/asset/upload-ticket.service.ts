@@ -2,21 +2,35 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Answering one browser upload with a ticket, a dedup hit or a refusal (#173,
- * inner#1303 §7).
+ * Answering one browser upload with an opened upload, a dedup hit or a
+ * refusal (#173, inner#1303 §7).
  *
  * One upload and a batch of them run the same steps per file — the upload cap,
- * the dedup pass, the storage allowance, the grant and its task row, the signed
- * ticket. The storage allowance is asked through the caller, because a batch
- * asks it once for every file that needs room and a single upload throws its
- * refusal straight to the reader.
+ * the dedup pass, the storage allowance, the grant and its task row, then
+ * opening the upload at the ingest Worker with the shared secret. The browser
+ * gets the upload id and the first token and never the ticket, so each ticket
+ * opens exactly one upload (inner#1595). The storage allowance is asked
+ * through the caller, because a batch asks it once for every file that needs
+ * room and a single upload throws its refusal straight to the reader.
  */
 
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
-import { assetService, safeExt, uploadDeadlineByKey, uploadTicketService } from "@breatic/domain";
-import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
+import {
+  assetService,
+  safeExt,
+  uploadDeadlineByKey,
+  UploadOpenFailed,
+  uploadTicketService,
+} from "@breatic/domain";
+import {
+  TRANSFER_KEY_DIR,
+  TRANSFER_MEDIA_TYPE,
+  untilDeadline,
+  type NodeTaskAction,
+} from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
+import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { INSUFFICIENT_STORAGE, assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
 
@@ -58,7 +72,10 @@ export interface TicketScope {
 export type TicketOutcome =
   | {
       kind: "ticket";
-      ticket: string;
+      /** R2's id for the upload our server opened. */
+      uploadId: string;
+      /** The session token the first part carries. */
+      token: string;
       storageKey: string;
       uploadUrl: string;
       assetKind: ReturnType<typeof assetService.detectAssetKind>;
@@ -74,10 +91,27 @@ export type TicketOutcome =
       width: number | null;
       height: number | null;
     }
-  | { kind: "refused"; reason: "too_large" | "storage" };
+  | { kind: "refused"; reason: "too_large" | "storage" }
+  | {
+      /**
+       * The grant and task row were opened and are already settled as
+       * aborted; the Worker did not open the upload.
+       */
+      kind: "openFailed";
+      reason: string;
+      taskId: string | undefined;
+    };
 
-/** A file answered with a signed ticket. */
+/** A file answered with an opened upload. */
 export type IssuedTicket = Extract<TicketOutcome, { kind: "ticket" }>;
+
+/** A file whose grant and task row are open, waiting for its upload to open. */
+interface Prepared {
+  kind: "prepared";
+  request: Parameters<typeof uploadTicketService.openSignedUpload>[0];
+  assetKind: ReturnType<typeof assetService.detectAssetKind>;
+  taskId: string | undefined;
+}
 
 /**
  * What an upload's task row says: a browser tool's export is shown as that
@@ -115,8 +149,10 @@ function assertIngestConfigured(): void {
  * The size cap is the route schema's.
  * @param scope - Where it goes and who asked.
  * @param size - The whole transfer file's size, signature line included.
- * @returns The signed ticket.
+ * @returns The opened upload.
  * @throws {Error} When the ingest Worker is not configured.
+ * @throws {UploadOpenFailed} When the upload could not be opened; its grant is
+ *   already settled as aborted.
  */
 export async function issueTransferTicket(scope: TicketScope, size: number): Promise<IssuedTicket> {
   const { userId, studioId, projectId } = scope;
@@ -142,25 +178,40 @@ export async function issueTransferTicket(scope: TicketScope, size: number): Pro
     { budgetMs: getNodeTaskConfig().default_budget_ms, action: "upload", label: TRANSFER_FILENAME },
   );
   const deadlineAt = await uploadDeadlineByKey(key);
-  const target = await uploadTicketService.signTicketFor({
-    storageKey: key,
-    studioId,
-    userId,
-    declaredSize: size,
-    contentType: TRANSFER_MEDIA_TYPE,
-    expiresAt,
-    deadlineAt,
-  });
-  logger.info({ key, userId, size }, "transfer_ticket_issued");
+  let opened;
+  try {
+    opened = await uploadTicketService.openSignedUpload(
+      {
+        storageKey: key,
+        studioId,
+        userId,
+        declaredSize: size,
+        contentType: TRANSFER_MEDIA_TYPE,
+        expiresAt,
+        deadlineAt,
+      },
+      untilDeadline(deadlineAt),
+    );
+  } catch (err) {
+    // A transfer has no node to show a failed row on: the error goes on to
+    // the error handler, which logs it once and answers 500. What settling
+    // the grant raised is written down here, where it is known.
+    if (err instanceof UploadOpenFailed && err.settled !== undefined) {
+      noteIngestSideEffects(key, err.settled);
+    }
+    throw err;
+  }
+  logger.info({ key, uploadId: opened.uploadId, userId, size }, "transfer_ticket_issued");
 
   return {
     kind: "ticket",
-    ticket: target.ticket,
+    uploadId: opened.uploadId,
+    token: opened.token,
     storageKey: key,
-    uploadUrl: target.uploadUrl,
+    uploadUrl: opened.uploadUrl,
     assetKind: assetService.detectAssetKind(TRANSFER_MEDIA_TYPE),
-    partSize: target.partSize,
-    totalParts: target.totalParts,
+    partSize: opened.partSize,
+    totalParts: opened.totalParts,
     taskId,
   };
 }
@@ -168,7 +219,7 @@ export async function issueTransferTicket(scope: TicketScope, size: number): Pro
 /**
  * Answer one file: refuse it over the cap, settle it when the studio already
  * holds the content, refuse it when the caller's storage check says no, and
- * otherwise open its grant and row and sign its ticket.
+ * otherwise open its grant and row and then its upload.
  * @param scope - Where it goes and who asked.
  * @param item - The file.
  * @param admitStorage - Asked once this file needs room; false refuses it.
@@ -180,6 +231,25 @@ export async function issueUploadTicket(
   item: TicketItem,
   admitStorage: () => Promise<boolean>,
 ): Promise<TicketOutcome> {
+  const prepared = await prepareUpload(scope, item, admitStorage);
+  return prepared.kind === "prepared" ? openPrepared(scope, prepared) : prepared;
+}
+
+/**
+ * Everything before opening the upload: the cap, the dedup pass, the storage
+ * allowance, and the grant and task row.
+ * @param scope - Where it goes and who asked.
+ * @param item - The file.
+ * @param admitStorage - Asked once this file needs room; false refuses it.
+ * @returns The answer when the file is settled here, otherwise what opening
+ *   its upload needs.
+ * @throws {Error} When the ingest Worker is not configured.
+ */
+async function prepareUpload(
+  scope: TicketScope,
+  item: TicketItem,
+  admitStorage: () => Promise<boolean>,
+): Promise<TicketOutcome | Prepared> {
   const { userId, studioId, projectId } = scope;
   const { upload, ingest } = getStorageConfig();
   if (item.size > upload.max_upload_bytes) {
@@ -263,25 +333,67 @@ export async function issueUploadTicket(
   // issues for this upload, and every call it makes for it, end there.
   const deadlineAt = await uploadDeadlineByKey(key);
 
-  const target = await uploadTicketService.signTicketFor({
-    storageKey: key,
-    studioId,
-    userId,
-    declaredSize: item.size,
-    contentType: item.content_type,
-    expiresAt,
-    deadlineAt,
-  });
-  logger.info({ key, kind: assetKind, totalParts: target.totalParts, userId }, "upload_ticket_issued");
+  return {
+    kind: "prepared",
+    request: {
+      storageKey: key,
+      studioId,
+      userId,
+      declaredSize: item.size,
+      contentType: item.content_type,
+      expiresAt,
+      deadlineAt,
+    },
+    assetKind,
+    taskId,
+  };
+}
+
+/**
+ * Open a prepared file's upload at the ingest Worker, under its task's
+ * deadline. A failure is already settled by the opener; it is answered as
+ * `openFailed` so the node shows its one failed row and the reader can retry.
+ * @param scope - Who asked.
+ * @param prepared - The file's grant, row and ticket request.
+ * @returns The opened upload, or `openFailed`.
+ * @throws {unknown} Anything other than an `UploadOpenFailed`.
+ */
+async function openPrepared(scope: TicketScope, prepared: Prepared): Promise<TicketOutcome> {
+  const { request, assetKind, taskId } = prepared;
+  const key = request.storageKey;
+  let opened;
+  try {
+    opened = await uploadTicketService.openSignedUpload(request, untilDeadline(request.deadlineAt));
+  } catch (err) {
+    if (!(err instanceof UploadOpenFailed)) throw err;
+    logger.error(
+      {
+        err: err.cause,
+        settleError: err.settleError,
+        key,
+        userId: scope.userId,
+        projectId: scope.projectId,
+        reason: err.reason,
+      },
+      "upload_open_failed",
+    );
+    if (err.settled !== undefined) noteIngestSideEffects(key, err.settled);
+    return { kind: "openFailed", reason: err.reason, taskId };
+  }
+  logger.info(
+    { key, uploadId: opened.uploadId, kind: assetKind, totalParts: opened.totalParts, userId: scope.userId },
+    "upload_ticket_issued",
+  );
 
   return {
     kind: "ticket",
-    ticket: target.ticket,
+    uploadId: opened.uploadId,
+    token: opened.token,
     storageKey: key,
-    uploadUrl: target.uploadUrl,
+    uploadUrl: opened.uploadUrl,
     assetKind,
-    partSize: target.partSize,
-    totalParts: target.totalParts,
+    partSize: opened.partSize,
+    totalParts: opened.totalParts,
     taskId,
   };
 }
@@ -296,7 +408,9 @@ export interface TicketBatchContext {
  * Answer every file of one browser tool's export, in order. Files the studio
  * already holds settle as hits whatever its storage; the storage allowance is
  * asked once, at the first file that needs room, and refusing it refuses every
- * file that needs room.
+ * file that needs room. Every grant and row is opened first, one file after
+ * another, then every upload is opened at once; a file whose upload did not
+ * open is answered `openFailed` on its own.
  * @param scope - Where they go and who asked; `projectId` is required.
  * @param context - What they share.
  * @param items - The files, each on its own node.
@@ -321,15 +435,17 @@ export async function issueUploadTicketBatch(
         throw err;
       },
     ));
-  const outcomes: TicketOutcome[] = [];
+  const prepared: (TicketOutcome | Prepared)[] = [];
   for (const item of items) {
-    outcomes.push(
-      await issueUploadTicket(
+    prepared.push(
+      await prepareUpload(
         scope,
         { ...item, space_id: context.spaceId, source: "mini_tool", tool_name: context.toolName },
         admit,
       ),
     );
   }
-  return outcomes;
+  return Promise.all(
+    prepared.map((file) => (file.kind === "prepared" ? openPrepared(scope, file) : file)),
+  );
 }
