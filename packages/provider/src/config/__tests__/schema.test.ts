@@ -8,6 +8,7 @@ import {
   candidatesOf,
   parseProviderConfig,
   ProviderConfigError,
+  type CatalogShape,
   type MediaBinding,
   type ProviderConfigInput,
 } from "../schema.js";
@@ -147,7 +148,7 @@ describe("candidatesOf", () => {
 });
 
 describe("assertBindsCatalog", () => {
-  const catalog = {
+  const catalog: CatalogShape = {
     models: [{ name: "seedance", params: { duration: { values: [5, 10] }, aspect_ratio: { values: ["16:9", "9:16"] } } }],
   };
 
@@ -157,7 +158,7 @@ describe("assertBindsCatalog", () => {
    * @param shape - The catalog.
    * @returns The problem lines; empty when it passes.
    */
-  function catalogProblems(bindings: MediaBinding[], shape = catalog): readonly string[] {
+  function catalogProblems(bindings: MediaBinding[], shape: CatalogShape = catalog): readonly string[] {
     const config = parseProviderConfig(input(bindings));
     try {
       assertBindsCatalog(config, shape);

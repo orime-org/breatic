@@ -40,3 +40,48 @@ export class UpstreamRequestRejected extends Error {
     this.upstream = upstream;
   }
 }
+
+/** A send that the upstream certainly did not accept and that cannot move to another upstream; the caller retries the same ticket. */
+export class SendNotAccepted extends Error {
+  readonly upstream: string;
+
+  /**
+   * @param upstream - The upstream that did not accept it.
+   * @param cause - The failure.
+   */
+  constructor(upstream: string, cause: unknown) {
+    super(`${upstream} did not accept the request`, { cause });
+    this.name = "SendNotAccepted";
+    this.upstream = upstream;
+  }
+}
+
+/** The upstream ran the work and said it failed. */
+export class UpstreamTaskFailed extends Error {
+  readonly upstream: string;
+  /** The upstream's own words. */
+  readonly upstreamError: string;
+
+  /**
+   * @param upstream - The upstream.
+   * @param upstreamError - What it said.
+   */
+  constructor(upstream: string, upstreamError: string) {
+    super(`${upstream} failed the task: ${upstreamError}`);
+    this.name = "UpstreamTaskFailed";
+    this.upstream = upstream;
+    this.upstreamError = upstreamError;
+  }
+}
+
+/** The caller's deadline had passed before a request that needs it could start. */
+export class DeadlinePassed extends Error {
+  /**
+   * @param deadlineAt - The deadline, in epoch milliseconds.
+   */
+  constructor(deadlineAt: number) {
+    super(`Deadline ${new Date(deadlineAt).toISOString()} has passed`);
+    this.name = "DeadlinePassed";
+  }
+}
+

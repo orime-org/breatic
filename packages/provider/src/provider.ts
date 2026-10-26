@@ -1,0 +1,31 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-BSAL-1.0
+
+import type { ProviderConfigInput } from "@provider/config/schema.js";
+
+/** What the caller hands provider (design 3.1). */
+export interface ProviderOptions {
+  config: ProviderConfigInput;
+  /** Reads one environment variable; undefined or empty means not configured. */
+  keyOf: (envName: string) => string | undefined;
+  /** Retries on one upstream before an LLM call moves on. */
+  llmMaxRetries: number;
+  /** Applied to every text provider sends to an LLM. */
+  cleanText: (text: string) => string;
+}
+
+/** One provider instance; its parts are added by the modules that use it. */
+export interface Provider {
+  readonly options: ProviderOptions;
+}
+
+/**
+ * Build a provider from the caller's configuration.
+ * @param options - Configuration, key reader and the caller's limits.
+ * @returns The instance.
+ * @throws {ProviderConfigError} When the configuration is invalid.
+ */
+export function createProvider(options: ProviderOptions): Provider {
+  void options;
+  throw new Error("createProvider is not implemented");
+}

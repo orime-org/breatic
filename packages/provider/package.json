@@ -14,11 +14,16 @@
       "import": "./dist/pricing/index.js",
       "types": "./src/pricing/index.ts",
       "default": "./dist/pricing/index.js"
+    },
+    "./media": {
+      "import": "./dist/media/index.js",
+      "types": "./src/media/index.ts",
+      "default": "./dist/media/index.js"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/pricing/index.ts --format esm --clean --sourcemap",
-    "dev": "tsup src/index.ts src/pricing/index.ts --format esm --watch",
+    "build": "tsup src/index.ts src/pricing/index.ts src/media/index.ts --format esm --clean --sourcemap",
+    "dev": "tsup src/index.ts src/pricing/index.ts src/media/index.ts --format esm --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -26,6 +31,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "ipaddr.js": "catalog:",
     "jsonata": "2.2.2",
     "zod": "catalog:"
   },
@@ -33,6 +39,7 @@
     "@types/node": "catalog:",
     "fast-check": "catalog:",
     "tsup": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "catalog:"
   }
 }

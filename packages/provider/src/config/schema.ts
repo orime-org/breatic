@@ -17,6 +17,29 @@ export interface ParamBinding {
   values?: Record<string, string | number | boolean>;
   item_key?: string;
   absent_value?: string | number | boolean;
+  /** A rewrite of the value into the upstream's own shape; `pronunciation_pairs` writes `{ text, pronunciation }` items as `text/pronunciation` strings. */
+  transform?: "pronunciation_pairs";
+}
+
+/** What the element step asks the understand model to write about each reference image. */
+export interface DescribeBinding {
+  /** Our LLM model id, routed by `understand_routes`. */
+  model: string;
+  question: string;
+  max_output_tokens: number;
+}
+
+/** One extra upstream call of a binding, before or after the model's own call (design 4.2, 6.2). */
+export interface ExtraStepBinding {
+  kind: "upload_reference" | "upload_melody" | "vocal" | "element" | "speak";
+  endpoint: string;
+  at: "before" | "after";
+  /** The param it serves; the step is skipped when the param carries nothing. */
+  for_param?: string;
+  /** One step per item of the param. */
+  per_item?: boolean;
+  /** For an element step: how its reference image is described first. */
+  describe?: DescribeBinding;
 }
 
 /** One model bound to one upstream (design 4.2). */
@@ -26,7 +49,9 @@ export interface MediaBinding {
   model_id: string;
   prompt_field?: string;
   params?: Record<string, ParamBinding>;
-  extra_steps?: unknown[];
+  extra_steps?: ExtraStepBinding[];
+  /** The param a clone made by this binding is reused by; the model's own call is then a clone. */
+  reused_by?: string;
   mentions?: Record<string, string>;
   voice_map?: Record<string, string>;
   pricing: unknown;
@@ -36,8 +61,24 @@ export interface MediaBinding {
 export interface ProviderConfigInput {
   upstreams: Record<string, UpstreamDecl>;
   media: { models: Record<string, { upstreams: MediaBinding[] }> };
+  /** `config/provider/llm.yaml` (design 4.3). */
+  llm?: LlmConfigInput;
   /** `config/provider/routing.yaml`; absent when the deployment ships none. */
   routing?: { models?: Record<string, { weights: Record<string, number> }> };
+}
+
+/** One LLM route: the first whose prefix matches a model id wins. */
+export interface LlmRoute {
+  prefix: string;
+  upstreams: { upstream: string; weight: number }[];
+}
+
+/** The LLM routing file (design 4.3). */
+export interface LlmConfigInput {
+  routes: LlmRoute[];
+  understand_routes?: LlmRoute[];
+  vendor_ids?: Record<string, Record<string, string>>;
+  openrouter_backends?: Record<string, { only: string[]; allow_fallbacks: boolean }>;
 }
 
 /** The validated configuration, with deployment overrides applied. */

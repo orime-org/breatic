@@ -624,6 +624,9 @@ importers:
 
   packages/provider:
     dependencies:
+      ipaddr.js:
+        specifier: 'catalog:'
+        version: 2.5.0
       jsonata:
         specifier: 2.2.2
         version: 2.2.2
@@ -643,6 +646,9 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(@vitest/ui@4.1.10)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   packages/server:
     dependencies:
@@ -1729,6 +1735,7 @@ packages:
 
   '@cloudflare/vitest-pool-workers@0.12.21':
     resolution: {integrity: sha512-xqvqVR+qAhekXWaTNY36UtFFmHrz13yGUoWVGOu6LDC2ABiQqI1E1lQ3eUZY8KVB+1FXY/mP5dB6oD07XUGnPg==}
+    deprecated: '@cloudflare/vitest-pool-workers has been renamed to @cloudflare/vitest-plugin. This package will not receive future updates.'
     peerDependencies:
       '@vitest/runner': 2.0.x - 3.2.x
       '@vitest/snapshot': 2.0.x - 3.2.x
