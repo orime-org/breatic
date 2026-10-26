@@ -70,7 +70,7 @@ const { acquireDocProvider, _resetCollabSocketForTests } = await import(
 /** Fire the event a browser fires when it restores a page it had put aside. */
 function firePageshow(persisted: boolean): void {
   window.dispatchEvent(
-    Object.assign(new Event('pageshow'), { persisted }) as Event,
+    Object.assign(new Event('pageshow'), { persisted }),
   );
 }
 

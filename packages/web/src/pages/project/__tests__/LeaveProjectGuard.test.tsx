@@ -12,7 +12,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 // Controllable blocker + captured condition — no real router needed.
 const blocker = vi.hoisted(() => ({
-  state: 'unblocked' as 'unblocked' | 'blocked' | 'proceeding',
+  state: 'unblocked',
   proceed: vi.fn(),
   reset: vi.fn(),
 }));
