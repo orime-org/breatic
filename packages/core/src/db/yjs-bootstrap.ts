@@ -11,23 +11,16 @@
  * `/spaces` after the fact.
  *
  * Why a separate module:
- *   - Keeps the Yjs binary format out of `project.repo.ts` and
- *     `project.service.ts` — they receive a `Uint8Array` and don't
- *     know its layout.
+ *   - Keeps Yjs binary encoding in one module; the collab caller hands
+ *     its encoded `Uint8Array` to the persistence repository.
  *   - Pure function (no IO), unit-testable without a database.
- *   - Single canonical place to grow when document/timeline space
- *     kinds become writable.
+ *   - Single canonical place for the initial meta shape and default Space names.
  *
- * Edge case (v10 §collab-runtime-ownership):
- *   This is the ONE write path that bypasses Hocuspocus and writes
- *   `yjs_documents.data` directly from outside the collab process.
- *   It is safe ONLY because the project is being created in this same
- *   transaction — no client can possibly be connected to the meta doc
- *   yet, so there is no in-memory Hocuspocus copy that could overwrite
- *   our bytes on the next debounce flush. Do NOT reuse this pattern
- *   for "edit a Space on a live project" scenarios — those must go
- *   through `Hocuspocus.openDirectConnection` (see
- *   `collab/services/space-rpc.ts`).
+ * The collab lazy-seed caller persists the initial content document before
+ * publishing its Space in meta, using insert-if-absent rows for concurrent
+ * first loads. These encoders only return bytes. Edits to a live project's
+ * meta document go through `Hocuspocus.openDirectConnection` in
+ * `collab/services/space-rpc.ts`.
  */
 
 import * as Y from "yjs";
@@ -203,7 +196,7 @@ export function encodeInitialMetaState(
   // The initial space:created audit entry lives in the PG
   // project_activities table (ADR 2026-07-04 project-activity-feed -
   // the meta-doc projectMessages Y.Array is retired); the caller that
-  // seeds this doc (server project creation / collab lazy-seed) writes
+  // seeds this doc (collab lazy-seed) writes
   // that activity row itself, since only it knows the actor + can
   // reach the business DB at the right transactional moment.
 

@@ -35,10 +35,6 @@
  * deletion as its own edit. Seeding one block leaves nothing for either side
  * to invent, so what merges is only what users actually did.
  *
- * The selection ruling, the empty-state interaction and the select-all tiers
- * that sit on top of this shape are the editor's business — the decision
- * record lives in the private engineering repo (document structure DD,
- * 2026-08-17).
  */
 
 import { v4 as uuidv4 } from "uuid";

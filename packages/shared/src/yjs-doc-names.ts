@@ -12,7 +12,7 @@
  *                                         channel
  *   project-{projectId}/canvas-{spaceId}  Canvas Space content (nodesMap +
  *                                         edges)
- *   project-{projectId}/document-{spaceId}  Document Space (Tiptap; future)
+ *   project-{projectId}/document-{spaceId}  Document Space body and comments
  *   project-{projectId}/timeline-{spaceId}  Timeline Space (future)
  *   project-{projectId}/3d-{spaceId}        3D Space scene
  *
@@ -57,7 +57,7 @@ export function canvasSpaceDocName(projectId: string, spaceId: string): string {
 }
 
 /**
- * Build the Document Space doc name (future kind).
+ * Build the Document Space doc name.
  * @param projectId - Project UUID
  * @param spaceId - Space UUID
  * @returns `"project-{projectId}/document-{spaceId}"`
