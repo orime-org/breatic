@@ -15,7 +15,7 @@ import {
   LIGHT_INTENSITIES,
   LIGHT_QUALITIES,
 } from "@breatic/shared";
-import { initCore } from "@breatic/core";
+import { getMiniToolsConfig, initCore } from "@breatic/core";
 import { getFullModelConfig } from "@breatic/domain";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -62,8 +62,28 @@ function formulaParams(formula: string, constants: ReadonlySet<string>): string[
 }
 
 const modelTools = MINI_TOOLS.filter((tool) => tool.run.kind === "model");
+const plannedClaims = {
+  "video.remove-bg": ["video", "background_color", "output_container_and_codec", "preserve_audio"],
+} as const;
 
 describe("model tools against the catalog", () => {
+  it("binds every planned execution model to its declared parameter owner", () => {
+    const executions = getMiniToolsConfig().executions;
+    expect(Object.keys(executions).sort()).toEqual(Object.keys(plannedClaims).sort());
+    for (const [operation, keys] of Object.entries(plannedClaims)) {
+      const tool = MINI_TOOLS.find((candidate) => candidate.id === operation);
+      expect(tool?.run.kind).toBe("planned");
+      const model = getFullModelConfig("video").models.find((candidate) => candidate.name === executions[operation as keyof typeof executions].model);
+      expect(model?.takes_prompt).toBe(false);
+      for (const key of keys) expect(model?.params?.[key]?.fill, `${operation}.${key}`).toBe("tool");
+      expect(model?.params?.video?.accepts).toBe("video");
+      expect(model?.params?.video?.type === "list").toBe(false);
+      for (const [key, value] of Object.entries({ background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true })) {
+        expect(model?.params?.[key]?.default, `${operation}.${key}`).toBe(value);
+        expect(model?.params?.[key]?.values, `${operation}.${key}`).toEqual([value]);
+      }
+    }
+  });
   it.each(modelTools.map((tool) => [tool.id, tool] as const))(
     "%s names a served model whose params it declares",
     (_id, tool) => {
@@ -136,8 +156,9 @@ describe("model tools against the catalog", () => {
   it("reads only declared params in every pinned model's pricing formula", () => {
     const models = catalog();
     const undeclared: string[] = [];
-    for (const tool of modelTools) {
-      const model = models.get(modelOf(tool)!)!;
+    const names = new Set([...modelTools.map((tool) => modelOf(tool)!), ...Object.values(getMiniToolsConfig().executions).map((execution) => execution.model)]);
+    for (const name of names) {
+      const model = models.get(name)!;
       for (const provider of model.providers ?? []) {
         const formula = provider.pricing?.formula ?? "";
         const constants = new Set(Object.keys(provider.pricing ?? {}));
@@ -156,6 +177,11 @@ describe("model tools against the catalog", () => {
       for (const key of [...toolFilledParams(tool), ...toolParamKeys(tool)]) {
         claimed.add(`${name}.${key}`);
       }
+    }
+    const executions = getMiniToolsConfig().executions;
+    for (const [operation, keys] of Object.entries(plannedClaims)) {
+      const name = executions[operation as keyof typeof executions].model;
+      for (const key of keys) claimed.add(`${name}.${key}`);
     }
     const unclaimed: string[] = [];
     for (const model of catalog().values()) {

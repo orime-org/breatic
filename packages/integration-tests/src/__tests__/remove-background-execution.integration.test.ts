@@ -142,7 +142,7 @@ async function winner(f: Fixture, result: { asset: StudioAssetEntity; cover: Stu
   expect(result.cover).toMatchObject({ id: f.coverId, fileUrl: f.coverURL, kind: "image", mimeType: "image/png" });
   expect(result.asset).toEqual(await assetRepo.findById(f.assetId)); expect(result.cover).toEqual(await assetRepo.findCoverOf(f.assetId));
   const task = await parent(f); expect(task).toMatchObject({ status: "running", params: { miniToolExecution: f.plan }, result: { kept: { original: true } }, billed_at: null, billed_credits: null });
-  const [source] = await pg<{ content_hash: string; width: number; height: number; duration_seconds: number }[]>`SELECT content_hash,width,height,duration_seconds FROM studio_assets WHERE id=${f.sourceId}`;
+  const [source] = await pg<{ content_hash: string; width: number; height: number; duration_seconds: number }[]>`SELECT content_hash,width,height,duration_seconds::float8 AS duration_seconds FROM studio_assets WHERE id=${f.sourceId}`;
   expect(source).toEqual({ content_hash: "a".repeat(64), width: 960, height: 540, duration_seconds: 5.055 });
 }
 
