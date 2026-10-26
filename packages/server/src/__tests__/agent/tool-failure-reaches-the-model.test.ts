@@ -109,7 +109,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget: vi.fn(async () => "none"),
+  foldIfTooLong: vi.fn(async () => "none"),
 }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 

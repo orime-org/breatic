@@ -40,10 +40,10 @@ import type { UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
-import { foldIfOverBudget } from "@server/agent/turn-budget.js";
+import { foldIfTooLong } from "@server/agent/turn-budget.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
 import type { Assembly, TurnIdentity } from "@server/agent/turn-budget.js";
-import { readContextOverflow, unrecognised400, upstreamOf, type ContextOverflow } from "@server/agent/context-overflow.js";
+import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
@@ -381,8 +381,9 @@ export class MainAgent {
     let reported: ReportedUsage = {};
     // The assembly the turn sends, once it has been read; a fold replaces it.
     let sent: Assembly | undefined;
-    // Input plus output the provider reported for the turn's latest call, the
-    // count the next call is checked against. A fold voids it: it measured the
+    // Input plus output the provider reported for the conversation's latest
+    // call, the count the next call is checked against: the previous turn's
+    // until this turn's first call reports. A fold voids it: it measured the
     // request before the fold.
     let lastCallTotal: number | undefined;
     // The request now going out, and the latest one whose call reported its
@@ -667,24 +668,18 @@ export class MainAgent {
       if (sent.agentConfig.contextWindowFallback === true) {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
       }
-      const opened = await foldIfOverBudget(sent, [], foldFor(writer), {
-        kind: "precheck",
-        at: "start",
-        known: knownTokensAtStart(sent.replayed),
-      });
+      const knownAtStart = knownTokensAtStart(sent.replayed);
+      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
       signal?.throwIfAborted();
-      if (opened === "moved") {
-        try {
-          sent = await assemble();
-        } catch (err) {
-          logger.error({ err, userId, conversationId, projectId, turnIndex }, "turn_reassembly_failed");
-          throw err;
-        }
-      }
+      // The last count the conversation has stands for the first call until
+      // that call reports. A fold voids it, and one that could not run is not
+      // tried again before the call.
+      lastCallTotal = opened === "none" ? knownAtStart : undefined;
+      if (opened === "moved") await reassemble();
+      else await keepUserMessage(sent);
 
       const { agentConfig } = sent;
       modelId = agentConfig.modelId;
-      await keepUserMessage(sent);
       turnTools = agentConfig.tools;
       // The studio whose material a proposal may name: the project's owner,
       // which is also where a saved picture is charged.
@@ -710,27 +705,22 @@ export class MainAgent {
         if (turnedAway === undefined) return;
 
         overflowFolds += 1;
-        const provider = upstreamOf(turnedAway.error);
-        const folded = overflowFolds > agentCfg.overflow_folds_per_turn
-          ? "too_long"
-          : await foldIfOverBudget(sent, stripThinking(steps.flat()), foldFor(writer), {
-            kind: "overflow",
-            overflow: turnedAway.overflow,
-            known: lastCallTotal,
-            attempt: overflowFolds,
-            provider,
-          });
-        if (overflowFolds > agentCfg.overflow_folds_per_turn) {
-          logger.warn({
-            userId, conversationId, turnIndex, model: modelId, window: sent.agentConfig.contextWindow, provider,
-            reported: turnedAway.overflow.tokens, attempt: overflowFolds, err: turnedAway.error,
-          }, "agent_turn_too_long");
-        }
+        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+          kind: "overflow",
+          overflow: turnedAway.overflow,
+          known: lastCallTotal,
+          attempt: overflowFolds,
+          error: turnedAway.error,
+        });
         signal?.throwIfAborted();
         if (folded === "too_long") {
           // Not an error frame: the panel shows the reason in the reply and
           // offers no "send it again", which would only fail the same way.
+          // The stream that was turned away wrote none of its end frames, so
+          // the thinking figure is said here, as `onFinish` says it.
           tooLong = true;
+          closeThinking();
+          if (thoughtForMs > 0) writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
           writer.write({ type: "data-failed", data: { reason: "too_long" } });
           writer.write({ type: "finish" });
           return;
@@ -798,7 +788,7 @@ export class MainAgent {
           // The provider's count for the previous call; a fold voids it until
           // the next call reports, so two folds always have a call between them.
           if (lastCallTotal !== undefined) {
-            const folded = await foldIfOverBudget(sent!, stripThinking(steps.flat()), foldFor(writer), {
+            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
               kind: "precheck",
               at: "step",
               known: lastCallTotal,

@@ -92,7 +92,7 @@ const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 /**
  * The window as the caller hands it over, converted, turn by turn.
- * @returns The window, in the shape `foldIfOverBudget` builds it.
+ * @returns The window, in the shape `foldIfTooLong` builds it.
  */
 async function handedWindow(): Promise<Array<{ turnIndex: number; messages: ModelMessage[] }>> {
   const { toModelMessages } = await import("@server/agent/model-messages.js");

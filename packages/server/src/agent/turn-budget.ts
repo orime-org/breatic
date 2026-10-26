@@ -20,7 +20,7 @@ import type { ModelMessage } from "ai";
 import { getAgentConfig, logger, memoryReserveTokens } from "@breatic/core";
 import type { ResolvedAgentConfig } from "@breatic/domain";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
-import type { ContextOverflow } from "@server/agent/context-overflow.js";
+import { providerErrorOf, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
 import { stripThinking } from "@server/agent/history-replay.js";
 import type { ReplayedRow, UserForModel } from "@server/agent/history-replay.js";
@@ -65,8 +65,11 @@ export interface TurnIdentity {
 export type FoldTrigger =
   /** About to call: `known` is the provider's last reported count, when there is one to trust. */
   | { kind: "precheck"; at: "start" | "step"; known: number | undefined }
-  /** The provider turned the call away as over its window. */
-  | { kind: "overflow"; overflow: ContextOverflow; known: number | undefined; attempt: number; provider: unknown };
+  /**
+   * The provider turned the call away as over its window: `error` is what it
+   * answered, and `attempt` counts this turn's overflows, this one included.
+   */
+  | { kind: "overflow"; overflow: ContextOverflow; known: number | undefined; attempt: number; error: unknown };
 
 /**
  * How a fold check ended.
@@ -75,7 +78,8 @@ export type FoldTrigger =
  * - `moved`: the watermark moved (`written`, `superseded`, `discarded`); assemble again.
  * - `untouched`: the fold could not start or record anything.
  * - `aborted`: the reader left during the fold.
- * - `too_long`: an overflow that no fold can fix; end the turn as too long.
+ * - `too_long`: an overflow that no fold can fix, or one past
+ *   `overflow_folds_per_turn`; end the turn as too long.
  */
 export type FoldResult = "none" | "moved" | "untouched" | "aborted" | "too_long";
 
@@ -131,7 +135,7 @@ export function foldSize(counts: { known?: number; reported?: number; estimate: 
  * @returns How it ended; see {@link FoldResult}.
  * @throws {never} Never; a fold that fails ends as one of its outcomes.
  */
-export async function foldIfOverBudget(
+export async function foldIfTooLong(
   assembly: Assembly,
   steps: readonly ModelMessage[],
   who: TurnIdentity,
@@ -156,11 +160,22 @@ export async function foldIfOverBudget(
 
   if (trigger.kind === "overflow") {
     const stated = trigger.overflow.tokens;
-    const overflowAt = { ...where, provider: trigger.provider, reported: stated, lowerBound: trigger.overflow.lowerBound, attempt: trigger.attempt };
-    // Taking every earlier turn would still leave it over the window: this
-    // turn's own content does not fit, and a fold would be paid for in vain.
+    const overflowAt = {
+      ...where,
+      providerError: providerErrorOf(trigger.error),
+      reported: stated,
+      lowerBound: trigger.overflow.lowerBound,
+      attempt: trigger.attempt,
+    };
     const takeableTokens = takeable.reduce((sum, turn) => sum + turn.tokens, 0);
-    if (takeable.length === 0 || (stated !== undefined && stated - takeableTokens > window - maxOutput)) {
+    // Past the cap the folds are not converging; with nothing to take, or
+    // with every earlier turn taken still over the window, this turn's own
+    // content does not fit, and a fold would be paid for in vain.
+    if (
+      trigger.attempt > config.overflow_folds_per_turn ||
+      takeable.length === 0 ||
+      (stated !== undefined && stated - takeableTokens > window - maxOutput)
+    ) {
       logger.warn({ ...overflowAt, takeableTurns: takeable.length, takeableTokens }, "agent_turn_too_long");
       return "too_long";
     }

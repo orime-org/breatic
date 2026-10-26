@@ -43,7 +43,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 const consolidateWindow = vi.fn(async (_request: { newWatermark: number }) => "written");
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
-const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { foldIfTooLong } = await import("@server/agent/turn-budget.js");
 const { knownTokensAtStart, requestTokens } = await import("@server/agent/request-size.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 
@@ -114,7 +114,7 @@ function assembled(history: ReplayRow[]): Assembly {
 async function check(history: ReplayRow[]): Promise<string> {
   const assembly = assembled(history);
   const turnIndex = Math.max(0, ...history.map((row) => row.turnIndex)) + 1;
-  return foldIfOverBudget(assembly, [], { userId: "u", conversationId: "c", projectId: "p", turnIndex }, {
+  return foldIfTooLong(assembly, [], { userId: "u", conversationId: "c", projectId: "p", turnIndex }, {
     kind: "precheck",
     at: "start",
     known: knownTokensAtStart(assembly.replayed),
@@ -128,12 +128,12 @@ async function check(history: ReplayRow[]): Promise<string> {
  */
 async function overflow(history: ReplayRow[]): Promise<string> {
   const turnIndex = Math.max(0, ...history.map((row) => row.turnIndex)) + 1;
-  return foldIfOverBudget(assembled(history), [], { userId: "u", conversationId: "c", projectId: "p", turnIndex }, {
+  return foldIfTooLong(assembled(history), [], { userId: "u", conversationId: "c", projectId: "p", turnIndex }, {
     kind: "overflow",
     overflow: { lowerBound: false },
     known: undefined,
     attempt: 1,
-    provider: undefined,
+    error: undefined,
   });
 }
 

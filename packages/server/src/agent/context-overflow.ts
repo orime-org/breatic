@@ -95,13 +95,20 @@ const exclusions = [
 ];
 /* End of the lists copied from OpenCode. */
 
-/** The prompt sizes the wordings state, first match wins. */
-const COUNTS: Array<{ pattern: RegExp; lowerBound: boolean }> = [
+/** The prompt sizes the wordings state, first match wins; `tokens` reads one that is not stated outright. */
+const COUNTS: Array<{ pattern: RegExp; lowerBound: boolean; tokens?: (found: RegExpExecArray) => number }> = [
   { pattern: /contains at least (\d+) input tokens/i, lowerBound: true },
   { pattern: /contains (\d+) input tokens/i, lowerBound: false },
   { pattern: /resulted in (\d+) tokens/i, lowerBound: false },
   { pattern: /prompt is too long: (\d+) tokens/i, lowerBound: false },
   { pattern: /input token count \(?(\d+)\)?/i, lowerBound: false },
+  // OpenRouter's own check, which counts the output reserve in (H8):
+  // "you requested about 145147 tokens (128763 of text input, 16384 in the output)".
+  {
+    pattern: /requested about (\d+) tokens \(.*?(\d+) in the output\)/i,
+    lowerBound: false,
+    tokens: (found) => Number(found[1]) - Number(found[2]),
+  },
 ];
 
 /** A recognised overflow, and the prompt size the provider stated, when it did. */
@@ -130,9 +137,9 @@ function readsAsOverflow(text: string): boolean {
  */
 function statedCount(texts: readonly string[]): ContextOverflow {
   for (const text of texts) {
-    for (const { pattern, lowerBound } of COUNTS) {
+    for (const { pattern, lowerBound, tokens } of COUNTS) {
       const found = pattern.exec(text);
-      if (found?.[1] !== undefined) return { tokens: Number(found[1]), lowerBound };
+      if (found?.[1] !== undefined) return { tokens: tokens === undefined ? Number(found[1]) : tokens(found), lowerBound };
     }
   }
   return { lowerBound: false };
@@ -190,16 +197,17 @@ export function readContextOverflow(err: unknown): ContextOverflow | undefined {
 }
 
 /**
- * What a 400 the list did not recognise says about where it came from, for the
- * log line that lets the list learn a new wording (A8).
+ * What a failed model call says about itself, for log lines: the provider's
+ * own words, which neither the SDK's message nor our reading of it replaces
+ * (A8).
  * @param err - What the SDK handed over.
- * @returns The status, upstream and raw upstream error, or undefined when the
- *   error is not a provider's 400.
+ * @returns The status, message, upstream and raw upstream error of the
+ *   provider's answer, or the message alone when the error is not one.
  * @throws {never} Never.
  */
-export function unrecognised400(err: unknown): Record<string, unknown> | undefined {
+export function providerErrorOf(err: unknown): Record<string, unknown> {
   const one = RetryError.isInstance(err) ? err.lastError : err;
-  if (!APICallError.isInstance(one) || one.statusCode !== 400) return undefined;
+  if (!APICallError.isInstance(one)) return { message: one instanceof Error ? one.message : String(one) };
   const metadata = metadataOf(one.responseBody);
   return {
     statusCode: one.statusCode,
@@ -211,12 +219,14 @@ export function unrecognised400(err: unknown): Record<string, unknown> | undefin
 }
 
 /**
- * The upstream an OpenRouter error names, for log lines.
+ * The same, for a 400 the list did not recognise, so the list can learn a new
+ * wording.
  * @param err - What the SDK handed over.
- * @returns The provider name, when the body carries one.
+ * @returns What {@link providerErrorOf} reads, or undefined when the error is
+ *   not a provider's 400.
  * @throws {never} Never.
  */
-export function upstreamOf(err: unknown): unknown {
+export function unrecognised400(err: unknown): Record<string, unknown> | undefined {
   const one = RetryError.isInstance(err) ? err.lastError : err;
-  return APICallError.isInstance(one) ? metadataOf(one.responseBody)?.provider_name : undefined;
+  return APICallError.isInstance(one) && one.statusCode === 400 ? providerErrorOf(one) : undefined;
 }

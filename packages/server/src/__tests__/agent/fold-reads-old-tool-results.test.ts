@@ -49,14 +49,14 @@ vi.mock("@server/agent/consolidation-window.js", () => ({
   planConsolidation: () => ({ newWatermark: 1 }),
 }));
 
-const { foldIfOverBudget } = await import("@server/agent/turn-budget.js");
+const { foldIfTooLong } = await import("@server/agent/turn-budget.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
 
 /** Turn 2 asking, with turn 1 the history a fold may take. */
 const WHO = { userId: "u", conversationId: "c", projectId: "p", turnIndex: 2 };
 /** The provider turned the call away as too long, stating no size: the fold runs. */
-const OVERFLOW = { kind: "overflow" as const, overflow: { lowerBound: false }, known: undefined, attempt: 1, provider: undefined };
+const OVERFLOW = { kind: "overflow" as const, overflow: { lowerBound: false }, known: undefined, attempt: 1, error: undefined };
 
 /** A turn whose model listing was written before the listing carried `needs`. */
 const HISTORY: ReplayRow[] = [
@@ -95,7 +95,7 @@ const HISTORY: ReplayRow[] = [
 
 describe("folding a history that holds an old tool result", () => {
   it("runs, and hands the fold the note in place of the old result", async () => {
-    await foldIfOverBudget(assembled(HISTORY), [], WHO, OVERFLOW);
+    await foldIfTooLong(assembled(HISTORY), [], WHO, OVERFLOW);
 
     expect(consolidateWindow).toHaveBeenCalledTimes(1);
     const transcript = consolidateWindow.mock.calls[0]?.[0].turns.flatMap((turn) => turn.messages) ?? [];
@@ -136,7 +136,7 @@ describe("folding a history kept as it was sent", () => {
       },
     ];
 
-    await foldIfOverBudget(assembled(kept), [], WHO, OVERFLOW);
+    await foldIfTooLong(assembled(kept), [], WHO, OVERFLOW);
 
     const transcript = JSON.stringify(consolidateWindow.mock.calls[0]?.[0].turns);
     expect(transcript).toContain("what was sent");

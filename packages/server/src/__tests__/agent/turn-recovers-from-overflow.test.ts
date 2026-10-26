@@ -278,6 +278,20 @@ describe("a turn that cannot be made to fit ends as too long (A5)", () => {
     expect(world.prompts).toHaveLength(2);
     expectTooLong(chunks);
   });
+
+  it("says how long it thought before it ended, live as well as stored", async () => {
+    history(1, 1_000);
+    world.script = [callsFetch("c1", 311, 50, true), { reject: h2() }, answers("never asked for")];
+
+    const chunks = await sendMessage();
+
+    expectTooLong(chunks);
+    const said = chunks.filter((chunk) => chunk.type === "data-thinking-time");
+    expect(said).toHaveLength(1);
+    expect((said[0] as { data: { ms: number } }).data.ms).toBeGreaterThan(0);
+    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("data-failed"));
+    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+  });
 });
 
 describe("folds that leave nothing to send end as failed (A5)", () => {

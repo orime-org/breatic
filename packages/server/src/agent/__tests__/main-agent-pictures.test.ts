@@ -51,7 +51,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   };
 });
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext: h.context }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget: h.fold }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong: h.fold }));
 vi.mock("@server/agent/prepare-pictures.js", () => ({
   picturePreparerFor: h.makePreparer,
   pictureSourcesForTurn: (chips: readonly ChatAttachedChip[]) => chips.flatMap((chip, index) =>

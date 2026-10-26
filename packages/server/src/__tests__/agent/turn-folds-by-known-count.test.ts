@@ -24,6 +24,7 @@ import {
   answers,
   asks,
   callsFetch,
+  overflowWithoutCount,
   plainTurn,
   resetWorld,
   rowsOf,
@@ -34,6 +35,7 @@ import {
   type ScriptedCall,
 } from "../helpers/overflow-turn.js";
 import { askResultForModel } from "@server/agent/ask-result.js";
+import { logger } from "@breatic/core";
 
 vi.mock("@breatic/core", async (importOriginal) => (await import("../helpers/overflow-turn.js")).overflowCore(importOriginal));
 vi.mock("@breatic/domain", async () => (await import("../helpers/overflow-turn.js")).overflowDomain());
@@ -122,6 +124,48 @@ describe("at the start of a turn", () => {
     expect(turn.foldedBeforeFirstCall).toBe(true);
     expect(turn.watermarks).toEqual([1]);
     expect(turn.firstSystem).toContain("## Conversation Memory\nMEMORY-THROUGH-1");
+  });
+
+  it("sizes an overflow of the first call by the newest reply's provider count", async () => {
+    // Room is left, so nothing folds before the call; the provider then turns
+    // it away without saying how big it was.
+    world.script = [answers("first answer", LINE - 1_000, 10)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.script = [{ reject: overflowWithoutCount() }, answers("second")];
+    vi.mocked(logger.warn).mockClear();
+
+    await sendMessage("second");
+
+    expect(world.folds).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ known: LINE - 990, attempt: 1 }), "agent_fold_on_overflow");
+  });
+
+  it("does not try a fold that could not run again before the first call", async () => {
+    world.script = [answers("first answer", LINE - 616, 616)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.foldOutcomes = ["untouched"];
+    world.script = [answers("second")];
+
+    await sendMessage("second");
+
+    expect(world.folds).toHaveLength(1);
+    expect(world.events.filter((e) => e !== "context").slice(-2)).toEqual(["fold", "call"]);
+  });
+
+  it("trusts the count of a reply whose turn folded before it called", async () => {
+    world.script = [answers("first answer", LINE - 616, 616)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    world.script = [answers("second answer", LINE - 616, 616)];
+    await sendMessage("second");
+    world.history = [...rowsOf(1), ...rowsOf(2)];
+    world.script = [answers("third")];
+
+    await sendMessage("third");
+
+    expect(world.folds.map((f) => f.newWatermark)).toEqual([1, 2]);
   });
 
   it("hands the fold its turns as ordered groups", async () => {

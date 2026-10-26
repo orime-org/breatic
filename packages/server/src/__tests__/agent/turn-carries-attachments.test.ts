@@ -59,7 +59,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({ titleForTurn }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget: vi.fn(async () => "none") }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

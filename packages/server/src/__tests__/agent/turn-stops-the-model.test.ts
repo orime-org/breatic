@@ -41,7 +41,7 @@ let providerCalls = 0;
 let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => "none");
+const foldIfTooLong = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The usage rows the turn wrote. */
 const usageRows: DomainModule.UsageRow[] = [];
@@ -145,7 +145,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const fetchMock = vi.fn();
@@ -198,7 +198,7 @@ beforeEach(() => {
   turnTools = {};
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnceForGeneration].forEach((m) => m.mockClear());
   usageRows.length = 0;
 });
 

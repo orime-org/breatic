@@ -13,7 +13,7 @@ import type * as CoreModule from "@breatic/core";
 import type { MessageData } from "@breatic/shared";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => "none");
+const foldIfTooLong = vi.fn(async () => "none");
 const streamTextRetry = vi.fn();
 
 vi.mock("@server/agent/turn-context.js", () => ({
@@ -75,7 +75,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
 
 // What the system prompt says is settled elsewhere and has its own tests; this
 // suite asserts on history.
