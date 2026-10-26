@@ -3,6 +3,15 @@
 
 import type { MediaWarning } from "@provider/media/runner.js";
 
+/** One line of a billing search answer. */
+interface BillingLine {
+  billing_type?: string;
+  order?: { price?: unknown };
+}
+
+/** How a line moves the total: a deduction adds its price, a refund takes it back. */
+const SIGN: Readonly<Record<string, number>> = { deduct: 1, refund: -1 };
+
 /** What WaveSpeed's billing search answered for one prediction. */
 export type BillingRead =
   | { kind: "total"; usd: number; warnings: MediaWarning[] }
@@ -15,6 +24,21 @@ export type BillingRead =
  * @returns The total, or none.
  */
 export function readBilling(body: unknown): BillingRead {
-  void body;
-  throw new Error("readBilling is not implemented");
+  const items = (body as { data?: { items?: unknown } } | null | undefined)?.data?.items;
+  if (typeof body !== "object" || body === null || !Array.isArray(items)) return { kind: "none", warnings: [] };
+  const lines = items as BillingLine[];
+  if (!lines.some((line) => line?.billing_type === "deduct")) return { kind: "none", warnings: [] };
+  const warnings: MediaWarning[] = [];
+  let total = 0;
+  for (const line of lines) {
+    const sign = SIGN[line?.billing_type ?? ""];
+    if (sign === undefined) continue;
+    const price = line.order?.price;
+    if (typeof price !== "number" || !Number.isFinite(price)) {
+      warnings.push({ code: "billing_line_without_price", detail: { billingType: line.billing_type } });
+      continue;
+    }
+    total += sign * price;
+  }
+  return { kind: "total", usd: Math.max(0, total), warnings };
 }
