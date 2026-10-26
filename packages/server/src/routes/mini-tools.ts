@@ -13,7 +13,7 @@ import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { createQueue, defaultJobOpts } from "@breatic/core";
 import { taskService } from "@breatic/domain";
-import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
+import { miniToolById, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -43,11 +43,12 @@ miniTools.post(
   "/",
   rateLimitFor("mini_tool", "user"),
   validate("header", idempotencyKeyHeaderSchema),
-  validate("json", miniToolRequestSchema),
+  validate("json", miniToolSubmissionSchema),
   runOnce("mini-tool"),
   async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+  if ("run_id" in body) throw new Error("Planned mini-tool HTTP admission is not implemented");
   const spec = miniToolById(body.tool)!;
 
   await projectService.assertAccess(body.project_id, user.id, "editor");

@@ -214,3 +214,14 @@ async function requireRegistered(output: MiniToolExecutionOutput): Promise<void>
   };
   if (canonicalMiniToolValue(media) !== canonicalMiniToolValue(actual)) throw new Error("Output differs from its registered canonical winner");
 }
+
+/**
+ * Preserve the accepted execution and actual expenses when admission fails or loses its queue acknowledgement.
+ * @param _taskId - The original SQL-claimed execution task.
+ * @param _error - The admission failure observed by the existing start adapter.
+ * @returns The preserved terminal or newly failed public record.
+ * @throws {Error} Until the planned admission failure owner is implemented.
+ */
+export async function failMiniToolExecutionAdmission(_taskId: string, _error: NonNullable<MiniToolExecutionRecord["error"]>): Promise<MiniToolExecutionRecord> {
+  throw new Error("Planned mini-tool admission failure is not implemented");
+}
