@@ -66,8 +66,9 @@ export function ThinkingFold({
       data-testid='thinking-fold'
       className='mb-2 text-xs'
     >
-      {/* Pulled left by the blank the chevron glyph draws before its stroke,
-          so the stroke sits on the reply's left edge. */}
+      {/* Pulled left by the blank the closed (right-pointing) chevron draws
+          before its stroke, so that stroke sits on the reply's left edge; the
+          open chevron's stroke starts 1.5px further left. */}
       <Button
         type='button'
         variant={null}

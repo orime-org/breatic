@@ -122,7 +122,8 @@ const FAILED_NOTE = "[This turn could not be finished; it broke off partway.]";
 /**
  * The note for a turn that ended because there was too much to process: what
  * it was asked, with its own attachments and tool results, did not fit the
- * model's context window even after earlier history was folded into memory.
+ * model's context window, and folding earlier history into memory could not
+ * make it fit (or the turn's folds reached `overflow_folds_per_turn`).
  * Nothing broke, so the model is not told to look for a fault.
  */
 const TOO_LONG_NOTE = "[This turn could not be finished: there was too much to process at once, so its request was too long for the model.]";

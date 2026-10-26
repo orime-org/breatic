@@ -751,10 +751,11 @@ export class MainAgent {
      * Everything goes out as it comes except the `finish` and the first error,
      * held until the stream ends. When that first error is a call the provider
      * turned away as too long, the turn folds instead and neither goes out.
-     * Otherwise the error goes out last, after the thinking figure: the SDK
-     * carries on past a provider's error chunk when the step's tool calls ran,
-     * and the panel reads nothing after an error frame. Any later error is
-     * dropped, as the panel would never read it.
+     * Otherwise the error goes out after the thinking figure and everything
+     * else, followed only by the held `finish`: the SDK carries on past a
+     * provider's error chunk when the step's tool calls ran, and the panel
+     * reads nothing after an error frame. Any later error is dropped, as the
+     * panel would never read it.
      * @param writer - The stream the turn is written to.
      * @param run - What this stream starts from.
      * @param run.first - Whether this is the turn's first stream, which opens the reply.
@@ -1005,8 +1006,10 @@ export class MainAgent {
         // work out for itself -- the same reason a failed turn puts its own
         // mark on the reply as it happens. The SDK turns the frame into a
         // part of the reply, which is what carries it into storage and back.
-        // A stream cut short by an overflow still ends here; the turn has not
-        // ended, so none of this is said on it.
+        // A stream cut short by an overflow after one of its steps finished
+        // still ends here (one turned away on its first call records no step,
+        // and the SDK skips this callback); the turn has not ended, so none of
+        // this is said on it.
         onFinish: ({ finishReason, toolCalls }) => {
           if (seen.turnedAway !== undefined) return;
           if (finishReason === "length") {
