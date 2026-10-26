@@ -365,17 +365,37 @@ describe('ProjectPage refresh and browser leave entry points (inner#1641)', () =
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('keeps the refresh choice open when a matching receipt removes the risk', async () => {
+  it.each([
+    ['refresh', 'edit'],
+    ['refresh', 'operation'],
+    ['leave', 'edit'],
+    ['leave', 'operation'],
+  ] as const)('updates the %s confirmation title as risks clear %s first', async (intent, first) => {
     const item = content();
-    act(() => { item.doc.getText('body').insert(0, 'pending'); });
-    fireEvent.click(screen.getByTestId('connection-banner-reload'));
-    expect(reload).toHaveBeenCalledTimes(0);
-    const original = screen.getByRole('alertdialog').textContent;
+    act(() => {
+      item.doc.getText('body').insert(0, 'pending');
+      useSpaceOperationsStore.getState().register(SID, 'upload');
+    });
     await handshake(item.name, item.provider);
     expect(requests(item.provider)).toHaveLength(1);
-    await confirm(item.provider, requests(item.provider)[0].id);
+    if (intent === 'refresh') fireEvent.click(screen.getByTestId('connection-banner-reload'));
+    else act(() => { routerState.blocker.state = 'blocked'; routerState.listeners.forEach((listener) => listener()); });
+    const dialog = screen.getByRole('alertdialog');
+    const riskTitle = intent === 'refresh' ? 'Refresh with work in progress?' : 'Leave with work in progress?';
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(riskTitle);
+    if (first === 'edit') await confirm(item.provider, requests(item.provider)[0].id);
+    else act(() => { useSpaceOperationsStore.getState().unregister(SID, 'upload'); });
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(riskTitle);
+    if (first === 'edit') act(() => { useSpaceOperationsStore.getState().unregister(SID, 'upload'); });
+    else await confirm(item.provider, requests(item.provider)[0].id);
+    expect(within(dialog).getByRole('heading')).toHaveTextContent('Ready to continue');
+    expect(dialog).toHaveTextContent('Changes are synced and operations are complete.');
+    expect(within(dialog).getAllByRole('button').map((button) => button.textContent)).toEqual(intent === 'refresh' ? ['Cancel', 'Refresh anyway'] : ['Stay', 'Leave anyway']);
     expect(reload).toHaveBeenCalledTimes(0);
-    expect(screen.getByRole('alertdialog').textContent).not.toBe(original);
+    expect(routerState.blocker.proceed).toHaveBeenCalledTimes(0);
+    expect(routerState.blocker.reset).toHaveBeenCalledTimes(0);
+    act(() => { item.doc.getText('body').insert(0, 'new edit'); });
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(riskTitle);
   });
 
   it('asks before refreshing while an upload is the only remaining risk', () => {

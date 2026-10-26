@@ -1491,7 +1491,8 @@
       "leave": "仍然离开",
       "unsyncedDescription": "部分修改尚未同步，现在刷新或离开可能丢失这些修改。",
       "combinedDescription": "部分修改尚未同步，且仍有上传或编辑操作正在进行。现在刷新或离开可能丢失这些工作。",
-      "completeDescription": "修改已同步，操作已完成。"
+      "completeDescription": "修改已同步，操作已完成。",
+      "completeTitle": "可以继续"
     },
     "header": {
       "renameFailed": "重命名 Project 失败"

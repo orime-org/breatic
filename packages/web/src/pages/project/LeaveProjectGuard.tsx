@@ -177,6 +177,9 @@ export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHa
 
   React.useImperativeHandle(ref, () => ({ requestRefresh }), [requestRefresh]);
 
+  const title = unsynced || operations
+    ? blocked ? t('project.leaveGuard.title') : t('project.refreshGuard.title')
+    : t('project.leaveGuard.completeTitle');
   const description = unsynced
     ? operations ? t('project.leaveGuard.combinedDescription') : t('project.leaveGuard.unsyncedDescription')
     : operations ? t('project.leaveGuard.description') : t('project.leaveGuard.completeDescription');
@@ -200,7 +203,7 @@ export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHa
     >
       <AlertDialogContent onCloseAutoFocus={returnFocus}>
         <AlertDialogHeader>
-          <AlertDialogTitle>{blocked ? t('project.leaveGuard.title') : t('project.refreshGuard.title')}</AlertDialogTitle>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>
             {description}
           </AlertDialogDescription>

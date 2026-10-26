@@ -102,6 +102,7 @@ describe('LeaveProjectGuard (#1787)', () => {
   });
 
   it('shows the confirm dialog while blocked; Leave proceeds, Stay resets', () => {
+    useSpaceOperationsStore.getState().register('space-1', 'op-1');
     blocker.state = 'blocked';
     render(<LeaveProjectGuard />);
     expect(screen.getByText('project.leaveGuard.title')).toBeInTheDocument();
