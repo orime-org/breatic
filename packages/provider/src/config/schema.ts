@@ -40,6 +40,10 @@ export interface ExtraStepBinding {
   per_item?: boolean;
   /** For an element step: how its reference image is described first. */
   describe?: DescribeBinding;
+  /** What one call of this step costs. */
+  pricing?: unknown;
+  /** The step is skipped on a later run whose source it already made a clone of. */
+  reused?: boolean;
 }
 
 /** One model bound to one upstream (design 4.2). */

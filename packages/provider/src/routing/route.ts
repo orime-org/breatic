@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { UnavailableReason } from "@provider/errors.js";
+import type { Route } from "@provider/pricing/estimate.js";
 
-/** How the caller wants its upstream chosen. */
-export type Route =
-  | { mode: "default" }
-  | { mode: "upstream"; upstream: string }
-  | { mode: "cheapest" };
+export type { Route } from "@provider/pricing/estimate.js";
 
 /** One upstream a model is bound to, as this deployment sees it. */
 export interface Candidate {

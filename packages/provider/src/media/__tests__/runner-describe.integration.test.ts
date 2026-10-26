@@ -126,7 +126,7 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
   it("is a public describe step; its send reads the image and asks the understand model, and nothing goes to the media upstream", async () => {
     const r = runner();
     const planned = expectState(
-      r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
@@ -150,7 +150,7 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
       return result("p-gen", "completed", ["https://out.example/v.mp4"]);
     });
     const planned = expectState(
-      r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
@@ -179,7 +179,7 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
   it("answers failed with MediaRefused for an image at a private address, asking no model", async () => {
     const r = runner();
     const planned = expectState(
-      r.plan("kling-elements", { prompt: "go", params: { elements: ["http://10.0.0.5/x.png"] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "go", params: { elements: ["http://10.0.0.5/x.png"] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: {},
         clones: [],
@@ -201,7 +201,7 @@ describe("cached elements", () => {
     wavespeed.answer(({ method }) => (method === "POST" ? accepted("p-gen") : result("p-gen", "processing")));
     const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-img:Element 1", upstreamId: "el-cached" }];
     const planned = expectState(
-      r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: cached,
@@ -225,7 +225,7 @@ describe("cached elements", () => {
       { upstream: "wavespeed", kind: "element", sourceKey: "sha-cat:Element 2", upstreamId: "el-2" },
     ];
     const planned = expectState(
-      r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, second] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, second] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img", [second]: "sha-cat" },
         clones: cached,
@@ -248,7 +248,7 @@ describe("cached elements", () => {
       const id = path.split("/")[2] ?? "";
       return id.startsWith("p-el-") ? result(id, "completed", [{ element_id: `el-${id.slice(5)}` }]) : result(id, "processing");
     });
-    let answer: MediaAnswer = r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, imageUrl] } }, { mode: "default" }, {
+    let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl, imageUrl] } }, { mode: "default" }, {
       idempotencyKey: "task-1",
       sourceKeys: {},
       clones: [],

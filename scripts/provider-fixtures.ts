@@ -12,7 +12,11 @@
  * It also builds, for a set of param values per catalog and 3D model, our
  * params as the application layer hands them to provider and the WaveSpeed
  * body today's worker sends for them, into
- * `packages/provider/test/fixtures/upstream-body.json`. The provider package
+ * `packages/provider/test/fixtures/upstream-body.json`. And for a set of inputs
+ * per catalog model it records today's credit estimate (`estimateCredits` at a
+ * multiplier of 1) beside the input as the application layer will prepare it
+ * for provider, into `packages/provider/test/fixtures/upstream-estimate.json`.
+ * The provider package
  * reads those files only. This script imports code that the migration deletes,
  * so it lives outside the package and is removed with it. Build
  * `@breatic/shared` first: the worker code it imports reads shared's `dist`.
@@ -23,6 +27,7 @@ import { dirname, resolve } from "node:path";
 import { parse } from "yaml";
 import { upstreamPriceUsd } from "../packages/shared/src/pricing/upstream-price.js";
 import { completeEntries, isPresent, joinSlotFiles } from "../packages/shared/dist/index.js";
+import { estimateCredits } from "../packages/shared/dist/pricing/index.js";
 import { upstreamBody } from "../packages/worker/src/providers/upstream-body.js";
 import minimaxSpeech from "../packages/worker/src/providers/families/minimax-speech.js";
 import nanoBananaRelight from "../packages/worker/src/providers/families/nano-banana-relight.js";
@@ -30,6 +35,9 @@ import nanoBananaRelight from "../packages/worker/src/providers/families/nano-ba
 interface RawPricing { base_price: number; formula: string; discount_rate: number }
 interface RawParam {
   upstream?: string;
+  fill?: string;
+  optional?: boolean;
+  joins?: string;
   default?: unknown;
   values?: unknown[];
   type?: string;
@@ -45,7 +53,7 @@ interface RawModel {
   prompt_upstream?: string;
   params?: Record<string, RawParam>;
   providers?: { name: string; pricing: RawPricing }[];
-  extra_steps?: { kind?: string; for_param?: string; pricing: RawPricing }[];
+  extra_steps?: { kind?: string; endpoint?: string; at?: string; for_param?: string; per_item?: boolean; reused?: boolean; pricing: RawPricing }[];
   reused_by?: string;
 }
 
@@ -318,4 +326,108 @@ for (const family of ["meshy", "hunyuan3d"]) {
 const bodyOut = resolve(ROOT, "packages/provider/test/fixtures/upstream-body.json");
 writeFileSync(bodyOut, `${JSON.stringify({ cases: bodyCases })}\n`);
 process.stdout.write(`${bodyCases.length} body cases written to ${bodyOut}\n`);
+
+/** One frozen estimate case: the input as provider receives it, and what today's estimate answers. */
+interface EstimateCase {
+  model: string;
+  input: {
+    /** Our params after placeholders and joins, every priced param present. */
+    params: Record<string, unknown>;
+    prompt: string;
+    /** Clip lengths of the sources whose every clip length is known, by our param name. */
+    durations: Record<string, number[]>;
+    /** The required sources not yet picked, standing in as one placeholder. */
+    placeholders: string[];
+    /** The sources sent without every clip length known. */
+    durationsMissing: string[];
+  };
+  /** Today's credits at a multiplier of 1, rounded up to the cent. */
+  credits: number;
+  /** The same estimate in USD, to 1e-10: read at a multiplier of a million, where the cent rounding falls below that. */
+  usd: number;
+  bound: string;
+}
+
+const UNPICKED = "unpicked";
+
+/**
+ * The input provider receives for one run, prepared the way shared's
+ * `estimateCredits` prepares it before pricing (design 7.2).
+ * @param model - The catalog entry.
+ * @param raw - The reader's params, prompt and known clip lengths.
+ * @returns The prepared input.
+ */
+function estimateInput(model: RawModel, raw: { params: Record<string, unknown>; prompt: string; durations: Record<string, number[]> }): EstimateCase["input"] {
+  const priced = Object.entries(model.params ?? {}).filter(([, spec]) => spec.joins === undefined);
+  const valueOf = (record: Record<string, unknown>, name: string, spec: RawParam): unknown =>
+    record[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
+  const isSource = (spec: RawParam): boolean => spec.fill === "canvas" || spec.fill === "pool";
+  const own: Record<string, unknown> = { ...raw.params };
+  const placeholders: string[] = [];
+  for (const [name, spec] of priced) {
+    if (isSource(spec) && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {
+      own[name] = spec.type === "list" ? [UNPICKED] : UNPICKED;
+      placeholders.push(name);
+    }
+  }
+  const joined = joinSlotFiles((model.params ?? {}) as Parameters<typeof joinSlotFiles>[0], own, raw.prompt);
+  const params: Record<string, unknown> = {};
+  const durations: Record<string, number[]> = {};
+  const durationsMissing: string[] = [];
+  for (const [name, spec] of priced) {
+    const value = valueOf(joined.params, name, spec);
+    params[name] = value ?? null;
+    if (isSource(spec) && isPresent(value)) {
+      const known = raw.durations[name] ?? [];
+      if (known.length >= (Array.isArray(value) ? value.length : 1)) durations[name] = known;
+      else durationsMissing.push(name);
+    }
+  }
+  return { params, prompt: raw.prompt === "" ? "" : joined.prompt, durations, placeholders, durationsMissing };
+}
+
+/**
+ * Clip lengths for every source a param set carries.
+ * @param model - The catalog entry.
+ * @param params - The params.
+ * @returns Seven seconds per clip.
+ */
+function clipLengths(model: RawModel, params: Record<string, unknown>): Record<string, number[]> {
+  const out: Record<string, number[]> = {};
+  for (const [name, spec] of Object.entries(model.params ?? {})) {
+    const value = params[name];
+    if (spec.accepts !== undefined && isPresent(value)) out[name] = (Array.isArray(value) ? value : [value]).map(() => 7);
+  }
+  return out;
+}
+
+const estimateCases: EstimateCase[] = [];
+for (const modality of MODALITIES) {
+  const file = parse(readFileSync(resolve(ROOT, `config/models/${modality}/models.yaml`), "utf8")) as { models: RawModel[] };
+  for (const model of file.models) {
+    const pricing = model.providers?.[0]?.pricing;
+    if (pricing === undefined) continue;
+    const priced = { ...model, takes_prompt: model.takes_prompt === true, params: model.params ?? {}, pricing } as unknown as Parameters<typeof estimateCredits>[0];
+    const samples = bodySamples(model);
+    const filledAll = samples[1] ?? {};
+    const raws = [
+      { params: {}, prompt: "", durations: {} },
+      { params: {}, prompt: PROMPTS[1]!, durations: {} },
+      { params: filledAll, prompt: PROMPTS[1]!, durations: {} },
+      ...samples.slice(1).map((params) => ({ params, prompt: PROMPTS[1]!, durations: clipLengths(model, params) })),
+    ];
+    const seen = new Set<string>();
+    for (const raw of raws) {
+      const key = JSON.stringify(raw);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const today = await estimateCredits(priced, raw, 1);
+      const fine = await estimateCredits(priced, raw, 1_000_000);
+      estimateCases.push({ model: model.name, input: estimateInput(model, raw), credits: today.credits, usd: fine.credits / 100_000_000, bound: today.bound });
+    }
+  }
+}
+const estimateOut = resolve(ROOT, "packages/provider/test/fixtures/upstream-estimate.json");
+writeFileSync(estimateOut, `${JSON.stringify({ cases: estimateCases })}\n`);
+process.stdout.write(`${estimateCases.length} estimate cases written to ${estimateOut}\n`);
 

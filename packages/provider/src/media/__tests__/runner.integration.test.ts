@@ -81,7 +81,16 @@ function config(): ProviderConfigInput {
       ws_a: { kind: "wavespeed", base_url: a.url, key_env: "WS_A_KEY" },
       ws_b: { kind: "wavespeed", base_url: b.url, key_env: "WS_B_KEY" },
     },
-    media: { models: { seedance: { upstreams: seedance() }, "voice-clone": { upstreams: voiceClone }, mureka: { upstreams: mureka } } },
+    media: {
+      models: {
+        seedance: { upstreams: seedance() },
+        "voice-clone": { upstreams: voiceClone },
+        mureka: { upstreams: mureka },
+        "seedance-priced": {
+          upstreams: seedance().map((b) => ({ ...b, pricing: { ...pricing, base_price: b.upstream === "ws_a" ? 200_000 : 100_000 } })),
+        },
+      },
+    },
   };
 }
 
@@ -122,8 +131,8 @@ const options = (clones: MediaClone[] = []): { idempotencyKey: string; sourceKey
 const video = { prompt: "a fox in snow", params: { duration: 5, aspect_ratio: "16:9" } };
 
 describe("plan", () => {
-  it("sends nothing and answers a send ticket for the model's own call", () => {
-    const answer = expectState(runner().plan("seedance", video, DEFAULT, options()), "send");
+  it("sends nothing and answers a send ticket for the model's own call", async () => {
+    const answer = expectState(await runner().plan("seedance", video, DEFAULT, options()), "send");
     expect(answer.step.kind).toBe("generate");
     expect(a.seen).toHaveLength(0);
     expect(b.seen).toHaveLength(0);
@@ -133,14 +142,14 @@ describe("plan", () => {
     const r = runner({ WS_B_KEY: "key-b" });
     a.answer(() => accepted("p1"));
     b.answer(() => accepted("p1"));
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     await r.send(stored(planned.ticket), live());
     expect(submits(a.seen)).toHaveLength(0);
     expect(submits(b.seen)).toHaveLength(1);
   });
 
-  it("answers failed with NoUpstreamAvailable naming each missing key when nothing is configured", () => {
-    const answer = expectState(runner({}).plan("seedance", video, DEFAULT, options()), "failed");
+  it("answers failed with NoUpstreamAvailable naming each missing key when nothing is configured", async () => {
+    const answer = expectState(await runner({}).plan("seedance", video, DEFAULT, options()), "failed");
     expect(answer.reason).toBeInstanceOf(NoUpstreamAvailable);
     expect((answer.reason as NoUpstreamAvailable).reasons).toEqual([
       { upstream: "ws_a", kind: "missing_key", envVar: "WS_A_KEY" },
@@ -149,8 +158,17 @@ describe("plan", () => {
     expect(answer.costs).toEqual([]);
   });
 
-  it("throws UpstreamRequestRejected for an upstream the model is not bound to", () => {
-    expect(() => runner().plan("voice-clone", video, { mode: "upstream", upstream: "ws_b" }, options())).toThrow(UpstreamRequestRejected);
+  it("places the run on the cheapest configured upstream in cheapest mode", async () => {
+    const r = runner();
+    b.answer(() => accepted("p1"));
+    const planned = expectState(await r.plan("seedance-priced", video, { mode: "cheapest" }, options()), "send");
+    await r.send(stored(planned.ticket), live());
+    expect(submits(a.seen)).toHaveLength(0);
+    expect(submits(b.seen)).toHaveLength(1);
+  });
+
+  it("throws UpstreamRequestRejected for an upstream the model is not bound to", async () => {
+    await expect(await runner().plan("voice-clone", video, { mode: "upstream", upstream: "ws_b" }, options())).rejects.toThrow(UpstreamRequestRejected);
   });
 });
 
@@ -158,7 +176,7 @@ describe("send", () => {
   it("submits our params under the binding's field names with the upstream's key, and answers running", async () => {
     a.answer(() => accepted("p1"));
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const answer = expectState(await r.send(stored(planned.ticket), live()), "running");
     expect(answer.askAgainAt).toBeGreaterThan(Date.now() - 1_000);
     const [submit] = submits(a.seen);
@@ -173,7 +191,7 @@ describe("send", () => {
       return finishedAtOnce("p1", ["https://out.example/v.mp4"]);
     });
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const answer = expectState(await r.send(stored(planned.ticket), live()), "done");
     expect(answer.outputs).toEqual([{ kind: "url", url: "https://out.example/v.mp4" }]);
     expect(answer.costs).toEqual([{ state: "known", usd: 0.2, source: "billing" }]);
@@ -188,7 +206,7 @@ describe("send", () => {
     await fail();
     b.answer(() => accepted("p1"));
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const moved = expectState(await r.send(stored(planned.ticket), live()), "send");
     expect(moved.warnings.map((w) => w.code)).toContain("upstream_switched");
     expect(b.seen).toHaveLength(0);
@@ -199,14 +217,14 @@ describe("send", () => {
   it("throws SendNotAccepted on a 503 when there is no next upstream", async () => {
     a.answer(() => ({ status: 503, body: {} }));
     const r = runner({ WS_A_KEY: "key-a" });
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     await expect(r.send(stored(planned.ticket), live())).rejects.toBeInstanceOf(SendNotAccepted);
   });
 
   it("throws SendNotAccepted on a 503 in upstream mode, never trying another upstream", async () => {
     a.answer(() => ({ status: 503, body: {} }));
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, { mode: "upstream", upstream: "ws_a" }, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, { mode: "upstream", upstream: "ws_a" }, options()), "send");
     await expect(r.send(stored(planned.ticket), live())).rejects.toBeInstanceOf(SendNotAccepted);
     expect(b.seen).toHaveLength(0);
   });
@@ -214,7 +232,7 @@ describe("send", () => {
   it("answers failed with UpstreamRequestRejected on a 400, never trying another upstream", async () => {
     a.answer(() => ({ status: 400, body: { message: "duration must be 5 or 10" } }));
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const answer = expectState(await r.send(stored(planned.ticket), live()), "failed");
     expect(answer.reason).toBeInstanceOf(UpstreamRequestRejected);
     expect(b.seen).toHaveLength(0);
@@ -223,14 +241,14 @@ describe("send", () => {
   it("throws NoAnswer when the connection drops after the request arrived", async () => {
     a.answer(() => "reset");
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     await expect(r.send(stored(planned.ticket), live())).rejects.toBeInstanceOf(NoAnswer);
     expect(b.seen).toHaveLength(0);
   });
 
   it("sends nothing once the deadline has passed", async () => {
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     await expect(r.send(stored(planned.ticket), { deadlineAt: Date.now() - 1 })).rejects.toBeInstanceOf(DeadlinePassed);
     expect(a.seen).toHaveLength(0);
   });
@@ -238,7 +256,7 @@ describe("send", () => {
   it("refuses a ticket that is not waiting to be sent", async () => {
     a.answer(() => accepted("p1"));
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const running = expectState(await r.send(stored(planned.ticket), live()), "running");
     await expect(r.send(stored(running.ticket), live())).rejects.toThrow();
     expect(submits(a.seen)).toHaveLength(1);
@@ -252,7 +270,7 @@ describe("poll", () => {
    * @returns The running ticket.
    */
   async function sent(r: MediaRunner): Promise<MediaTicket> {
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     return stored(expectState(await r.send(stored(planned.ticket), live()), "running").ticket);
   }
 
@@ -335,7 +353,7 @@ describe("a run of several steps", () => {
       return answer;
     };
 
-    const planned = expectState(keep(r.plan("voice-clone", speech, DEFAULT, options())), "send");
+    const planned = expectState(keep(await r.plan("voice-clone", speech, DEFAULT, options())), "send");
     expect(planned.step.kind).toBe("voice");
     const cloning = expectState(keep(await r.send(stored(planned.ticket), live())), "running");
     const clone = submits(a.seen)[0]?.body as Record<string, unknown>;
@@ -365,7 +383,7 @@ describe("a run of several steps", () => {
       { upstream: "ws_b", kind: "voice", sourceKey: "sha-a", upstreamId: "voice-on-b" },
       { upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "voice-on-a" },
     ];
-    const planned = expectState(r.plan("voice-clone", speech, DEFAULT, options(cached)), "send");
+    const planned = expectState(await r.plan("voice-clone", speech, DEFAULT, options(cached)), "send");
     expect(planned.step.kind).toBe("speak");
     await r.send(stored(planned.ticket), live());
     expect(submits(a.seen).map((s) => s.body)).toEqual([{ text: "hello there", voice_id: "voice-on-a" }]);
@@ -378,7 +396,7 @@ describe("a run of several steps", () => {
       return method === "POST" ? accepted("p-speak") : result("p-speak", "failed", [], "Voice ID does not exist");
     });
     const cached: MediaClone[] = [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "voice-on-a" }];
-    const planned = expectState(r.plan("voice-clone", speech, DEFAULT, options(cached)), "send");
+    const planned = expectState(await r.plan("voice-clone", speech, DEFAULT, options(cached)), "send");
     const speaking = expectState(await r.send(stored(planned.ticket), live()), "running");
     const failed = expectState(await r.poll(stored(speaking.ticket), live()), "failed");
     expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
@@ -389,7 +407,7 @@ describe("a run of several steps", () => {
 describe("recover", () => {
   it("answers the same send ticket with a duplicate-cost warning for an upstream that cannot be asked, sending nothing", async () => {
     const r = runner();
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const answer = expectState(await r.recover(stored(planned.ticket), live()), "send");
     expect(answer.step.kind).toBe("generate");
     expect(answer.warnings.map((w) => w.code)).toContain("potential_duplicate_cost");
@@ -404,7 +422,7 @@ describe("ticketFromLegacy", () => {
     const legacy = {
       steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "submitted" as const, predictionId: "p-old", output: {}, inlineCostUsd: 0 }],
     };
-    const answer = expectState(r.ticketFromLegacy("seedance", video, DEFAULT, options(), legacy), "running");
+    const answer = expectState(await r.ticketFromLegacy("seedance", video, DEFAULT, options(), legacy), "running");
     await r.poll(stored(answer.ticket), live());
     expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-old/result"]);
   });
@@ -422,7 +440,7 @@ describe("ticketFromLegacy", () => {
       ],
     };
     const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
-    const next = expectState(r.ticketFromLegacy("voice-clone", speech, DEFAULT, options(), legacy), "send");
+    const next = expectState(await r.ticketFromLegacy("voice-clone", speech, DEFAULT, options(), legacy), "send");
     expect(next.step.kind).toBe("speak");
     const speaking = expectState(await r.send(stored(next.ticket), live()), "running");
     expect(submits(a.seen).map((s) => s.body)).toEqual([{ text: "hello there", voice_id: "BreaticOld" }]);
@@ -441,7 +459,7 @@ describe("poll — answers that are not the task's ending", () => {
    */
   async function sentThen(r: MediaRunner, reply: () => ReturnType<typeof result> | "reset"): Promise<MediaTicket> {
     a.answer(({ method }) => (method === "POST" ? accepted("p1") : reply()));
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     return stored(expectState(await r.send(stored(planned.ticket), live()), "running").ticket);
   }
 
@@ -478,7 +496,7 @@ describe("the outputs of a finished run", () => {
       if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
       return method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/1.png", "https://out.example/2.png"]);
     });
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const running = expectState(await r.send(stored(planned.ticket), live()), "running");
     const done = expectState(await r.poll(stored(running.ticket), live()), "done");
     expect(done.outputs).toEqual([{ kind: "url", url: "https://out.example/1.png" }, { kind: "url", url: "https://out.example/2.png" }]);
@@ -490,7 +508,7 @@ describe("the outputs of a finished run", () => {
       if (path === "/billings/search") return billing([{ type: "deduct", price: 0.1 }]);
       return method === "POST" ? accepted("p1") : result("p1", "completed", []);
     });
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const running = expectState(await r.send(stored(planned.ticket), live()), "running");
     expectState(await r.poll(stored(running.ticket), live()), "failed");
   });
@@ -498,7 +516,7 @@ describe("the outputs of a finished run", () => {
   it("answers done with no cost for a submit that finished at once without an id to bill", async () => {
     const r = runner();
     a.answer(({ path }) => (path === "/billings/search" ? billing([]) : { status: 200, body: { code: 200, data: { status: "completed", outputs: ["https://out.example/v.mp4"] } } }));
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const done = expectState(await r.send(stored(planned.ticket), live()), "done");
     expect(done.costs).toEqual([]);
     expect(billedIds(a.seen)).toEqual([]);
@@ -507,7 +525,7 @@ describe("the outputs of a finished run", () => {
   it("throws when the submit answer carries neither an id nor outputs", async () => {
     const r = runner();
     a.answer(() => ({ status: 200, body: { code: 200, data: { status: "created" } } }));
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     await expect(r.send(stored(planned.ticket), live())).rejects.toThrow();
   });
 });
@@ -524,7 +542,7 @@ describe("WaveSpeed billing (design 6.2)", () => {
       if (path === "/billings/search") return answer;
       return method === "POST" ? accepted("p1") : result("p1", "completed", ["https://out.example/v.mp4"]);
     });
-    const planned = expectState(r.plan("seedance", video, DEFAULT, options()), "send");
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
     const running = expectState(await r.send(stored(planned.ticket), live()), "running");
     return expectState(await r.poll(stored(running.ticket), live()), "done");
   }
@@ -579,7 +597,7 @@ describe("Mureka's steps", () => {
       void body;
       return result("p-song", "completed", ["https://out.example/song.mp3"]);
     });
-    let answer: MediaAnswer = r.plan("mureka", song, DEFAULT, { ...keys, clones: [] });
+    let answer: MediaAnswer = await r.plan("mureka", song, DEFAULT, { ...keys, clones: [] });
     const kinds: string[] = [];
     while (answer.state === "send" || answer.state === "running") {
       if (answer.state === "send") kinds.push(answer.step.kind);
@@ -594,8 +612,8 @@ describe("Mureka's steps", () => {
     expect(expectState(answer, "done").costs).toHaveLength(3);
   });
 
-  it("goes straight to the song when the run carries no source", () => {
-    const answer = expectState(runner().plan("mureka", { prompt: "pop", params: { lyrics: "la la" } }, DEFAULT, { ...keys, clones: [] }), "send");
+  it("goes straight to the song when the run carries no source", async () => {
+    const answer = expectState(await runner().plan("mureka", { prompt: "pop", params: { lyrics: "la la" } }, DEFAULT, { ...keys, clones: [] }), "send");
     expect(answer.step.kind).toBe("generate");
   });
 
@@ -608,7 +626,7 @@ describe("Mureka's steps", () => {
         : result("p-song", "failed", [], "The provider rejected the request. Please check your inputs and try again.");
     });
     const cached: MediaClone[] = [{ upstream: "ws_a", kind: "vocal", sourceKey: "sha-vocal", upstreamId: "163346152292353" }];
-    const planned = expectState(r.plan("mureka", { prompt: "a song", params: { vocal: "https://cdn.example/vocal.mp3" } }, DEFAULT, { ...keys, clones: cached }), "send");
+    const planned = expectState(await r.plan("mureka", { prompt: "a song", params: { vocal: "https://cdn.example/vocal.mp3" } }, DEFAULT, { ...keys, clones: cached }), "send");
     expect(planned.step.kind).toBe("generate");
     const running = expectState(await r.send(stored(planned.ticket), live()), "running");
     expect(submits(a.seen)[0]?.body).toMatchObject({ vocal_id: "163346152292353" });
@@ -623,16 +641,16 @@ describe("ticketFromLegacy — what earlier pickups left", () => {
   it("continues a 3D task by its stored provider task id", async () => {
     const r = runner();
     a.answer(() => result("p-3d", "processing"));
-    const answer = expectState(r.ticketFromLegacy("seedance", video, DEFAULT, options(), { providerTaskId: "p-3d" }), "running");
+    const answer = expectState(await r.ticketFromLegacy("seedance", video, DEFAULT, options(), { providerTaskId: "p-3d" }), "running");
     await r.poll(stored(answer.ticket), live());
     expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-3d/result"]);
   });
 
-  it("answers failed with the upstream's own words for a step that already failed", () => {
+  it("answers failed with the upstream's own words for a step that already failed", async () => {
     const legacy = {
       steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "failed" as const, predictionId: "p1", output: { error: "content policy" }, inlineCostUsd: 0 }],
     };
-    const failed = expectState(runner().ticketFromLegacy("seedance", video, DEFAULT, options(), legacy), "failed");
+    const failed = expectState(await runner().ticketFromLegacy("seedance", video, DEFAULT, options(), legacy), "failed");
     expect(failed.reason).toBeInstanceOf(UpstreamTaskFailed);
     expect((failed.reason as UpstreamTaskFailed).upstreamError).toBe("content policy");
   });
@@ -647,7 +665,7 @@ describe("ticketFromLegacy — what earlier pickups left", () => {
       ],
     };
     const cached: MediaClone[] = [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "voice-on-a" }];
-    const answer = expectState(r.ticketFromLegacy("voice-clone", speech, DEFAULT, options(cached), legacy), "running");
+    const answer = expectState(await r.ticketFromLegacy("voice-clone", speech, DEFAULT, options(cached), legacy), "running");
     await r.poll(stored(answer.ticket), live());
     expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-voice/result"]);
   });
@@ -661,7 +679,7 @@ describe("ticketFromLegacy — what earlier pickups left", () => {
     const legacy = {
       steps: [{ position: 0, kind: "generate" as const, endpoint: "bytedance/seedance", itemIndex: null, status: "done" as const, predictionId: "p1", output, inlineCostUsd: 0 }],
     };
-    let answer = r.ticketFromLegacy("seedance", video, DEFAULT, options(), legacy);
+    let answer = await r.ticketFromLegacy("seedance", video, DEFAULT, options(), legacy);
     if (answer.state === "running") answer = await r.poll(stored(answer.ticket), live());
     expect(expectState(answer, "done").outputs).toEqual(urls.map((url) => ({ kind: "url", url })));
   });

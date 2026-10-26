@@ -106,11 +106,11 @@ export interface LegacyRows {
 
 /** Media runs as tickets (design 3.4). */
 export interface MediaRunner {
-  plan(model: string, input: MediaInput, route: Route, options: PlanOptions): MediaAnswer;
+  plan(model: string, input: MediaInput, route: Route, options: PlanOptions): Promise<MediaAnswer>;
   send(ticket: MediaTicket, bounds: CallBounds): Promise<MediaAnswer>;
   poll(ticket: MediaTicket, options: PollOptions): Promise<MediaAnswer>;
   recover(ticket: MediaTicket, bounds: CallBounds): Promise<MediaAnswer>;
-  ticketFromLegacy(model: string, input: MediaInput, route: Route, options: PlanOptions, legacy: LegacyRows): MediaAnswer;
+  ticketFromLegacy(model: string, input: MediaInput, route: Route, options: PlanOptions, legacy: LegacyRows): Promise<MediaAnswer>;
 }
 
 /** Limits on the media provider reads itself. */
