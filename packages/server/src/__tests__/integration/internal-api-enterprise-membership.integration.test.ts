@@ -33,12 +33,97 @@ async function operationCount(requestKey: string): Promise<number> {
   return row!.n;
 }
 
+/** Read timestamp text without applying the driver's Date parser.
+ * @param id - The account with negotiated membership facts.
+ * @returns The exact stored UTC instants at wire precision.
+ * @throws {Error} When the database query fails.
+ */
+async function storedTimestamps(id: string): Promise<{ expiresAt: string; createdAt: string; updatedAt: string }> {
+  const [row] = await suite.sql<{ expiresAt: string; createdAt: string; updatedAt: string }[]>`
+    select to_char(expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt",
+      to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+      to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "updatedAt"
+    from enterprise_memberships where user_id=${id}`;
+  return row!;
+}
+
 /** One already-observed ordinary subscription fact for the shared write path. */
 function subscriptionFact(userId: string, subscriptionId: string, status: "active" | "canceled", observedAt: Date): SubscriptionWrite {
   return { userId, stripeSubscriptionId: subscriptionId, tier: "pro", period: "month", status, currentPeriodEnd: new Date("2099-10-26T00:00:00.000Z"), cancelAtPeriodEnd: false, stripeItemId: "si_enterprise_fact", hasPendingUpdate: false, pendingTier: null, pendingPeriod: null, payableInvoiceUrl: null, observedAt };
 }
 
 describe("enterprise membership signed internal API", () => {
+  it.each(["0001", "0013", "0049", "0050", "0099", "0100", "0999", "1000", "2026"])("preserves year %s through signed save, current profile and immutable operation replay", async (year) => {
+    const id = await user();
+    const requestKey = key();
+    const request = { ...body, expiresAt: `${year}-01-02T00:00:00.000Z` };
+    const response = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
+    expect(response.status).toBe(200);
+    expect(response.json).toMatchObject({ status: "applied", before: { userId: id, storedTier: "pro", enterprise: null }, after: { userId: id, storedTier: "enterprise", enterprise: { expiresAt: request.expiresAt, entryTimezone: "UTC", revision: 1, fallbackTier: "base" } } });
+    const stored = await storedTimestamps(id);
+    expect(stored.expiresAt).toBe(request.expiresAt);
+    expect(response.json.after.enterprise).toMatchObject(stored);
+    const profile = await call(suite.baseUrl, path(id));
+    expect(profile.status).toBe(200);
+    expect(profile.json.snapshot).toEqual(response.json.after);
+    expect(profile.json.reading).toMatchObject({ enterpriseState: "expired", effectiveTier: "base", expiresAt: request.expiresAt, revision: 1, settlementProtected: false });
+    expect(await getMembershipReadingForUser(id)).toMatchObject({ enterpriseState: "expired", effectiveTier: "base", expiresAt: request.expiresAt, revision: 1, settlementProtected: false });
+    const [operation] = await suite.sql<{ result: unknown }[]>`select result from enterprise_membership_operations where key=${requestKey}`;
+    expect(operation!.result).toEqual(response.json);
+    const replay = await call(suite.baseUrl, `/internal/v1/enterprise-membership-operations/${requestKey}`);
+    expect(replay.status).toBe(200);
+    expect(replay.json).toEqual(response.json);
+    const repeated = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
+    expect(repeated.status).toBe(200);
+    expect(repeated.json).toEqual(response.json);
+    expect(await operationCount(requestKey)).toBe(1);
+  });
+
+  it("retains early UTC timestamps and entry zone in locked before and updated after snapshots", async () => {
+    const id = await user("enterprise");
+    const originalTimes = { expiresAt: "0049-01-02T00:00:00.000Z", createdAt: "0001-01-01T01:02:03.004Z", updatedAt: "0013-01-01T05:06:07.008Z" };
+    await suite.sql`insert into enterprise_memberships(user_id,expires_at,entry_timezone,contract_number,team_studios,projects_per_studio,concurrent_editors,studio_members,project_members,storage_bytes,fallback_tier,revision,created_at,updated_at)
+      values(${id},${originalTimes.expiresAt}::timestamptz,'Asia/Shanghai','ENT-29-EARLY',8,500,30,200,80,1099511627776,'base',1,${originalTimes.createdAt}::timestamptz,${originalTimes.updatedAt}::timestamptz)`;
+    expect(await storedTimestamps(id)).toEqual(originalTimes);
+    const original = await call(suite.baseUrl, path(id));
+    expect(original.status).toBe(200);
+    expect(original.json.snapshot.enterprise).toEqual({ ...originalTimes, entryTimezone: "Asia/Shanghai", contractNumber: "ENT-29-EARLY", limits, fallbackTier: "base", revision: 1 });
+    const requestKey = key();
+    const request = { ...body, expiresAt: originalTimes.expiresAt, entryTimezone: "Asia/Shanghai", contractNumber: "ENT-29-EARLY-EDIT", expectedRevision: 1, expectedStoredTier: "enterprise" };
+    const response = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
+    expect(response.status).toBe(200);
+    expect(response.json.status).toBe("applied");
+    expect(response.json.before).toEqual(original.json.snapshot);
+    const stored = await storedTimestamps(id);
+    expect(stored).toEqual({ ...originalTimes, updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/) });
+    expect(stored.updatedAt).not.toBe(originalTimes.updatedAt);
+    expect(response.json.after).toEqual({ userId: id, storedTier: "enterprise", enterprise: { ...stored, entryTimezone: "Asia/Shanghai", contractNumber: request.contractNumber, limits, fallbackTier: "base", revision: 2 } });
+    const current = await call(suite.baseUrl, path(id));
+    expect(current.status).toBe(200);
+    expect(current.json.snapshot).toEqual(response.json.after);
+    expect(current.json.reading).toMatchObject({ enterpriseState: "expired", effectiveTier: "base", expiresAt: originalTimes.expiresAt, revision: 2 });
+    const [operation] = await suite.sql<{ result: unknown }[]>`select result from enterprise_membership_operations where key=${requestKey}`;
+    expect(operation!.result).toEqual(response.json);
+    const replay = await call(suite.baseUrl, `/internal/v1/enterprise-membership-operations/${requestKey}`);
+    expect(replay.status).toBe(200);
+    expect(replay.json).toEqual(response.json);
+    const repeated = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
+    expect(repeated.status).toBe(200);
+    expect(repeated.json).toEqual(response.json);
+    const conflicting = await call(suite.baseUrl, path(id), { body: { ...request, contractNumber: "DIFFERENT" }, idempotencyKey: requestKey });
+    expect(conflicting.status).toBe(409);
+    expect(conflicting.json.code).toBe("idempotency_conflict");
+    const stale = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: key() });
+    expect(stale.status).toBe(200);
+    expect(stale.json).toMatchObject({ status: "refused", code: "revision_conflict", before: response.json.after, after: response.json.after });
+    const wrongTier = await call(suite.baseUrl, path(id), { body: { ...request, expectedRevision: 2, expectedStoredTier: "pro" }, idempotencyKey: key() });
+    expect(wrongTier.status).toBe(200);
+    expect(wrongTier.json).toMatchObject({ status: "refused", code: "revision_conflict", before: response.json.after, after: response.json.after });
+    expect(await storedTimestamps(id)).toEqual(stored);
+    expect(await operationCount(requestKey)).toBe(1);
+    expect(await suite.sql`select id from membership_tier_changes where user_id=${id}`).toEqual([]);
+  });
+
   it("requires a valid signature", async () => {
     const response = await call(suite.baseUrl, path(await user()), { body, idempotencyKey: key(), unsigned: true });
     expect(response.status).toBe(401);

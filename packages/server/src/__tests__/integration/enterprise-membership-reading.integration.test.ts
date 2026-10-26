@@ -4,7 +4,7 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { db, initCore, getHonouredTierForUser, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, getMembershipConfig, lockLimitsForUser } from "@breatic/core";
+import { db, initCore, getHonouredTierForUser, getEnterpriseMembershipProfile, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, getMembershipConfig, lockLimitsForUser } from "@breatic/core";
 import { tierLimitsSchema } from "@breatic/shared";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
@@ -41,6 +41,32 @@ beforeAll(() => {
 afterAll(async () => { await sql?.end({ timeout: 1 }); });
 
 describe("enterprise membership unified reads", () => {
+  it.each(["0001", "0013", "0049", "0050", "0099", "0100", "0999", "1000", "2026"])("preserves year %s in enterprise timestamps and expired account and Studio entitlements", async (year) => {
+    const { userId, studioId } = await account("enterprise");
+    const timestamps = {
+      expiresAt: `${year}-01-02T00:00:00.000Z`,
+      createdAt: `${year}-01-01T01:02:03.004Z`,
+      updatedAt: `${year}-01-01T05:06:07.008Z`,
+    };
+    // Bind ISO strings and project SQL text so neither seed nor oracle uses a Date parser.
+    await enterprise(userId, timestamps.expiresAt);
+    await sql`update enterprise_memberships set created_at=${timestamps.createdAt}::timestamptz,updated_at=${timestamps.updatedAt}::timestamptz where user_id=${userId}`;
+    const [stored] = await sql<{ expiresAt: string; createdAt: string; updatedAt: string }[]>`
+      select to_char(expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt",
+        to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",
+        to_char(updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "updatedAt"
+      from enterprise_memberships where user_id=${userId}`;
+    expect(stored).toEqual(timestamps);
+    const configured = getMembershipLimits("base");
+    expect(await getMembershipReadingForUser(userId)).toMatchObject({ storedTier: "enterprise", effectiveTier: "base", enterpriseState: "expired", expiresAt: timestamps.expiresAt, limits: configured, storageBytes: configured.storage_bytes, revision: 1, settlementProtected: false });
+    expect(await getEnterpriseMembershipProfile(userId)).toMatchObject({ snapshot: { enterprise: { ...timestamps, entryTimezone: "UTC", revision: 1 } } });
+    expect(await getHonouredTierForUser(userId)).toBe("base");
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "base", limits: configured });
+    expect(await getLimitsForStudio(studioId)).toEqual(configured);
+    expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
+    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes });
+  });
+
   it("reads ordinary account and Studio entitlements with database-valid non-RFC identities", async () => {
     const userId = `00000000-0000-0000-0000-${randomUUID().slice(-12)}`;
     const studioId = `00000000-0000-0000-0000-${randomUUID().slice(-12)}`;

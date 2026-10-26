@@ -478,18 +478,31 @@ export type MembershipReading = EnterpriseMembershipProfile["reading"] & {
   storedTier: MembershipTier;
 };
 
+type EnterpriseRecordRow = Omit<typeof enterpriseMemberships.$inferSelect, "expiresAt" | "createdAt" | "updatedAt"> & {
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const enterpriseRecordSelection = {
+  ...getTableColumns(enterpriseMemberships),
+  expiresAt: sql<string>`to_char(${enterpriseMemberships.expiresAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+  createdAt: sql<string>`to_char(${enterpriseMemberships.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+  updatedAt: sql<string>`to_char(${enterpriseMemberships.updatedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
+};
+
 /**
  * Convert a negotiated database record to the wire's immutable facts.
  * @param row - The complete SQL record.
  * @returns Its validated representation.
  * @throws {Error} When stored membership facts violate the contract.
  */
-function enterpriseRecordOf(row: typeof enterpriseMemberships.$inferSelect): EnterpriseRecord {
+function enterpriseRecordOf(row: EnterpriseRecordRow): EnterpriseRecord {
   return enterpriseRecordSchema.parse({
-    expiresAt: row.expiresAt.toISOString(), entryTimezone: row.entryTimezone,
+    expiresAt: row.expiresAt, entryTimezone: row.entryTimezone,
     contractNumber: row.contractNumber, fallbackTier: row.fallbackTier, revision: row.revision,
     limits: { team_studios: row.teamStudios, projects_per_studio: row.projectsPerStudio, concurrent_editors: row.concurrentEditors, studio_members: row.studioMembers, project_members: row.projectMembers, storage_bytes: row.storageBytes },
-    createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
+    createdAt: row.createdAt, updatedAt: row.updatedAt,
   });
 }
 
@@ -503,7 +516,7 @@ function enterpriseRecordOf(row: typeof enterpriseMemberships.$inferSelect): Ent
 async function readMembershipProfile(target: { userId: string } | { studioId: string }, tx?: DbTx): Promise<{ profile: EnterpriseMembershipProfile; subject: TierSubject } | null> {
   const selection = {
     userId: users.id, email: users.email, storedTier: users.membershipTier,
-    enterprise: getTableColumns(enterpriseMemberships),
+    enterprise: enterpriseRecordSelection,
     facts: subscriptionFactsForMembership(users.id),
     asOf: sql<string>`statement_timestamp()`,
   };
@@ -568,7 +581,7 @@ async function getMembershipReadingForStudio(studioId: string, tx?: DbTx): Promi
 export async function lockRawMembershipSnapshot(userId: string, tx: DbTx): Promise<RawMembershipSnapshot | null> {
   const [locked] = await tx.select({ storedTier: users.membershipTier }).from(users).where(and(eq(users.id, userId), isNull(users.deletedAt))).for("update").limit(1);
   if (locked === undefined) return null;
-  const [enterprise] = await tx.select().from(enterpriseMemberships).where(and(eq(enterpriseMemberships.userId, userId), isNull(enterpriseMemberships.deletedAt))).limit(1);
+  const [enterprise] = await tx.select(enterpriseRecordSelection).from(enterpriseMemberships).where(and(eq(enterpriseMemberships.userId, userId), isNull(enterpriseMemberships.deletedAt))).limit(1);
   return { userId, storedTier: asKnownTier(locked.storedTier, { accountId: userId }), enterprise: enterprise === undefined ? null : enterpriseRecordOf(enterprise) };
 }
 
@@ -589,7 +602,7 @@ export async function writeEnterpriseMembershipRecord(userId: string, body: Ente
     studioMembers: body.limits.studio_members, projectMembers: body.limits.project_members, storageBytes: body.limits.storage_bytes,
     fallbackTier, revision, deletedAt: null, updatedAt: sql`statement_timestamp()`,
   };
-  const [saved] = await tx.insert(enterpriseMemberships).values(values).onConflictDoUpdate({ target: enterpriseMemberships.userId, set: values }).returning();
+  const [saved] = await tx.insert(enterpriseMemberships).values(values).onConflictDoUpdate({ target: enterpriseMemberships.userId, set: values }).returning(enterpriseRecordSelection);
   if (saved === undefined) throw new Error(`No saved membership record for ${userId}`);
   return enterpriseRecordOf(saved);
 }
