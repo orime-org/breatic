@@ -116,7 +116,8 @@ export async function cleanupFailedJobNodes(
     const current = await miniToolExecutionService.startMiniToolExecution(job.data.taskId, job.data.taskId);
     if (current.record.status === "cancelled") return 0;
     const terminal = current.record.status === "completed" || current.record.status === "failed";
-    const failure = { code: "mini_tool_failed", message: reason };
+    const failure = { code: "internal" };
+    if (!terminal) logger.error({ err: new Error(reason), ctx: { taskId: job.data.taskId, reason } }, "mini_tool_execution_terminal_queue_failed");
     await finishMiniToolExecutionAndNotify(job.data.taskId, {
       planFingerprint: current.execution.planFingerprint, expectedVersion: current.record.resultVersion,
       outputs: terminal ? current.record.outputs : current.execution.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure }, late: false })),

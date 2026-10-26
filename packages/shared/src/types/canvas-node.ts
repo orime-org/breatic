@@ -308,6 +308,8 @@ export interface CanvasNodeFields {
      * content. Node state, not content: a copy of the node does not carry it.
      */
     taskResultEventId?: string;
+    /** First handled planned output, retained across history restores and excluded from copies. */
+    miniToolResultOrigin?: MiniToolResultOrigin;
 
     // ─── Data node fields ───────────────────────────────────
     /**
@@ -648,6 +650,14 @@ export interface NodeTaskResult {
  */
 export type NodeMediaNumbers = Omit<NodeTaskResult, 'content' | 'coverUrl'>;
 
+/** One immutable registered output, independent from its transport or run snapshot version. */
+interface MiniToolResultOrigin {
+  kind: 'mini-tool-output';
+  runId: string;
+  planFingerprint: string;
+  outputIndex: number;
+}
+
 /**
  * The server recounted a node's tasks (#186).
  *
@@ -670,6 +680,8 @@ export interface NodeTaskCountsEvent {
   counts: NodeTaskCounts;
   /** Present only on the transition into `done`. */
   result?: NodeTaskResult;
+  /** Stable business identity of a planned media result; never a Redis stream id. */
+  resultOrigin?: MiniToolResultOrigin;
 }
 
 /** Single union for forward-compat. */

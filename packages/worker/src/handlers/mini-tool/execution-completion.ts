@@ -31,6 +31,7 @@ export async function finishMiniToolExecutionAndNotify(taskId: string, completio
       coverUrl: output.result.kind === "video" ? output.result.cover?.canonicalURL : undefined,
       width: output.result.width, height: output.result.height, duration: output.result.duration,
       mimeType: output.result.mimeType, size: output.result.size,
+      resultOrigin: { kind: "mini-tool-output" as const, runId: execution.taskId, planFingerprint: execution.planFingerprint, outputIndex: output.outputIndex },
     }]);
     await recordGenerationForNodes(streamRedis, docName, {
       taskId, projectId: execution.projectId, userId: task.userId, taskType: task.taskType,

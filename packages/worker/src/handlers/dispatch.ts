@@ -58,7 +58,7 @@ import {
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
 import { MINI_TOOL_ANALYSIS_JOB, catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
-import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
+import type { NodeTaskCountsEvent, NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { takePromptAndValidate } from "@worker/handlers/prompt-params.js";
@@ -1032,6 +1032,7 @@ export async function recordGenerationForNodes(
     duration?: number | null;
     mimeType?: string | null;
     size?: number | null;
+    resultOrigin?: NodeTaskCountsEvent["resultOrigin"];
   }>,
   opts: { rethrowOnRecordFailure?: boolean } = {},
 ): Promise<void> {
@@ -1095,6 +1096,7 @@ export async function recordGenerationForNodes(
             outcome: "done",
             ...(historyId !== undefined && { nodeHistoryId: historyId }),
             result,
+            ...(o.resultOrigin !== undefined && { resultOrigin: o.resultOrigin }),
           };
     try {
       await settleTaskForNode(streamRedis, docName, ending);

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { DelayedError, type Job } from "bullmq";
-import { getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
+import { AppError, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
 import { failureOutcome, hasUnresolvedMiniToolStepAttempts, miniToolExecutionService, miniToolStepStateSchema, upstreamStepRepo,
   type MiniToolExecution, type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
 import { assertBeforeDeadline, DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
@@ -13,6 +13,7 @@ import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remo
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/providers/still-running.js";
+import { UpstreamTaskFailed } from "@worker/providers/http.js";
 
 /**
  * Run one planned pickup through its original SQL-owned lifecycle.
@@ -60,8 +61,10 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
         ctx = { ...ctx, ...(pastReturn === undefined ? {} : { stepId: pastReturn.id }) };
         const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
         if (!returned && !isTerminalAttempt(job) && !verdictStands(error)) throw error;
-        logger.error({ err: thrown, ctx: { ...ctx, phase: returned ? "registration" : phase } }, "mini_tool_execution_computation_failed");
-        const failure = { code: error instanceof DeadlinePassed ? "expired" : "mini_tool_failed", message: error instanceof Error ? error.message : String(error) };
+        logger.error({ err: thrown, ctx: { ...ctx, phase: error instanceof UpstreamTaskFailed ? "provider" : returned ? "registration" : phase } }, "mini_tool_execution_computation_failed");
+        const failure: NonNullable<MiniToolExecutionCompletion["error"]> = error instanceof DeadlinePassed ? { code: "expired" }
+          : error instanceof AppError || error instanceof UpstreamTaskFailed ? { code: "mini_tool_failed", message: error.message }
+            : { code: "internal" };
         completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
           outputs: execution.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure }, late: false })),
           error: failure, consumptionSet: "uncertain" };

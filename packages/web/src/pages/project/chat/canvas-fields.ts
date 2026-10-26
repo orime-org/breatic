@@ -98,6 +98,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   handling: 'other',
   taskCounts: 'other',
   taskResultEventId: 'other',
+  miniToolResultOrigin: 'other',
   width: 'other',
   height: 'other',
   mediaWidth: 'other',

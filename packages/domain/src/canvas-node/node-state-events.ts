@@ -15,7 +15,7 @@
  */
 
 import { publishNodeEvent, type getStreamRedis } from "@breatic/core";
-import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
+import type { NodeTaskCounts, NodeTaskCountsEvent, NodeTaskResult } from "@breatic/shared";
 
 /**
  * Publish a node's four task counts (#186, design §3.4).
@@ -38,6 +38,7 @@ import type { NodeTaskCounts, NodeTaskResult } from "@breatic/shared";
  *   already in hand. Having to name this parameter is what keeps the second
  *   kind from being written against this function by accident; the server
  *   sends those through `publishCountsQuietly`, which logs and carries on.
+ * @param resultOrigin - Immutable planned output identity, sent only with media.
  */
 export async function emitNodeTaskCounts(
   streamRedis: ReturnType<typeof getStreamRedis>,
@@ -45,6 +46,7 @@ export async function emitNodeTaskCounts(
   nodeId: string,
   counts: NodeTaskCounts,
   result: NodeTaskResult | undefined,
+  resultOrigin?: NodeTaskCountsEvent["resultOrigin"],
 ): Promise<void> {
   await publishNodeEvent(streamRedis, {
     type: "node-task-counts",
@@ -52,5 +54,6 @@ export async function emitNodeTaskCounts(
     nodeId,
     counts,
     ...(result !== undefined && { result }),
+    ...(result !== undefined && resultOrigin !== undefined && { resultOrigin }),
   });
 }

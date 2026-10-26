@@ -3,15 +3,17 @@
 
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { getRawEnvVar } from "@breatic/core";
+import { getRawEnvVar, logger } from "@breatic/core";
 import {
-  assetRepo, beginMiniToolStepAttempt, getFullModelConfig, miniToolStepStateSchema,
+  assetRepo, beginMiniToolStepAttempt, failMiniToolStep, getFullModelConfig, miniToolStepStateSchema,
   readMiniToolExecutionPlan, recordMiniToolStepIdentity, recordMiniToolStepResult, upstreamStepRepo,
 } from "@breatic/domain";
 import type { StudioAssetEntity } from "@breatic/shared";
 import { storeFromUrl } from "@worker/handlers/backend-upload.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import { runPrediction } from "@worker/providers/wavespeed.js";
+import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 const providerOutputsSchema = z.tuple([z.string().url()]);
 const operationResultSchema = z.strictObject({ providerURL: z.string().url() });
@@ -56,6 +58,12 @@ export async function runMiniToolRemoveBackground(
     return registeredAsset(assetIdentitySchema.parse(step.output[RECEIPT_KEY]));
   }
   let state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
+  if (step.status === "failed" && state?.result?.outcome !== "done") {
+    const message = state?.error?.message;
+    if (typeof message !== "string") throw new Error("Original provider failure has no stored reason");
+    onProviderReturned?.(step.id);
+    throw new UpstreamTaskFailed("wavespeed", message);
+  }
   let originalDeadline = state?.deadlineAt ?? deadlineAt;
   if (state === null || state.result === null) {
     const connection = getFullModelConfig("video").providers.wavespeed;
@@ -75,14 +83,24 @@ export async function runMiniToolRemoveBackground(
       state = miniToolStepStateSchema.parse(step.output.miniToolStep);
       originalDeadline = state.deadlineAt ?? originalDeadline;
     }
-    const prediction = await runPrediction({ baseUrl: connection.base_url, apiKey }, execution.provider.model_id, execution.body, {
-      storedTaskId: step.predictionId, externalTaskId: step.id, retryStarting, deadlineAt: originalDeadline,
-      persistTaskId: async (predictionId): Promise<void> => {
-        if (attemptId === null) throw new Error("Existing provider prediction cannot receive a replacement receipt");
-        const receipt = await recordMiniToolStepIdentity({ taskId: task.id, stepId: step.id, attemptId, predictionId });
-        if (receipt.conflict) throw new Error("Provider receipt conflicts with its original prediction");
-      },
-    });
+    let prediction: Awaited<ReturnType<typeof runPrediction>>;
+    try {
+      prediction = await runPrediction({ baseUrl: connection.base_url, apiKey }, execution.provider.model_id, execution.body, {
+        storedTaskId: step.predictionId, externalTaskId: step.id, retryStarting, deadlineAt: originalDeadline,
+        persistTaskId: async (predictionId): Promise<void> => {
+          if (attemptId === null) throw new Error("Existing provider prediction cannot receive a replacement receipt");
+          const receipt = await recordMiniToolStepIdentity({ taskId: task.id, stepId: step.id, attemptId, predictionId });
+          if (receipt.conflict) throw new Error("Provider receipt conflicts with its original prediction");
+        },
+      });
+    } catch (err) {
+      if (!(err instanceof StillRunning)) logger.error({ err, ctx: { taskId: task.id, stepId: step.id } }, "mini_tool_remove_background_provider_failed");
+      if (err instanceof UpstreamTaskFailed) {
+        await failMiniToolStep({ taskId: task.id, stepId: step.id, error: { message: err.upstreamError } });
+        onProviderReturned?.(step.id);
+      }
+      throw err;
+    }
     step = await recordMiniToolStepResult({
       taskId: task.id, stepId: step.id,
       identity: { kind: "provider", provider: "wavespeed", predictionId: prediction.taskId },

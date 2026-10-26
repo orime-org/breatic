@@ -180,6 +180,10 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 `startMiniToolExecution` 在原任务锁内校验计划与父模型、初始化完整输出槽，再进入计算。`finishMiniToolExecution` 按同一锁合并 `tasks.result.miniToolExecution`，保留其他结果字段和结算周期；完整登记结果或失败槽形成初份媒体版本，重复结果保持版本，原失败任务的合法迟到登记以版本检查补入并保留原终态。费用身份、确认成本和 usage 记录的三个写入口在各自原事务内同步窄公共费用投影；媒体版本与费用周期独立。`getMiniToolExecution` 检查真实父 Project 的当前成员读权，从 tasks 投影结果及实际结算状态，读取过程不访问 worker 的上游步骤或触发媒体计算。
 
+计划执行终结或终态重放时，在同 task 锁内按原提交 intent 与 identity 冲突判据核实调用集合；金额 pending 不表示身份未齐。自动复核须有与冻结计划相符的原执行步骤范围声明，当前去背景是其唯一 generate 描述；缺少范围声明的 uncertain 媒体提交保留原结算状态，显式 complete 仍沿原闭合入口复核。最后一项合法原回执到达已终结的计划任务时，回执 owner 也按同一判据重新核实，继续使用原消费闭合入口；仍有未决 intent 则保留未闭合状态。明确供应商失败保存原步骤失败及原话，后续读取沿原失败，不重新查询或提交。计划任务的未知内部异常公开为 `internal`，完整诊断留应用日志；明确 AppError 与供应商失败继续保留可公开的原话，原期限失败为 `expired`。
+
+协作媒体事件可携独立 `resultOrigin`，由 run ID、计划指纹与输出索引标识同一份计划结果。Collab 在节点 `miniToolResultOrigin` 中保留首次处理的身份，包含按原 stream 次序判旧的结果；同身份重送只可推进计数，不再次写媒体或推进原媒体 stream 水位。历史恢复与后续普通媒体写保留该身份，新复制节点排除它。此身份不使用整份 manifest 的版本，也不替代 stream/deadletter 的原消息 ID。
+
 Worker 在常规分派前识别 `execute-mini-tool` 的 `executionKind: planned`，队列只携原 task ID、来源和 consent；原 actor、Project、Space、模型及目标以 SQL 为准。等待沿 `StillRunning` 归还处理位，完成或失败的任务重放只恢复已有结果和历史。执行叶子在供应商结果持久后通知应用层返回分界，之后的登记错误不抛回计算队列；媒体 manifest 已完成时，历史或通知错误保留完成态。跨进程失败清理按原 `finishedOn` 和 planned 标识进入相同终结入口，费用及 hold 继续交原消费结算 owner。`GET /projects/:projectId/mini-tool-runs/:runId` 允许当前项目成员读取该执行，旧任务读取接口保留原发起者权限。
 
 计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求。提交前重新检查原期限并用它限定传输；两次查询间隔的最终报告窗口只供读取。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。
