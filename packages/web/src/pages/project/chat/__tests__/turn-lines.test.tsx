@@ -295,7 +295,10 @@ describe('how a stored turn reads when the conversation is reopened', () => {
       />,
     );
 
-    expect(screen.getByTestId('message-bubble-error')).toBeInTheDocument();
+    const line = screen.getByTestId('message-bubble-error');
+    expect(line).toHaveClass('text-status-error-foreground');
+    // Wrapped so its last line is never a single word.
+    expect(screen.getByText('This reply could not be finished. Try sending it again.')).toHaveClass('text-pretty');
   });
 
   it('says a turn that ended too long to finish so, and not that it should be sent again (inner#1567)', () => {

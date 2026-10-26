@@ -56,7 +56,7 @@ function EndingLine({
       className={cn('mt-[0.85em] flex items-start gap-1.5 text-xs', colour)}
     >
       <Icon className='mt-px size-3.5 shrink-0' aria-hidden='true' />
-      <span className='min-w-0 break-words'>{text}</span>
+      <span className='min-w-0 break-words text-pretty'>{text}</span>
     </div>
   );
 }
