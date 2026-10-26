@@ -169,6 +169,8 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求。提交前重新检查原期限并用它限定传输；两次查询间隔的最终报告窗口只供读取。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。
 
+`advanceRegisteredMiniToolPlanJob` 保存原终态报告与实测用量后，逐项登记实际写出的产物；原步骤缓存每个索引的 canonical assetId，重入复用报告和已登记兄弟项。分析 JSON 从该真实资产行的 canonical URL 有限读取，字节界取登记大小，读取仍受原任务期限约束。领域装配器保留受理身份和六位微秒时间：场景结果核对完整源帧账本、原区间映射与切点；人物结果核对 display 锚帧和保存的整数像素区域，按原 detectionIndex 关联缩略图计划、实测报告及登记行。人物 ID 由原 analysisRunId 与检测编号确定，去重允许多个人引用同一资产；引用的 URL、hash、MIME、kind 和大小取登记胜出行。显式 display 人物检测与缩略图使用同向 PNG，裁切保持奇数尺寸、单像素和透明分量。
+
 ### 一个 AIGC 任务的执行顺序,和「不归路」
 
 `worker/src/handlers/dispatch.ts` 里一个任务从投递到结束的顺序。**碰 worker 任何一步之前先定位「我在第几步」—— 同一个失败在第 3 步和第 5 步的后果完全相反**:
