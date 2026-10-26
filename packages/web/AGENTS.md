@@ -16,6 +16,8 @@
 **The agent chat panel is per-user and never bound to Yjs; only a GenerativeNode's prompt is collaborative.** Chat history belongs to one reader.
 
 ## Production standards
+**Scene object commands use `planSceneCommand` and `applySceneCommand` in `data/yjs/scene-document.ts`; edits append complete field values to existing sequences.** The stable-record format and personal-history origins are described in [docs/ARCHITECTURE.md#scene-document-format-and-commands](../../docs/ARCHITECTURE.md#scene-document-format-and-commands).
+
 **Critical paths and invariants (StrictMode-safe resource hooks, Yjs collaboration, optimistic-update races) have 100% tests; markup is semantic, focus is visible and every action is keyboard-reachable; all copy is ICU in the five locales, never hard-coded; colours come from semantic tokens.** Raw brand colours are for the logo only; repo-lint `no-brand-usage` scans `src` `.ts/.tsx/.css` with comments stripped.
 
 **A web change is done only after a real-browser pass in light and dark themes (plus collaboration and the auth flow when touched), the main flow walked by keyboard, and no bundle regression (`pnpm build && pnpm --filter @breatic/web verify:chunks`).** Unit tests do not see themes, focus order or chunk splits.

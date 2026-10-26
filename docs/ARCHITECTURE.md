@@ -460,6 +460,39 @@ pnpm test / typecheck / lint
 | 测试 | Vitest + Playwright + @testing-library + fast-check |
 | 监控 | Sentry(`@sentry/react` 11;见 [Error monitoring](#error-monitoring)) |
 
+### Scene document format and commands
+
+`packages/shared/src/scene.ts` defines the plain scene values and their runtime
+schemas. Positions are finite Y-up metre tuples, rotations are normalized XYZW
+quaternions, and per-axis scales are positive. Model references identify a built-in
+model or a registered asset by UUID. `scene-version.ts` initializes version 1 when
+both validated scene roots are empty; existing content, including unknown or
+missing version metadata, is retained. Its `getSceneRootMap` validates the root
+structure for initialization, projection and recovery checks. Yjs retains sequence
+content when a decoded root acquires its Map constructor, so the shared check
+rejects that content while preserving its encoded bytes.
+
+The document has a `scene` root Map with `formatVersion` and an `objects` root Map
+keyed by object UUID. Each object is a stable Map containing immutable `initial`
+values and six pre-created Y.Array sequences: `name`, `position`, `rotation`,
+`scale`, `locked` and `exists`. Each edit appends a complete field value. The
+projection uses the last visible value, falling back to `initial` for an empty
+sequence. Initial `locked` and `exists` are false; creation appends `exists=true`.
+
+`packages/web/src/data/yjs/scene-document.ts` projects valid visible objects while
+retaining invalid records and reporting their errors. Command planning checks the
+whole target set, format, values, caller permission and manual locks before any
+write. Duplication creates an independent identity from committed values and
+unlocks the copy. Deletion appends `exists=false`, preserving the record for late
+edits and undo. Concurrent edits merge through Yjs sequence order; tuples remain
+whole and independent fields merge separately.
+
+Stable records are created with a system origin. Each complete command appends
+its values in one transaction using the caller's local origin. Personal history
+tracks that origin and reuses the existing UndoManager cleanup adapter, so undo
+removes local inserts while preserving remote records and stable structure.
+The document host supplies current write permission and owns the history lifetime.
+
 ### Brand home links
 
 The Studio and Project top-left brand links always navigate to `https://breatic.ai/`,
