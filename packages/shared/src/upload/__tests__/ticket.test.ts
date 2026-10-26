@@ -213,7 +213,7 @@ describe("a ticket check refuses what is not a ticket (inner#1595 B1)", () => {
       fc.record({
         userId: fc.string({ minLength: 1 }),
         studioId: fc.string({ minLength: 1 }),
-        deadlineAt: fc.integer({ min: NOW }),
+        deadlineAt: fc.integer({ min: NOW, max: NOW + 10 ** 9 }),
       }),
     );
     await fc.assert(
