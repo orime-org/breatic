@@ -546,6 +546,7 @@ describe('bodyOrTransfer: request timeouts (inner#1595 W09, W10)', () => {
     expect(postsTo(isFinish)[0]?.[2]).not.toHaveProperty('timeout');
 
     vi.mocked(apiPost).mockClear();
+    vi.mocked(sendBytesToIngest).mockClear();
     const failure = new ApiException({ status: 500, message: 'Internal error', fromServer: true });
     vi.mocked(apiPost).mockImplementation(async (url: string) => {
       if (isTicket(url)) throw failure;
