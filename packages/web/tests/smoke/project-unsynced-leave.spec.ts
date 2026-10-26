@@ -316,57 +316,75 @@ function frameOf(data: string | Buffer): Frame {
   return { name, kind };
 }
 
-test('an older real receipt keeps newer Document edits protected until their round trip', async ({ page, context }) => {
-  let name = '';
-  let holdResponses = false;
-  let holdOutgoing = false;
-  const replies: Array<() => void> = [];
-  const outgoing: Array<() => void> = [];
-  const sent: Frame[] = [];
+interface ContentFrames {
+  name: string;
+  holdResponses: boolean;
+  holdOutgoing: boolean;
+  replies: Array<() => void>;
+  outgoing: Array<() => void>;
+  sent: Frame[];
+}
+
+/** Holds selected frames on the live connection until the case releases them. */
+async function controlContentFrames(page: Page): Promise<ContentFrames> {
+  const frames: ContentFrames = { name: '', holdResponses: false, holdOutgoing: false, replies: [], outgoing: [], sent: [] };
   await page.routeWebSocket('**/ws', (route) => {
     const server = route.connectToServer();
     route.onMessage((data) => {
       const frame = frameOf(data);
-      sent.push(frame);
-      if (holdOutgoing && frame.name === name) outgoing.push(() => server.send(data));
+      frames.sent.push(frame);
+      if (frames.holdOutgoing && frame.name === frames.name) frames.outgoing.push(() => server.send(data));
       else server.send(data);
     });
     server.onMessage((data) => {
       const frame = frameOf(data);
-      if (holdResponses && frame.name === name && frame.kind === 'sync:confirmed') replies.push(() => route.send(data));
+      if (frames.holdResponses && frame.name === frames.name && frame.kind === 'sync:confirmed') frames.replies.push(() => route.send(data));
       else route.send(data);
     });
   });
+  return frames;
+}
+
+/** Resumes held frames in their original order before owned resources are removed. */
+function releaseContentFrames(frames: ContentFrames): void {
+  frames.holdResponses = false;
+  frames.holdOutgoing = false;
+  for (const send of frames.outgoing.splice(0)) send();
+  for (const send of frames.replies.splice(0)) send();
+}
+
+test('an older real receipt keeps newer Document edits protected until their round trip', async ({ page, context }) => {
+  const frames = await controlContentFrames(page);
   await openSmokeProject(page);
   const projectUrl = page.url();
   const projectId = smokeProjectId();
   const spaceId = await createSpace(page, 'document', `receipt-order-${Date.now()}`);
   const item: Content = { projectId, spaceId, kind: 'document' };
-  name = `project-${projectId}/document-${spaceId}`;
+  frames.name = `project-${projectId}/document-${spaceId}`;
   let peer: Page | undefined;
   try {
     const editor = page.locator(DOCUMENT_EDITOR);
     await editor.click();
     await page.keyboard.type('Base ');
     await synced(page, item);
-    holdResponses = true;
+    frames.holdResponses = true;
     await page.keyboard.type('A');
-    await expect.poll(() => replies.length).toBe(1);
-    holdOutgoing = true;
+    await expect.poll(() => frames.replies.length).toBe(1);
+    frames.holdOutgoing = true;
     await page.keyboard.type('B');
-    await expect.poll(() => outgoing.length).toBeGreaterThan(0);
-    holdResponses = false;
-    replies.shift()!();
-    await expect.poll(() => outgoing.length).toBeGreaterThan(1);
+    await expect.poll(() => frames.outgoing.length).toBeGreaterThan(0);
+    frames.holdResponses = false;
+    frames.replies.shift()!();
+    await expect.poll(() => frames.outgoing.length).toBeGreaterThan(1);
     expect(await contentState(page, item)).toBe(true);
     await page.getByTestId('top-bar-back').click();
     const dialog = page.getByRole('alertdialog');
     await expect(dialog).toContainText('Some changes have not synced');
     await dialog.getByRole('button', { name: 'Stay', exact: true }).click();
-    holdOutgoing = false;
-    for (const send of outgoing.splice(0)) send();
+    frames.holdOutgoing = false;
+    for (const send of frames.outgoing.splice(0)) send();
     await synced(page, item);
-    const contentFrames = sent.filter((frame) => frame.name === name).map((frame) => frame.kind);
+    const contentFrames = frames.sent.filter((frame) => frame.name === frames.name).map((frame) => frame.kind);
     const firstReceipt = contentFrames.indexOf('sync:confirm');
     expect(firstReceipt).toBeGreaterThan(contentFrames.indexOf('sync:1'));
     expect(contentFrames.slice(0, firstReceipt)).toContain('sync:2');
@@ -378,11 +396,45 @@ test('an older real receipt keeps newer Document edits protected until their rou
     expect(await contentState(peer, item)).toBe(false);
     expect(errors.get(peer)).toEqual([]);
   } finally {
-    holdResponses = false;
-    holdOutgoing = false;
-    for (const send of outgoing.splice(0)) send();
-    for (const send of replies.splice(0)) send();
+    releaseContentFrames(frames);
     await peer?.close();
+    await cleanupSpaces(page, item, [spaceId], projectUrl);
+  }
+});
+
+test('confirming leave with unacknowledged edits reaches the original navigation target', async ({ page }) => {
+  const frames = await controlContentFrames(page);
+  await openSmokeProject(page);
+  const projectUrl = page.url();
+  const projectId = smokeProjectId();
+  const spaceId = await createSpace(page, 'document', `confirmed-leave-${Date.now()}`);
+  const item: Content = { projectId, spaceId, kind: 'document' };
+  frames.name = `project-${projectId}/document-${spaceId}`;
+  const nativeDialogs: string[] = [];
+  page.on('dialog', async (dialog) => { nativeDialogs.push(dialog.type()); await dialog.dismiss(); });
+  try {
+    const editor = page.locator(DOCUMENT_EDITOR);
+    await editor.click();
+    await page.keyboard.type('Saved baseline. ');
+    await synced(page, item);
+    frames.holdResponses = true;
+    await page.keyboard.type('Pending leave edit.');
+    await expect.poll(() => frames.replies.length).toBe(1);
+    expect(await contentState(page, item)).toBe(true);
+    const back = page.getByTestId('top-bar-back');
+    const target = await back.getAttribute('href');
+    expect(target).toBe('/studio');
+    await back.click();
+    const dialog = page.getByRole('alertdialog');
+    await expect(dialog).toContainText('Some changes have not synced');
+    expect(await contentState(page, item)).toBe(true);
+    await dialog.getByRole('button', { name: 'Leave anyway', exact: true }).click();
+    await expect(page).toHaveURL(new URL(target!, projectUrl).toString());
+    await expect(page.getByTestId('project-page')).toHaveCount(0);
+    await expect(dialog).toHaveCount(0);
+    expect(nativeDialogs).toEqual([]);
+  } finally {
+    releaseContentFrames(frames);
     await cleanupSpaces(page, item, [spaceId], projectUrl);
   }
 });
