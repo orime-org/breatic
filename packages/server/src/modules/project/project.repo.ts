@@ -724,6 +724,9 @@ export async function duplicateProject(
       slug: `${source.slug}-copy`.slice(0, 120),
       description: source.description,
       thumbnailUrl: source.thumbnailUrl,
+      // A source with no meta document is seeded only after its first open.
+      // Keep its chosen kind so that copying before that open cannot reset it.
+      initialSpaceType: sql`(SELECT ${projects.initialSpaceType} FROM ${projects} WHERE ${projects.id} = ${source.id})`,
     })
     .returning();
   const newProject = inserted[0]!;

@@ -493,6 +493,35 @@ tracks that origin and reuses the existing UndoManager cleanup adapter, so undo
 removes local inserts while preserving remote records and stable structure.
 The document host supplies current write permission and owns the history lifetime.
 
+The `3d` Space uses `project-<projectId>/3d-<spaceId>` as its content document
+name. The shared Space enum drives creation validation, name parsing, content
+initialization and the content variants handled by Space RPC. The server reads
+scene-control configuration from `config/scene.yaml`; model resolution checks
+Project membership and resolves only registered GLB assets in that Studio.
+
+`OpenSpace` holds `SceneConnectionLifetime` outside its hidden Activity body.
+It acquires the same named-document provider used by the other Space types.
+`scene-session.ts` caches personal selection, gesture drafts and undo by Y.Doc.
+Hiding cancels the draft and presence while retaining that session; closing the
+Space tab evicts it. Provider release checks document identity so an old cleanup
+cannot release a replacement with the same wire name. Account changes destroy
+the previous transport before another account connects. Editing waits for the
+first synchronization; later disconnects retain the same in-memory Y.Doc and
+use normal Yjs reconnection. Scene content has no local recovery cache or export
+flow. Only the personal camera position and target use account/Project/Space
+scoped browser storage.
+
+Both creation dialogs share `SpaceKindPicker`: Canvas, Document, 3D and the
+unavailable Timeline. Cards show an icon and name, descriptions in tooltips,
+and a DEV badge on 3D. The initial 3D Space is named `3D`. The editor lazily
+loads its Three.js viewport. Its left rail contains creation controls, the
+bottom-center toolbar acts on the selection, and bottom-right controls toggle
+one floating Properties, Objects or Tasks panel and the minimap, alongside undo
+and redo. Selection changes open Properties; repeated trigger presses and the
+panel close action dismiss it. Locking changes the normal header icon without
+adding an active background. AI generation and annotations remain development
+entries; this editor does not submit generation jobs.
+
 ### Brand home links
 
 The Studio and Project top-left brand links always navigate to `https://breatic.ai/`,

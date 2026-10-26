@@ -31,10 +31,10 @@
  */
 
 import * as Y from "yjs";
-import { SpaceTypeSchema, spaceContentDocName } from "@breatic/shared";
+import { SpaceTypeSchema, spaceContentDocName, type SpaceType } from "@breatic/shared";
 
 /** The kinds of Space the meta doc tracks. Mirrors `@breatic/shared` SpaceType. */
-export type SpaceKind = "canvas" | "document" | "timeline";
+export type SpaceKind = SpaceType;
 
 export interface EncodeInitialMetaStateArgs {
   spaceId: string;
@@ -239,9 +239,9 @@ export function encodeInitialMetaState(
  * The seed runs in collab with no i18n context, so it uses the kind's
  * English label; the creating user renames the Space afterwards.
  * @param kind - The Space type being seeded
- * @returns The default Space name (`"Canvas"` / `"Document"` / `"Timeline"` / `"3D"`)
+ * @returns The default English Space name.
  */
-export function defaultSpaceName(kind: SpaceKind | "3d"): string {
+export function defaultSpaceName(kind: SpaceKind): string {
   switch (kind) {
     case "canvas":
       return "Canvas";

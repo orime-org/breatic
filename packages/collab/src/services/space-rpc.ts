@@ -77,6 +77,7 @@ import {
   type SpaceRpcErrorCode,
   type SpaceRpcRequest,
   type SpaceRpcResponse,
+  type SpaceType,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
 } from "@breatic/shared";
@@ -108,7 +109,7 @@ function ok(
   id: string,
   result?: {
     spaceId: string;
-    type: "canvas" | "document" | "timeline";
+    type: SpaceType;
     name: string;
   },
 ): SpaceRpcResponse {
@@ -227,11 +228,7 @@ function snapshotMap(m: Y.Map<unknown>): Record<string, unknown> {
  * every variant, so no live row is left under a deleted Space's id whatever
  * its kind; restore brings back only the variant of the Space's own type.
  */
-const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
-  "canvas",
-  "document",
-  "timeline",
-];
+const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = SpaceTypeSchema.options;
 
 /** The content-doc kinds a single call actually changed. */
 type TouchedKinds = readonly Exclude<DocKind, "meta">[];

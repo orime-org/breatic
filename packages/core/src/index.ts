@@ -65,6 +65,7 @@ export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@cor
 export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
+export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export {
   getUsagePricing,
   parseUsagePricing,

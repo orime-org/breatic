@@ -1238,12 +1238,13 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
     // The entry never left; nothing was published.
     expect(metaDoc.getMap("spaces").has(SID)).toBe(true);
     expect(metaBroadcastMock).not.toHaveBeenCalled();
-    // The two variants that DID get soft-deleted come back — and only those.
+    // Every variant that DID get soft-deleted comes back — and only those.
     const undone = restoreByNameMock.mock.calls.map((c) => c[0] as string);
     expect(undone.sort()).toEqual(
       [
         spaceContentDocName(PID, SID, "canvas"),
         spaceContentDocName(PID, SID, "timeline"),
+        spaceContentDocName(PID, SID, "3d"),
       ].sort(),
     );
   });

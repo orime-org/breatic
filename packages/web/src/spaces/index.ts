@@ -8,6 +8,7 @@ import type { ProjectRole, SpaceType } from '@breatic/shared';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
+import { ThreeDSpace } from '@web/spaces/three-d/ThreeDSpace';
 
 export interface SpaceBodyProps {
   spaceId: string;
@@ -49,6 +50,7 @@ export interface SpaceDefinition {
  * picker in `NewSpaceDialog` lists the types it offers in its own order.
  */
 export const SPACE_TYPES: Record<SpaceType, SpaceDefinition> = {
+  '3d': { type: '3d', label: '3D', icon: 'box', bodyComponent: ThreeDSpace },
   canvas: {
     type: 'canvas',
     label: 'Canvas',

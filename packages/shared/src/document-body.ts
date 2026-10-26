@@ -45,6 +45,7 @@ import { v4 as uuidv4 } from "uuid";
 import * as Y from "yjs";
 
 import type { SpaceType } from "@shared/types/space.js";
+import { initializeSceneDocument } from "@shared/scene-version.js";
 
 /**
  * Top-level key holding a document Space's body.
@@ -144,6 +145,9 @@ export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   switch (kind) {
     case "document":
       documentBodyFragment(doc).insert(0, [buildInitialDocumentBlock()]);
+      return Y.encodeStateAsUpdate(doc);
+    case "3d":
+      initializeSceneDocument(doc);
       return Y.encodeStateAsUpdate(doc);
     case "canvas":
     case "timeline":

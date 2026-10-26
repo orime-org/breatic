@@ -372,6 +372,7 @@ export {
   canvasSpaceDocName,
   documentSpaceDocName,
   timelineSpaceDocName,
+  threeDSpaceDocName,
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,

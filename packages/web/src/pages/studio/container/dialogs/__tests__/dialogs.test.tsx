@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { screen, act } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import userEvent from '@testing-library/user-event';
@@ -110,6 +111,17 @@ describe('NewItemDialog (spec §3.12)', () => {
       slug: 'fresh-proj',
       spaceType: 'canvas',
     });
+  });
+
+  it('submits the selected 3D type for the first Project Space', async () => {
+    const onCreate = vi.fn();
+    const user = userEvent.setup();
+    render(<NewItemDialog kind='project' open onOpenChange={() => {}} onCreate={onCreate} />);
+    await user.type(screen.getByLabelText('Name'), 'Scene Project');
+    await typeSlug(user, 'scene-project');
+    await user.click(screen.getByRole('radio', { name: '3D' }));
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    expect(onCreate).toHaveBeenCalledWith({ name: 'Scene Project', slug: 'scene-project', spaceType: '3d' });
   });
 
   it('submits the trimmed slug the reader typed', async () => {

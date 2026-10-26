@@ -220,6 +220,38 @@ describe("duplicate integrity", () => {
     expect(Array.from((await yjsRepo.fetchDocData(META))!)).toEqual(Array.from(meta));
   });
 
+  it("copies a listed 3D scene with unchanged object bytes and leaves the source intact", async () => {
+    const contentName = `project-${TEST_PID}/3d-${SID}`;
+    const copiedName = `project-${TEST_DUP_PID}/3d-${SID}`;
+    const meta = encodeInitialMetaState({
+      spaceId: SID, kind: "3d", name: "3D", createdBy: "system", ts: 1,
+    });
+    const scene = new Y.Doc();
+    scene.getMap("scene").set("formatVersion", 1);
+    const object = new Y.Map<unknown>();
+    object.set("initial", {
+      name: "Existing scene object", model: { kind: "builtin", id: "figure" },
+      position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
+      locked: false, exists: false,
+    });
+    for (const field of ["name", "position", "rotation", "scale", "locked", "exists"]) {
+      object.set(field, new Y.Array<unknown>());
+    }
+    scene.getMap("objects").set(SID, object);
+    (object.get("exists") as Y.Array<unknown>).push([true]);
+    const bytes = Y.encodeStateAsUpdate(scene);
+    scene.destroy();
+    await yjsRepo.upsertDocData(META, meta);
+    await yjsRepo.upsertDocData(contentName, bytes);
+
+    await yjsRepo.duplicateByProjectPrefix(TEST_PID, TEST_DUP_PID);
+
+    expect(await liveDuplicateContent()).toEqual([copiedName]);
+    expect(Array.from((await yjsRepo.fetchDocData(DUP_META))!)).toEqual(Array.from(meta));
+    expect(Array.from((await yjsRepo.fetchDocData(copiedName))!)).toEqual(Array.from(bytes));
+    expect(Array.from((await yjsRepo.fetchDocData(contentName))!)).toEqual(Array.from(bytes));
+  });
+
   it("leaves out the content of Spaces the source meta does not list", async () => {
     await yjsRepo.upsertDocData(META, metaListing([SID]));
     await yjsRepo.upsertDocData(CANVAS, new Uint8Array([2, 2]));

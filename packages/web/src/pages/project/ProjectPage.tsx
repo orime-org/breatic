@@ -28,6 +28,7 @@ import { useTrackActiveRegion } from '@web/features/active-region/use-track-acti
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
+import { evictSceneSession } from '@web/data/yjs/scene-session';
 import { docName } from '@web/data/yjs/manager';
 import { evictCanvasUndoManager } from '@web/data/yjs/canvas-space';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -506,6 +507,7 @@ function ProjectWorkspace({
     );
     previousOpenTabIdsRef.current = openTabIds;
     for (const id of departed) {
+      evictSceneSession(docName.threeDSpace(projectId, id));
       evictCanvasUndoManager(docName.canvasSpace(projectId, id));
       evictDocumentEditor(docName.documentSpace(projectId, id));
       canvasSessions.drop(id);
@@ -515,7 +517,7 @@ function ProjectWorkspace({
     if (departed.length > 0) {
       setVisited((prev) => new Set([...prev].filter((id) => !departed.includes(id))));
     }
-  }, [projectId, tabs.openIds]);
+  }, [projectId, userId, tabs.openIds]);
 
   // Note: NO URL ↔ active-space reconcile. Space is a type/template, not a
   // route segment (a product decision). What survives a reload is the whole strip, and it comes

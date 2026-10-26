@@ -155,7 +155,9 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
       for (const copy of command.copies) {
         const source = byId.get(copy.sourceId);
         if (!source) return { ok: false, reason: invalidIds.has(copy.sourceId) ? 'invalid' : 'missing' };
-        creations.push({ ...source, id: copy.id, locked: false });
+        const name = SceneObjectValuesSchema.shape.name.safeParse(`${source.name} copy`);
+        creations.push({ ...source, id: copy.id, name: name.success ? name.data : source.name,
+          position: [source.position[0] + 1, source.position[1], source.position[2] + 1], locked: false });
       }
     }
     for (const creation of creations) {
@@ -185,10 +187,11 @@ export function planSceneCommand(doc: Y.Doc, command: SceneCommand, canEdit: boo
       }
     }
   } else if (command.type === 'lock') {
+    if (typeof command.locked !== 'boolean') return { ok: false, reason: 'invalid' };
     ids.forEach((id) => plan.writes.push({ id, field: 'locked', value: command.locked }));
   } else ids.forEach((id) => plan.writes.push({ id, field: 'exists', value: false }));
   plan.ids = ids;
-  plan.writes = plan.writes.filter((write) => JSON.stringify((byId.get(write.id) as SceneObject)[write.field]) !== JSON.stringify(write.value));
+  plan.writes = plan.writes.filter((write) => JSON.stringify(byId.get(write.id)?.[write.field]) !== JSON.stringify(write.value));
   return plan;
 }
 

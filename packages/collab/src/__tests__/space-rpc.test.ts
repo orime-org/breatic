@@ -243,6 +243,48 @@ describe("handleSpaceRpc — role validation", () => {
 });
 
 describe("handleSpaceRpc — happy paths write PG activity rows", () => {
+  it("creates, deletes and restores a 3D Space under its own content doc name", async () => {
+    const ctx = { hocuspocus: makeHocuspocus() };
+    const created = await handleSpaceRpc(ctx, PID, { userId: "u-1", role: "editor" }, {
+      id: "create-3d",
+      type: "space:create",
+      payload: { type: "3d", name: "Scene", claimToken: TOKEN },
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !created.result) throw new Error("3D Space was not created");
+    const id = created.result.spaceId;
+    expect(created.result.type).toBe("3d");
+    const contentName = `project-${PID}/3d-${id}`;
+    expect(seedInitialStateMock).toHaveBeenCalledWith(contentName, expect.any(Uint8Array));
+    const seeded = seedInitialStateMock.mock.calls.find((call) => call[0] === contentName)!;
+    const scene = new Y.Doc();
+    Y.applyUpdate(scene, seeded[1] as Uint8Array);
+    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(scene.getMap("objects").toJSON()).toEqual({});
+
+    const entry = fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>;
+    activityLatestUnrestoredMock.mockResolvedValue({
+      id: "deleted-3d",
+      payload: { spaceSnapshot: entry.toJSON(), spaceName: "Scene" },
+    });
+    const deleted = await handleSpaceRpc(ctx, PID, { userId: "u-1", role: "editor" }, {
+      id: "delete-3d", type: "space:delete", payload: { spaceId: id },
+    });
+    expect(deleted.ok).toBe(true);
+    expect(fakeMetaDoc.doc.getMap("spaces").has(id)).toBe(false);
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(contentName);
+
+    const restored = await handleSpaceRpc(ctx, PID, { userId: "owner-1", role: "owner" }, {
+      id: "restore-3d", type: "space:restore", payload: { spaceId: id },
+    });
+    expect(restored.ok).toBe(true);
+    expect(restoreByNameMock.mock.calls).toEqual([[contentName]]);
+    const restoredEntry = fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>;
+    expect(restoredEntry.get("type")).toBe("3d");
+    expect(restoredEntry.get("name")).toBe("Scene");
+    scene.destroy();
+  });
+
   it("space:create mints the id, writes meta.spaces + inserts a space:created activity row + broadcasts the signal", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
@@ -507,7 +549,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
-    for (const kind of ["canvas", "document", "timeline"] as const) {
+    for (const kind of ["canvas", "document", "timeline", "3d"] as const) {
       expect(softDeleteByNameMock).toHaveBeenCalledWith(
         spaceContentDocName(PID, SID, kind),
       );
