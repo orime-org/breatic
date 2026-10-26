@@ -1,0 +1,218 @@
+# Where each of our audio models runs, upstream by upstream (design 4.2).
+# Weight is priority: the lowest configured weight is tried first, and weights
+# are unique per model. Each binding names the upstream's model id, the field
+# the prompt goes in, and how each of our params is written there: `field`,
+# `values` (our value to the upstream's spelling), `item_key` (each list
+# entry wrapped under it), `absent_value` (holding it sends nothing) and
+# `transform`. A param not listed is not sent to that upstream. `mentions` is
+# how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
+# `pricing` is the upstream's contract: base_price in millionths of a USD, a
+# JSONata formula (empty means base_price per call), discount_rate in percent.
+
+models:
+  mureka-v9.5-generate-song:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: mureka-ai/mureka-v9.5/generate-song
+        prompt_field: prompt
+        params:
+          lyrics:
+            field: lyrics
+          melody:
+            field: melody_id
+          song:
+            field: reference_id
+          vocal:
+            field: vocal_id
+        extra_steps:
+          - kind: upload_reference
+            endpoint: mureka-ai/create-upload-id
+            at: before
+            for_param: song
+            pricing:
+              kind: formula
+              base_price: 10000
+              formula: ""
+              discount_rate: 100
+          - kind: upload_melody
+            endpoint: mureka-ai/create-upload-id
+            at: before
+            for_param: melody
+            pricing:
+              kind: formula
+              base_price: 10000
+              formula: ""
+              discount_rate: 100
+          - kind: vocal
+            endpoint: mureka-ai/vocal-clone
+            at: before
+            for_param: vocal
+            reused: true
+            pricing:
+              kind: formula
+              base_price: 7500000
+              formula: ""
+              discount_rate: 100
+        pricing:
+          kind: formula
+          base_price: 225000
+          formula: ""
+          discount_rate: 100
+  mureka-v9.5-generate-bgm:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: mureka-ai/mureka-v9.5/generate-bgm
+        prompt_field: prompt
+        pricing:
+          kind: formula
+          base_price: 225000
+          formula: ""
+          discount_rate: 100
+  lyria-3-pro-music:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: google/lyria-3-pro/music
+        prompt_field: prompt
+        params:
+          image:
+            field: image
+        pricing:
+          kind: formula
+          base_price: 80000
+          formula: ""
+          discount_rate: 100
+  minimax-music-cover:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: minimax/music-cover
+        prompt_field: prompt
+        params:
+          audio:
+            field: audio
+        pricing:
+          kind: formula
+          base_price: 150000
+          formula: ""
+          discount_rate: 100
+  sonilo-video-to-music:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: sonilo/video-to-music
+        prompt_field: prompt
+        params:
+          video:
+            field: video
+        pricing:
+          kind: formula
+          base_price: 9000
+          formula: '{"total_price": base_price * $max([10, $min([$ceil(get_duration(video)), 360])])}'
+          discount_rate: 100
+  sfx-1.6-text-to-audio:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: mirelo-ai/sfx-1.6/text-to-audio
+        prompt_field: text_prompt
+        params:
+          loop:
+            field: ambience
+          double_output:
+            field: double_output
+          duration:
+            field: duration
+          num_samples:
+            field: num_samples
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * duration * num_samples}'
+          discount_rate: 100
+  sonilo-sfx-v1:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: sonilo/v1/text-to-sfx
+        prompt_field: prompt
+        params:
+          audio_format:
+            field: audio_format
+          duration:
+            field: duration
+        pricing:
+          kind: formula
+          base_price: 2000
+          formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}'
+          discount_rate: 100
+  hunyuan-video-foley:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: wavespeed-ai/hunyuan-video-foley
+        prompt_field: prompt
+        params:
+          video:
+            field: video
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: ""
+          discount_rate: 100
+  vocal-remover:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: wavespeed-ai/audio-vocal-isolator
+        params:
+          audio:
+            field: audio
+        pricing:
+          kind: formula
+          base_price: 1000
+          formula: '{"total_price": $min([$ceil(get_duration(audio)), 600]) * base_price}'
+          discount_rate: 100
+  veed-clean-audio:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: veed/clean-audio
+        params:
+          audio:
+            field: audio
+          strength:
+            field: strength
+          target_lufs:
+            field: target_lufs
+          output_format:
+            field: output_format
+        pricing:
+          kind: formula
+          base_price: 14000
+          formula: '{"total_price": $min([$max([$ceil(get_duration(audio) / 60), 1]), 30]) * base_price}'
+          discount_rate: 100
+  sfx-1.6-extend-audio:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: mirelo-ai/sfx-1.6/extend-audio
+        prompt_field: prompt
+        params:
+          ambience:
+            field: ambience
+          append_duration:
+            field: append_duration
+          audio:
+            field: audio
+          double_output:
+            field: double_output
+          num_samples:
+            field: num_samples
+        pricing:
+          kind: formula
+          base_price: 10000
+          formula: '{"total_price": base_price * append_duration * num_samples}'
+          discount_rate: 100

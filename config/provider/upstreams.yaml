@@ -1,0 +1,31 @@
+# Every upstream provider reaches (design 4.1): the adapter kind that speaks to
+# it, its address, the environment variable that holds its key, and for media
+# upstreams how many requests one process sends it at once. An upstream whose
+# key variable is empty is skipped, and the call says which variable is missing.
+
+upstreams:
+  wavespeed:
+    kind: wavespeed
+    base_url: https://api.wavespeed.ai/api/v3
+    key_env: WAVESPEED_API_KEY
+    concurrency: 50
+  openrouter:
+    kind: openrouter
+    base_url: https://openrouter.ai/api/v1
+    key_env: OPENROUTER_API_KEY
+  anthropic:
+    kind: anthropic
+    base_url: https://api.anthropic.com/v1
+    key_env: ANTHROPIC_API_KEY
+  google:
+    kind: google
+    base_url: https://generativelanguage.googleapis.com/v1beta
+    key_env: GOOGLE_API_KEY
+  openai:
+    kind: openai
+    base_url: https://api.openai.com/v1
+    key_env: OPENAI_API_KEY
+  deepseek:
+    kind: deepseek
+    base_url: https://api.deepseek.com
+    key_env: DEEPSEEK_API_KEY

@@ -1,0 +1,148 @@
+# Where each of our tts models runs, upstream by upstream (design 4.2).
+# Weight is priority: the lowest configured weight is tried first, and weights
+# are unique per model. Each binding names the upstream's model id, the field
+# the prompt goes in, and how each of our params is written there: `field`,
+# `values` (our value to the upstream's spelling), `item_key` (each list
+# entry wrapped under it), `absent_value` (holding it sends nothing) and
+# `transform`. A param not listed is not sent to that upstream. `mentions` is
+# how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
+# `pricing` is the upstream's contract: base_price in millionths of a USD, a
+# JSONata formula (empty means base_price per call), discount_rate in percent.
+
+models:
+  realtime-tts-2:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: inworld/realtime-tts-2
+        prompt_field: text
+        params:
+          speed:
+            field: speaking_rate
+          voice_id:
+            field: voice_id
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}'
+          discount_rate: 100
+  gemini-3.1-flash-text-to-speech:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: google/gemini-3.1-flash/text-to-speech
+        prompt_field: text
+        params:
+          language:
+            field: language
+          speakers:
+            field: speakers
+          voice_id:
+            field: voice
+        pricing:
+          kind: formula
+          base_price: 200000
+          formula: '{"total_price": $max([10000, $ceil(base_price * $length(text) / 1000)])}'
+          discount_rate: 100
+  minimax-speech-2.8-hd:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: minimax/speech-2.8-hd
+        prompt_field: text
+        params:
+          emotion:
+            field: emotion
+          pronunciation_dict:
+            field: pronunciation_dict
+            transform: pronunciation_pairs
+          speed:
+            field: speed
+          voice_id:
+            field: voice_id
+          volume:
+            field: volume
+        pricing:
+          kind: formula
+          base_price: 100000
+          formula: '{"total_price":base_price * $length(text) / 1000}'
+          discount_rate: 100
+  elevenlabs-v3:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: elevenlabs/eleven-v3
+        prompt_field: text
+        params:
+          similarity:
+            field: similarity
+          stability:
+            field: stability
+          voice_id:
+            field: voice_id
+        pricing:
+          kind: formula
+          base_price: 200000
+          formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}'
+          discount_rate: 100
+  minimax-voice-clone:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: minimax/voice-clone
+        prompt_field: text
+        params:
+          audio:
+            field: audio
+          custom_voice_id:
+            field: custom_voice_id
+          model:
+            field: model
+          need_noise_reduction:
+            field: need_noise_reduction
+        extra_steps:
+          - kind: speak
+            endpoint: minimax/speech-2.8-hd
+            at: after
+            pricing:
+              kind: formula
+              base_price: 100000
+              formula: '{"total_price":base_price * $length(text) / 1000}'
+              discount_rate: 100
+        reused_by: audio
+        pricing:
+          kind: formula
+          base_price: 1600000
+          formula: ""
+          discount_rate: 100
+  omnivoice-voice-clone:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: wavespeed-ai/omnivoice/voice-clone
+        prompt_field: text
+        params:
+          audio:
+            field: audio
+          speed:
+            field: speed
+        pricing:
+          kind: formula
+          base_price: 5000
+          formula: '{"total_price": $length(text) < 100 ? base_price * 1.0 : base_price * $length(text) / 100}'
+          discount_rate: 100
+  elevenlabs-voice-changer:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: elevenlabs/voice-changer
+        params:
+          audio:
+            field: audio
+          voice_id:
+            field: voice_id
+        pricing:
+          kind: formula
+          base_price: 4000
+          formula: '{"total_price": $min([$ceil(get_duration(audio)), 300]) * base_price}'
+          discount_rate: 100

@@ -1,0 +1,72 @@
+# Where LLM calls go (design 4.3). A model id takes the first route whose prefix
+# it starts with; within a route the configured upstream of lowest weight is
+# tried first, and a call moves on before its first content when an upstream
+# has no key, cannot be reached, keeps answering 429 or 5xx, or lacks the model.
+# understand_routes is the same for reading media. vendor_ids is the id an
+# upstream serves one of our models under. openrouter_backends pins the backend
+# OpenRouter routes a model to. prices are the direct token prices, in USD per
+# million tokens, for upstreams that report no cost of their own.
+
+routes:
+  - prefix: anthropic/
+    upstreams:
+      - upstream: anthropic
+        weight: 0
+      - upstream: openrouter
+        weight: 1
+  - prefix: google/
+    upstreams:
+      - upstream: google
+        weight: 0
+      - upstream: openrouter
+        weight: 1
+  - prefix: openai/
+    upstreams:
+      - upstream: openai
+        weight: 0
+      - upstream: openrouter
+        weight: 1
+  - prefix: deepseek/
+    upstreams:
+      - upstream: deepseek
+        weight: 0
+      - upstream: openrouter
+        weight: 1
+  - prefix: ""
+    upstreams:
+      - upstream: openrouter
+        weight: 0
+understand_routes:
+  - prefix: google/
+    upstreams:
+      - upstream: openrouter
+        weight: 0
+      - upstream: google
+        weight: 1
+vendor_ids:
+  deepseek/deepseek-v4.1-flash-1017:
+    deepseek: deepseek-flash
+openrouter_backends:
+  google/gemini-3.8-flash:
+    only:
+      - google-vertex
+    allow_fallbacks: false
+prices:
+  deepseek/deepseek-v4-pro:
+    input_cache_hit_per_mtok: 0.044
+    input_cache_miss_per_mtok: 1.32
+    output_per_mtok: 3.96
+  deepseek/deepseek-v4.1-flash-1017:
+    input_cache_hit_per_mtok: 0.006
+    input_cache_miss_per_mtok: 0.3
+    output_per_mtok: 1.2
+  anthropic/claude-opus-5.5:
+    input_cache_hit_per_mtok: 0.2
+    input_cache_miss_per_mtok: 4
+    input_cache_write_5m_per_mtok: 5
+    input_cache_write_1h_per_mtok: 8
+    output_per_mtok: 20
+  google/gemini-2.5-flash:
+    input_cache_hit_per_mtok: 0.03
+    input_cache_miss_per_mtok: 0.3
+    output_per_mtok: 2.5

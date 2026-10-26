@@ -1,0 +1,13 @@
+# This deployment's own upstream weights (design 4.4). Copy this file to
+# config/provider/routing.yaml and change the weights there; the copy is not
+# shipped. Without it every model keeps the weights in media/*.yaml and
+# llm.yaml. Overrides change weights only: naming an upstream a model or route
+# is not bound to is refused at startup, and so is a weight used twice.
+#
+# models:
+#   seedance-2.5-text-to-video:
+#     weights: { wavespeed: 0 }
+# llm:
+#   deepseek/:
+#     weights: { openrouter: 0, deepseek: 1 }
+
