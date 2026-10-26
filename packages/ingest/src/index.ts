@@ -179,6 +179,9 @@ async function issueToken(
   );
 }
 
+/** The label a valid ticket arriving without our secret is reported under. */
+const OPEN_WITHOUT_SECRET = "ingest_open_without_secret";
+
 /**
  * Open an upload: verify the ticket, ask R2 for a multipart upload, and hand
  * back what the uploader has to hold on to.
@@ -210,7 +213,20 @@ async function startUpload(request: Request, env: Env): Promise<Response> {
   if (!fromOurBackend(request, env)) {
     if (verified?.ok === true) {
       const { storageKey, userId, studioId } = verified.payload;
-      noteFailure("ingest_open_without_secret", { storageKey, userId, studioId });
+      // Each refusal is its own record, one request apart: Cloudflare's ray id
+      // ties it to the request log, and local workerd sends none.
+      const requestId = request.headers.get("cf-ray") ?? crypto.randomUUID();
+      noteFailure(
+        OPEN_WITHOUT_SECRET,
+        { storageKey, userId, studioId, requestId },
+        undefined,
+        {
+          perOccurrence: {
+            message: `${OPEN_WITHOUT_SECRET} ${storageKey} ${requestId}`,
+            fingerprint: [OPEN_WITHOUT_SECRET],
+          },
+        },
+      );
     }
     return new Response("Unauthorized", { status: 401 });
   }
