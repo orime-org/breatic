@@ -14,6 +14,44 @@ import type { DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
 import type { MiniToolMedium } from "@breatic/shared/mini-tools";
 import type { DueMiniToolSettlement, DueMiniToolSettlementPage, MiniToolSettlement, MiniToolSettlementClaim, MiniToolSettlementCursor } from "@domain/mini-tool/consumption.types.js";
+import type { MiniToolDeliveryState, MiniToolDeliveryCursor } from "@domain/mini-tool/delivery.service.js";
+
+/**
+ * Patch only durable media delivery, preserving computation and consumption siblings.
+ * @param taskId - The original task whose immutable row lock is held.
+ * @param delivery - The validated internal delivery state.
+ * @param tx - The same transaction as manifest initialization or acknowledgement.
+ * @returns Nothing after the original parent is updated.
+ * @throws {Error} When the parent disappeared or its update fails.
+ */
+export async function storeMiniToolDelivery(taskId: string, delivery: MiniToolDeliveryState, tx: DbTx): Promise<void> {
+  const patch = sql.param({ miniToolDelivery: delivery }, tasks.result);
+  const rows = await tx.update(tasks).set({
+    result: sql`coalesce(${tasks.result}, '{}'::jsonb) || ${patch}`, updatedAt: sql`clock_timestamp()`,
+  }).where(eq(tasks.id, taskId)).returning({ id: tasks.id });
+  if (rows.length !== 1) throw new Error("Delivery task no longer exists");
+}
+
+/**
+ * Discover registered manifests requiring delivery, including pre-existing missing siblings.
+ * @param limit - The bounded positive page size, including room for one caller lookahead.
+ * @param cursor - The preceding immutable SQL primary key.
+ * @returns Candidate task identities in exact UUID order, independent of billing and deadlines.
+ * @throws {Error} When the database read fails.
+ */
+export async function listMiniToolDeliveryCandidates(limit: number, cursor?: MiniToolDeliveryCursor): Promise<string[]> {
+  const after = cursor === undefined ? sql`` : sql`AND ${tasks.id} > ${cursor.taskId}::uuid`;
+  const rows = await db.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks}
+    WHERE ${tasks.source} = 'mini_tool' AND ${tasks.status} IN ('completed', 'failed')
+      AND ${tasks.params}->'miniToolExecution' IS NOT NULL
+      AND jsonb_path_exists(${tasks.result}, '$.miniToolExecution.outputs[*] ? (@.result.status == "registered")')
+      AND (${tasks.result}->'miniToolDelivery' IS NULL
+        OR jsonb_path_exists(${tasks.result}, '$.miniToolDelivery.outputs[*] ? (@.state == "pending")'))
+      ${after} ORDER BY ${tasks.id} LIMIT ${limit}
+  `);
+  return rows.map((row) => row.id);
+}
 
 /** Parent facts read while serializing one task's consumption writes. */
 export interface LockedMiniToolConsumptionTask {

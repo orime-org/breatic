@@ -15,6 +15,7 @@ import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
+import { synchronizeMiniToolDelivery } from "@domain/mini-tool/delivery-state.js";
 
 /** Queue transport carries a discriminator and task identity, never a second frozen plan. */
 export interface MiniToolExecutionJob {
@@ -97,6 +98,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       status, errorMessage: error === null ? null : typeof error.code === "string" ? error.code : "mini_tool_failed",
       finish: plan.task.status === "pending" || plan.task.status === "running",
     });
+    await synchronizeMiniToolDelivery(plan.task, record, tx);
     if (incoming.consumptionSet === "complete") await completeMiniToolConsumptionSet(id, tx);
     else await completeResolvedMiniToolExecutionConsumptionSet(id, tx);
     const task = await currentTask(id, tx);
@@ -185,7 +187,7 @@ function sameMapping(outputs: readonly MiniToolExecutionOutput[], execution: Acc
  * @returns Its current project-readable computation and expense state.
  * @throws {Error} When a stored namespace conflicts with its immutable parent.
  */
-function recordFromPlan(plan: MiniToolExecutionPlan): MiniToolExecutionRecord {
+export function recordFromPlan(plan: MiniToolExecutionPlan): MiniToolExecutionRecord {
   const { task, execution } = plan;
   const billingState = task.result?.settlement === undefined ? "idle" : miniToolSettlementSchema.parse(task.result.settlement).state;
   const stored = task.result?.miniToolExecution;
