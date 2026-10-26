@@ -46,6 +46,9 @@ vi.mock('@hocuspocus/provider', () => ({
     on = vi.fn((event: string, cb: (data?: unknown) => void) => {
       (this.listeners[event] ??= []).push(cb);
     });
+    off = vi.fn((event: string, cb: (data?: unknown) => void) => {
+      this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
+    });
     emit(event: string, data?: unknown): void {
       for (const cb of [...(this.listeners[event] ?? [])]) cb(data);
     }

@@ -53,6 +53,7 @@ vi.mock('@hocuspocus/provider', () => ({
     destroy = vi.fn();
     attach = vi.fn();
     on = vi.fn();
+    off = vi.fn();
     // A REAL awareness on the provider's real document, so the removal and the
     // restoration both run the library's own code rather than a stand-in.
     awareness: Awareness;
