@@ -26,6 +26,12 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// The server opens every upload at the ingest Worker itself before it
+// answers a ticket (inner#1595); that one call is answered by a double.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
+
 /**
  * What the app logs, at each level. Core's logger answers through a proxy
  * that a spy cannot see into, so the app is handed this one instead.
