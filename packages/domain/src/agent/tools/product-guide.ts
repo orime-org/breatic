@@ -1392,7 +1392,7 @@ export function renderProductGuide(): string {
       `${quoted(t("project.leaveGuard.description"))} for ongoing operations, or ${quoted(t("project.leaveGuard.combinedDescription"))} for both. ` +
       `The connection banner's refresh button asks ${quoted(t("project.refreshGuard.title"))} with ${quoted(t("common.cancel"))} and ` +
       `${quoted(t("project.refreshGuard.refresh"))}. Cancelling keeps the current edits. When work finishes while the choice is open, ` +
-      `it says ${quoted(t("project.leaveGuard.completeDescription"))} and waits for a choice. ` +
+      `it says ${quoted(t("project.leaveGuard.completeTitle"))}: ${quoted(t("project.leaveGuard.completeDescription"))} and waits for a choice. ` +
       `A failed refresh reports ${quoted(t("project.refreshGuard.failed"))} The browser's own refresh or tab close uses its native confirmation ` +
       "when local work remains; a connection drop by itself needs no confirmation.",
     `- A document shows ${quoted(t("spaces.document.loading"))} until it arrives; one that cannot be opened ` +
