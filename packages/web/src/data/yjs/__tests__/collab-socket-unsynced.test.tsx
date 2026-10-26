@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import * as Y from 'yjs';
@@ -32,16 +32,23 @@ type BlockCondition = (args: {
 const { providers, sockets, routerState } = vi.hoisted(() => ({
   providers: [] as ProviderSpy[],
   sockets: [] as Array<{ status: string; webSocket: { readyState: number }; receivedOnOpenPayload: Event }>,
-  routerState: { condition: null as BlockCondition | null, blocker: { state: 'unblocked', proceed: vi.fn(), reset: vi.fn() } },
+  routerState: { condition: null as BlockCondition | null, listeners: new Set<() => void>(), blocker: { state: 'unblocked', proceed: vi.fn(), reset: vi.fn() } },
 }));
 
-vi.mock('react-router-dom', async (importOriginal) => ({
-  ...await importOriginal<typeof RouterModule>(),
-  useBlocker: (condition: BlockCondition) => {
-    routerState.condition = condition;
-    return routerState.blocker;
-  },
-}));
+vi.mock('react-router-dom', async (importOriginal) => {
+  const { useSyncExternalStore } = await import('react');
+  return {
+    ...await importOriginal<typeof RouterModule>(),
+    useBlocker: (condition: BlockCondition) => {
+      useSyncExternalStore((listener) => {
+        routerState.listeners.add(listener);
+        return () => { routerState.listeners.delete(listener); };
+      }, () => routerState.blocker.state);
+      routerState.condition = condition;
+      return routerState.blocker;
+    },
+  };
+});
 
 vi.mock('@hocuspocus/provider', async (importOriginal) => ({
   ...await importOriginal<typeof ProviderModule>(),
@@ -261,7 +268,7 @@ describe('ProjectPage refresh and browser leave entry points (inner#1641)', () =
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
-  it('asks before refreshing and keeps the document unchanged on cancel', () => {
+  it('asks before refreshing and keeps the document unchanged on cancel', async () => {
     const item = content('document');
     act(() => { item.doc.getText('body').insert(0, 'keep my edit'); });
     const bytes = Y.encodeStateAsUpdate(item.doc);
@@ -274,10 +281,10 @@ describe('ProjectPage refresh and browser leave entry points (inner#1641)', () =
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(reload).toHaveBeenCalledTimes(0);
     expect(Y.encodeStateAsUpdate(item.doc)).toEqual(bytes);
-    expect(trigger).toHaveFocus();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it('cancels refresh with Escape and restores focus without changing content', () => {
+  it('cancels refresh with Escape and restores focus without changing content', async () => {
     const item = content();
     act(() => { item.doc.getText('body').insert(0, 'keep'); });
     const bytes = Y.encodeStateAsUpdate(item.doc);
@@ -290,7 +297,7 @@ describe('ProjectPage refresh and browser leave entry points (inner#1641)', () =
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(Y.encodeStateAsUpdate(item.doc)).toEqual(bytes);
     expect(reload).toHaveBeenCalledTimes(0);
-    expect(trigger).toHaveFocus();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it('gives a blocked route priority over the pending refresh choice', () => {
@@ -298,14 +305,14 @@ describe('ProjectPage refresh and browser leave entry points (inner#1641)', () =
     act(() => { item.doc.getText('body').insert(0, 'keep'); });
     fireEvent.click(screen.getByTestId('connection-banner-reload'));
     expect(reload).toHaveBeenCalledTimes(0);
-    act(() => { routerState.blocker.state = 'blocked'; useUIStore.setState({ chatPanelCollapsed: false }); });
+    act(() => { routerState.blocker.state = 'blocked'; routerState.listeners.forEach((listener) => listener()); });
     const dialogs = screen.getAllByRole('alertdialog');
     expect(dialogs).toHaveLength(1);
     fireEvent.click(within(dialogs[0]).getByRole('button', { name: /leave/i }));
     expect(routerState.blocker.proceed).toHaveBeenCalledTimes(1);
     expect(routerState.blocker.reset).toHaveBeenCalledTimes(0);
     expect(reload).toHaveBeenCalledTimes(0);
-    act(() => { routerState.blocker.state = 'unblocked'; useUIStore.setState({ chatPanelCollapsed: true }); });
+    act(() => { routerState.blocker.state = 'unblocked'; routerState.listeners.forEach((listener) => listener()); });
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 

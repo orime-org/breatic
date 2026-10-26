@@ -1488,7 +1488,10 @@
       "title": "有未完成的操作,确定离开?",
       "description": "上传或编辑还没同步完,现在离开可能丢失。",
       "stay": "留下",
-      "leave": "仍然离开"
+      "leave": "仍然离开",
+      "unsyncedDescription": "部分修改尚未同步，现在刷新或离开可能丢失这些修改。",
+      "combinedDescription": "部分修改尚未同步，且仍有上传或编辑操作正在进行。现在刷新或离开可能丢失这些工作。",
+      "completeDescription": "修改已同步，操作已完成。"
     },
     "header": {
       "renameFailed": "重命名 Project 失败"
@@ -1532,6 +1535,11 @@
       "confirm": "退出",
       "done": "已退出「{name}」",
       "failed": "退出失败"
+    },
+    "refreshGuard": {
+      "title": "仍有未完成的工作，要刷新吗？",
+      "refresh": "仍然刷新",
+      "failed": "刷新失败，请重试。"
     }
   },
   "common": {

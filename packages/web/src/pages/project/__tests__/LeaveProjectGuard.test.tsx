@@ -26,6 +26,7 @@ let capturedCondition:
 
 vi.mock('react-router-dom', () => ({
   NavigationType: { Pop: 'POP', Push: 'PUSH', Replace: 'REPLACE' },
+  useParams: () => ({ projectId: 'p' }),
   useBlocker: (fn: typeof capturedCondition) => {
     capturedCondition = fn;
     return blocker;
