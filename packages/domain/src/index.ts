@@ -266,4 +266,6 @@ export { beginMiniToolStepAttempt, recordMiniToolStepIdentity, recordMiniToolSte
 export { miniToolStepStateSchema, hasUnresolvedMiniToolStepAttempts } from "@domain/mini-tool/upstream-step.types.js";
 
 export * as miniToolExecutionService from "@domain/mini-tool/execution.service.js";
+export * as miniToolDeliveryService from "@domain/mini-tool/delivery.service.js";
+export type { MiniToolDeliveryOutput, MiniToolDeliveryState, MiniToolDeliveryContext, MiniToolDeliveryAck, MiniToolDeliveryAcknowledgement, MiniToolDeliveryDeferral, MiniToolDeliveryCursor, PendingMiniToolDelivery, PendingMiniToolDeliveryPage } from "@domain/mini-tool/delivery.service.js";
 export type { MiniToolExecutionJob, MiniToolExecution, MiniToolExecutionCompletion } from "@domain/mini-tool/execution.service.js";
