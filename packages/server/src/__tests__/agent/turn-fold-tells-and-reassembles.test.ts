@@ -152,6 +152,34 @@ describe("the reader is told of a precheck fold once", () => {
     expect(count(roomLeft.chunks, "data-memory-consolidating")).toBe(0);
   });
 
+  it("at the start of a turn, before the reply opens, so nothing clears the notice while the fold runs", async () => {
+    resetWorld();
+    world.window = WINDOW;
+    world.script = [answers("first answer", LINE - 616, 616)];
+    await sendMessage("first");
+    world.history = rowsOf(1);
+    let wireDuringFold: string[] = [];
+    world.duringFold = async () => {
+      // Long enough for anything already written to reach the reader.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      wireDuringFold = [...world.wire];
+    };
+    world.wire = [];
+    world.script = [answers("second")];
+
+    const chunks = await sendMessage("second");
+
+    expect(wireDuringFold).toContain("data-memory-consolidating");
+    expect(wireDuringFold).not.toContain("start");
+    expect(typesOf(chunks).indexOf("data-memory-consolidating")).toBeLessThan(typesOf(chunks).indexOf("start"));
+  });
+
+  it("keeps the count coverage of a turn that folded only before it called", async () => {
+    await secondTurn(LINE - 616, 616);
+
+    expect(world.replies.at(-1)?.forModel?.countCoverage).toMatchObject({ turnHash: expect.any(String), endHash: expect.any(String) });
+  });
+
   it("in the middle of a turn, and not when the step left room", async () => {
     threeEarlierTurns();
     world.script = [callsFetch("c1", LINE - 600, 600), answers("done")];

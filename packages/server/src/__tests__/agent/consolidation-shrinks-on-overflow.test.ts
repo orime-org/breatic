@@ -285,6 +285,8 @@ describe("halving under any window and any run of overflows (A6)", () => {
         let kept = count;
         for (let n = 0; n < generateTextRetry.mock.calls.length; n += 1) {
           expect(turnsIn(n, turnIndices)).toEqual(turnIndices.slice(0, kept));
+          // Whole turns or the one turn's text, every halving sends less.
+          if (n > 0) expect(promptOf(n).length).toBeLessThan(promptOf(n - 1).length);
           if (kept > 1) kept = Math.floor(kept / 2);
         }
         if (rejections > SHRINK_ATTEMPTS) {

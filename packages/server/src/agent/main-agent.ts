@@ -318,13 +318,18 @@ export class MainAgent {
       thoughtForMs += Date.now() - thinkingOpenedAt;
       thinkingOpenedAt = undefined;
     };
+    /** Whether the reader has been told how long the turn thought. */
+    let thoughtSaid = false;
     /**
-     * Tell the reader how long the turn thought, once it is known to end here.
+     * Tell the reader how long the turn thought, once it is known to end
+     * here; said once a turn, by whichever ending gets there first.
      * @param writer - The stream the turn is written to.
      */
     const sayThoughtFor = (writer: UIMessageStreamWriter): void => {
+      if (thoughtSaid) return;
       closeThinking();
       if (thoughtForMs > 0) writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
+      thoughtSaid = true;
     };
 
     // Every paid call this turn makes is recorded where it happens, one row
@@ -676,10 +681,15 @@ export class MainAgent {
       if (sent.agentConfig.contextWindowFallback === true) {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
       }
+      const knownAtStart = knownTokensAtStart(sent.replayed);
+      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
+      signal?.throwIfAborted();
       // The last count the conversation has stands for the first call until
-      // that call reports, so the first step's check is the turn's start check.
-      lastCallTotal = knownTokensAtStart(sent.replayed);
-      await keepUserMessage(sent);
+      // that call reports. A fold voids it, and one that could not run is not
+      // tried again before the call.
+      lastCallTotal = opened === "none" ? knownAtStart : undefined;
+      if (opened === "moved") await reassemble();
+      else await keepUserMessage(sent);
 
       const { agentConfig } = sent;
       modelId = agentConfig.modelId;
@@ -707,40 +717,31 @@ export class MainAgent {
         });
         if (turnedAway === undefined) return;
 
-        // The stream that was turned away wrote none of its end frames, so
-        // whatever ends the turn from here says the thinking figure, as
-        // `onFinish` does.
-        try {
-          overflowFolds += 1;
-          const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
-            kind: "overflow",
-            overflow: turnedAway.overflow,
-            known: lastCallTotal,
-            attempt: overflowFolds,
-            error: turnedAway.error,
-          });
-          signal?.throwIfAborted();
-          if (folded === "too_long") {
-            // Not an error frame: the panel shows the reason in the reply and
-            // offers no "send it again", which would only fail the same way.
-            tooLong = true;
-            sayThoughtFor(writer);
-            writer.write({ type: "data-failed", data: { reason: "too_long" } });
-            writer.write({ type: "finish" });
-            return;
-          }
-          if (folded !== "moved") {
-            // Nothing moved, so what would go out is what was just turned away.
-            throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: turnedAway.error });
-          }
-          lastCallTotal = undefined;
-          prefixChangedDuringTurn = true;
-          await reassemble();
-        } catch (err) {
-          // A turn the reader stopped is not told the figure live, as on any stop.
-          if (signal?.aborted !== true) sayThoughtFor(writer);
-          throw err;
+        overflowFolds += 1;
+        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+          kind: "overflow",
+          overflow: turnedAway.overflow,
+          known: lastCallTotal,
+          attempt: overflowFolds,
+          error: turnedAway.error,
+        });
+        signal?.throwIfAborted();
+        if (folded === "too_long") {
+          // Not an error frame: the panel shows the reason in the reply and
+          // offers no "send it again", which would only fail the same way.
+          tooLong = true;
+          sayThoughtFor(writer);
+          writer.write({ type: "data-failed", data: { reason: "too_long" } });
+          writer.write({ type: "finish" });
+          return;
         }
+        if (folded !== "moved") {
+          // Nothing moved, so what would go out is what was just turned away.
+          throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: turnedAway.error });
+        }
+        lastCallTotal = undefined;
+        prefixChangedDuringTurn = true;
+        await reassemble();
       }
     };
 
@@ -794,22 +795,22 @@ export class MainAgent {
           // so the next turn can reconstruct all original picture facts.
           let logical = stepMessages;
           let instructions: ReturnType<typeof systemFor> | undefined;
-          // Checked against the provider's count for the previous call (at the
-          // first step, the conversation's last one); with none there is
-          // nothing to check. A fold voids it until the next call reports, so
-          // two folds always have a call between them.
-          const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
-            kind: "precheck",
-            at: steps.length === 0 ? "start" : "step",
-            known: lastCallTotal,
-          });
-          signal?.throwIfAborted();
-          if (folded === "moved") {
-            lastCallTotal = undefined;
-            prefixChangedDuringTurn = true;
-            const next = await reassemble();
-            logical = carriedOn(next);
-            instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
+          // The provider's count for the previous call; a fold voids it until
+          // the next call reports, so two folds always have a call between them.
+          if (lastCallTotal !== undefined) {
+            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
+              kind: "precheck",
+              at: "step",
+              known: lastCallTotal,
+            });
+            signal?.throwIfAborted();
+            if (folded === "moved") {
+              lastCallTotal = undefined;
+              prefixChangedDuringTurn = true;
+              const next = await reassemble();
+              logical = carriedOn(next);
+              instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
+            }
           }
           const current = sent!;
           const { agentConfig } = current;
@@ -1080,6 +1081,11 @@ export class MainAgent {
           // still reach the single application error logger below.
           if (signal?.aborted === true && err === signal.reason) writer.write({ type: "abort" });
           else throw err;
+        } finally {
+          // However the turn ended, unless the reader stopped it, as on any
+          // stop. A stream that recorded no step never reaches its `onFinish`:
+          // one the provider turned away, or one whose first call failed.
+          if (signal?.aborted !== true) sayThoughtFor(writer);
         }
       },
       // The one place a failed turn is noticed, whichever way it failed: the

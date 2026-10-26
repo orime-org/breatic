@@ -284,6 +284,10 @@ export interface World {
   recorded: Array<{ key: string; usage: { inputTokens?: number; outputTokens?: number } }>;
   /** Every charge taken. */
   charges: Array<{ key: string; amount: number }>;
+  /** The type of every chunk on the wire so far, in order, as it arrives. */
+  wire: string[];
+  /** Awaited inside each fold before it ends. */
+  duringFold: (() => Promise<void>) | undefined;
 }
 
 /**
@@ -313,6 +317,8 @@ function emptyWorld(): World {
     replies: [],
     recorded: [],
     charges: [],
+    wire: [],
+    duringFold: undefined,
   };
 }
 
@@ -555,6 +561,7 @@ export function overflowConsolidator(): Record<string, unknown> {
     consolidateWindow: async (window: Record<string, unknown>) => {
       world.events.push("fold");
       world.folds.push(window);
+      await world.duringFold?.();
       const outcome = world.foldOutcomes.shift() ?? "written";
       if (outcome === "written" || outcome === "superseded" || outcome === "discarded") {
         world.watermark = window.newWatermark as number;
@@ -580,7 +587,10 @@ export async function sendMessage(said = "hi", space: Record<string, unknown> = 
   const chunks: UIMessageChunk[] = [];
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
     const stream = await new MainAgent().chat(said, world.controller.signal, [], "UTC", space);
-    for await (const chunk of stream) chunks.push(chunk);
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+      world.wire.push(chunk.type);
+    }
   });
   world.nextTurn += 1;
   return chunks;

@@ -19,7 +19,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { UIMessageChunk } from "ai";
+import { APICallError, type UIMessageChunk } from "ai";
 import {
   PROBE_WINDOW,
   answers,
@@ -343,6 +343,25 @@ describe("folds that leave nothing to send end as failed (A5)", () => {
 
     const chunks = await sendMessage();
 
+    expectFailed(chunks);
+    expect(count(chunks, "data-thinking-time")).toBe(1);
+    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+  });
+
+  it("says how long it thought, live, when the call after an overflow fold fails for another reason", async () => {
+    history(2, 30_000);
+    const refused = new APICallError({
+      message: "Unauthorized",
+      url: "https://openrouter.test/v1/chat/completions",
+      requestBodyValues: {},
+      statusCode: 401,
+      isRetryable: false,
+    });
+    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, { reject: refused }];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(1);
     expectFailed(chunks);
     expect(count(chunks, "data-thinking-time")).toBe(1);
     expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
