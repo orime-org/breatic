@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+export { bodyTreeOrderBetween } from "@shared/document-body-tree-vendor.js";
+
 export {
   bodyTreeDependencies,
   bodyTreeRecordProperties,
@@ -405,6 +407,12 @@ export {
   documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
+
+export type { DocumentBodyImportResult } from "@shared/document-body-import-types.js";
+
+export { importCurrentDocumentBody } from "@shared/document-body-import.js";
+export { convertLegacyTables, hasLegacyTable, LEGACY_TABLE_CONVERSION_ORIGIN } from "@shared/document-body-legacy-tables.js";
+export type { LegacyTableIdAllocator } from "@shared/document-body-legacy-tables.js";
 
 export {
   assertBodySourceBoundary,

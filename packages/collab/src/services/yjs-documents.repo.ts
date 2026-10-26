@@ -46,6 +46,43 @@ export async function fetchDocData(name: string): Promise<Uint8Array | null> {
 }
 
 /**
+ * Prepares the current live bytes while holding their single-row write lock.
+ *
+ * Lock only the immutable name and the live-row condition: after a competing
+ * writer commits, PostgreSQL returns its current bytes or correctly excludes
+ * a row that became deleted. The callback runs on those locked bytes, and the
+ * outer promise resolves only after the transaction has committed.
+ * @param name - The immutable stored document name.
+ * @param transform - Synchronous preparation of an isolated native document.
+ * @returns The committed prepared bytes, or null when no live row exists.
+ * @throws {Error} If preparation, writing or transaction commit fails.
+ */
+export async function prepareDocData(
+  name: string,
+  transform: (current: Uint8Array) => Uint8Array,
+): Promise<Uint8Array | null> {
+  return yjsDb.transaction(async (tx) => {
+    const rows = await tx
+      .select({ data: yjsDocuments.data })
+      .from(yjsDocuments)
+      .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+      .limit(1)
+      .for("update");
+    const current = rows[0]?.data;
+    if (current === undefined) return null;
+    const prepared = transform(current);
+    if (prepared === current || (prepared.length === current.length && prepared.every((value, index) => value === current[index]))) return current;
+    const changed = await tx
+      .update(yjsDocuments)
+      .set({ data: Buffer.from(prepared), updatedAt: sql`now()` })
+      .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+      .returning({ name: yjsDocuments.name });
+    if (changed.length !== 1) throw new Error("Locked document preparation was not persisted");
+    return prepared;
+  });
+}
+
+/**
  * Upsert the binary state of a Yjs doc (Hocuspocus persistence `store`).
  *
  * On conflict only the content and `updated_at` change; `deleted_at` is left

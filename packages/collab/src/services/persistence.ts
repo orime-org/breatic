@@ -31,6 +31,7 @@ import { createLogger } from "@breatic/core";
 import { parseDocName } from "@breatic/shared";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
+import { prepareDocumentBodyForLoad } from "@collab/services/document-body-preparation.js";
 import { lazySeedMeta, type SeedOpener } from "@collab/services/lazy-seed.js";
 import {
   beginStore,
@@ -57,6 +58,7 @@ const logger = createLogger("collab-persistence");
  * @param args.documentName - Full Yjs doc name (the `yjs_documents.name` key).
  * @param args.opener - The loading connection's handshake, for the seeded Space's event.
  * @returns The stored (or freshly lazy-seeded) Yjs bytes, or null.
+ * @throws {Error} If document preparation, reading or lazy seeding fails.
  */
 export async function fetchDoc({
   documentName,
@@ -65,7 +67,9 @@ export async function fetchDoc({
   documentName: string;
   opener?: SeedOpener;
 }): Promise<Uint8Array | null> {
-  const existing = await yjsDocumentsRepo.fetchDocData(documentName);
+  const existing = parseDocName(documentName)?.kind === "document"
+    ? await prepareDocumentBodyForLoad(documentName)
+    : await yjsDocumentsRepo.fetchDocData(documentName);
   if (existing) return existing;
   return lazySeedMeta(documentName, opener);
 }
