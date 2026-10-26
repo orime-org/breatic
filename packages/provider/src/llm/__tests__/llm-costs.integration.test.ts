@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fc from "fast-check";
 import { NoAnswer } from "../../http/errors.js";
 import type { LanguageModelUsage } from "ai";
 import type { CapabilityPolicy } from "../api.js";
@@ -78,6 +79,23 @@ describe("cost.lookup (design 3.6)", () => {
     const lookup = { upstream: "openrouter", generationId: "gen-9" };
     expect((await provider.cost.lookup(lookup, { lastAttempt: false })).state).toBe("pending");
     expect((await provider.cost.lookup(lookup, { lastAttempt: true })).state).toBe("missing");
+  });
+});
+
+describe("cost.lookup on its last attempt (design 13.1, critical path)", () => {
+  it("property: answers known or missing, never pending, whatever OpenRouter says", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.constantFrom(200, 404, 429, 500, 503),
+        fc.option(fc.double({ min: 0, max: 1, noNaN: true }), { nil: undefined }),
+        async (status, totalCost) => {
+          fakes.openrouter.answer(() => ({ status, body: status === 200 ? { data: { id: "g", ...(totalCost === undefined ? {} : { total_cost: totalCost }) } } : {} }));
+          const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup({ upstream: "openrouter", generationId: "g" }, { lastAttempt: true });
+          expect(["known", "missing"]).toContain(cost.state);
+        },
+      ),
+      { numRuns: 25 },
+    );
   });
 });
 
