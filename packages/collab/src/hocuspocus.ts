@@ -622,7 +622,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // no one number to print. Name its SOURCE instead: an operator reading
     // this banner needs to know where to look, and a stale key name would
     // send them to a file that no longer has it.
-    concurrentEditorsFrom: "config/membership.yaml: tiers.*.concurrent_editors",
+    concurrentEditorsFrom: "current Studio admin membership reading: configured or negotiated concurrent_editors",
     // Belongs in the banner for the same reason: they are ceilings whose only
     // symptom, once crossed, is connections dropping. An operator has to be
     // able to read what this process is enforcing.
