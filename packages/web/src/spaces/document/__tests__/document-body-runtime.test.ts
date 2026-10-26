@@ -193,6 +193,42 @@ describe('document body runtime', () => {
     expect(remaining).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps publication active when the diagnostic reporter fails', () => {
+    const doc = new Y.Doc();
+    const reportingError = new Error('diagnostic reporter failed');
+    const fallback = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const runtime = createDocumentBodyRuntime(doc, () => { throw reportingError; });
+    documents.push(doc);
+    runtimes.push(runtime);
+    runtime.subscribe(() => { throw new Error('readonly listener failed'); });
+    const remaining = vi.fn();
+    runtime.subscribe(remaining);
+    try {
+      expect(() => runtime.fail(failure())).not.toThrow();
+
+      expect(runtime.read().status).toBe('failed');
+      expect(remaining).toHaveBeenCalledTimes(1);
+      expect(fallback).toHaveBeenCalledExactlyOnceWith('document_body_diagnostic_failed', reportingError);
+    } finally {
+      runtime.dispose();
+      fallback.mockRestore();
+    }
+  });
+
+  it('releases its handle when the source document is destroyed', () => {
+    const { doc, runtime } = fixture();
+    const changes = vi.fn();
+    runtime.subscribe(changes);
+
+    doc.destroy();
+
+    expect(runtime.read()).toEqual({ status: 'disposed', missing: [], failure: null });
+    expect(runtime.canWrite(true, runtime.incarnation)).toBe(false);
+    expect(changes).toHaveBeenCalledTimes(1);
+    runtime.dispose();
+    expect(changes).toHaveBeenCalledTimes(1);
+  });
+
   it('releases subscribers and recovery references on disposal', () => {
     const { runtime } = fixture();
     const removed = vi.fn();

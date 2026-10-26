@@ -2,49 +2,29 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The layout of a Space's content Yjs document, and the encoder that gives a
- * fresh one its initial state.
+ * Native roots and initial content shared by the service and document editor.
  *
- * This lives in shared because both ends consume it. The backend writes the
- * initial state when a Space is created; the editor in the browser binds to
- * the same fragment under the same key. Two copies of that agreement would
- * drift silently — the backend would keep writing to a key nobody reads, and
- * every new document would open blank with nothing to report.
+ * A fresh Document has one registered empty paragraph, its permanent inline
+ * source and the records format marker. The preserved XML snapshot carries
+ * the same paragraph identity and attributes. Comment threads live beside
+ * these roots in the same content document.
  *
- * ## The shape of a document Space's content
- *
- * ```
- * content
- *   └─ blockGroup           exactly one at the top
- *        └─ blockContainer  one per block, carrying its id
- *             └─ …content   the block's own node: paragraph, heading, …
- * ```
- *
- * There is no title block. The document's only name is the Space's name on
- * its tab, held in the project's meta document — one name, one home. A user
- * who wants a visual heading writes one.
- *
- * A fresh document is seeded with one empty paragraph rather than left empty.
- * Both hazards here were measured. Under a schema that demanded content and
- * an empty fragment (2026-08-16), two clients opening the same fresh document
- * each papered over the gap locally and one keystroke on each side merged
- * into two paragraphs nobody wrote together. Leaving the fragment empty under
- * this schema (2026-09-02) reproduces it a level up: each client fills the
- * top-level group itself, the merge yields two of them where the schema
- * allows one, and the next client to connect deletes one and broadcasts that
- * deletion as its own edit. Seeding one block leaves nothing for either side
- * to invent, so what merges is only what users actually did.
- *
- * The selection ruling, the empty-state interaction and the select-all tiers
- * that sit on top of this shape are the editor's business — the decision
- * record lives in the private engineering repo (document structure DD,
- * 2026-08-17).
+ * The Space name is held in Project metadata. Headings are ordinary body
+ * blocks. Canvas and Timeline retain their empty initial content policy.
  */
 
 import { v4 as uuidv4 } from "uuid";
 import * as Y from "yjs";
 
+import { seedDocumentBodyRecords } from "@shared/document-body-records.js";
 import type { SpaceType } from "@shared/types/space.js";
+
+const INITIAL_PARAGRAPH_ATTRIBUTES = {
+  backgroundColor: "default",
+  textColor: "default",
+  textAlignment: "left",
+  quoted: false,
+} as const;
 
 /**
  * Top-level key holding a document Space's body.
@@ -59,6 +39,7 @@ const DOCUMENT_BODY_KEY = "content";
  * Get a document Space's body fragment — what the editor binds to.
  * @param doc - The document Space's Y.Doc.
  * @returns The body fragment, created on first access.
+ * @throws {Error} If an existing root has a different native type.
  */
 export function documentBodyFragment(doc: Y.Doc): Y.XmlFragment {
   return doc.getXmlFragment(DOCUMENT_BODY_KEY);
@@ -80,6 +61,7 @@ const DOCUMENT_COMMENTS_KEY = "comments";
  * the text it points at, and one connection is enough for both.
  * @param doc - The document Space's Y.Doc.
  * @returns The threads map, created on first access.
+ * @throws {Error} If an existing root has a different native type.
  */
 export function documentCommentThreads(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(DOCUMENT_COMMENTS_KEY);
@@ -100,18 +82,20 @@ export function documentCommentThreads(doc: Y.Doc): Y.Map<unknown> {
  * first time anyone edits — a write carried to every peer that says nothing
  * about what the reader did. `backend-seed-contract.test.ts` compares this
  * list against the schema, so a new attribute turns red here.
+ * @param id - The stable paragraph identity shared with the records seed.
  * @returns The `blockGroup` element, ready to insert into a fragment.
+ * @throws {never}
  */
-function buildInitialDocumentBlock(): Y.XmlElement {
+function buildInitialDocumentBlock(id: string): Y.XmlElement {
   const group = new Y.XmlElement("blockGroup");
   const container = new Y.XmlElement("blockContainer");
-  container.setAttribute("id", uuidv4());
+  container.setAttribute("id", id);
 
   const paragraph = new Y.XmlElement("paragraph");
-  paragraph.setAttribute("backgroundColor", "default");
-  paragraph.setAttribute("textColor", "default");
-  paragraph.setAttribute("textAlignment", "left");
-  paragraph.setAttribute("quoted", false as never);
+  paragraph.setAttribute("backgroundColor", INITIAL_PARAGRAPH_ATTRIBUTES.backgroundColor);
+  paragraph.setAttribute("textColor", INITIAL_PARAGRAPH_ATTRIBUTES.textColor);
+  paragraph.setAttribute("textAlignment", INITIAL_PARAGRAPH_ATTRIBUTES.textAlignment);
+  paragraph.setAttribute("quoted", INITIAL_PARAGRAPH_ATTRIBUTES.quoted as never);
 
   container.insert(0, [paragraph]);
   group.insert(0, [container]);
@@ -135,6 +119,7 @@ function buildInitialDocumentBlock(): Y.XmlElement {
  * here, not a call site somewhere else.
  * @param kind - The kind of Space this content document belongs to.
  * @returns The encoded Yjs update, ready to persist as the initial state.
+ * @throws {Error} If constructing or encoding the registered seed fails.
  */
 export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   const doc = new Y.Doc();
@@ -142,9 +127,12 @@ export function encodeInitialSpaceContent(kind: SpaceType): Uint8Array {
   // reports a missing return path when a fourth kind is added, which is the
   // point — a new kind must state its initial content on purpose.
   switch (kind) {
-    case "document":
-      documentBodyFragment(doc).insert(0, [buildInitialDocumentBlock()]);
+    case "document": {
+      const id = uuidv4();
+      documentBodyFragment(doc).insert(0, [buildInitialDocumentBlock(id)]);
+      seedDocumentBodyRecords(doc, id, INITIAL_PARAGRAPH_ATTRIBUTES);
       return Y.encodeStateAsUpdate(doc);
+    }
     case "canvas":
     case "timeline":
       return Y.encodeStateAsUpdate(doc);
