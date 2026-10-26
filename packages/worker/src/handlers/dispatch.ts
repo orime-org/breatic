@@ -4,10 +4,11 @@
 /**
  * BullMQ job handlers for task execution.
  *
- * Three execution paths:
- * 1. Mini-tool → direct provider call
- * 2. Understand → media analysis / ASR
- * 3. AIGC Direct → provider call with explicit params
+ * Four execution paths:
+ * 1. Mini-tool analysis → its SQL-owned analysis lifecycle
+ * 2. Mini-tool → direct provider call
+ * 3. Understand → media analysis / ASR
+ * 4. AIGC Direct → provider call with explicit params
  *
  * Anything else throws.
  */
@@ -15,6 +16,8 @@
 import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
+import { runMiniToolAnalysisTask } from "@worker/handlers/mini-tool/run-analysis-task.js";
+import { runMiniToolContainerAnalysis } from "@worker/handlers/mini-tool/run-container-analysis.js";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
@@ -22,7 +25,7 @@ import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
-import { failureOutcome, taskService, upstreamStepRepo } from "@breatic/domain";
+import { failureOutcome, taskService, upstreamStepRepo, type MiniToolAnalysisJob } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService } from "@breatic/domain";
 import {
@@ -52,7 +55,7 @@ import {
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
-import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
+import { MINI_TOOL_ANALYSIS_JOB, catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -146,6 +149,9 @@ export interface TaskJobData {
    */
   retryReported?: number;
 }
+
+/** The tasks queue preserves each producer's original execution payload. */
+export type TasksJobData = TaskJobData | MiniToolAnalysisJob;
 
 /**
  * Whether a failure in the currently-running attempt leaves no retry
@@ -292,16 +298,22 @@ function resolveCanvasDocName(
  * A node carries several tasks at once (#186), so a job claims nothing on
  * the node it writes to: every task reaches an end of its own and the user
  * decides on the node's task list which result to keep.
- * @param job - BullMQ job carrying the TaskJobData payload to execute
+ * @param job - BullMQ job carrying its producer's original execution payload
  * @param token - This attempt's lock token (2nd Processor argument);
  *   threaded to the zombie fence before the billing critical section
  * @returns The result dict on success, or a failure status marker (e.g. `{ failed: true, reason }`)
  */
 export async function runTask(
-  job: Job<TaskJobData>,
+  job: Job<TasksJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => runTaskBody(job, token));
+  return await runWithConsent(job.data.analyticsConsent ?? NO_CONSENT, () => {
+    if (job.name === MINI_TOOL_ANALYSIS_JOB) {
+      return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, runMiniToolContainerAnalysis);
+    }
+    if ("hostNodeId" in job.data) throw new Error("Analysis execution requires its job discriminator");
+    return runTaskBody(job as Job<TaskJobData>, token);
+  });
 }
 
 /**

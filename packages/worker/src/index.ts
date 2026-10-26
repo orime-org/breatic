@@ -145,7 +145,7 @@ const WORKER_QUEUES: readonly string[] = [
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
-import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import type { TasksJobData } from "@worker/handlers/dispatch.js";
 import type { Job } from "bullmq";
 
 // Health probe port from the validated config (default 9101).
@@ -196,11 +196,11 @@ export async function startWorker(): Promise<void> {
   assertKnownQueues(WORKER_QUEUES);
 
   const miniToolSettlement = await startMiniToolSettlementWorker();
-  const worker = createWorker<TaskJobData>("tasks", runTask);
+  const worker = createWorker<TasksJobData>("tasks", runTask);
 
-  // Its own queue, because `runTask` is a generation: past the dispatch it
-  // records a provider result, bills the studio and writes a generation
-  // activity row whatever ran, and none of those belong to a pasted link.
+  // Its own queue: the ordinary generation branches record a provider result,
+  // bill the studio and write generation activity. Pasted links follow their
+  // own transfer lifecycle, alongside the separately dispatched analyses.
   //
   // Delivered once. `attempts` bounds retries after a throw; a worker judged
   // to have died is counted separately, and a re-run there is a second full
