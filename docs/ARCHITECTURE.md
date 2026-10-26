@@ -178,6 +178,8 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 `startMiniToolExecution` 在原任务锁内校验计划与父模型、初始化完整输出槽，再进入计算。`finishMiniToolExecution` 按同一锁合并 `tasks.result.miniToolExecution`，保留其他结果字段和结算周期；完整登记结果或失败槽形成初份媒体版本，重复结果保持版本，原失败任务的合法迟到登记以版本检查补入并保留原终态。费用身份、确认成本和 usage 记录的三个写入口在各自原事务内同步窄公共费用投影；媒体版本与费用周期独立。`getMiniToolExecution` 检查真实父 Project 的当前成员读权，从 tasks 投影结果及实际结算状态，读取过程不访问 worker 的上游步骤或触发媒体计算。
 
+Worker 在常规分派前识别 `execute-mini-tool` 的 `executionKind: planned`，队列只携原 task ID、来源和 consent；原 actor、Project、Space、模型及目标以 SQL 为准。等待沿 `StillRunning` 归还处理位，完成或失败的任务重放只恢复已有结果和历史。执行叶子在供应商结果持久后通知应用层返回分界，之后的登记错误不抛回计算队列；媒体 manifest 已完成时，历史或通知错误保留完成态。跨进程失败清理按原 `finishedOn` 和 planned 标识进入相同终结入口，费用及 hold 继续交原消费结算 owner。`GET /projects/:projectId/mini-tool-runs/:runId` 允许当前项目成员读取该执行，旧任务读取接口保留原发起者权限。
+
 计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求。提交前重新检查原期限并用它限定传输；两次查询间隔的最终报告窗口只供读取。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。
 
 `advanceRegisteredMiniToolPlanJob` 保存原终态报告与实测用量后，逐项登记实际写出的产物；原步骤缓存每个索引的 canonical assetId，重入复用报告和已登记兄弟项。分析 JSON 从该真实资产行的 canonical URL 有限读取，字节界取登记大小，读取仍受原任务期限约束。领域装配器保留受理身份和六位微秒时间：场景结果核对完整源帧账本、原区间映射与切点；人物结果核对 display 锚帧和保存的整数像素区域，按原 detectionIndex 关联缩略图计划、实测报告及登记行。人物 ID 由原 analysisRunId 与检测编号确定，去重允许多个人引用同一资产；引用的 URL、hash、MIME、kind 和大小取登记胜出行。显式 display 人物检测与缩略图使用同向 PNG，裁切保持奇数尺寸、单像素和透明分量。

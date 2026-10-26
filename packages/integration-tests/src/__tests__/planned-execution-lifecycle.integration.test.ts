@@ -47,7 +47,7 @@ function job(f: ExecutionFixture, attemptsMade = 0): Job<MiniToolExecutionJob> {
  * @throws {Error} When the actual task execution rejects.
  */
 async function dispatch(j: Job<MiniToolExecutionJob>, token = "owned-token"): Promise<Record<string, unknown>> {
-  return runTask(j as unknown as Parameters<typeof runTask>[0], token);
+  return runTask(j, token);
 }
 /** Build ordinary source and output task rows; no Yjs node or layout is fabricated.
  * @throws {Error} On a fixture SQL failure.
@@ -249,7 +249,7 @@ describe("terminal media delivery and cross-process cleanup", () => {
     const f = await seedExecution(pg, "running"); await returned(f); await nodes(f);
     await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at) VALUES (${f.studioId},${f.userId},${f.taskId},30,'held','2099-01-01T00:00:00Z')`;
     const j = Object.assign(job(f, 0), { finishedOn: Date.now() });
-    await cleanupFailedJobNodes(getStreamRedis(), j as unknown as Parameters<typeof cleanupFailedJobNodes>[1], "stalled");
+    await cleanupFailedJobNodes(getStreamRedis(), j, "stalled");
     expect((await executionSnapshot(pg, f)).status).toBe("failed"); const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`; expect(hold).toEqual({ status: "held" }); expect(runPrediction).not.toHaveBeenCalled(); expect(storeFromUrl).not.toHaveBeenCalled();
   });
 });

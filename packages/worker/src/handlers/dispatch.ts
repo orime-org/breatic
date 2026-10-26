@@ -4,11 +4,12 @@
 /**
  * BullMQ job handlers for task execution.
  *
- * Four execution paths:
+ * Task execution paths:
  * 1. Mini-tool analysis → its SQL-owned analysis lifecycle
- * 2. Mini-tool → direct provider call
- * 3. Understand → media analysis / ASR
- * 4. AIGC Direct → provider call with explicit params
+ * 2. Planned mini-tool → its SQL-owned execution lifecycle
+ * 3. Mini-tool → direct provider call
+ * 4. Understand → media analysis / ASR
+ * 5. AIGC Direct → provider call with explicit params
  *
  * Anything else throws.
  */
@@ -17,6 +18,7 @@ import { DelayedError, type Job } from "bullmq";
 import type { ResumeContext } from "@worker/providers/shared.js";
 import { runContainerJob } from "@worker/handlers/container/run-container-job.js";
 import { runMiniToolAnalysisTask } from "@worker/handlers/mini-tool/run-analysis-task.js";
+import { runMiniToolExecutionTask } from "@worker/handlers/mini-tool/run-execution-task.js";
 import { runMiniToolContainerAnalysis } from "@worker/handlers/mini-tool/run-container-analysis.js";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/providers/still-running.js";
@@ -25,7 +27,7 @@ import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getRawEnvVar, getUnderstandConfig } from "@breatic/core";
-import { failureOutcome, taskService, upstreamStepRepo, type MiniToolAnalysisJob } from "@breatic/domain";
+import { failureOutcome, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
 import { creditHoldService, creditLotService, creditsForUsd, resolveActiveProvider, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService } from "@breatic/domain";
 import {
@@ -151,7 +153,7 @@ export interface TaskJobData {
 }
 
 /** The tasks queue preserves each producer's original execution payload. */
-export type TasksJobData = TaskJobData | MiniToolAnalysisJob;
+export type TasksJobData = TaskJobData | MiniToolAnalysisJob | MiniToolExecutionJob;
 
 /**
  * Whether a failure in the currently-running attempt leaves no retry
@@ -311,6 +313,12 @@ export async function runTask(
     if (job.name === MINI_TOOL_ANALYSIS_JOB) {
       return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, runMiniToolContainerAnalysis);
     }
+    if ("executionKind" in job.data) {
+      if (job.name !== "execute-mini-tool" || job.data.executionKind !== "planned" || job.data.source !== "mini_tool") {
+        throw new Error("Planned execution requires its original queue discriminator");
+      }
+      return runMiniToolExecutionTask(job as Job<MiniToolExecutionJob>, token);
+    }
     if ("hostNodeId" in job.data) throw new Error("Analysis execution requires its job discriminator");
     return runTaskBody(job as Job<TaskJobData>, token);
   });
@@ -411,6 +419,7 @@ async function runTaskBody(
   //       markCompletedAndBill failed, etc). Per policy, no further
   //       retries — mark failed and release the node without charging.
   const existing = await taskService.getByIdInternal(taskId);
+  if (existing?.params?.miniToolExecution !== undefined) throw new Error("Planned execution cannot enter the legacy task lane");
   if (existing?.billedAt) {
     logger.info(
       { taskId, billedCredits: existing.billedCredits },

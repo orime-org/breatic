@@ -2,9 +2,16 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { Hono } from "hono";
+import { z } from "zod";
+import { miniToolExecutionService } from "@breatic/domain";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
+import { validate } from "@server/middleware/validate.js";
 
 const miniToolRuns = new Hono<{ Variables: AuthVariables }>();
 miniToolRuns.use(requireAuth);
-miniToolRuns.get("/:runId", () => { throw new Error("Planned execution route is not implemented"); });
+miniToolRuns.get("/:runId", validate("param", z.object({ projectId: z.uuid(), runId: z.uuid() })), async (c) => {
+  const { projectId, runId } = c.req.valid("param");
+  const data = await miniToolExecutionService.getMiniToolExecution(projectId, runId, c.get("user").id);
+  return c.json({ data });
+});
 export { miniToolRuns as miniToolRunsRoute };

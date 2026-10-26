@@ -35,6 +35,7 @@ async function registeredAsset(assetId: string): Promise<{ asset: StudioAssetEnt
  * @param taskId - The original accepted planned task, never a replacement job body.
  * @param deadlineAt - Its original outer task deadline; an existing step keeps its stored deadline.
  * @param retryStarting - The existing pickup retry fact passed to the provider transport.
+ * @param onProviderReturned - The application records this pickup's durable return boundary before later IO.
  * @returns The actual registered winner and its live cover.
  * @throws {Error} When the persisted lane, planning, provider or canonical receipt cannot advance.
  */
@@ -42,6 +43,7 @@ export async function runMiniToolRemoveBackground(
   taskId: string,
   deadlineAt: number,
   retryStarting: boolean,
+  onProviderReturned?: (stepId: string) => void,
 ): Promise<{ asset: StudioAssetEntity; cover: StudioAssetEntity | null }> {
   const { task, execution } = await readMiniToolExecutionPlan(taskId);
   const [owned] = await upstreamStepRepo.ensureSteps(task.id, [{ kind: "generate", endpoint: execution.provider.model_id, itemIndex: 0 }]);
@@ -49,7 +51,10 @@ export async function runMiniToolRemoveBackground(
     throw new Error("Video removal lost its original provider step");
   }
   let step = owned;
-  if (step.output[RECEIPT_KEY] !== undefined) return registeredAsset(assetIdentitySchema.parse(step.output[RECEIPT_KEY]));
+  if (step.output[RECEIPT_KEY] !== undefined) {
+    if (step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done") onProviderReturned?.(step.id);
+    return registeredAsset(assetIdentitySchema.parse(step.output[RECEIPT_KEY]));
+  }
   let state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
   let originalDeadline = state?.deadlineAt ?? deadlineAt;
   if (state === null || state.result === null) {
@@ -86,6 +91,7 @@ export async function runMiniToolRemoveBackground(
     state = miniToolStepStateSchema.parse(step.output.miniToolStep);
   }
   if (state?.result?.outcome !== "done") throw new Error("Video removal has no completed provider result");
+  onProviderReturned?.(step.id);
   const result = operationResultSchema.parse(state.result.result);
   const stored = await storeFromUrl(result.providerURL, {
     projectId: execution.projectId, actingUserId: task.userId, generationTaskId: task.id,

@@ -1,16 +1,106 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { Job } from "bullmq";
-import type { MiniToolExecutionJob } from "@breatic/domain";
+import { DelayedError, type Job } from "bullmq";
+import { getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
+import { failureOutcome, hasUnresolvedMiniToolStepAttempts, miniToolExecutionService, miniToolStepStateSchema, upstreamStepRepo,
+  type MiniToolExecution, type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
+import { assertBeforeDeadline, DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
+import { miniToolExecutionOutputSchema, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
+import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
+import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
+import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remove-background.js";
+import { taskDeadline } from "@worker/handlers/task-deadline.js";
+import { verdictStands } from "@worker/handlers/understand-failure.js";
+import { StillRunning } from "@worker/providers/still-running.js";
 
 /**
  * Run one planned pickup through its original SQL-owned lifecycle.
- * @param _job - The queue delivery of the accepted execution.
- * @param _token - This pickup's existing queue-lock token.
+ * @param job - The queue delivery of the accepted execution.
+ * @param token - This pickup's existing queue-lock token.
  * @returns The pickup marker after persistence and permitted notifications.
- * @throws {Error} Until the planned execution wrapper is implemented.
+ * @throws {Error} When initialization or a pre-return retry belongs to the queue.
  */
-export async function runMiniToolExecutionTask(_job: Job<MiniToolExecutionJob>, _token?: string): Promise<Record<string, unknown>> {
-  throw new Error("Planned execution wrapper is not implemented");
+export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, token?: string): Promise<Record<string, unknown>> {
+  const taskId = job.data.taskId;
+  let phase = "entry";
+  let returned = false;
+  let ctx: Record<string, unknown> = { taskId, jobId: job.id, phase };
+  try {
+    const current = await miniToolExecutionService.startMiniToolExecution(taskId, job.id ?? taskId);
+    const { task, execution, record } = current;
+    ctx = { ...ctx, userId: task.userId, projectId: execution.projectId, spaceId: execution.spaceId };
+    if (record.status === "cancelled") return { runId: taskId, status: record.status };
+    let completion: MiniToolExecutionCompletion;
+    if (record.status === "completed" || record.status === "failed") {
+      completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
+        outputs: record.outputs, error: record.error, consumptionSet: "uncertain" };
+      returned = true;
+    } else {
+      const deadlineAt = await taskDeadline(taskId, task.createdAt);
+      phase = "computation";
+      try {
+        assertBeforeDeadline(deadlineAt);
+        const output = await runMiniToolRemoveBackground(taskId, deadlineAt, (job.attemptsMade ?? 0) + (job.stalledCounter ?? 0) > 0, (stepId) => {
+          returned = true;
+          ctx = { ...ctx, stepId };
+        });
+        returned = true;
+        completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
+          outputs: [registeredOutput(current, output)], error: null, consumptionSet: "uncertain" };
+      } catch (thrown) {
+        if (thrown instanceof StillRunning) {
+          if (token === undefined) throw thrown;
+          await job.moveToDelayed(thrown.resumeAt, token);
+          throw new DelayedError();
+        }
+        const steps = await upstreamStepRepo.listSteps(taskId);
+        const pastReturn = steps.find((step) => step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
+        returned ||= pastReturn !== undefined;
+        ctx = { ...ctx, ...(pastReturn === undefined ? {} : { stepId: pastReturn.id }) };
+        const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
+        if (!returned && !isTerminalAttempt(job) && !verdictStands(error)) throw error;
+        logger.error({ err: thrown, ctx: { ...ctx, phase: returned ? "registration" : phase } }, "mini_tool_execution_computation_failed");
+        const failure = { code: error instanceof DeadlinePassed ? "expired" : "mini_tool_failed", message: error instanceof Error ? error.message : String(error) };
+        completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
+          outputs: execution.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure }, late: false })),
+          error: failure, consumptionSet: "uncertain" };
+      }
+      const steps = await upstreamStepRepo.listSteps(taskId);
+      returned ||= steps.some((step) => step.output.miniToolStep !== undefined && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done");
+      completion.consumptionSet = steps.some((step) => step.output.miniToolStep !== undefined
+        && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) ? "uncertain" : "complete";
+    }
+    phase = "ownership";
+    if (!await verifyJobLockOwnership(job, token, getWorkerConfig().lock_duration_ms)) {
+      logger.warn({ ctx: { ...ctx, phase } }, "mini_tool_execution_lock_lost");
+      return { discarded: true };
+    }
+    phase = "completion";
+    const finished = await finishMiniToolExecutionAndNotify(taskId, completion, getStreamRedis());
+    return { runId: taskId, status: finished.record.status };
+  } catch (err) {
+    if (!(err instanceof StillRunning) && !(err instanceof DelayedError)) logger.error({ err, ctx: { ...ctx, phase } }, "mini_tool_execution_pickup_failed");
+    if (returned) return { failed: true, reason: phase };
+    throw err;
+  }
+}
+
+/**
+ * Keep the actual registered rows separate from the source's measured media.
+ * @param current - The original accepted mapping and parent.
+ * @param stored - The canonical registered winner and its cover.
+ * @param stored.asset - The actual primary registered asset.
+ * @param stored.cover - Its registered cover, when present.
+ * @returns The complete original slot with actual canonical media.
+ * @throws {Error} When the registered observation violates the public media contract.
+ */
+function registeredOutput(current: MiniToolExecution, stored: { asset: StudioAssetEntity; cover: StudioAssetEntity | null }): MiniToolExecutionOutput {
+  const { asset, cover } = stored;
+  return miniToolExecutionOutputSchema.parse({ ...current.execution.outputs[0], late: false, result: {
+    status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, contentHash: asset.contentHash,
+    mimeType: asset.mimeType, size: asset.sizeBytes, width: asset.width, height: asset.height, duration: asset.durationSeconds,
+    cover: cover === null ? null : { assetId: cover.id, canonicalURL: cover.fileUrl, kind: cover.kind,
+      contentHash: cover.contentHash, mimeType: cover.mimeType, size: cover.sizeBytes, width: cover.width, height: cover.height },
+  } });
 }
