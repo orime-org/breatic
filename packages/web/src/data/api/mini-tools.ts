@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { MiniToolRequest } from '@breatic/shared/mini-tools';
+import type { MiniToolExecutionRecord, MiniToolPlannedRequest, MiniToolRequest } from '@breatic/shared/mini-tools';
 
 import { apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
@@ -12,7 +12,33 @@ export interface MiniToolRunAnswer {
   status: 'pending' | 'failed';
 }
 
+/** The planned admission's existing task identity and all persisted statuses. */
+export interface MiniToolPlannedRunAnswer {
+  task_id: string;
+  status: MiniToolExecutionRecord['status'];
+}
+
 export const miniToolsApi = {
+  /**
+   * Sends one complete planned request with its stable press key.
+   * @param _body - The frozen public plan.
+   * @param _key - The original press identity.
+   * @returns The admitted task's state.
+   * @throws {Error} Until planned API wiring is implemented.
+   */
+  runPlanned(_body: MiniToolPlannedRequest, _key: string): Promise<MiniToolPlannedRunAnswer> {
+    return Promise.reject(new Error('Planned video API submission is not implemented'));
+  },
+  /**
+   * Reads the project-authorized original run and canonical results.
+   * @param _projectId - The containing Project.
+   * @param _runId - The original accepted run identity.
+   * @returns The validated public execution record.
+   * @throws {Error} Until planned API reading is implemented.
+   */
+  getRun(_projectId: string, _runId: string): Promise<MiniToolExecutionRecord> {
+    return Promise.reject(new Error('Planned video API reading is not implemented'));
+  },
   /**
    * Run a model or container mini-tool into nodes that already exist
    * (inner#888 §6.1).
