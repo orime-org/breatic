@@ -582,6 +582,7 @@ export function patchUploadSlot(
   slotId: string,
   patch: Partial<Pick<UploadSlot, 'phase' | 'progress' | 'failure'>>,
 ): void {
+  if (view.isDestroyed) return;
   send(view, { kind: 'patch', slotId, patch });
 }
 

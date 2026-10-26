@@ -1517,7 +1517,7 @@
         "closeRail": "关闭批注栏",
         "empty": "这个 Document 还没有批注。选中正文里的文字，或者点行左边的抓手。",
         "nothingUnresolved": "没有未解决的批注。",
-        "writeFailed": "这次改动没能保存。",
+        "writeFailed": "操作未完成。",
         "unknownAuthor": "未知",
         "fromAgent": "来自 Agent",
         "folded": "还有 {count} 条",

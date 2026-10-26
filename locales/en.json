@@ -1517,7 +1517,7 @@
         "closeRail": "Close comments",
         "empty": "No comments yet. Select some text, or use the handle beside a line.",
         "nothingUnresolved": "Nothing unresolved.",
-        "writeFailed": "That change could not be saved.",
+        "writeFailed": "That operation did not finish.",
         "unknownAuthor": "Unknown",
         "fromAgent": "from Agent",
         "folded": "{count, plural, one {# more comment} other {# more comments}}",
