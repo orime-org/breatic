@@ -12,7 +12,7 @@
 import { APICallError } from "ai";
 import type { Cost } from "@provider/cost.js";
 import { Aborted, NoAnswer, NotSent } from "@provider/http/errors.js";
-import type { ModelV4 } from "@provider/llm/vendors.js";
+import { openRouterModelNotFound, type ModelV4 } from "@provider/llm/vendors.js";
 import { decide, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
@@ -53,7 +53,10 @@ export function classifyLlm(error: unknown): Failure | null {
     if (current instanceof NoAnswer) return { kind: "no_answer" };
     if (current instanceof Aborted || current.name === "AbortError" || current.name === "TimeoutError") return { kind: "aborted" };
   }
-  if (APICallError.isInstance(error) && typeof error.statusCode === "number") return { kind: "http_status", status: error.statusCode };
+  if (APICallError.isInstance(error) && typeof error.statusCode === "number") {
+    if (openRouterModelNotFound(error.statusCode, error.responseBody)) return { kind: "model_not_found" };
+    return { kind: "http_status", status: error.statusCode };
+  }
   return null;
 }
 

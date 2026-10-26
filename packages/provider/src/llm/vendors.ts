@@ -119,6 +119,26 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
   },
 };
 
+/** How OpenRouter's 400 for a model id it does not serve ends (measured 2026-10-26). */
+const OPENROUTER_MODEL_NOT_FOUND = / is not a valid model ID$/;
+
+/**
+ * Whether an error body is OpenRouter's answer that it has no such model,
+ * rather than a refusal of the request's params: both are 400s, told apart by the message.
+ * @param status - The response status.
+ * @param body - The response body.
+ * @returns True for the model-not-found answer.
+ */
+export function openRouterModelNotFound(status: number, body: string | undefined): boolean {
+  if (status !== 400 || body === undefined) return false;
+  try {
+    const message = (JSON.parse(body) as { error?: { message?: unknown } } | null)?.error?.message;
+    return typeof message === "string" && OPENROUTER_MODEL_NOT_FOUND.test(message);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The vendor of an upstream kind.
  * @param kind - The upstream's kind.
