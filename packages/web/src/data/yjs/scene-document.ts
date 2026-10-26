@@ -122,7 +122,7 @@ export function validateSceneRecovery(doc: Y.Doc): void {
 export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
   const root = doc.share.get('objects');
   // A decoded root must first acquire its Map constructor. An already typed
-  // incompatible root stays intact so the session can expose recovery/export.
+  // incompatible root stays intact for inspection by the format validator.
   const scope = root && root.constructor !== Y.AbstractType ? root : doc.getMap('objects');
   return withDestroyListenerCleanup(doc, () => new Y.UndoManager(scope, {
     trackedOrigins: new Set([origin]), captureTimeout: 0,
