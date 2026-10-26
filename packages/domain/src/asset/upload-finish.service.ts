@@ -14,15 +14,21 @@ import { env } from "@breatic/core";
 import {
   finishUploadAtIngest,
   INGEST_REFUSED_UNNAMED,
+  TRANSFER_MEDIA_TYPE,
   UploadHttpError,
+  type IngestMeasurements,
   type PartReceipt,
-  type StudioAssetEntity,
 } from "@breatic/shared";
 import * as ingestReportService from "@domain/asset/ingest-report.service.js";
 import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js";
 import { ingestRunFor } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
 import { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
+import {
+  completeTransferGrant,
+  findGrantByKey,
+  type GrantAssetSource,
+} from "@domain/asset/upload-grant.repo.js";
 
 /** The queue finishing jobs run on. */
 export const UPLOAD_FINISH_QUEUE = "upload-finish";
@@ -34,8 +40,8 @@ export interface UploadFinishJob {
   /** The session token, which the Worker checks again before it assembles. */
   token: string;
   parts: PartReceipt[];
-  /** What the grant says the asset is, from the permission to finish. */
-  assetSource: StudioAssetEntity["source"] | null;
+  /** What the grant says the upload is, from the permission to finish. */
+  assetSource: GrantAssetSource | null;
 }
 
 /** How one finish ended, for the job to log. */
@@ -77,6 +83,31 @@ async function refuse(
 }
 
 /**
+ * Settle a transfer upload (inner#1006) once the Worker has stored it: no
+ * asset row, no media read, no activity. The grant is marked complete so the
+ * request it carries may be referenced once.
+ * @param storageKey - The transfer's key.
+ * @param answered - What the Worker measured over the stored object.
+ * @returns How it ended.
+ * @throws {Error} When the ledger cannot be read or written.
+ */
+async function finishTransfer(
+  storageKey: string,
+  answered: IngestMeasurements,
+): Promise<UploadFinishResult> {
+  if (answered.contentType !== TRANSFER_MEDIA_TYPE) {
+    return refuse(storageKey, "unsupported_type");
+  }
+  // The grant cannot be missing here, since finishing claimed it; read as
+  // nothing declared, a missing one ends where registration's own check does.
+  const declared = (await findGrantByKey(storageKey))?.declaredSize ?? 0;
+  if (answered.sizeBytes > declared) return refuse(storageKey, "too_large");
+  // False only for a grant voided first, whose ending stands.
+  const completed = await completeTransferGrant(storageKey);
+  return { outcome: { status: completed ? "transferred" : "stale" } };
+}
+
+/**
  * Have the Worker finish the upload, then register what it stored.
  *
  * Safe to run again: the Worker answers a repeat of the same upload id from
@@ -88,10 +119,13 @@ async function refuse(
  *   tries again.
  */
 export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishResult> {
-  const { storageKey } = job;
+  const { storageKey, assetSource } = job;
   const deadlineAt = await uploadDeadlineByKey(storageKey);
 
-  let answered;
+  // A transfer has no media to read, so it is never asked whether to.
+  const deferMediaRead =
+    assetSource === "transfer" ? true : !mediaReadService.readsMediaAtFinish(assetSource);
+  let answered: IngestMeasurements;
   try {
     answered = await finishUploadAtIngest(
       env.INGEST_BASE_URL,
@@ -103,7 +137,7 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
         // off the bytes. It is derived from the object's own key, so a repeat
         // names the same place.
         ...ingestRunFor(storageKey, deadlineAt),
-        deferMediaRead: !mediaReadService.readsMediaAtFinish(job.assetSource),
+        deferMediaRead,
       },
     );
   } catch (err) {
@@ -117,10 +151,12 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
     return refuse(storageKey, reason, { cause: err });
   }
 
+  if (assetSource === "transfer") return finishTransfer(storageKey, answered);
+
   // The ticket named a picture; this is what the bytes that landed are. A
   // cover or an avatar that turns out to be anything else is refused the way
   // a format we do not take is, before a row is written for it.
-  if (!mediaReadService.storedTypeAccepted(job.assetSource, answered.contentType)) {
+  if (!mediaReadService.storedTypeAccepted(assetSource, answered.contentType)) {
     return refuse(storageKey, "unsupported_type", { contentType: answered.contentType });
   }
 
@@ -133,7 +169,7 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
   // The row stands either way; a read that could not be queued leaves it
   // without numbers, which is how a read that failed leaves it too.
   try {
-    await mediaReadService.scheduleMediaRead(outcome, job.assetSource);
+    await mediaReadService.scheduleMediaRead(outcome, assetSource);
   } catch (err) {
     return { outcome, mediaReadNotQueued: err };
   }

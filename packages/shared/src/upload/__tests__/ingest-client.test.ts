@@ -834,3 +834,32 @@ describe('when the Worker refuses', () => {
     expect(mockedRequest).toHaveBeenCalledTimes(2);
   });
 });
+
+// inner#1006 §4.7 (W08): a transfer upload is cancelled when its chat turn is
+// stopped, so `sendBytesToIngest` takes an optional signal, checks it between
+// parts and hands it to each part request. The design names no position for
+// the new parameter; it is taken here as the next positional one, after
+// `deadlineAt`.
+describe('W08 stopping an upload between parts', () => {
+  it('throws AbortError, sends no further part, and hands the first part the signal', async () => {
+    wireOpenAndParts(3);
+    const stop = new AbortController();
+
+    const sent = sendBytesToIngest(
+      fileOf(PART_SIZE * 2 + 700),
+      ticketFor(3),
+      cfg,
+      (bytes) => {
+        if (bytes === PART_SIZE) stop.abort();
+      },
+      undefined,
+      stop.signal,
+    );
+
+    await expect(sent).rejects.toMatchObject({ name: 'AbortError' });
+    // The open plus the first part, and nothing after the abort.
+    expect(mockedRequest).toHaveBeenCalledTimes(2);
+    expect(urlOf(1)).toBe('https://ingest.example.com/uploads/upload-1/parts/1');
+    expect(optionsOf(1).signal).toBe(stop.signal);
+  });
+});

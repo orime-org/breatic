@@ -26,6 +26,7 @@ import {
   paginationSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
+import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
@@ -433,6 +434,7 @@ canvas.post(
 canvas.post(
   "/paste",
   rateLimitFor("canvas-paste", "user"),
+  acceptTransferBody("canvas_paste"),
   validate("json", canvasPasteSchema),
   async (c) => {
     const user = c.get("user");
@@ -461,6 +463,7 @@ canvas.post(
 canvas.post(
   "/node-history/snapshot",
   rateLimitFor("node-history-snapshot", "user"),
+  acceptTransferBody("node_history_snapshot"),
   validate("json", nodeHistorySnapshotSchema),
   async (c) => {
     const user = c.get("user");

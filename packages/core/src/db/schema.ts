@@ -2716,9 +2716,10 @@ export const uploadGrants = pgTable(
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by registration AFTER its
-     * studio_assets INSERT. Null while unconsumed. A consumed grant no longer
-     * resolves as live.
+     * Completed — set exactly once. An ordinary upload sets it with its
+     * studio_assets row (registration, AFTER the INSERT); a transfer
+     * (inner#1006) sets it with none. Null while unconsumed. A consumed grant
+     * no longer resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /**

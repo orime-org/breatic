@@ -227,9 +227,12 @@ export type IngestReportOutcome = IngestSideEffects &
     } & RegisteredMedia)
   | { status: "rejected"; reason: "over_cap" | "empty" }
   | { status: "voided" }
+  /** A transfer upload (inner#1006) finished: no row was written for it. */
+  | { status: "transferred" }
   /**
    * Nothing for this report to answer with: a failure for an upload another
-   * delivery already registered, or a repeat whose ledger row is gone.
+   * delivery already registered, a repeat whose ledger row is gone, or a
+   * transfer finish whose grant was already voided.
    */
     | { status: "stale" });
 
@@ -590,6 +593,10 @@ export async function applyIngestReport(
     const countsPublishFailed = await announceFailure(grant, reason);
     return { status: "voided", ...(countsPublishFailed && { countsPublishFailed }) };
   }
+
+  // A transfer (inner#1006) never becomes a row: its own finish settles it,
+  // so a completed report for one has nothing to register.
+  if (grant.assetSource === "transfer") return { status: "stale" };
 
   const adapter = await getStorageAdapter();
   const contentType = report.contentType;

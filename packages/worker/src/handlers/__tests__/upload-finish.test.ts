@@ -83,6 +83,21 @@ describe("the upload-finish job", () => {
     );
   });
 
+  it("writes an info when the Worker refused the stored bytes' type", async () => {
+    h.finishUpload.mockResolvedValue({
+      outcome: { status: "voided" },
+      refused: { reason: "unsupported_type", cause: new Error("Asset upload failed (HTTP 415)") },
+    });
+
+    await runUploadFinish(job() as never);
+
+    expect(h.info).toHaveBeenCalledWith(
+      { key: DATA.storageKey, source: null },
+      "upload_stored_type_refused",
+    );
+    expect(h.error).not.toHaveBeenCalled();
+  });
+
   it("writes an error when the row stands but its media read was not queued", async () => {
     const err = new Error("redis down");
     h.finishUpload.mockResolvedValue({ outcome: { status: "registered" }, mediaReadNotQueued: err });

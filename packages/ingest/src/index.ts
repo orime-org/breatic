@@ -36,6 +36,7 @@ import {
   type SessionTokenPayload,
   type PreviewOutcome,
   type UploadTicketPayload,
+  TRANSFER_MEDIA_TYPE,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
@@ -516,6 +517,19 @@ async function finishUpload(
     return refused(
       "unsupported_type",
       "The stored bytes are not a kind we take",
+      415,
+    );
+  }
+  // The other direction (inner#1006): a transfer ticket takes only our own
+  // transfer file, so bytes that are anything else never reach the upright
+  // turn or a media read below.
+  if (contentType === TRANSFER_MEDIA_TYPE && storedType !== TRANSFER_MEDIA_TYPE) {
+    noteFailure("ingest_stored_type_refused", { storageKey, storedType }, undefined, {
+      userInput: true,
+    });
+    return refused(
+      "unsupported_type",
+      "The stored bytes are not a transfer file",
       415,
     );
   }

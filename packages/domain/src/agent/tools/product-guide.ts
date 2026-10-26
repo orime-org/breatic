@@ -211,7 +211,10 @@ export function renderProductGuide(): string {
       "open, even none. A space someone else makes, or one brought back, does not become a tab by itself: open " +
       `it from ${quoted(t("spaces.drawer.title"))} (below), which lists every space. Each tab shows a ` +
       "type icon and the " +
-      "space's name, and hovering a tab shows its full name. Click a tab to switch to it; switching back finds " +
+      "space's name, and hovering a tab shows its full name. A small spinning mark at the far left means this " +
+      "browser currently knows of ongoing work in that space, including collaborator tasks reflected in its " +
+      `current state; its tooltip also shows ${quoted(t("canvas.task.status.running"))}. ` +
+      "The mark keeps updating while another space is shown. Click a tab to switch to it; switching back finds " +
       "the space as it was left: the same view, selection, open panels, unfinished text and caret. A canvas " +
       "tab closed and opened again starts at the view it was closed on. Double-click the name " +
       "to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. A locked space shows a " +
