@@ -293,6 +293,9 @@ importers:
       typescript-eslint:
         specifier: 'catalog:'
         version: 8.67.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
 
   eslint-rules:
     devDependencies:
@@ -621,6 +624,9 @@ importers:
 
   packages/provider:
     dependencies:
+      jsonata:
+        specifier: 2.2.2
+        version: 2.2.2
       zod:
         specifier: 'catalog:'
         version: 4.4.3

@@ -10,7 +10,8 @@
       "@provider/*": [
         "./src/*"
       ]
-    }
+    },
+    "resolveJsonModule": true
   },
   "include": [
     "src/**/*.ts",
