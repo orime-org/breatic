@@ -15,7 +15,9 @@
 
 import { env, getStorageConfig } from "@breatic/core";
 import {
+  assertBeforeDeadline,
   INGEST_NO_ANSWER,
+  MAX_TIMER_MS,
   openUploadAtIngest,
   signUploadTicket,
   type IngestTarget,
@@ -101,22 +103,25 @@ export async function signTicketFor(
  * id and the first token. The grant and the task row exist before this runs,
  * so any failure here settles them as aborted before it is thrown; a resend
  * could open a second upload for the same key, so nothing is retried.
- * @param request - What this upload is.
- * @param bound - The caller's deadline and stop signal, or a timeout alone.
+ *
+ * Bounded by the task's deadline as a timeout alone: opening is one request,
+ * and a deadline signal's timer would stay pending for the rest of the task's
+ * budget after it returned.
+ * @param request - What this upload is, including its task's deadline.
  * @returns The opened upload and the layout its parts follow.
  * @throws {UploadOpenFailed} When signing or opening failed; it carries what
  *   settling decided, or the error settling threw.
  */
 export async function openSignedUpload(
   request: UploadTicketRequest,
-  bound: Parameters<typeof openUploadAtIngest>[2],
 ): Promise<OpenedIngestTarget> {
   try {
+    assertBeforeDeadline(request.deadlineAt);
     const target = await signTicketFor(request);
     const { uploadId, token } = await openUploadAtIngest(
       target,
       env.INGEST_SHARED_SECRET,
-      bound,
+      { timeoutMs: Math.min(request.deadlineAt - Date.now(), MAX_TIMER_MS) },
     );
     return {
       uploadUrl: target.uploadUrl,

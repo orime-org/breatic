@@ -22,12 +22,7 @@ import {
   UploadOpenFailed,
   uploadTicketService,
 } from "@breatic/domain";
-import {
-  TRANSFER_KEY_DIR,
-  TRANSFER_MEDIA_TYPE,
-  untilDeadline,
-  type NodeTaskAction,
-} from "@breatic/shared";
+import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -180,18 +175,15 @@ export async function issueTransferTicket(scope: TicketScope, size: number): Pro
   const deadlineAt = await uploadDeadlineByKey(key);
   let opened;
   try {
-    opened = await uploadTicketService.openSignedUpload(
-      {
-        storageKey: key,
-        studioId,
-        userId,
-        declaredSize: size,
-        contentType: TRANSFER_MEDIA_TYPE,
-        expiresAt,
-        deadlineAt,
-      },
-      untilDeadline(deadlineAt),
-    );
+    opened = await uploadTicketService.openSignedUpload({
+      storageKey: key,
+      studioId,
+      userId,
+      declaredSize: size,
+      contentType: TRANSFER_MEDIA_TYPE,
+      expiresAt,
+      deadlineAt,
+    });
   } catch (err) {
     // A transfer has no node to show a failed row on: the error goes on to
     // the error handler, which logs it once and answers 500. What settling
@@ -363,7 +355,7 @@ async function openPrepared(scope: TicketScope, prepared: Prepared): Promise<Tic
   const key = request.storageKey;
   let opened;
   try {
-    opened = await uploadTicketService.openSignedUpload(request, untilDeadline(request.deadlineAt));
+    opened = await uploadTicketService.openSignedUpload(request);
   } catch (err) {
     if (!(err instanceof UploadOpenFailed)) throw err;
     logger.error(

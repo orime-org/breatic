@@ -31,7 +31,6 @@ import {
   INGEST_TYPE_NOT_REPORTED,
   sendBytesToIngest,
   assertBeforeDeadline,
-  untilDeadline,
   type StudioAssetEntity,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
@@ -235,7 +234,7 @@ export async function uploadBytesToStorage(
   // reads off the socket.
   const uploadIdleTimeoutMs = getStorageConfig().upload.upload_idle_timeout_seconds * 1000;
   const { storageKey, request } = await openBackendUpload(ctx, bytes.size);
-  const opened = await openSignedUpload(request, untilDeadline(ctx.deadlineAt));
+  const opened = await openSignedUpload(request);
   const held = await sendBytesToIngest(
     bytes,
     { ...opened, dispatcher: idleSocketDispatcher(uploadIdleTimeoutMs) },
