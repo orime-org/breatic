@@ -137,6 +137,16 @@ function unauthorized(): APICallError {
   });
 }
 
+/**
+ * A step whose tool call is complete when the provider sends an error chunk
+ * and then finishes: the SDK runs the tool and carries on to the next step.
+ * @returns The scripted call.
+ */
+function failsAfterFetch(): ScriptedCall {
+  const step = callsFetch("c1", 311, 50, true) as Extract<ScriptedCall, { parts: unknown }>;
+  return { parts: [...step.parts.slice(0, -1), { type: "error", error: new Error("upstream hiccup") }, finish("error", 311, 50)] };
+}
+
 describe("a first call over the window (A2)", () => {
   it("folds, then answers in the same reply without showing the error", async () => {
     history(2, 30_000);
@@ -490,13 +500,7 @@ describe("the thinking figure on a failed turn", () => {
   });
 
   it("covers the thinking after a provider error the stream carried on past, and the error goes last", async () => {
-    // A provider error chunk mid-step does not end the stream: the step's
-    // tool call still runs and the next step thinks and answers.
-    const step = callsFetch("c1", 311, 50, true) as Extract<ScriptedCall, { parts: unknown }>;
-    world.script = [
-      { parts: [...step.parts.slice(0, -1), { type: "error", error: new Error("upstream hiccup") }, finish("error", 311, 50)] },
-      thinksThenAnswers("later answer"),
-    ];
+    world.script = [failsAfterFetch(), thinksThenAnswers("later answer")];
 
     const chunks = await sendMessage();
     const types = typesOf(chunks);
@@ -508,5 +512,33 @@ describe("the thinking figure on a failed turn", () => {
     expect(types.filter((type) => type !== "finish").at(-1)).toBe("error");
     const said = chunks.find((chunk) => chunk.type === "data-thinking-time") as { data: { ms: number } } | undefined;
     expect(stored().find((part) => part.type === "thinking-time")).toMatchObject({ ms: said?.data.ms });
+  });
+});
+
+describe("a provider error the stream carried on past", () => {
+  it("names no questionnaire card on the turn it failed", async () => {
+    world.script = [failsAfterFetch(), asks("ask-1")];
+
+    const chunks = await sendMessage();
+
+    expect(count(chunks, "data-ask-awaiting")).toBe(0);
+    expectFailed(chunks);
+    expect(stored()).toContainEqual(expect.objectContaining({ type: "tool", toolCallId: "ask-1", status: "error" }));
+  });
+
+  it.each([
+    ["one that a fold would bring under the window", (): void => history(2, 30_000)],
+    ["one with no earlier turn to fold", (): void => undefined],
+  ])("ends the turn as failed when a later step overflows, %s", async (_name, arrange) => {
+    arrange();
+    world.script = [failsAfterFetch(), { reject: h1() }, answers("never asked for")];
+
+    const chunks = await sendMessage();
+
+    expect(world.folds).toHaveLength(0);
+    expect(count(chunks, "data-memory-consolidating")).toBe(0);
+    expect(count(chunks, "data-failed")).toBe(0);
+    expectFailed(chunks);
+    expectSaidThoughtOnceBeforeError(chunks);
   });
 });

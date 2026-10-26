@@ -750,10 +750,11 @@ export class MainAgent {
      *
      * Everything goes out as it comes except three chunks: the error of a call
      * the provider turned away as too long, which the turn answers by folding;
-     * and the `finish` and any other error, held until it is known that this
-     * stream ends the turn. The SDK carries on past a provider's error chunk
-     * when the step's tool calls ran, and the panel reads nothing after an
-     * error frame, so the error goes out last, after the thinking figure.
+     * and the `finish` and the first other error, held until it is known that
+     * this stream ends the turn. The SDK carries on past a provider's error
+     * chunk when the step's tool calls ran, and the panel reads nothing after
+     * an error frame, so the error goes out last, after the thinking figure;
+     * any later error is dropped, as the panel would never read it.
      * @param writer - The stream the turn is written to.
      * @param run - What this stream starts from.
      * @param run.first - Whether this is the turn's first stream, which opens the reply.
@@ -775,9 +776,10 @@ export class MainAgent {
       },
     ): Promise<{ error: unknown; overflow: ContextOverflow } | undefined> => {
       const { watch, studioId } = run;
-      // Set from the stream's own error callback, which runs before the error
-      // chunk reaches the reader and before the stream's end callback.
-      const seen: { turnedAway?: { error: unknown; overflow: ContextOverflow } } = {};
+      // Set from the stream's own error callback, which has run for every
+      // error chunk by the time the reader sees the stream end, and before the
+      // stream's end callback.
+      const seen: { failed?: true; turnedAway?: { error: unknown; overflow: ContextOverflow } } = {};
       const result = streamTextRetry({
         model: wrapLanguageModel({ model: run.mainModel, middleware: pictureMiddleware }),
         // Chat is the one call site that asks for reasoning: it plans,
@@ -982,16 +984,20 @@ export class MainAgent {
         // to the console, around our logger. What it does do is tell an
         // overflow apart, which the turn folds for instead of failing, and
         // note a 400 nobody recognised, so the wording list can learn it.
+        // The first error decides: an overflow after another error, in a step
+        // the SDK carried on to, comes on a turn that has already failed.
         onError: ({ error }) => {
           const overflow = readContextOverflow(error);
-          if (overflow !== undefined) {
+          if (overflow === undefined) {
+            const unknown400 = unrecognised400(error);
+            if (unknown400 !== undefined) {
+              logger.error({ ...unknown400, userId, conversationId, turnIndex, model: modelId }, "agent_unrecognised_400");
+            }
+          } else if (seen.failed !== true) {
             seen.turnedAway = { error, overflow };
             return;
           }
-          const unknown400 = unrecognised400(error);
-          if (unknown400 !== undefined) {
-            logger.error({ ...unknown400, userId, conversationId, turnIndex, model: modelId }, "agent_unrecognised_400");
-          }
+          seen.failed = true;
         },
         // Whether the model runs out of room is not ours to decide; whether
         // the reader is told it happened is. Said on the wire rather than
@@ -1021,11 +1027,11 @@ export class MainAgent {
           // came to nothing -- the rule lives on this side only. Written last,
           // so it is the last part of the segment that asked: the browser
           // splits the reply there once the reader answers and the turn
-          // resumes in the same message. A step that ended on an error is a
-          // failed turn, stored with its calls as never run, so it names no
-          // card.
+          // resumes in the same message. A stream that met an error, in its
+          // last step or one the SDK carried on past, is a failed turn, stored
+          // with its calls as never run, so it names no card.
           const asks =
-            finishReason === "error"
+            finishReason === "error" || seen.failed === true
               ? []
               : toolCalls
                 .filter((call) => call.toolName === ASK_USER && call.invalid !== true && !howToolEnded.has(call.toolCallId))
@@ -1056,7 +1062,7 @@ export class MainAgent {
         const { done, value } = await reader.read();
         if (done) break;
         if (value.type === "error") {
-          if (seen.turnedAway === undefined) failed ??= value;
+          failed ??= value;
           continue;
         }
         if (value.type === "finish") {
