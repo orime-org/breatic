@@ -14,7 +14,16 @@
  */
 
 import { env, getStorageConfig } from "@breatic/core";
-import { signUploadTicket, type IngestTarget } from "@breatic/shared";
+import {
+  INGEST_NO_ANSWER,
+  openUploadAtIngest,
+  signUploadTicket,
+  type IngestTarget,
+  type OpenedIngestTarget,
+} from "@breatic/shared";
+import { applyIngestReport } from "@domain/asset/ingest-report.service.js";
+import { ingestFailureReason } from "@domain/asset/ingest-failure-reason.js";
+import { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 
 /** What an upload has to declare before a ticket can be signed for it. */
 export interface UploadTicketRequest {
@@ -82,4 +91,50 @@ export async function signTicketFor(
     partSize: ingest.part_size_bytes,
     totalParts,
   };
+}
+
+/**
+ * Sign a ticket and open its upload at the ingest Worker with the shared
+ * secret, once (inner#1595).
+ *
+ * The ticket never leaves this call: whoever sends the bytes gets the upload
+ * id and the first token. The grant and the task row exist before this runs,
+ * so any failure here settles them as aborted before it is thrown; a resend
+ * could open a second upload for the same key, so nothing is retried.
+ * @param request - What this upload is.
+ * @param bound - The caller's deadline and stop signal, or a timeout alone.
+ * @returns The opened upload and the layout its parts follow.
+ * @throws {UploadOpenFailed} When signing or opening failed; it carries what
+ *   settling decided, or the error settling threw.
+ */
+export async function openSignedUpload(
+  request: UploadTicketRequest,
+  bound: Parameters<typeof openUploadAtIngest>[2],
+): Promise<OpenedIngestTarget> {
+  try {
+    const target = await signTicketFor(request);
+    const { uploadId, token } = await openUploadAtIngest(
+      target,
+      env.INGEST_SHARED_SECRET,
+      bound,
+    );
+    return {
+      uploadUrl: target.uploadUrl,
+      uploadId,
+      token,
+      partSize: target.partSize,
+      totalParts: target.totalParts,
+    };
+  } catch (cause) {
+    // No answer from the Worker is between our server and it, not the user's.
+    const reason = ingestFailureReason(cause, INGEST_NO_ANSWER);
+    const { storageKey } = request;
+    let settled;
+    try {
+      settled = await applyIngestReport({ storageKey, outcome: "aborted", reason });
+    } catch (settleError) {
+      throw new UploadOpenFailed({ storageKey, reason, settleError, cause });
+    }
+    throw new UploadOpenFailed({ storageKey, reason, settled, cause });
+  }
 }

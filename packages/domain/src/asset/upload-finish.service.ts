@@ -13,13 +13,12 @@
 import { env } from "@breatic/core";
 import {
   finishUploadAtIngest,
-  INGEST_REFUSED_UNNAMED,
   TRANSFER_MEDIA_TYPE,
-  UploadHttpError,
   type IngestMeasurements,
   type PartReceipt,
 } from "@breatic/shared";
 import * as ingestReportService from "@domain/asset/ingest-report.service.js";
+import { ingestFailureReason } from "@domain/asset/ingest-failure-reason.js";
 import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js";
 import { ingestRunFor } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
@@ -141,13 +140,10 @@ export async function finishUpload(job: UploadFinishJob): Promise<UploadFinishRe
       },
     );
   } catch (err) {
-    // An UploadHttpError exists only because an answer arrived, so a missing
-    // name on it is the Worker refusing without saying why. Nothing arriving
-    // at all reads "interrupted": the bytes came off a disk the person picked
-    // from, so the reasons that speak of a source and its address would
-    // describe something this upload never had.
-    const reason =
-      err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : "aborted";
+    // Nothing arriving at all reads "interrupted": the bytes came off a disk
+    // the person picked from, so the reasons that speak of a source and its
+    // address would describe something this upload never had.
+    const reason = ingestFailureReason(err, "aborted");
     return refuse(storageKey, reason, { cause: err });
   }
 

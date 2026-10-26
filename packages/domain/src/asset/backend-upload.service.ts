@@ -28,18 +28,21 @@ import {
   fetchUrlToIngest,
   finishUploadAtIngest,
   INGEST_NO_ANSWER,
-  INGEST_REFUSED_UNNAMED,
   INGEST_TYPE_NOT_REPORTED,
   sendBytesToIngest,
   assertBeforeDeadline,
-  UploadHttpError,
-  type IngestTarget,
+  untilDeadline,
   type StudioAssetEntity,
 } from "@breatic/shared";
 import { issueUploadGrant } from "@domain/asset/upload-grant.service.js";
 import { ingestRunFor } from "@domain/asset/asset.service.js";
-import { signTicketFor } from "@domain/asset/upload-ticket.service.js";
+import {
+  openSignedUpload,
+  signTicketFor,
+  type UploadTicketRequest,
+} from "@domain/asset/upload-ticket.service.js";
 import { extFromUrl } from "@domain/asset/source-url.js";
+import { ingestFailureReason } from "@domain/asset/ingest-failure-reason.js";
 import { storedTypeOf, TYPE_UNKNOWN } from "@domain/asset/reader-source.js";
 import {
   applyIngestReport,
@@ -152,8 +155,8 @@ export interface BackendUploadContext {
 }
 
 /**
- * Open an upload for something the backend produced, and hand back what the
- * ingest Worker needs to accept it.
+ * Issue the grant for something the backend produced, and say what its ticket
+ * is signed from.
  *
  * `derived` is set on the grant so the report handler writes no activity row:
  * the worker announces the generation itself, and a second row would report
@@ -164,15 +167,14 @@ export interface BackendUploadContext {
  * @param typeFromSource - Whether the Worker takes the type off the source
  *   rather than storing what the ticket signs; set for a link nobody here has
  *   seen into.
- * @returns The key this upload writes to, the signed ticket, and where to send
- *   it.
+ * @returns The key this upload writes to and what its ticket is signed from.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
  */
 async function openBackendUpload(
   ctx: BackendUploadContext,
   declaredSize: number,
   typeFromSource = false,
-): Promise<{ storageKey: string; target: IngestTarget }> {
+): Promise<{ storageKey: string; request: UploadTicketRequest }> {
   const { ingest } = getStorageConfig();
   const expiresAt = Date.now() + ingest.ticket_expires_seconds * 1000;
   const { key, studioId } = await issueUploadGrant({
@@ -193,7 +195,7 @@ async function openBackendUpload(
 
   return {
     storageKey: key,
-    target: await signTicketFor({
+    request: {
       storageKey: key,
       studioId,
       userId: ctx.actingUserId,
@@ -202,7 +204,7 @@ async function openBackendUpload(
       ...(typeFromSource && { typeFromSource: true }),
       expiresAt,
       deadlineAt: ctx.deadlineAt,
-    }),
+    },
   };
 }
 
@@ -218,7 +220,9 @@ async function openBackendUpload(
  * @returns The registered asset, as the report handler filed it.
  * @throws {DeadlinePassed} When the task's deadline has already come.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
- * @throws {UploadHttpError} When the Worker refuses any step.
+ * @throws {UploadOpenFailed} When the upload could not be opened; the grant is
+ *   already settled as aborted.
+ * @throws {UploadHttpError} When the Worker refuses a part or the finish.
  * @throws {Error} When the report filed nothing.
  * @throws {unknown} The transport's own failure when nothing answered.
  */
@@ -230,23 +234,24 @@ export async function uploadBytesToStorage(
   // A part is cut once its bytes stop moving for the idle window, which Node
   // reads off the socket.
   const uploadIdleTimeoutMs = getStorageConfig().upload.upload_idle_timeout_seconds * 1000;
-  const opened = await openBackendUpload(ctx, bytes.size);
+  const { storageKey, request } = await openBackendUpload(ctx, bytes.size);
+  const opened = await openSignedUpload(request, untilDeadline(ctx.deadlineAt));
   const held = await sendBytesToIngest(
     bytes,
-    { ...opened.target, dispatcher: idleSocketDispatcher(uploadIdleTimeoutMs) },
+    { ...opened, dispatcher: idleSocketDispatcher(uploadIdleTimeoutMs) },
     { uploadIdleTimeoutMs },
     undefined,
     ctx.deadlineAt,
   );
   const measured = await finishUploadAtIngest(
-    opened.target.uploadUrl,
+    opened.uploadUrl,
     held,
     env.INGEST_SHARED_SECRET,
-    ingestRunFor(opened.storageKey, ctx.deadlineAt),
+    ingestRunFor(storageKey, ctx.deadlineAt),
   );
   return landed(
     await applyIngestReport({
-      storageKey: opened.storageKey,
+      storageKey,
       outcome: "completed",
       ...measured,
     }),
@@ -278,7 +283,7 @@ export async function transferUrlToStorage(
   const opened = await openBackendUpload(ctx, upload.max_upload_bytes);
   const measured = await fetchUrlToIngest(
     sourceUrl,
-    opened.target,
+    await signTicketFor(opened.request),
     env.INGEST_SHARED_SECRET,
     ingestRunFor(opened.storageKey, ctx.deadlineAt),
   );
@@ -353,7 +358,8 @@ export async function transferReaderUrlToStorage(
     true,
   );
 
-  const pulled = await pullReaderLink(opened.storageKey, opened.target, sourceUrl, deadlineAt, signal);
+  const target = await signTicketFor(opened.request);
+  const pulled = await pullReaderLink(opened.storageKey, target, sourceUrl, deadlineAt, signal);
   if (pulled.status === "failed") throw new ReaderUrlTransferError(pulled.reason, pulled.reported);
   // A rejected report turned down what the link sent (nothing, or too much):
   // the same link gets the same answer again.
@@ -427,13 +433,10 @@ export async function pullReaderLink(
       signal,
     );
   } catch (err) {
-    // An UploadHttpError exists only because an answer arrived, so a missing
-    // name on it is the Worker refusing without saying why. Anything else is
-    // ours, not the link's: the Worker or the line to it going away, or the
-    // caller stopping the transfer (a cut at the deadline settles as
-    // expired).
-    const reason =
-      err instanceof UploadHttpError ? (err.code ?? INGEST_REFUSED_UNNAMED) : INGEST_NO_ANSWER;
+    // No answer is ours, not the link's: the Worker or the line to it going
+    // away, or the caller stopping the transfer (a cut at the deadline
+    // settles as expired).
+    const reason = ingestFailureReason(err, INGEST_NO_ANSWER);
     const settled = await settleAborted(storageKey, reason, err);
     return { status: "failed", reason, settled, err };
   }
