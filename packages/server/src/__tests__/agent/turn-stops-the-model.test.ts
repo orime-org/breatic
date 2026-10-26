@@ -145,7 +145,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const fetchMock = vi.fn();

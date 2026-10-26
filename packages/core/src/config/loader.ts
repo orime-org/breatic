@@ -352,7 +352,7 @@ const agentConfigSchema = z.object({
   // line and the pass has nothing to run to — every fold takes the whole
   // conversation, and past it the line is negative, which the loop reads as
   // never stopping. Both are configs that load clean and are found by the
-  // first reader whose conversation grows past the budget.
+  // first reader whose conversation needs a fold.
   // The room the fold may add, held back from the keep line below.
   const reserved = memoryReserveTokens(config);
   if (reserved >= config.memory_keep_tokens) {

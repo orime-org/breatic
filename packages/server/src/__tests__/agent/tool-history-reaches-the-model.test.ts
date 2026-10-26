@@ -75,7 +75,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 
 // What the system prompt says is settled elsewhere and has its own tests; this
 // suite asserts on history.

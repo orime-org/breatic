@@ -123,7 +123,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   setUserForModel: vi.fn(async () => undefined),
   addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({
+vi.mock("@server/agent/turn-fold.js", () => ({
   foldIfTooLong,
 }));
 

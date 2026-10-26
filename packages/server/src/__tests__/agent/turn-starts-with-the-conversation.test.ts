@@ -67,7 +67,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "已经有名字了"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

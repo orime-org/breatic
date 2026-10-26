@@ -12,7 +12,7 @@ import { APICallError } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type { ReplayRow } from "@server/agent/history-replay.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
@@ -29,7 +29,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 const consolidateWindow = vi.fn(async (..._args: unknown[]) => "written");
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
-const { foldIfTooLong } = await import("@server/agent/turn-budget.js");
+const { foldIfTooLong } = await import("@server/agent/turn-fold.js");
 const { replayRows } = await import("@server/agent/history-replay.js");
 
 const AGENT = { modelId: "test", instructions: { base: "s" }, tools: {}, seesPictures: false, contextWindow: 1_100 };

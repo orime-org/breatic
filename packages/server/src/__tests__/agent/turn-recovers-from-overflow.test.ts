@@ -329,6 +329,25 @@ describe("folds that leave nothing to send end as failed (A5)", () => {
     expectFailed(chunks);
   });
 
+  it.each([
+    ["an overflow fold that touched nothing", (): void => {
+      world.foldOutcomes = ["untouched"];
+    }],
+    ["a reassembly that throws after an overflow fold", (): void => {
+      world.failReadsAfter = 1;
+    }],
+  ])("says how long it thought, live, when %s ends the turn as failed", async (_name, arrange) => {
+    history(2, 30_000);
+    arrange();
+    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
+
+    const chunks = await sendMessage();
+
+    expectFailed(chunks);
+    expect(count(chunks, "data-thinking-time")).toBe(1);
+    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+  });
+
   it("a reassembly that throws after a precheck fold sends nothing more", async () => {
     world.window = 200_000;
     history(3, 10_000);
@@ -383,6 +402,17 @@ describe("the reader stopping during a fold", () => {
     expect(world.watermark).toBe(0);
     expect(count(chunks, "error")).toBe(0);
     expect(stored()).toContainEqual({ type: "interrupted" });
+  });
+
+  it("does not say how long it thought live when the reader stops an overflow fold, as on any stop", async () => {
+    history(2, 30_000);
+    world.foldOutcomes = ["aborted"];
+    world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
+
+    const chunks = await sendMessage();
+
+    expect(count(chunks, "data-thinking-time")).toBe(0);
+    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
   });
 });
 

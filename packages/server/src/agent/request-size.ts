@@ -9,7 +9,7 @@
 import { measureInstructionsAndTools, measureMessages } from "@server/agent/payload-size.js";
 import type { TurnCost } from "@server/agent/consolidation-window.js";
 import type { ReplayedRow } from "@server/agent/history-replay.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 /**
  * What each turn in the history added to the conversation, oldest first.

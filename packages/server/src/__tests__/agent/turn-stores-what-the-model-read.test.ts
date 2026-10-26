@@ -120,7 +120,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

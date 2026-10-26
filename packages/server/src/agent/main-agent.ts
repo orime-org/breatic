@@ -40,9 +40,9 @@ import type { UserTurn } from "@server/agent/user-turn.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { toStoredParts } from "@server/modules/conversation/message-part-mapping.js";
 import * as conversationService from "@server/modules/conversation/conversation.service.js";
-import { foldIfTooLong } from "@server/agent/turn-budget.js";
+import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
-import type { Assembly, TurnIdentity } from "@server/agent/turn-budget.js";
+import type { Assembly, TurnIdentity } from "@server/agent/turn-fold.js";
 import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
@@ -317,6 +317,14 @@ export class MainAgent {
       if (thinkingOpenedAt === undefined) return;
       thoughtForMs += Date.now() - thinkingOpenedAt;
       thinkingOpenedAt = undefined;
+    };
+    /**
+     * Tell the reader how long the turn thought, once it is known to end here.
+     * @param writer - The stream the turn is written to.
+     */
+    const sayThoughtFor = (writer: UIMessageStreamWriter): void => {
+      closeThinking();
+      if (thoughtForMs > 0) writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
     };
 
     // Every paid call this turn makes is recorded where it happens, one row
@@ -668,15 +676,10 @@ export class MainAgent {
       if (sent.agentConfig.contextWindowFallback === true) {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
       }
-      const knownAtStart = knownTokensAtStart(sent.replayed);
-      const opened = await foldIfTooLong(sent, [], foldFor(writer), { kind: "precheck", at: "start", known: knownAtStart });
-      signal?.throwIfAborted();
       // The last count the conversation has stands for the first call until
-      // that call reports. A fold voids it, and one that could not run is not
-      // tried again before the call.
-      lastCallTotal = opened === "none" ? knownAtStart : undefined;
-      if (opened === "moved") await reassemble();
-      else await keepUserMessage(sent);
+      // that call reports, so the first step's check is the turn's start check.
+      lastCallTotal = knownTokensAtStart(sent.replayed);
+      await keepUserMessage(sent);
 
       const { agentConfig } = sent;
       modelId = agentConfig.modelId;
@@ -704,34 +707,40 @@ export class MainAgent {
         });
         if (turnedAway === undefined) return;
 
-        overflowFolds += 1;
-        const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
-          kind: "overflow",
-          overflow: turnedAway.overflow,
-          known: lastCallTotal,
-          attempt: overflowFolds,
-          error: turnedAway.error,
-        });
-        signal?.throwIfAborted();
-        if (folded === "too_long") {
-          // Not an error frame: the panel shows the reason in the reply and
-          // offers no "send it again", which would only fail the same way.
-          // The stream that was turned away wrote none of its end frames, so
-          // the thinking figure is said here, as `onFinish` says it.
-          tooLong = true;
-          closeThinking();
-          if (thoughtForMs > 0) writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
-          writer.write({ type: "data-failed", data: { reason: "too_long" } });
-          writer.write({ type: "finish" });
-          return;
+        // The stream that was turned away wrote none of its end frames, so
+        // whatever ends the turn from here says the thinking figure, as
+        // `onFinish` does.
+        try {
+          overflowFolds += 1;
+          const folded = await foldIfTooLong(sent, stripThinking(steps.flat()), foldFor(writer), {
+            kind: "overflow",
+            overflow: turnedAway.overflow,
+            known: lastCallTotal,
+            attempt: overflowFolds,
+            error: turnedAway.error,
+          });
+          signal?.throwIfAborted();
+          if (folded === "too_long") {
+            // Not an error frame: the panel shows the reason in the reply and
+            // offers no "send it again", which would only fail the same way.
+            tooLong = true;
+            sayThoughtFor(writer);
+            writer.write({ type: "data-failed", data: { reason: "too_long" } });
+            writer.write({ type: "finish" });
+            return;
+          }
+          if (folded !== "moved") {
+            // Nothing moved, so what would go out is what was just turned away.
+            throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: turnedAway.error });
+          }
+          lastCallTotal = undefined;
+          prefixChangedDuringTurn = true;
+          await reassemble();
+        } catch (err) {
+          // A turn the reader stopped is not told the figure live, as on any stop.
+          if (signal?.aborted !== true) sayThoughtFor(writer);
+          throw err;
         }
-        if (folded !== "moved") {
-          // Nothing moved, so what would go out is what was just turned away.
-          throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: turnedAway.error });
-        }
-        lastCallTotal = undefined;
-        prefixChangedDuringTurn = true;
-        await reassemble();
       }
     };
 
@@ -785,22 +794,22 @@ export class MainAgent {
           // so the next turn can reconstruct all original picture facts.
           let logical = stepMessages;
           let instructions: ReturnType<typeof systemFor> | undefined;
-          // The provider's count for the previous call; a fold voids it until
-          // the next call reports, so two folds always have a call between them.
-          if (lastCallTotal !== undefined) {
-            const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
-              kind: "precheck",
-              at: "step",
-              known: lastCallTotal,
-            });
-            signal?.throwIfAborted();
-            if (folded === "moved") {
-              lastCallTotal = undefined;
-              prefixChangedDuringTurn = true;
-              const next = await reassemble();
-              logical = carriedOn(next);
-              instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
-            }
+          // Checked against the provider's count for the previous call (at the
+          // first step, the conversation's last one); with none there is
+          // nothing to check. A fold voids it until the next call reports, so
+          // two folds always have a call between them.
+          const folded = await foldIfTooLong(sent!, stripThinking(steps.flat()), foldFor(writer), {
+            kind: "precheck",
+            at: steps.length === 0 ? "start" : "step",
+            known: lastCallTotal,
+          });
+          signal?.throwIfAborted();
+          if (folded === "moved") {
+            lastCallTotal = undefined;
+            prefixChangedDuringTurn = true;
+            const next = await reassemble();
+            logical = carriedOn(next);
+            instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
           }
           const current = sent!;
           const { agentConfig } = current;
@@ -996,10 +1005,7 @@ export class MainAgent {
           // the reader as the turn ends. A turn that never gets here -- one
           // stopped mid-answer -- has the same figure written into its
           // stored parts at the exit below, which runs however it ended.
-          closeThinking();
-          if (thoughtForMs > 0) {
-            writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
-          }
+          sayThoughtFor(writer);
           // The step stopped at a questionnaire when it holds an `ask_user`
           // call the schema took and nothing has answered. The first is the
           // card the reader is shown; any later one in the step is turned

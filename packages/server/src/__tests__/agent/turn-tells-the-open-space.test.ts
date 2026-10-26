@@ -65,7 +65,7 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");

@@ -15,7 +15,7 @@ import fc from "fast-check";
 
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow: vi.fn() }));
 
-const { foldSize, foldTarget, needsFold } = await import("@server/agent/turn-budget.js");
+const { foldSize, foldTarget, needsFold } = await import("@server/agent/turn-fold.js");
 
 const WINDOW = 1_000_000;
 const MAX_OUTPUT = 65_536;

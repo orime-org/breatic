@@ -86,7 +86,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "一条会话"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfTooLong }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 
 // How the system prompt is assembled is not what this file pins. A ready
 // sentence keeps the subject on the protocol.

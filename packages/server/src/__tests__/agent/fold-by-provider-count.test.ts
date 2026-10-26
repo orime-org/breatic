@@ -21,7 +21,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelMessage } from "ai";
 import type * as CoreModule from "@breatic/core";
 import type { ReplayRow, RequestPrefix } from "@server/agent/history-replay.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 const LINES = vi.hoisted(() => ({ window: 1100, maxOutput: 100, keep: 400 }));
 
@@ -43,7 +43,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 const consolidateWindow = vi.fn(async (_request: { newWatermark: number }) => "written");
 vi.mock("@server/agent/memory-consolidator.js", () => ({ consolidateWindow }));
 
-const { foldIfTooLong } = await import("@server/agent/turn-budget.js");
+const { foldIfTooLong } = await import("@server/agent/turn-fold.js");
 const { knownTokensAtStart, requestTokens } = await import("@server/agent/request-size.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 

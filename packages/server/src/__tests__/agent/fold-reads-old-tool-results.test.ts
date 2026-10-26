@@ -12,7 +12,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type { ReplayRow } from "@server/agent/history-replay.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 const AGENT = { modelId: "test", instructions: { base: "system" }, tools: {}, seesPictures: false, contextWindow: 1_000_000 };
 const QUESTION = { role: "user" as const, content: "and now?" };
@@ -49,7 +49,7 @@ vi.mock("@server/agent/consolidation-window.js", () => ({
   planConsolidation: () => ({ newWatermark: 1 }),
 }));
 
-const { foldIfTooLong } = await import("@server/agent/turn-budget.js");
+const { foldIfTooLong } = await import("@server/agent/turn-fold.js");
 const { prefixHash, replayRows } = await import("@server/agent/history-replay.js");
 const { EARLIER_RESULT_NOTE } = await import("@server/agent/stored-model-output.js");
 

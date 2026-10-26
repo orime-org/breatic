@@ -8,7 +8,7 @@ import { costPerTurn, requestTokens } from "@server/agent/request-size.js";
 import { prefixHash, replayRows } from "@server/agent/history-replay.js";
 import type { ReplayedRow, ReplayRow, ReplyForModel, RequestPrefix } from "@server/agent/history-replay.js";
 import { measureMessages } from "@server/agent/payload-size.js";
-import type { Assembly } from "@server/agent/turn-budget.js";
+import type { Assembly } from "@server/agent/turn-fold.js";
 
 vi.mock("@breatic/domain", () => ({
   AGENT_TOOL_PICTURE_MARKER: "[Agent pictures from tool results]",
