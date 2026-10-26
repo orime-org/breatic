@@ -788,6 +788,8 @@ export {
   sameMiniToolPlanJob,
   readMiniToolPlanJobReport,
   type MiniToolPlanRecipe,
+  type MiniToolPlanPixelRect,
+  type MiniToolPlanFrameCrop,
   type MiniToolPlanJobRequest,
   type MiniToolPlanJobReport,
   type MiniToolPlanAccess,

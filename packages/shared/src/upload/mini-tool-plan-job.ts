@@ -9,7 +9,7 @@ import { ingestMeasurements } from "@shared/upload/ingest-client.js";
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/upload/mini-tool-job.js";
 import type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 
-export type { MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
+export type { MiniToolPlanRecipe, MiniToolPlanPixelRect, MiniToolPlanFrameCrop } from "@shared/upload/mini-tool-plan-types.js";
 
 const inputId = z.uuid();
 const storageKey = z.string().min(1).max(500);
