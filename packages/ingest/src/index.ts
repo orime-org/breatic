@@ -24,13 +24,19 @@ import {
   canonicalMediaType,
   isUploadableMediaType,
   hasCoverFrame,
+  peaksKeyFor,
   previewKeyFor,
+  agentPictureKeyFor,
+  agentPictureSpecSchema,
+  type AgentPictureSpec,
+  type AgentPictureRead,
   INGEST_FAILURE_HEADER,
   type IngestFailureCode,
   type MediaLimits,
   type SessionTokenPayload,
   type PreviewOutcome,
   type UploadTicketPayload,
+  TRANSFER_MEDIA_TYPE,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
@@ -50,9 +56,11 @@ import {
   type ProbeReport,
 } from "@ingest/media-metadata.js";
 import { typeCorrectedByReport } from "@ingest/stored-media.js";
+import { peaksSampleCount } from "@ingest/peaks-step.js";
 import { pngSize } from "@ingest/png-size.js";
 import {
   COVER_CONTENT_TYPE,
+  PEAKS_CONTENT_TYPE,
   PREVIEW_CONTENT_TYPE,
 } from "@ingest/probe-command.js";
 import { partLayoutRefusal, partListRefusal } from "@ingest/part-layout.js";
@@ -81,10 +89,13 @@ const PART_PATH = /^\/uploads\/([^/]+)\/parts\/(\d+)$/;
  * What a part sends beyond a simple request. The browser preflights on account
  * of these, and will not send the bytes if the answer does not list them.
  */
-const ALLOWED_HEADERS = "content-type, x-upload-ticket, x-upload-token";
+const ALLOWED_HEADERS = "content-type, x-upload-token";
 
-/** The methods the three endpoints use. */
-const ALLOWED_METHODS = "POST, PUT, OPTIONS";
+/**
+ * The methods a page uses: it only sends parts. Opening and finishing an
+ * upload are called by our services, which no preflight governs (inner#1595).
+ */
+const ALLOWED_METHODS = "PUT, OPTIONS";
 
 /** `/uploads/{uploadId}/complete`. */
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
@@ -168,30 +179,60 @@ async function issueToken(
   );
 }
 
+/** The label a valid ticket arriving without our secret is reported under. */
+const OPEN_WITHOUT_SECRET = "ingest_open_without_secret";
+
 /**
  * Open an upload: verify the ticket, ask R2 for a multipart upload, and hand
- * back what the browser has to hold on to.
+ * back what the uploader has to hold on to.
+ *
+ * Only our services call this, and the shared secret is the permission to
+ * open: our server opens each ticket's upload once and hands the browser the
+ * upload id and first token, never the ticket (inner#1595). A ticket that
+ * verifies but arrives without the secret can only have leaked from our side,
+ * so it is reported with the key, user and studio it names.
  *
  * Nothing is recorded on this side. What one upload needs remembered is its
  * upload id and the parts that landed, and the browser carries both back with
  * every request — which is how Cloudflare's own multipart example works:
  * "the state of the multipart upload is tracked in the client application
  * which sends requests to the Worker".
- * @param request - The browser's request, carrying the ticket in a header.
+ * @param request - Our service's request, carrying the ticket and the secret
+ *   in headers.
  * @param env - The Worker's bindings.
- * @returns The upload id and the first token, or 401 when the ticket does not
- *   verify.
+ * @returns The upload id and the first token, or 401 without the secret or
+ *   when the ticket does not verify.
  */
 async function startUpload(request: Request, env: Env): Promise<Response> {
   const ticket = request.headers.get("x-upload-ticket");
-  if (ticket === null) return new Response("Unauthorized", { status: 401 });
+  const verified =
+    ticket === null
+      ? null
+      : await verifyUploadTicket(ticket, env.INGEST_SHARED_SECRET, Date.now());
 
-  const verified = await verifyUploadTicket(
-    ticket,
-    env.INGEST_SHARED_SECRET,
-    Date.now(),
-  );
-  if (!verified.ok) return new Response("Unauthorized", { status: 401 });
+  if (!fromOurBackend(request, env)) {
+    if (verified?.ok === true) {
+      const { storageKey, userId, studioId } = verified.payload;
+      // Each refusal is its own record, one request apart: Cloudflare's ray id
+      // ties it to the request log, and local workerd sends none.
+      const requestId = request.headers.get("cf-ray") ?? crypto.randomUUID();
+      noteFailure(
+        OPEN_WITHOUT_SECRET,
+        { storageKey, userId, studioId, requestId },
+        undefined,
+        {
+          perOccurrence: {
+            message: `${OPEN_WITHOUT_SECRET} ${storageKey} ${requestId}`,
+            fingerprint: [OPEN_WITHOUT_SECRET],
+          },
+        },
+      );
+    }
+    return new Response("Unauthorized", { status: 401 });
+  }
+  if (verified === null || !verified.ok) {
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   const created = await env.BUCKET.createMultipartUpload(
     verified.payload.storageKey,
@@ -357,7 +398,8 @@ function refused(
  * The permission is taken before R2 is touched, because what it stops is a
  * write: a replayed ticket opening a second multipart upload over a key the
  * ledger already describes.
- * @param request - The browser's request, carrying the token and the parts.
+ * @param request - Our service's request, carrying the shared secret, the
+ *   token and the parts.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
  * @returns The outcome, or why it was refused.
@@ -512,6 +554,19 @@ async function finishUpload(
       415,
     );
   }
+  // The other direction (inner#1006): a transfer ticket takes only our own
+  // transfer file, so bytes that are anything else never reach the upright
+  // turn or a media read below.
+  if (contentType === TRANSFER_MEDIA_TYPE && storedType !== TRANSFER_MEDIA_TYPE) {
+    noteFailure("ingest_stored_type_refused", { storageKey, storedType }, undefined, {
+      userInput: true,
+    });
+    return refused(
+      "unsupported_type",
+      "The stored bytes are not a transfer file",
+      415,
+    );
+  }
 
   // A picture shown at an EXIF orientation is turned upright and answered as
   // its upright copy, beside the bytes as received (inner#1367 §4.2). The hash
@@ -634,6 +689,21 @@ async function storePreview(
   const stored = await env.BUCKET.put(previewKey, bytes, {
     httpMetadata: { contentType: PREVIEW_CONTENT_TYPE },
   }).catch(noted("ingest_preview_store_failed", { previewKey }));
+  return stored !== null;
+}
+
+/**
+ * Store an audio object's peaks beside it (inner#1305 §4.4).
+ * @param env - The Worker's bindings.
+ * @param audioKey - The key of the audio they were read from.
+ * @param bytes - The peaks file.
+ * @returns Whether they landed.
+ */
+async function storePeaks(env: Env, audioKey: string, bytes: Uint8Array): Promise<boolean> {
+  const peaksKey = peaksKeyFor(audioKey);
+  const stored = await env.BUCKET.put(peaksKey, bytes, {
+    httpMetadata: { contentType: PEAKS_CONTENT_TYPE },
+  }).catch(noted("ingest_peaks_store_failed", { peaksKey }));
   return stored !== null;
 }
 
@@ -912,10 +982,9 @@ function storedTypeFor(
  * Cloudflare's network, where the wait costs no CPU time and the egress is
  * free. Waiting is nearly all this does.
  *
- * It takes the shared secret as well as a ticket. A ticket alone authorises
- * the key being written to, which is all the other endpoints need — but this
- * one also makes the Worker fetch whatever address the body names, and every
- * browser holds a ticket. The secret is what only our own backend has.
+ * It takes the shared secret as well as a ticket: it makes the Worker fetch
+ * whatever address the body names, and like opening an upload it is ours
+ * alone to ask for. The secret is what only our own backend has.
  * @param request - The backend's request, carrying the ticket and the URL.
  * @param env - The Worker's bindings.
  * @returns What the server registered, or why the transfer did not finish.
@@ -1014,27 +1083,33 @@ async function fetchIntoUpload(request: Request, env: Env): Promise<Response> {
 
 /** What our worker hands us to read an object already in storage. */
 interface MediaReadBody {
+  agentPicture?: unknown;
   storageKey?: unknown;
   contentType?: unknown;
   /** When the job asking runs out, in epoch ms (inner#1367). */
   deadlineAt?: unknown;
   wantPreview?: unknown;
+  /** Whether to read an audio object's peaks when none stand (inner#1305). */
+  wantPeaks?: unknown;
 }
 
 /**
  * Read the media numbers of an object already in storage (#299).
  *
  * A project cover or a studio avatar is finished without a read, and our
- * worker asks for one once the upload has returned. Nothing is written: the
- * object stands, and the caller files what this answers on the ledger row.
+ * worker asks for one once the upload has returned. The object itself is left
+ * as it stands; requested previews, audio peaks and model-readable JPEGs are
+ * written beside it, and the caller files the numbers on the ledger row.
  *
  * It takes the shared secret, because the key it names may be any key in the
- * bucket and every run starts a container. The type comes from the caller —
+ * bucket and a read may start a container. Existing peaks-only or JPEG-only
+ * requests can return without one. The type comes from the caller —
  * the one the ledger recorded off the stored bytes — because the object's own
  * header is what the ticket signed, which may be a guess.
  * @param request - The backend's request.
  * @param env - The Worker's bindings.
- * @returns The three numbers, each one this run could not read as null.
+ * @returns The three numbers, each one this run could not read as null, and
+ *   requested preview, peaks and JPEG outcomes, including stored JPEG facts.
  */
 async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   if (!fromOurBackend(request, env)) {
@@ -1059,26 +1134,138 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
   const stored = await env.BUCKET.head(storageKey);
   if (stored === null) return new Response("Not found", { status: 404 });
 
+  const pictureSpec = body?.agentPicture === undefined ? undefined : agentPictureSpecSchema.safeParse(body.agentPicture);
+  if (pictureSpec !== undefined && !pictureSpec.success) {
+    return new Response("Invalid agentPicture specification", { status: 400 });
+  }
+  const agentPicture = pictureSpec?.success === true ? pictureSpec.data : undefined;
+  const pictureStanding = agentPicture === undefined
+    ? null
+    : await env.BUCKET.head(agentPictureKeyFor(storageKey, agentPicture));
+
   const askedForPreview = body?.wantPreview === true;
-  // A preview standing there is left as it is; the numbers are read either way.
+  const askedForPeaks = body?.wantPeaks === true;
+  // A preview or peaks standing there are left as they are; the numbers are
+  // read either way, except for a read of peaks alone: its callers (the peaks
+  // job and the backfill) read only the outcome, so standing peaks start no
+  // container.
   const standing =
     askedForPreview && (await env.BUCKET.head(previewKeyFor(storageKey))) !== null;
+  const peaksStanding =
+    askedForPeaks && (await env.BUCKET.head(peaksKeyFor(storageKey))) !== null;
+  if (peaksStanding && !askedForPreview && agentPicture === undefined) {
+    return Response.json({ width: null, height: null, durationSeconds: null, peaks: "existing" });
+  }
+  if (agentPicture !== undefined && pictureStanding !== null && !askedForPreview && !askedForPeaks) {
+    return Response.json({ width: null, height: null, durationSeconds: null,
+      agentPicture: pictureFacts(pictureStanding, "existing") });
+  }
   const read = await readMediaAtEdge(env, {
     storageKey,
     contentType,
     wantCover: false,
     wantPreview: askedForPreview && !standing,
+    wantPeaks: askedForPeaks && !peaksStanding,
+    ...(agentPicture !== undefined && pictureStanding === null && { agentPicture }),
     deadlineAt,
   });
   const numbers = mediaNumbersFor(
     typeCorrectedByReport(contentType, read.report),
     read.report,
   );
-  if (!askedForPreview) return Response.json(numbers);
   return Response.json({
     ...numbers,
-    preview: await previewOutcome(env, storageKey, standing, read),
+    ...(askedForPreview && { preview: await previewOutcome(env, storageKey, standing, read) }),
+    ...(askedForPeaks && { peaks: await peaksOutcome(env, storageKey, peaksStanding, read) }),
+    ...(agentPicture !== undefined && { agentPicture: await settleAgentPicture(env, storageKey, agentPicture, pictureStanding, read) }),
   });
+}
+
+/**
+ * Read measured facts from an existing immutable derived JPEG.
+ * @param object - R2's actual object metadata.
+ * @param outcome - Whether this request created it or found it.
+ * @returns Valid JPEG facts, or a failed preparation.
+ * @throws {never} Never.
+ */
+function pictureFacts(object: R2Object | null, outcome: "generated" | "existing"): AgentPictureRead {
+  return object !== null && object.size > 0 && object.httpMetadata?.contentType === "image/jpeg"
+    ? { outcome, sizeBytes: object.size, mediaType: "image/jpeg" }
+    : { outcome: "failed" };
+}
+
+/**
+ * Create a JPEG once and reread the winner's facts after concurrent creation.
+ * @param env - Worker storage bindings.
+ * @param storageKey - Registered canonical source key.
+ * @param spec - Requested versioned encoding specification.
+ * @param standing - Object present before the container ran.
+ * @param read - Container result.
+ * @returns The stored object's measured facts or failure outcome.
+ * @throws {never} Storage failures are reported at this application boundary.
+ */
+async function settleAgentPicture(
+  env: Env,
+  storageKey: string,
+  spec: AgentPictureSpec,
+  standing: R2Object | null,
+  read: { agentPicture: Uint8Array | null; answered: boolean; report: ProbeReport },
+): Promise<AgentPictureRead> {
+  if (standing !== null) return pictureFacts(standing, "existing");
+  if (read.agentPicture === null) {
+    return { outcome: read.answered && !foundNothing(read.report) && !hasPreviewableFrame(read.report) ? "none" : "failed" };
+  }
+  const key = agentPictureKeyFor(storageKey, spec);
+  try {
+    const created = await env.BUCKET.put(key, read.agentPicture, {
+      onlyIf: { etagDoesNotMatch: "*" },
+      httpMetadata: { contentType: "image/jpeg" },
+    });
+    return pictureFacts(await env.BUCKET.head(key), created === null ? "existing" : "generated");
+  } catch (err) {
+    noteFailure("ingest_agent_picture_write_failed", { storageKey, err: err instanceof Error ? err.message : String(err) });
+    return { outcome: "failed" };
+  }
+}
+
+/**
+ * Whether a read found no stream at all: what ffprobe answers when it could
+ * not read the object, which says nothing about what the object holds.
+ * @param report - What the container answered.
+ * @returns True for an empty report.
+ */
+function foundNothing(report: ProbeReport): boolean {
+  return report.streams.length === 0;
+}
+
+/**
+ * Settle the peaks a read was asked for (inner#1305 §4.4).
+ * @param env - The Worker's bindings.
+ * @param storageKey - The audio object they were read from.
+ * @param standing - Whether they already stood.
+ * @param read - What the container answered.
+ * @param read.answered - Whether a container answered at all.
+ * @param read.report - What ffprobe found.
+ * @param read.peaks - The peaks it read, when it read them.
+ * @returns What became of them: `none` for an object read as not audio with
+ *   a length (no sound, a picture of its own, or no length), `failed` for audio
+ *   with a length that came back without peaks and for a read that found
+ *   nothing, so the job tries again.
+ */
+async function peaksOutcome(
+  env: Env,
+  storageKey: string,
+  standing: boolean,
+  read: { answered: boolean; report: ProbeReport; peaks: Uint8Array | null },
+): Promise<PreviewOutcome> {
+  if (standing) return "existing";
+  if (!read.answered) return "failed";
+  if (read.peaks === null) {
+    return foundNothing(read.report) || peaksSampleCount({ wantPeaks: true, report: read.report }) !== null
+      ? "failed"
+      : "none";
+  }
+  return (await storePeaks(env, storageKey, read.peaks)) ? "generated" : "failed";
 }
 
 /**
@@ -1090,8 +1277,9 @@ async function readStoredMedia(request: Request, env: Env): Promise<Response> {
  * @param read.answered - Whether a container answered at all.
  * @param read.report - What ffprobe found.
  * @param read.preview - The preview it cut, when it cut one.
- * @returns What became of it: `none` only for a picture with no frame to cut
- *   from, `failed` for one that had a frame and came back without a preview.
+ * @returns What became of it: `none` only for a picture read as having no
+ *   frame to cut from, `failed` for one that had a frame and came back without
+ *   a preview and for a read that found nothing.
  */
 async function previewOutcome(
   env: Env,
@@ -1101,7 +1289,9 @@ async function previewOutcome(
 ): Promise<PreviewOutcome> {
   if (standing) return "existing";
   if (!read.answered) return "failed";
-  if (read.preview === null) return hasPreviewableFrame(read.report) ? "failed" : "none";
+  if (read.preview === null) {
+    return foundNothing(read.report) || hasPreviewableFrame(read.report) ? "failed" : "none";
+  }
   return (await storePreview(env, storageKey, read.preview)) ? "generated" : "failed";
 }
 

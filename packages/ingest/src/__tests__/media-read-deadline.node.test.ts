@@ -86,6 +86,8 @@ describe("a container run that outlasts the deadline", () => {
       report: NOTHING_FOUND,
       cover: null,
       preview: null,
+      peaks: null,
+      agentPicture: null,
       answered: false,
       upright: null,
       missed: "unfinished",

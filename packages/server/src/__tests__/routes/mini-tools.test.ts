@@ -65,11 +65,39 @@ const SEEDREAM = {
   takes_prompt: true,
   params: { images: { fill: "tool", accepts: "image", type: "list", max_items: 1 } },
 };
+const LIST_IMAGES = { fill: "tool", accepts: "image", type: "list", max_items: 1 };
+const RELIGHT = {
+  name: "nano-banana-2-relight",
+  takes_prompt: true,
+  params: {
+    images: LIST_IMAGES,
+    light_reference: { fill: "tool", accepts: "image", optional: true },
+    aspect_ratio: { fill: "none", values: ["auto", "1:1", "2:3", "3:2", "16:9"], absent_value: "auto" },
+  },
+};
+const RESTYLE = {
+  name: "gpt-image-2.5-sunburst-edit",
+  takes_prompt: true,
+  params: {
+    images: { ...LIST_IMAGES, max_items: 4 },
+    style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, optional: true },
+  },
+};
+const QUICK_EDIT = { name: "nano-banana-2-quick-edit", takes_prompt: true, params: { images: LIST_IMAGES } };
 const VOCALS = {
   name: "vocal-remover",
   takes_prompt: false,
   params: { audio: { fill: "tool", accepts: "audio" } },
 };
+const ENHANCE = {
+  name: "veed-clean-audio",
+  takes_prompt: false,
+  params: {
+    audio: { fill: "tool", accepts: "audio", max_total_duration: 1800, max_bytes: 536_870_912 },
+    strength: { fill: "tool", min: 0, max: 1, step: 0.05, default: 0.85 },
+  },
+};
+const OUR_AUDIO = "https://assets.example.com/a/abc.m4a";
 
 /**
  * Post one mini-tool request.
@@ -86,8 +114,8 @@ async function post(body: Record<string, unknown>): Promise<Response> {
 
 describe("POST /mini-tools", () => {
   beforeEach(() => {
-    mocks.creditLotService.getSpendableCredits.mockReset();
-    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
+    mocks.creditHoldService.reserveCredits.mockReset();
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: true });
     mocks.taskService.create.mockReset();
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
     mocks.taskService.markFailed.mockReset();
@@ -99,12 +127,80 @@ describe("POST /mini-tools", () => {
       keyFromUrl: (url: string) => (url.startsWith("https://assets.example.com/") ? url.slice(27) : null),
     });
     vi.mocked(modelCatalog.getModelCatalog).mockReturnValue({
-      image: [CRYSTAL, GENFILL, SEEDREAM],
+      image: [CRYSTAL, GENFILL, SEEDREAM, RELIGHT, RESTYLE, QUICK_EDIT],
       video: [],
-      audio: [VOCALS],
+      audio: [VOCALS, ENHANCE],
       tts: [],
       three_d: [],
     } as never);
+    vi.mocked(assetRepo.findKindByStorageKey).mockReset().mockResolvedValue("video");
+    vi.mocked(assetRepo.findLiveByStorageKey).mockReset().mockResolvedValue(null);
+  });
+
+  // inner#1305: a container tool reads the medium it declares.
+  it("runs an audio edit on a source our bucket files as audio", async () => {
+    vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValue("audio");
+    const res = await post({
+      tool: "audio.denoise",
+      node_ids: [NODE_A],
+      source: { url: OUR_AUDIO, duration: 8 },
+      params: { intensity: 50 },
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("refuses an audio edit on a video and a video edit on audio", async () => {
+    vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValueOnce("video");
+    const onVideo = await post({
+      tool: "audio.denoise",
+      node_ids: [NODE_A],
+      source: { url: OUR_AUDIO, duration: 8 },
+      params: { intensity: 50 },
+    });
+    vi.mocked(assetRepo.findKindByStorageKey).mockResolvedValueOnce("audio");
+    const onAudio = await post({
+      tool: "video.cut",
+      node_ids: [NODE_A],
+      source: { url: OURS, duration: 8 },
+      params: { range: { start: 0, end: 2 } },
+    });
+    expect(onVideo.status).toBe(400);
+    expect(onAudio.status).toBe(400);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+  });
+
+  // inner#1305 §7.2: the model's own ceilings, held against what the ledger
+  // measured rather than what the request claims.
+  it("refuses an enhance source the ledger measured past the model's length or size", async () => {
+    for (const measured of [
+      { durationSeconds: 1801, sizeBytes: 1_000 },
+      { durationSeconds: 60, sizeBytes: 536_870_913 },
+    ]) {
+      vi.mocked(assetRepo.findLiveByStorageKey).mockResolvedValueOnce(measured as never);
+      const res = await post({
+        tool: "audio.enhance",
+        node_ids: [NODE_A],
+        source: { url: OUR_AUDIO, duration: 10 },
+        params: { strength: 0.85 },
+      });
+      expect(res.status, JSON.stringify(measured)).toBe(400);
+    }
+    expect(vi.mocked(assetRepo.findLiveByStorageKey)).toHaveBeenCalledWith("a/abc.m4a");
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+  });
+
+  it("runs enhance within the ceilings, or when the ledger has not measured the source", async () => {
+    for (const measured of [{ durationSeconds: 1800, sizeBytes: 536_870_912 }, null]) {
+      vi.mocked(assetRepo.findLiveByStorageKey).mockResolvedValueOnce(measured as never);
+      const res = await post({
+        tool: "audio.enhance",
+        node_ids: [NODE_A],
+        source: { url: OUR_AUDIO, duration: 10 },
+        params: { strength: 0.85 },
+      });
+      expect(res.status, JSON.stringify(measured)).toBe(201);
+    }
+    expect(mocks.taskService.create.mock.calls[0]?.[6]).toBe("veed-clean-audio");
   });
 
   it("opens a mini_tool row on the new node and queues the run on the pinned model", async () => {
@@ -175,6 +271,56 @@ describe("POST /mini-tools", () => {
     });
   });
 
+  // inner#1304: the restyle prefix always goes; what the reader wrote follows it.
+  it("sends the restyle prefix alone, or with the reader's words after it", async () => {
+    const preamble = miniToolById("image.restyle")?.prompt?.preamble;
+    const run = (prompt: string): Promise<Response> =>
+      post({
+        tool: "image.restyle",
+        node_ids: [NODE_A],
+        source: { url: "https://assets.example.com/i/a.png" },
+        prompt,
+        slots: { style: [{ url: "https://assets.example.com/i/s.png" }] },
+      });
+    await run(" ");
+    await run("thick brush strokes");
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({ prompt: preamble });
+    expect(mocks.taskService.create.mock.calls[1]?.[5]).toMatchObject({
+      prompt: `${preamble} Also: thick brush strokes`,
+    });
+  });
+
+  it("sends an empty relight note as it is", async () => {
+    await post({
+      tool: "image.relight",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png", width: 768, height: 1152 },
+      prompt: "",
+    });
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({ prompt: "" });
+  });
+
+  it("records the catalog ratio nearest the source's size on a relight run", async () => {
+    await post({
+      tool: "image.relight",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png", width: 768, height: 1152 },
+    });
+    await post({ tool: "image.relight", node_ids: [NODE_A], source: { url: "https://assets.example.com/i/a.png" } });
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).toMatchObject({ aspect_ratio: "2:3" });
+    expect(mocks.taskService.create.mock.calls[1]?.[5]).toMatchObject({ aspect_ratio: "auto" });
+  });
+
+  it("records no ratio on a tool that does not declare one", async () => {
+    await post({
+      tool: "image.quickEdit",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png", width: 768, height: 1152 },
+      prompt: "make it night",
+    });
+    expect(mocks.taskService.create.mock.calls[0]?.[5]).not.toHaveProperty("aspect_ratio");
+  });
+
   it("refuses an expand run that carries no padded picture, before any row opens", async () => {
     const res = await post({
       tool: "image.expand",
@@ -223,7 +369,7 @@ describe("POST /mini-tools", () => {
   });
 
   it("settles the opened rows as no_credits when the balance is short", async () => {
-    mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0, available: 0 });
     const res = await post({
       tool: "image.upscale",
       node_ids: [NODE_A],
@@ -233,6 +379,30 @@ describe("POST /mini-tools", () => {
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ data: { task_id: "task-1", status: "failed" } });
     expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "no_credits");
+  });
+
+  it("settles the opened rows as credits_held when running work holds what the run needs", async () => {
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90, available: 10 });
+    const res = await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(res.status).toBe(201);
+    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
+  });
+
+  it("still settles the rows as credits_held when the caller has unassigned credits to point at", async () => {
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 100, held: 90, available: 10 });
+    mocks.creditLotService.getUnassignedCredits.mockResolvedValueOnce(50);
+    await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+    });
+
+    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
   });
 
   it("refuses a param the tool does not expose, before any row opens", async () => {
@@ -337,7 +507,7 @@ describe("POST /mini-tools", () => {
 
     expect(res.status).toBe(403);
     expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(PID, "user-1", "editor");
-    expect(mocks.creditLotService.getSpendableCredits).not.toHaveBeenCalled();
+    expect(mocks.creditHoldService.reserveCredits).not.toHaveBeenCalled();
     expect(mocks.taskService.create).not.toHaveBeenCalled();
     expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
   });

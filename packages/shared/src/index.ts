@@ -10,6 +10,7 @@ export type {
   BodyTreeUnit,
   BodyTreeView,
 } from "@shared/document-body-tree.js";
+export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
   Environment,
@@ -121,10 +122,13 @@ export type {
   InvitableProjectRole,
   ProjectInvitationStatus,
   PendingProjectInvitationSummary,
+  SignupInvitationPreview,
   SpaceType,
   Space,
   ActivityNewControlEvent,
+  CreditsChangedControlEvent,
   ProjectConnectionsCloseEvent,
+  SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
   ProjectDuplicatedLifecycleEvent,
   ProjectArchivedLifecycleEvent,
@@ -157,8 +161,10 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
   activityNewChannel,
+  creditsChangedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
+  sessionsRevokedChannel,
   SpaceTypeSchema,
   SPACE_NAME_MAX_LEN,
   MAX_SPACES_PER_PROJECT,
@@ -186,6 +192,7 @@ export type {
 export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
+  CREDITS_CHANGED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -193,7 +200,7 @@ export {
   MemberActivityPayloadSchema,
   ProjectActivityEntrySchema,
   ProjectActivityPageSchema,
-  ActivityNewSignalSchema,
+  isMemberLeave,
 } from "@shared/types/index.js";
 export type { ControlGate } from "@shared/types/index.js";
 export type { GenerationSource } from "@shared/types/project-activity.js";
@@ -217,6 +224,7 @@ export type {
   ProjectActivityEntry,
   ProjectActivityPage,
   ActivityNewSignal,
+  CreditsChangedSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -260,6 +268,7 @@ export type {
   CreditLedgerKind,
   CreditLedgerView,
   StudioLedgerView,
+  ProjectCreditsView,
   StudioCreditsView,
   StudioCreditSummary,
   CreditOverview,
@@ -298,6 +307,7 @@ export {
   chatAttachedChipSchema,
   taskCreateSchema,
   understandSchema,
+  transcribeSchema,
   nodeHistorySnapshotSchema,
   canvasPasteSchema,
   pastePairSchema,
@@ -337,6 +347,7 @@ export type {
   ChatDocumentBlock,
   TaskCreateInput,
   UnderstandInput,
+  TranscribeInput,
   CanvasPasteInput,
   PastePair,
   PasteHistoryItem,
@@ -378,6 +389,14 @@ export {
 export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
+
+export {
+  SyncConfirmRequestSchema,
+  SyncConfirmedResponseSchema,
+} from "@shared/sync-receipt.js";
+export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
+
+export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
 
 export {
   addressWithoutQuery,
@@ -444,6 +463,28 @@ export {
   buildAdjustVideoFilter,
 } from "@shared/adjust-value.js";
 export type { AdjustRange, AdjustTerms, AdjustValue } from "@shared/adjust-value.js";
+export {
+  EQ_BANDS_HZ,
+  EQ_GAIN_RANGE,
+  EQ_PRESETS,
+  EQ_PRESET_LABELS,
+  PEAK_LIMITER,
+  buildEqFilter,
+  defaultEqValue,
+  eqValueOfPreset,
+} from "@shared/audio-eq.js";
+export type { EqPreset, EqValue } from "@shared/audio-eq.js";
+export {
+  DYNAMICS_PRESETS,
+  DYNAMICS_PRESET_LABELS,
+  DYNAMICS_RANGES,
+  buildCompressorFilter,
+  defaultDynamicsValue,
+  dynamicsValueOfPreset,
+} from "@shared/audio-dynamics.js";
+export type { DynamicsField, DynamicsPreset, DynamicsSettings, DynamicsValue } from "@shared/audio-dynamics.js";
+export { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
+export { formatBytes } from "@shared/format-bytes.js";
 
 // The confirmation email names the instant the window closes, in the buyer's
 // zone and in UTC; the eligibility rule beside it asks whether that instant
@@ -502,11 +543,24 @@ export {
   CAMERA_ANGLE_AXES,
   CAMERA_ANGLE_GRID,
   DEFAULT_CAMERA_ANGLE,
+  DEFAULT_LIGHT_ANGLE,
+  LIGHT_ANGLE_AXES,
+  LIGHT_ANGLE_GRID,
   nearestCameraAngle,
   stepCameraAngle,
+  type AngleGrid,
   type CameraAngle,
   type CameraAngleAxis,
 } from "@shared/camera-angle.js";
+export {
+  AUTO_LIGHT_SWATCH,
+  LIGHT_COLORS,
+  LIGHT_INTENSITIES,
+  LIGHT_QUALITIES,
+  lightColorOf,
+  lightDirectionPhrase,
+  type LightColorTerm,
+} from "@shared/relight-terms.js";
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   MULTI_SHOT_MODE,
@@ -516,6 +570,7 @@ export {
 export type { StoryboardSend, StoryboardShotInput, StoryboardSpec } from "@shared/storyboard.js";
 export { missingSources, fitsSomeMode } from "@shared/missing-sources.js";
 export { formatCredits } from "@shared/format-credits.js";
+export { ceilToCreditCent } from "@shared/credit-cent.js";
 export type { MissingSource, SourceSlot, SourcedModel } from "@shared/missing-sources.js";
 
 // The tab bar belongs to one browser; these are the pure ordering rules the
@@ -551,9 +606,19 @@ export {
 } from "@shared/agent/attachments.js";
 export type { AttachmentDataPart, MessageSegment, ResolvedSegment } from "@shared/agent/attachments.js";
 export {
+  answersMismatch,
+  ASK_USER_OTHER_MAX_CHARS,
+  askUserAnswerSchema,
+  askUserInputSchema,
+  readQuestionnaire,
+} from "@shared/agent/ask-user.js";
+export type { AskUserAnswer, AskUserInput, AskUserQuestion, AskUserResult } from "@shared/agent/ask-user.js";
+export {
   carrying,
   FAILURE_LINES,
   isReaderLine,
+  LEGACY_FAILURE_LINES,
+  NEVER_RAN,
   NOTHING_SAID_WHY,
   toolFailureOf,
   TURNED_AWAY,
@@ -561,6 +626,7 @@ export {
 } from "@shared/agent/tool-failure.js";
 export type {
   FailureLine,
+  LegacyFailureLine,
   StoppedLine,
   ToolFailure,
   ToolFailureKind,
@@ -722,11 +788,19 @@ export {
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
+export {
+  agentPictureKeyFor,
+  agentPictureSpecSchema,
+  type AgentPictureSpec,
+  type AgentPictureRead,
+} from "@shared/upload/agent-picture.js";
+
 // Sending bytes to the ingest Worker. Whoever holds them sends them: the
 // browser for a file a person picked, our own backend for what it produced
 // itself -- one implementation, so "every asset reaches R2 through the ingest
 // Worker" is not a rule each caller is trusted to follow.
 export {
+  openUploadAtIngest,
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
@@ -735,6 +809,7 @@ export {
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
+  type OpenedIngestTarget,
   type MediaLimits,
   type HeldUpload,
   type PartReceipt,
@@ -794,6 +869,15 @@ export {
   originalUrlFor,
   isStoredObjectUrl,
 } from "@shared/upload/preview.js";
+// Where a stored audio's peaks live and what they hold (inner#1305).
+export { AUDIO_PEAK_COUNT, AUDIO_PEAK_MAX } from "@shared/audio-peaks.js";
+export {
+  PEAKS_SUFFIX,
+  audioPeaksSchema,
+  peaksKeyFor,
+  peaksUrlFor,
+  type AudioPeaks,
+} from "@shared/upload/peaks.js";
 // The type read off the bytes themselves. It lives beside the lists above
 // because they answer two halves of one question: what these bytes are, and
 // whether we take it.
@@ -802,6 +886,17 @@ export {
   sniffMimeTypeOfStream,
   SNIFF_WINDOW,
 } from "@shared/upload/sniff-mime.js";
+// A request body too large for the API, carried through storage instead
+// (inner#1006): web writes it, the ingest Worker names it, the server reads it.
+export {
+  TRANSFER_KEY_DIR,
+  TRANSFER_MEDIA_TYPE,
+  TRANSFER_SIGNATURE,
+  TransferDecodeError,
+  decodeTransferBody,
+  encodeTransferBody,
+  type TransferDecodeReason,
+} from "@shared/upload/transfer-format.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the
 // status alone.
@@ -885,3 +980,7 @@ export {
   type Attribution,
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
+
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";

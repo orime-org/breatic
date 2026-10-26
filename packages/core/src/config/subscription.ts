@@ -7,10 +7,11 @@
  * Reads `config/subscription.yaml`: what each subscribable tier costs over
  * each billing period, and which Stripe price sells it.
  *
- * Lives in core, beside the membership ceilings, because two callers in two
- * packages read this one file: server needs the price ids to talk to Stripe,
- * and core needs `stale_after_days` for the check that stops honouring a
- * subscription nobody has heard from (`membership.repo.ts`).
+ * Lives in core, beside the membership ceilings, with the clock every reading
+ * of an account's subscriptions is taken against. Only server reads this file:
+ * it holds a deployment's prices and is mounted into server alone, so the
+ * renewal window that decides a tier is in `config/membership.yaml` instead
+ * (inner#1636).
  *
  * A tier with no plan in the file is a loud failure naming that tier, on the
  * first read. The alternative — an `undefined` price id travelling to Stripe —
@@ -30,6 +31,7 @@ import {
 } from "@breatic/shared";
 import type { SituationClock } from "@core/auth/subscription-state.js";
 import { env, MONOREPO_ROOT } from "@core/config/env.js";
+import { getSubscriptionStaleAfterDays } from "@core/config/membership.js";
 
 /** What one tier costs over one billing period, and which price sells it. */
 const periodSchema = z.object({
@@ -65,18 +67,6 @@ const planSchema = z.object({
  */
 export const subscriptionConfigSchema = z.object({
   plans: z.record(z.string(), planSchema),
-  /**
-   * How long a stored subscription may sit past its paid period before its
-   * tier stops being honoured.
-   *
-   * A subscription that is really renewing has its period pushed forward by
-   * Stripe, so a row still marked live long after its period ended means we
-   * missed the event that ended it. Fourteen days is Stripe's own Smart
-   * Retries window: within it, a `past_due` subscription is one Stripe is
-   * still collecting for, and taking the tier away would punish somebody
-   * whose card is about to go through.
-   */
-  stale_after_days: z.number().int().positive().default(14),
   /**
    * The bound a call to Stripe is made under, for callers that pass it.
    *
@@ -181,25 +171,13 @@ export function getStripeCallTimeoutMs(): number {
   return readFile().stripe_call_timeout_ms;
 }
 
-/**
- * Reads how long a subscription may sit past its paid period before its tier
- * stops being honoured.
- * @returns That window in days.
- * @throws {Error} When the file is missing or malformed.
- */
-export function getSubscriptionStaleAfterDays(): number {
-  return readFile().stale_after_days;
-}
-
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * The clock every reading of an account's subscriptions is taken against.
  *
- * The renewal window is read from the file when a reading first asks for it,
- * which only a row with a period end does. An install with payments off has
- * no copy of the file, and its accounts have no rows, so reading their tier
- * never opens it.
+ * The renewal window comes from `config/membership.yaml`, read when a
+ * reading first asks for it, which only a row with a period end does.
  * @param now - The moment to read at.
  * @returns That moment with the configured renewal window.
  */

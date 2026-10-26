@@ -7,7 +7,7 @@
  * regardless of the backend wire schema (data/api/chat.ts adapts).
  */
 
-import type { CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
+import type { AskUserAnswer, AskUserQuestion, CanvasProposal, ChatAttachedChip, DocumentProposal, ToolFailureKind } from '@breatic/shared';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -26,25 +26,16 @@ export interface ToolCall {
   /** How far this use of the tool got, as the store recorded it. */
   status: 'pending' | 'success' | 'error';
   /**
-   * Which of the three endings left it without a result.
+   * Which of the four endings left it without a result.
    *
-   * A failure, a turn the user stopped and a call turned away all come over
-   * as `error`, and they are shown differently. While a turn is still
+   * A failure, a turn the user stopped, a call turned away and a call that
+   * never ran all come over as `error`, and they are shown differently. While a turn is still
    * streaming the SDK's client assembles those parts itself, so only a call
    * turned away is told apart, by the marker the server puts in its error
    * text; anything else is a failure there — a call the user stopped is left
    * `pending` there, not `error`.
    */
   failureKind?: ToolFailureKind;
-  /**
-   * The line to show, as a translation key.
-   *
-   * Never the reason itself. That names hosts, statuses and, for a refused
-   * fetch, addresses inside the network; it goes to the model, which is what
-   * acts on it. For a step that failed, the reader is shown the line this key
-   * names, under the reply; a step the reader stopped draws no line of its own.
-   */
-  failureKey?: string;
   /**
    * The translation key for the sentence shown while this call runs.
    *
@@ -108,6 +99,32 @@ export interface ChatAsset {
   title: string;
 }
 
+/**
+ * A questionnaire the agent put to the reader (inner#1542), with where it
+ * stands: waiting for an answer, answered on the card, or replied to by a
+ * message the reader wrote instead.
+ */
+export interface ChatQuestionnaire {
+  /** The `ask_user` call that put it. */
+  toolCallId: string;
+  /** The questions, in the order the card numbers them. */
+  questions: AskUserQuestion[];
+  /** Where it stands. */
+  state: 'awaiting' | 'answered' | 'replied';
+  /** The answers given on the card, once it is answered there. */
+  answers?: AskUserAnswer['answers'];
+}
+
+/** One tool step that did not finish, as its line says it (inner#1620). */
+export interface ChatFailureLine {
+  /** Which step, as a translation key and what it fills in. */
+  step: { key: string; params?: Record<string, string> };
+  /** The cause, as a translation key; null for a row stored before causes were recorded. */
+  reason: string | null;
+  /** How many times in a row the same line came. */
+  count: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -122,6 +139,24 @@ export interface ChatMessage {
    * to a markdown renderer with raw HTML enabled counts.
    */
   content: string;
+  /**
+   * The same turn goes on in the reply after this one: its copy is offered
+   * once, at the end of the turn. Only ever `true`.
+   */
+  continued?: true;
+  /**
+   * What the copy at the end of a turn drawn as several replies copies: all
+   * of it. Absent where the reply's own words are all of it.
+   */
+  copyText?: string;
+  /**
+   * The prose with a placeholder where each failure line sits, for the
+   * renderer alone (inner#1620). Absent when no step failed; `content` stays
+   * what the reader copies.
+   */
+  body?: string;
+  /** The tool steps that did not finish, in the order `body` places them. */
+  failureLines?: ChatFailureLine[];
   /** What the reader attached to this message, in order. Absent when nothing. */
   attachments?: ChatAttachedChip[];
   /**
@@ -160,6 +195,12 @@ export interface ChatMessage {
    */
   failed?: true;
   /**
+   * Why the turn failed, when the server said: `too_long` is a turn whose
+   * request could not be made to fit the model's context window, which
+   * sending it again would not change (inner#1567).
+   */
+  failedReason?: 'too_long';
+  /**
    * The turn hit the per-call output ceiling, so this stops mid-sentence.
    *
    * Stored like {@link ChatMessage.interrupted}, and kept apart from it: what
@@ -188,13 +229,8 @@ export interface ChatMessage {
    */
   failedJustNow?: true;
   /**
-   * The model asked something and stopped to wait for the answer.
-   *
-   * Read off the mark the server writes, never off the tool names: which
-   * tools block is a list in `@breatic/domain`, which this package may not
-   * import. Without it this ending is an empty reply, which is also what a
-   * turn that produced nothing looks like -- and that one is drawn as the
-   * neutral "No reply this turn" line.
+   * The mark a reply stored before inner#1542 carries when it stopped to ask;
+   * a turn waiting now is drawn by its questionnaire card.
    *
    * Only ever `true`; its absence is the ordinary case.
    */
@@ -235,6 +271,12 @@ export interface ChatMessage {
    * nowhere for that to live and the message may be several turns old.
    */
   proposals?: CanvasProposal[];
+  /**
+   * The questionnaires this turn put to the reader, each drawn as a card.
+   * Absent on a turn that asked nothing; a question stored before the card
+   * existed is in the reply's words instead.
+   */
+  questionnaires?: ChatQuestionnaire[];
   /**
    * The document edits this turn proposed (inner#1509), each drawn as a card
    * the reader presses to land it. Rebuilt from the stored tool calls; whether

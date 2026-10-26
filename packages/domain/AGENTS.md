@@ -22,7 +22,11 @@ The business core shared by server and worker. These rules apply when you change
 
 **A charge and its ledger rows are written in one `db.transaction()`: a finished task is billed through `markCompletedAndBill`, and a generation is charged through `chargeOnceForGeneration(refKey, ...)`, which charges each `refKey` at most once.** A charge split across transactions, or repeated on a retry, leaves the balance and the ledger disagreeing.
 
+**A canvas run that spends credits (generation, understanding, a mini-tool) is admitted by `creditHoldService.reserveCredits`, which holds its estimate under the studio's debt lock; its charge passes `releaseHold` so the hold is released in the charge's own transaction, and every other end of the run releases it.** Admissions that only read the balance let concurrent runs spend the same credits. Agent chat holds nothing: a turn is admitted on the balance and charged what it spent. How holds, admission and the credits signal fit together: the credit-hold paragraph in [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration).
+
 **Every consumption is multiplied by `CREDIT_MULTIPLIER` (default 1).** It is a deployment setting that the model catalog also applies, so a cost computed without it bills a different number than the one shown.
+
+**Every credit figure that is estimated, held, charged or shown settles to 0.01, rounded up, through `ceilToCreditCent` (`packages/shared/src/credit-cent.ts`) and the helpers built on it (`toChargeMicro`, `toChargeCredits`, `formatCredits`); never round a credit figure to cents any other way.** A second rounding drifts from the first, and a run is then held, refused, charged and shown by different numbers. Check: am I writing `toFixed`, `Math.ceil` or `Math.round` to bring credits to two decimals?
 
 ### Losing admin releases credit designations
 
@@ -50,7 +54,11 @@ Check: is the sentence I am writing about one tool or template? Then it belongs 
 
 ### One place assembles the agent
 
-**Model, instructions and tools are assembled only by `buildAgentConfig` in `agent/agent-config.ts`.** A second assembly point lets two agents drift apart.
+**Model, picture capability and tools are resolved once per turn by async `buildAgentConfig` in `agent/agent-config.ts`; a consolidation only rebuilds its memory instructions through `instructionsForAgentMemory`.** A second assembly point lets model capability, tools and message preparation disagree.
+
+### Picture requests are projected once
+
+**Use `projectAgentRequest` for the initial request and every SDK step; persist original logical picture facts and project independent copies.** Its selected pictures, expansion order and thinking checks are also the facts used for history hashes and counting. Tool execution prepares pictures once; `toModelOutput` and sending middleware perform no storage IO. Before changing these contracts, read [Agent picture requests](../../docs/ARCHITECTURE.md#agent-picture-requests).
 
 ### Tool errors state the problem
 

@@ -15,7 +15,7 @@ import {
   waitOnExecutionContext,
 } from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import { previewKeyFor } from "@breatic/shared";
+import { peaksKeyFor, previewKeyFor } from "@breatic/shared";
 import worker, { type Env } from "@ingest/index.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
@@ -293,5 +293,154 @@ describe("a read that asks for a preview", () => {
     });
 
     expect(await response.json()).toMatchObject({ preview: "failed" });
+  });
+
+  // A read that found no stream at all says nothing about the picture, so the
+  // backfill lists it to run again rather than as a picture with no frame.
+  it("answers failed when the read came back with nothing found", async () => {
+    const storageKey = await storedPicture();
+    const run = containerAnswering({ durationSeconds: null, streams: [] }, null, null);
+
+    const response = await read(
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT, wantPreview: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ preview: "failed" });
+  });
+});
+
+// The audio-peaks job and the peaks backfill ask for peaks here (inner#1305
+// §4.4). The answer has the preview's four outcomes, so the job can retry a run
+// that came back without them.
+describe("a read that asks for peaks", () => {
+  const PEAKS_BYTES = new TextEncoder().encode('{"version":1,"peaks":[0,128,255]}');
+  const SONG: ProbeReport = {
+    durationSeconds: 61,
+    streams: [{ index: 0, codecType: "audio", codecName: "mp3", width: null, height: null, attachedPic: false }],
+  };
+
+  /**
+   * Put an audio object in the bucket and name it.
+   * @returns Its key.
+   */
+  async function storedSong(): Promise<string> {
+    const key = `audio/2026-10-21/${seq++}_song.mp3`;
+    await env.BUCKET.put(key, new Uint8Array([0x49, 0x44, 0x33]), {
+      httpMetadata: { contentType: "audio/mpeg" },
+    });
+    return key;
+  }
+
+  it("reads and stores them when none stand", async () => {
+    const storageKey = await storedSong();
+    const run = containerAnswering(SONG, null, null, PEAKS_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "audio/mpeg", deadlineAt: DEADLINE_AT, wantPeaks: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toEqual({
+      width: null,
+      height: null,
+      durationSeconds: 61,
+      peaks: "generated",
+    });
+    expect(run.asked).toMatchObject({ wantPeaks: true, wantPreview: false });
+    const stored = await env.BUCKET.get(peaksKeyFor(storageKey));
+    expect(stored?.httpMetadata?.contentType).toBe("application/json");
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(PEAKS_BYTES);
+  });
+
+  // Peaks are asked for only by the peaks job and the backfill, which read
+  // nothing but the outcome, so a standing file starts no container.
+  it("leaves standing peaks alone without starting a container", async () => {
+    const storageKey = await storedSong();
+    await env.BUCKET.put(peaksKeyFor(storageKey), new Uint8Array([7]));
+    const run = containerAnswering(SONG, null, null, PEAKS_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "audio/mpeg", deadlineAt: DEADLINE_AT, wantPeaks: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toEqual({ width: null, height: null, durationSeconds: null, peaks: "existing" });
+    expect(run.asked).toBeNull();
+    const stored = await env.BUCKET.get(peaksKeyFor(storageKey));
+    expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(new Uint8Array([7]));
+  });
+
+  it("answers failed when audio with a length came back with no peaks", async () => {
+    const storageKey = await storedSong();
+    const run = containerAnswering(SONG, null, null, null);
+
+    const response = await read(
+      { storageKey, contentType: "audio/mpeg", deadlineAt: DEADLINE_AT, wantPeaks: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ peaks: "failed" });
+    expect(await env.BUCKET.head(peaksKeyFor(storageKey))).toBeNull();
+  });
+
+  // A read that came back empty says nothing about the audio: the ledger
+  // filed it as audio, so the job is told to try again.
+  it("answers failed when an audio object's read came back with nothing found", async () => {
+    const storageKey = await storedSong();
+    const run = containerAnswering({ durationSeconds: null, streams: [] }, null, null, PEAKS_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "audio/mpeg", deadlineAt: DEADLINE_AT, wantPeaks: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ peaks: "failed" });
+  });
+
+  it("answers none for an object with no sound to read", async () => {
+    const storageKey = await storedPicture();
+    const run = containerAnswering(PICTURE, null, null, PEAKS_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "image/jpeg", deadlineAt: DEADLINE_AT, wantPeaks: true },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).toMatchObject({ peaks: "none" });
+    expect(await env.BUCKET.head(peaksKeyFor(storageKey))).toBeNull();
+  });
+
+  it("answers failed when no container ran", async () => {
+    const storageKey = await storedSong();
+
+    const response = await read({
+      storageKey,
+      contentType: "audio/mpeg",
+      deadlineAt: DEADLINE_AT,
+      wantPeaks: true,
+    });
+
+    expect(await response.json()).toMatchObject({ peaks: "failed" });
+  });
+
+  it("answers no peaks outcome when none were asked for", async () => {
+    const storageKey = await storedSong();
+    const run = containerAnswering(SONG, null, null, PEAKS_BYTES);
+
+    const response = await read(
+      { storageKey, contentType: "audio/mpeg", deadlineAt: DEADLINE_AT },
+      env.INGEST_SHARED_SECRET,
+      run.media,
+    );
+
+    expect(await response.json()).not.toHaveProperty("peaks");
+    expect(await env.BUCKET.head(peaksKeyFor(storageKey))).toBeNull();
   });
 });

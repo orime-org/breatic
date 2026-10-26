@@ -25,7 +25,7 @@ import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useTranslation } from '@web/i18n/use-translation';
 
 import { Skeleton } from '@web/components/ui/skeleton';
-import type { ProjectRole } from '@breatic/shared';
+import type { ProjectCreditsView, ProjectRole } from '@breatic/shared';
 import type { Member } from '@web/data/api/members';
 
 /** Held still so the bar is not handed a fresh object on every render. */
@@ -49,15 +49,16 @@ export type CreditsReadout =
  * refetch fails, and a balance that is one refetch old still beats replacing it
  * with "unknown".
  * @param query - The query's data and whether it has settled on an error.
- * @param query.data - The balance, once an answer has arrived.
+ * @param query.data - The studio's credits, once an answer has arrived; the
+ *   pill reads what is left after running tasks' holds (inner#1611).
  * @param query.isError - Whether the query gave up.
  * @returns What to show.
  */
 export function toCreditsReadout(query: {
-  data?: { spendable: number } | undefined;
+  data?: ProjectCreditsView | undefined;
   isError: boolean;
 }): CreditsReadout {
-  if (query.data) return { status: 'ready', value: query.data.spendable };
+  if (query.data) return { status: 'ready', value: query.data.available };
   return query.isError ? { status: 'error' } : { status: 'pending' };
 }
 
@@ -178,7 +179,7 @@ export function TopBar({
           {/* Share is an owner-only affordance (B model — hidden, not
               disabled, for non-owners). Backend `requireRole` enforces
               the real boundary; this hide is UX only. */}
-          {role === 'owner' ? <ShareDialog projectId={projectId} /> : null}
+          {role === 'owner' ? <ShareDialog projectId={projectId} currentUserRole={role} /> : null}
           <BellMenu />
         </div>
       </div>

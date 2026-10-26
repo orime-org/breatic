@@ -11,6 +11,7 @@
  *   - Real @breatic/collab: startTaskListener (consumer group, document lease)
  *   - In-process Hocuspocus: DirectConnection for Yjs doc pre-population + assertion
  *   - Mocked provider boundary: runContainerJob (synthetic), reached through the registry's container tool
+ *   - Mocked media-reading boundary: understandMediaAt supplies model text and reported cost
  *
  * What this catches that unit tests can't:
  *   - Queue name typos (worker listens on wrong queue)
@@ -34,7 +35,7 @@ import {
   inject,
 } from "vitest";
 import * as Y from "yjs";
-import { Worker, Queue } from "bullmq";
+import { Worker, Queue, type Job } from "bullmq";
 import { Server } from "@hocuspocus/server";
 import type { Hocuspocus } from "@hocuspocus/server";
 
@@ -83,6 +84,13 @@ const providerCtrl = {
   // fail-once mode: first invocation throws (retryable), later ones succeed.
   calls: 0,
 };
+
+/** The media-reading boundary's answers and calls; settlement stays real. */
+const readingCtrl: {
+  text: string;
+  costUsd: number;
+  requests: Parameters<typeof domain.understandMediaAt>[0][];
+} = { text: "", costUsd: 0, requests: [] };
 
 // Must be hoisted before the module imports below
 vi.mock("@worker/handlers/container/run-container-job.js", () => ({
@@ -228,6 +236,19 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
   return {
     ...orig,
+    understandMediaAt: async (
+      request: Parameters<typeof orig.understandMediaAt>[0],
+    ): ReturnType<typeof orig.understandMediaAt> => {
+      readingCtrl.requests.push(request);
+      request.onBilled(readingCtrl.costUsd);
+      const kind = request.items[0]?.ledgerType === "video/mp4" ? "video" : "audio";
+      return {
+        text: readingCtrl.text,
+        finishReason: "stop",
+        kind,
+        kinds: [kind],
+      };
+    },
     backendUploadService: {
       // A Blob, the way the real one takes it: what a caller hands over may be
       // backed by a file rather than resident bytes.
@@ -273,12 +294,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as domain from "@breatic/domain";
 import { runTask } from "@worker/handlers/dispatch.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
-import { initCore, schema, createTestDb, createRedisClient, taskEventsStreamKey, type Redis } from "@breatic/core";
-import { taskService } from "@breatic/domain";
+import { initCore, db as serviceDb, schema, createTestDb, createRedisClient, taskEventsStreamKey, type Redis } from "@breatic/core";
+import { creditLotService, taskService } from "@breatic/domain";
 import { startTaskListener } from "@collab/services/task-listener.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
-import { openGenerationTasks } from "@server/modules/task/generation-task.js";
+import { openGenerationTasks, startRowedRun } from "@server/modules/task/generation-task.js";
 import { canvasSpaceDocName } from "@breatic/shared";
+import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 
@@ -366,6 +388,8 @@ async function readNodeData(
         // Flatten nested Y.Maps to plain objects for assertions
         snap[k] = v instanceof Y.Map ? Object.fromEntries(v.entries()) : v;
       }
+      const body = dataMap.get("body");
+      if (body instanceof Y.XmlFragment) snap["bodyText"] = bodyToPlainText(body);
       result = snap;
     });
   } finally {
@@ -458,12 +482,18 @@ async function waitForNodeData(
  * The old harness converted nested objects to Y.Map, which diverged from
  * production and hid the gen-CAS's property reads from the real shape
  * (#1580 adversarial follow-up: harness must mirror production).
+ * @param hp - The live collaboration server.
+ * @param docName - The canvas document receiving the node.
+ * @param nodeId - The new node's id.
+ * @param dataFields - The fields stored on its data map.
+ * @param nodeType - The canvas node's type.
  */
 async function seedNode(
   hp: Hocuspocus,
   docName: string,
   nodeId: string,
   dataFields: Record<string, unknown>,
+  nodeType = "image",
 ): Promise<void> {
   const conn = await hp.openDirectConnection(docName, {
     context: { user: { id: "system" }, source: "test-seed" },
@@ -481,7 +511,7 @@ async function seedNode(
 
       const nodeMap = new Y.Map<unknown>([
         ["id", nodeId],
-        ["type", "image"],
+        ["type", nodeType],
         // Plain object, exactly like production addNode's map.set('position', ...).
         ["position", { x: 100, y: 200 }],
         ["data", dataMap],
@@ -1408,5 +1438,195 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       `node ${nodeId} idle (own-url output)`,
     );
     expect(data["content"]).toBe("https://oss/uploaded/cut-1.mp4");
+  });
+});
+
+describe("transcription results and usage cross the real settlement and collaboration paths", () => {
+  const MODEL = "google/gemini-3.8-flash";
+  const TEXTS = [
+    { name: "spoken words", text: "  Um, send the final draft.\nYes, today.  " },
+    { name: "no-speech sentinel", text: "  NO_SPEECH\n" },
+    { name: "no-speech explanation", text: "There is no audible speech in this recording." },
+    { name: "incorrect model output", text: "A purple satellite ordered seventeen umbrellas." },
+    { name: "empty answer", text: "" },
+  ];
+
+  beforeAll(async () => {
+    initCore({
+      ...process.env,
+      PAYMENT_ENABLED: "true",
+      CREDIT_MULTIPLIER: "1",
+      STRIPE_SECRET_KEY: "sk_test_unused_by_transcription_suite",
+      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_transcription_suite",
+    });
+    const granted = await serviceDb.transaction((tx) => creditLotService.grantTrialCredits({
+      userId: FIXTURE_USER_ID,
+      studioId: FIXTURE_STUDIO_ID,
+      credits: 1000,
+    }, tx));
+    expect(granted).toMatchObject({
+      userId: FIXTURE_USER_ID,
+      designatedStudioId: FIXTURE_STUDIO_ID,
+    });
+    expect(Number(granted!.remainingCredits)).toBe(1000);
+  });
+
+  afterAll(() => {
+    initCore(process.env);
+  });
+
+  /**
+   * Wait for the queue's execution to end before reading its committed rows.
+   * @param job - The queued execution, including a duplicate delivery.
+   * @throws {Error} When the worker does not finish within the test budget.
+   */
+  async function waitForExecution(job: Job<TaskJobData>): Promise<void> {
+    await waitForCondition(async () => {
+      const state = await job.getState();
+      return state === "completed" || state === "failed";
+    }, 30_000, `transcription execution ${job.id} finished`);
+    expect(await job.getState()).toBe("completed");
+  }
+
+  describe.each(["audio", "video"] as const)("%s transcription", (medium) => {
+    describe.each([
+      { costUsd: 0, credits: 0 },
+      { costUsd: 0.0123, credits: 1.23 },
+    ])("a provider cost of $costUsd USD", ({ costUsd, credits }) => {
+      it.each(TEXTS)("writes $name verbatim and settles one charge across redelivery", async ({ text }) => {
+        readingCtrl.text = text;
+        readingCtrl.costUsd = costUsd;
+        readingCtrl.requests = [];
+        const balanceBefore = await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID);
+        const nodeId = crypto.randomUUID();
+        const docName = canvasSpaceDocName(FIXTURE_PROJECT_ID, FIXTURE_SPACE_ID);
+        await seedNode(hocuspocus, docName, nodeId, {
+          name: "TRANSCRIBE-Recording",
+          content: "Prior draft",
+          attachments: [],
+        }, "text");
+        const params = {
+          reading: "transcribe",
+          keep_fillers: true,
+          source_type: medium,
+          source_url: `https://assets.test.invalid/${medium}/recording.${medium === "video" ? "mp4" : "m4a"}`,
+          source_mime_type: medium === "video" ? "video/mp4" : "audio/mp4",
+        };
+        const [task] = await db.insert(schema.tasks).values({
+          userId: FIXTURE_USER_ID,
+          projectId: FIXTURE_PROJECT_ID,
+          spaceId: FIXTURE_SPACE_ID,
+          taskType: "understand",
+          source: "understand",
+          mode: "append",
+          model: MODEL,
+          params,
+        }).returning();
+        const taskId = task!.id;
+        const jobData: TaskJobData = {
+          taskId,
+          taskType: "understand",
+          userId: FIXTURE_USER_ID,
+          projectId: FIXTURE_PROJECT_ID,
+          spaceId: FIXTURE_SPACE_ID,
+          source: "understand",
+          mode: "append",
+          model: MODEL,
+          targetNodeIds: [nodeId],
+          params,
+        };
+        const admitted = await startRowedRun({
+          taskId,
+          projectId: FIXTURE_PROJECT_ID,
+          spaceId: FIXTURE_SPACE_ID,
+          nodeIds: [nodeId],
+          userId: FIXTURE_USER_ID,
+          action: "transcribe",
+          label: MODEL,
+          credits: async () => 2,
+          enqueue: async () => tasksQueue.add("run-task", jobData, { attempts: 1 }),
+          logTag: "transcribe_integration",
+        });
+        expect(admitted).toBe("pending");
+        const queued = await taskService.getByIdInternal(taskId);
+        const job = await tasksQueue.getJob(queued!.arqJobId!);
+        expect(job?.data).toEqual(jobData);
+        await waitForExecution(job!);
+
+        const completed = await taskService.getByIdInternal(taskId);
+        expect(completed).toMatchObject({
+          status: "completed",
+          creditsUsed: credits,
+          billedCredits: credits,
+          result: { outputs: [{ content: text }], finish_reason: "stop" },
+        });
+        expect(completed?.billedAt).toBeInstanceOf(Date);
+        const node = await waitForNodeData(hocuspocus, docName, nodeId,
+          (data) => settled(data) && data["bodyText"] === text,
+          10_000, `transcription ${taskId} content and counts reached Yjs`);
+        expect(node["bodyText"]).toBe(text);
+        expect(node["taskCounts"]).toEqual({ running: 0, done: 1, failed: 0, expired: 0 });
+        expect(readingCtrl.requests).toHaveLength(1);
+        expect(readingCtrl.requests[0]).toMatchObject({
+          model: MODEL,
+          backend: "google-vertex",
+          items: [{ url: params.source_url, ledgerType: params.source_mime_type }],
+        });
+
+        const historyBefore = await db.select().from(schema.nodeHistory)
+          .where(eq(schema.nodeHistory.taskId, taskId));
+        expect(historyBefore).toHaveLength(1);
+        expect(historyBefore[0]).toMatchObject({
+          nodeId,
+          content: text,
+          status: "success",
+          metadata: { model: MODEL, credits, params },
+        });
+        const nodeTasksBefore = await db.select().from(schema.nodeTasks)
+          .where(eq(schema.nodeTasks.taskId, taskId));
+        expect(nodeTasksBefore).toHaveLength(1);
+        expect(nodeTasksBefore[0]).toMatchObject({
+          nodeId,
+          action: "transcribe",
+          label: MODEL,
+          status: "done",
+          nodeHistoryId: historyBefore[0]!.id,
+          errorMessage: null,
+        });
+        const usageBefore = await db.select().from(schema.agentUsageRecords)
+          .where(eq(schema.agentUsageRecords.operationKey, `task:${taskId}`));
+        expect(usageBefore).toHaveLength(1);
+        expect(usageBefore[0]).toMatchObject({ feature: "canvas_transcribe", model: MODEL, provider: "openrouter" });
+        expect(Number(usageBefore[0]!.costUsd)).toBe(costUsd);
+        expect(Number(usageBefore[0]!.credits)).toBe(credits);
+        const ledgerBefore = await db.select().from(schema.creditLedger)
+          .where(eq(schema.creditLedger.referenceId, taskId));
+        expect(ledgerBefore).toHaveLength(credits === 0 ? 0 : 1);
+        if (credits > 0) {
+          expect(ledgerBefore[0]).toMatchObject({ entryType: "spend", studioId: FIXTURE_STUDIO_ID });
+          expect(Number(ledgerBefore[0]!.amount)).toBe(-credits);
+        }
+        expect(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID)).toBeCloseTo(balanceBefore - credits, 6);
+        const hold = await db.select().from(schema.creditHolds)
+          .where(eq(schema.creditHolds.referenceId, taskId));
+        expect(hold).toHaveLength(1);
+        expect(hold[0]!.status).toBe("released");
+
+        const duplicate = await tasksQueue.add("run-task", jobData, { attempts: 1 });
+        await waitForExecution(duplicate);
+        expect(readingCtrl.requests).toHaveLength(1);
+        expect(await db.select().from(schema.creditLedger)
+          .where(eq(schema.creditLedger.referenceId, taskId))).toEqual(ledgerBefore);
+        expect(await db.select().from(schema.agentUsageRecords)
+          .where(eq(schema.agentUsageRecords.operationKey, `task:${taskId}`))).toEqual(usageBefore);
+        expect(await db.select().from(schema.nodeHistory)
+          .where(eq(schema.nodeHistory.taskId, taskId))).toEqual(historyBefore);
+        expect(await db.select().from(schema.nodeTasks)
+          .where(eq(schema.nodeTasks.taskId, taskId))).toEqual(nodeTasksBefore);
+        expect(await creditLotService.getSpendableCredits(FIXTURE_STUDIO_ID)).toBeCloseTo(balanceBefore - credits, 6);
+        expect((await taskService.getByIdInternal(taskId))?.billedAt).toEqual(completed!.billedAt);
+        expect((await readNodeData(hocuspocus, docName, nodeId))?.["bodyText"]).toBe(text);
+      });
+    });
   });
 });

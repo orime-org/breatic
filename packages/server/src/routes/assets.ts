@@ -41,10 +41,13 @@ import {
   type UploadFinishJob,
 } from "@breatic/domain";
 import {
+  issueTransferTicket,
   issueUploadTicket,
   issueUploadTicketBatch,
+  transferTicketMaxBytes,
   type TicketOutcome,
 } from "@server/modules/asset/upload-ticket.service.js";
+import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
@@ -100,6 +103,9 @@ assets.get("/upload-config", requireAuth, async (c) => {
       uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
       uploadStatusPollSeconds: upload.upload_status_poll_seconds,
       assetUrlPrefix: store.publicUrl(""),
+      // The largest body a route reads (inner#1006); past it the browser
+      // moves the body through a transfer upload, on the routes that take one.
+      maxRequestBodyBytes: getRequestBodyMaxBytes(),
     },
   });
 });
@@ -281,11 +287,17 @@ const uploadTicketBatchSchema = z
   });
 
 /**
- * The wire shape of a ticket or a dedup hit.
+ * The wire shape of an opened upload, a dedup hit or an upload that did not
+ * open.
  * @param outcome - The answer, other than a refusal.
  * @returns What the browser reads.
  */
 function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Record<string, unknown> {
+  if (outcome.kind === "openFailed") {
+    // The grant and the row are already settled; the row is what the node
+    // shows failed, and the browser keeps the File under it for a retry.
+    return { openFailed: { reason: outcome.reason }, taskId: outcome.taskId };
+  }
   return outcome.kind === "alreadyExists"
     ? {
         alreadyExists: true,
@@ -298,7 +310,8 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         height: outcome.height,
       }
     : {
-        ticket: outcome.ticket,
+        uploadId: outcome.uploadId,
+        token: outcome.token,
         storageKey: outcome.storageKey,
         uploadUrl: outcome.uploadUrl,
         kind: outcome.assetKind,
@@ -312,8 +325,8 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
 }
 
 /**
- * `POST /assets/upload-ticket` — the permission slip the browser carries to
- * the ingest Worker (design §4.1).
+ * `POST /assets/upload-ticket` — opens the upload the browser sends its parts
+ * to (design §4.1, inner#1595).
  *
  * It runs the whole gate — project access, the upload cap, the dedup pass, the
  * storage allowance — and then leaves behind the one row that survives until
@@ -331,7 +344,8 @@ assets.post(
     const user = c.get("user");
     const body = c.req.valid("json");
 
-    // A batch answers every file in order, each a ticket, a hit or a refusal.
+    // A batch answers every file in order, each an opened upload, a hit, a
+    // refusal or an upload that did not open.
     if ("items" in body) {
       await projectService.assertAccess(body.project_id, user.id, "editor");
       const studioId = await assetService.resolveOwnerStudioId(body.project_id);
@@ -375,7 +389,48 @@ assets.post(
     if (outcome.kind === "refused") {
       return c.json({ error: { message: t("server.error.upload_too_large") } }, 413);
     }
-    return c.json({ data: ticketBody(outcome) }, outcome.kind === "alreadyExists" ? 200 : 201);
+    // An upload that did not open is still an answered request: the grant and
+    // row were written and settled, and a retry asks for a new one.
+    return c.json({ data: ticketBody(outcome) }, outcome.kind === "ticket" ? 201 : 200);
+  },
+);
+
+// ── Transfer ticket (inner#1006) ────────────────────────────────────
+
+/**
+ * What the browser sends for a transfer ticket: the project the request is
+ * for and the transfer file's whole size. Anything else it sends is ignored;
+ * the type, the file name and the key are the server's.
+ */
+const transferTicketSchema = z.object({
+  project_id: z.string().uuid(),
+  size: z
+    .number()
+    .int()
+    .positive()
+    .refine((size) => size <= transferTicketMaxBytes(), "size is over the transfer cap"),
+});
+
+/**
+ * `POST /assets/transfer-ticket` — the ticket for a request body too large
+ * for the API (inner#1006): the browser writes it as a transfer file, sends
+ * it to the ingest Worker like any upload, and then hands the route that
+ * body was for a reference instead. Its own rate limit, so moving a big paste
+ * never eats the media-upload allowance; the same editor check as the three
+ * routes that take a reference.
+ */
+assets.post(
+  "/transfer-ticket",
+  requireAuth,
+  rateLimitFor("transfer-ticket", "user"),
+  validate("json", transferTicketSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    await projectService.assertAccess(body.project_id, user.id, "editor");
+    const studioId = await assetService.resolveOwnerStudioId(body.project_id);
+    const ticket = await issueTransferTicket({ userId: user.id, studioId, projectId: body.project_id }, body.size);
+    return c.json({ data: ticketBody(ticket) }, 201);
   },
 );
 

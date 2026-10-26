@@ -303,9 +303,9 @@ const SPELLINGS = [
     name: "deepseek",
     authHeader: "authorization",
     authPrefix: "Bearer ",
-    on: { thinking: { type: "enabled" }, reasoningEffort: "high" },
+    on: { thinking: { type: "enabled" }, reasoningEffort: "max" },
     off: { thinking: { type: "disabled" } },
-    onWire: { thinking: { type: "enabled" }, reasoning_effort: "high" },
+    onWire: { thinking: { type: "enabled" }, reasoning_effort: "max" },
     offWire: { thinking: { type: "disabled" } },
   },
   {
@@ -367,6 +367,18 @@ describe("callOptionsFor", () => {
       expect(callOptionsFor(model, { thinking: false, cache: false }).providerOptions).toEqual({ [name]: off });
     },
   );
+
+  // inner#1650 measured DeepSeek Flash 1017 at `max` and Claude at `high`.
+  it.each([
+    ["deepseek/deepseek-v4.1-flash-1017", "max"],
+    ["anthropic/claude-opus-5.5", "high"],
+  ])("asks OpenRouter for %s to think at %s", async (model, effort) => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    const { callOptionsFor } = await freshLlm();
+    const { providerOptions } = callOptionsFor(model, { thinking: true, cache: false });
+    expect(providerOptions).toEqual({ openrouter: { reasoning: { effort } } });
+    expect((await callWith(model, providerOptions)).body.reasoning).toEqual({ effort });
+  });
 
   it("takes the fallback when the caller has no model to name", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
@@ -649,6 +661,23 @@ describe("the Anthropic direct route", () => {
   it("passes the dotted id through to OpenRouter unchanged", async () => {
     keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
     expect((await callWith("anthropic/claude-opus-5.5")).body.model).toBe("anthropic/claude-opus-5.5");
+  });
+});
+
+describe("the DeepSeek direct route", () => {
+  it("sends the name DeepSeek serves Flash 1017 under", async () => {
+    keys.current = { DEEPSEEK_API_KEY: "k" };
+    expect((await callWith("deepseek/deepseek-v4.1-flash-1017")).body.model).toBe("deepseek-flash");
+  });
+
+  it("leaves a name DeepSeek serves as it is", async () => {
+    keys.current = { DEEPSEEK_API_KEY: "k" };
+    expect((await callWith("deepseek/deepseek-v4-pro")).body.model).toBe("deepseek-v4-pro");
+  });
+
+  it("passes the pinned id through to OpenRouter unchanged", async () => {
+    keys.current = { OPENROUTER_API_KEY: "sk-or-test" };
+    expect((await callWith("deepseek/deepseek-v4.1-flash-1017")).body.model).toBe("deepseek/deepseek-v4.1-flash-1017");
   });
 });
 

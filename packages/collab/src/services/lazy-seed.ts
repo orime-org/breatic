@@ -43,9 +43,15 @@ import {
   serverAnalyticsOn,
   sessionCookieName,
 } from "@breatic/core";
-import { CONSENT_COOKIE_NAME, deriveId, parseConsentCookie, parseDocName, spaceContentDocName } from "@breatic/shared";
+import {
+  CONSENT_COOKIE_NAME,
+  deriveId,
+  parseConsentCookie,
+  parseDocName,
+  spaceContentDocName,
+} from "@breatic/shared";
+import { readCookie } from "@collab/infra/cookie.js";
 import { encodeInitialSpaceContent } from "@breatic/shared/document-body";
-import { readCookie } from "@collab/hooks/auth.js";
 import { reportSpaceCreated } from "@collab/services/space-analytics.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 

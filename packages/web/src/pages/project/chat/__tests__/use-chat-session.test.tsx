@@ -16,8 +16,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { t } from '@breatic/shared';
+
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: toastSpy.error, success: vi.fn(), info: vi.fn() } }));
 import { renderHook, waitFor, act } from '@testing-library/react';
 import type * as ChatApiModule from '@web/data/api/chat';
+import type * as AssetsApiModule from '@web/data/api/assets';
 
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
@@ -33,12 +38,34 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
   },
 }));
 
+// Chat sends every body through bodyOrTransfer, which first asks for the
+// upload config. Answer it here with the shipped request-body limit, so the
+// real threshold runs (these bodies are small and go as they are) and no
+// request reaches the network, where fake timers would never settle it.
+vi.mock('@web/data/api/assets', async (importOriginal) => {
+  const actual = await importOriginal<typeof AssetsApiModule>();
+  return {
+    ...actual,
+    assetsApi: {
+      ...actual.assetsApi,
+      fetchUploadConfig: async () => ({
+        maxUploadBytes: 2 * 1024 * 1024 * 1024,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        uploadIdleTimeoutMs: 30_000,
+        assetUrlPrefix: 'https://assets.test.invalid/',
+        uploadStatusPollSeconds: 5,
+        maxRequestBodyBytes: 1048576,
+      }),
+    },
+  };
+});
+
 import { chatApi } from '@web/data/api/chat';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { _resetForTests, conversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
-import { useChatAttachments } from '@web/stores/chat-attachments';
 import { stubChatWire, turnOpens } from '@web/test-utils/chat-wire';
 import type { WatchedWire } from '@web/test-utils/chat-wire';
 
@@ -71,13 +98,10 @@ function openChatAnswers(
 
 /**
  * 渲染这个 hook。
- * @param listOpen - 会话列表在不在屏幕上。
  * @returns renderHook 的结果。
  */
-function render(
-  listOpen = false,
-): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
-  return renderHook(() => useChatSession('p-1', listOpen, () => ({ spaces: [] })));
+function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
+  return renderHook(() => useChatSession('p-1', () => ({ spaces: [] })));
 }
 
 /**
@@ -267,6 +291,35 @@ describe('a reply as the panel draws it', () => {
   });
 });
 
+describe('a reply resumed after a questionnaire (inner#1542)', () => {
+  it('hands back the same object for the answered part while the rest streams', async () => {
+    const panel = await anOpenPanel();
+    await aReplyStartsArriving(panel);
+    const input = { questions: [{ header: 'Ratio', question: 'Which ratio?', multiSelect: false, options: [{ label: '16:9' }, { label: '9:16' }] }] };
+    act(() => {
+      wire.current()?.push({ type: 'tool-input-available', toolCallId: 'ask-1', toolName: 'ask_user', input });
+      wire.current()?.push({ type: 'data-ask-awaiting', data: { toolCallId: 'ask-1' } });
+      wire.current()?.push({ type: 'tool-output-available', toolCallId: 'ask-1', output: { answers: [{ index: 0, selected: ['9:16'] }] } });
+      wire.current()?.push({ type: 'text-start', id: 't2' });
+      wire.current()?.push({ type: 'text-delta', id: 't2', delta: 'Here' });
+    });
+    await waitFor(() => {
+      expect(panel.result.current.messages.at(-1)?.content).toBe('Here');
+    });
+    const answered = panel.result.current.messages.at(-2);
+    expect(answered?.questionnaires?.[0]?.state).toBe('answered');
+
+    act(() => {
+      wire.current()?.push({ type: 'text-delta', id: 't2', delta: ' it is' });
+    });
+    await waitFor(() => {
+      expect(panel.result.current.messages.at(-1)?.content).toBe('Here it is');
+    });
+
+    expect(panel.result.current.messages.at(-2)).toBe(answered);
+  });
+});
+
 describe('a turn that failed', () => {
   it('is marked on the reply, and marked as happening now', async () => {
     const panel = await anOpenPanel();
@@ -339,71 +392,60 @@ describe('a turn the reader stopped', () => {
   });
 });
 
-describe('what the panel says went wrong', () => {
-  it('announces it, and forgets it on its own', async () => {
-    const panel = await anOpenPanel();
-    // 面板到位之后才换假时钟:`waitFor` 靠真定时器轮询。
-    vi.useFakeTimers();
+describe('what the panel says went wrong (inner#1530)', () => {
+  beforeEach(() => {
+    toastSpy.error.mockClear();
+  });
+
+  it('says it in a toast, in the words that fit what happened', async () => {
+    await anOpenPanel();
 
     act(() => {
       tell({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' });
-    });
-    expect(panel.result.current.mishap).not.toBeNull();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      tell({ projectId: 'p-1', conversationId: 'c-1', kind: 'turn' });
+      tell({ projectId: 'p-1', conversationId: 'c-1', kind: 'gone' });
+      tell({ projectId: 'p-1', conversationId: 'c-1', kind: 'server', message: 'Too long.' });
     });
 
-    // 出错不是聊天所处的一个状态,是一件在某个时刻发生过的事 —— 它自己会走。
-    expect(panel.result.current.mishap).toBeNull();
+    expect(toastSpy.error.mock.calls.map((call) => call[0])).toEqual([
+      t('chat.error.network'),
+      t('chat.error.turnFailed'),
+      t('chat.conversation.gone'),
+      'Too long.',
+    ]);
   });
 
   it('says nothing about another conversation streaming in the background', async () => {
-    const panel = await anOpenPanel();
+    await anOpenPanel();
 
     act(() => {
       tell({ projectId: 'p-1', conversationId: 'c-other', kind: 'network' });
     });
 
-    expect(panel.result.current.mishap).toBeNull();
+    expect(toastSpy.error).not.toHaveBeenCalled();
   });
 
   it('says it anyway when the reader did it on purpose', async () => {
-    const panel = await anOpenPanel();
+    await anOpenPanel();
 
     act(() => {
       tell({ projectId: 'p-1', conversationId: 'c-other', deliberate: true, kind: 'network' });
     });
 
-    // 改名和删除是读者按下去、等着听回话的事,而它们通常说的正是别的会话。
-    expect(panel.result.current.mishap).not.toBeNull();
+    expect(toastSpy.error).toHaveBeenCalledTimes(1);
   });
 
-  it('gives a word about a row to the list, while the list is on screen', async () => {
-    const panel = render(true);
+  it('says a word about a row the same way as any other', async () => {
+    const open = render();
     await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
+      expect(open.result.current.status).toBe('ready');
     });
 
     act(() => {
-      tell({ projectId: 'p-1', conversationId: 'c-2', deliberate: true, aboutRow: true, kind: 'network' });
+      tell({ projectId: 'p-1', conversationId: 'c-2', deliberate: true, kind: 'network' });
     });
 
-    // 列表开着的时候盖住整列,面板自己那条线在输入框上边 —— 画在那儿没人读得到。
-    expect(panel.result.current.rowMishap).not.toBeNull();
-    expect(panel.result.current.mishap).toBeNull();
-  });
-
-  it('keeps it in the panel when the list is shut', async () => {
-    const panel = await anOpenPanel();
-
-    act(() => {
-      tell({ projectId: 'p-1', conversationId: 'c-2', deliberate: true, aboutRow: true, kind: 'network' });
-    });
-
-    // 会话头也能改名,那时候抽屉是关着的。
-    expect(panel.result.current.mishap).not.toBeNull();
-    expect(panel.result.current.rowMishap).toBeNull();
+    expect(toastSpy.error).toHaveBeenCalledWith(t('chat.error.network'));
   });
 
   it('is not held for a reader who was not looking', async () => {
@@ -413,11 +455,9 @@ describe('what the panel says went wrong', () => {
     act(() => {
       tell({ projectId: 'p-1', conversationId: 'c-1', kind: 'network' });
     });
-    const back = await anOpenPanel();
+    await anOpenPanel();
 
-    // 回来看到的是一条不再动的会话,那就是他知道出事的方式;没有任何地方
-    // 替他存着这条消息。
-    expect(back.result.current.mishap).toBeNull();
+    expect(toastSpy.error).not.toHaveBeenCalled();
   });
 });
 
@@ -499,7 +539,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
 
   it('reads them at the press, before anything is waited on', async () => {
     const readSpaces = vi.fn(() => read);
-    const panel = renderHook(() => useChatSession('p-1', false, readSpaces));
+    const panel = renderHook(() => useChatSession('p-1', readSpaces));
     await waitFor(() => {
       expect(panel.result.current.status).toBe('ready');
     });
@@ -518,7 +558,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       currentSpaceMaxChars: 16,
       spaceListMaxItems: 2,
     });
-    const panel = renderHook(() => useChatSession('p-1', false, () => read));
+    const panel = renderHook(() => useChatSession('p-1', () => read));
     await waitFor(() => {
       expect(panel.result.current.status).toBe('ready');
     });
@@ -538,9 +578,9 @@ describe('the Spaces a message carries (inner#1413)', () => {
     });
   });
 
-  it('sends nothing and says so beside the plus sign when the limits cannot be read', async () => {
+  it('sends nothing and says so in a toast when the limits cannot be read', async () => {
     vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
-    const panel = renderHook(() => useChatSession('p-1', false, () => read));
+    const panel = renderHook(() => useChatSession('p-1', () => read));
     await waitFor(() => {
       expect(panel.result.current.status).toBe('ready');
     });
@@ -553,7 +593,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
     });
 
     expect(wire.sent()).toHaveLength(0);
-    expect(useChatAttachments.getState().noticeByConversation['c-1']).toEqual({ key: 'sendUnavailable' });
+    expect(toastSpy.warning).toHaveBeenCalledWith('Couldn’t send right now. Try again.');
     expect(panel.result.current.draft).toBe('summarise this');
   });
 });

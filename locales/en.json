@@ -8,6 +8,8 @@
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
+      "payload_too_large": "This request is larger than {limit}. Shorten the prompt or the text it refers to.",
+      "transfer_invalid": "The uploaded content could not be used. Please try again.",
       "internal": "Internal server error"
     },
     "credit": {
@@ -17,6 +19,7 @@
       "in_debt": "This Studio owes {owed} credits. Credits assigned next pay that off first.",
       "unassigned": "You have {available} credits that are not assigned to a studio yet. Assign them to use them.",
       "none": "Not enough credits. Add credits to continue.",
+      "held_by_running": "{held} credits are held by running tasks. {available} available now.",
       "granted_elsewhere": "Your credits were granted, and can only be used in your personal Studio.",
       "refund_already_asked": "This purchase has already been sent for a refund.",
       "refund_restored": "Credits were restored to this purchase after its refund failed, so it can no longer be refunded.",
@@ -31,6 +34,7 @@
       "email_taken": "Email already registered",
       "token_expired": "Session expired, please log in again",
       "logout_success": "Logged out",
+      "logout_others_success": "Signed out of your other devices",
       "not_authenticated": "Not authenticated",
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
@@ -60,7 +64,9 @@
       "member_limit_reached_for_invitee": "This studio is full. Ask its Admin to make room.",
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
-      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends."
+      "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends.",
+      "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
+      "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "project": {
       "join_already_member": "You're already a member of this project.",
@@ -79,7 +85,9 @@
       "not_found": "Project not found",
       "archived": "This project is archived and can only be viewed.",
       "copy_name": "Copy of {name}",
-      "leave_owner": "The owner has to transfer ownership before leaving."
+      "leave_owner": "The owner has to transfer ownership before leaving.",
+      "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
+      "invite_mail_failed": "The email could not be sent. Please try again."
     },
     "text_tool": {
       "already_running": "Another text tool is already running. Please wait."
@@ -165,7 +173,10 @@
       "attachments_too_many": "Too many items are attached. At most {limit, number} may be attached; this message has {actual, number}.",
       "current_space_too_long": "The open Space's content is too long. It may hold at most {limit, number} characters; this holds {actual, number}.",
       "spaces_too_many": "Too many Spaces are listed. At most {limit, number} may be listed; this message lists {actual, number}.",
-      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}."
+      "references_too_many": "Too many references to attachments. A message may carry at most {limit, number}; this one carries {actual, number}.",
+      "ask_not_found": "This question card is not in this conversation.",
+      "ask_already_answered": "This question card has already been answered.",
+      "answer_mismatch": "These answers do not fit the questions on the card."
     },
     "mail": {
       "studio_invite": {
@@ -231,12 +242,24 @@
         "subject": "Your verification code",
         "lead": "Enter this code on the sign-up page to finish creating your account.",
         "footer": "This code expires in {minutes, plural, one {# minute} other {# minutes}}. If you didn't try to sign up, you can ignore this email."
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} invited you to join {project}",
+        "lead": "<b>{inviter}</b> invited you to collaborate on the project <b>{project}</b> as <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code>.",
+        "action": "Register and join"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} invited you to join {studio}",
+        "lead": "<b>{inviter}</b> invited you to join the studio <b>{studio}</b> as <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code>.",
+        "action": "Register and join"
       }
     },
     "mini_tool": {
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
-      "foreignSource": "This file cannot be processed."
+      "foreignSource": "This file cannot be processed.",
+      "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
+      "sourceTooLarge": "This tool takes files up to {size}."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -337,7 +360,8 @@
     },
     "error": {
       "network": "Network error",
-      "turnFailed": "This reply could not be finished. Try sending it again."
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "turnTooLong": "This turn had too much to process and could not finish. Try a narrower request."
     },
     "message": {
       "interrupted": "Stopped",
@@ -350,10 +374,25 @@
     "tool": {
       "unfinished": "Stopped",
       "failure": {
-        "upstream": "Execution error",
-        "unreachable": "Execution error",
-        "generic": "Execution error"
+        "busy": "the service ran into an error, try again later",
+        "noConnection": "couldn't reach the service, try again later",
+        "refused": "the service didn't accept this request",
+        "unavailable": "this feature is unavailable right now",
+        "badAnswer": "the service returned something unusable",
+        "linkUnreachable": "this address can't be opened, try another link",
+        "fileTooLarge": "the file is too large",
+        "unsupportedType": "this file format isn't supported",
+        "emptyFile": "the file is empty",
+        "tooSlow": "the file downloaded too slowly to finish",
+        "storageFull": "the Studio's storage is full",
+        "noPermission": "you don't have edit access in this Project",
+        "notMember": "you're no longer a member of this Project",
+        "tooFrequent": "too many links were fetched just now, wait a minute and try again",
+        "declined": "the service declined to handle this content",
+        "ourFault": "the server ran into a problem, try again"
       },
+      "failedLine": "{step} didn't finish: {reason}",
+      "failedStep": "{step} didn't finish",
       "failureTimes": "{line} ×{count}",
       "searching": "Searching for “{query}”",
       "searchingImages": "Looking for pictures of “{query}”",
@@ -365,7 +404,28 @@
       "readingGuide": "Reading how the product works",
       "understanding": "Looking at the media",
       "judging": "Weighing it up",
-      "running": "Calling {tool}"
+      "searchingConversations": "Searching your conversations",
+      "readingConversation": "Reading the conversation",
+      "readingNodeHistory": "Checking the node's history",
+      "readingActivity": "Checking Project activity",
+      "running": "Calling {tool}",
+      "step": {
+        "webSearch": "Search for “{query}”",
+        "searchImages": "Picture search for “{query}”",
+        "understandMedia": "Looking at the media",
+        "saveImage": "Saving the picture",
+        "judge": "Weighing it up",
+        "proposeCanvas": "Drafting a proposal",
+        "proposeDocument": "Drafting an edit",
+        "listModels": "Checking available models",
+        "canvasCapabilities": "Checking what the Canvas can do",
+        "productGuide": "Checking how the product works",
+        "searchConversations": "Searching your conversations",
+        "readConversation": "Reading the conversation",
+        "readNodeHistory": "Checking the node's history",
+        "readActivity": "Checking Project activity",
+        "other": "Calling {tool}"
+      }
     },
     "loadEarlier": "Load earlier messages",
     "conversation": {
@@ -446,6 +506,19 @@
       "kind": "{kind, select, canvas {Canvas} image {Image} video {Video} audio {Audio} text {Text} other {Item}}",
       "nodes": "{count, plural, one {# node} other {# nodes}}",
       "more": "{count} more"
+    },
+    "questionnaire": {
+      "submit": "Submit",
+      "hint": "If none of these fit, you can reply in the box below.",
+      "other": "Other…",
+      "ownWords": "Write your answer…",
+      "multi": "Pick one or more",
+      "skipped": "Skipped",
+      "yourAnswers": "Your answers",
+      "replied": "You replied in the chat",
+      "show": "Show",
+      "hide": "Hide",
+      "atLeastOne": "Answer at least one question."
     }
   },
   "canvas": {
@@ -531,11 +604,20 @@
       "history": "History",
       "snapshot": "Save snapshot",
       "download": "Download",
-      "understand": "Understand"
+      "understand": "Understand",
+      "transcribe": "Transcribe"
     },
     "understand": {
       "couldNotStart": "Could not start. Try again.",
       "sourceGone": "The node being read is gone. This reading has no wire to it."
+    },
+    "transcribe": {
+      "title": "Transcribe",
+      "keepFillers": "Keep filler words",
+      "keepFillersOn": "Writes um, uh and the like as spoken",
+      "keepFillersOff": "Leaves out um, uh and the like, and may reword a few others",
+      "couldNotStart": "Could not start the transcription. Try again.",
+      "sourceGone": "The node being transcribed is gone. This transcription has no wire to it."
     },
     "generatePanel": {
       "focus": "Focus",
@@ -592,6 +674,7 @@
       "errorCredits": "Not enough credits to generate.",
       "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
       "errorFailed": "Couldn't start generation. Please try again.",
+      "errorTooLargeNoLimit": "This request is too large. Shorten the prompt or the text it refers to.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference {kind, select, video {videos} audio {audio clips} other {images}} — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
@@ -749,7 +832,14 @@
         "motion_prompt": "Motion",
         "append_duration": "Added length",
         "ambience": "Ambience",
-        "double_output": "Two takes"
+        "double_output": "Two takes",
+        "light_azimuth": "Light direction",
+        "light_elevation": "Light height",
+        "light_color": "Light colour",
+        "light_color_hex": "Custom light colour",
+        "light_intensity": "Intensity",
+        "light_quality": "Light quality",
+        "strength": "Strength"
       },
       "paramField": {
         "speaker": "Name",
@@ -906,8 +996,8 @@
       "failure": {
         "aborted": "The upload stopped before it finished.",
         "over_cap": "This file is larger than uploads are allowed to be.",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {Larger than a transcription takes.} other {Larger than a transcription takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a transcription takes ({file}).} other {Larger than a transcription takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a transcription takes ({file}, {bytes}).} other {Larger than a transcription takes ({file}, {bytes}). The limit is {limit}.}}}}}}} other {{file, select, none {{limit, select, unknown {Larger than a reading takes.} other {Larger than a reading takes. The limit is {limit}.}}} other {{bytes, select, none {{limit, select, unknown {Larger than a reading takes ({file}).} other {Larger than a reading takes ({file}). The limit is {limit}.}}} other {{limit, select, unknown {Larger than a reading takes ({file}, {bytes}).} other {Larger than a reading takes ({file}, {bytes}). The limit is {limit}.}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {Cannot transcribe this file type.} other {Cannot transcribe this file type ({type}).}}} other {{type, select, none {Cannot transcribe this file type ({file}).} other {Cannot transcribe this file type ({file}, {type}).}}}}} other {{file, select, none {{type, select, none {Cannot understand this file type.} other {Cannot understand this file type ({type}).}}} other {{type, select, none {Cannot understand this file type ({file}).} other {Cannot understand this file type ({file}, {type}).}}}}}}",
         "expired": "This ran out of time.",
         "no_result": "This run produced nothing.",
         "source_unreachable": "This address would not open.",
@@ -916,15 +1006,18 @@
         "empty": "Nothing came back.",
         "internal": "Internal server error.",
         "no_credits": "No credits available.",
+        "credits_held": "Credits are held by running tasks.",
         "declined": "The model declined this request.",
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
-        "no_audio_track": "This video has no audio track."
+        "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
+        "cut_short": "This is too long to transcribe in full."
       },
       "kind": {
         "upload": "Upload",
         "generate": "Generate",
-        "understand": "Understand"
+        "understand": "Understand",
+        "transcribe": "Transcribe"
       }
     },
     "panel": {
@@ -974,6 +1067,29 @@
         },
         "mark": {
           "label": "Markup"
+        },
+        "angle": {
+          "label": "Multi-angle",
+          "prompt": "Anything to add, if you like — e.g. keep the background sharp"
+        },
+        "relight": {
+          "label": "Relight",
+          "prompt": "Anything to add about the light, if you like — e.g. candle light, neon sign behind",
+          "slot": {
+            "light_reference": "Pick the picture whose light to copy"
+          }
+        },
+        "restyle": {
+          "label": "Restyle",
+          "prompt": "Anything to add, if you like — e.g. keep the colours softer",
+          "slotTitle": "Style pictures",
+          "slot": {
+            "style": "Pick up to three pictures whose style to use"
+          }
+        },
+        "quickEdit": {
+          "label": "Quick edit",
+          "prompt": "Say what to change — e.g. make it a rainy night, swap the shirt for a black jacket"
         }
       },
       "video": {
@@ -1038,6 +1154,40 @@
         "extend": {
           "label": "Extend",
           "prompt": "Describe the sound to add"
+        },
+        "denoise": {
+          "label": "Denoise"
+        },
+        "normalize": {
+          "label": "Normalize loudness",
+          "note": "Peak limit −1 dBTP"
+        },
+        "speed": {
+          "label": "Speed"
+        },
+        "cut": {
+          "label": "Cut"
+        },
+        "eq": {
+          "label": "Equalizer"
+        },
+        "compress": {
+          "label": "Compressor"
+        },
+        "pan": {
+          "label": "Stereo"
+        },
+        "reverb": {
+          "label": "Reverb"
+        },
+        "voice": {
+          "label": "Voice enhance"
+        },
+        "pitch": {
+          "label": "Pitch shift"
+        },
+        "enhance": {
+          "label": "Enhance"
         }
       },
       "param": {
@@ -1076,6 +1226,36 @@
         },
         "cols": {
           "label": "Columns"
+        },
+        "target": {
+          "label": "Target loudness"
+        },
+        "keepPitch": {
+          "label": "Keep pitch"
+        },
+        "eq": {
+          "label": "Preset"
+        },
+        "dynamics": {
+          "label": "Preset"
+        },
+        "pan": {
+          "label": "Left / right"
+        },
+        "width": {
+          "label": "Width"
+        },
+        "room": {
+          "label": "Room"
+        },
+        "amount": {
+          "label": "Amount"
+        },
+        "semitones": {
+          "label": "Semitones"
+        },
+        "cents": {
+          "label": "Cents"
         }
       },
       "panel": {
@@ -1098,7 +1278,9 @@
         "reset": "Reset",
         "imageTooLarge": "This picture is too large to adjust on this device.",
         "sourceTooLargeToExpand": "This picture is already as large as Expand can make it.",
-        "ratioTooLarge": "Larger than Expand can make this picture"
+        "ratioTooLarge": "Larger than Expand can make this picture",
+        "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
+        "sourceTooLarge": "This tool takes files up to {size}."
       },
       "adjust": {
         "exposure": "Exposure",
@@ -1148,6 +1330,22 @@
         "picked": "{picked} / {total} selected",
         "pickAll": "Select all",
         "pickNone": "Select none"
+      },
+      "relight": {
+        "lightTitle": "Light source",
+        "referenceTitle": "Light reference",
+        "optional": "Optional",
+        "followsReference": "Light follows this picture",
+        "referenceNote": "Light comes from this picture. Colour, intensity and quality on the right override it.",
+        "fromReference": "from reference",
+        "sourceFromReference": "Follows the reference"
+      },
+      "dynamics": {
+        "threshold": "Threshold",
+        "ratio": "Ratio",
+        "attack": "Attack",
+        "release": "Release",
+        "makeup": "Make-up gain"
       }
     },
     "template": {
@@ -1206,7 +1404,10 @@
         "resendIn": "Resend in {seconds}s",
         "changeEmail": "Use a different email",
         "newCodeSent": "We sent you a new code."
-      }
+      },
+      "invitedBanner": "{inviterName} invited you to join {targetName}",
+      "invitedEmailMismatch": "This invitation is for {email}. Registering with another email will not receive it.",
+      "inviteClosed": "This invitation is no longer available."
     },
     "onboarding": {
       "title": "Pick your Slug",
@@ -1288,7 +1489,11 @@
       "title": "Leave with work in progress?",
       "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
       "stay": "Stay",
-      "leave": "Leave anyway"
+      "leave": "Leave anyway",
+      "unsyncedDescription": "Some changes have not synced. Refreshing or leaving now may lose them.",
+      "combinedDescription": "Some changes have not synced, and an upload or edit is still in progress. Refreshing or leaving now may lose this work.",
+      "completeDescription": "Changes are synced and operations are complete.",
+      "completeTitle": "Ready to continue"
     },
     "header": {
       "renameFailed": "Couldn't rename the project"
@@ -1332,6 +1537,11 @@
       "confirm": "Leave",
       "done": "You left “{name}”",
       "failed": "Couldn't leave"
+    },
+    "refreshGuard": {
+      "title": "Refresh with work in progress?",
+      "refresh": "Refresh anyway",
+      "failed": "Couldn't refresh. Try again."
     }
   },
   "common": {
@@ -1654,7 +1864,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} is not registered yet. We sent an email inviting them to register.",
+    "awaitingSignup": "Waiting for registration",
+    "pendingTitle": "Pending invitations",
+    "pendingBadge": "{role} · Awaiting response",
+    "revoke": "Revoke",
+    "revokeSuccess": "Invitation revoked.",
+    "revokeFailed": "Could not revoke the invitation."
   },
   "notifications": {
     "title": "Notifications",
@@ -1743,6 +1960,11 @@
       "home": "Studio home",
       "account": "Account",
       "signOut": "Sign out",
+      "logoutOthers": "Sign out of other devices",
+      "logoutOthersTitle": "Sign out of other devices?",
+      "logoutOthersBody": "You will stay signed in here. Every other device is signed out, and canvases and documents open there disconnect right away.",
+      "logoutOthersDone": "Signed out of your other devices",
+      "logoutOthersFailed": "Could not sign out of other devices. Try again.",
       "credits": "Credits",
       "creditsUnavailable": "Unavailable",
       "membership": "Membership",
@@ -1831,9 +2053,12 @@
         "spendableHint": "Generating in this Studio's Projects spends these credits.",
         "noneHint": "No credits are assigned to this Studio yet.",
         "nonePrompt": "Credits have to be assigned to a Studio before they can be spent. Assign them under account credits.",
-        "lotsTitle": "Credits",
+        "lotsTitle": "Credit packs",
         "lotsDebt": "Owed",
         "lotsTotal": "Total",
+        "lotsHeld": "Held by running tasks",
+        "lotsHeldNote": "Charged at the actual cost when they finish; any surplus comes back",
+        "heldHint": "All credits are held by running tasks until they finish.",
         "depletedHint": "This Studio has spent all of its credits.",
         "debtHint": "Credits assigned next will pay off what is owed first.",
         "depletedPrompt": "Assign more credits from your account credits.",
@@ -1885,7 +2110,9 @@
         "pendingBadge": "{role} · pending",
         "revoke": "Revoke",
         "revokeSuccess": "Invitation revoked.",
-        "inviteSent": "Invitation sent."
+        "inviteSent": "Invitation sent.",
+        "inviteSentPendingSignup": "{email} is not registered yet. We sent an email inviting them to register.",
+        "awaitingSignup": "Waiting for registration"
       },
       "settings": {
         "basicTitle": "Basic info",
@@ -1951,10 +2178,9 @@
         "nameLabel": "Name",
         "namePlaceholder": "My project",
         "slugLabel": "Slug",
-        "slugPlaceholder": "my-project",
-        "slugHelperProject": "Part of the project's web address. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only.",
-        "slugHelperCollection": "Part of the collection's web address. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only.",
-        "descriptionLabel": "Description (optional)",
+        "slugPlaceholder": "Generated from the name if left empty",
+        "slugHelperProject": "Part of the project's web address. Left empty, it is generated from the name. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only.",
+        "slugHelperCollection": "Part of the collection's web address. Left empty, it is generated from the name. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only.",
         "create": "Create",
         "cancel": "Cancel",
         "slugFormat": "Start with a lowercase letter; use only lowercase letters, numbers and single hyphens, not at the end.",
@@ -1967,8 +2193,13 @@
         "namePlaceholderStudio": "My studio",
         "namePlaceholderCollection": "My collection",
         "slugPlaceholderStudio": "my-studio",
-        "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "Part of this Studio's web address (/studio/…). {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only."
+        "slugPlaceholderCollection": "Generated from the name if left empty",
+        "slugHelperStudio": "Part of this Studio's web address (/studio/…). {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only.",
+        "nameRequired": "Enter a name.",
+        "slugRequired": "Enter a Slug.",
+        "emailRequired": "Enter an email address.",
+        "slugUnverified": "Couldn't check right now. The server decides when you submit.",
+        "slugLabelOptional": "Slug (optional)"
       },
       "toolbar": {
         "sortLabel": "Sort",
@@ -2237,7 +2468,7 @@
       "month": "Monthly",
       "year": "Yearly"
     },
-    "saveTwoMonths": "Twelve months for the price of ten",
+    "saveTwoMonths": "Two months free",
     "yearSaving": "Save about {percent}% with yearly billing",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2436,6 +2667,13 @@
         "title": "Advertising",
         "description": "Measures which ads lead to sign-ups, purchases and other key steps."
       }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "Page out of date",
+      "description": "This page is out of date and the last action did not go through. Refresh to continue.",
+      "refresh": "Update"
     }
   }
 }

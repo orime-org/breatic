@@ -121,6 +121,17 @@ describe('MiniToolPanelContainer', () => {
     );
   });
 
+  // inner#1304: pressing Run leaves picking, as pressing generate does.
+  it('ends a pick still under way when Run is pressed, and runs', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    render(tree(source('a.png'), onRun));
+    act(() => canvasSessions.of('').getState().startMiniToolSlotPick('src', 'style', 3));
+    expect(canvasSessions.of('').getState().pickSession).not.toBeNull();
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).toHaveBeenCalledTimes(1);
+    expect(canvasSessions.of('').getState().pickSession).toBeNull();
+  });
+
   it('shows a press under way while the draft says it is exporting', () => {
     render(tree(source('a.png'), () => Promise.resolve()));
     act(() => canvasSessions.of('').getState().setMiniToolExporting(true, canvasSessions.of('').getState().panelSession));
@@ -431,5 +442,63 @@ describe('MiniToolPanelContainer', () => {
       expect(screen.getByTestId('mini-tool-expand-ratio-1:1')).not.toHaveAttribute('aria-disabled', 'true');
       expect(screen.getByTestId('mini-tool-expand-ratio-16:9')).toHaveAttribute('aria-disabled', 'true');
     });
+  });
+});
+
+// inner#1305 §7.3: the enhance model's ceilings are said on the press, in the
+// reader's terms, and nothing runs.
+describe('an enhance source past the model\'s ceilings', () => {
+  const ENHANCE = {
+    name: 'veed-clean-audio',
+    display_name: 'Clean Audio',
+    modality: 'audio',
+    mode: ['enhance'],
+    description: '',
+    guide: '',
+    tier: 'internal',
+    generation_time: 30,
+    takes_prompt: false,
+    params: {
+      audio: { description: '', default: null, accepts: 'audio', fill: 'tool', max_total_duration: 1800, max_bytes: 536_870_912 },
+      strength: { description: '', default: 0.85, min: 0, max: 1, step: 0.05, fill: 'tool' },
+    },
+    providers: [],
+  } as unknown as ModelEntry;
+
+  /**
+   * The source audio node.
+   * @param duration - Its length in seconds.
+   * @param size - Its size in bytes.
+   * @returns The node view.
+   */
+  function audio(duration: number, size: number): CanvasNodeView[] {
+    return [
+      { id: 'src', type: 'audio', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.m4a', duration, sizeBytes: size } },
+    ] as unknown as CanvasNodeView[];
+  }
+
+  beforeEach(() => {
+    client.setQueryData(modelCatalogQuery().queryKey, {
+      ...CATALOG,
+      audio: [ENHANCE],
+    } as unknown as ModelCatalog);
+    canvasSessions.of('').getState().closeActivePanel();
+    canvasSessions.of('').getState().openMiniTool('src', 'audio.enhance', { sourceContent: 'a.m4a', params: {} });
+  });
+
+  it('says how long a source the tool takes', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    render(tree(audio(1801, 1_000), onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringContaining('30'));
+  });
+
+  it('says how large a source the tool takes', () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    render(tree(audio(60, 600_000_000), onRun));
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringContaining('512'));
   });
 });

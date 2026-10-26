@@ -45,7 +45,9 @@ every new dependency, which is what that review is for.
 
 It reads media numbers, cuts cover frames, and runs the mini-tools' video
 operations: crop, speed, cut, colour adjustment, audio denoise, stabilisation
-(`libvidstab`) and HDR conversion (`zimg` and `libx265`).
+(`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the audio
+operations: denoise, loudness, speed, cut, equaliser, compressor, pan and
+voice enhance.
 
 Version 3 of the GPL: Alpine configures this build with `--enable-gpl` **and**
 `--enable-version3`, and asked directly it answers
@@ -89,6 +91,21 @@ installed packages while the image is built, as the FFmpeg one above is, so a
 rebuild that resolves `=~8.17` to a later release writes the later one rather
 than repeating what is written here.
 
+### SoX in the media container
+
+| | |
+|---|---|
+| Version | `14.4.2-r14` |
+| Origin | Alpine 3.23, installed with `apk add sox=~14.4` ([packages/ingest/Dockerfile](./packages/ingest/Dockerfile)) |
+| Licence | **GPL-2.0-or-later AND LGPL-2.1-or-later** (Alpine's package metadata) |
+| Source | `https://downloads.sourceforge.net/project/sox/sox/14.4.2/sox-14.4.2.tar.bz2` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/41db20bd083f5123b2d88808f935e7bba0f0a914/community/sox` for the recipe Alpine built it with |
+
+It runs the audio mini-tools' reverb and pitch shift. The container's service
+runs `sox` as a separate program, piping the decoded sound through it, and
+loads none of its libraries. The image carries the licence texts and a
+`SOURCE` file at `/usr/share/sox-source/`, written from the installed package
+while the image is built, as the FFmpeg one above is.
+
 ## Packages in our container images
 
 The `breatic` image carries the production `node_modules` of `server`, `worker`
@@ -116,6 +133,42 @@ front-end bundle covered by the next section.
 | `sax` | `1.6.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `svgo` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/sax-js |
 | `sentry` | `0.45.0` | `packages/server`, `packages/worker`, `packages/collab` → `@sentry/node` → `@sentry/bundler-plugins` | **FSL-1.1-Apache-2.0** (Functional Source License 1.1), per the tarball's `LICENSE.md`: use and redistribution for any purpose other than a product competing with Sentry, becoming Apache-2.0 two years after each release. It is Sentry's command-line tool; `@sentry/node` imports it only from its bundler-plugin entry points (`/vite`, `/rollup`, `/webpack`, `/esbuild`), which none of our services load, so it sits in the image without running | https://github.com/getsentry/cli |
 | `slick` | `1.12.2` | `packages/server` → `mjml` → `mjml-core` → `juice` | Reported as `MIT (http://mootools.net/license.txt)`, which is what its `package.json` declares. Neither the published tarball nor the upstream repository carries a licence file, and that address no longer serves the licence text. We use it under the author's MIT declaration | https://github.com/kamicane/slick |
+
+## Source copied into our own files
+
+### OpenCode's context-overflow wording list
+
+| | |
+|---|---|
+| What | The `patterns` and `exclusions` regular-expression lists that recognise a provider's "prompt is over the context window" error |
+| Where it lives here | [packages/server/src/agent/context-overflow.ts](./packages/server/src/agent/context-overflow.ts), between the comment that names the source and the one that ends the copy; the full licence text is repeated there |
+| Copied from | `packages/ai/src/provider-error.ts` of https://github.com/anomalyco/opencode at commit `16cd50db2278fc9b780808e44d40d1ceaf2f5e80` |
+| Changes | The `request_too_large` entry is left out (it is a byte limit, which shortening the conversation cannot fix); the one entry carrying Chinese characters is written with `\u` escapes |
+| Licence | **MIT**, Copyright (c) 2025 opencode |
+
+```
+MIT License
+
+Copyright (c) 2025 opencode
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## Packages reachable from the front-end bundle
 

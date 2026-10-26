@@ -29,7 +29,7 @@ const MEMORY_RESERVE_FACTOR = 2;
 /**
  * How much room a fold may add to the request it is shortening.
  *
- * What the budget measured carries the memory as it stood; what goes out
+ * What a fold measured carries the memory as it stood; what goes out
  * carries what the fold just wrote. A pass has to stop this far short of the
  * keep line to leave room for it.
  * @param ceilings - An object carrying the two memory ceilings, in code points.
@@ -37,7 +37,7 @@ const MEMORY_RESERVE_FACTOR = 2;
  * @param ceilings.memory_project_max_size - The project ceiling.
  * @returns The reserve, in tokens at a code unit each.
  */
-function reservedForMemory(ceilings: {
+export function memoryReserveTokens(ceilings: {
   memory_conversation_max_size: number;
   memory_project_max_size: number;
 }): number {
@@ -55,8 +55,8 @@ const agentConfigSchema = z.object({
   // provider it lands on as an empty id, and `deepseek/` reaches DeepSeek as
   // an empty id too once that key is set, because a direct route strips the
   // prefix it matched.
-  default_model: z.string().regex(/[^/]$/).default("anthropic/claude-opus-5.5"),
-  consolidation_model: z.string().regex(/[^/]$/).default("anthropic/claude-opus-5.5"),
+  default_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
+  consolidation_model: z.string().regex(/[^/]$/).default("deepseek/deepseek-v4.1-flash-1017"),
   /**
    * How long a cached prompt prefix lives, for the providers that cache only
    * when asked (Claude). Writes cost 1.25x the input price at 5m and 2x at 1h;
@@ -161,30 +161,32 @@ const agentConfigSchema = z.object({
    */
   space_list_max_items: z.number().int().positive().default(200),
   /**
-   * How long an assembled request may be before a consolidation runs, in
-   * tokens.
-   *
-   * Measured against everything about to go to the model — system prompt,
-   * memory, tool definitions, history and this turn's question
-   * — because those are what fill a context window, and a budget that only
-   * counted the history would be blind to the segments it cannot shorten.
-   *
-   * The size is the provider's own count from the last turn. What it has no
-   * count for is measured in characters, a character counted as a token: a
-   * character is never more than a token in the tokenizers this build meets,
-   * so that can only fire early.
-   */
-  memory_budget_tokens: z.number().int().positive().default(850000),
-  /**
    * What one consolidation leaves behind, in tokens.
    *
-   * A pass takes whole turns from the oldest end until what remains is at or
-   * under this. Written as "what is left" rather than "how much to take"
-   * because a turn has no upper bound — forty model calls, every tool result
-   * stored whole — so no fixed amount can promise the reassembled request
-   * lands under the budget, and that promise is the point.
+   * A fold takes whole turns from the oldest end until what remains is at or
+   * under the lower of this and the main model's window less
+   * `max_output_tokens`, less the room memory itself takes. A fold runs only
+   * when the provider's own count leaves no room or the provider turned the
+   * request away as too long (inner#1567).
    */
   memory_keep_tokens: z.number().int().positive().default(500000),
+  /**
+   * The main model's context window when the model directory cannot say, in
+   * tokens: the smallest window among the providers that serve the default
+   * model.
+   */
+  context_window_fallback_tokens: z.number().int().positive().default(1000000),
+  /**
+   * How many folds a provider's "context too long" may set off in one turn.
+   * Past it the turn ends as too long rather than paying for another fold.
+   */
+  overflow_folds_per_turn: z.number().int().min(0).default(2),
+  /**
+   * How many times one fold halves what it hands the consolidation model
+   * after that call is turned away as too long; past it the window is
+   * discarded the way a failed fold is.
+   */
+  consolidation_shrink_attempts: z.number().int().min(0).default(6),
   /**
    * How much page text one `web_search` call asks the service for, in tokens.
    *
@@ -229,6 +231,21 @@ const agentConfigSchema = z.object({
    * configuration yet at that point.
    */
   image_search_timeout_ms: z.number().min(1).max(MAX_TIMER_MS).default(10000),
+  /** Native picture support override and public model catalog cache timing. */
+  main_model_sees_pictures: z.enum(["auto", "yes", "no"]).default("auto"),
+  model_catalog_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(1000),
+  model_catalog_ttl_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(300000),
+  model_catalog_retry_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(30000),
+  /** Native JPEG request budgets and the fallback token estimate per occurrence. */
+  chat_pictures_max: z.number().int().min(2).max(100).default(50),
+  chat_pictures_max_bytes: z.number().int().positive().default(20971520),
+  picture_tokens_estimate: z.number().int().positive().default(4784),
+  /** Version-one JPEG generation parameters and bounded preparation concurrency. */
+  agent_picture_long_edge: z.number().int().positive().default(1024),
+  agent_picture_quality: z.number().int().min(1).max(100).default(85),
+  agent_picture_concurrency: z.number().int().positive().default(4),
+  /** Maximum number of ordered items in one understanding request. */
+  understand_media_max_items: z.number().int().positive().default(10),
   /**
    * The largest file `understand_media` will take, in bytes, for all three
    * kinds alike.
@@ -293,7 +310,8 @@ const agentConfigSchema = z.object({
    */
   judge_likelihood_timeout_ms: z.number().int().min(1).max(MAX_TIMER_MS).default(10_000),
   /**
-   * How much the model may write about one piece of media, in tokens.
+   * How much the model may write about one ordered media batch, in tokens.
+   * All items share this output allowance.
    *
    * The same bounds and the same default as `web_search_max_tokens`: both cap
    * one answer from one model, and a floor matters here because a description
@@ -313,29 +331,30 @@ const agentConfigSchema = z.object({
   usage_lookup_attempts: z.number().int().min(1).max(20).default(6),
   /** LLM call retry budget (maxRetries), injected by the model-call wrapper. AI SDK default is 2 (#1625 Slice 3). */
   llm_max_retries: z.number().int().min(0).default(2),
+  /** How many rows one page of a record tool holds: conversations, hits, tasks, versions (inner#1469). */
+  records_page_size: z.number().int().min(1).max(100).default(20),
+  /** How many words of a conversation search are matched; the rest are left out. */
+  records_search_max_terms: z.number().int().min(1).max(20).default(5),
+  /** How many characters a search hit shows on each side of the first match. */
+  records_snippet_chars: z.number().int().min(1).default(80),
+  /** How long a node version's prompt and its content (text, or a value that is one link and nothing else) may be in characters before it is cut. */
+  records_version_text_max_chars: z.number().int().min(100).default(4000),
+  /** How long one page of a read conversation may be, in characters; a page still holds at least one whole turn. Each text part is cut to this length, and a search matches a text part only that far. */
+  records_page_max_chars: z.number().int().min(1000).default(24000),
+  /** How long a version's parameters, written as one line of JSON, may be in characters. */
+  records_params_max_chars: z.number().int().min(10).default(400),
+  /** How long the words of one tool call's input, or of its result, may be in characters when a message is read back; a search matches a tool's input cut to the same length, never its result. A questionnaire (an ask_user call that did not fail) is written and matched whole, its answers included. */
+  records_tool_text_max_chars: z.number().int().min(10).default(600),
 }).superRefine((config, ctx) => {
-  // A consolidation runs when the request is over the budget and takes turns
-  // until what remains is at or under the keep line. Put the keep line at or
-  // above the budget and the loop stops before it has taken anything: the
-  // plan comes back empty, folding never happens, and every turn from then on
-  // goes out at whatever length it happens to be — with nothing said anywhere.
-  if (config.memory_keep_tokens >= config.memory_budget_tokens) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["memory_keep_tokens"],
-      message: `memory_keep_tokens (${config.memory_keep_tokens}) must be below memory_budget_tokens (${config.memory_budget_tokens})`,
-    });
-  }
-
   // The pass runs to the keep line less the room the fold may add: it
   // measures a payload carrying the memory as it stood, and the request that
   // goes out carries what the fold wrote. Let the two ceilings reach that
   // line and the pass has nothing to run to — every fold takes the whole
   // conversation, and past it the line is negative, which the loop reads as
   // never stopping. Both are configs that load clean and are found by the
-  // first reader whose conversation grows past the budget.
+  // first reader whose conversation needs a fold.
   // The room the fold may add, held back from the keep line below.
-  const reserved = reservedForMemory(config);
+  const reserved = memoryReserveTokens(config);
   if (reserved >= config.memory_keep_tokens) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -369,27 +388,6 @@ export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
 /** How long a cached prompt prefix lives. */
 export type PromptCacheTtl = AgentConfig["prompt_cache_ttl"];
-
-/**
- * The keep line a consolidation pass actually runs to.
- *
- * The configured line less the room the fold may add, worked out here so the
- * arithmetic has one home: the refinement above rejects a pair of ceilings
- * that would put this at or below zero, and it can only do that if it holds
- * back the same amount the pass will.
- * @param config - An object carrying the three figures this is worked out from.
- * @param config.memory_keep_tokens - The configured keep line.
- * @param config.memory_conversation_max_size - The conversation ceiling.
- * @param config.memory_project_max_size - The project ceiling.
- * @returns The line, in tokens.
- */
-export function effectiveKeepTokens(config: {
-  memory_keep_tokens: number;
-  memory_conversation_max_size: number;
-  memory_project_max_size: number;
-}): number {
-  return config.memory_keep_tokens - reservedForMemory(config);
-}
 
 /**
  * The agent config shape, for tests that assert on its bounds.

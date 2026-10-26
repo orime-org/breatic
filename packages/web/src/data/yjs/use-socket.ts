@@ -208,9 +208,13 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       // fine until the Space was deleted — hands the user a live editor over a
       // dead connection.
       setWriteAccess('denied');
-      // Always report — an auth rejection is a genuine failure (the
-      // stuck-banner bug). console for dev, Sentry for prod oncall.
-      reportCollabFailure({ kind: 'auth', docName: name, reason });
+      // Report it — an auth rejection is a genuine failure (the stuck-banner
+      // bug) — unless this tab's session has ended (collab closed one of its
+      // documents with "Session ended" and no handshake has succeeded since):
+      // then every refusal is the expected outcome (inner#1548).
+      if (!readDocFacts(name).sessionEnded) {
+        reportCollabFailure({ kind: 'auth', docName: name, reason });
+      }
     };
     /**
      * Socket closed for a non-auth reason → soft disconnect (auto-reconnects).

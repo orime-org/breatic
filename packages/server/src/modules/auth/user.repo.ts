@@ -10,6 +10,7 @@
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
 import { users } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { Attribution, UserEntity } from "@breatic/shared";
 import { getLegalConfig } from "@server/config/legal.js";
@@ -41,10 +42,11 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
 /**
  * Find a user by ID (excludes soft-deleted).
  * @param userId - User UUID to look up
+ * @param tx - Optional enclosing transaction.
  * @returns The user entity, or null if not found or soft-deleted
  */
-export async function getUserById(userId: string): Promise<UserEntity | null> {
-  const rows = await db
+export async function getUserById(userId: string, tx?: DbTx): Promise<UserEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(users)
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
@@ -73,10 +75,11 @@ export async function getUsersByIds(ids: string[]): Promise<UserEntity[]> {
 /**
  * Find a user by email (excludes soft-deleted), in any casing.
  * @param email - Email address to look up
+ * @param tx - Optional enclosing transaction.
  * @returns The user entity, or null if not found or soft-deleted
  */
-export async function getUserByEmail(email: string): Promise<UserEntity | null> {
-  const rows = await db
+export async function getUserByEmail(email: string, tx?: DbTx): Promise<UserEntity | null> {
+  const rows = await (tx ?? db)
     .select()
     .from(users)
     .where(and(eq(users.email, normalizeEmail(email)), isNull(users.deletedAt)))

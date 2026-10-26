@@ -68,6 +68,8 @@ export interface ConfirmedPayment {
   paid: boolean;
   amountCents: number;
   currency: string;
+  /** The id the server reports this order's conversion under; the browser tag uses the same. */
+  transactionId: string;
 }
 
 export const paymentApi = {

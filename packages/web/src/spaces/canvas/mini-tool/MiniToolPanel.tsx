@@ -1,14 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { ArrowUp, FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw, Star } from 'lucide-react';
+import { FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw } from 'lucide-react';
 import * as React from 'react';
 
 import {
   ADJUST_RANGES,
   defaultAdjustValue,
+  denoiseReductionDb,
   parseAdjustValue,
   type AdjustValue,
+  type DynamicsValue,
+  type EqValue,
   type ModelEntry,
 } from '@breatic/shared';
 import {
@@ -22,6 +25,7 @@ import {
   type MiniToolParam,
   type MiniToolSlotValue,
   type MiniToolSpec,
+  type NumberParam,
 } from '@breatic/shared/mini-tools';
 
 import { Button } from '@web/components/ui/button';
@@ -31,15 +35,22 @@ import { Slider } from '@web/components/ui/slider';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { corsUrl } from '@web/lib/cors-url';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
+import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { SlotTool, type SlotPick } from '@web/spaces/canvas/generate/generate-tools';
-import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
+import { controlParams, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { PARAM_OPTION_CLASS, ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
+import { ParamToggleRow } from '@web/spaces/canvas/generate/ParamToggleRow';
+import { AudioDynamicsControl } from '@web/spaces/canvas/mini-tool/AudioDynamicsControl';
+import { AudioBandWaveform } from '@web/spaces/canvas/mini-tool/AudioBandWaveform';
+import { AudioEqControl } from '@web/spaces/canvas/mini-tool/AudioEqControl';
 import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
+import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import {
@@ -47,6 +58,8 @@ import {
   aspectRatioOf,
   rectForAspect,
   setRectSide,
+  hiddenParams,
+  slotOptional,
   type CropRect,
   type MiniToolRefusal,
   type MiniToolSourceInfo,
@@ -232,13 +245,55 @@ const SizeTierGroup = React.memo(function SizeTierGroup({
 });
 
 /**
+ * A picked picture shown large in place of the controls it decides, with a
+ * line saying so (inner#1304). It is removed from its slot's thumbnail; the
+ * picture fills the column's height, whole.
+ * @param root0 - Props.
+ * @param root0.url - The picture.
+ * @param root0.note - The line under it.
+ * @param root0.title - The heading the column keeps in both states.
+ * @param root0.source - Where the light now comes from, beside the heading.
+ * @returns The preview.
+ */
+function ReferencePreview({
+  url,
+  note,
+  title,
+  source,
+}: {
+  url: string;
+  note: string;
+  title: string;
+  source: string;
+}): React.JSX.Element {
+  return (
+    <div className='flex flex-1 flex-col gap-1.5'>
+      <div className='flex items-center justify-between gap-2 text-xs font-medium'>
+        <span className='shrink-0 whitespace-nowrap text-muted-foreground'>{title}</span>
+        <span className='truncate text-foreground'>{source}</span>
+      </div>
+      <div className='relative aspect-[4/3] flex-1 overflow-hidden rounded-chrome border border-border bg-muted'>
+        <img
+          data-testid='mini-tool-reference-preview'
+          src={corsUrl(url)}
+          alt=''
+          className='absolute inset-0 h-full w-full object-contain'
+        />
+      </div>
+      <p className='text-xs text-muted-foreground'>{note}</p>
+    </div>
+  );
+}
+
+/**
  * Seconds as `m:ss.s`.
  * @param seconds - The time.
  * @returns The text.
  */
 function clock(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds - minutes * 60;
+  const tenths = Math.round(seconds * 10);
+  const minutes = Math.floor(tenths / 600);
+  const rest = (tenths % 600) / 10;
   return `${String(minutes).padStart(2, '0')}:${rest.toFixed(1).padStart(4, '0')}`;
 }
 
@@ -270,6 +325,141 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
   } = props;
   const t = useTranslation();
   const blocked = BLOCKING_REFUSALS.has(refusal);
+  // A prompt that may stay empty is an addition, drawn last across the panel;
+  // one that holds Run back is the tool's main input, drawn before the params.
+  const promptFirst = spec.prompt?.defaultText === undefined;
+  const promptBox = spec.prompt !== undefined ? (
+    <Textarea
+      data-testid='mini-tool-prompt'
+      value={prompt}
+      placeholder={t(spec.prompt.placeholderKey)}
+      onChange={(event) => onPrompt(event.target.value)}
+      rows={3}
+      className='resize-none text-sm'
+    />
+  ) : null;
+  const columns = spec.panel?.columns;
+  const filledRule = spec.panel?.whenSlotFilled;
+  const hidden = new Set(hiddenParams(spec, slots));
+  const reference = filledRule === undefined ? undefined : picksOf(slots[filledRule.slot])[0];
+  const referenceShown = filledRule !== undefined && reference !== undefined ? { key: filledRule.slot, url: reference.url } : undefined;
+  const visibleControls = (modelControls ?? []).filter((control) => !controlParams(control).some((key) => hidden.has(key)));
+  const leftKeys = new Set(columns?.left ?? []);
+  const leftControls = visibleControls.filter((control) => controlParams(control).some((key) => leftKeys.has(key)));
+  const rightControls = visibleControls.filter((control) => !leftControls.includes(control));
+  /**
+   * The model's controls, drawn on the source.
+   * @param controls - Which of them.
+   * @param className - In a column, `contents`: each control is spaced as one of the column's own groups.
+   * @returns The block, or null when there are none.
+   */
+  const controlsOf = (controls: readonly ModelControl[], className?: string): React.ReactNode =>
+    modelEntry !== undefined && controls.length > 0 ? (
+      <ModelParamControls
+        model={modelEntry}
+        mode=''
+        value={params}
+        onChange={onParams}
+        controls={controls}
+        evenOptions
+        {...(className !== undefined && { className })}
+        {...(props.source.url !== undefined && { subjectUrl: props.source.url })}
+        {...(referenceShown !== undefined && { autoNote: t('canvas.miniTool.relight.fromReference') })}
+      />
+    ) : null;
+  const sizeTierGroups = sizeTiers.map((choice) => (
+    <SizeTierGroup
+      key={choice.key}
+      choice={choice}
+      label={t(`canvas.generatePanel.param.${choice.key}`)}
+      onParams={onParams}
+    />
+  ));
+  const tiles = spec.slots.length > 0 ? (
+    <div className='flex flex-wrap gap-1.5'>
+      {spec.slots.map((slot) => {
+        const picks = picksOf(slots[slot.key]);
+        // A required slot says so only while it holds nothing; a filled
+        // tile is as wide as its empty word, so the picture is not a strip.
+        const required = !slotOptional(slot, modelEntry) && picks.length === 0;
+        const label = t('canvas.miniTool.panel.slot', { kind: slot.accepts, required: required ? 'yes' : 'no' });
+        const testId = `mini-tool-slot-${spec.id}-${slot.key}`;
+        const cap = slotCaps[slot.key];
+        const room = slot.many ? cap === undefined || picks.length < cap : picks.length === 0;
+        return (
+          <React.Fragment key={slot.key}>
+            {/* A one-item slot is one button, filled or not, so focus
+                      returns to it by its test id when a pick ends. */}
+            {(slot.many ? picks : []).map((value) => (
+              <SlotTool
+                key={value.url}
+                testId={`${testId}-${value.url}`}
+                thumbnailTestId={`${testId}-thumb`}
+                clearTestId={`${testId}-clear`}
+                Icon={SLOT_ICONS[slot.accepts]}
+                onPick={() => onPickSlot(slot.key)}
+                active={pickingSlot === slot.key}
+                pick={slotPick(slot.accepts, value)}
+                onClear={() => onClearSlot(slot.key, slot.many ? value.url : undefined)}
+                disabled={false}
+                clearLabel={t('canvas.miniTool.panel.clearSlot')}
+                label={label}
+                tip={t(slot.bannerKey)}
+              />
+            ))}
+            {room || !slot.many ? (
+              <SlotTool
+                testId={testId}
+                thumbnailTestId={`${testId}-thumb`}
+                clearTestId={`${testId}-clear`}
+                Icon={SLOT_ICONS[slot.accepts]}
+                onPick={() => onPickSlot(slot.key)}
+                active={pickingSlot === slot.key}
+                {...(!slot.many && picks[0] !== undefined && { pick: slotPick(slot.accepts, picks[0]) })}
+                onClear={() => onClearSlot(slot.key)}
+                disabled={false}
+                clearLabel={t('canvas.miniTool.panel.clearSlot')}
+                label={label}
+                tip={t(slot.bannerKey)}
+              />
+            ) : null}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  ) : null;
+  const titleKey = spec.slots.find((slot) => slot.titleKey !== undefined)?.titleKey;
+  const slotTiles =
+    tiles === null ? null : filledRule === undefined ? (
+      titleKey === undefined ? (
+        tiles
+      ) : (
+        <div>
+          <p className='mb-1.5 text-xs font-medium text-muted-foreground'>{t(titleKey)}</p>
+          {tiles}
+        </div>
+      )
+    ) : (
+      <div>
+        <div className='mb-1.5 flex items-center justify-between gap-2 text-xs font-medium'>
+          <span className='text-muted-foreground'>{t('canvas.miniTool.relight.referenceTitle')}</span>
+          <span className='truncate text-muted-foreground'>
+            {t(referenceShown === undefined ? 'canvas.miniTool.relight.optional' : 'canvas.miniTool.relight.followsReference')}
+          </span>
+        </div>
+        {tiles}
+      </div>
+    );
+  // A model tool's slots, main prompt, sizes and controls: the whole panel, or
+  // its right column; without columns every control is on the right.
+  const modelBody = (
+    <>
+      {slotTiles}
+      {promptFirst ? promptBox : null}
+      {sizeTierGroups}
+      {controlsOf(rightControls, columns ? 'contents' : undefined)}
+    </>
+  );
   // The adjust's sliders, whose Reset sits in the footer.
   const adjustParam = isModelTool(spec) ? undefined : spec.params.find((param) => param.kind === 'adjust');
   return (
@@ -282,6 +472,9 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       closeLabel={t('canvas.miniTool.panel.close')}
       closeTestId='mini-tool-panel-close'
       onClose={onClose}
+      // The camera sphere lays itself beside its sliders, which takes the wide panel too.
+      wide={columns !== undefined || visibleControls.some((control) => control.kind === 'cameraAngle')}
+      testId='mini-tool-panel'
     >
       <div className='flex flex-col gap-2.5 px-3 pb-2.5'>
         {spec.drawing !== undefined ? <DrawingControls kind={spec.drawing.kind} /> : null}
@@ -289,136 +482,75 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
         {props.expand !== undefined ? (
           <ExpandRatioGroup expand={props.expand} />
         ) : null}
-        {spec.slots.length > 0 ? (
-          <div className='flex flex-wrap gap-1.5'>
-            {spec.slots.map((slot) => {
-              const picks = picksOf(slots[slot.key]);
-              const required = modelEntry?.params[slot.param]?.optional !== true;
-              const label = t('canvas.miniTool.panel.slot', { kind: slot.accepts, required: required ? 'yes' : 'no' });
-              const testId = `mini-tool-slot-${spec.id}-${slot.key}`;
-              const cap = slotCaps[slot.key];
-              const room = slot.many ? cap === undefined || picks.length < cap : picks.length === 0;
-              return (
-                <React.Fragment key={slot.key}>
-                  {/* A one-item slot is one button, filled or not, so focus
-                      returns to it by its test id when a pick ends. */}
-                  {(slot.many ? picks : []).map((value) => (
-                    <SlotTool
-                      key={value.url}
-                      testId={`${testId}-${value.url}`}
-                      thumbnailTestId={`${testId}-thumb`}
-                      clearTestId={`${testId}-clear`}
-                      Icon={SLOT_ICONS[slot.accepts]}
-                      onPick={() => onPickSlot(slot.key)}
-                      active={pickingSlot === slot.key}
-                      pick={slotPick(slot.accepts, value)}
-                      onClear={() => onClearSlot(slot.key, slot.many ? value.url : undefined)}
-                      disabled={false}
-                      clearLabel={t('canvas.miniTool.panel.clearSlot')}
-                      label={label}
-                      tip={t(slot.bannerKey)}
-                    />
-                  ))}
-                  {room || !slot.many ? (
-                    <SlotTool
-                      testId={testId}
-                      thumbnailTestId={`${testId}-thumb`}
-                      clearTestId={`${testId}-clear`}
-                      Icon={SLOT_ICONS[slot.accepts]}
-                      onPick={() => onPickSlot(slot.key)}
-                      active={pickingSlot === slot.key}
-                      {...(!slot.many && picks[0] !== undefined && { pick: slotPick(slot.accepts, picks[0]) })}
-                      onClear={() => onClearSlot(slot.key)}
-                      disabled={false}
-                      clearLabel={t('canvas.miniTool.panel.clearSlot')}
-                      label={label}
-                      tip={t(slot.bannerKey)}
-                    />
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
-          </div>
-        ) : null}
-        {spec.prompt !== undefined ? (
-          <Textarea
-            data-testid='mini-tool-prompt'
-            value={prompt}
-            placeholder={t(spec.prompt.placeholderKey)}
-            onChange={(event) => onPrompt(event.target.value)}
-            rows={3}
-            className='resize-none text-sm'
-          />
-        ) : null}
-        {sizeTiers.map((choice) => (
-          <SizeTierGroup
-            key={choice.key}
-            choice={choice}
-            label={t(`canvas.generatePanel.param.${choice.key}`)}
-            onParams={onParams}
-          />
-        ))}
         {isModelTool(spec) ? (
-          modelEntry !== undefined && modelControls !== undefined && modelControls.length > 0 ? (
-            <ModelParamControls
-              model={modelEntry}
-              mode=''
-              value={params}
-              onChange={onParams}
-              controls={modelControls}
-            />
-          ) : null
+          columns ? (
+            <div className='grid grid-cols-2 gap-5'>
+              <div data-testid='mini-tool-column-left' className='flex flex-col gap-2.5'>
+                {referenceShown !== undefined ? (
+                  <ReferencePreview
+                    url={referenceShown.url}
+                    note={t('canvas.miniTool.relight.referenceNote')}
+                    title={t('canvas.miniTool.relight.lightTitle')}
+                    source={t('canvas.miniTool.relight.sourceFromReference')}
+                  />
+                ) : (
+                  controlsOf(leftControls)
+                )}
+              </div>
+              <div data-testid='mini-tool-column-right' className='flex flex-col justify-between gap-2.5'>
+                {modelBody}
+              </div>
+            </div>
+          ) : (
+            modelBody
+          )
         ) : (
-          spec.params.map((param) => (
-            <LocalParamControl
-              key={param.key}
-              param={param}
-              spec={spec}
-              params={params}
-              onParams={onParams}
-              source={props.source}
-            />
-          ))
+          <>
+            {slotTiles}
+            {spec.params.map((param) => (
+              <LocalParamControl
+                key={param.key}
+                param={param}
+                spec={spec}
+                params={params}
+                onParams={onParams}
+                source={props.source}
+              />
+            ))}
+          </>
         )}
+        {spec.noteKey === undefined ? null : (
+          <p data-testid='mini-tool-note' className='text-xs text-muted-foreground'>
+            {t(spec.noteKey)}
+          </p>
+        )}
+        {promptFirst ? null : promptBox}
       </div>
-      <div className='flex items-center justify-between gap-1.5 border-t border-border px-3 py-2'>
-        <div className='flex items-center gap-3'>
-          <span
-            data-testid='mini-tool-credit'
-            className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
+      <PanelRunFooter
+        creditText={creditText}
+        runLabel={t('canvas.miniTool.panel.run')}
+        disabled={blocked}
+        loading={refusal === 'exporting'}
+        onRun={onRun}
+        creditTestId='mini-tool-credit'
+        runTestId='mini-tool-run'
+      >
+        {/* The adjust's Reset clears every slider; it sits in the footer
+            beside the credit, at the other end of the row from Run. */}
+        {adjustParam === undefined ? null : (
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            data-testid='mini-tool-adjust-reset'
+            onClick={() => onParams({ [adjustParam.key]: defaultAdjustValue })}
+            className='gap-1 text-xs'
           >
-            <Star className='h-3.5 w-3.5' aria-hidden='true' />
-            {creditText}
-          </span>
-          {/* The adjust's Reset clears every slider; it sits in the footer
-              beside the credit, at the other end of the row from Run. */}
-          {adjustParam === undefined ? null : (
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              data-testid='mini-tool-adjust-reset'
-              onClick={() => onParams({ [adjustParam.key]: defaultAdjustValue })}
-              className='gap-1 text-xs'
-            >
-              <RotateCcw className='h-3 w-3' aria-hidden='true' />
-              {t('canvas.miniTool.panel.reset')}
-            </Button>
-          )}
-        </div>
-        <Button
-          type='button'
-          variant={null}
-          size={null}
-          data-testid='mini-tool-run'
-          aria-label={t('canvas.miniTool.panel.run')}
-          disabled={blocked}
-          loading={refusal === 'exporting'}
-          icon={<ArrowUp className='h-4 w-4' aria-hidden='true' />}
-          onClick={onRun}
-          className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
-        />
-      </div>
+            <RotateCcw className='h-3 w-3' aria-hidden='true' />
+            {t('canvas.miniTool.panel.reset')}
+          </Button>
+        )}
+      </PanelRunFooter>
     </CanvasPanel>
   );
 });
@@ -476,6 +608,21 @@ function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX
 }
 
 /**
+ * How a number param's value reads beside its slider: signed, as a balance
+ * (Center, L n, R n), as the noise reduction it sets, or as the number and its
+ * unit.
+ * @param value - The value.
+ * @param param - The param.
+ * @returns The reading.
+ */
+function numberReading(value: number, param: NumberParam): string {
+  if (param.format === 'signed') return signedReading(value);
+  if (param.format === 'denoiseDb') return `${denoiseReductionDb(value)} dB`;
+  if (param.format === 'balance') return value === 0 ? 'Center' : value < 0 ? `L ${-value}` : `R ${value}`;
+  return param.unit === undefined ? String(value) : `${value}${param.unit}`;
+}
+
+/**
  * The control one browser or container param calls for.
  * @param root0 - Component props.
  * @param root0.param - The param.
@@ -500,10 +647,39 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           max={param.max}
           step={param.step}
           value={typeof params[param.key] === 'number' ? (params[param.key] as number) : param.default}
-          format={(value) => (param.unit === undefined ? String(value) : `${value}${param.unit}`)}
+          format={(value) => numberReading(value, param)}
           onChange={onParams}
           testIdPrefix='mini-tool-param'
           className={undefined}
+          // A value that runs both ways fills from its neutral point.
+          origin={param.format === 'signed' || param.format === 'balance' ? 0 : undefined}
+        />
+      );
+    case 'toggle': {
+      const on = typeof params[param.key] === 'boolean' ? (params[param.key] as boolean) : param.default;
+      return (
+        <ParamToggleRow
+          id={`mini-tool-param-${param.key}-switch`}
+          label={label}
+          checked={on}
+          onCheckedChange={(checked) => onParams({ [param.key]: checked })}
+        />
+      );
+    }
+    case 'eq':
+      return (
+        <AudioEqControl
+          value={params[param.key] as EqValue | undefined}
+          label={label}
+          onChange={(value) => onParams({ [param.key]: value })}
+        />
+      );
+    case 'dynamics':
+      return (
+        <AudioDynamicsControl
+          value={params[param.key] as DynamicsValue | undefined}
+          label={label}
+          onChange={(value) => onParams({ [param.key]: value })}
         />
       );
     case 'enum': {
@@ -526,6 +702,7 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
             );
           }}
           testIdPrefix={`mini-tool-param-${param.key}`}
+          stack={param.layout === 'stack'}
         />
       );
     }
@@ -565,6 +742,8 @@ function LocalParamControl({ param, spec, params, onParams, source }: LocalParam
           <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome-sm bg-muted'>
             {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
               <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
+            ) : spec.source === 'audio' && source.url !== undefined ? (
+              <AudioBandWaveform url={source.url} duration={source.duration} sizeBytes={source.sizeBytes} />
             ) : null}
             <div data-part='before' className='absolute inset-y-0 left-0 bg-background/70' style={{ width: `${from}%` }} />
             <div data-part='after' className='absolute inset-y-0 right-0 bg-background/70' style={{ left: `${to}%` }} />

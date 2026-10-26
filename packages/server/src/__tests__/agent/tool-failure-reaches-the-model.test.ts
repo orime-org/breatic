@@ -102,13 +102,14 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
-vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget: vi.fn(async () => false),
+vi.mock("@server/agent/turn-fold.js", () => ({
+  foldIfTooLong: vi.fn(async () => "none"),
 }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 

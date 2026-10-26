@@ -9,6 +9,7 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { randomUUID } from "node:crypto";
 import { currentConsent } from "@breatic/core";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
@@ -19,11 +20,13 @@ import {
   idempotencyKeyHeaderSchema,
   taskCreateSchema,
   understandSchema,
+  transcribeSchema,
   nodeHistorySnapshotSchema,
   canvasPasteSchema,
   paginationSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
+import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
@@ -36,6 +39,7 @@ import {
   getNodeHistoryPageSize,
 } from "@server/config/limits.js";
 import {
+  creditHoldService,
   taskService,
   estimateTaskCredits,
   violatesSourceRequirementForModel,
@@ -54,12 +58,13 @@ import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
-  precheckCredits,
   projectService,
+  reserveForRun,
 } from "@server/modules";
 import {
   createQueue,
   defaultJobOpts,
+  getMiniToolsConfig,
   getNodeTaskConfig,
   getStorageConfig,
 } from "@breatic/core";
@@ -71,6 +76,7 @@ import {
 } from "@breatic/core";
 import { t, INGEST_NOT_STARTED, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
+import type { UnderstandInput } from "@breatic/shared";
 
 const canvas = new Hono<{ Variables: AuthVariables }>();
 
@@ -89,7 +95,8 @@ const urlIngestQueue = createQueue("url-ingest");
 
 /**
  * `GET /canvas/limits` — frontend-consumed canvas knobs from
- * `config/limits.yaml` (#1782).
+ * `config/limits.yaml` (#1782), `config/understand.yaml` and
+ * `config/mini-tools.yaml`.
  *
  * `referencePoolCap`: max entries in one node's reference pool (incoming
  * reference edges + focus crops combined) — enforced by the frontend at
@@ -105,6 +112,12 @@ const urlIngestQueue = createQueue("url-ingest");
  * number has to reach it — and it comes from the same file the run itself
  * reads, which is what keeps the two from drifting into a refusal the browser
  * allows and the run rejects.
+ *
+ * `waveformMaxSeconds` / `waveformMaxBytes`: the longest and largest audio the
+ * cut band decodes in the browser while its peaks file is missing; past either
+ * the band stays plain. `waveformPeaksRetryMs` / `waveformPeaksRetryMaxMs`: how
+ * often, and for how long, an open band re-reads a missing peaks file
+ * (inner#1305).
  * @param c - Hono context (auth required, no params)
  * @returns `200` with the canvas knobs the frontend reads.
  */
@@ -114,6 +127,10 @@ canvas.get("/limits", (c) => {
       referencePoolCap: getCanvasReferencePoolCap(),
       nodeHistoryPageSize: getNodeHistoryPageSize(),
       understandMaxBytes: getUnderstandConfig().max_media_bytes,
+      waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
+      waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
+      waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
+      waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
     },
   });
 });
@@ -304,91 +321,101 @@ canvas.post(
     );
   }
 
-  // #1580 #7 credit pre-check (user decision 2026-07-03): refuse an
-  // obviously-insufficient balance BEFORE creating the task. Non-locking
-  // (no reservation) — the worker's atomic markCompletedAndBill remains
-  // the billing source of truth; concurrent passes may drive the balance
-  // negative, the accepted trade-off of a soft pre-check. Same shared
-  // helper and 402 shape as the /mini-tools routes.
-  await precheckCredits(
+  // #1580 #7 / inner#1611: the run is admitted by holding its estimate under
+  // the id its task row will carry, BEFORE that row exists, so a refusal
+  // leaves nothing behind. From here until the job is queued, every way out
+  // releases the hold; once queued, the worker charges or releases it.
+  const taskId = randomUUID();
+  await reserveForRun(
     projectId,
     user.id,
+    taskId,
     await estimateTaskCredits(body.model, {
       params: body.params,
       prompt: extractPromptText(body.params.prompt ?? body.params.text),
     }),
   );
 
-  // #89: storage gate, the other soft pre-check. AFTER credits, because
-  // refusing for storage tells the studio's admin about it — and a request
-  // that was going to be refused for credits anyway should not send anyone
-  // mail about storage.
-  await assertStorageAllowance(projectId, "generate");
+  let task: Awaited<ReturnType<typeof taskService.create>>;
+  let job: Awaited<ReturnType<typeof tasksQueue.add>>;
+  try {
+    // #89: storage gate, the other soft pre-check. AFTER credits, because
+    // refusing for storage tells the studio's admin about it — and a request
+    // that was going to be refused for credits anyway should not send anyone
+    // mail about storage.
+    await assertStorageAllowance(projectId, "generate");
 
-  const task = await taskService.create(
-    user.id,
-    projectId,
-    spaceId,
-    body.task_type,
-    mode,
-    body.params,
-    body.model,
-    body.source,
-  );
-
-  // A node carries several tasks at once (#186), so an overwrite claims
-  // nothing: whichever result the user keeps is decided on the node's task
-  // list. The schema's `superRefine` guarantees `target_node_id` is present
-  // when mode is 'overwrite'; the assertion below is defense in depth.
-  if (mode === "overwrite") {
-    if (!targetNodeId) {
-      // Should never reach here; schema validation rejects this case.
-      throw new ValidationError(
-        t("server.error.validation"),
-      );
-    }
-  }
-
-  // One task row per node this run will write to (#186, design §4.2), opened
-  // before anything is queued. The row is the only path this run's result
-  // takes back to its node, so a run that cannot get one is a run that would
-  // bill the user for a result nothing can deliver. An append-mode run names
-  // no node: its result lands on one the browser creates, so there is no
-  // corner to count in yet.
-  await openGenerationTasks({
-    projectId,
-    spaceId,
-    nodeIds: targetNodeId ? [targetNodeId] : [],
-    startedByUserId: user.id,
-    taskId: task.id,
-    // What the list shows for this row. The model names it when there is
-    // one; the rest name what they are.
-    action: "generate",
-    label: body.model ?? body.task_type,
-  });
-
-  // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
-  // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
-  // (v10 multi-doc). The job payload carries spaceId so the worker can
-  // compute the canvas-{spaceId} doc name without reloading the task row.
-  const job = await tasksQueue.add(
-    "execute-task",
-    {
-      taskId: task.id,
-      userId: user.id,
-      // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
-      analyticsConsent: currentConsent(),
+    task = await taskService.create(
+      user.id,
       projectId,
       spaceId,
-      taskType: body.task_type,
-      model: body.model,
-      params: body.params,
-      source: body.source,
-      targetNodeIds: targetNodeId ? [targetNodeId] : [],
+      body.task_type,
       mode,
-    },
-    defaultJobOpts(),
-  );
+      body.params,
+      body.model,
+      body.source,
+      taskId,
+    );
+
+    // A node carries several tasks at once (#186), so an overwrite claims
+    // nothing: whichever result the user keeps is decided on the node's task
+    // list. The schema's `superRefine` guarantees `target_node_id` is present
+    // when mode is 'overwrite'; the assertion below is defense in depth.
+    if (mode === "overwrite") {
+      if (!targetNodeId) {
+        // Should never reach here; schema validation rejects this case.
+        throw new ValidationError(
+          t("server.error.validation"),
+        );
+      }
+    }
+
+    // One task row per node this run will write to (#186, design §4.2), opened
+    // before anything is queued. The row is the only path this run's result
+    // takes back to its node, so a run that cannot get one is a run that would
+    // bill the user for a result nothing can deliver. An append-mode run names
+    // no node: its result lands on one the browser creates, so there is no
+    // corner to count in yet.
+    await openGenerationTasks({
+      projectId,
+      spaceId,
+      nodeIds: targetNodeId ? [targetNodeId] : [],
+      startedByUserId: user.id,
+      taskId: task.id,
+      // What the list shows for this row. The model names it when there is
+      // one; the rest name what they are.
+      action: "generate",
+      label: body.model ?? body.task_type,
+    });
+
+    // Per spec §4.2: the worker reads targetNodeIds to settle each node's task
+    // row and writes the result back into `project-{projectId}/canvas-{spaceId}`
+    // (v10 multi-doc). The job payload carries spaceId so the worker can
+    // compute the canvas-{spaceId} doc name without reloading the task row.
+    job = await tasksQueue.add(
+      "execute-task",
+      {
+        taskId: task.id,
+        userId: user.id,
+        // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
+        analyticsConsent: currentConsent(),
+        projectId,
+        spaceId,
+        taskType: body.task_type,
+        model: body.model,
+        params: body.params,
+        source: body.source,
+        targetNodeIds: targetNodeId ? [targetNodeId] : [],
+        mode,
+      },
+      defaultJobOpts(),
+    );
+  } catch (err) {
+    await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
+      logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
+    );
+    throw err;
+  }
 
   await taskService.setJobId(task.id, job.id ?? "");
 
@@ -407,6 +434,7 @@ canvas.post(
 canvas.post(
   "/paste",
   rateLimitFor("canvas-paste", "user"),
+  acceptTransferBody("canvas_paste"),
   validate("json", canvasPasteSchema),
   async (c) => {
     const user = c.get("user");
@@ -435,6 +463,7 @@ canvas.post(
 canvas.post(
   "/node-history/snapshot",
   rateLimitFor("node-history-snapshot", "user"),
+  acceptTransferBody("node_history_snapshot"),
   validate("json", nodeHistorySnapshotSchema),
   async (c) => {
     const user = c.get("user");
@@ -455,7 +484,105 @@ canvas.post(
 );
 
 /**
- * `POST /canvas/understand` — create an understand/transcription task.
+ * Open one reading of a node's media into the text node the browser built:
+ * the task, its row on that node, the credit gate and the job.
+ *
+ * Understanding and transcription (inner#856) are the same reading on the
+ * worker; they differ in the row's action, which names the press on the
+ * node, and in what the params ask.
+ * @param userId - Who pressed.
+ * @param body - The press, as either route validated it.
+ * @param action - What the row on the node names this run as.
+ * @param reading - What this reading asks, beside the media it reads.
+ * @returns The task and what became of it: queued, or refused on its row.
+ * @throws {AppError} The refusal itself, when no row was opened to carry it.
+ */
+async function startReading(
+  userId: string,
+  body: Omit<UnderstandInput, "prompt" | "source_type"> & { source_type: string },
+  action: "understand" | "transcribe",
+  reading: Record<string, unknown>,
+): Promise<{ taskId: string; status: Awaited<ReturnType<typeof startRowedRun>> }> {
+  // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
+  // what puts it on the row the reader sees, in the history row this run
+  // writes, and against the charge — the three places every other modality
+  // names the model it ran on.
+  const model = UNDERSTAND_PINS.model;
+
+  // Cross-tenant guard — see /canvas/tasks rationale.
+  await projectService.assertAccess(body.project_id, userId, "editor");
+
+  const params: Record<string, unknown> = {
+    source_type: body.source_type,
+    source_url: body.source_url,
+    // What the ledger judged off the landed bytes, which is what the node
+    // carries and what the browser's format gate judged by.
+    source_mime_type: body.source_mime_type,
+    // Carried between the two ends that know about it: the browser, which is
+    // where the reader's language is set, and the run, which names that
+    // language to the model. Nothing here reads it.
+    reader_locale: body.reader_locale,
+    ...reading,
+  };
+
+  // Understand tasks transcribe / analyze a media URL into a result node;
+  // they always produce a new node ('append'), no overwrite semantics.
+  const task = await taskService.create(
+    userId,
+    body.project_id,
+    body.space_id,
+    "understand",
+    "append",
+    params,
+    model,
+    // The column every lane names itself in. Left unsaid it falls to the
+    // column's own default, which predates this vocabulary — these rows
+    // would then be the only ones it cannot account for.
+    "understand",
+  );
+
+  // The node this run writes to is already on the canvas — the browser built
+  // it before the request went out — so its row opens before the credit
+  // gate, and a refusal is said where the node can show it.
+  const status = await startRowedRun({
+    taskId: task.id,
+    projectId: body.project_id,
+    spaceId: body.space_id,
+    nodeIds: body.node_ids,
+    userId,
+    action,
+    label: model,
+    credits: () => estimateTaskCredits(model, { params }),
+    enqueue: () =>
+      tasksQueue.add(
+        "execute-task",
+        {
+          taskId: task.id,
+          userId,
+          // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
+          analyticsConsent: currentConsent(),
+          projectId: body.project_id,
+          spaceId: body.space_id,
+          taskType: "understand",
+          model,
+          params,
+          // What the activity feed labels this row by. The payload's own
+          // vocabulary (`project-activity.ts`) has a word for this lane, and
+          // it is the only thing telling a reading apart from a generation in
+          // the feed.
+          source: "understand",
+          targetNodeIds: body.node_ids,
+          mode: "append" as const,
+        },
+        defaultJobOpts(),
+      ),
+    logTag: action,
+  });
+  return { taskId: task.id, status };
+}
+
+/**
+ * `POST /canvas/understand` — create an understand task.
  *
  * Convenience endpoint that wraps the task creation flow with
  * `task_type="understand"`.
@@ -473,84 +600,36 @@ canvas.post(
   validate("json", understandSchema),
   runOnce("understand"),
   async (c) => {
-    const user = c.get("user");
     const body = c.req.valid("json");
-    // A reading runs on one model, pinned (user 2026-09-19). Naming it here is
-    // what puts it on the row the reader sees, in the history row this run
-    // writes, and against the charge — the three places every other modality
-    // names the model it ran on.
-    const model = UNDERSTAND_PINS.model;
-
-    // Cross-tenant guard — see /canvas/tasks rationale.
-    await projectService.assertAccess(body.project_id, user.id, "editor");
-
-    const params: Record<string, unknown> = {
-      source_type: body.source_type,
-      source_url: body.source_url,
-      // What the ledger judged off the landed bytes, which is what the node
-      // carries and what the browser's format gate judged by.
-      source_mime_type: body.source_mime_type,
+    const { taskId, status } = await startReading(c.get("user").id, body, "understand", {
       prompt: body.prompt,
-      // Carried between the two ends that know about it: the browser, which is
-      // where the reader's language is set, and the run, which names that
-      // language to the model. Nothing here reads it.
-      reader_locale: body.reader_locale,
-    };
-
-    // Understand tasks transcribe / analyze a media URL into a result node;
-    // they always produce a new node ('append'), no overwrite semantics.
-    const task = await taskService.create(
-      user.id,
-      body.project_id,
-      body.space_id,
-      "understand",
-      "append",
-      params,
-      model,
-      // The column every lane names itself in. Left unsaid it falls to the
-      // column's own default, which predates this vocabulary — these rows
-      // would then be the only ones it cannot account for.
-      "understand",
-    );
-
-    // The node this run writes to is already on the canvas — the browser built
-    // it before the request went out — so its row opens before the credit
-    // gate, and a refusal is said where the node can show it.
-    const status = await startRowedRun({
-      taskId: task.id,
-      projectId: body.project_id,
-      spaceId: body.space_id,
-      nodeIds: body.node_ids,
-      userId: user.id,
-      action: "understand",
-      label: model,
-      credits: () => estimateTaskCredits(model, { params }),
-      enqueue: () =>
-        tasksQueue.add(
-          "execute-task",
-          {
-            taskId: task.id,
-            userId: user.id,
-            // The requesting browser's choice; the worker has no cookie (inner#1442 §4.4.5).
-            analyticsConsent: currentConsent(),
-            projectId: body.project_id,
-            spaceId: body.space_id,
-            taskType: "understand",
-            model,
-            params,
-            // What the activity feed labels this row by. The payload's own
-            // vocabulary (`project-activity.ts`) has a word for this lane, and
-            // it is the only thing telling a reading apart from a generation in
-            // the feed.
-            source: "understand",
-            targetNodeIds: body.node_ids,
-            mode: "append" as const,
-          },
-          defaultJobOpts(),
-        ),
-      logTag: "understand",
     });
-    return c.json({ data: { task_id: task.id, status } }, 201);
+    return c.json({ data: { task_id: taskId, status } }, 201);
+  },
+);
+
+/**
+ * `POST /canvas/transcribe` — create a transcription task (inner#856).
+ *
+ * A reading with the fixed transcription question and the panel's filler
+ * switch; its row on the node is named a transcription.
+ * @param c - Hono context with validated `transcribeSchema` body
+ * @returns `201` with `{ task_id, status }`, as `/canvas/understand` answers.
+ * @throws {AppError} The refusal itself, when no row was opened to carry it.
+ */
+canvas.post(
+  "/transcribe",
+  rateLimitFor("transcribe", "user"),
+  validate("header", idempotencyKeyHeaderSchema),
+  validate("json", transcribeSchema),
+  runOnce("transcribe"),
+  async (c) => {
+    const body = c.req.valid("json");
+    const { taskId, status } = await startReading(c.get("user").id, body, "transcribe", {
+      reading: "transcribe",
+      keep_fillers: body.keep_fillers,
+    });
+    return c.json({ data: { task_id: taskId, status } }, 201);
   },
 );
 

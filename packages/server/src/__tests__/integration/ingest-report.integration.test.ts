@@ -42,6 +42,12 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+// The server opens every upload at the ingest Worker itself before it
+// answers a ticket (inner#1595); that one call is answered by a double.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
+
 import crypto from "node:crypto";
 import postgres from "postgres";
 import {
@@ -60,6 +66,7 @@ import {
   ingestReportService,
   uploadGrantService,
   UPLOAD_FINISH_QUEUE,
+  AUDIO_PEAKS_QUEUE,
   type UploadFinishResult,
 } from "@breatic/domain";
 import { Queue } from "bullmq";
@@ -438,6 +445,104 @@ describe("a finish this server drove — a completed upload", () => {
     expect(rows[0]!.width).toBeNull();
     expect(rows[0]!.height).toBeNull();
     expect(Number(rows[0]!.duration_seconds)).toBe(5.043);
+  });
+
+  // inner#1305 §4.4: the peaks of an audio row are read after it registers,
+  // on their own queue, keyed by the row.
+  describe("the peaks read of an audio upload", () => {
+    /**
+     * The peaks jobs queued for one row.
+     * @param assetId - The row.
+     * @returns The jobs waiting for it.
+     */
+    async function peaksJobsFor(assetId: string): Promise<{ data: unknown }[]> {
+      const queue = createQueue(AUDIO_PEAKS_QUEUE);
+      return (await queue.getJobs(["waiting", "delayed", "active"])).filter(
+        (job) => job.id === `audio-peaks-${assetId}`,
+      );
+    }
+
+    /**
+     * Upload these audio bytes and register them.
+     * @param seed - Whose upload.
+     * @param sha - The bytes' hash.
+     * @returns How the finish ended.
+     */
+    async function uploadSong(seed: Awaited<ReturnType<typeof seedEditor>>, sha: string): Promise<UploadFinishResult> {
+      const key = await mintTicket(seed, { content_type: "audio/mpeg", filename: "take.mp3" });
+      return report(completed(key, { sha256: sha, content_type: "audio/mpeg", duration_seconds: 61 }));
+    }
+
+    it("queues one for the upload's own row, however often it is reported", async () => {
+      const seed = await seedEditor();
+      const sha = crypto.randomBytes(32).toString("hex");
+      const key = await mintTicket(seed, { content_type: "audio/mpeg", filename: "take.mp3" });
+      const body = completed(key, { sha256: sha, content_type: "audio/mpeg", duration_seconds: 61 });
+
+      const first = await report(body);
+      await report(body);
+
+      if (first.outcome.status !== "registered") throw new Error(`registered as ${first.outcome.status}`);
+      const jobs = await peaksJobsFor(first.outcome.assetId);
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0]!.data).toEqual({ assetId: first.outcome.assetId });
+      expect(first.outcome.peaksQueueFailed).toBeUndefined();
+    });
+
+    it("queues none for a picture", async () => {
+      const seed = await seedEditor();
+      const key = await mintTicket(seed);
+
+      const done = await report(completed(key));
+
+      if (done.outcome.status !== "registered") throw new Error(`registered as ${done.outcome.status}`);
+      expect(await peaksJobsFor(done.outcome.assetId)).toHaveLength(0);
+    });
+
+    it("queues nothing more when the bytes land on a row the studio already held", async () => {
+      const seed = await seedEditor();
+      const sha = crypto.randomBytes(32).toString("hex");
+      const first = await uploadSong(seed, sha);
+      if (first.outcome.status !== "registered") throw new Error(`registered as ${first.outcome.status}`);
+      const queuedTo: string[] = [];
+      const original = Queue.prototype.add;
+      const add = vi.spyOn(Queue.prototype, "add").mockImplementation(function (
+        this: Queue,
+        ...args: Parameters<Queue["add"]>
+      ) {
+        queuedTo.push(this.name);
+        return original.apply(this, args);
+      });
+
+      try {
+        const second = await uploadSong(seed, sha);
+
+        expect(second.outcome).toMatchObject({ assetId: first.outcome.assetId, ownRow: false });
+        expect(queuedTo).not.toContain(AUDIO_PEAKS_QUEUE);
+      } finally {
+        add.mockRestore();
+      }
+    });
+
+    it("registers the audio anyway and flags it when its read could not be queued", async () => {
+      const seed = await seedEditor();
+      const original = Queue.prototype.add;
+      const add = vi.spyOn(Queue.prototype, "add").mockImplementation(function (
+        this: Queue,
+        ...args: Parameters<Queue["add"]>
+      ) {
+        if (this.name === AUDIO_PEAKS_QUEUE) return Promise.reject(new Error("the queue's Redis is unreachable"));
+        return original.apply(this, args);
+      });
+
+      try {
+        const done = await uploadSong(seed, crypto.randomBytes(32).toString("hex"));
+
+        expect(done.outcome).toMatchObject({ status: "registered", peaksQueueFailed: true });
+      } finally {
+        add.mockRestore();
+      }
+    });
   });
 
   it("registers the asset anyway when the container answered no numbers", async () => {

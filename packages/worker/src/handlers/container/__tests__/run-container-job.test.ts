@@ -43,6 +43,8 @@ vi.mock("@breatic/core", () => ({
 }));
 
 vi.mock("@breatic/domain", async () => ({
+  // The real names, so a flag's line is the one the worker writes.
+  INGEST_SIDE_EFFECT_EVENTS: (await import("@domain/asset/ingest-report.service.js")).INGEST_SIDE_EFFECT_EVENTS,
   // The billing formula itself, so the charge these cases assert is the real one.
   containerCostUsd: (await import("@domain/credit/container-cost.js")).containerCostUsd,
   creditsForUsd: (usd: number, multiplier: number) => usd * 100 * multiplier,
@@ -133,6 +135,21 @@ describe("runContainerJob", () => {
       expect.objectContaining({ source: "container", costSource: "computed", costUsd: expect.closeTo(usd, 10) }),
     );
     expect(h.markDone).toHaveBeenCalledWith("s1", { state: "done" });
+  });
+
+  // Registering an output can raise flags of its own (a reclaim or a peaks
+  // job that could not be queued); this caller is their only account.
+  it("writes down every side effect an output's registration raised", async () => {
+    h.readMiniToolJob.mockResolvedValueOnce({ state: "done", outputs: [MEASURED], usage: USAGE });
+    h.applyIngestReport.mockResolvedValueOnce({ ...REGISTERED, peaksQueueFailed: true, reclaimQueueFailed: true });
+
+    await runContainerJob(CUT, "cut", INPUT);
+
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ key: MEASURED.storageKey }), "audio_peaks_queue_failed");
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ key: MEASURED.storageKey }),
+      "ingest_report_reclaim_queue_failed",
+    );
   });
 
   // A run billed on its wall time instead of its measured CPU is an estimate ops has to see.

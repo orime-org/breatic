@@ -8,6 +8,7 @@
  * - PostgreSQL persistence (document storage)
  * - Redis extension (multi-instance sync)
  * - Throttle extension (connection rate limiting)
+ * - Session admission extension (before native WebSocket upgrade)
  * - Authentication hook (session token verification)
  *
  * All tunable parameters are loaded from `config/collab.yaml`.
@@ -25,6 +26,7 @@ import {
   createLogger,
   createRedisClient,
   getRedis,
+  getSession,
   getCollabRedis,
   getProjectConcurrentEditorLimit,
   projectAuthService,
@@ -32,6 +34,7 @@ import {
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
+import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
@@ -39,6 +42,7 @@ import {
   type SeatClaim,
 } from "@collab/services/connection-registry.js";
 import { recheckRoleOnConnect } from "@collab/services/role-recheck.js";
+import { closeIfSessionEnded } from "@collab/services/session-revocation.js";
 import {
   shouldRegisterConnection,
   shouldTrackConnection,
@@ -52,7 +56,13 @@ import {
   type SeatHandover,
 } from "@collab/services/seat-handover.js";
 import * as Y from "yjs";
-import { parseDocName, SpaceRpcRequestSchema, type ProjectRole, type SpaceRpcResponse } from "@breatic/shared";
+import {
+  parseDocName,
+  SpaceRpcRequestSchema,
+  SyncConfirmRequestSchema,
+  type ProjectRole,
+  type SpaceRpcResponse,
+} from "@breatic/shared";
 import { readDocumentBodyRecords } from "@breatic/shared/document-body";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
@@ -61,6 +71,7 @@ import {
 } from "@collab/hooks/presence-wiring.js";
 import { createPongHandler } from "@collab/services/socket-liveness.js";
 import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
+import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
   createPersistenceExtension,
@@ -114,9 +125,9 @@ export interface CollabServerInfra {
  * Behavior parameters are loaded from `config/collab.yaml`.
  * Infrastructure connections (DB, Redis) are passed as arguments.
  * @param infra - Database and Redis connection details
- * @returns Configured Server + Hocuspocus instances + the seat-handover channel (caller stops it on shutdown) + the timed store loop + this process's instance id
+ * @returns Configured server, admission stop boundary, seat-handover channel, timed store loop and instance id.
  */
-export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string }> {
+export async function createCollabServer(infra: CollabServerInfra): Promise<{ server: Server; hocuspocus: Hocuspocus; seatHandover: SeatHandover; storeLoop: StoreLoop; instanceId: string; stopUpgradeSessions: () => void }> {
   const cfg = getCollabConfig();
   const timings = getConnectionTimings();
 
@@ -177,7 +188,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // connection at once.
   await seatHandover.start();
 
-  // Session lookup client for the onAuthenticate hook. Uses the
+  // Native upgrade admission and document authentication share the
   // process-wide `getRedis()` singleton (DB 0, the same general-purpose
   // client server / worker use) — a session GET is a plain command, so
   // it shares the per-process singleton rather than hand-rolling a
@@ -227,8 +238,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     : null;
   if (connectionGate) extensions.push(connectionGate);
 
+  const sessionGate = createUpgradeSessionGate({
+    redis: authRedis,
+    recordFailedUpgrade: connectionGate?.recordFailedUpgrade,
+  });
+  extensions.push(sessionGate);
+
   // Authentication — verifies session token AND per-project
-  // ownership. See packages/collab/src/auth.ts.
+  // ownership. See packages/collab/src/hooks/auth.ts.
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from
@@ -473,6 +490,14 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       } catch (err) {
         logger.error({ err, documentName, userId: auth.user.id }, "role_recheck_failed");
       }
+
+      // The same for the session: one ended after the handshake read it was
+      // announced before this connection could be found (inner#1548).
+      try {
+        await closeIfSessionEnded(connection, (token) => getSession(authRedis, token));
+      } catch (err) {
+        logger.error({ err, documentName, userId: auth.user.id }, "session_recheck_failed");
+      }
     },
 
     // Whose caret is whose, decided here rather than taken from the client.
@@ -554,20 +579,31 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
-    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc; we
-    // parse, route to the handler, and send the response on the requesting
-    // connection, which matches it by request `id`.
-    onStateless: async ({ documentName, payload, connection }) => {
+    // Content receipts share the requesting Connection's update queue.
+    // Meta requests dispatch Space lifecycle commands on their original channel.
+    onStateless: async ({ documentName, document, payload, connection }) => {
       const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
+      if (!parsed) return;
 
       let json: unknown;
       try {
         json = JSON.parse(payload);
-      } catch {
-        return; // non-JSON stateless message (e.g. frontend cache invalidate)
+      } catch (err) {
+        logger.error({ err, ctx: { documentName } }, "Invalid stateless payload");
+        return;
       }
+
+      if (parsed.kind === "canvas" || parsed.kind === "document") {
+        const request = SyncConfirmRequestSchema.safeParse(json);
+        if (!request.success) return;
+        try {
+          replySyncConfirmation(document, connection, request.data.id);
+        } catch (err) {
+          logger.error({ err, ctx: { documentName, requestId: request.data.id } }, "Sync confirmation failed");
+        }
+        return;
+      }
+      if (parsed.kind !== "meta") return;
 
       const reqResult = SpaceRpcRequestSchema.safeParse(json);
       if (!reqResult.success) return;
@@ -684,5 +720,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     seatHandover,
     storeLoop,
     instanceId,
+    stopUpgradeSessions: sessionGate.stop,
   };
 }

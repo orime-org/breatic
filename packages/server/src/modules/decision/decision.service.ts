@@ -233,10 +233,10 @@ async function readActor(userId: string): Promise<{ name: string; handle: string
  */
 async function alreadyHasOffer(
   container: RequestDetail["container"],
-  userId: string,
+  userId: string | null,
   offeredRole: string | null,
 ): Promise<boolean> {
-  if (userId === "") return false;
+  if (userId === null || userId === "") return false;
   const held =
     container.kind === "studio"
       ? await studioMembersRepo.getRole(container.id, userId)

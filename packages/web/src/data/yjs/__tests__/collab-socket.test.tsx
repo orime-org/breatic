@@ -46,6 +46,9 @@ vi.mock('@hocuspocus/provider', () => ({
     on = vi.fn((event: string, cb: (data?: unknown) => void) => {
       (this.listeners[event] ??= []).push(cb);
     });
+    off = vi.fn((event: string, cb: (data?: unknown) => void) => {
+      this.listeners[event] = (this.listeners[event] ?? []).filter((listener) => listener !== cb);
+    });
     emit(event: string, data?: unknown): void {
       for (const cb of [...(this.listeners[event] ?? [])]) cb(data);
     }
@@ -63,6 +66,8 @@ import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import {
   acquireDocProvider,
   releaseDocProvider,
+  readDocProvider,
+  subscribeDocProvider,
   _resetCollabSocketForTests,
 } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests as _resetDocsForTests } from '@web/data/yjs/manager';
@@ -81,15 +86,53 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     vi.useRealTimers();
   });
 
+  it('reads an existing provider without creating a connection', () => {
+    expect(readDocProvider(META)).toBeNull();
+    expect(providerInstances).toHaveLength(0);
+    expect(wsInstances).toHaveLength(0);
+    const provider = acquireDocProvider(META, getDoc(META));
+    expect(readDocProvider(META)).toBe(provider);
+    expect(providerInstances).toHaveLength(1);
+    expect(wsInstances).toHaveLength(1);
+  });
+
+  it('observes provider creation and final destruction without retaining a reference', () => {
+    const seen: unknown[] = [];
+    const unsubscribe = subscribeDocProvider(META, () => seen.push(readDocProvider(META)));
+    expect(readDocProvider(META)).toBeNull();
+    expect(providerInstances).toHaveLength(0);
+    const provider = acquireDocProvider(META, getDoc(META));
+    expect(seen).toEqual([provider]);
+    releaseDocProvider(META);
+    vi.runOnlyPendingTimers();
+    expect(seen).toEqual([provider, null]);
+    expect(providerInstances[0].destroy).toHaveBeenCalledOnce();
+    expect(readDocProvider(META)).toBeNull();
+    unsubscribe();
+  });
+
+  it('isolates read-only observers by document and stops notifying after unsubscribe', () => {
+    const changed = vi.fn();
+    const unsubscribe = subscribeDocProvider(META, changed);
+    acquireDocProvider('project-other/meta', getDoc('project-other/meta'));
+    expect(changed).toHaveBeenCalledTimes(0);
+    acquireDocProvider(META, getDoc(META));
+    expect(changed).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    releaseDocProvider(META);
+    vi.runOnlyPendingTimers();
+    expect(changed).toHaveBeenCalledTimes(1);
+  });
+
   it('creates ONE shared socket + attaches the provider on first acquire', () => {
     const doc = new Y.Doc();
     acquireDocProvider(META, doc);
     expect(wsInstances).toHaveLength(1);
     expect(providerInstances).toHaveLength(1);
-    expect(providerInstances[0]!.attach).toHaveBeenCalledOnce();
-    expect(providerInstances[0]!.config.websocketProvider).toBe(wsInstances[0]);
-    expect(providerInstances[0]!.config.name).toBe(META);
-    expect(providerInstances[0]!.config.document).toBe(doc);
+    expect(providerInstances[0].attach).toHaveBeenCalledOnce();
+    expect(providerInstances[0].config.websocketProvider).toBe(wsInstances[0]);
+    expect(providerInstances[0].config.name).toBe(META);
+    expect(providerInstances[0].config.document).toBe(doc);
   });
 
   it('shares ONE provider across repeat acquires of the same doc (refcount)', () => {
@@ -108,8 +151,8 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     vi.runAllTimers();
     // No detach, no re-auth churn — exactly one provider, never destroyed.
     expect(providerInstances).toHaveLength(1);
-    expect(providerInstances[0]!.destroy).not.toHaveBeenCalled();
-    expect(wsInstances[0]!.destroy).not.toHaveBeenCalled();
+    expect(providerInstances[0].destroy).not.toHaveBeenCalled();
+    expect(wsInstances[0].destroy).not.toHaveBeenCalled();
   });
 
   it('a real release (no re-acquire) detaches the doc after the deferred tick', () => {
@@ -117,10 +160,10 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     acquireDocProvider(META, doc);
     releaseDocProvider(META);
     // Deferred: nothing torn down synchronously.
-    expect(providerInstances[0]!.destroy).not.toHaveBeenCalled();
+    expect(providerInstances[0].destroy).not.toHaveBeenCalled();
     vi.runAllTimers();
-    expect(providerInstances[0]!.destroy).toHaveBeenCalledOnce(); // doc detached
-    expect(wsInstances[0]!.destroy).toHaveBeenCalledOnce(); // last doc → socket closed
+    expect(providerInstances[0].destroy).toHaveBeenCalledOnce(); // doc detached
+    expect(wsInstances[0].destroy).toHaveBeenCalledOnce(); // last doc → socket closed
   });
 
   it('keeps the shared socket alive while other docs stay attached', () => {
@@ -136,11 +179,11 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
       (p) => p.config.name === 'project-p1/canvas-a',
     )!;
     expect(aProvider.destroy).toHaveBeenCalledOnce(); // doc A detached
-    expect(wsInstances[0]!.destroy).not.toHaveBeenCalled(); // socket stays (doc B)
+    expect(wsInstances[0].destroy).not.toHaveBeenCalled(); // socket stays (doc B)
 
     releaseDocProvider('project-p1/canvas-b');
     vi.runAllTimers();
-    expect(wsInstances[0]!.destroy).toHaveBeenCalledOnce(); // last doc → socket closed
+    expect(wsInstances[0].destroy).toHaveBeenCalledOnce(); // last doc → socket closed
   });
 
   // #1786: the Y.Doc lifecycle is co-located with the provider lifecycle — a
@@ -196,37 +239,37 @@ describe('collab-socket manager — a document closed to be re-checked comes str
 
   it('re-sends the token on the same socket when collab asks for it', () => {
     acquireDocProvider(META, getDoc(META));
-    wsInstances[0]!.receivedOnOpenPayload = OPEN;
-    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Project archived' } });
-    expect(providerInstances[0]!.onOpen).toHaveBeenCalledWith(OPEN);
+    wsInstances[0].receivedOnOpenPayload = OPEN;
+    providerInstances[0].emit('close', { event: { code: 1000, reason: 'Project archived' } });
+    expect(providerInstances[0].onOpen).toHaveBeenCalledWith(OPEN);
   });
 
   it('does it for every reason collab sends for that purpose', () => {
     acquireDocProvider(META, getDoc(META));
-    wsInstances[0]!.receivedOnOpenPayload = OPEN;
+    wsInstances[0].receivedOnOpenPayload = OPEN;
     for (const reason of [
       'Project archived',
       'Project restored',
       'Project content updated',
       'Permission changed, please reconnect',
     ]) {
-      providerInstances[0]!.emit('close', { event: { code: 1000, reason } });
+      providerInstances[0].emit('close', { event: { code: 1000, reason } });
     }
-    expect(providerInstances[0]!.onOpen).toHaveBeenCalledTimes(4);
+    expect(providerInstances[0].onOpen).toHaveBeenCalledTimes(4);
   });
 
   it('leaves any other close alone', () => {
     acquireDocProvider(META, getDoc(META));
-    wsInstances[0]!.receivedOnOpenPayload = OPEN;
-    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Document not found' } });
-    providerInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
-    expect(providerInstances[0]!.onOpen).not.toHaveBeenCalled();
+    wsInstances[0].receivedOnOpenPayload = OPEN;
+    providerInstances[0].emit('close', { event: { code: 1000, reason: 'Document not found' } });
+    providerInstances[0].emit('close', { event: { code: 1006, reason: '' } });
+    expect(providerInstances[0].onOpen).not.toHaveBeenCalled();
   });
 
   it('waits for the socket when the socket itself is down', () => {
     acquireDocProvider(META, getDoc(META));
-    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Project archived' } });
-    expect(providerInstances[0]!.onOpen).not.toHaveBeenCalled();
+    providerInstances[0].emit('close', { event: { code: 1000, reason: 'Project archived' } });
+    expect(providerInstances[0].onOpen).not.toHaveBeenCalled();
   });
 });
 
@@ -248,8 +291,8 @@ describe('collab-socket manager — one report per closed connection', () => {
     acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
     acquireDocProvider('project-p1/canvas-b', getDoc('project-p1/canvas-b'));
 
-    wsInstances[0]!.emit('open');
-    wsInstances[0]!.emit('close', { event: { code: 4408, reason: 'Connection Timeout' } });
+    wsInstances[0].emit('open');
+    wsInstances[0].emit('close', { event: { code: 4408, reason: 'Connection Timeout' } });
 
     expect(reportCollabFailure).toHaveBeenCalledOnce();
     expect(reportCollabFailure).toHaveBeenCalledWith({
@@ -262,31 +305,57 @@ describe('collab-socket manager — one report per closed connection', () => {
 
   it('reports a drop again once the connection has come back', () => {
     acquireDocProvider(META, getDoc(META));
-    wsInstances[0]!.emit('open');
-    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
-    wsInstances[0]!.emit('open');
-    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0].emit('open');
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0].emit('open');
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
     expect(reportCollabFailure).toHaveBeenCalledTimes(2);
   });
 
   it('does not report the reconnect attempts that fail while the connection is down', () => {
     acquireDocProvider(META, getDoc(META));
-    wsInstances[0]!.emit('open');
-    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
-    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
-    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0].emit('open');
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
     expect(reportCollabFailure).toHaveBeenCalledOnce();
   });
 
   it('does not report a first connection attempt that never opened', () => {
     acquireDocProvider(META, getDoc(META));
-    wsInstances[0]!.emit('close', { event: { code: 1006, reason: '' } });
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
     expect(reportCollabFailure).not.toHaveBeenCalled();
   });
 
   it('does not report a document closed on its own while the connection stays up', () => {
     acquireDocProvider(META, getDoc(META));
-    providerInstances[0]!.emit('close', { event: { code: 1000, reason: 'Connection Timeout' } });
+    providerInstances[0].emit('close', { event: { code: 1000, reason: 'Connection Timeout' } });
     expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('does not report the idle drop of a connection whose every document was refused', () => {
+    // A signed-out session or a removed member: the server refuses every
+    // document, nothing is sent any more, and the provider drops the idle
+    // connection on its own every 30 seconds (inner#1548).
+    acquireDocProvider(META, getDoc(META));
+    acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
+    wsInstances[0].emit('open');
+    providerInstances[0].emit('authenticationFailed', { reason: 'Session ended' });
+    providerInstances[1].emit('authenticationFailed', { reason: 'Session ended' });
+
+    wsInstances[0].emit('close', { event: { code: 1005, reason: '' } });
+
+    expect(reportCollabFailure).not.toHaveBeenCalled();
+  });
+
+  it('reports the drop when any attached document is still accepted', () => {
+    acquireDocProvider(META, getDoc(META));
+    acquireDocProvider('project-p1/canvas-a', getDoc('project-p1/canvas-a'));
+    wsInstances[0].emit('open');
+    providerInstances[1].emit('authenticationFailed', { reason: 'Forbidden' });
+
+    wsInstances[0].emit('close', { event: { code: 1006, reason: '' } });
+
+    expect(reportCollabFailure).toHaveBeenCalledOnce();
   });
 });

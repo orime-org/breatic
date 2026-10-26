@@ -33,6 +33,8 @@ interface AuthCardShellProps {
   /** Show the release identity on login and registration cards. */
   showVersion?: boolean;
   subtitle?: React.ReactNode;
+  /** Context shown above the card title, such as an invitation preview. */
+  intro?: React.ReactNode;
   footer?: React.ReactNode;
   /** A line under the footer — the terms line on the sign-in and sign-up cards. */
   notice?: React.ReactNode;
@@ -46,6 +48,7 @@ interface AuthCardShellProps {
  * @param root0.title - heading shown at the top of the card
  * @param root0.showVersion - whether the card shows the product build identity
  * @param root0.subtitle - optional supporting line beneath the title
+ * @param root0.intro - contextual content shown above the title
  * @param root0.footer - optional footer slot for cross-page links
  * @param root0.notice - optional line rendered under the footer
  * @param root0.children - the form (or other body content) inside the card
@@ -56,6 +59,7 @@ export function AuthCardShell({
   title,
   showVersion = false,
   subtitle,
+  intro,
   footer,
   notice,
   children,
@@ -70,6 +74,7 @@ export function AuthCardShell({
       <AuthPageHeader />
       <main className='flex flex-1 items-center justify-center p-6'>
         <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
+          {intro}
           <header className='mb-4 flex flex-col gap-1'>
             <div className='flex items-baseline justify-between gap-3'>
               <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>

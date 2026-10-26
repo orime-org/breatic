@@ -404,13 +404,24 @@ export async function fulfillPayment(
 }
 
 /**
+ * The id a credit order is reported under, to analytics and to Google Ads from
+ * both the browser tag and the server upload. Built from our own order id: a
+ * Checkout Session id alone is 66 characters, past Ads' 64.
+ * @param paymentId - The order's id.
+ * @returns The transaction id.
+ */
+function purchaseTransactionId(paymentId: string): string {
+  return `purchase:${paymentId}`;
+}
+
+/**
  * Report a granted credit purchase to analytics and the ad platform, under
  * the consent of the browser that placed the order (inner#1442 design §4.8, §4.9).
  * @param payment - The order, as read before the grant.
  */
 function reportPurchase(payment: PaymentEntity): void {
   const { consent, click } = readCheckoutSnapshot(payment.metadata);
-  const transactionId = `purchase:${payment.stripeSessionId}`;
+  const transactionId = purchaseTransactionId(payment.id);
   trackServerEvent(
     "credit_purchase_completed",
     {
@@ -762,16 +773,19 @@ export async function confirmCheckout(
 /**
  * Whether an order is paid, whichever pass granted it, and for how much.
  * @param stripeSessionId - The order's Checkout Session.
- * @returns `paid` from the order row, with its amount and currency.
+ * @returns `paid` from the order row, with its amount, currency and the
+ *   transaction id the browser reports the conversion under; empty when no
+ *   such order exists.
  */
 export async function paidOrder(
   stripeSessionId: string,
-): Promise<{ paid: boolean; amountCents: number; currency: string }> {
+): Promise<{ paid: boolean; amountCents: number; currency: string; transactionId: string }> {
   const payment = await paymentRepo.getPaymentByStripeSessionId(stripeSessionId);
   return {
     paid: payment?.status === "completed",
     amountCents: payment?.amountCents ?? 0,
     currency: payment?.currency ?? "",
+    transactionId: payment ? purchaseTransactionId(payment.id) : "",
   };
 }
 

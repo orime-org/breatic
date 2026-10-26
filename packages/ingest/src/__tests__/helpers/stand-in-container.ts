@@ -11,6 +11,7 @@
  */
 
 import { buildProbeAnswer, type ProbeRequest } from "@ingest/probe-answer.js";
+import { peaksSampleCount } from "@ingest/peaks-step.js";
 import {
   hasPreviewableFrame,
   pickMediaMetadata,
@@ -36,12 +37,15 @@ export interface StandInRun {
  * @param preview - The preview there is to write, or null when there is none.
  *   Handed back under the same gate a real run applies: asked for, and cut
  *   from the cover when a cover was asked for, otherwise from a still frame.
+ * @param peaks - The peaks there are to read, or null when there are none.
+ *   Handed back under the gate a real run applies (`peaksSampleCount`).
  * @returns The namespace and what it was asked.
  */
 export function containerAnswering(
   report: ProbeReport,
   cover: Uint8Array | null,
   preview: Uint8Array | null = null,
+  peaks: Uint8Array | null = null,
 ): StandInRun {
   const run: StandInRun = {
     media: null as unknown as Env["MEDIA"],
@@ -72,7 +76,8 @@ export function containerAnswering(
         const previews =
           asked.wantPreview &&
           (asked.wantCover ? cut !== null : hasPreviewableFrame(report));
-        return buildProbeAnswer(report, cut, previews ? preview : null);
+        const reads = peaksSampleCount({ wantPeaks: asked.wantPeaks === true, report }) !== null;
+        return buildProbeAnswer(report, cut, previews ? preview : null, null, reads ? peaks : null);
       },
     }),
   } as unknown as Env["MEDIA"];

@@ -11,7 +11,7 @@
 import { reportCollaboratorFirstAction } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { stream } from "hono/streaming";
+import { streamUntilClientLeaves } from "@server/utils/sse-stream.js";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -28,6 +28,7 @@ import {
   attachmentParamSchema,
 } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
+import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { conversationService } from "@server/modules";
 import { attachmentService } from "@server/modules";
@@ -37,7 +38,7 @@ import { SMALLEST_CREDIT } from "@breatic/domain";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import type { UIMessageChunk } from "ai";
-import { runWithContext, logger, getAgentConfig, ValidationError } from "@breatic/core";
+import { runWithContext, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
 
@@ -155,23 +156,12 @@ async function streamTurn(
   turn: { userId: string; conversationId: string; projectId: string },
   turnStream: (signal: AbortSignal) => Promise<ReadableStream<UIMessageChunk>>,
 ): Promise<Response> {
-  c.header("Content-Type", "text/event-stream");
-  c.header("Cache-Control", "no-cache");
-  c.header("Connection", "keep-alive");
-
-  // The first ring of the stop chain, and the only one that can hear the
-  // client leave. It cannot be inferred from the writes: `StreamingApi.write`
-  // catches and discards the error a dead socket produces, so a loop that only
-  // watched its writes would stream into nothing for as long as the model kept
-  // talking. See `routes/text-tools.ts`, which does the same for its own
-  // stream.
-  const stopped = new AbortController();
-
-  return stream(c, async (s) => {
-    s.onAbort(() => {
-      stopped.abort();
-    });
-
+  // `stopped` is the first ring of the stop chain, and the only one that can
+  // hear the client leave. It cannot be inferred from the writes:
+  // `StreamingApi.write` catches and discards the error a dead socket
+  // produces, so a loop that only watched its writes would stream into
+  // nothing for as long as the model kept talking.
+  return streamUntilClientLeaves(c, async (s, stopped) => {
     // Say the connection is alive on a schedule, because a turn that is
     // thinking looks exactly like a turn that is dead: an open socket with
     // nothing on it. Not awaited — a beat is worth nothing late, and waiting
@@ -200,7 +190,7 @@ async function streamTurn(
       await runWithContext(
         { userId: turn.userId, conversationId: turn.conversationId, projectId: turn.projectId },
         async () => {
-          const turn = await turnStream(stopped.signal);
+          const turn = await turnStream(stopped);
           for await (const chunk of turn) {
             await s.write(frame(chunk));
           }
@@ -250,7 +240,7 @@ chat.use("*", requireAuth);
  * @param c - Hono context with validated `chatMessageSchema` body
  * @returns SSE text/event-stream response
  */
-chat.post("/message", validate("json", chatMessageSchema), async (c) => {
+chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatMessageSchema), async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
 
@@ -271,11 +261,41 @@ chat.post("/message", validate("json", chatMessageSchema), async (c) => {
   assertSayable(body.message, body.attached_chips, body);
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
+  // Checked before an answer is taken, so a refused answer leaves the card
+  // waiting.
   await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
 
   // A message in the project's Agent chat is a collaboration action (inner#1442
   // §4.8). Reported alongside the turn; it never rejects.
   void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
+
+  // An answer to a questionnaire resumes the turn that asked (inner#1542).
+  const answer = body.answer;
+  if (answer !== undefined) {
+    const taken = await conversationService.answerAsk(conversation.id, answer);
+    if (taken.kind === "missing") throw new NotFoundError(t("server.chat.ask_not_found"));
+    if (taken.kind === "mismatch") {
+      logger.warn({ userId: user.id, conversationId: conversation.id, reason: taken.reason }, "chat_answer_mismatch");
+      throw new ValidationError(t("server.chat.answer_mismatch"));
+    }
+    if (taken.kind === "settled") {
+      // The error envelope, plus how the call now stands, so the card that
+      // sent this draws what the store holds.
+      return c.json(
+        {
+          error: { code: 409, message: t("server.chat.ask_already_answered") },
+          call: { status: taken.status, output: taken.output },
+        },
+        409,
+      );
+    }
+    return streamTurn(
+      c,
+      { userId: user.id, conversationId: conversation.id, projectId: body.project_id },
+      (signal) =>
+        new MainAgent().answer(answer.toolCallId, { answers: answer.answers }, taken.turnIndex, signal, body.time_zone, body),
+    );
+  }
 
   return streamTurn(
     c,

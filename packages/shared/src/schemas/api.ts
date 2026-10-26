@@ -17,9 +17,11 @@ import {
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
 } from "@shared/types/membership.js";
 
+import { askUserAnswerSchema } from "@shared/agent/ask-user.js";
 import { GENERATION_SOURCES } from "@shared/types/project-activity.js";
 import { SpaceTypeSchema } from "@shared/types/space.js";
 import { SPACE_NAME_MAX_LEN } from "@shared/types/space-rpc.js";
+import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -33,8 +35,11 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/** An email address field, returned in its normalized form. */
-export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email());
+/**
+ * An email address field, returned in its normalized form; at most 254
+ * characters (RFC 3696 erratum 1690).
+ */
+export const emailSchema = z.string().transform(normalizeEmail).pipe(z.email().max(254));
 
 /**
  * Campaign source a browser recorded before sign-up (inner#1442 §4.5). Left
@@ -190,8 +195,8 @@ export const chatAttachedChipSchema = z.object({
   /** Made up for the item: from the picked node ids, or fresh for a file. */
   id: z.string().max(ATTACHED_CHIP_ID_MAX),
   type: z.enum(["canvas", "image", "video", "audio", "text"]),
-  /** Display name for the chip; LLM context renders this as the section title. */
-  name: z.string(),
+  /** Display name for the chip; LLM context renders this as the section title. Same cap as an upload's file name. */
+  name: z.string().max(255),
   /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
@@ -263,10 +268,12 @@ const chatLoadedSpaceSchema = chatSpaceSchema
   .refine((s) => (s.kind === "canvas") === (s.detail !== undefined), {
     message: "a loaded canvas carries detail and nothing else does",
     path: ["detail"],
+    params: REQUEST_SHAPE_PARAMS,
   })
   .refine((s) => (s.kind === "document") === (s.blocks !== undefined), {
     message: "a loaded document carries blocks and nothing else does",
     path: ["blocks"],
+    params: REQUEST_SHAPE_PARAMS,
   });
 
 /**
@@ -281,7 +288,8 @@ const chatCurrentSpaceSchema = z.discriminatedUnion("state", [
 ]);
 
 export const chatMessageSchema = z.object({
-  message: z.string().min(1),
+  /** What the reader wrote; empty when the request carries `answer` instead. */
+  message: z.string(),
   project_id: z.string().uuid(),
   /**
    * Which conversation this message belongs to. The client holds it — that is
@@ -320,6 +328,19 @@ export const chatMessageSchema = z.object({
   spaces_total: z.number().int().nonnegative().optional(),
   /** The Space the reader has open, when the chip beside "+" is enabled. */
   current_space: chatCurrentSpaceSchema.optional(),
+  /**
+   * The reader's answers to a questionnaire the agent is waiting on
+   * (inner#1542). A request carrying it resumes the turn that asked, adds no
+   * message of the reader's, and has an empty `message`.
+   */
+  answer: askUserAnswerSchema.optional(),
+}).superRefine((value, ctx) => {
+  if (value.answer === undefined && value.message.length === 0) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
+  }
+  if (value.answer !== undefined && value.message.length > 0) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });
+  }
 });
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 export type ChatSpace = z.infer<typeof chatSpaceSchema>;
@@ -337,8 +358,10 @@ export type ChatSpaceContext = Pick<ChatMessageInput, "spaces" | "spaces_total" 
 
 export const taskCreateSchema = z
   .object({
-    task_type: z.string(),
-    model: z.string().optional(),
+    /** `tasks.task_type` is varchar(50). */
+    task_type: z.string().max(50),
+    /** `tasks.model` is varchar(100). */
+    model: z.string().max(100).optional(),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).
@@ -444,6 +467,18 @@ export const understandSchema = z.object({
 export type UnderstandInput = z.infer<typeof understandSchema>;
 
 /**
+ * One transcription press (inner#856): a reading of an audio or video node
+ * with the fixed transcription question, and the panel's one switch. Bound
+ * the same way as a reading; it carries no question of the reader's own.
+ */
+export const transcribeSchema = understandSchema.omit({ prompt: true, source_type: true }).extend({
+  source_type: z.enum(["audio", "video"]),
+  /** Whether filler words stay as spoken. */
+  keep_fillers: z.boolean(),
+});
+export type TranscribeInput = z.infer<typeof transcribeSchema>;
+
+/**
  * A copy of what a text node holds, kept because somebody asked for it
  * (#2175). The browser is the only writer: the words live in the canvas
  * document, which the server does not read.
@@ -531,7 +566,8 @@ export const projectCreateSchema = z.object({
    * change.
    */
   spaceType: SpaceTypeSchema.default("canvas"),
-  description: z.string().optional(),
+  /** Same cap as editing the project's description. */
+  description: z.string().max(2000).optional(),
 });
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 

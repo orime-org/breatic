@@ -17,6 +17,8 @@
  * be tested without one.
  */
 
+import { ceilToCreditCent, type ProjectCreditsView } from "@breatic/shared";
+
 /** How many micro-credits make one credit — `numeric(20, 6)`'s scale. */
 const MICRO_PER_CREDIT = 1_000_000;
 
@@ -24,10 +26,10 @@ const MICRO_PER_CREDIT = 1_000_000;
 const SCALE = 6;
 
 /**
- * The smallest amount the ledger can hold. A balance at least this large is
- * a balance above zero.
+ * The smallest amount a charge settles to (inner#1666). A balance at least
+ * this large can pay for something.
  */
-export const SMALLEST_CREDIT = 1 / MICRO_PER_CREDIT;
+export const SMALLEST_CREDIT = 0.01;
 
 /**
  * Convert credits to integer micro-credits.
@@ -65,6 +67,29 @@ export function toMicroCredits(value: number | string): number {
   const padded = fraction.padEnd(SCALE, "0").slice(0, SCALE);
   const magnitude = Number(`${whole === "" ? "0" : whole}${padded}`);
   return sign === "-" ? -magnitude : magnitude;
+}
+
+/**
+ * What a charge or a hold of this amount takes, in micro-credits: the amount
+ * rounded up to whole cents (`ceilToCreditCent`, inner#1666).
+ * @param credits - A credit amount, zero or more.
+ * @returns The amount charged, in micro-credits.
+ * @throws {RangeError} When the amount is negative or not a finite number.
+ */
+export function toChargeMicro(credits: number): number {
+  return Math.round(ceilToCreditCent(credits) * 100) * (MICRO_PER_CREDIT / 100);
+}
+
+/**
+ * The credits a finished run records and is charged: rounded up to whole
+ * cents. It runs after the vendor has returned, where a throw would rerun the
+ * task and pay the vendor twice, so a figure that is not a positive number
+ * passes through unchanged for the charge to skip or log, as it did before.
+ * @param credits - What the run cost.
+ * @returns The amount to record and charge.
+ */
+export function toChargeCredits(credits: number): number {
+  return Number.isFinite(credits) && credits > 0 ? ceilToCreditCent(credits) : credits;
 }
 
 /**
@@ -139,4 +164,29 @@ export function planCharge(
   }
 
   return { allocations, shortfall: owed };
+}
+
+/**
+ * A studio's balance, holds and what is left, from the three sums, so the
+ * admission, its refusal and every screen that shows them compute them the
+ * same way (inner#1611).
+ *
+ * What is left is never below zero unless the studio owes. A run charged
+ * above its estimate can leave the others' holds larger than the balance;
+ * nothing is left then, and a figure below zero would read as debt.
+ * @param lots - What its designated lots have left, as a decimal string.
+ * @param debt - What it owes, as a decimal string.
+ * @param held - What counted holds add up to, as a decimal string.
+ * @returns The three figures, in credits.
+ * @throws {Error} If a sum is not a plain decimal number.
+ */
+export function positionFrom(lots: string, debt: string, held: string): ProjectCreditsView {
+  const spendable = toMicroCredits(lots) - toMicroCredits(debt);
+  const heldMicro = toMicroCredits(held);
+  const available = spendable < 0 ? spendable : Math.max(0, spendable - heldMicro);
+  return {
+    spendable: spendable / MICRO_PER_CREDIT,
+    held: heldMicro / MICRO_PER_CREDIT,
+    available: available / MICRO_PER_CREDIT,
+  };
 }

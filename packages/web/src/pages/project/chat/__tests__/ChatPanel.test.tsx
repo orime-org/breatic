@@ -3,6 +3,9 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const toastSpy = vi.hoisted(() => ({ error: vi.fn(), warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: toastSpy.warning, success: vi.fn(), info: vi.fn() } }));
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -225,7 +228,7 @@ describe('ChatPanel', () => {
     conversationRuntime.setDraft(CONV, 'look at this');
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
     expect(chatAttachments.trayOf(CONV)).toHaveLength(1);
   });
 
@@ -295,7 +298,7 @@ describe('ChatPanel', () => {
     // No answer came back, so there is nothing to quote and nothing to add.
     // Two words: what to do about it is the reader's own business.
     await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
+      expect(toastSpy.error).toHaveBeenCalledWith('Network error'),
     );
   });
 
@@ -307,16 +310,15 @@ describe('ChatPanel', () => {
 
     conversationRuntime.setDraft(CONV, 'is anyone there');
     await user.click(screen.getByTestId('chat-composer-send'));
-    const firstLine = await screen.findByTestId('chat-notice');
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledTimes(1));
 
     // Straight away, while the first line is still up -- which is when a
     // reader presses again, not four seconds later.
     await user.click(screen.getByTestId('chat-composer-send'));
 
-    // Same words, so a line left in place is a line React does not touch: the
-    // DOM would not move and a screen reader would announce nothing. The
-    // second failure has to be its own line.
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).not.toBe(firstLine));
+    // Same words, said again: the toast is told twice, which refreshes the
+    // one on screen rather than leaving the second failure unsaid.
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalledTimes(2));
     // 两次按下,两次请求。第二次被吞掉就是「看着能按、按下去没反应」。
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
@@ -336,22 +338,20 @@ describe('ChatPanel', () => {
 
     // The server went to the trouble of saying why, in the reader's language.
     await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent(
-        'You do not have access to this project',
-      ),
+      expect(toastSpy.error).toHaveBeenCalledWith('You do not have access to this project'),
     );
   });
 
-  it('has one place to say things, not two', async () => {
+  it('says it in a toast and draws nothing of its own in the panel', async () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
     renderPanel();
 
     // A chat that would not open used to have its own red bar at the top of
     // the panel. Two places that say things is one too many: the reader has
     // to learn where to look, and the two can disagree.
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
     expect(screen.queryByTestId('chat-open-failed')).not.toBeInTheDocument();
-    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.queryAllByRole('alert')).toHaveLength(0);
   });
 
   it('says one thing about a chat that would not open, and offers nothing', async () => {
@@ -359,11 +359,10 @@ describe('ChatPanel', () => {
     renderPanel();
 
     await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
+      expect(toastSpy.error).toHaveBeenCalledWith('Network error'),
     );
     // No button, no instruction. Reloading or trying again is the reader's own
     // business, and telling them to do it adds nothing they cannot see.
-    expect(screen.queryByTestId('chat-notice-action')).not.toBeInTheDocument();
   });
 
   it('keeps the keyboard on the box when the chat it waited for opens', async () => {
@@ -436,7 +435,7 @@ describe('ChatPanel', () => {
     renderPanel();
 
     await waitFor(() =>
-      expect(screen.getByTestId('chat-notice')).toHaveTextContent('Network error'),
+      expect(toastSpy.error).toHaveBeenCalledWith('Network error'),
     );
 
     expect(screen.getByTestId('chat-composer-box')).not.toBeDisabled();
@@ -447,7 +446,7 @@ describe('ChatPanel', () => {
     vi.mocked(chatApi.openChat).mockRejectedValue(new Error('server said no'));
     renderPanel();
 
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
 
     conversationRuntime.setDraft(CONV, 'please do not eat this');
     await user.click(screen.getByTestId('chat-composer-send'));
@@ -499,27 +498,6 @@ describe('a conversation longer than one page', () => {
         hasMore: true,
       },
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
-  });
-
-  it('stops saying it on its own, without waiting to be cleared', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    theRequestNeverLeft();
-    renderPanel();
-    await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
-
-    conversationRuntime.setDraft(CONV, 'shorten this');
-    await user.click(screen.getByTestId('chat-composer-send'));
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
-
-    // It belongs to the moment it happened in, and that moment passes. A line
-    // that waited to be cleared would still be standing there when the next
-    // thing went wrong, saying the wrong thing about it.
-    await act(async () => {
-      vi.advanceTimersByTime(5000);
-    });
-    expect(screen.queryByTestId('chat-notice')).not.toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('offers to load what came before, and stops offering once it has', async () => {
@@ -596,7 +574,7 @@ describe('a conversation longer than one page', () => {
 });
 
 
-describe('where a failure about a row in the list is drawn', () => {
+describe('a failure about a row in the list', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetForTests();
@@ -614,7 +592,7 @@ describe('where a failure about a row in the list is drawn', () => {
     } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
   }
 
-  it('is drawn in the panel while the list is closed', async () => {
+  it('is told in a toast while the list is closed', async () => {
     // 顶栏也能改名,而那时抽屉是关着的。一条只画在抽屉里的提示,读者一个字都
     // 看不到 —— 去向由「读者现在看得见哪儿」定,不由「从哪儿按的」定。
     opens();
@@ -626,10 +604,10 @@ describe('where a failure about a row in the list is drawn', () => {
       await expect(conversationRuntime.rename('p1', 'c-1', 'a new name')).rejects.toThrow('offline');
     });
 
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
   });
 
-  it('is drawn in the list while the list is open', async () => {
+  it('is told in a toast while the list is open', async () => {
     opens();
     renderPanel({ projectId: 'p1', historyOpen: true });
     await waitFor(() => expect(screen.getByTestId('conversation-history-sheet')).toBeInTheDocument());
@@ -639,10 +617,7 @@ describe('where a failure about a row in the list is drawn', () => {
       await expect(conversationRuntime.rename('p1', 'c-1', 'a new name')).rejects.toThrow('offline');
     });
 
-    await waitFor(() =>
-      expect(screen.getByTestId('conversation-row-mishap')).toBeInTheDocument(),
-    );
-    expect(screen.queryByTestId('chat-notice')).toBeNull();
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
   });
 
   it('draws nothing at all while the conversation is still on its way', async () => {
@@ -713,7 +688,7 @@ describe('where a failure about a row in the list is drawn', () => {
       await conversationRuntime.startNew('p1');
     });
 
-    await waitFor(() => expect(screen.getByTestId('chat-notice')).toBeInTheDocument());
+    await waitFor(() => expect(toastSpy.error).toHaveBeenCalled());
   });
 });
 
@@ -807,7 +782,7 @@ describe('deleting a conversation from the list', () => {
     );
   });
 
-  it('closes the question once a failed delete is answered, uncovering the word on the row', async () => {
+  it('closes the question once a failed delete is answered, and says so', async () => {
     let fail: (err: Error) => void = () => undefined;
     vi.mocked(chatApi.deleteConversation).mockImplementation(
       () =>
@@ -825,6 +800,6 @@ describe('deleting a conversation from the list', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('conversation-delete-dialog')).toBeNull(),
     );
-    expect(screen.getByTestId('conversation-row-mishap')).toBeInTheDocument();
+    expect(toastSpy.error).toHaveBeenCalled();
   });
 });

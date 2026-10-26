@@ -1,9 +1,40 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
-import { ADJUST_RANGES, defaultAdjustValue, setLocale } from '@breatic/shared';
+import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { ADJUST_RANGES, defaultAdjustValue, setLocale, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
+
+import type { CameraAngleSphereProps } from '@web/spaces/canvas/generate/camera-angle-sphere-props';
+
+const sphere = vi.hoisted(() => ({ last: null as CameraAngleSphereProps | null }));
+
+vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
+  default: (props: CameraAngleSphereProps) => {
+    sphere.last = props;
+    return <div data-testid='fake-sphere' />;
+  },
+}));
+const waveform = vi.hoisted(() => ({
+  limits: { maxSeconds: 600, maxBytes: 200_000_000, peaksRetryMs: 5000, peaksRetryMaxMs: 600_000 } as Record<string, number> | null,
+  peaks: { kind: 'missing' } as { kind: string; peaks?: number[] },
+  retry: undefined as unknown,
+}));
+vi.mock('@web/data/api/canvas', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  getCachedWaveformLimits: () => waveform.limits,
+}));
+vi.mock('@web/spaces/canvas/mini-tool/use-audio-peaks', () => ({
+  useAudioPeaks: (_url: string, retry: unknown) => {
+    waveform.retry = retry;
+    return waveform.peaks;
+  },
+}));
+vi.mock('@web/spaces/canvas/mini-tool/AudioWaveform', () => ({
+  AudioWaveform: ({ peaks }: { peaks?: number[] }) => (
+    <div data-testid='mini-tool-waveform' data-from={peaks === undefined ? 'decode' : 'peaks'} />
+  ),
+}));
 import { miniToolById, type MiniToolSpec } from '@breatic/shared/mini-tools';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -328,6 +359,13 @@ describe('MiniToolPanel', () => {
     expect(part('kept').style.width).toBe('50%');
   });
 
+  // A time is rounded to the tenth before it is split, so 59.97 s reads as the
+  // next minute and never as `00:60.0`.
+  it('reads a cut end that rounds up to the next minute as that minute', () => {
+    mount({ spec: tool('video.cut'), params: {}, source: { width: 1280, height: 720, duration: 179.97 } });
+    expect(screen.getByText('00:00.0 – 03:00.0')).toBeInTheDocument();
+  });
+
   // The cut's band is a filmstrip of the source, so the reader sees what each moment shows.
   it('lays the source out as a filmstrip on the cut band', () => {
     mount({
@@ -368,3 +406,377 @@ describe('MiniToolPanel grid tile picking', () => {
   });
 });
 
+
+// inner#1304: the batch-four panels.
+describe('the batch-four panels', () => {
+  const SOURCE = 'https://resource.test/image/a.png';
+  const REFERENCE = 'https://resource.test/image/ref.png';
+  const RESOLUTION: ParamDescriptor = { description: '', default: '1k', values: ['1k', '2k'], fill: 'tool' };
+
+  /**
+   * A pinned model declaring the given params.
+   * @param params - Its params.
+   * @returns The entry.
+   */
+  function pinned(params: Record<string, ParamDescriptor>): ModelEntry {
+    return { name: 'm', takes_prompt: true, params } as unknown as ModelEntry;
+  }
+
+  const relightEntry = pinned({
+    light_reference: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true },
+    light_azimuth: { description: '', default: 315, min: 0, max: 315, step: 45, fill: 'tool', value_labels: { 315: 'Front left' } },
+    light_elevation: { description: '', default: 30, min: -30, max: 90, step: 30, fill: 'tool', value_labels: { 30: 'Above' } },
+    resolution: RESOLUTION,
+  });
+  const relightControls = [
+    { kind: 'lightAngle', name: 'light_angle', params: { azimuth: 'light_azimuth', elevation: 'light_elevation' } },
+    { kind: 'choice', name: 'resolution', options: [{ value: '1k', label: '1K' }, { value: '2k', label: '2K' }] },
+  ] as MiniToolPanelProps['modelControls'];
+
+  /**
+   * Mount the relight panel.
+   * @param slots - The draft slots.
+   * @returns The props.
+   */
+  function mountRelight(slots: MiniToolPanelProps['slots'] = {}): MiniToolPanelProps {
+    return mount({
+      spec: tool('image.relight'),
+      modelEntry: relightEntry,
+      modelControls: relightControls,
+      params: { light_azimuth: 315, light_elevation: 30, resolution: '2k' },
+      source: { width: 768, height: 1152, url: SOURCE },
+      slots,
+      creditText: '10.5',
+    });
+  }
+
+  it('puts the light in the left column and the rest on the right, the note last across both', async () => {
+    mountRelight();
+    await screen.findByTestId('fake-sphere');
+    const left = screen.getByTestId('mini-tool-column-left');
+    const right = screen.getByTestId('mini-tool-column-right');
+    expect(within(left).getByTestId('generate-camera-angle')).toBeInTheDocument();
+    expect(within(right).getByTestId('mini-tool-slot-image.relight-light_reference')).toBeInTheDocument();
+    expect(within(right).getByTestId('generate-param-resolution-option-2k')).toBeInTheDocument();
+    const prompt = screen.getByTestId('mini-tool-prompt');
+    expect(left.contains(prompt) || right.contains(prompt)).toBe(false);
+    expect(right.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('puts the source on the light sphere card', async () => {
+    mountRelight();
+    await screen.findByTestId('fake-sphere');
+    expect(sphere.last?.subjectUrl).toBe(`${SOURCE}?cors=1`);
+  });
+
+  it('shows the reference in place of the light sphere once one is picked', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).queryByTestId('generate-camera-angle')).toBeNull();
+    expect(within(left).getByTestId('mini-tool-reference-preview')).toHaveAttribute('src', expect.stringContaining('ref.png'));
+  });
+
+  it('marks the style slot required where the model lets it stay empty', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true } }),
+      params: {},
+    });
+    expect(screen.getByTestId('mini-tool-slot-image.restyle-style')).toHaveAccessibleName('Image (required)');
+  });
+
+  it('puts the multi-angle source on the camera sphere card', async () => {
+    const qwen = {
+      ...pinned({}),
+      camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+    } as ModelEntry;
+    mount({
+      spec: tool('image.angle'),
+      modelEntry: qwen,
+      modelControls: [{ kind: 'cameraAngle', name: 'camera_angle', params: qwen.camera_angle! }],
+      params: { horizontal_angle: 0, vertical_angle: 0, distance: 1 },
+      source: { width: 768, height: 1152, url: SOURCE },
+    });
+    await screen.findByTestId('fake-sphere');
+    expect(sphere.last?.subjectUrl).toBe(`${SOURCE}?cors=1`);
+  });
+
+  // inner#1304 visual review.
+  it('clears the reference from its slot alone, never from the large picture', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).getByTestId('mini-tool-reference-preview')).toBeInTheDocument();
+    expect(within(left).queryByRole('button')).toBeNull();
+    expect(screen.getByTestId('mini-tool-slot-image.relight-light_reference-clear')).toBeInTheDocument();
+  });
+
+  it('names the restyle slot above its tiles', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true, max_items: 3 } }),
+      params: {},
+    });
+    expect(screen.getByText('Style pictures')).toBeInTheDocument();
+  });
+
+  it('keeps the light heading over the reference, saying the light follows it', () => {
+    mountRelight({ light_reference: { url: REFERENCE } });
+    const left = screen.getByTestId('mini-tool-column-left');
+    expect(within(left).getByText('Light source')).toBeInTheDocument();
+    expect(within(left).getByText('Follows the reference')).toBeInTheDocument();
+  });
+
+  it('says a slot is required only while it holds nothing', () => {
+    mount({
+      spec: tool('image.restyle'),
+      modelEntry: pinned({ style_images: { description: '', default: null, accepts: 'image', fill: 'canvas', optional: true, max_items: 3 } }),
+      params: {},
+      slots: { style: [{ url: REFERENCE }] },
+      slotCaps: { style: 3 },
+    });
+    expect(screen.getByTestId('mini-tool-slot-image.restyle-style')).toHaveAccessibleName('Image');
+  });
+
+  it('takes the wide panel for the camera sphere, laid beside its sliders', async () => {
+    const qwen = {
+      ...pinned({}),
+      camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
+    } as ModelEntry;
+    mount({
+      spec: tool('image.angle'),
+      modelEntry: qwen,
+      modelControls: [{ kind: 'cameraAngle', name: 'camera_angle', params: qwen.camera_angle! }],
+      params: { horizontal_angle: 0, vertical_angle: 0, distance: 1 },
+      source: { width: 768, height: 1152, url: SOURCE },
+    });
+    await screen.findByTestId('fake-sphere');
+    expect(screen.getByTestId('generate-camera-angle-control')).toHaveAttribute('data-layout', 'beside');
+    expect(screen.getByTestId('mini-tool-panel').className).toContain('w-[min(560px,92vw)]');
+  });
+
+  it('keeps a prompt that holds Run back before the params', () => {
+    mount({
+      spec: tool('image.quickEdit'),
+      modelEntry: pinned({ resolution: RESOLUTION }),
+      modelControls: [{ kind: 'choice', name: 'resolution', options: [{ value: '2k', label: '2K' }] }],
+      params: { resolution: '2k' },
+    });
+    const prompt = screen.getByTestId('mini-tool-prompt');
+    const param = screen.getByTestId('generate-param-resolution-option-2k');
+    expect(prompt.compareDocumentPosition(param) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+// inner#1305: the batch-five audio panels.
+describe('the batch-five panels', () => {
+  const AUDIO = { duration: 95.2, url: 'https://cdn/a.m4a', sizeBytes: 4_000_000 };
+
+  it('keeps the pitch on the shared switch row, with its state word, and writes it when flipped', () => {
+    const props = mount({ spec: tool('audio.speed'), params: { rate: 1, keepPitch: true }, source: AUDIO });
+    const toggle = screen.getByTestId('mini-tool-param-keepPitch-switch');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(toggle.closest('label')).toHaveTextContent('On');
+    fireEvent.click(toggle);
+    expect(props.onParams).toHaveBeenLastCalledWith({ keepPitch: false });
+  });
+
+  describe('the equaliser', () => {
+    const flat = { preset: 'flat', gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+
+    it('draws ten bands under the presets, with no Custom until one is moved', () => {
+      mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      expect(screen.getAllByTestId(/^mini-tool-eq-band-\d+-slider$/)).toHaveLength(10);
+      expect(screen.getByTestId('mini-tool-eq-band-9-label')).toHaveTextContent('16k');
+      expect(screen.getByTestId('mini-tool-eq-preset-flat')).toHaveAttribute('aria-current', 'true');
+      expect(screen.queryByTestId('mini-tool-eq-preset-custom')).toBeNull();
+    });
+
+    it('fills every band from a pressed preset', () => {
+      const props = mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      fireEvent.click(screen.getByTestId('mini-tool-eq-preset-bass_boost'));
+      expect(props.onParams).toHaveBeenLastCalledWith({ eq: { preset: 'bass_boost', gains: [6, 6, 4, 2, 0, 0, 0, 0, 0, 0] } });
+    });
+
+    it('turns to Custom when a band moves', () => {
+      const props = mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      const thumb = screen.getByTestId('mini-tool-eq-band-0-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowUp' });
+      expect(props.onParams).toHaveBeenLastCalledWith({ eq: { preset: 'custom', gains: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0] } });
+    });
+
+    it('shows the stored gain once a key press on a band is over', () => {
+      const props: MiniToolPanelProps = {
+        ...mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO }),
+      };
+      cleanupAll();
+      const view = render(
+        <TooltipProvider>
+          <MiniToolPanel {...props} />
+        </TooltipProvider>,
+      );
+      const thumb = screen.getByTestId('mini-tool-eq-band-9-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowDown' });
+      fireEvent.keyUp(thumb, { key: 'ArrowDown' });
+      // A preset pressed after the key: the band reads the preset's gain.
+      view.rerender(
+        <TooltipProvider>
+          <MiniToolPanel {...props} params={{ eq: { preset: 'bass_boost', gains: [6, 6, 4, 2, 0, 0, 0, 0, 0, 0] } }} />
+        </TooltipProvider>,
+      );
+      expect(screen.getByTestId('mini-tool-eq-band-9-value')).toHaveTextContent('0');
+    });
+
+    it('signs each band\'s gain with a true minus, and quiets the bands left at 0', () => {
+      mount({ spec: tool('audio.eq'), params: { eq: { preset: 'voice', gains: [-6, -4, -2, 0, 0, 2, 3, 3, 1, 0] } }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-eq-band-0-value')).toHaveTextContent('\u22126');
+      expect(screen.getByTestId('mini-tool-eq-band-6-value')).toHaveTextContent('+3');
+      expect(screen.getByTestId('mini-tool-eq-band-3-value')).toHaveTextContent('0');
+      expect(screen.getByTestId('mini-tool-eq-band-3-value')).toHaveClass('text-muted-foreground');
+      expect(screen.getByTestId('mini-tool-eq-band-6-value')).toHaveClass('text-foreground');
+    });
+
+    // The approved demo's 0 dB line across the ten bands.
+    it('draws a 0 dB line across the bands', () => {
+      mount({ spec: tool('audio.eq'), params: { eq: flat }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-eq-zero')).toBeInTheDocument();
+    });
+  });
+
+  describe('the compressor', () => {
+    const medium = { preset: 'medium', threshold: -24, ratio: 3, attack: 10, release: 200, makeup: 4 };
+
+    it('offers three presets and five sliders, with Custom only once one is moved', () => {
+      mount({ spec: tool('audio.compress'), params: { dynamics: medium }, source: AUDIO });
+      for (const preset of ['light', 'medium', 'heavy']) {
+        expect(screen.getByTestId(`mini-tool-dynamics-preset-${preset}`)).toBeInTheDocument();
+      }
+      expect(screen.queryByTestId('mini-tool-dynamics-preset-custom')).toBeNull();
+      for (const field of ['threshold', 'ratio', 'attack', 'release', 'makeup']) {
+        expect(screen.getByTestId(`mini-tool-dynamics-${field}-slider`)).toBeInTheDocument();
+      }
+      expect(screen.getByTestId('mini-tool-dynamics-ratio-value')).toHaveTextContent('3:1');
+    });
+
+    it('fills the sliders from a pressed preset and turns to Custom when one moves', () => {
+      const props = mount({ spec: tool('audio.compress'), params: { dynamics: medium }, source: AUDIO });
+      fireEvent.click(screen.getByTestId('mini-tool-dynamics-preset-heavy'));
+      expect(props.onParams).toHaveBeenLastCalledWith({
+        dynamics: { preset: 'heavy', threshold: -30, ratio: 6, attack: 5, release: 150, makeup: 6 },
+      });
+      const thumb = screen.getByTestId('mini-tool-dynamics-threshold-slider').querySelector('[role="slider"]')!;
+      fireEvent.keyDown(thumb, { key: 'ArrowRight' });
+      expect(props.onParams).toHaveBeenLastCalledWith({ dynamics: { ...medium, preset: 'custom', threshold: -23 } });
+    });
+
+    it('reads its threshold with a true minus and its make-up gain plain at 0', () => {
+      mount({ spec: tool('audio.compress'), params: { dynamics: { ...medium, makeup: 0 } }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-dynamics-threshold-value')).toHaveTextContent('\u221224 dB');
+      expect(screen.getByTestId('mini-tool-dynamics-makeup-value')).toHaveTextContent(/^0 dB$/);
+      cleanupAll();
+      mount({ spec: tool('audio.compress'), params: { dynamics: medium }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-dynamics-makeup-value')).toHaveTextContent('+4 dB');
+    });
+
+    it('shows Custom selected once the settings match no preset', () => {
+      mount({ spec: tool('audio.compress'), params: { dynamics: { ...medium, preset: 'custom', ratio: 5 } }, source: AUDIO });
+      expect(screen.getByTestId('mini-tool-dynamics-preset-custom')).toHaveAttribute('aria-current', 'true');
+    });
+  });
+
+  it('reads pan as a balance and pitch as signed numbers', () => {
+    mount({ spec: tool('audio.pan'), params: { pan: -30, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-value')).toHaveTextContent('L 30');
+    expect(screen.getByTestId('mini-tool-param-width-value')).toHaveTextContent('100%');
+    cleanupAll();
+    mount({ spec: tool('audio.pan'), params: { pan: 0, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-value')).toHaveTextContent('Center');
+    cleanupAll();
+    mount({ spec: tool('audio.pan'), params: { pan: 30, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-value')).toHaveTextContent('R 30');
+    cleanupAll();
+    mount({ spec: tool('audio.pitch'), params: { semitones: 3, cents: -20 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-semitones-value')).toHaveTextContent('+3');
+    expect(screen.getByTestId('mini-tool-param-cents-value')).toHaveTextContent('\u221220');
+  });
+
+  // A value that runs both ways is drawn from its neutral point, as the EQ is.
+  it('fills the balance and the signed sliders from 0', () => {
+    mount({ spec: tool('audio.pan'), params: { pan: 0, width: 100 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-pan-slider').querySelector('[data-slot="slider-origin-fill"]')).not.toBeNull();
+    expect(screen.getByTestId('mini-tool-param-width-slider').querySelector('[data-slot="slider-origin-fill"]')).toBeNull();
+    cleanupAll();
+    mount({ spec: tool('audio.pitch'), params: { semitones: 0, cents: 0 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-semitones-slider').querySelector('[data-slot="slider-origin-fill"]')).not.toBeNull();
+  });
+
+  it('reads denoise as the dB it takes off, and voice and reverb amount in percent', () => {
+    mount({ spec: tool('audio.denoise'), params: { intensity: 50 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-intensity-value')).toHaveTextContent('20 dB');
+    cleanupAll();
+    mount({ spec: tool('audio.voice'), params: { intensity: 50 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-intensity-value')).toHaveTextContent('50%');
+    cleanupAll();
+    mount({ spec: tool('audio.reverb'), params: { room: 'large_room', amount: 50 }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-amount-value')).toHaveTextContent('50%');
+  });
+
+  it('lists the loudness targets one to a row', () => {
+    mount({ spec: tool('audio.normalize'), params: { target: '-16' }, source: AUDIO });
+    expect(screen.getByTestId('mini-tool-param-target--16').parentElement).toHaveAttribute('data-layout', 'stack');
+  });
+
+  describe('the cut band of an audio source (inner#1305 §4.4)', () => {
+    const LONG = { ...AUDIO, duration: 3600, sizeBytes: 144_000_000 };
+    const cut = (source: typeof AUDIO): void => {
+      mount({ spec: tool('audio.cut'), params: { range: { start: 2, end: 6 } }, source });
+    };
+    const drawn = (): HTMLElement | null =>
+      within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform');
+
+    beforeEach(() => {
+      waveform.limits = { maxSeconds: 600, maxBytes: 200_000_000, peaksRetryMs: 5000, peaksRetryMaxMs: 600_000 };
+      waveform.peaks = { kind: 'missing' };
+    });
+
+    it('draws from the peaks file at any length, without decoding', () => {
+      waveform.peaks = { kind: 'ready', peaks: [1, 2, 3] };
+      cut(LONG);
+      expect(drawn()).toHaveAttribute('data-from', 'peaks');
+      expect(screen.getByTestId('mini-tool-range-band').querySelector('[data-testid="mini-tool-filmstrip"]')).toBeNull();
+    });
+
+    it('decodes in the browser while peaks are missing and the source is within the ceilings', () => {
+      cut(AUDIO);
+      expect(drawn()).toHaveAttribute('data-from', 'decode');
+      // Within the ceilings the decode draws it, so there is nothing to read again for.
+      expect(waveform.retry).toBeNull();
+    });
+
+    it('stays plain past the ceilings while peaks are missing, and reads them again on the served interval', () => {
+      cut(LONG);
+      expect(drawn()).toBeNull();
+      expect(waveform.retry).toEqual({ everyMs: 5000, forMs: 600_000 });
+      expect(screen.getByTestId('mini-tool-range')).toBeInTheDocument();
+    });
+
+    it('stays plain while the peaks load, for a file that is not a peaks file, and before the ceilings load', () => {
+      waveform.peaks = { kind: 'loading' };
+      cut(AUDIO);
+      expect(drawn()).toBeNull();
+      cleanupAll();
+      waveform.peaks = { kind: 'invalid' };
+      cut(AUDIO);
+      expect(drawn()).toBeNull();
+      cleanupAll();
+      waveform.peaks = { kind: 'missing' };
+      waveform.limits = null;
+      cut(AUDIO);
+      expect(drawn()).toBeNull();
+    });
+
+    it('decodes nothing for a source of unknown size', () => {
+      cut({ ...AUDIO, sizeBytes: undefined } as unknown as typeof AUDIO);
+      expect(drawn()).toBeNull();
+    });
+  });
+});

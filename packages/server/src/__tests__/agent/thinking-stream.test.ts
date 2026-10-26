@@ -25,7 +25,7 @@ import { FINISHED } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 
 /** What the model produces this case. */
 const modelSays = vi.hoisted(() => ({ parts: [] as ModelStreamPart[] }));
@@ -72,6 +72,7 @@ const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages,
 }));
 // The turn asks the conversation what it is called, so it can say so in the
@@ -81,7 +82,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

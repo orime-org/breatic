@@ -86,7 +86,7 @@ test.afterEach(async () => {
   await page.close();
 });
 
-test('a turn that found pictures draws them, from the proxied thumbnail @needs-model @needs-search @needs-internet', async () => {
+test('a turn that found pictures draws them, from the proxied thumbnail @needs-model @needs-search @needs-internet @needs-storage @needs-ingest', async () => {
   await aTurnThatFoundPictures(page);
 
   const squares = page.getByTestId('asset-thumb');
@@ -125,7 +125,7 @@ test('a turn that found pictures draws them, from the proxied thumbnail @needs-m
   expect(fetched.some((url) => url.includes('imgs.search.brave.com'))).toBe(true);
 });
 
-test('opening one shows it large, from that same address @needs-model @needs-search @needs-internet', async () => {
+test('opening one shows it large, from that same address @needs-model @needs-search @needs-internet @needs-storage @needs-ingest', async () => {
   await aTurnThatFoundPictures(page);
 
   const first = page.getByTestId('asset-thumb').first();

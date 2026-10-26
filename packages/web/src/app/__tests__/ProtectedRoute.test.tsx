@@ -36,7 +36,7 @@ function renderAt(
           <Route path='/login' element={<LoginProbe />} />
           <Route
             path='/choose-slug'
-            element={<div data-testid='onboarding-page' />}
+            element={<OnboardingProbe />}
           />
         </Routes>
       </MemoryRouter>
@@ -52,6 +52,12 @@ function renderAt(
 function LoginProbe(): React.ReactElement {
   const location = useLocation();
   return <div data-testid='login-page'>{location.search}</div>;
+}
+
+/** Exposes the onboarding query so the intended destination can be verified. */
+function OnboardingProbe(): React.ReactElement {
+  const location = useLocation();
+  return <div data-testid='onboarding-page'>{location.search}</div>;
 }
 
 const studio: PersonalStudioRef = {
@@ -164,4 +170,16 @@ describe('ProtectedRoute', () => {
       `?next=${encodeURIComponent('/protected?token=abc123')}`,
     );
   });
+
+  it('carries the full decision destination through the personal Studio gate', () => {
+    useCurrentUserStore.setState({
+      user: { id: 'u1', name: 'Recipient', email: 'recipient@example.test', personalStudio: null, membershipTier: 'base' },
+      bootstrapped: true,
+    });
+    renderAt('/protected?token=abc123', <div data-testid='protected-content' />);
+    expect(screen.getByTestId('onboarding-page')).toHaveTextContent(
+      `?next=${encodeURIComponent('/protected?token=abc123')}`,
+    );
+  });
+
 });

@@ -28,6 +28,8 @@
  *                     attempts. hocuspocus hands every document on one socket
  *                     the same request object (hocuspocus-server.esm.js:331,
  *                     974), which is what the failures are tallied on.
+ *   recordFailedUpgrade counts a session refusal on the native request using
+ *                     that same failure counter and normalized identity.
  *
  * Why the verdict travels as a header rather than a side channel: hocuspocus
  * runs the upgrade hooks BEFORE handing the request to crossws, and crossws
@@ -90,6 +92,7 @@ export interface ConnectionGate {
   onUpgrade(data: UpgradeHookPayload): Promise<void>;
   onConnect(data: ConnectHookPayload): Promise<void>;
   recordFailedAuth(data: ConnectHookPayload): Promise<void>;
+  recordFailedUpgrade(request: IncomingMessage): Promise<void>;
 }
 
 /** Header carrying the client identity, which the throttle keys on. */
@@ -242,6 +245,21 @@ export function createConnectionGate(throttle: Throttle): ConnectionGate {
   // Failed authentications so far on each WebSocket, keyed on its request.
   // Weak, so a closed socket's request leaves with it.
   const failures = new WeakMap<object, number>();
+  /**
+   * Count the first failure and attempts beyond one socket's document ceiling.
+   * @param request - The physical request owning these failures.
+   * @param identity - Its normalized throttle identity, or null for an exemption.
+   * @throws {Error} When the throttle cannot record the failure.
+   */
+  const recordFailure = async (request: object, identity: string | null): Promise<void> => {
+    if (identity === null) return;
+    const failed = (failures.get(request) ?? 0) + 1;
+    failures.set(request, failed);
+    if (failed !== 1 && failed <= DOCUMENTS_PER_SOCKET) return;
+    if (!(await throttle.count(identity))) {
+      logger.warn({ identity }, "collab_failed_auth_throttled");
+    }
+  };
   return {
     onUpgrade: async (data: UpgradeHookPayload): Promise<void> => {
       const headers = data.request.headers;
@@ -274,20 +292,22 @@ export function createConnectionGate(throttle: Throttle): ConnectionGate {
     onConnect: async (data: ConnectHookPayload): Promise<void> => {
       const identity = countedIdentity(data);
       if (identity === null) return;
-      // A falsy rejection refuses the document quietly, before any session
-      // or role lookup runs for an address that is already banned.
+      // A falsy rejection refuses the document quietly, before this document's
+      // session or role lookup runs for an address that is already banned.
       if (await throttle.isBanned(identity)) throw undefined;
     },
 
     recordFailedAuth: async (data: ConnectHookPayload): Promise<void> => {
-      const identity = countedIdentity(data);
-      if (identity === null) return;
-      const failed = (failures.get(data.request) ?? 0) + 1;
-      failures.set(data.request, failed);
-      if (failed !== 1 && failed <= DOCUMENTS_PER_SOCKET) return;
-      if (!(await throttle.count(identity))) {
-        logger.warn({ identity }, "collab_failed_auth_throttled");
-      }
+      await recordFailure(data.request, countedIdentity(data));
+    },
+
+    recordFailedUpgrade: async (request: IncomingMessage): Promise<void> => {
+      const verdict = request.headers[VERDICT_HEADER];
+      const identity = request.headers[REAL_IP_HEADER];
+      await recordFailure(
+        request,
+        verdict === VERDICT_EXEMPT ? null : Array.isArray(identity) ? identity[0] ?? "" : identity ?? "",
+      );
     },
   };
 }

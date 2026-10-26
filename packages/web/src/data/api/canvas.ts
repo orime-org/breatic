@@ -4,6 +4,8 @@
 import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
+import { noteCreditsChanged } from '@web/data/api/credits';
+import { bodyOrTransfer } from '@web/data/upload/transfer-body';
 
 export interface CanvasTask {
   id: string;
@@ -36,6 +38,17 @@ export interface CanvasLimits {
    * judged there instead of here.
    */
   understandMaxBytes: number;
+  /**
+   * The longest audio the cut band decodes in the browser to draw a waveform
+   * while its peaks file is missing, in seconds (inner#1305 §4.4).
+   */
+  waveformMaxSeconds: number;
+  /** The largest audio file the cut band downloads to decode, in bytes. */
+  waveformMaxBytes: number;
+  /** How often an open cut band reads peaks not yet written, in ms. */
+  waveformPeaksRetryMs: number;
+  /** How long an open cut band keeps reading peaks not yet written, in ms. */
+  waveformPeaksRetryMaxMs: number;
 }
 
 /**
@@ -102,6 +115,31 @@ export function getCachedUnderstandMaxBytes(): number | null {
   return limitsCache ? limitsCache.understandMaxBytes : null;
 }
 
+/**
+ * Sync accessor for the cut band's waveform ceilings, or `null` while the
+ * knobs have not loaded; until they have, the band decodes no audio itself (a
+ * peaks file still draws).
+ * @returns The ceilings, or null before the first fetch.
+ */
+export function getCachedWaveformLimits(): WaveformLimits | null {
+  return limitsCache
+    ? {
+      maxSeconds: limitsCache.waveformMaxSeconds,
+      maxBytes: limitsCache.waveformMaxBytes,
+      peaksRetryMs: limitsCache.waveformPeaksRetryMs,
+      peaksRetryMaxMs: limitsCache.waveformPeaksRetryMaxMs,
+    }
+    : null;
+}
+
+/** The cut band's waveform ceilings and how it reads peaks not yet written. */
+export interface WaveformLimits {
+  maxSeconds: number;
+  maxBytes: number;
+  peaksRetryMs: number;
+  peaksRetryMaxMs: number;
+}
+
 export const canvasApi = {
   /**
    * Fetch the canvas limits knobs, cached for the session (they only
@@ -134,7 +172,11 @@ export const canvasApi = {
    * @throws {import('@web/data/api/types').ApiException} On 402 / 409 / 503 etc.
    */
   createTask(body: TaskCreateInput, key: string): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key));
+    // Admitted or refused, the run held or failed to hold the project's
+    // credits, so the top bar reads them again (inner#1611).
+    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
   },
   /**
    * Start a run that reads one node's media into a text node the browser has
@@ -160,7 +202,39 @@ export const canvasApi = {
     reader_locale: string;
     source_mime_type?: string;
   }, key: string): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key));
+    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
+  },
+  /**
+   * Start a run that transcribes one node's audio or video into a text node
+   * the browser has already built (inner#856).
+   * @param body - The run, in the shape the route validates.
+   * @param body.project_id - Owning project.
+   * @param body.space_id - The canvas space both nodes live in.
+   * @param body.source_type - Whether the node holds audio or a video.
+   * @param body.source_url - The address of what it is showing.
+   * @param body.node_ids - The node this run writes to, which already exists.
+   * @param body.reader_locale - The reader's language, which picks the Chinese script.
+   * @param body.keep_fillers - Whether filler words stay as spoken.
+   * @param body.source_mime_type - What the ledger judged the file to be.
+   * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
+   * @returns The queued task.
+   * @throws {import('@web/data/api/types').ApiException} On 402 / 403 / 503.
+   */
+  transcribe(body: {
+    project_id: string;
+    space_id: string;
+    source_type: 'video' | 'audio';
+    source_url: string;
+    node_ids: string[];
+    reader_locale: string;
+    keep_fillers: boolean;
+    source_mime_type?: string;
+  }, key: string): Promise<CanvasTask> {
+    return apiPost<CanvasTask>('/canvas/transcribe', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
   },
   /**
    * Have the server fetch an address into storage for a node (#207).
@@ -194,23 +268,34 @@ export const canvasApi = {
    * @param body.node_id - The node whose words these are.
    * @param body.text - What it says at this moment.
    * @returns The id of the row that now holds them.
-   * @throws {import('@web/data/api/types').ApiException} On 403 / 404 / 429.
+   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 404 / 413 / 429 / 502, or when the transfer ticket is refused.
+   * @throws {Error} When a text over the request limit could not be moved through storage.
    */
-  snapshotNodeText(body: {
+  async snapshotNodeText(body: {
     project_id: string;
     node_id: string;
     text: string;
   }): Promise<{ id: string }> {
-    return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+    // A long text goes through storage when it is over the request limit (inner#1006).
+    return apiPost<{ id: string }>(
+      '/canvas/node-history/snapshot',
+      await bodyOrTransfer(body.project_id, body),
+    );
   },
   /**
    * Register what a paste or duplicate brings into this project's Studio and
    * write each copy's history (inner#1349).
    * @param body - The project, the addresses the copies name, and their history.
    * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 404 / 413 / 429 / 502 / 507), or when the transfer ticket is refused.
+   * @throws {Error} When a body over the request limit could not be moved through storage.
    */
-  paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
-    return apiPost<{ map: Record<string, string | null> }>('/canvas/paste', body);
+  async paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
+    // Long text history goes through storage when it is over the request limit (inner#1006).
+    return apiPost<{ map: Record<string, string | null> }>(
+      '/canvas/paste',
+      await bodyOrTransfer(body.project_id, body),
+    );
   },
 
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {

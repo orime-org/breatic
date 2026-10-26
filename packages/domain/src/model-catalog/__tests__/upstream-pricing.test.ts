@@ -91,6 +91,13 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { resolution: "0.5k", enable_web_search: false, enable_image_search: false }, usd: 0.045 },
     { input: { resolution: "2k", enable_web_search: true, enable_image_search: false }, usd: 0.119 },
   ],
+  // inner#1304: the relight and quick edit tools' catalog entries share this endpoint.
+  "google/nano-banana-2/edit": [
+    { input: { resolution: "0.5k" }, usd: 0.045 },
+    { input: { resolution: "1k" }, usd: 0.07 },
+    { input: { resolution: "2k" }, usd: 0.105 },
+    { input: { resolution: "4k" }, usd: 0.14 },
+  ],
   "google/nano-banana-pro/edit-ultra": [
     { input: { resolution: "4k" }, usd: 0.15 },
     { input: { resolution: "8k" }, usd: 0.18 },
@@ -156,6 +163,12 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   ],
   "sync/lipsync-3": [{ input: { video: "v" }, durations: { video: [10] }, usd: 1.35 }],
   "sync/react-1": [{ input: { audio: "a" }, durations: { audio: [5] }, usd: 0.835 }],
+  // inner#1305: $0.014 for every started minute, at least one, billed up to 1800 s.
+  "veed/clean-audio": [
+    { input: { audio: "a" }, durations: { audio: [30] }, usd: 0.014 },
+    { input: { audio: "a" }, durations: { audio: [61] }, usd: 0.028 },
+    { input: { audio: "a" }, durations: { audio: [3600] }, usd: 0.42 },
+  ],
   "wavespeed-ai/audio-vocal-isolator": [{ input: { audio: "a" }, durations: { audio: [60] }, usd: 0.06 }],
   "wavespeed-ai/hunyuan-video-foley": [{ input: {}, usd: 0.05 }],
   "wavespeed-ai/infinitetalk/multi": [
@@ -209,7 +222,7 @@ function wavespeedEndpoints(): Map<string, FullProviderEndpoint> {
 describe("WaveSpeed pricing contracts in the catalog", () => {
   const endpoints = wavespeedEndpoints();
 
-  it("covers exactly the 63 endpoints of the finalized catalog", () => {
+  it("covers exactly the 65 endpoints of the finalized catalog", () => {
     expect([...endpoints.keys()].sort()).toEqual(Object.keys(CASES).sort());
   });
 

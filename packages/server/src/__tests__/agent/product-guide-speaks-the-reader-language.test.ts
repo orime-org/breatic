@@ -80,6 +80,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage: vi.fn(async () => 1),
+  addReaderMessage: vi.fn(async () => ({ turnIndex: 1, closedAsks: [] })),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 
@@ -87,7 +88,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget: vi.fn(async () => false) }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong: vi.fn(async () => "none") }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");

@@ -9,11 +9,6 @@
  * All other endpoints require a valid session token.
  */
 
-import {
-  REFUND_EVENT_TYPES,
-  handleRefundEvent,
-  type RefundEvent,
-} from "@server/modules/credit-refund/refund-webhook.js";
 import { Hono } from "hono";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
@@ -29,13 +24,15 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requirePayments } from "@server/middleware/require-payments.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { paymentService } from "@server/modules";
+import { paymentService, stripeWebhookRecordingService, stripeWebhookDispatchService } from "@server/modules";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import { verifyWebhookSignature } from "@server/infra/stripe.js";
 import { logger } from "@breatic/core";
-import { handleSubscriptionEvent } from "@server/modules/subscription/subscription-events.js";
+import { recordStripeWebhook, type StripeWebhookVariables } from "@server/middleware/stripe-webhook-recording.js";
+import type Stripe from "stripe";
 
 const payment = new Hono<{ Variables: AuthVariables }>();
+const webhook = new Hono<{ Variables: AuthVariables & StripeWebhookVariables }>();
 
 /**
  * `GET /payment/tiers` — the credit packs on offer.
@@ -152,90 +149,32 @@ payment.post(
  *
  * No auth middleware. Verifies Stripe signature to prevent tampering.
  */
-payment.post("/webhook", async (c) => {
+webhook.post("/webhook", async (c, next) => {
+  const receivedAt = new Date();
   const rawBody = await c.req.text();
   const signature = c.req.header("stripe-signature") ?? "";
-
-  let event;
+  let event: Stripe.Event;
   try {
     event = verifyWebhookSignature(rawBody, signature);
   } catch (err) {
     logger.warn({ err }, "Stripe webhook signature verification failed");
     return c.json({ error: "Invalid signature" }, 400);
   }
-
-  // Subscriptions first: the membership leg has its own event types, its own
-  // idempotency, and its own identification chain. It answers `notMine` only
-  // for events that are genuinely the credit-pack leg's — including the four
-  // Checkout Session types both legs receive, which nothing but the session's
-  // `mode` separates (`SHARED_SESSION_EVENT_TYPES`).
-  const subscriptionOutcome = await handleSubscriptionEvent(event);
-  if (subscriptionOutcome.status !== "notMine") {
-    // A `noop` is logged at warn, not info: the two ways to reach it are an
-    // account we cannot identify and a price this deployment does not sell,
-    // and both mean somebody may have paid for something we did not record.
-    // Everything else here is a normal event, `acknowledged` most of all —
-    // one of those is what a successful membership checkout produces.
-    //
-    // Written as two calls rather than one through a variable holding the
-    // method: pino's level methods live on the prototype and use `this`, so
-    // `const log = logger.warn` hands back an unbound function that throws
-    // `TypeError` the moment it is called. Every subscription event would
-    // reach this line, throw after the database work had already been done,
-    // and answer 500.
-    const line = {
-      eventId: event.id,
-      type: event.type,
-      ...subscriptionOutcome,
-    };
-    // What Stripe charges disagrees with this deployment's own price list.
-    // Both figures go in the log, and the answer is a failure: Stripe keeps
-    // redelivering for three days, which is the window somebody has to put
-    // the price right and have the event land by itself. Answering 200 would
-    // drop a paid subscription on the floor over a figure nobody has looked
-    // at yet.
-    if (subscriptionOutcome.status === "priceDisagreement") {
-      logger.error(line, "subscription_price_disagreement");
-      return c.json({ received: false }, 500);
-    }
-    if (subscriptionOutcome.status === "noop") {
-      logger.warn(line, "subscription_webhook_handled");
-    } else {
-      logger.info(line, "subscription_webhook_handled");
-    }
-    return c.json({ received: true });
+  const identity = stripeWebhookRecordingService.parseWebhookIdentity(event);
+  if (identity === null) {
+    logger.warn({ stage: "identity" }, "stripe_webhook_shape_rejected");
+    return c.json({ received: false }, 400);
   }
-
-  if (REFUND_EVENT_TYPES.has(event.type)) {
-    const outcome = await handleRefundEvent(event as unknown as RefundEvent);
-    if (outcome === "unreadable") return c.json({ received: false }, 500);
-    return c.json({ received: true });
-  }
-
-  const session = event.data.object as { id: string; payment_intent?: string };
-
-  switch (event.type) {
-    case "checkout.session.completed":
-    case "checkout.session.async_payment_succeeded":
-    case "checkout.session.expired": {
-      const outcome = await paymentService.fulfillPayment(session.id, {
-        id: event.id,
-        type: event.type,
-      });
-      logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
-      break;
-    }
-    case "checkout.session.async_payment_failed": {
-      const outcome = await paymentService.handlePaymentFailed(session.id);
-      logFulfillment(outcome, { stripeSessionId: session.id, from: "webhook" });
-      break;
-    }
-    default:
-      break;
-  }
-
-  return c.json({ received: true });
+  c.set("stripeWebhookEvent", event);
+  c.set("stripeWebhookIdentity", identity);
+  c.set("stripeWebhookReceivedAt", receivedAt);
+  await next();
+}, recordStripeWebhook, async c => {
+  const result = await stripeWebhookDispatchService.dispatchStripeWebhook(c.get("stripeWebhookEvent"));
+  c.set("stripeWebhookResult", result.result);
+  return c.json({ received: result.received }, result.responseStatus);
 });
+payment.route("/", webhook);
 
 /**
  * `GET /payment/history` — every purchase this account has made.

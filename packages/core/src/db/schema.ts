@@ -18,6 +18,7 @@ import {
   doublePrecision,
   numeric,
   integer,
+  smallint,
   bigint,
   timestamp,
   json,
@@ -40,7 +41,8 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
-import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
+import type { StripeWebhookResult } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -807,7 +809,8 @@ export const nodeTasks = pgTable(
 
     kind: varchar("kind", { length: 20 }).notNull(), // 'upload' | 'generation'
     // What the row's first line names: 'upload' | 'generate' | 'understand'
-    // | 'mini_tool' (inner#888). Its CHECK lives in 0091.
+    // | 'mini_tool' (inner#888) | 'transcribe' (inner#856). Its CHECK lives in
+    // 0092, widened in 0101.
     action: varchar("action", { length: 20 }).notNull(),
     // 'running' | 'done' | 'failed' | 'expired'
     status: varchar("status", { length: 20 }).notNull(),
@@ -1212,6 +1215,33 @@ export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
     .notNull(),
 });
 
+/** Each verified HTTP request has an independent recording lifecycle. */
+export const stripeWebhookAttempts = pgTable("stripe_webhook_attempts", {
+  id: uuid("id").primaryKey(),
+  eventId: varchar("event_id", { length: 255 }).notNull(),
+  eventType: varchar("event_type", { length: 80 }).notNull(),
+  livemode: boolean("livemode").notNull(),
+  accountId: varchar("account_id", { length: 255 }),
+  endpointId: varchar("endpoint_id", { length: 255 }),
+  connectedAccountId: varchar("connected_account_id", { length: 255 }),
+  environment: text("environment").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  responseStatus: smallint("response_status"),
+  result: varchar("result", { length: 80 }).$type<StripeWebhookResult>(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (table) => [
+  check("stripe_webhook_attempts_completion", sql`
+    (${table.finishedAt} is null and ${table.responseStatus} is null and ${table.result} is null)
+    or (${table.finishedAt} is not null and ${table.responseStatus} is not null and ${table.result} is not null
+      and ${table.responseStatus} between 100 and 599
+      and ${table.result} in (${sql.raw(STRIPE_WEBHOOK_RESULTS.map((result) => `'${result}'`).join(", "))}))
+  `),
+  index("stripe_webhook_attempts_received_idx").on(desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+  index("stripe_webhook_attempts_event_idx").on(table.eventId, desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
+]);
+
 // ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
 /**
@@ -1389,8 +1419,8 @@ export const creditLedger = pgTable(
       onDelete: "restrict",
     }),
     // One of `topup` / `spend` / `refund` / `refund_rejected` (0061),
-    // `debt_incurred` / `debt_repayment` (0063) or `refund_reversed` (0094).
-    // CHECK in 0094.
+    // `debt_incurred` / `debt_repayment` (0063), `refund_reversed` (0094) or
+    // `rounding_adjustment` (0100). CHECK in 0100.
     entryType: varchar("entry_type", { length: 24 }).notNull(),
     // Positive in, negative out.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
@@ -1497,6 +1527,26 @@ export const creditRefundOperations = pgTable(
       .where(sql`${table.status} IN ('started', 'awaiting_stripe')`),
   ],
 );
+
+/**
+ * Final internal-API refusals retain their request key and literal response.
+ * Targets deliberately have no foreign key: a missing target is recordable.
+ * Contract CHECKs live in migration 0104_credit_refund_refusals.
+ */
+export const creditRefundRefusals = pgTable("credit_refund_refusals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  requestKind: varchar("request_kind", { length: 20 }).notNull(),
+  targetKind: varchar("target_kind", { length: 20 }).notNull(),
+  targetId: uuid("target_id").notNull(),
+  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
+  requestReason: text("request_reason").notNull(),
+  responseStatus: smallint("response_status").notNull(),
+  responseBody: jsonb("response_body").$type<{ code: string; detail?: string; reason?: string }>().notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
 
 /**
  * Every step of every disposition, appended in the same transaction as the
@@ -1632,7 +1682,7 @@ export const agentUsageRecords = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     operationKey: varchar("operation_key", { length: 255 }).notNull(),
     // `chat_turn` / `memory_consolidation` / `text_tool` / `canvas_understand`
-    // / `mini_tool`.
+    // / `canvas_transcribe` / `mini_tool`.
     feature: varchar("feature", { length: 40 }).notNull(),
     // `model`, `tool:<name>` for a paid call a tool made, or `container` for
     // a mini-tool container run.
@@ -1684,7 +1734,8 @@ export const agentUsageRecords = pgTable(
  * they have to be serialised against each other, which a sum cannot be. It is
  * the same trade `credit_lots.remaining_credits` makes, and it reconciles
  * against the ledger the same way: `amount` equals
- * `sum(debt_repayment) - sum(debt_incurred)`.
+ * `sum(debt_repayment) - sum(debt_incurred)` minus the `rounding_adjustment`
+ * rows with no lot (migration 0100 raising old debts to whole cents).
  *
  * Its own table rather than a column on `studios`, because both writers lock
  * it and `studios` is read on the way into every project — locking there would
@@ -1714,6 +1765,42 @@ export const studioCreditDebts = pgTable(
   },
   (table) => [
     uniqueIndex("studio_credit_debts_studio_id_idx").on(table.studioId),
+  ],
+);
+
+/**
+ * Credits reserved for work that has started and is not yet charged
+ * (inner#1611, 0099). An admission counts the studio's purchases less its debt
+ * less every hold still counted; the charge that settles the work releases its
+ * hold in the same transaction. A hold stops counting at `expires_at` without
+ * the row changing. The CHECKs live in the migration, as `credit_lots`' do.
+ */
+export const creditHolds = pgTable(
+  "credit_holds",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id")
+      .notNull()
+      .references(() => studios.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    // The task id of the run held for. Used once.
+    referenceId: varchar("reference_id", { length: 255 }).notNull(),
+    // Never negative. CHECK in 0099.
+    amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
+    // 'held' | 'released'. CHECK in 0099.
+    status: varchar("status", { length: 16 }).$type<"held" | "released">().default("held").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // Set exactly when released. CHECK in 0099.
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("credit_holds_reference_id_idx").on(table.referenceId),
+    index("credit_holds_studio_held_idx")
+      .on(table.studioId, table.expiresAt)
+      .where(sql`${table.status} = 'held'`),
   ],
 );
 
@@ -1962,8 +2049,11 @@ export const studioInvitations = pgTable(
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     invitedUserId: uuid("invited_user_id")
-      .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Normalized recipient address until a verified account claims the invite. */
+    invitedEmail: varchar("invited_email", { length: 320 }),
+    /** Starts the recipient decision window after email verification. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     /** Granted studio role — 'maintainer' | 'guest' (admin is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
@@ -2001,6 +2091,7 @@ export const studioInvitations = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("studio_invitations_invitee_one_of", sql`(${table.invitedUserId} IS NULL) <> (${table.invitedEmail} IS NULL)`),
     uniqueIndex("studio_invitations_share_token_key").on(table.shareToken),
     index("studio_invitations_studio_id_idx").on(
       table.studioId,
@@ -2044,8 +2135,11 @@ export const projectInvitations = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
     invitedUserId: uuid("invited_user_id")
-      .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    /** Normalized recipient address until a verified account claims the invite. */
+    invitedEmail: varchar("invited_email", { length: 320 }),
+    /** Starts the recipient decision window after email verification. */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
     /** Granted project role — 'editor' | 'viewer' (owner is never invited). */
     role: varchar("role", { length: 16 }).notNull(),
     invitedBy: uuid("invited_by")
@@ -2083,6 +2177,7 @@ export const projectInvitations = pgTable(
     ...timestamps,
   },
   (table) => [
+    check("project_invitations_invitee_one_of", sql`(${table.invitedUserId} IS NULL) <> (${table.invitedEmail} IS NULL)`),
     uniqueIndex("project_invitations_share_token_key").on(table.shareToken),
     index("project_invitations_project_id_idx").on(
       table.projectId,
@@ -2625,9 +2720,10 @@ export const uploadGrants = pgTable(
      */
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     /**
-     * Anti-replay marker — set exactly once by registration AFTER its
-     * studio_assets INSERT. Null while unconsumed. A consumed grant no longer
-     * resolves as live.
+     * Completed — set exactly once. An ordinary upload sets it with its
+     * studio_assets row (registration, AFTER the INSERT); a transfer
+     * (inner#1006) sets it with none. Null while unconsumed. A consumed grant
+     * no longer resolves as live.
      */
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     /**

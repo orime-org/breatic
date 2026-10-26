@@ -17,6 +17,14 @@ const { getRateLimit } = await vi.importActual<typeof RateLimitsModule>(
 );
 
 describe("rate limits — config/rate-limits.yaml", () => {
+  it("allows fifty invitation attempts per user per day", () => {
+    expect(getRateLimit("invite")).toEqual({ max: 50, windowSeconds: 86400 });
+  });
+
+  it("allows thirty public invitation previews per address per five minutes", () => {
+    expect(getRateLimit("invite-preview")).toEqual({ max: 30, windowSeconds: 300 });
+  });
+
   // The back office's calls into the internal API (inner#1410 §4.4), keyed by
   // the connecting socket. 120 a minute covers an operator working through a
   // queue while capping a runaway caller in front of Stripe.

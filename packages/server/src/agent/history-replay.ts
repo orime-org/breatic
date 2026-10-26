@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The history, replayed as it was sent (inner#1549).
+ * Stored logical history, projected for the current request (inner#1549).
  *
  * A provider caches the prefix of a request and reads it back on the next one
- * only when it is the same, byte for byte. Each message is therefore stored as
- * it was sent (`conversation_messages.for_model`) and sent again as it is, so
- * the next turn's request is the last one with something added at the end.
+ * only when it is the same, byte for byte. `conversation_messages.for_model`
+ * keeps logical messages and picture facts. Replay projects a copy under the
+ * current picture policy; unchanged prefixes can still reuse the cache.
  *
  * A reply's thinking can go back only while everything sent before it is what
  * its turn sent: Anthropic's preserved thinking holds "everything you sent
- * before it is unchanged", system and tools included. Each reply row keeps
- * the hash of its turn's prefix, and a row whose hash no longer matches goes
- * back without its thinking. Taking a block out changes every byte after it,
+ * before it is unchanged", system and tools included. New reply rows keep a
+ * prefix hash per generation step; a step whose prefix or body changed goes
+ * back without its thinking. Legacy rows use the turn's prefix hash instead.
+ * Taking a block out changes every byte after it,
  * so the replies made while it was there stop matching too, and the ones made
  * after it was gone still match. Putting it back -- the tools or the system
  * prompt change and change back, as the tools do when the reader switches the
@@ -29,21 +30,24 @@
 import { createHash } from "node:crypto";
 import { asSchema } from "ai";
 import type { ModelMessage } from "ai";
-import { instructionsText } from "@breatic/domain";
-import type { ResolvedAgentConfig } from "@breatic/domain";
+import { ASK_USER, expandAgentPictures, instructionsText, projectAgentRequest } from "@breatic/domain";
+import type { AgentPicture, AgentPicturePolicy, ResolvedAgentConfig } from "@breatic/domain";
 import { z } from "zod";
 import type { MessageData } from "@breatic/shared";
 
+import { UNANSWERED_ASK } from "@server/agent/ask-result.js";
 import { toModelMessages } from "@server/agent/model-messages.js";
 
-/** A stored message, with what was sent of it, if anything was kept. */
+/** A stored message with durable protocol facts, when available. */
 export type ReplayRow = MessageData & {
   /** `conversation_messages.for_model`, unread. */
   forModel: unknown;
 };
 
 /** Everything in a request besides its messages: the agent config it ran with. */
-export type RequestPrefix = Pick<ResolvedAgentConfig, "instructions" | "tools" | "modelId">;
+export type RequestPrefix = Pick<ResolvedAgentConfig, "instructions" | "tools" | "modelId"> & {
+  picturePolicy?: AgentPicturePolicy;
+};
 
 const ROLES = new Set(["system", "user", "assistant", "tool"]);
 
@@ -55,13 +59,18 @@ const sentMessage = z.custom<ModelMessage>((value) => {
   return typeof role === "string" && ROLES.has(role) && (typeof content === "string" || Array.isArray(content));
 });
 
+/**
+ * The open Space a message carried: which one, the hash of its section, and
+ * whether it went in full or as the line saying it was unchanged.
+ */
+const snapshot = z.object({ spaceId: z.string(), key: z.string(), full: z.boolean() });
+const picture = z.object({ label: z.string(), sourceUrl: z.string(), url: z.string(), sizeBytes: z.number().nonnegative(), mediaType: z.literal("image/jpeg") });
+const generationStep = z.object({ messageStart: z.number().int().nonnegative(), messageEnd: z.number().int().nonnegative(), prefixHash: z.string() });
+
 const userForModel = z.object({
   messages: z.array(sentMessage),
-  /**
-   * The open Space the message carried: which one, the hash of its section,
-   * and whether it went in full or as the line saying it was unchanged.
-   */
-  snapshot: z.object({ spaceId: z.string(), key: z.string(), full: z.boolean() }).optional(),
+  snapshot: snapshot.optional(),
+  pictures: z.array(picture).optional(),
 });
 
 const replyForModel = z.object({
@@ -69,12 +78,30 @@ const replyForModel = z.object({
   prefixHash: z.string(),
   turnTokens: z.number(),
   endTokens: z.number(),
+  /**
+   * Where `endTokens` came from: the provider's own count, or the character
+   * fallback when no call reported one. Rows written before inner#1567 have
+   * neither, and their count is not trusted to decide a fold.
+   */
+  endTokensFrom: z.enum(["provider", "chars"]).optional(),
+  /**
+   * The turn's last call whose usage the provider reported: the hash of the
+   * whole request it sent, and how many of this row's messages that request
+   * held. The next turn trusts `endTokens` only while its replay of the same
+   * prefix hashes the same (inner#1567, design 6.2).
+   */
+  lastRequest: z.object({ hash: z.string(), messages: z.number().int().nonnegative() }).optional(),
+  /** The open Space a resumed segment's own message carried (inner#1542). */
+  snapshot: snapshot.optional(),
+  pictures: z.array(picture).optional(),
+  steps: z.array(generationStep).optional(),
+  countCoverage: z.object({ version: z.literal(1), turnHash: z.string().optional(), endHash: z.string().optional() }).optional(),
 });
 
-/** What a user row keeps of what was sent. */
+/** A user row's logical messages, picture facts and Space snapshot. */
 export type UserForModel = z.infer<typeof userForModel>;
 
-/** What a reply row keeps of what was sent. */
+/** A reply row's protocol messages, picture facts and request coverage. */
 export type ReplyForModel = z.infer<typeof replyForModel>;
 
 // Parts that carry a model's working or only a provider's private payload.
@@ -127,7 +154,10 @@ function seedHash(prefix: RequestPrefix): string {
     definition.description ?? null,
     asSchema(definition.inputSchema).jsonSchema,
   ]);
-  return sha256(JSON.stringify([prefix.modelId, instructionsText(prefix.instructions), tools]));
+  return sha256(JSON.stringify([
+    prefix.modelId, instructionsText(prefix.instructions), tools,
+    ...(prefix.picturePolicy === undefined ? [] : [{ projectionVersion: 1, ...prefix.picturePolicy }]),
+  ]));
 }
 
 /**
@@ -162,40 +192,174 @@ export interface ReplayedRow {
   row: ReplayRow;
   /** What it is sent as. */
   messages: ModelMessage[];
-  /** What a reply row kept of what was sent, when it kept anything. */
+  /** Selected logical messages before the deterministic tool-picture expansion. */
+  logicalMessages?: ModelMessage[];
+  /** Durable reply facts, when the row kept them. */
   reply?: ReplyForModel;
   /** A reply sent again as it was sent, thinking included. */
   asSent: boolean;
+  /** Hash of the projected segment whose provider increment may be reused. */
+  turnCoverageHash?: string;
+  /** Hash of the entire projected conversation through this row. */
+  endCoverageHash?: string;
+  /** The reply's `lastRequest` is the prefix this replay lays down, byte for byte. */
+  lastRequestMatches?: boolean;
+}
+
+/**
+ * Read only validated durable JPEG facts, without importing legacy URLs.
+ * @param rows - Stored conversation rows.
+ * @returns Their prepared picture facts in row order.
+ * @throws {never} Never.
+ */
+export function pictureFactsOfRows(rows: readonly ReplayRow[]): AgentPicture[] {
+  return rows.flatMap((row) => {
+    const kept = (row.role === "user" ? userForModel : replyForModel).safeParse(row.forModel);
+    return kept.success ? kept.data.pictures ?? [] : [];
+  });
 }
 
 /**
  * The history as it is replayed, row by row, oldest first.
  * @param rows - Stored messages, oldest first.
  * @param prefix - What the request carries besides its messages.
+ * @param following - Current messages whose pictures participate in the same history budget.
+ * @param following.messages - The current turn's logical user messages.
+ * @param following.pictures - Their durable prepared JPEG facts.
  * @returns Each row with what it is sent as.
  * @throws {never} Never.
  */
-export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): ReplayedRow[] {
+export function replayRows(
+  rows: readonly ReplayRow[],
+  prefix: RequestPrefix,
+  following: { messages: readonly ModelMessage[]; pictures: readonly AgentPicture[] } = { messages: [], pictures: [] },
+): ReplayedRow[] {
   const out: ReplayedRow[] = [];
   let hash = seedHash(prefix);
+  const facts: AgentPicture[] = [];
+  const raw = rows.map((row) => {
+    const kept = (row.role === "user" ? userForModel : replyForModel).safeParse(row.forModel);
+    if (kept.success) facts.push(...(kept.data.pictures ?? []));
+    return kept.success ? kept.data.messages : toModelMessages([row]);
+  });
+  facts.push(...following.pictures);
+  const original = [...raw.flat(), ...following.messages];
+  const projection = prefix.picturePolicy === undefined ? undefined : projectAgentRequest({
+    messages: original, pictures: facts, policy: prefix.picturePolicy, phase: "initial",
+  });
+  let offset = 0;
+  const sentPrefix: ModelMessage[] = [];
+  const turnsWithReply = new Set<number>();
+  const turnUsers = new Map<number, ModelMessage[]>();
 
-  for (const row of rows) {
+  for (const [rowIndex, row] of rows.entries()) {
+    const rowOriginal = raw[rowIndex] ?? [];
+    const logical = projection?.logicalMessages.slice(offset, offset + rowOriginal.length) ?? structuredClone(rowOriginal);
+    const ownChanged = projection?.changedMessageIndices.some((index) => index >= offset && index < offset + rowOriginal.length) ?? false;
+    offset += rowOriginal.length;
     let replayed: ReplayedRow;
     if (row.role === "user") {
-      const kept = userForModel.safeParse(row.forModel);
-      replayed = { row, messages: kept.success ? kept.data.messages : toModelMessages([row]), asSent: false };
+      replayed = { row, messages: logical, asSent: false };
     } else {
       const kept = replyForModel.safeParse(row.forModel);
-      if (!kept.success) replayed = { row, messages: toModelMessages([row]), asSent: false };
-      else if (kept.data.prefixHash === hash) {
-        replayed = { row, messages: kept.data.messages, reply: kept.data, asSent: true };
+      if (!kept.success) replayed = { row, messages: stripThinking(logical), asSent: false };
+      else if (kept.data.steps?.length) {
+        const messages: ModelMessage[] = [];
+        let cursor = 0;
+        for (const step of kept.data.steps) {
+          if (step.messageStart < cursor || step.messageEnd <= step.messageStart || step.messageEnd > logical.length) continue;
+          messages.push(...stripThinking(logical.slice(cursor, step.messageStart)));
+          const before = [...sentPrefix, ...(prefix.picturePolicy === undefined ? messages : expandAgentPictures(messages))];
+          const body = logical.slice(step.messageStart, step.messageEnd);
+          const changed = JSON.stringify(body) !== JSON.stringify(rowOriginal.slice(step.messageStart, step.messageEnd));
+          messages.push(...(step.prefixHash === prefixHash(prefix, before) && !changed ? body : stripThinking(body)));
+          cursor = step.messageEnd;
+        }
+        messages.push(...stripThinking(logical.slice(cursor)));
+        replayed = { row, messages, reply: kept.data, asSent: !ownChanged && JSON.stringify(messages) === JSON.stringify(rowOriginal) };
+      } else if (kept.data.prefixHash === hash && !ownChanged) {
+        replayed = { row, messages: logical, reply: kept.data, asSent: true };
       } else {
-        replayed = { row, messages: stripThinking(kept.data.messages), reply: kept.data, asSent: false };
+        replayed = { row, messages: stripThinking(logical), reply: kept.data, asSent: false };
       }
     }
+    replayed = { ...replayed, messages: withEveryCallAnswered(replayed.messages) };
+    replayed.logicalMessages = replayed.messages;
+    if (prefix.picturePolicy !== undefined) replayed.messages = expandAgentPictures(replayed.messages);
+    if (row.role === "user") turnUsers.set(row.turnIndex, replayed.messages);
+    else {
+      const segment = [...(turnsWithReply.has(row.turnIndex) ? [] : turnUsers.get(row.turnIndex) ?? []), ...replayed.messages];
+      replayed.turnCoverageHash = prefixHash(prefix, segment);
+      turnsWithReply.add(row.turnIndex);
+    }
+    const last = replayed.reply?.lastRequest;
+    if (last !== undefined) {
+      replayed.lastRequestMatches = last.messages <= replayed.messages.length &&
+        replayed.messages.slice(0, last.messages).reduce(extendHash, hash) === last.hash;
+    }
     for (const message of replayed.messages) hash = extendHash(hash, message);
+    sentPrefix.push(...replayed.messages);
+    replayed.endCoverageHash = hash;
     out.push(replayed);
   }
+  return out;
+}
+
+/** What the model reads for a call of any other tool that has no result. */
+const NO_RESULT = "This call has no result: the turn ended before it did.";
+
+/**
+ * A row's messages with a result for every tool call in them.
+ *
+ * A call can be left without one in ordinary use: a questionnaire the user
+ * never answered, a turn stopped after the model asked for a tool and before
+ * it ran. Providers refuse a request holding a call with no result after it,
+ * so each such call gets one here, as the request is put together, right
+ * after the run of tool messages that follows its call -- the way LangGraph's
+ * dangling-call repair and the AI SDK's synthetic denial results do it.
+ * Nothing stored changes, and the same row gives the same bytes every time.
+ * @param messages - One row's messages, as they are replayed.
+ * @returns The same messages, every call answered.
+ */
+function withEveryCallAnswered(messages: readonly ModelMessage[]): ModelMessage[] {
+  const out: ModelMessage[] = [];
+  let open: Array<{ toolCallId: string; toolName: string }> = [];
+  /** Answer the calls still open, in one tool message after the last one. */
+  const close = (): void => {
+    if (open.length === 0) return;
+    out.push({
+      role: "tool",
+      content: open.map(({ toolCallId, toolName }) => ({
+        type: "tool-result" as const,
+        toolCallId,
+        toolName,
+        output: { type: "error-text" as const, value: toolName === ASK_USER ? UNANSWERED_ASK : NO_RESULT },
+      })),
+    });
+    open = [];
+  };
+  for (const message of messages) {
+    if (message.role === "tool") {
+      const answered = new Set(
+        Array.isArray(message.content)
+          ? message.content.flatMap((part) => (part.type === "tool-result" ? [part.toolCallId] : []))
+          : [],
+      );
+      open = open.filter((call) => !answered.has(call.toolCallId));
+      out.push(message);
+      continue;
+    }
+    close();
+    out.push(message);
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      for (const part of message.content) {
+        if (part.type === "tool-call" && part.providerExecuted !== true) {
+          open.push({ toolCallId: part.toolCallId, toolName: part.toolName });
+        }
+      }
+    }
+  }
+  close();
   return out;
 }
 
@@ -215,10 +379,12 @@ export function replayRows(rows: readonly ReplayRow[], prefix: RequestPrefix): R
 export function lastFullSnapshotKey(rows: readonly ReplayRow[], spaceId: string): string | undefined {
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const row = rows[i];
-    if (row?.role !== "user") continue;
-    const kept = userForModel.safeParse(row.forModel);
-    const snapshot = kept.success ? kept.data.snapshot : undefined;
-    if (snapshot?.full) return snapshot.spaceId === spaceId ? snapshot.key : undefined;
+    if (row === undefined) continue;
+    // A reader's message carries the Space, and so does the message a segment
+    // resumed after a questionnaire opens with.
+    const kept = (row.role === "user" ? userForModel : replyForModel).safeParse(row.forModel);
+    const sent = kept.success ? kept.data.snapshot : undefined;
+    if (sent?.full) return sent.spaceId === spaceId ? sent.key : undefined;
   }
   return undefined;
 }

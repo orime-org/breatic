@@ -6,7 +6,13 @@
  * expands into (inner#977).
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+}));
 
 import { loadLocales } from "@breatic/core";
 import { GENERATION_TEMPLATES, setLocale } from "@breatic/shared";
@@ -174,7 +180,7 @@ describe("the template prompts the agent is shown inside a request", () => {
     const [grid] = GENERATION_TEMPLATES;
     if (!grid) throw new Error("no template");
     setLocale("en");
-    const said = runWithLocale("ja", () => buildAgentConfig({ basePrompt: "base" }).tools["propose_canvas_action"]?.description ?? "");
+    const said = await runWithLocale("ja", async () => (await buildAgentConfig({ basePrompt: "base" })).tools["propose_canvas_action"]?.description ?? "");
     const japanese = runWithLocale("ja", () => shown(grid));
     expect(japanese).not.toBe(shown(grid));
     expect(said).toContain(japanese);

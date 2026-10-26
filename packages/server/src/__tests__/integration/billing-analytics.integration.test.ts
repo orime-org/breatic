@@ -111,7 +111,8 @@ async function account(): Promise<{ userId: string; customerId: string }> {
  */
 async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId: string; paymentId: string; sessionId: string }> {
   const { userId } = await account();
-  const sessionId = `cs_billing_${Date.now()}_${seq}`;
+  // As long as a real Checkout Session id: `cs_test_` plus 58 characters.
+  const sessionId = `cs_test_${`${Date.now()}_${seq}_`.padEnd(58, "a")}`;
   const sourceId = await openPaymentSource(sql);
   await sql`
     INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
@@ -135,7 +136,7 @@ async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId
 
 describe("credit purchases", () => {
   it("reports the grant once, under the order's consent, and queues its conversion", async () => {
-    const { userId, sessionId } = await pendingOrder({
+    const { userId, paymentId, sessionId } = await pendingOrder({
       analyticsConsent: { analytics: true, ads: true },
       adClick: recentClick(),
     });
@@ -148,25 +149,41 @@ describe("credit purchases", () => {
       expect.objectContaining({
         event_type: "credit_purchase_completed",
         user_id: userId,
-        insert_id: `purchase:${sessionId}`,
+        insert_id: `purchase:${paymentId}`,
         event_properties: { credits: 1700, amount_cents: 2000, currency: "usd" },
       }),
     ]);
-    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${sessionId}` })).toBe("queued");
+    // Google Ads caps a transaction id at 64 characters; a Session id alone is 66.
+    expect(`purchase:${paymentId}`.length).toBeLessThanOrEqual(64);
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${paymentId}` })).toBe("queued");
     // The upload keeps no link to the order, so the order's row is never held by it.
     const columns = await sql<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'ads_conversion_uploads'
     `;
     expect(columns.map((c) => c.column_name)).not.toContain("payment_id");
-    expect(await paidOrder(sessionId)).toEqual({ paid: true, amountCents: 2000, currency: "usd" });
+    // The browser reports the same id the server queued: it reads it from here.
+    expect(await paidOrder(sessionId)).toEqual({
+      paid: true, amountCents: 2000, currency: "usd", transactionId: `purchase:${paymentId}`,
+    });
+  });
+
+  it("gives each order its own transaction id", async () => {
+    const first = await pendingOrder({});
+    const second = await pendingOrder({});
+    await fulfillPayment(first.sessionId, null);
+    await fulfillPayment(second.sessionId, null);
+    const a = (await paidOrder(first.sessionId)).transactionId;
+    const b = (await paidOrder(second.sessionId)).transactionId;
+    expect(a).not.toBe(b);
+    expect(await paidOrder(first.sessionId)).toMatchObject({ transactionId: a });
   });
 
   it("reports nothing for an order placed without consent", async () => {
-    const { sessionId } = await pendingOrder({});
+    const { paymentId, sessionId } = await pendingOrder({});
     await fulfillPayment(sessionId, null);
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(sent).toEqual([]);
-    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${sessionId}` })).toBeNull();
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${paymentId}` })).toBeNull();
   });
 
   it("reports a delayed payment that failed", async () => {

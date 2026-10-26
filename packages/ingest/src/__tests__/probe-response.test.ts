@@ -108,6 +108,8 @@ describe("a meta part that parses to the wrong thing", () => {
       report: { streams: [], durationSeconds: null },
       cover: null,
       preview: null,
+      peaks: null,
+      agentPicture: null,
       answered: false,
       upright: null,
     });
@@ -121,7 +123,7 @@ describe("an answer carrying a preview", () => {
 
     const read = await readProbeAnswer(buildProbeAnswer(report, null, preview));
 
-    expect(read).toEqual({ report, cover: null, preview, answered: true, upright: null });
+    expect(read).toEqual({ report, cover: null, preview, peaks: null, agentPicture: null, answered: true, upright: null });
   });
 });
 
@@ -146,5 +148,19 @@ describe("an answer saying how turning the picture upright ended", () => {
     const read = await readProbeAnswer(new Response(form));
 
     expect(read.upright).toBeNull();
+  });
+});
+
+// inner#1305 §4.4: an audio object's peaks travel back as their own part.
+describe("an answer carrying peaks", () => {
+  it("comes back with the exact bytes that went in", async () => {
+    const peaks = new TextEncoder().encode('{"version":1,"peaks":[1,2]}');
+    const answer = await readProbeAnswer(buildProbeAnswer(REPORT, null, null, null, peaks));
+    expect(answer.peaks).toEqual(peaks);
+  });
+
+  it("reads no peaks from an answer without them", async () => {
+    const answer = await readProbeAnswer(buildProbeAnswer(REPORT, null));
+    expect(answer.peaks).toBeNull();
   });
 });

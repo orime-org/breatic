@@ -74,6 +74,7 @@ import {
   createQueue,
 } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
+import { ceilToCreditCent } from "@breatic/shared";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
 
@@ -192,8 +193,8 @@ async function send(seeded: Awaited<ReturnType<typeof seed>>): Promise<number> {
 
 describe("a chat turn's model calls are recorded and charged at their cost", () => {
   it("prices a direct call to the chat model from the table and charges exactly the row", async () => {
-    // The chat model is Claude Opus 5.5 (config/agent.yaml), reached directly.
-    provider = "anthropic";
+    // The chat model is DeepSeek V4.1 Flash 1017 (config/agent.yaml), reached directly.
+    provider = "deepseek";
     finishMetadata = undefined;
     const seeded = await seed(100_000);
     expect(await send(seeded)).toBe(200);
@@ -204,14 +205,16 @@ describe("a chat turn's model calls are recorded and charged at their cost", () 
     expect(rows).toHaveLength(1);
     expect(rows[0]!.operation_key).toMatch(new RegExp(`^turn:${seeded.conversationId}:\\d+$`));
     expect(rows[0]).toMatchObject({ feature: "chat_turn", source: "model", cost_source: "price_table", output_tokens: 1_000_000 });
-    // One uncached input token at 4/M plus a million output tokens at 20/M.
-    expect(Number(rows[0]!.cost_usd)).toBeCloseTo(20 + 4 / 1_000_000, 6);
+    // One uncached input token at 0.3/M plus a million output tokens at 1.2/M.
+    expect(Number(rows[0]!.cost_usd)).toBeCloseTo(1.2 + 0.3 / 1_000_000, 6);
 
     const [spent] = await sql<{ total: string }[]>`
       SELECT COALESCE(SUM(amount), 0)::text AS total FROM credit_ledger
       WHERE reference_id = ${rows[0]!.operation_key} AND entry_type = 'spend'
     `;
-    expect(Number(spent!.total)).toBeCloseTo(-Number(rows[0]!.credits), 4);
+    // The row keeps the raw cost; the charge settles it to whole hundredths,
+    // rounded up (inner#1666).
+    expect(Number(spent!.total)).toBeCloseTo(-ceilToCreditCent(Number(rows[0]!.credits)), 6);
   }, 60_000);
 
   it("takes the cost OpenRouter reports, and hands nothing to the later lookup", async () => {
@@ -327,13 +330,14 @@ describe("what a turn's charge does to the studio's credits", () => {
     const total = (type: string): number =>
       entries.filter((entry) => entry.entry_type === type).reduce((sum, entry) => sum + Number(entry.amount), 0);
     expect(total("spend")).toBeCloseTo(-10, 4);
-    expect(total("debt_incurred")).toBeCloseTo(-(Number(row!.credits) - 10), 4);
+    const charged = ceilToCreditCent(Number(row!.credits));
+    expect(total("debt_incurred")).toBeCloseTo(-(charged - 10), 6);
 
     const [debt] = await sql<{ amount: string }[]>`
       SELECT d.amount FROM studio_credit_debts d JOIN projects p ON p.studio_id = d.studio_id
       WHERE p.id = ${seeded.projectId}
     `;
-    expect(Number(debt!.amount)).toBeCloseTo(Number(row!.credits) - 10, 4);
+    expect(Number(debt!.amount)).toBeCloseTo(charged - 10, 6);
   }, 60_000);
 
   it("records the turn and draws on no purchase while payments are off", async () => {
@@ -356,7 +360,7 @@ describe("what a turn's charge does to the studio's credits", () => {
     `;
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ lot_id: null });
-    expect(Number(entries[0]!.amount)).toBeCloseTo(-Number(row!.credits), 4);
+    expect(Number(entries[0]!.amount)).toBeCloseTo(-ceilToCreditCent(Number(row!.credits)), 6);
     const [lot] = await sql<{ remaining_credits: string }[]>`
       SELECT remaining_credits FROM credit_lots WHERE user_id = ${seeded.userId}
     `;

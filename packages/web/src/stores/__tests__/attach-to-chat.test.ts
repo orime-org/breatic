@@ -10,6 +10,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const toastSpy = vi.hoisted(() => ({ warning: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+beforeEach(() => {
+  toastSpy.warning.mockClear();
+});
+
 const runtime = vi.hoisted(() => ({ conversation: 'c1' as string | undefined }));
 
 vi.mock('@web/data/api/chat', () => ({
@@ -29,7 +35,7 @@ vi.mock('@web/stores/conversation-runtime', () => ({
 }));
 
 const { attachToChat, openTray } = await import('@web/stores/attach-to-chat');
-const { chatAttachments, useChatAttachments } = await import('@web/stores/chat-attachments');
+const { chatAttachments } = await import('@web/stores/chat-attachments');
 const { conversationRuntime } = await import('@web/stores/conversation-runtime');
 const { chatApi } = await import('@web/data/api/chat');
 const { useUIStore } = await import('@web/stores/ui');
@@ -55,7 +61,7 @@ function node(id: string): TrayItem {
  * @returns The notice, or null.
  */
 function notice(): unknown {
-  return useChatAttachments.getState().noticeByConversation.c1 ?? null;
+  return toastSpy.warning.mock.calls.at(-1)?.[0] ?? null;
 }
 
 beforeEach(() => {
@@ -82,7 +88,7 @@ describe('adding canvas nodes to the agent', () => {
     await attachToChat('p1', [node('a'), node('b'), node('c')]);
 
     expect(chatAttachments.trayOf('c1')).toEqual([]);
-    expect(notice()).toEqual({ key: 'full', limit: 2 });
+    expect(notice()).toBe('At most 2 items can be attached');
   });
 
   it('adds nothing when no conversation could be opened', async () => {
@@ -109,19 +115,11 @@ describe('opening the list above the box for an attempt', () => {
     });
   });
 
-  it('clears what was said about the last attempt', async () => {
-    chatAttachments.say('c1', { key: 'tooLong' });
-
-    await openTray('p1');
-
-    expect(notice()).toBeNull();
-  });
-
   it('says so when the limits cannot be read', async () => {
     vi.mocked(chatApi.streamConfig).mockRejectedValueOnce(new Error('offline'));
 
     expect(await openTray('p1')).toBeUndefined();
-    expect(notice()).toEqual({ key: 'unavailable' });
+    expect(notice()).toBe('Couldn’t attach right now. Try again.');
   });
 
   it('answers nothing when no conversation could be opened', async () => {

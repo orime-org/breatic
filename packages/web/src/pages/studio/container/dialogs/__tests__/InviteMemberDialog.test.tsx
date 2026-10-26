@@ -29,7 +29,7 @@ describe('InviteMemberDialog', () => {
     });
   });
 
-  it('does not submit an empty email', async () => {
+  it('keeps Send pressable and says an email is needed when it is empty (inner#1652)', async () => {
     const user = userEvent.setup();
     const onInvite = vi.fn();
     render(
@@ -41,11 +41,103 @@ describe('InviteMemberDialog', () => {
         error={null}
       />,
     );
-    // Submit button is disabled while the email is empty.
     const submit = screen.getByRole('button', { name: 'Send invite' });
-    expect(submit).toBeDisabled();
+    expect(submit).not.toBeDisabled();
     await user.click(submit);
     expect(onInvite).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter an email address.')).toHaveClass('text-xs');
+    const email = screen.getByLabelText('Email');
+    expect(email).toHaveFocus();
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    await user.type(email, 'n');
+    expect(screen.queryByText('Enter an email address.')).not.toBeInTheDocument();
+  });
+
+  it('opens again without the reason left from the last opening (inner#1652)', async () => {
+    const user = userEvent.setup();
+    const props = { onOpenChange: vi.fn(), onInvite: vi.fn(), pending: false, error: null };
+    const { rerender } = render(<InviteMemberDialog open {...props} />);
+    await user.click(screen.getByRole('button', { name: 'Send invite' }));
+    expect(screen.getByText('Enter an email address.')).toBeInTheDocument();
+    rerender(<InviteMemberDialog open={false} {...props} />);
+    rerender(<InviteMemberDialog open {...props} />);
+    expect(screen.queryByText('Enter an email address.')).not.toBeInTheDocument();
+  });
+
+  it('says the email is not valid instead of sending it (inner#1652)', async () => {
+    const user = userEvent.setup();
+    const onInvite = vi.fn();
+    render(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={onInvite}
+        pending={false}
+        error={null}
+      />,
+    );
+    await user.type(screen.getByLabelText('Email'), 'new@x{Enter}');
+    expect(onInvite).not.toHaveBeenCalled();
+    expect(screen.getByText('Please enter a valid email address.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email')).toHaveFocus();
+  });
+
+  it('ignores a press while the invite is out (inner#1652)', async () => {
+    const user = userEvent.setup();
+    const onInvite = vi.fn();
+    const { rerender } = render(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={onInvite}
+        pending={false}
+        error={null}
+      />,
+    );
+    await user.type(screen.getByLabelText('Email'), 'new@x.example');
+    rerender(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={onInvite}
+        pending
+        error={null}
+      />,
+    );
+    await user.type(screen.getByLabelText('Email'), '{Enter}');
+    expect(onInvite).not.toHaveBeenCalled();
+  });
+
+  it('holds the email read-only and leaves the role as it looks while the invite is out (inner#1652)', () => {
+    render(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={vi.fn()}
+        pending
+        error={null}
+      />,
+    );
+    // Read-only keeps the focus Enter left in the field, so a refused invite
+    // can be corrected by typing straight away.
+    expect(screen.getByLabelText('Email')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Email')).not.toBeDisabled();
+    // The role went out with the press; changing it now alters nothing sent.
+    expect(screen.getByLabelText('Role')).not.toBeDisabled();
+  });
+
+  it('leaves the browser out of it: no native email check (inner#1652)', () => {
+    render(
+      <InviteMemberDialog
+        open
+        onOpenChange={vi.fn()}
+        onInvite={vi.fn()}
+        pending={false}
+        error={null}
+      />,
+    );
+    expect(screen.getByTestId('invite-member-dialog').querySelector('form')).toHaveAttribute('novalidate');
+    expect(screen.getByLabelText('Email')).not.toHaveAttribute('required');
   });
 
   it('renders a server error inline as an alert', () => {

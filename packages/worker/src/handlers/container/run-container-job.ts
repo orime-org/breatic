@@ -38,6 +38,7 @@ import {
 } from "@breatic/shared/mini-tools";
 
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
+import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
@@ -243,6 +244,7 @@ export async function runContainerJob(
     const measured = report.outputs.find((output) => output.storageKey === written.storageKey);
     if (!measured) throw new ContainerJobFailed("tool_failed");
     const outcome = await ingestReportService.applyIngestReport({ ...measured, outcome: "completed" });
+    noteSideEffects(outcome, { taskId: input.taskId, key: measured.storageKey });
     if (outcome.status !== "registered" && outcome.status !== "already_registered") {
       await recordUsage(input, op, job.containerClass, report.usage);
       throw new ContainerJobFailed(outcome.status === "rejected" ? outcome.reason : "internal");

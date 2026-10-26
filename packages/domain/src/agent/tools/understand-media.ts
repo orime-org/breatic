@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Media understanding tool — look at an image, watch a video, listen to audio.
+ * Media understanding tool — ask one question about ordered images, video and audio.
  *
- * The model gets an address from whoever it is talking to and asks this what
- * is in it. Everything about who to ask lives here: the model, the backend and
- * the credential, all handed to a capability that reads no configuration of
- * its own.
+ * The model supplies source addresses in input order. This tool selects the
+ * model, backend and credential for the shared understanding capability.
  *
  * Nothing here interprets a failure into a retry. A call that came back empty
  * says so and says what stopped it, and a file that is too large says how large
@@ -19,7 +17,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { FAILURE_LINES } from "@breatic/shared";
+import { FAILURE_LINES, type FailureLine } from "@breatic/shared";
 import { isStop, stoppedByUser, toolFailed, turnedAway } from "@domain/agent/tools/failure.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
@@ -33,15 +31,11 @@ import {
   VIDEO_FORMAT_NAMES,
 } from "@domain/understand/index.js";
 
-/** What the model may ask this tool to look at. */
-const inputSchema = z.object({
-  url: z.string().url().describe("Address of the image, video or audio"),
-  question: z
-    .string()
-    .trim()
-    .min(1)
-    .describe("What to find out about it"),
-});
+/** One ordered batch and its shared question. */
+interface UnderstandMediaInput {
+  items: Array<{ url: string }>;
+  question: string;
+}
 
 /**
  * What to tell the model when a type is one this endpoint will not take.
@@ -94,6 +88,7 @@ function unsupportedSentence(declaredType: string | undefined): string {
  * @returns The sentence for the model, and the line a reader is shown.
  */
 function unavailableFailure(err: MediaUnavailable): Error {
+  const item = err.itemIndex === undefined ? "" : `Item ${String(err.itemIndex)} (${err.url ?? "unknown address"}): `;
   switch (err.kind) {
     case "too-large": {
       // The size is stated only when the far side stated it. A body that
@@ -101,38 +96,32 @@ function unavailableFailure(err: MediaUnavailable): Error {
       // is that more than the limit came, not how much.
       const size = err.bytes === undefined ? "That file is" : `That file is ${err.bytes} bytes,`;
       return toolFailed(
-        `${size} over the ${err.limit} byte limit, so it was not sent. ` +
+        `${item}${size} over the ${err.limit} byte limit, so it was not sent. ` +
           "Tell the user it is too large, and say the limit.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.fileTooLarge,
       );
     }
     case "unsupported-type":
-      return toolFailed(unsupportedSentence(err.declaredType), FAILURE_LINES.generic);
+      return toolFailed(`${item}${unsupportedSentence(err.declaredType)}`, FAILURE_LINES.unsupportedType);
     case "slow":
       // No count: the read gives up on a budget, and how much had arrived by
-      // then is not something that side comes away with. The address answered
-      // everything it was asked, so this is not the line for an address that
-      // said nothing — the three reader lines carry the same sentence today,
-      // and the panel renders none of them, so the choice is for when it does.
+      // then is not something that side comes away with.
       return toolFailed(
-        "That file took too long to arrive. Tell the user the download did not finish.",
-        FAILURE_LINES.generic,
+        `${item}That file took too long to arrive. Tell the user the download did not finish.`,
+        FAILURE_LINES.tooSlow,
       );
     case "empty":
-      // The address answered everything it was asked, so not the unreachable
-      // line. Same as above: which line is picked makes no visible difference
-      // yet, and is recorded for when the panel tells them apart.
       return toolFailed(
-        "That address holds an empty file, so there was nothing to look at. " +
+        `${item}That address holds an empty file, so there was nothing to look at. ` +
           "Tell the user the file is empty.",
-        FAILURE_LINES.generic,
+        FAILURE_LINES.emptyFile,
       );
     case "unreachable":
       return toolFailed(
         err.status
-          ? `That address answered ${err.status}, so there was nothing to look at.`
-          : `That address could not be reached: ${err.detail ?? "no answer"}.`,
-        FAILURE_LINES.unreachable,
+          ? `${item}That address answered ${err.status}, so there was nothing to look at.`
+          : `${item}That address could not be reached: ${err.detail ?? "no answer"}.`,
+        FAILURE_LINES.linkUnreachable,
       );
   }
 }
@@ -143,12 +132,14 @@ function unavailableFailure(err: MediaUnavailable): Error {
  * Naming the address would send the model to blame a url that was fine, and
  * the endpoint has no business in a conversation.
  * @param cause - What was caught.
+ * @param readerKey - Whether the service failed (`busy`) or never answered
+ *   at all (`noConnection`).
  * @returns The sentence for the model, and the line a reader is shown.
  */
-function serviceSilent(cause: unknown): Error {
+function serviceSilent(cause: unknown, readerKey: FailureLine): Error {
   return toolFailed(
     "The media understanding service did not answer. Tell the user to try again shortly.",
-    FAILURE_LINES.upstream,
+    readerKey,
     cause,
   );
 }
@@ -168,11 +159,21 @@ function serviceSilent(cause: unknown): Error {
 function refusedFailure(err: UnderstandRefused): Error {
   switch (err.kind) {
     case "media":
-      return toolFailed(
-        `The service would not take this media: ${err.detail}. ` +
-          "Tell the user, and do not send the same file again.",
-        FAILURE_LINES.upstream,
-      );
+      // Only 413 establishes a size reason. Other media refusals do not
+      // establish whether bytes, an external image fetch or our request was
+      // responsible, so both audiences receive the service's facts.
+      return err.status === 413
+        ? toolFailed(
+          `The service would not take this media: ${err.detail}. ` +
+            "Tell the user, and do not send the same file again.",
+          FAILURE_LINES.fileTooLarge,
+        )
+        : toolFailed(
+          `The service did not accept this media request: ${err.detail}. ` +
+            "Tell the user it could not be processed. Use the reported reason to choose the next step; " +
+            "do not guess the cause or which item failed.",
+          FAILURE_LINES.refused,
+        );
     case "unfetchable":
       // An image travels as its address and the backend fetches it, so this
       // one is about reaching the address rather than about the file. Moving
@@ -181,13 +182,13 @@ function refusedFailure(err: UnderstandRefused): Error {
       return toolFailed(
         `The service could not reach that address: ${err.detail}. ` +
           "Tell the user to put the file somewhere the service can reach, or give another address.",
-        FAILURE_LINES.upstream,
+        FAILURE_LINES.linkUnreachable,
       );
     case "content-filter":
       return toolFailed(
         `The service declined to answer this question about the media: ${err.detail}. ` +
           "Asking differently may work.",
-        FAILURE_LINES.upstream,
+        FAILURE_LINES.declined,
       );
     case "deployment":
       // Not a word about the file. The account, the credential and the model
@@ -196,10 +197,10 @@ function refusedFailure(err: UnderstandRefused): Error {
       return toolFailed(
         `Media understanding is not available right now: ${err.detail}. ` +
           "Tell the user it is unavailable, and do not blame anything they sent.",
-        FAILURE_LINES.upstream,
+        FAILURE_LINES.unavailable,
       );
     case "transient":
-      return serviceSilent(err);
+      return serviceSilent(err, FAILURE_LINES.busy);
   }
 }
 
@@ -222,16 +223,23 @@ const STOPPED_SHORT: Readonly<Record<string, string>> = {
  * below. Kept once for the module instead, that gate would be shared by every
  * conversation on this server, and one turn reading a file would turn away
  * everyone else.
+ * @param options - The main model's resolved ability to see pictures.
+ * @param options.seesPictures - Whether the main model receives prepared pictures directly.
  * @returns The tool.
+ * @throws {Error} when the Agent configuration cannot be loaded.
  */
-export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, string, UsageContext> {
-  // Whether this turn already has one of these in the air. The model gets one
-  // address per call, so a message carrying several files becomes several
-  // calls in one step, and `ai@7.0.68` runs every tool call of a step through
-  // one `Promise.all` (`dist/index.js:8171-8180`) — the same fact `web-search`
-  // cites for its citation numbers. A video or audio call holds its file
-  // several times over on the way to a request body; which kind an address
-  // holds is not known until it has been fetched, so the gate covers all three.
+export function makeUnderstandMediaTool(options: { seesPictures?: boolean } = {}): Tool<UnderstandMediaInput, string, UsageContext> {
+  const config = { ...getAgentConfig() };
+  const inputSchema = z.object({
+    items: z.array(z.object({ url: z.string().url().describe("Address of the image, video or audio") }))
+      .min(1)
+      .max(config.understand_media_max_items)
+      .describe("Media to compare or understand, in the order to use in the answer"),
+    question: z.string().trim().min(1).describe("One question about all supplied items"),
+  });
+  // One batch may hold several inline AV files. The SDK executes tools from
+  // one step concurrently, so this per-turn gate admits only one whole batch
+  // at a time and bounds its cumulative download allowance.
   //
   // Turned away rather than queued: the model plans the step, and a refusal
   // naming what to wait for lets it come back for this file having read the
@@ -239,21 +247,21 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
   let running = false;
 
   return tool({
-    // The second sentence is load-bearing and was measured: the same message
-    // carrying three addresses produced three overlapping calls without it and
-    // three sequential ones with it. One call at a time is what keeps a step
-    // from holding several files at once, and the model is the one holding the
-    // plan for the step, so this is where it belongs.
     description:
-      "Look at an image, watch a video, or listen to audio at a given address and answer a " +
-      "question about it. Give one address at a time, and wait for the answer before asking " +
-      "about the next one.",
+      (options.seesPictures
+        ? "Watch videos, listen to audio, compare mixed media, or inspect an original image for details missing from the supplied picture. Pictures already supplied with messages can be read directly. "
+        : "Look at images, watch videos, listen to audio, or compare mixed media. ") +
+      `Give one shared question and an ordered batch of 1 to ${String(config.understand_media_max_items)} items. ` +
+      `Audio and video downloads together must fit the ${String(config.understand_media_max_bytes)} byte allowance. ` +
+      "Images each retain the same single-file byte limit. Item numbers identify the input order. " +
+      "Pictures omitted from this request's budget can be inspected here using their original source address. " +
+      "Wait for this batch's answer before calling again.",
     inputSchema,
     contextSchema: usageContextSchema,
     // What the panel reads about a running call, resolved by the web package.
     metadata: { runningLine: "chat.tool.understanding" },
     execute: async (
-      { url, question },
+      { items, question },
       { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
     ): Promise<string> => {
       /**
@@ -270,7 +278,8 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         });
       };
 
-      const config = getAgentConfig();
+      if (abortSignal?.aborted) throw stoppedByUser();
+      const input = inputSchema.parse({ items, question });
       const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
       if (!apiKey) {
         // Defensive: `buildToolSet` leaves this tool out of the set entirely
@@ -278,7 +287,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         throw toolFailed(
           "Media understanding is not available on this deployment: it has no credentials. " +
             "Tell the user, and do not try again.",
-          FAILURE_LINES.generic,
+          FAILURE_LINES.unavailable,
         );
       }
 
@@ -299,8 +308,8 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
       let answer;
       try {
         answer = await understandMediaAt({
-          url,
-          question,
+          items: input.items,
+          question: input.question,
           maxBytes: config.understand_media_max_bytes,
           fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
           minBytesPerSec: config.understand_media_min_bytes_per_sec,
@@ -319,7 +328,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
         if (err instanceof MediaUnavailable) throw unavailableFailure(err);
         if (err instanceof UnderstandRefused) throw refusedFailure(err);
         // Our own request failing outright, before any answer to judge.
-        throw serviceSilent(err);
+        throw serviceSilent(err, FAILURE_LINES.noConnection);
       } finally {
         running = false;
       }
@@ -335,7 +344,7 @@ export function makeUnderstandMediaTool(): Tool<z.infer<typeof inputSchema>, str
                 "writing anything. Ask for something shorter."
             : `The model returned nothing about this ${answer.kind} (it stopped for ` +
                 `${answer.finishReason}). Asking differently may work.`,
-          FAILURE_LINES.upstream,
+          FAILURE_LINES.badAnswer,
         );
       }
 

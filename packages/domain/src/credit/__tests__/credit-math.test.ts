@@ -19,7 +19,36 @@ import {
   toMicroCredits,
   fromMicroCredits,
   planCharge,
+  positionFrom,
+  toChargeMicro,
+  SMALLEST_CREDIT,
 } from "@domain/credit/credit-math.js";
+
+describe("positionFrom (inner#1611)", () => {
+  it("takes what running work holds off what the studio can spend", () => {
+    expect(positionFrom("100", "0", "80")).toEqual({ spendable: 100, held: 80, available: 20 });
+  });
+
+  it("reads nothing available, not a negative figure, when holds outgrow the balance", () => {
+    // A run charged above its estimate leaves the others' holds larger than
+    // what is left. Below zero is how both screens say the studio owes.
+    expect(positionFrom("40", "0", "45")).toEqual({ spendable: 40, held: 45, available: 0 });
+  });
+
+  it("reads what the studio owes when it owes, holds or not", () => {
+    expect(positionFrom("0", "30", "10")).toEqual({ spendable: -30, held: 10, available: -30 });
+  });
+
+  it("never reads more than the balance, nor less than zero unless the studio owes", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10_000 }), fc.integer({ min: 0, max: 10_000 }), fc.integer({ min: 0, max: 10_000 }), (lots, debt, held) => {
+        const { spendable, available } = positionFrom(String(lots), String(debt), String(held));
+        if (spendable < 0) expect(available).toBe(spendable);
+        else expect(available >= 0 && available <= spendable).toBe(true);
+      }),
+    );
+  });
+});
 
 describe("定点数换算", () => {
   it("把数据库读回来的字符串按六位小数换成整数微积分", () => {
@@ -149,5 +178,41 @@ describe("planCharge", () => {
         },
       ),
     );
+  });
+});
+
+describe("toChargeMicro (inner#1666)", () => {
+  it("charges a part-cent amount as the next cent up, in micro-credits", () => {
+    expect(toChargeMicro(3.075)).toBe(3_080_000);
+    expect(toChargeMicro(0.001)).toBe(10_000);
+    expect(toChargeMicro(7.25)).toBe(7_250_000);
+  });
+
+  it("charges 7 for an amount whose only excess is floating-point residue (inner#1637)", () => {
+    expect(toChargeMicro(7.000000000000001)).toBe(7_000_000);
+  });
+
+  it("lands on a whole cent, never below the amount and less than a cent above it", () => {
+    fc.assert(
+      fc.property(fc.double({ min: 0, max: 50_000, noNaN: true }), (amount) => {
+        const charged = toChargeMicro(amount);
+        const exact = Math.round(amount * 1_000_000);
+        expect(charged % 10_000).toBe(0);
+        expect(charged).toBeGreaterThanOrEqual(exact);
+        expect(charged - exact).toBeLessThan(10_000);
+      }),
+    );
+  });
+
+  it("does not move an amount that is already whole cents, residue or not", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 5_000_000 }), fc.double({ min: -4e-7, max: 4e-7, noNaN: true }), (cents, noise) => {
+        expect(toChargeMicro(cents / 100 + noise)).toBe(cents * 10_000);
+      }),
+    );
+  });
+
+  it("makes a cent the smallest amount admission asks for", () => {
+    expect(SMALLEST_CREDIT).toBe(0.01);
   });
 });

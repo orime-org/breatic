@@ -25,7 +25,7 @@
  * `@breatic/shared` entities.
  */
 
-import { and, desc, eq, gt, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, projectInvitations, projects, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
@@ -33,6 +33,7 @@ import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
+import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
 import { mintShareToken } from "@server/utils/share-token.js";
 
 /**
@@ -111,7 +112,7 @@ export async function createPending(input: {
  * The index keys on `status = 'pending' AND deleted_at IS NULL` and CANNOT
  * include `expires_at` (a partial-index predicate must be immutable — `now()` is
  * not). Every READ path already treats an expired pending as void (accept CAS,
- * `listPendingByProject`, landing all gate `expires_at > now()`), so without this
+ * `listPendingByProject`, landing all gate `expires_at > clock_timestamp()`), so without this
  * the row is invisible everywhere yet still trips the unique index on re-invite
  * → a spurious "already invited" (#1769). Called inside `createInvite`'s
  * transaction right before {@link createPending}, so freeing the slot and taking
@@ -135,7 +136,7 @@ export async function expireStalePending(
         eq(projectInvitations.invitedUserId, invitedUserId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        lte(projectInvitations.expiresAt, sql`now()`),
+        lte(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     );
 }
@@ -219,7 +220,7 @@ export async function acceptIfPending(
         eq(projectInvitations.invitedUserId, invitedUserId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        gt(projectInvitations.expiresAt, sql`now()`),
+        gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     )
     .returning({
@@ -230,8 +231,8 @@ export async function acceptIfPending(
       notificationId: projectInvitations.notificationId,
     });
   const row = rows[0];
-  if (!row) return null;
-  return { ...row, role: row.role as InvitableProjectRole };
+  if (!row || row.invitedUserId === null) return null;
+  return { ...row, invitedUserId: row.invitedUserId, role: row.role as InvitableProjectRole };
 }
 
 /**
@@ -263,7 +264,7 @@ export async function declineIfPending(
         eq(projectInvitations.invitedUserId, invitedUserId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        gt(projectInvitations.expiresAt, sql`now()`),
+        gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     )
     .returning({ notificationId: projectInvitations.notificationId });
@@ -286,7 +287,7 @@ export async function revokeIfPending(
   id: string,
   projectId: string,
   tx?: DbTx,
-): Promise<{ notificationId: string | null; invitedUserId: string } | null> {
+): Promise<{ notificationId: string | null; invitedUserId: string | null } | null> {
   const handle = tx ?? db;
   const rows = await handle
     .update(projectInvitations)
@@ -330,14 +331,14 @@ export async function listPendingByProject(
       invitationId: projectInvitations.id,
       invitedUserId: projectInvitations.invitedUserId,
       name: inviteeStudio.name,
-      email: users.email,
+      email: sql<string>`coalesce(${users.email}, ${projectInvitations.invitedEmail})`,
       avatarUrl: inviteeStudio.avatarUrl,
       role: projectInvitations.role,
       invitedByName: inviterStudio.name,
       expiresAt: projectInvitations.expiresAt,
     })
     .from(projectInvitations)
-    .innerJoin(users, eq(users.id, projectInvitations.invitedUserId))
+    .leftJoin(users, eq(users.id, projectInvitations.invitedUserId))
     .leftJoin(
       inviteeStudio,
       and(
@@ -359,13 +360,14 @@ export async function listPendingByProject(
         eq(projectInvitations.projectId, projectId),
         eq(projectInvitations.status, "pending"),
         isNull(projectInvitations.deletedAt),
-        gt(projectInvitations.expiresAt, sql`now()`),
+        gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
       ),
     )
     .orderBy(desc(projectInvitations.createdAt));
   return rows.map((r) => ({
     invitationId: r.invitationId,
     invitedUserId: r.invitedUserId,
+    awaitingSignup: r.invitedUserId === null,
     name: r.name ?? r.email,
     email: r.email,
     avatarUrl: r.avatarUrl,
@@ -391,7 +393,7 @@ export async function findLandingById(invitationId: string): Promise<{
   projectId: string;
   inviterName: string;
   role: InvitableProjectRole;
-  invitedUserId: string;
+  invitedUserId: string | null;
   expiresAt: Date;
 } | null> {
   const inviterStudio = alias(studios, "inviter_studio_landing");
@@ -434,4 +436,158 @@ export async function findLandingById(invitationId: string): Promise<{
     invitedUserId: row.invitedUserId,
     expiresAt: row.expiresAt,
   };
+}
+
+
+/** Fields shared by recipient arbitration and delivery settlement. */
+const recipientFields = {
+  id: projectInvitations.id,
+  targetId: projectInvitations.projectId,
+  invitedUserId: projectInvitations.invitedUserId,
+  invitedEmail: projectInvitations.invitedEmail,
+  invitedBy: projectInvitations.invitedBy,
+  role: projectInvitations.role,
+  status: projectInvitations.status,
+  notificationId: projectInvitations.notificationId,
+  shareToken: projectInvitations.shareToken,
+  expiresAt: projectInvitations.expiresAt,
+  deletedAt: projectInvitations.deletedAt,
+};
+
+/**
+ * Insert an invitation addressed to a normalized mailbox.
+ * @param input - Target, mailbox, role, sender, deadline and enclosing transaction.
+ * @param input.projectId - The Project id.
+ * @param input.invitedEmail - Normalized recipient mailbox.
+ * @param input.role - Granted membership role.
+ * @param input.invitedBy - The acting inviter.
+ * @param input.expiresAt - Invitation deadline.
+ * @param input.tx - The enclosing transaction.
+ * @returns The invitation id and stable share token.
+ * @throws {Error} When persistence fails.
+ */
+export async function createPendingEmail(input: {
+  projectId: string;
+  invitedEmail: string;
+  role: InvitableProjectRole;
+  invitedBy: string;
+  expiresAt: Date;
+  tx: DbTx;
+}): Promise<CreatedRequest> {
+  const [row] = await input.tx.insert(projectInvitations).values({
+    projectId: input.projectId,
+    invitedEmail: input.invitedEmail,
+    invitedUserId: null,
+    role: input.role,
+    invitedBy: input.invitedBy,
+    expiresAt: input.expiresAt,
+    status: "pending",
+    shareToken: mintShareToken(),
+  }).returning({ id: projectInvitations.id, shareToken: projectInvitations.shareToken });
+  if (!row) throw new Error("Email invitation insert returned no row");
+  return row;
+}
+
+/**
+ * Reap stale pending mailbox invitations while the target is locked.
+ * @param targetId - Membership target.
+ * @param email - Normalized mailbox.
+ * @param tx - Enclosing transaction.
+ * @returns Once the stale rows have been reaped.
+ * @throws {Error} When persistence fails.
+ */
+export async function expireStalePendingEmail(targetId: string, email: string, tx: DbTx): Promise<void> {
+  await tx.update(projectInvitations).set({ status: "failed", failedReason: "expired" }).where(and(
+    eq(projectInvitations.projectId, targetId), eq(projectInvitations.invitedEmail, email),
+    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), lte(projectInvitations.expiresAt, sql`clock_timestamp()`),
+  ));
+}
+
+/**
+ * Read both recipient representations after the membership target is locked.
+ * @param targetId - Membership target.
+ * @param email - Normalized mailbox.
+ * @param userId - Current account associated with that mailbox.
+ * @param tx - Enclosing transaction.
+ * @returns Active pending invitations for this recipient.
+ * @throws {Error} When persistence fails.
+ */
+export async function findPendingForRecipient(targetId: string, email: string, userId: string | null, tx: DbTx): Promise<RecipientInvitation[]> {
+  return tx.select(recipientFields).from(projectInvitations).where(and(
+    eq(projectInvitations.projectId, targetId), eq(projectInvitations.status, "pending"),
+    isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
+    or(eq(projectInvitations.invitedEmail, email), userId === null ? undefined : eq(projectInvitations.invitedUserId, userId)),
+  ));
+}
+
+/**
+ * Read the original invitation even after it has reached a terminal state.
+ * @param id - Original invitation id.
+ * @param tx - Enclosing transaction.
+ * @returns Its current persisted facts, or null.
+ * @throws {Error} When persistence fails.
+ */
+export async function findRecipientById(id: string, tx?: DbTx): Promise<RecipientInvitation | null> {
+  const [row] = await (tx ?? db).select(recipientFields).from(projectInvitations).where(eq(projectInvitations.id, id)).limit(1);
+  return row ?? null;
+}
+
+/**
+ * Read the invitation named by a registration link.
+ * @param token - Stable share token.
+ * @returns Its persisted facts, including deletion, or null.
+ * @throws {Error} When persistence fails.
+ */
+export async function findRecipientByToken(token: string): Promise<RecipientInvitation | null> {
+  const [row] = await db.select(recipientFields).from(projectInvitations).where(eq(projectInvitations.shareToken, token)).limit(1);
+  return row ?? null;
+}
+
+/**
+ * Find mailbox invitations for one verified account's compensation scan.
+ * @param email - Normalized account mailbox.
+ * @returns Independent invitation targets to process one transaction at a time.
+ * @throws {Error} When persistence fails.
+ */
+export async function findPendingEmailCandidates(email: string): Promise<EmailInvitationCandidate[]> {
+  return db.select({ id: projectInvitations.id, targetId: projectInvitations.projectId }).from(projectInvitations).where(and(
+    eq(projectInvitations.invitedEmail, email), isNull(projectInvitations.invitedUserId),
+    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
+  ));
+}
+
+/**
+ * Claim a live mailbox invitation for its verified account.
+ * @param id - The original invitation.
+ * @param email - Normalized mailbox checked inside the target lock.
+ * @param userId - Verified account with that mailbox.
+ * @param decisionWindowMs - The renewed decision window in milliseconds.
+ * @param tx - Enclosing claim and notification transaction.
+ * @returns The converted row, or null when the compare-and-set lost.
+ * @throws {Error} When persistence fails.
+ */
+export async function claimPendingEmail(id: string, email: string, userId: string, decisionWindowMs: number, tx: DbTx): Promise<RecipientInvitation | null> {
+  const [row] = await tx.update(projectInvitations).set({
+    invitedUserId: userId, invitedEmail: null, claimedAt: sql`statement_timestamp()`,
+    expiresAt: sql`statement_timestamp() + ${decisionWindowMs} * interval '1 millisecond'`,
+  }).where(and(
+    eq(projectInvitations.id, id), eq(projectInvitations.invitedEmail, email), isNull(projectInvitations.invitedUserId),
+    eq(projectInvitations.status, "pending"), isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
+  )).returning(recipientFields);
+  return row ?? null;
+}
+
+/**
+ * Revoke the original live mailbox invitation after its delivery failed.
+ * @param id - The invitation created by the failed request.
+ * @param tx - Enclosing target-locked settlement transaction.
+ * @returns Whether the mailbox invitation was revoked.
+ * @throws {Error} When persistence fails.
+ */
+export async function revokePendingEmail(id: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.update(projectInvitations).set({ status: "revoked" }).where(and(
+    eq(projectInvitations.id, id), eq(projectInvitations.status, "pending"), isNull(projectInvitations.invitedUserId),
+    isNull(projectInvitations.deletedAt), gt(projectInvitations.expiresAt, sql`clock_timestamp()`),
+  )).returning({ id: projectInvitations.id });
+  return rows.length === 1;
 }

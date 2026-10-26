@@ -52,6 +52,11 @@ export default defineConfig({
   },
   use: {
     baseURL,
+    // One click, fill or hover that cannot happen fails here, with the page
+    // as it stood, rather than waiting out the whole case; Playwright's own
+    // default is no limit (inner#1304). Waiting for a slow model belongs to
+    // the case's own timeout and its `expect(...).toPass`/`poll` waits.
+    actionTimeout: 15_000,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

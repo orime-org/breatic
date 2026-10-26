@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Asking a model about one piece of media.
+ * Asking a model one question about an ordered collection of media.
  *
  * Straight at the service's HTTP API. The three media shapes below are the
  * ones it takes, measured one by one against the live endpoint, and none of
@@ -12,14 +12,15 @@
  *
  * Who to ask is entirely the caller's: the model, the backend, the credential
  * and the address all arrive as inputs. So this module reads no catalog and no
- * configuration, and every caller — the agent's tool today, a worker task
- * later — decides those where it already knows them.
+ * configuration. The agent tool and worker tasks supply those inputs where
+ * each already knows them.
  */
 
 import { EmptyBody, httpRequest, readWithin, stripUnicodeTags } from "@breatic/shared";
 import { UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
+  MediaTransport,
   RefusalFacts,
   RefusalKind,
   UnderstandAnswer,
@@ -92,10 +93,10 @@ function refusalKind(facts: RefusalFacts): RefusalKind {
     // The provider's body ceiling, reached by what we put in it.
     if (code === 413) return "media";
     // Measured, a video sent as a url comes back 400 `Cannot fetch content`.
-    // An image is the one kind that travels as its address, so a 400 there is
-    // about reaching the address and the move it leaves is to host the file
-    // somewhere else; on the inline path the body is ours and so is the fault.
-    if (code === 400) return facts.sentAsAddress ? "unfetchable" : "media";
+    // Only an address-only batch supports the existing unreachable-address
+    // classification. In a mixed batch, the same status may be an inline
+    // decoding or request failure; it cannot establish that a URL was unreachable.
+    if (code === 400) return facts.transport === "address" ? "unfetchable" : "media";
     // The one shape where the status has nothing to say: it is 200 by
     // construction. Measured, that is this model's guardrail declining the
     // question, and a differently worded one about the same file is answered.
@@ -114,6 +115,8 @@ function refusalKind(facts: RefusalFacts): RefusalKind {
 interface ServiceError {
   message?: unknown;
   code?: unknown;
+  /** `error_type` names the kind of failure where the code alone cannot: a 403 is a key, a budget or a content block. */
+  metadata?: { error_type?: unknown };
 }
 
 interface Completion {
@@ -134,13 +137,13 @@ interface Completion {
  * Read the answer, or say why there is none.
  *
  * A 200 carrying an `error` object is a refusal wearing a success code, and
- * this endpoint really does answer that way: measured, the same audio asked to
- * be transcribed word for word comes back 200 with
- * `Gemini blocked the request: SAFETY` in the body. So the status is not what
- * decides — the body is.
+ * this endpoint really does answer that way: measured (inner#856, 2026-10-22),
+ * a block arrives on a 200 with `error: {code: 403, message: "SAFETY"}` in the
+ * body, now and then and not for every send of the same audio. So the status
+ * is not what decides — the body is.
  * @param res - The response as it arrived.
  * @param budgetMs - How long the whole body may take to arrive.
- * @param sentAsAddress - Whether the media went as an address to be fetched.
+ * @param transport - Whether this batch uses addresses, inline media or both.
  * @param signal - The caller's signal, so the read ends when they do.
  * @param onBilled - Told once, when the answer shows the call was billed.
  * @returns What the model wrote and why it stopped.
@@ -149,7 +152,7 @@ interface Completion {
 async function readAnswer(
   res: Response,
   budgetMs: number,
-  sentAsAddress: boolean,
+  transport: MediaTransport,
   signal: AbortSignal | undefined,
   onBilled: (costUsd: number | undefined) => void,
 ): Promise<UnderstandAnswer> {
@@ -164,14 +167,21 @@ async function readAnswer(
    * @param about - What is known beyond the words themselves.
    * @param about.source - Where they came from.
    * @param about.code - The code to judge by, when it is not the transport's.
+   * @param about.errorType - The service's own name for the failure, carried and not judged.
    * @returns The refusal to throw.
    */
   const refusal = (
     detail: string,
-    about: { source: RefusalFacts["source"]; code?: number },
+    about: { source: RefusalFacts["source"]; code?: number; errorType?: string },
   ): UnderstandRefused => {
     const code = about.code ?? res.status;
-    return new UnderstandRefused(code, detail, refusalKind({ ...about, code, sentAsAddress }));
+    const { errorType, ...facts } = about;
+    return new UnderstandRefused(
+      code,
+      detail,
+      refusalKind({ ...facts, code, transport }),
+      errorType,
+    );
   };
 
   /**
@@ -180,6 +190,8 @@ async function readAnswer(
    * The code is the envelope's own when it carries one: an error raised once
    * the model is already producing output arrives on a 200, which by
    * construction says nothing about what went wrong.
+   * Its `error_type` travels on the refusal as a fact for the caller; it
+   * judges nothing here.
    * @param error - The object the service put in the body.
    * @param fallback - The body as it arrived, for an envelope with no message.
    * @returns The refusal to throw.
@@ -188,6 +200,9 @@ async function readAnswer(
     refusal(String(error.message ?? fallback), {
       source: "envelope",
       ...(typeof error.code === "number" ? { code: error.code } : {}),
+      ...(typeof error.metadata?.error_type === "string"
+        ? { errorType: error.metadata.error_type }
+        : {}),
     });
 
   let text: string;
@@ -266,7 +281,13 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     messages: [
       {
         role: "user",
-        content: [{ type: "text", text: stripUnicodeTags(request.question) }, mediaPart(request.media)],
+        content: [
+          { type: "text", text: stripUnicodeTags(request.question) },
+          ...request.media.flatMap((media, index) => [
+            { type: "text", text: `Item ${String(index + 1)}` },
+            mediaPart(media),
+          ]),
+        ],
       },
     ],
   };
@@ -297,10 +318,13 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
     },
   );
 
+  const hasAddresses = request.media.some((media) => media.kind === "image");
+  const hasInline = request.media.some((media) => media.kind !== "image");
+  const transport: MediaTransport = hasAddresses ? (hasInline ? "mixed" : "address") : "inline";
   return readAnswer(
     res,
     request.timeoutMs,
-    request.media.kind === "image",
+    transport,
     request.signal,
     request.onBilled,
   );

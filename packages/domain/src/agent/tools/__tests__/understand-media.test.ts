@@ -73,7 +73,7 @@ function turnCopy(usage?: UsageRecorder): Call {
   const execute = build().execute;
   if (!execute) throw new Error("understand_media has no execute");
   return (input, signal) =>
-    execute(input, toolOptions(signal ? { abortSignal: signal } : {}, usage) as never);
+    execute({ items: [{ url: input.url }], question: input.question }, toolOptions(signal ? { abortSignal: signal } : {}, usage) as never);
 }
 
 /**
@@ -222,7 +222,7 @@ describe("understand_media — a call that worked", () => {
     await run({ url: "https://example.com/dog.jpg", question: "What is this?" });
 
     expect(understandMediaAtMock).toHaveBeenCalledWith({
-      url: "https://example.com/dog.jpg",
+      items: [{ url: "https://example.com/dog.jpg" }],
       question: "What is this?",
       maxBytes: config.understand_media_max_bytes,
       fetchTimeoutMs: config.understand_media_fetch_timeout_ms,
@@ -362,7 +362,7 @@ describe("understand_media — one at a time within a turn", () => {
     expect(await Promise.all(both)).toEqual(["ok", "ok"]);
   });
 
-  it("asks the model for one address at a time", async () => {
+  it("asks the model to group media into one request", async () => {
     // The gate below is the backstop. This sentence is what keeps it off the
     // normal path, and it was measured against the live model: the same
     // message carrying three addresses produced three overlapping calls
@@ -375,8 +375,8 @@ describe("understand_media — one at a time within a turn", () => {
     // entirely, so the shape is part of what is pinned.
     const { description } = build();
     if (typeof description !== "string") throw new Error("the description is not a string");
-    expect(description.toLowerCase()).toContain("one address at a time");
-    expect(description.toLowerCase()).toContain("wait for the answer");
+    expect(description.toLowerCase()).toContain("items");
+    expect(description.toLowerCase()).toContain("question");
   });
 });
 
@@ -394,7 +394,7 @@ describe("understand_media — a call that came back with nothing", () => {
 
     expect(forModel).toContain("content_filter");
     expect(forModel.toLowerCase()).toContain("differently");
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.badAnswer");
   });
 });
 
@@ -410,7 +410,7 @@ describe("understand_media — a call that never reached the model", () => {
 
     expect(forModel).toContain("26000000");
     expect(forModel).toContain("20000000");
-    expect(readerKey).toBe("chat.tool.failure.generic");
+    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
     
   });
 
@@ -437,7 +437,7 @@ describe("understand_media — a call that never reached the model", () => {
     );
 
     expect(forModel).toContain("404");
-    expect(readerKey).toBe("chat.tool.failure.unreachable");
+    expect(readerKey).toBe("chat.tool.failure.linkUnreachable");
   });
 
   it("says the download ran out of time", async () => {
@@ -465,7 +465,22 @@ describe("understand_media — a call the service refused", () => {
     // The move as well as the words: this is the one kind where sending the
     // same file again reaches the same answer.
     expect(forModel).toContain("do not send the same file again");
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.fileTooLarge");
+  });
+
+  it("reports the provider's invalid-body refusal without deciding who caused it", async () => {
+    // A provider's words are evidence of its refusal, not proof that our
+    // server built an invalid body. Errors our own validators establish have
+    // their own paths; this branch holds only the provider's reported facts.
+    understandMediaAtMock.mockRejectedValue(new UnderstandRefused(400, "Invalid request body", "media"));
+
+    const { forModel, readerKey } = await failureOf(run({ url: "https://example.com/clip.mp4", question: "What is this?" }));
+
+    expect(readerKey).toBe(FAILURE_LINES.refused);
+    expect(forModel).toContain("Invalid request body");
+    expect(forModel).not.toMatch(/fault on our side|fault in the file|our fault|not in the file/i);
+    expect(forModel).not.toMatch(/put the file somewhere|give another address|rehost/i);
+    expect(forModel).not.toContain("do not send the same file again");
   });
 
   it("leaves a question the model may reword as one worth rewording", async () => {
@@ -484,7 +499,7 @@ describe("understand_media — a call the service refused", () => {
     expect(forModel).toContain("SAFETY");
     expect(forModel.toLowerCase()).toContain("asking differently");
     expect(forModel).not.toMatch(/do not send/i);
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.declined");
   });
 
   it("says nothing about the user's file when the failure is ours", async () => {
@@ -501,7 +516,7 @@ describe("understand_media — a call the service refused", () => {
 
     expect(forModel).not.toMatch(/would not take|do not send|this media|this file/i);
     expect(forModel.toLowerCase()).toContain("not available");
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.unavailable");
   });
 
   it("tells the model to move a file the service could not reach", async () => {
@@ -521,7 +536,7 @@ describe("understand_media — a call the service refused", () => {
     expect(forModel).toContain("Cannot fetch content");
     expect(forModel.toLowerCase()).toContain("reach");
     expect(forModel).not.toMatch(/do not send|convert/i);
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.linkUnreachable");
   });
 
   it("does not call a missing answer a refusal by the model", async () => {
@@ -540,7 +555,7 @@ describe("understand_media — a call the service refused", () => {
 
     expect(forModel).not.toMatch(/would not take|do not send/i);
     expect(forModel.toLowerCase()).toContain("again");
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.busy");
   });
 });
 
@@ -662,7 +677,7 @@ describe("understand_media — naming the real reason", () => {
   // memo, and it leaves the model with no move — while "this model takes mp3
   // and wav" is something it can pass on as an action.
   it.each([
-    ["an m4a", "audio/mp4"],
+    ["an aiff", "audio/aiff"],
     ["an ogg", "audio/ogg"],
     ["a flac", "audio/flac"],
   ])("tells the model %s is audio it cannot be sent", async (_name, type) => {
@@ -679,7 +694,7 @@ describe("understand_media — naming the real reason", () => {
     // statement of which audio can be sent, and a second copy of the list
     // would go on saying "mp3 and wav" the day a third one is added.
     expect(forModel).toContain(`It takes ${AUDIO_FORMAT_NAMES}.`);
-    expect(AUDIO_FORMAT_NAMES).toBe("MP3 / WAV");
+    expect(AUDIO_FORMAT_NAMES).toBe("MP3 / WAV / M4A / WebM");
     expect(forModel).not.toMatch(/not an image, a video or audio/i);
   });
 
@@ -767,7 +782,7 @@ describe("understand_media — naming which side failed", () => {
 
     expect(forModel).not.toContain("openrouter");
     expect(forModel).not.toMatch(/that address/i);
-    expect(readerKey).toBe("chat.tool.failure.upstream");
+    expect(readerKey).toBe("chat.tool.failure.noConnection");
   });
 
   it("keeps what our own call threw, and what a passing refusal said, for the turn's log", async () => {
@@ -829,19 +844,19 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     expect(
       (await failureOf(run({ url: "https://example.com/a.pdf", question: "What is this?" })))
         .readerKey,
-    ).toBe(FAILURE_LINES.generic);
+    ).toBe(FAILURE_LINES.unsupportedType);
 
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("slow"));
     expect(
       (await failureOf(run({ url: "https://example.com/b.mp4", question: "What is this?" })))
         .readerKey,
-    ).toBe(FAILURE_LINES.generic);
+    ).toBe(FAILURE_LINES.tooSlow);
 
     understandMediaAtMock.mockRejectedValueOnce(new MediaUnavailable("empty"));
     expect(
       (await failureOf(run({ url: "https://example.com/c.mp4", question: "What is this?" })))
         .readerKey,
-    ).toBe(FAILURE_LINES.generic);
+    ).toBe(FAILURE_LINES.emptyFile);
   });
 
   it("shows the reader nothing when this turn is the one holding the gate", async () => {
@@ -879,7 +894,7 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     );
     expect(forModel).toContain("no answer");
     expect(forModel).not.toMatch(/: \.$/);
-    expect(readerKey).toBe(FAILURE_LINES.unreachable);
+    expect(readerKey).toBe(FAILURE_LINES.linkUnreachable);
   });
 
   it("says it has no credentials rather than calling the service silent", async () => {
@@ -893,6 +908,6 @@ describe("understand_media — what a reader is shown, and what the panel is tol
     );
     expect(forModel).toContain("no credentials");
     expect(forModel).toContain("do not try again");
-    expect(readerKey).toBe(FAILURE_LINES.generic);
+    expect(readerKey).toBe(FAILURE_LINES.unavailable);
   });
 });

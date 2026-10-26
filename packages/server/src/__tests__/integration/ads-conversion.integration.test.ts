@@ -128,6 +128,20 @@ describe("enqueueAdsConversion", () => {
     expect(await getUploadStatus({ conversion: "signup", transactionId: txn })).toBe("queued");
   });
 
+  it("refuses a transaction id past Google's 64 characters, queueing nothing", async () => {
+    const txn = `purchase:${"x".repeat(56)}`;
+    expect(txn).toHaveLength(65);
+    const userId = await account();
+    await expect(
+      enqueueAdsConversion({ userId, conversion: "signup", transactionId: txn, click: clicked(1) }, ADS),
+    ).rejects.toThrow();
+    expect(await getUploadStatus({ conversion: "signup", transactionId: txn })).toBeNull();
+    expect(await jobsFor(txn)).toEqual([]);
+    const fits = `signup:${"y".repeat(57)}`;
+    expect(fits).toHaveLength(64);
+    expect(await enqueueAdsConversion({ userId, conversion: "signup", transactionId: fits, click: clicked(1) }, ADS)).toBe(true);
+  });
+
   it("queues nothing without ads consent, a recent click, a configured action or configuration", async () => {
     const txn = `signup:${crypto.randomUUID()}`;
     expect(await enqueueAdsConversion({ userId: await account(), conversion: "signup", transactionId: txn, click: clicked(1) }, NO_ADS)).toBe(false);

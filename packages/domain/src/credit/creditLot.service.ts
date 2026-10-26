@@ -23,17 +23,21 @@
 
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
+import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
+  toChargeMicro,
   toMicroCredits,
   fromMicroCredits,
   planCharge,
+  positionFrom,
 } from "@domain/credit/credit-math.js";
 import {
   db,
   env,
   getRedis,
+  publishCreditsChanged,
   AppError,
   NotFoundError,
   ForbiddenError,
@@ -102,6 +106,11 @@ export interface ChargeInput {
   tokensUsed?: number;
   model?: string;
   provider?: string;
+  /**
+   * The hold this charge settles (inner#1611). Released in the charge's own
+   * commit, so a charge that fails leaves it in place.
+   */
+  releaseHold?: string;
 }
 
 /** What actually happened to a charge. */
@@ -120,6 +129,12 @@ export interface ChargeOutcome {
   studioId: string | null;
   /** The lots drawn down, oldest first. */
   lotIds: readonly string[];
+  /**
+   * Why the project's readers could not be told the charge committed
+   * (inner#1611). The charge stands; the caller logs this, and the top bar
+   * shows the old figure until its next read.
+   */
+  signalFailure?: unknown;
 }
 
 /**
@@ -262,7 +277,7 @@ export async function grantTrialCredits(
 export async function chargeForGeneration(
   input: ChargeInput,
 ): Promise<ChargeOutcome> {
-  const amountMicro = toMicroCredits(input.amount);
+  const amountMicro = toChargeMicro(input.amount);
   // A project that vanished while the task ran leaves nothing to charge, and
   // the usage still has to be recorded: the work was delivered. That is the one
   // thing `lot_id` was made nullable for.
@@ -300,6 +315,7 @@ export async function chargeForGeneration(
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
     return { billed: false, charged: 0, shortfall: 0, studioId, lotIds: [] };
   }
 
@@ -313,6 +329,7 @@ export async function chargeForGeneration(
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
     });
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold);
     return {
       billed: false,
       charged: 0,
@@ -322,14 +339,17 @@ export async function chargeForGeneration(
     };
   }
 
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx): Promise<ChargeOutcome> => {
     // The debt row first, and before any lot. Both writers take it in this
     // order, so two charges on one studio — or a charge and a designation —
     // queue up rather than each holding half of what the other needs. The
     // whole order is `studios` → `studio_members` → `studio_credit_debts` →
-    // `credit_lots`; a charge joins it at the debt, a designation one table
-    // earlier, and accepting a transfer at the membership.
+    // `credit_holds` → `credit_lots`; a charge joins it at the debt, a
+    // designation one table earlier, and accepting a transfer at the
+    // membership. An admission that holds credits takes the same debt lock, so
+    // it sees this charge and the hold it releases together.
     await creditLotRepo.lockDebt(studioId, tx);
+    if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
     const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
 
     const locked: { id: string; remaining: number }[] = [];
@@ -400,6 +420,14 @@ export async function chargeForGeneration(
       lotIds: plan.allocations.map((allocation) => allocation.lotId),
     };
   });
+  // After the commit, so a reader who reads again sees this charge.
+  if (input.projectId === null) return outcome;
+  try {
+    await publishCreditsChanged(input.projectId);
+    return outcome;
+  } catch (err) {
+    return { ...outcome, signalFailure: err };
+  }
 }
 
 /**
@@ -929,31 +957,22 @@ export async function getSpendableCredits(studioId: string): Promise<number> {
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
       ]);
-      return spendableFrom(lots, debt);
+      return positionFrom(lots, debt, "0").spendable;
     },
     { isolationLevel: "repeatable read" },
   );
 }
 
-/**
- * Subtract a studio's debt from its pool.
- *
- * Both figures have to come from the same instant for the difference to be a
- * number the studio was ever at: a charge that empties the pool and records
- * what it could not cover commits both halves at once, and reading them
- * separately can catch the pool before it and the debt after it.
- * @param lots - The sum of what the studio's lots hold.
- * @param debt - What the studio owes.
- * @returns The difference, in credits.
- */
-function spendableFrom(lots: string, debt: string): number {
-  return (toMicroCredits(lots) - toMicroCredits(debt)) / 1_000_000;
-}
+
 
 /** Everything one studio's credits page reads, as of one instant. */
 export interface StudioCreditsSnapshot {
   spendable: number;
   debt: number;
+  /** What running work holds (inner#1611). */
+  held: number;
+  /** What the next run is admitted against: spendable less holds, never below zero unless the studio owes (then spendable); see positionFrom. */
+  available: number;
   lots: creditLotRepo.StudioLot[];
   ledger: creditLotRepo.StudioLedgerRow[];
 }
@@ -978,14 +997,15 @@ export async function readStudioCredits(
 ): Promise<StudioCreditsSnapshot> {
   return db.transaction(
     async (tx) => {
-      const [lots, debt, designated, ledger] = await Promise.all([
+      const [lots, debt, held, designated, ledger] = await Promise.all([
         creditLotRepo.sumSpendableForStudio(studioId, tx),
         creditLotRepo.readDebt(studioId, tx),
+        creditHoldRepo.sumHeldForStudio(studioId, tx),
         creditLotRepo.listLotsByStudio(studioId, tx),
         creditLotRepo.listLedgerByStudio(studioId, limit, null, tx),
       ]);
       return {
-        spendable: spendableFrom(lots, debt),
+        ...positionFrom(lots, debt, held),
         debt: toMicroCredits(debt) / 1_000_000,
         lots: designated,
         ledger,

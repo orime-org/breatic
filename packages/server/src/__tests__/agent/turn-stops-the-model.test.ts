@@ -41,7 +41,7 @@ let providerCalls = 0;
 let providerParts: () => readonly Record<string, unknown>[];
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => null);
 /** The usage rows the turn wrote. */
 const usageRows: DomainModule.UsageRow[] = [];
@@ -68,6 +68,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       },
     }),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    // The turn asks storage whether a picture on a questionnaire is ours.
+    getStorageAdapter: async () => ({ keyFromUrl: () => null }),
   };
 });
 
@@ -134,7 +136,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
  */
 const getMessages = vi.fn(async () => ({ messages: [], hasMore: false }));
 
-vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage, getMessages }));
+vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({ addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 // The turn asks the conversation what it is called, so it can say so in the
 // event that opens the turn. Answered with a name already set: these tests are
 // about what a turn streams, not about how a conversation comes by its name.
@@ -142,7 +145,7 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => "already named"),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const fetchMock = vi.fn();
@@ -195,7 +198,7 @@ beforeEach(() => {
   turnTools = {};
   vi.stubGlobal("fetch", fetchMock);
   fetchMock.mockReset();
-  [addMessage, foldIfOverBudget, chargeOnceForGeneration].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnceForGeneration].forEach((m) => m.mockClear());
   usageRows.length = 0;
 });
 
@@ -212,6 +215,8 @@ describe("a stopped turn stops the model", () => {
     const { tool } = await import("ai");
     const { z } = await import("zod");
     const stopped = new AbortController();
+    let markToolStarted: (() => void) | undefined;
+    const toolStarted = new Promise<void>((resolve) => { markToolStarted = resolve; });
 
     turnTools = {
       slow_tool: tool({
@@ -224,13 +229,19 @@ describe("a stopped turn stops the model", () => {
               clearTimeout(timer);
               resolve("let go");
             });
+            markToolStarted?.();
           }),
       }),
     };
     providerParts = () => callsTool("slow_tool");
 
-    setTimeout(() => stopped.abort(new Error("user pressed stop")), 100);
-    await timeTurn(stopped.signal);
+    const turn = timeTurn(stopped.signal);
+    await Promise.race([
+      toolStarted,
+      turn.then(() => { throw new Error("The turn ended before its tool started"); }),
+    ]);
+    stopped.abort(new Error("user pressed stop"));
+    await turn;
 
     expect(providerCalls).toBe(1);
     // The step that finished before the stop is on the account.

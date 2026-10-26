@@ -20,7 +20,7 @@ import type { FailureLine, ToolFailure } from "@breatic/shared";
 /**
  * Build the error a tool throws when it failed.
  * @param forModel - The reason, specific and actionable, for the model alone.
- * @param readerKey - Which of the coarse lines a reader is shown.
+ * @param readerKey - Which cause a reader is shown.
  * @param cause - What was caught, when something was. The turn logs the error,
  *   and a reason worded for the model can leave out what the log needs.
  * @returns The error to throw.
@@ -31,6 +31,28 @@ export function toolFailed(forModel: string, readerKey: FailureLine, cause?: unk
     forModel,
     readerKey,
   } satisfies ToolFailure);
+}
+
+/**
+ * A failure as both audiences read it: the model's sentence and the reader's
+ * cause, decided together so they never tell different stories (inner#1620).
+ */
+export interface Failure {
+  /** The reason, specific and actionable, for the model alone. */
+  readonly forModel: string;
+  /** Which cause a reader is shown. */
+  readonly readerKey: FailureLine;
+}
+
+/**
+ * Build the error a tool throws for a failure worked out by one of the
+ * reasons below.
+ * @param failure - The failure.
+ * @param cause - What was caught, when something was.
+ * @returns The error to throw.
+ */
+export function failedWith(failure: Failure, cause?: unknown): Error {
+  return toolFailed(failure.forModel, failure.readerKey, cause);
 }
 
 /**
@@ -165,7 +187,8 @@ export function reason(what: string, next: NextMove): string {
  * Two next moves hide behind "not 2xx" -- rewrite the query, or stop -- and the
  * model takes the one this sentence points at. A 5xx, a 429 or a 408 is the
  * service having a bad time and says nothing about the query. A 401 or 403 is
- * our credentials turned down; a 422 is what this side sent being refused, for
+ * our credentials turned down, a 402 our account with the service unable to
+ * pay -- neither is the reader's balance, which is checked before the turn; a 422 is what this side sent being refused, for
  * a token it will not accept or a parameter out of range, and its `detail` text
  * is the same either way. A 3xx reaches this function at all because the
  * redirect is not followed, and means the address held here has moved. What is
@@ -182,7 +205,8 @@ export function reason(what: string, next: NextMove): string {
  * @param detail - What the service said about it, when it said anything.
  * @param rewordable - Whether the model can write this request again, when the
  * caller knows; left out, the status decides.
- * @returns The reason, ending in what the model may do instead.
+ * @returns The reason, ending in what the model may do instead, and the
+ *   reader's cause from the same branch.
  */
 export function refusalReason(
   voice: FailureVoice,
@@ -190,7 +214,7 @@ export function refusalReason(
   status: number,
   detail = "",
   rewordable?: boolean,
-): string {
+): Failure {
   const moves = nextMovesFor(voice);
   // The service's own words when it gave any: it names the field it refused,
   // and this side is the only place that sentence exists. Quoted and closed,
@@ -205,24 +229,28 @@ export function refusalReason(
   // the first -- because the caller declared the call not replay-safe, or
   // because it named a wait past the transport's own ceiling.
   if (status >= 500 || status === 429 || status === 408) {
-    return reason(
-      `${opening} That is a fault on their side, not a problem with the query, so no ` +
-        "wording of it reaches past this.",
-      moves.stop,
-    );
+    return {
+      forModel: reason(
+        `${opening} That is a fault on their side, not a problem with the query, so no ` +
+          "wording of it reaches past this.",
+        moves.stop,
+      ),
+      readerKey: FAILURE_LINES.busy,
+    };
   }
 
-  if (rewordable === true) {
-    return reason(
-      `${opening} The service is reachable, so it is this request it would not take.`,
-      moves.rewordOnce,
-    );
-  }
+  const thisRequest: Failure = {
+    forModel: reason(`${opening} The service is reachable, so it is this request it would not take.`, moves.rewordOnce),
+    readerKey: FAILURE_LINES.refused,
+  };
+  if (rewordable === true) return thisRequest;
   const ours =
     rewordable === false
       ? "It named something configured here, so this is a fault in our configuration."
       : status === 401 || status === 403
         ? "It turned down the credentials this side sent, which is a fault in our configuration."
+        : status === 402
+          ? "Our account with the service cannot pay for this, which is a fault on our side."
         : status === 422
           ? "It refused what this side sent it, which is a fault in our configuration."
           : status < 400 || status === 404
@@ -230,12 +258,12 @@ export function refusalReason(
               "configured here has moved. That is a fault in our configuration."
             : null;
   if (ours !== null) {
-    return reason(`${opening} ${ours} No wording of the query reaches it.`, moves.stop);
+    return {
+      forModel: reason(`${opening} ${ours} No wording of the query reaches it.`, moves.stop),
+      readerKey: FAILURE_LINES.unavailable,
+    };
   }
-  return reason(
-    `${opening} The service is reachable, so it is this request it would not take.`,
-    moves.rewordOnce,
-  );
+  return thisRequest;
 }
 
 /**
@@ -247,15 +275,18 @@ export function refusalReason(
  * again may well get it.
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
- * @returns The reason, ending in what the model may do instead.
+ * @returns The reason, ending in what the model may do instead, and the
+ *   reader's cause.
  */
-export function notOurPayloadReason(voice: FailureVoice, query: string): string {
-  return reason(
-    `${voice.attempting} "${query}" failed: the ${voice.act} service answered, but not with ` +
-    "results. " +
-      "That is a fault on their side.",
-    nextMovesFor(voice).stop,
-  );
+export function notOurPayloadReason(voice: FailureVoice, query: string): Failure {
+  return {
+    forModel: reason(
+      `${voice.attempting} "${query}" failed: the ${voice.act} service answered, but not with ` +
+        "results. That is a fault on their side.",
+      nextMovesFor(voice).stop,
+    ),
+    readerKey: FAILURE_LINES.badAnswer,
+  };
 }
 
 /**
@@ -267,14 +298,18 @@ export function notOurPayloadReason(voice: FailureVoice, query: string): string 
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
  * @param detail - What the read failed with.
- * @returns The reason, ending in what the model may do instead.
+ * @returns The reason, ending in what the model may do instead, and the
+ *   reader's cause.
  */
-export function readFailedReason(voice: FailureVoice, query: string, detail: string): string {
-  return reason(
-    `${voice.attempting} "${query}" failed while reading the answer: ${detail}. ` +
-      "The service answered, so it is the body that did not arrive.",
-    nextMovesFor(voice).retryOnce,
-  );
+export function readFailedReason(voice: FailureVoice, query: string, detail: string): Failure {
+  return {
+    forModel: reason(
+      `${voice.attempting} "${query}" failed while reading the answer: ${detail}. ` +
+        "The service answered, so it is the body that did not arrive.",
+      nextMovesFor(voice).retryOnce,
+    ),
+    readerKey: FAILURE_LINES.busy,
+  };
 }
 
 /**
@@ -282,15 +317,19 @@ export function readFailedReason(voice: FailureVoice, query: string, detail: str
  * @param voice - How this tool names what it does.
  * @param query - What was searched for.
  * @param detail - Why the address could not be reached.
- * @returns The reason, ending in what the model may do instead.
+ * @returns The reason, ending in what the model may do instead, and the
+ *   reader's cause.
  */
-export function unreachableReason(voice: FailureVoice, query: string, detail: string): string {
-  return reason(
-    `${voice.attempting} "${query}" failed: the ${voice.act} service could not be reached ` +
-      `(${detail}). The service is unreachable from here, which is not something a different ` +
-      "query would fix.",
-    nextMovesFor(voice).stop,
-  );
+export function unreachableReason(voice: FailureVoice, query: string, detail: string): Failure {
+  return {
+    forModel: reason(
+      `${voice.attempting} "${query}" failed: the ${voice.act} service could not be reached ` +
+        `(${detail}). The service is unreachable from here, which is not something a different ` +
+        "query would fix.",
+      nextMovesFor(voice).stop,
+    ),
+    readerKey: FAILURE_LINES.noConnection,
+  };
 }
 
 /**

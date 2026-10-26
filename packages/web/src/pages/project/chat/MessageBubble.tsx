@@ -9,6 +9,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { MarkdownMessage } from '@web/pages/project/chat/MarkdownMessage';
 import { DocumentProposalCard } from '@web/pages/project/chat/DocumentProposalCard';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
+import { QuestionnaireCard } from '@web/pages/project/chat/QuestionnaireCard';
 import { ThinkingFold } from '@web/pages/project/chat/ThinkingFold';
 import { AssetRow } from '@web/pages/project/chat/AssetRow';
 import { AttachmentChip } from '@web/pages/project/chat/AttachmentChip';
@@ -16,7 +17,7 @@ import { ToolRunLine } from '@web/pages/project/chat/ToolRunLine';
 import { TurnActions } from '@web/pages/project/chat/TurnActions';
 import { UserWords } from '@web/pages/project/chat/UserWords';
 import { wordsWithLabels } from '@web/pages/project/chat/attachment-label';
-import { FailedSteps, TurnEnding } from '@web/pages/project/chat/TurnEnding';
+import { TurnEnding } from '@web/pages/project/chat/TurnEnding';
 import { WaitingDot } from '@web/pages/project/chat/WaitingDot';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
@@ -68,6 +69,15 @@ export const MessageBubble = React.memo(function MessageBubble({
     [message.toolCalls],
   );
   const running = message.streaming === true;
+  // A turn drawn as several replies offers one copy, of all of it, at its end;
+  // a reply the turn goes on after keeps only where its answer came from.
+  const copied = isUser
+    ? message.content === ''
+      ? ''
+      : wordsWithLabels(t, message.content, message.attachments)
+    : message.continued === true
+      ? ''
+      : (message.copyText ?? message.content);
   return (
     <div
       data-testid='message-bubble'
@@ -136,7 +146,7 @@ export const MessageBubble = React.memo(function MessageBubble({
               onOpen={onThinkingOpen}
             />
           ) : null}
-          {message.content || message.streaming ? (
+          {message.content || message.failureLines || message.streaming ? (
             <div data-testid='message-bubble-content'>
               {/* What the reader typed means the characters they typed: markdown
                 is what the model writes in, not what the composer accepts. */}
@@ -147,11 +157,14 @@ export const MessageBubble = React.memo(function MessageBubble({
                 300px column drew 787px wide, 487 of them outside the bubble.
                 `.chat-markdown` answers the same thing on the reply's side. */}
               {isUser ? <UserWords content={message.content} attachments={message.attachments} /> : null}
-              {!isUser && message.content ? (
+              {/* A step that did not finish is drawn where it happened, inside
+                the one parse of the prose (inner#1620). */}
+              {!isUser && (message.body ?? message.content) ? (
                 <MarkdownMessage
-                  content={message.content}
+                  content={message.body ?? message.content}
                   streaming={message.streaming === true}
                   {...(message.citations ? { citations: message.citations } : {})}
+                  {...(message.failureLines ? { failureLines: message.failureLines } : {})}
                 />
               ) : null}
               {/* One mark for the whole turn, after everything said so far. It
@@ -190,6 +203,16 @@ export const MessageBubble = React.memo(function MessageBubble({
             : message.documentProposals.map((proposal) => (
               <DocumentProposalCard key={proposal.proposalId} proposal={proposal} />
             ))}
+          {/* What the turn asked the reader, after everything it offered: the
+            turn stopped there and waits on it (inner#1542). Drawn while the
+            turn runs too: a waiting card exists only once the server named
+            it, last in its segment, and an answered one stays above the
+            reply it resumed. */}
+          {message.questionnaires === undefined
+            ? null
+            : message.questionnaires.map((questionnaire) => (
+              <QuestionnaireCard key={questionnaire.toolCallId} questionnaire={questionnaire} />
+            ))}
           {/* A proposal stored in a shape this build can no longer place is
             named where its card would be, so the reader knows to ask again
             rather than meeting a button that cannot work (inner#1499). */}
@@ -201,9 +224,6 @@ export const MessageBubble = React.memo(function MessageBubble({
               {t('chat.proposal.expired')}
             </div>
           )}
-          {/* Each step that failed while the turn carried on, after what the
-            turn produced and before how it ended. */}
-          {isUser ? null : <FailedSteps message={message} />}
           {/* How the turn ended goes last, after everything it produced: this
             is the line that says there is no more, so nothing may follow it.
             Each is a paragraph's distance from what it follows, which is what
@@ -214,9 +234,9 @@ export const MessageBubble = React.memo(function MessageBubble({
             nothing to copy yet and asking for it again mid-flight would race
             the turn that is running. Where the answer came from is on this
             line too, so a turn that searched and said nothing still has one. */}
-        {running || (message.content === '' && message.sources === undefined) ? null : (
+        {running || (copied === '' && message.sources === undefined) ? null : (
           <TurnActions
-            text={isUser ? wordsWithLabels(t, message.content, message.attachments) : message.content}
+            text={copied}
             {...(isUser ? { own: true } : {})}
             {...(isUser && message.sentAt !== undefined ? { sentAt: message.sentAt } : {})}
             {...(!isUser && message.sources !== undefined ? { sources: message.sources } : {})}

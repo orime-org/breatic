@@ -14,6 +14,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import fc from "fast-check";
 
 import type * as DomainModule from "@breatic/domain";
 import type * as CoreModule from "@breatic/core";
@@ -53,6 +54,11 @@ import {
 import type { UsageRecorder, UsageRow } from "@breatic/domain";
 
 import { runUnderstand } from "@worker/handlers/dispatch.js";
+import {
+  CutShort,
+  StoppedPartWay,
+  TranscriptionBlocked,
+} from "@worker/handlers/understand-failure.js";
 
 const PARAMS = {
   source_type: "image",
@@ -113,6 +119,7 @@ describe("running one understand task", () => {
       text: "A red bicycle against a brick wall.",
       finishReason: "stop",
       kind: "image",
+      kinds: ["image"],
     });
   });
 
@@ -124,7 +131,7 @@ describe("running one understand task", () => {
     await runUnderstand({ ...PARAMS, source_mime_type: "image/png" }, recorder(), DEADLINE_AT);
 
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
-      expect.objectContaining({ ledgerType: "image/png" }),
+      expect.objectContaining({ items: [{ url: PARAMS.source_url, ledgerType: "image/png" }] }),
     );
   });
 
@@ -134,7 +141,7 @@ describe("running one understand task", () => {
     await runUnderstand(PARAMS, recorder(), DEADLINE_AT);
 
     const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
-    expect(args).not.toHaveProperty("ledgerType");
+    expect(args?.items).toEqual([{ url: PARAMS.source_url }]);
   });
 
   it("hands the address and the ceilings to the shared capability", async () => {
@@ -149,7 +156,7 @@ describe("running one understand task", () => {
     expect(args?.signal).toBeInstanceOf(AbortSignal);
     expect(vi.mocked(understandMediaAt)).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: PARAMS.source_url,
+        items: [{ url: PARAMS.source_url }],
         maxBytes: expect.any(Number),
         maxOutputTokens: expect.any(Number),
         question: expect.any(String),
@@ -176,6 +183,7 @@ describe("running one understand task", () => {
       text: "",
       finishReason: "stop",
       kind: "image",
+      kinds: ["image"],
     });
 
     await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toThrow();
@@ -306,5 +314,141 @@ describe("running one understand task", () => {
     await expect(runUnderstand(PARAMS, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
       MediaUnavailable,
     );
+  });
+});
+
+// inner#856: a transcription runs the same reading with its own question and
+// allowance, and puts nothing on the node unless the model finished.
+describe("running one transcription", () => {
+  const TRANSCRIBE = {
+    source_type: "audio",
+    source_url: "https://assets.invalid/audio/a.m4a",
+    reading: "transcribe",
+    keep_fillers: true,
+    reader_locale: "zh-CN",
+  };
+
+  /**
+   * Answer with this text and stop reason.
+   * @param text - What the model wrote.
+   * @param finishReason - Why it stopped.
+   */
+  function answers(text: string, finishReason: string): void {
+    vi.mocked(understandMediaAt).mockResolvedValue({ text, finishReason, kind: "audio", kinds: ["audio"] });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    rows = [];
+    missing = [];
+    answers("大家好。\n你好。", "stop");
+  });
+
+  it("asks the transcription question with its own allowance", async () => {
+    await runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT);
+
+    const [args] = vi.mocked(understandMediaAt).mock.calls[0] ?? [];
+    expect(args?.question).toContain("Transcribe the speech in this audio.");
+    expect(args?.question).toContain("Simplified Chinese");
+    expect(args?.question).toContain("Keep filler words");
+    expect(args?.question).not.toMatch(/Answer in/);
+    expect(args?.maxOutputTokens).toBe(65_536);
+  });
+
+  it("puts a finished transcript on the node", async () => {
+    const [result] = await runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT);
+    expect(result).toMatchObject({ outputs: [{ content: "大家好。\n你好。" }] });
+  });
+
+  describe.each(["audio", "video"])("normal %s responses", (sourceType) => {
+    it.each([
+      "The meeting starts now.\nPlease take a seat.",
+      "  NO_SPEECH\n",
+      "No one speaks in this recording.",
+      "An incorrect transcript.",
+      "",
+    ])("preserves %j and settles the reported cost", async (text) => {
+      billedThen(0.0037, () => ({ text, finishReason: "stop", kind: sourceType }));
+
+      const [result, credits] = await runUnderstand(
+        { ...TRANSCRIBE, source_type: sourceType }, recorder(), DEADLINE_AT,
+      );
+
+      expect(result).toEqual({ outputs: [{ content: text }], finish_reason: "stop" });
+      expect(credits).toBeCloseTo(0.37, 10);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ costUsd: 0.0037, costSource: "provider" });
+      expect(missing).toEqual([]);
+    });
+  });
+
+  it("preserves arbitrary normal text independently of the reported charge", async () => {
+    await fc.assert(fc.asyncProperty(
+      fc.oneof(fc.string(), fc.constant(""), fc.constant("NO_SPEECH")),
+      fc.integer({ min: 0, max: 10_000 }),
+      async (text, creditCents) => {
+        rows = [];
+        const costUsd = creditCents / 10_000;
+        billedThen(costUsd, () => ({ text, finishReason: "stop", kind: "audio" }));
+        const [result, credits] = await runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT);
+        expect(result).toEqual({ outputs: [{ content: text }], finish_reason: "stop" });
+        expect(credits).toBeCloseTo(creditCents / 100, 10);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({ costUsd, costSource: "provider" });
+      },
+    ));
+  });
+
+  it.each([
+    ["length", CutShort],
+    ["content_filter", TranscriptionBlocked],
+    ["error", StoppedPartWay],
+  ])("puts nothing on the node when it stopped for %s part way", async (reason, kind) => {
+    answers("The first half of what was", reason);
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(kind);
+  });
+
+  it.each([
+    ["length", CutShort],
+    ["content_filter", TranscriptionBlocked],
+    ["error", StoppedPartWay],
+  ])("keeps an empty response stopped for %s on the error path", async (reason, kind) => {
+    answers("", reason);
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(kind);
+  });
+
+  it.each(["content_policy_violation", "refusal"])(
+    "reads a refusal the service typed %s as a block",
+    async (errorType) => {
+      vi.mocked(understandMediaAt).mockRejectedValue(
+        new UnderstandRefused(403, "SAFETY", "deployment", errorType),
+      );
+      await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
+        TranscriptionBlocked,
+      );
+    },
+  );
+
+  it("lets any other refusal through as it is", async () => {
+    vi.mocked(understandMediaAt).mockRejectedValue(new UnderstandRefused(403, "budget", "deployment"));
+    await expect(runUnderstand(TRANSCRIBE, recorder(), DEADLINE_AT)).rejects.toBeInstanceOf(
+      UnderstandRefused,
+    );
+  });
+
+  it("leaves an understanding that stopped part way as it was", async () => {
+    answers("A dog on a", "content_filter");
+    const [result] = await runUnderstand(
+      { source_type: "image", source_url: "https://assets.invalid/image/a.png" },
+      recorder(),
+      DEADLINE_AT,
+    );
+    expect(result).toMatchObject({ outputs: [{ content: "A dog on a" }] });
+    vi.mocked(understandMediaAt).mockRejectedValue(
+      new UnderstandRefused(403, "SAFETY", "deployment", "content_policy_violation"),
+    );
+    await expect(
+      runUnderstand({ source_type: "image", source_url: "https://assets.invalid/image/a.png" }, recorder(), DEADLINE_AT),
+    ).rejects.toBeInstanceOf(UnderstandRefused);
   });
 });

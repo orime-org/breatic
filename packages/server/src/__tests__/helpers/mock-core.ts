@@ -24,6 +24,7 @@ import {
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
+  RECORD_TOOL_NAMES as REAL_RECORD_TOOL_NAMES,
 } from "../../../../domain/src/agent/tools/tool-names.js";
 import { STOPPED_BY_USER as REAL_STOPPED_BY_USER } from "../../../../domain/src/agent/tools/failure.js";
 // Pure rules about an address a caller hands over, which the routes read off
@@ -40,7 +41,20 @@ import {
 // here would let all three drift from it while the suite stayed green.
 import { UNDERSTAND_PINS as REAL_UNDERSTAND_PINS } from "../../../../domain/src/understand/types.js";
 import { creditsForUsd as REAL_CREDITS_FOR_USD } from "../../../../domain/src/credit/usage-cost.js";
-import { instructionsText as REAL_INSTRUCTIONS_TEXT } from "../../../../domain/src/agent/instructions.js";
+import {
+  instructionsText as REAL_INSTRUCTIONS_TEXT,
+  instructionsForAgentMemory as REAL_INSTRUCTIONS_FOR_AGENT_MEMORY,
+} from "../../../../domain/src/agent/instructions.js";
+import { createAgentPicturePreparer as REAL_CREATE_AGENT_PICTURE_PREPARER } from "../../../../domain/src/agent/prepare-agent-pictures.js";
+import {
+  AGENT_PICTURE_PROJECTION_VERSION as REAL_AGENT_PICTURE_PROJECTION_VERSION,
+  AGENT_TOOL_PICTURE_MARKER as REAL_AGENT_TOOL_PICTURE_MARKER,
+  agentPictureLabelFor as REAL_AGENT_PICTURE_LABEL_FOR,
+  agentPictureOutputOf as REAL_AGENT_PICTURE_OUTPUT_OF,
+  expandAgentPictures as REAL_EXPAND_AGENT_PICTURES,
+  projectAgentRequest as REAL_PROJECT_AGENT_REQUEST,
+} from "../../../../domain/src/agent/project-agent-request.js";
+import { pictureMiddleware as REAL_PICTURE_MIDDLEWARE } from "../../../../domain/src/agent/picture-middleware.js";
 import { containerCostUsd as REAL_CONTAINER_COST_USD } from "../../../../domain/src/credit/container-cost.js";
 // Real: the tracker is pure, and what a turn hands off depends on it.
 import {
@@ -247,6 +261,13 @@ export const mocks = {
   // answer in credits, and a charge reports what it took and what it could
   // not. A route suite that leaves these unmocked reaches the real queries
   // against the empty mock `db` and 500s.
+  // Credit holds (inner#1611). Admission passes unless a case says otherwise;
+  // a refusal carries the figures the 402 sentence is built from.
+  creditHoldService: {
+    reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
+    releaseHold: vi.fn().mockResolvedValue(undefined),
+    getCreditPosition: vi.fn().mockResolvedValue({ spendable: 100, held: 0, available: 100 }),
+  },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
     // hands zod an undefined pattern: the schema still builds, and the first
@@ -480,10 +501,14 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     sessionCookieName: () => "breatic_session",
     // Config
     env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: "http://localhost:8000", COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
-    MONOREPO_ROOT: "/tmp",
+    // The real repository root, so a config loader the app runs on every
+    // request (the request body limit reads config/limits.yaml) finds the
+    // shipped yaml instead of ENOENT. Suites that need other values mock the
+    // accessor, as setup.ts and canvas-limits.test.ts do.
+    MONOREPO_ROOT: actual.MONOREPO_ROOT,
     // The real config underneath, so every field the code reads exists; only
     // the values these suites depend on are set here.
-    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_budget_tokens: 850000, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
+    getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_project_max_size: 1000, memory_conversation_max_size: 1000, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
     // prove the endpoint reads config instead of hardcoding.
     getStorageConfig: () => ({
@@ -578,6 +603,8 @@ export const domainMock = () => ({
     findCoverOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
     findKindByStorageKey: vi.fn().mockResolvedValue("video"),
+    findLiveByStorageKey: vi.fn().mockResolvedValue(null),
+    findLiveByKeyInStudio: vi.fn().mockResolvedValue(null),
   },
   // The cover queue's contract. Constants rather than doubles: the report
   // service names them at module scope, so a mock without them fails the
@@ -588,6 +615,7 @@ export const domainMock = () => ({
   taskRepo: mocks.taskRepo,
   UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
+  creditHoldService: mocks.creditHoldService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
@@ -612,6 +640,15 @@ export const domainMock = () => ({
     { role: "system", content: REAL_INSTRUCTIONS_TEXT(parts) },
   ]),
   instructionsText: REAL_INSTRUCTIONS_TEXT,
+  instructionsForAgentMemory: REAL_INSTRUCTIONS_FOR_AGENT_MEMORY,
+  createAgentPicturePreparer: REAL_CREATE_AGENT_PICTURE_PREPARER,
+  projectAgentRequest: REAL_PROJECT_AGENT_REQUEST,
+  expandAgentPictures: REAL_EXPAND_AGENT_PICTURES,
+  agentPictureOutputOf: REAL_AGENT_PICTURE_OUTPUT_OF,
+  agentPictureLabelFor: REAL_AGENT_PICTURE_LABEL_FOR,
+  pictureMiddleware: REAL_PICTURE_MIDDLEWARE,
+  AGENT_PICTURE_PROJECTION_VERSION: REAL_AGENT_PICTURE_PROJECTION_VERSION,
+  AGENT_TOOL_PICTURE_MARKER: REAL_AGENT_TOOL_PICTURE_MARKER,
   buildToolSet: vi.fn().mockReturnValue({}),
   BASELINE_TOOLS: [],
   // Not a placeholder and not written out by hand. What the turn does with
@@ -626,6 +663,8 @@ export const domainMock = () => ({
   PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
   // Read by the turn when it hands the save its context (inner#1315).
   SAVE_IMAGE: REAL_SAVE_IMAGE,
+  // Read by the turn when it hands the record tools the turn's records (inner#1469).
+  RECORD_TOOL_NAMES: REAL_RECORD_TOOL_NAMES,
   extFromUrl: REAL_EXT_FROM_URL,
   labelForUrl: REAL_LABEL_FOR_URL,
   readerUrlSchema: REAL_READER_URL_SCHEMA,

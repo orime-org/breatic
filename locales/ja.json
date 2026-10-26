@@ -8,6 +8,8 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
+      "payload_too_large": "リクエストの内容が {limit} を超えています。プロンプトか参照しているテキストを短くしてください。",
+      "transfer_invalid": "アップロードした内容を使用できませんでした。もう一度お試しください。",
       "internal": "内部サーバーエラー"
     },
     "credit": {
@@ -17,6 +19,7 @@
       "in_debt": "この Studio は {owed} クレジットの未払いがあります。次に割り当てるクレジットが先に充当されます。",
       "unassigned": "未割り当てのクレジットが {available} あります。使用するには Studio に割り当ててください。",
       "none": "クレジットが不足しています。チャージしてください。",
+      "held_by_running": "{held} クレジットが実行中のタスクに確保されています。現在の利用可能額は {available} です。",
       "granted_elsewhere": "お持ちのクレジットは付与されたもので、個人 Studio でのみ使用できます。",
       "refund_already_asked": "この購入はすでに返金を申請済みです。",
       "refund_restored": "この購入は返金に失敗した後クレジットに戻されたため、返金を申請できません。",
@@ -31,6 +34,7 @@
       "email_taken": "このメールアドレスは既に登録されています",
       "token_expired": "セッションが期限切れです。再度ログインしてください",
       "logout_success": "ログアウトしました",
+      "logout_others_success": "他のデバイスからログアウトしました",
       "not_authenticated": "認証されていません",
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
@@ -60,7 +64,9 @@
       "member_limit_reached_for_invitee": "この Studio のメンバー枠は満員です。Admin に空きを作ってもらってください。",
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
-      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。"
+      "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。",
+      "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
+      "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
     "project": {
       "join_already_member": "すでにこの Project のメンバーです。",
@@ -79,7 +85,9 @@
       "not_found": "Project が見つかりません",
       "archived": "この Project はアーカイブ済みのため閲覧のみです。",
       "copy_name": "コピー - {name}",
-      "leave_owner": "Owner は所有権を譲渡してから退出してください。"
+      "leave_owner": "Owner は所有権を譲渡してから退出してください。",
+      "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
+      "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },
     "payment": {
       "tier_not_found": "不明なプラン：{tier}。選択可能：{available}",
@@ -165,7 +173,10 @@
       "attachments_too_many": "添付が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
       "current_space_too_long": "開いている Space の内容が長すぎます。最大 {limit, number} 文字までですが、これは {actual, number} 文字あります。",
       "spaces_too_many": "一覧の Space が多すぎます。最大 {limit, number} 件までですが、これは {actual, number} 件あります。",
-      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。"
+      "references_too_many": "添付の参照が多すぎます。1 件のメッセージにつき最大 {limit, number} 回までです。このメッセージには {actual, number} 回あります。",
+      "ask_not_found": "この会話にこの質問カードはありません。",
+      "ask_already_answered": "この質問カードにはすでに回答済みです。",
+      "answer_mismatch": "これらの回答はカードの質問と合いません。"
     },
     "mail": {
       "studio_invite": {
@@ -231,12 +242,24 @@
         "subject": "確認コード",
         "lead": "登録ページで次のコードを入力して、アカウントの作成を完了してください。",
         "footer": "このコードは {minutes, plural, other {# 分}}後に無効になります。心当たりがない場合は、このメールを無視してください。"
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} さんが {project} に招待しています",
+        "lead": "<b>{inviter}</b> さんが Project <b>{project}</b> に <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> として招待しています。",
+        "action": "登録して参加"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} さんが {studio} に招待しています",
+        "lead": "<b>{inviter}</b> さんが Studio <b>{studio}</b> に <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> として招待しています。",
+        "action": "登録して参加"
       }
     },
     "mini_tool": {
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
-      "foreignSource": "このファイルは処理できません。"
+      "foreignSource": "このファイルは処理できません。",
+      "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
+      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -337,7 +360,8 @@
     },
     "error": {
       "network": "ネットワークエラー",
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
+      "turnTooLong": "今回処理する内容が多すぎて完了できませんでした。範囲を絞ってもう一度お試しください。"
     },
     "message": {
       "interrupted": "停止しました",
@@ -350,10 +374,25 @@
     "tool": {
       "unfinished": "停止しました",
       "failure": {
-        "upstream": "実行エラー",
-        "unreachable": "実行エラー",
-        "generic": "実行エラー"
+        "busy": "サービスでエラーが発生しました。しばらくしてから再試行してください",
+        "noConnection": "サービスに接続できませんでした。しばらくしてから再試行してください",
+        "refused": "サービスがこのリクエストを受け付けませんでした",
+        "unavailable": "この機能は現在利用できません",
+        "badAnswer": "サービスから使える結果が返ってきませんでした",
+        "linkUnreachable": "このアドレスを開けません。別のリンクをお試しください",
+        "fileTooLarge": "ファイルが大きすぎます",
+        "unsupportedType": "このファイル形式には対応していません",
+        "emptyFile": "ファイルが空です",
+        "tooSlow": "ファイルのダウンロードが遅く、完了しませんでした",
+        "storageFull": "Studio のストレージがいっぱいです",
+        "noPermission": "この Project の編集権限がありません",
+        "notMember": "この Project のメンバーではなくなりました",
+        "tooFrequent": "直前に取得したリンクが多すぎます。1 分ほど待ってから再試行してください",
+        "declined": "サービスがこの内容の処理を拒否しました",
+        "ourFault": "サーバーで問題が発生しました。もう一度お試しください"
       },
+      "failedLine": "{step}が完了しませんでした：{reason}",
+      "failedStep": "{step}が完了しませんでした",
       "failureTimes": "{line} ×{count}",
       "searching": "「{query}」を検索中",
       "searchingImages": "「{query}」の画像を検索中",
@@ -365,7 +404,28 @@
       "readingGuide": "製品の使い方を確認中",
       "understanding": "メディアを確認中",
       "judging": "検討中",
-      "running": "{tool} を実行中"
+      "searchingConversations": "会話を検索中",
+      "readingConversation": "会話を確認中",
+      "readingNodeHistory": "ノードの履歴を確認中",
+      "readingActivity": "Project アクティビティを確認中",
+      "running": "{tool} を実行中",
+      "step": {
+        "webSearch": "「{query}」の検索",
+        "searchImages": "「{query}」の画像検索",
+        "understandMedia": "メディアの確認",
+        "saveImage": "画像の保存",
+        "judge": "判断",
+        "proposeCanvas": "提案の作成",
+        "proposeDocument": "修正案の作成",
+        "listModels": "利用できるモデルの確認",
+        "canvasCapabilities": "Canvas でできることの確認",
+        "productGuide": "使い方の確認",
+        "searchConversations": "会話の検索",
+        "readConversation": "会話の確認",
+        "readNodeHistory": "ノードの履歴の確認",
+        "readActivity": "Project アクティビティの確認",
+        "other": "{tool} の実行"
+      }
     },
     "loadEarlier": "以前のメッセージを読み込む",
     "conversation": {
@@ -446,6 +506,19 @@
       "kind": "{kind, select, canvas {Canvas} image {画像} video {動画} audio {音声} text {テキスト} other {項目}}",
       "nodes": "{count} 個のノード",
       "more": "ほか {count} 件"
+    },
+    "questionnaire": {
+      "submit": "送信",
+      "hint": "どれも合わない場合は、入力欄で直接返信できます",
+      "other": "その他（自由に入力）…",
+      "ownWords": "回答を入力…",
+      "multi": "複数選択可",
+      "skipped": "スキップ",
+      "yourAnswers": "あなたの回答",
+      "replied": "チャットで返信しました",
+      "show": "開く",
+      "hide": "閉じる",
+      "atLeastOne": "少なくとも1問に答えてください"
     }
   },
   "canvas": {
@@ -525,6 +598,14 @@
       "couldNotStart": "開始できませんでした。もう一度お試しください。",
       "sourceGone": "読み取り元のノードがありません。この読み取りに線はつながっていません。"
     },
+    "transcribe": {
+      "title": "文字起こし",
+      "keepFillers": "フィラーを残す",
+      "keepFillersOn": "「えー」「あの」「um」などを話したとおりに書きます",
+      "keepFillersOff": "「えー」「あの」「um」などを省きます。ほかの語句が少し変わることがあります",
+      "couldNotStart": "文字起こしを開始できませんでした。もう一度お試しください。",
+      "sourceGone": "文字起こし元のノードがありません。この文字起こしに線はつながっていません。"
+    },
     "generatePanel": {
       "focus": "フォーカス",
       "reference": "参照",
@@ -580,6 +661,7 @@
       "errorCredits": "クレジットが不足しているため生成できません。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
+      "errorTooLargeNoLimit": "リクエストの内容が大きすぎます。プロンプトか参照しているテキストを短くしてください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "errorTooManyReferences": "このモデルは参考{kind, select, video {動画を最大 {limit} 本} audio {音声を最大 {limit} 本} other {画像を最大 {limit} 枚}}まで受け付けます —— いくつか削除してから生成してください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
@@ -737,7 +819,14 @@
         "motion_prompt": "動きの説明",
         "append_duration": "延長する長さ",
         "ambience": "環境音",
-        "double_output": "2 パターン生成"
+        "double_output": "2 パターン生成",
+        "light_azimuth": "光の方向",
+        "light_elevation": "光の高さ",
+        "light_color": "光の色",
+        "light_color_hex": "カスタムの光の色",
+        "light_intensity": "強さ",
+        "light_quality": "光の質",
+        "strength": "強さ"
       },
       "paramField": {
         "speaker": "名前",
@@ -793,7 +882,8 @@
       "history": "履歴",
       "snapshot": "スナップショットを保存",
       "download": "ダウンロード",
-      "understand": "内容を読み取る"
+      "understand": "内容を読み取る",
+      "transcribe": "文字起こし"
     },
     "edge": {
       "delete": "接続を削除"
@@ -906,8 +996,8 @@
       "failure": {
         "aborted": "アップロードは完了する前に中断しました。",
         "over_cap": "このファイルはアップロードの上限を超えています。",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}）。} other {このファイルは読み取りの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}、{bytes}）。} other {このファイルは読み取りの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {このファイルは文字起こしの上限を超えています。} other {このファイルは文字起こしの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは文字起こしの上限を超えています（{file}）。} other {このファイルは文字起こしの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは文字起こしの上限を超えています（{file}、{bytes}）。} other {このファイルは文字起こしの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}} other {{file, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています。} other {このファイルは読み取りの上限を超えています。上限は {limit} です。}}} other {{bytes, select, none {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}）。} other {このファイルは読み取りの上限を超えています（{file}）。上限は {limit} です。}}} other {{limit, select, unknown {このファイルは読み取りの上限を超えています（{file}、{bytes}）。} other {このファイルは読み取りの上限を超えています（{file}、{bytes}）。上限は {limit} です。}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {文字起こしできないファイル形式です。} other {文字起こしできないファイル形式です（{type}）。}}} other {{type, select, none {文字起こしできないファイル形式です（{file}）。} other {文字起こしできないファイル形式です（{file}、{type}）。}}}}} other {{file, select, none {{type, select, none {読み取れないファイル形式です。} other {読み取れないファイル形式です（{type}）。}}} other {{type, select, none {読み取れないファイル形式です（{file}）。} other {読み取れないファイル形式です（{file}、{type}）。}}}}}}",
         "expired": "時間切れになりました。",
         "no_result": "この実行は何も生成しませんでした。",
         "source_unreachable": "このアドレスを開けませんでした。",
@@ -916,15 +1006,18 @@
         "empty": "何も取得できませんでした。",
         "internal": "内部サーバーエラーが発生しました。",
         "no_credits": "利用できるクレジットがありません。",
+        "credits_held": "クレジットが実行中のタスクに確保されています。",
         "declined": "モデルがこのリクエストを拒否しました。",
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
-        "no_audio_track": "この動画には音声トラックがありません。"
+        "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
+        "cut_short": "長すぎて最後まで文字起こしできませんでした。"
       },
       "kind": {
         "upload": "アップロード",
         "generate": "生成",
-        "understand": "内容を読み取る"
+        "understand": "内容を読み取る",
+        "transcribe": "文字起こし"
       }
     },
     "panel": {
@@ -974,6 +1067,29 @@
         },
         "mark": {
           "label": "マークアップ"
+        },
+        "angle": {
+          "label": "マルチアングル",
+          "prompt": "補足があれば入力（例：背景はくっきりのまま）"
+        },
+        "relight": {
+          "label": "ライティング変更",
+          "prompt": "光について補足があれば入力（例：ろうそくの光、背後にネオンサイン）",
+          "slot": {
+            "light_reference": "光を写したい画像を選択"
+          }
+        },
+        "restyle": {
+          "label": "スタイル変換",
+          "prompt": "補足があれば入力（例：色を柔らかめに）",
+          "slotTitle": "スタイル画像",
+          "slot": {
+            "style": "スタイルを使う画像を最大 3 枚選択"
+          }
+        },
+        "quickEdit": {
+          "label": "クイック編集",
+          "prompt": "変えたい内容を入力（例：雨の夜にする、シャツを黒いジャケットに替える）"
         }
       },
       "video": {
@@ -1038,6 +1154,40 @@
         "extend": {
           "label": "延長",
           "prompt": "続ける音を説明"
+        },
+        "denoise": {
+          "label": "ノイズ除去"
+        },
+        "normalize": {
+          "label": "ラウドネス正規化",
+          "note": "ピーク上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "速度"
+        },
+        "cut": {
+          "label": "カット"
+        },
+        "eq": {
+          "label": "イコライザー"
+        },
+        "compress": {
+          "label": "コンプレッサー"
+        },
+        "pan": {
+          "label": "ステレオ"
+        },
+        "reverb": {
+          "label": "リバーブ"
+        },
+        "voice": {
+          "label": "声の強調"
+        },
+        "pitch": {
+          "label": "ピッチ変更"
+        },
+        "enhance": {
+          "label": "音声補正"
         }
       },
       "param": {
@@ -1076,6 +1226,36 @@
         },
         "cols": {
           "label": "列数"
+        },
+        "target": {
+          "label": "目標ラウドネス"
+        },
+        "keepPitch": {
+          "label": "ピッチを保つ"
+        },
+        "eq": {
+          "label": "プリセット"
+        },
+        "dynamics": {
+          "label": "プリセット"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "広がり"
+        },
+        "room": {
+          "label": "空間"
+        },
+        "amount": {
+          "label": "リバーブ量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "セント"
         }
       },
       "panel": {
@@ -1098,7 +1278,9 @@
         "reset": "リセット",
         "imageTooLarge": "この画像は大きすぎるため、この端末では色調整できません。",
         "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。",
-        "ratioTooLarge": "拡張できる最大サイズを超えます"
+        "ratioTooLarge": "拡張できる最大サイズを超えます",
+        "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
+        "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
       },
       "adjust": {
         "exposure": "露出",
@@ -1148,6 +1330,22 @@
         "picked": "{picked} / {total} 件を選択",
         "pickAll": "すべて選択",
         "pickNone": "選択をすべて解除"
+      },
+      "relight": {
+        "lightTitle": "光源",
+        "referenceTitle": "ライティング参考画像",
+        "optional": "任意",
+        "followsReference": "この画像の光に合わせます",
+        "referenceNote": "光はこの画像から取ります。右側の色・強さ・質で上書きできます。",
+        "fromReference": "参考画像に合わせる",
+        "sourceFromReference": "参考画像に合わせる"
+      },
+      "dynamics": {
+        "threshold": "スレッショルド",
+        "ratio": "レシオ",
+        "attack": "アタック",
+        "release": "リリース",
+        "makeup": "メイクアップゲイン"
       }
     },
     "template": {
@@ -1206,7 +1404,10 @@
         "resendIn": "{seconds} 秒後に再送信できます",
         "changeEmail": "別のメールアドレスを使う",
         "newCodeSent": "新しいコードを送信しました。"
-      }
+      },
+      "invitedBanner": "{inviterName} さんが {targetName} に招待しています",
+      "invitedEmailMismatch": "この招待は {email} 宛てです。別のアドレスで登録しても、この招待は届きません。",
+      "inviteClosed": "この招待は無効になりました。"
     },
     "onboarding": {
       "title": "Slug を選択",
@@ -1288,7 +1489,11 @@
       "title": "作業中ですが移動しますか?",
       "description": "アップロードまたは編集がまだ同期されていません。今移動すると失われる可能性があります。",
       "stay": "とどまる",
-      "leave": "移動する"
+      "leave": "移動する",
+      "unsyncedDescription": "一部の変更が未同期です。今すぐ再読み込みするか離れると、変更が失われる可能性があります。",
+      "combinedDescription": "一部の変更が未同期で、アップロードまたは編集が進行中です。今すぐ再読み込みするか離れると、作業が失われる可能性があります。",
+      "completeDescription": "変更の同期と操作が完了しました。",
+      "completeTitle": "続行できます"
     },
     "header": {
       "renameFailed": "Project 名を変更できませんでした"
@@ -1318,7 +1523,7 @@
       "title": "新しいバージョンが利用できます",
       "description": "再読み込みすると新しいバージョンを利用できます。",
       "busy": "アップロードなどの操作が進行中です。再読み込みすると中断されるため、完了するまでお待ちください。",
-      "later": "後で",
+      "later": "後で更新",
       "refresh": "更新"
     },
     "archived": {
@@ -1332,6 +1537,11 @@
       "confirm": "退出",
       "done": "「{name}」から退出しました",
       "failed": "退出できませんでした"
+    },
+    "refreshGuard": {
+      "title": "未完了の作業があります。再読み込みしますか？",
+      "refresh": "再読み込みする",
+      "failed": "再読み込みできませんでした。もう一度お試しください。"
     }
   },
   "common": {
@@ -1654,7 +1864,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} は未登録です。登録を案内する招待メールを送信しました。",
+    "awaitingSignup": "登録待ち",
+    "pendingTitle": "招待中",
+    "pendingBadge": "{role} · 回答待ち",
+    "revoke": "取り消す",
+    "revokeSuccess": "招待を取り消しました。",
+    "revokeFailed": "招待を取り消せませんでした。もう一度お試しください。"
   },
   "notifications": {
     "title": "通知",
@@ -1743,6 +1960,11 @@
       "home": "Studio ホーム",
       "account": "アカウント",
       "signOut": "ログアウト",
+      "logoutOthers": "他のデバイスからログアウト",
+      "logoutOthersTitle": "他のデバイスからログアウトしますか？",
+      "logoutOthersBody": "このデバイスはログインしたままです。他のデバイスはすべてログアウトされ、そこで開いている Canvas と Document はすぐに切断されます。",
+      "logoutOthersDone": "他のデバイスからログアウトしました",
+      "logoutOthersFailed": "他のデバイスからログアウトできませんでした。もう一度お試しください。",
       "credits": "クレジット",
       "creditsUnavailable": "取得できません",
       "membership": "メンバーシップ",
@@ -1831,9 +2053,12 @@
         "spendableHint": "この Studio の Project で生成すると、ここのクレジットを使います。",
         "noneHint": "この Studio に割り当てられたクレジットはまだありません。",
         "nonePrompt": "クレジットは Studio に割り当ててから使えます。アカウントのクレジットで割り当ててください。",
-        "lotsTitle": "クレジット内訳",
+        "lotsTitle": "クレジットパック内訳",
         "lotsDebt": "未払い",
         "lotsTotal": "合計",
+        "lotsHeld": "実行中のタスクで確保",
+        "lotsHeldNote": "タスク終了後に実費で差し引かれ、余った分は戻ります",
+        "heldHint": "クレジットはすべて、終了するまで実行中のタスクに確保されています。",
         "depletedHint": "この Studio のクレジットは使い切りました。",
         "debtHint": "次に割り当てるクレジットは、まず未払い分に充当されます。",
         "depletedPrompt": "アカウントのクレジットから新しく割り当ててください。",
@@ -1885,7 +2110,9 @@
         "pendingBadge": "{role}・保留中",
         "revoke": "取り消す",
         "revokeSuccess": "招待を取り消しました。",
-        "inviteSent": "招待を送信しました。"
+        "inviteSent": "招待を送信しました。",
+        "inviteSentPendingSignup": "{email} は未登録です。登録を案内する招待メールを送信しました。",
+        "awaitingSignup": "登録待ち"
       },
       "settings": {
         "basicTitle": "基本情報",
@@ -1951,10 +2178,9 @@
         "nameLabel": "名前",
         "namePlaceholder": "マイ Project",
         "slugLabel": "Slug",
-        "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project のURLの一部です。ブラウザのアドレスに表示されます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
-        "slugHelperCollection": "Collection のURLの一部です。ブラウザのアドレスに表示されます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
-        "descriptionLabel": "説明(任意)",
+        "slugPlaceholder": "空欄なら名前から自動で作られます",
+        "slugHelperProject": "Project のURLの一部です。空欄の場合は名前から自動で作られます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
+        "slugHelperCollection": "Collection のURLの一部です。空欄の場合は名前から自動で作られます。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
         "create": "作成",
         "cancel": "キャンセル",
         "slugFormat": "小文字で始め、小文字・数字・ハイフンのみ使えます。ハイフンは連続や末尾には使えません。",
@@ -1967,8 +2193,13 @@
         "namePlaceholderStudio": "マイ Studio",
         "namePlaceholderCollection": "マイ Collection",
         "slugPlaceholderStudio": "my-studio",
-        "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "この Studio のウェブアドレスの一部です（/studio/…）。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。"
+        "slugPlaceholderCollection": "空欄なら名前から自動で作られます",
+        "slugHelperStudio": "この Studio のウェブアドレスの一部です（/studio/…）。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使えます。",
+        "nameRequired": "名前を入力してください。",
+        "slugRequired": "Slug を入力してください。",
+        "emailRequired": "メールアドレスを入力してください。",
+        "slugUnverified": "今は確認できません。送信時にサーバーが判断します。",
+        "slugLabelOptional": "Slug(任意)"
       },
       "toolbar": {
         "sortLabel": "並び替え",
@@ -2237,7 +2468,7 @@
       "month": "月払い",
       "year": "年払い"
     },
-    "saveTwoMonths": "12 か月分を 10 か月分の料金で",
+    "saveTwoMonths": "2か月分無料",
     "yearSaving": "年払いで約 {percent}% お得",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2436,6 +2667,13 @@
         "title": "広告",
         "description": "どの広告が登録や購入などの主要な行動につながったかを測定します。"
       }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "ページのバージョンが古くなっています",
+      "description": "このページは古いバージョンのため、今回の操作は完了していません。再読み込みすると続行できます。",
+      "refresh": "更新"
     }
   }
 }

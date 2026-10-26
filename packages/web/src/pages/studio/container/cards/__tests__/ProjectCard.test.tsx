@@ -211,7 +211,7 @@ describe('ProjectCard', () => {
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Rename' }));
     const field = await screen.findByLabelText('Name');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
     await user.clear(field);
     await user.type(field, '  Renamed  ');
     await user.click(screen.getByRole('button', { name: 'Save' }));

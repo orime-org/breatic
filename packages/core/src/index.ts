@@ -62,6 +62,7 @@ export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export {
@@ -75,13 +76,13 @@ export {
   getMembershipConfig,
   getMembershipLimits,
   getDefaultMembershipTier,
+  getSubscriptionStaleAfterDays,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
   findOfferByPriceId,
-  getSubscriptionStaleAfterDays,
   subscriptionClock,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
@@ -91,7 +92,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
 export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
@@ -131,6 +132,7 @@ export {
   getStorageAdapter,
   storageKey,
 } from "@core/infra/storage/index.js";
+export { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
@@ -143,8 +145,10 @@ export {
 } from "@core/infra/event-stream.js";
 export {
   publishActivityNew,
+  publishCreditsChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
+  sessionsRevokedChannelName,
 } from "@core/infra/control-events.js";
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,
@@ -160,7 +164,16 @@ export {
   type ClientIdentityInput,
   type RefusalReason,
 } from "@core/infra/client-identity.js";
-export { setSession, getSession, deleteSession, deleteAllSessions, sessionCookieName } from "@core/infra/session-store.js";
+export {
+  setSession,
+  getSession,
+  sessionId,
+  revokeSession,
+  revokeAllSessions,
+  sessionCookieName,
+  type RevokeOutcome,
+} from "@core/infra/session-store.js";
+export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
 export { runWithContext, tryGetContext, getContext } from "@core/infra/request-context.js";
 
 // ── Shared auth kernel (collab + server share these) ──────────────

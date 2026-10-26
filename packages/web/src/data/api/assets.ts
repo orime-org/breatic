@@ -20,7 +20,31 @@ export interface UploadConfig extends UploadClientConfig {
    * until an answer names its own interval (inner#1367).
    */
   uploadStatusPollSeconds: number;
+  /**
+   * The largest request body the API reads, in bytes (inner#1006). Absent
+   * from a server that predates it, so it is read as unknown until checked.
+   */
+  maxRequestBodyBytes?: unknown;
 }
+
+/**
+ * The request body limit these knobs name, when it is usable.
+ * @param cfg - The upload knobs, or null when the page has none.
+ * @returns The limit in bytes; null when absent or not a positive integer
+ *   (a server that predates it sends none).
+ */
+export function requestBodyLimitOf(cfg: UploadConfig | null): number | null {
+  const limit = cfg?.maxRequestBodyBytes;
+  return typeof limit === 'number' && Number.isInteger(limit) && limit > 0 ? limit : null;
+}
+
+/**
+ * The server opens the upload at the ingest Worker before it answers a ticket
+ * request, bounded by the task budget (inner#1595), so the page waits for that
+ * answer: giving up at the client timeout and asking again would open a second
+ * grant and task row.
+ */
+export const NO_CLIENT_TIMEOUT = { timeout: 0 } as const;
 
 /** Session cache for the upload knobs (one fetch per session). */
 let uploadConfigCache: UploadConfig | null = null;
@@ -29,9 +53,10 @@ export const assetsApi = {
   /**
    * Ask for permission to upload (#173, design §4.1).
    *
-   * The answer is either a signed ticket to carry to the ingest Worker, or
+   * The answer is an upload our server already opened at the ingest Worker,
    * word that this studio already holds the content — in which case nothing
-   * moves and the server has already told the node what it now holds.
+   * moves and the server has already told the node what it now holds — or
+   * word that the server could not open the upload (inner#1595).
    *
    * The context travels here rather than with the bytes: the Worker knows only
    * what the ticket tells it and cannot be asked to prove any of it, so what
@@ -55,7 +80,9 @@ export const assetsApi = {
    *   an activity-feed row of its own.
    * @param params.purpose - What the picture is uploaded to become, filed as
    *   the asset's source; a studio uploads only its avatar.
-   * @returns The ticket to upload with, or the existing asset to reuse.
+   * @returns The opened upload, the existing asset to reuse, or the open
+   *   that failed.
+   * @throws {ApiException} When the request fails.
    */
   requestUploadTicket(params: UploadTicketRequest): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
@@ -71,15 +98,15 @@ export const assetsApi = {
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
-    });
+    }, NO_CLIENT_TIMEOUT);
   },
 
   /**
    * Ask for every ticket of one browser tool's export in one request
    * (inner#1303 §7).
    * @param params - Where the files land, the tool, and each file on its node.
-   * @returns One answer per file, in order: a ticket, an existing asset to
-   *   reuse, or a refusal.
+   * @returns One answer per file, in order: an opened upload, an existing
+   *   asset to reuse, an open that failed, or a refusal.
    * @throws {ApiException} When the request fails.
    */
   async requestUploadTicketBatch(params: BatchTicketRequest): Promise<BatchTicketAnswer[]> {
@@ -95,7 +122,7 @@ export const assetsApi = {
         client_hash: item.hash,
         node_id: item.nodeId,
       })),
-    });
+    }, NO_CLIENT_TIMEOUT);
     return items;
   },
 

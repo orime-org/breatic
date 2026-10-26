@@ -183,6 +183,15 @@ describe("estimateCredits", () => {
     expect(estimate.credits).toBeCloseTo(30, 6);
   });
 
+  it("rounds a part-cent estimate up to two decimals, as the charge will (inner#1666)", async () => {
+    expect(await estimateCredits(MIDJOURNEY, { params: {} }, 1.001)).toEqual({ credits: 15.02, bound: "exact" });
+  });
+
+  it("does not round floating-point residue up a cent (inner#1637)", async () => {
+    // 15 * 1.08 is 16.200000000000003 in binary floating point.
+    expect(await estimateCredits(MIDJOURNEY, { params: {} }, 1.08)).toEqual({ credits: 16.2, bound: "exact" });
+  });
+
   it("sends each param under its upstream name, clip lengths included", async () => {
     const estimate = await estimateCredits(
       DRIVEN_BY_REFS,

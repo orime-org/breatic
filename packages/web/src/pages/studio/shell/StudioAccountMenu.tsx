@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, LogOut, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, LogOut, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -27,6 +27,7 @@ import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
 import { useCreditOverview } from '@web/features/credits/use-credit-overview';
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
+import { LogoutOthersDialog } from '@web/pages/studio/shell/LogoutOthersDialog';
 import { useMembershipCheckoutReturn } from '@web/features/membership/use-membership-checkout-return';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
@@ -101,6 +102,9 @@ export function StudioAccountMenu(): React.JSX.Element {
   const personalStudio = user?.personalStudio ?? null;
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [membershipOpen, setMembershipOpen] = React.useState(false);
+  const [logoutOthersOpen, setLogoutOthersOpen] = React.useState(false);
+  const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
+  const accountButtonRef = React.useRef<HTMLButtonElement>(null);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
 
   // The balance beside the Credits entry, read from the overlay's own query:
@@ -209,6 +213,7 @@ export function StudioAccountMenu(): React.JSX.Element {
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
+            ref={accountButtonRef}
             type='button'
             aria-label={t('studio.topBar.account')}
             variant={null}
@@ -313,15 +318,18 @@ export function StudioAccountMenu(): React.JSX.Element {
               {creditsFigure(overview, t)}
             </DropdownMenuTrailing>
           </DropdownMenuItem>
+          {/* This browser's cookie consent, and the account's other sign-ins. */}
+          <DropdownMenuSeparator />
           {COOKIE_SETTINGS_AVAILABLE ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={openCookieSettings}>
-                <Cookie className='h-4 w-4' />
-                {t('consent.link')}
-              </DropdownMenuItem>
-            </>
+            <DropdownMenuItem onSelect={openCookieSettings}>
+              <Cookie className='h-4 w-4' />
+              {t('consent.link')}
+            </DropdownMenuItem>
           ) : null}
+          <DropdownMenuItem onSelect={openLogoutOthers}>
+            <MonitorSmartphone className='h-4 w-4' />
+            {t('studio.topBar.logoutOthers')}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             data-testid='account-menu-sign-out'
@@ -332,6 +340,11 @@ export function StudioAccountMenu(): React.JSX.Element {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <LogoutOthersDialog
+        open={logoutOthersOpen}
+        onOpenChange={setLogoutOthersOpen}
+        returnFocusTo={accountButtonRef}
+      />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay

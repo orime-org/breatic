@@ -8,6 +8,8 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
+      "payload_too_large": "请求内容超过 {limit}，请缩短提示词或减少引用的文字。",
+      "transfer_invalid": "上传的内容无法使用，请重试。",
       "internal": "服务器内部错误"
     },
     "credit": {
@@ -17,6 +19,7 @@
       "in_debt": "这个 Studio 欠着 {owed} 积分，指定新的积分会先抵掉它。",
       "unassigned": "你有 {available} 积分未指定，指定给 Studio 后才能使用。",
       "none": "积分不足，请先充值。",
+      "held_by_running": "{held} 积分正被进行中的任务冻结，现在可用 {available}。",
       "granted_elsewhere": "你的积分是赠送的，只能用在你的个人 Studio 里。",
       "refund_already_asked": "这笔已经提交过退款。",
       "refund_restored": "这笔退款失败后已恢复为积分，不能再申请退款。",
@@ -34,6 +37,7 @@
       "email_taken": "该邮箱已注册",
       "token_expired": "登录已过期，请重新登录",
       "logout_success": "已退出登录",
+      "logout_others_success": "已登出其他设备",
       "not_authenticated": "未登录",
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
@@ -63,7 +67,9 @@
       "member_limit_reached_for_invitee": "这个 Studio 的成员名额已满，请联系它的 Admin 腾出名额。",
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
-      "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。"
+      "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。",
+      "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
+      "invite_mail_failed": "邮件没发出去，请重试。"
     },
     "project": {
       "join_already_member": "你已经是这个 Project 的成员。",
@@ -82,7 +88,9 @@
       "not_found": "找不到这个 Project",
       "archived": "这个 Project 已归档，只能查看。",
       "copy_name": "副本 - {name}",
-      "leave_owner": "Owner 需要先转让所有权才能退出。"
+      "leave_owner": "Owner 需要先转让所有权才能退出。",
+      "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
+      "invite_mail_failed": "邮件没发出去，请重试。"
     },
     "payment": {
       "tier_not_found": "未知的套餐：{tier}。可选：{available}",
@@ -165,7 +173,10 @@
       "attachments_too_many": "附带的内容太多了。最多 {limit, number} 项，这条有 {actual, number} 项。",
       "current_space_too_long": "当前 Space 的内容太长了。最多 {limit, number} 个字符，现在有 {actual, number} 个。",
       "spaces_too_many": "列出的 Space 太多了。最多 {limit, number} 个，这条有 {actual, number} 个。",
-      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。"
+      "references_too_many": "引用附件的次数太多。一条消息最多 {limit, number} 次，这条有 {actual, number} 次。",
+      "ask_not_found": "这条会话里没有这张问题卡片。",
+      "ask_already_answered": "这张问题卡片已经回答过了。",
+      "answer_mismatch": "这些答案和卡片上的问题对不上。"
     },
     "mail": {
       "studio_invite": {
@@ -231,12 +242,24 @@
         "subject": "你的验证码",
         "lead": "在注册页面输入下面的验证码，完成创建账号。",
         "footer": "验证码将在 {minutes, plural, other {# 分钟}}后失效。如果不是你本人操作，可以忽略这封邮件。"
+      },
+      "project_signup_invite": {
+        "subject": "{inviter} 邀请你加入 {project}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, editor {Editor} viewer {Viewer} other {Member}}</code> 身份参与 Project <b>{project}</b>。",
+        "action": "注册并加入"
+      },
+      "studio_signup_invite": {
+        "subject": "{inviter} 邀请你加入 {studio}",
+        "lead": "<b>{inviter}</b> 邀请你以 <code>{role, select, maintainer {Maintainer} guest {Guest} other {Member}}</code> 身份加入 Studio <b>{studio}</b>。",
+        "action": "注册并加入"
       }
     },
     "mini_tool": {
       "unavailable": "这个工具暂时不可用。",
       "invalidParam": "“{name}”的值这个工具不支持。",
-      "foreignSource": "这个文件无法处理。"
+      "foreignSource": "这个文件无法处理。",
+      "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
+      "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",
@@ -337,7 +360,8 @@
     },
     "error": {
       "network": "网络错误",
-      "turnFailed": "这条回复没能完成，可以再发一次。"
+      "turnFailed": "这条回复没能完成，可以再发一次。",
+      "turnTooLong": "这次要处理的内容太多，没能完成。可以缩小范围再试。"
     },
     "message": {
       "interrupted": "已停止",
@@ -350,10 +374,25 @@
     "tool": {
       "unfinished": "已停止",
       "failure": {
-        "upstream": "执行错误",
-        "unreachable": "执行错误",
-        "generic": "执行错误"
+        "busy": "服务出错了，稍后可以再试",
+        "noConnection": "连不上服务，稍后可以再试",
+        "refused": "服务没有接受这次请求",
+        "unavailable": "这项功能暂时不可用",
+        "badAnswer": "服务返回的内容用不了",
+        "linkUnreachable": "这个地址打不开，可以换一个链接",
+        "fileTooLarge": "文件太大",
+        "unsupportedType": "不支持这种文件格式",
+        "emptyFile": "文件是空的",
+        "tooSlow": "文件下载太慢，没能下完",
+        "storageFull": "Studio 的存储空间已满",
+        "noPermission": "你在这个 Project 里没有编辑权限",
+        "notMember": "你已经不是这个 Project 的成员",
+        "tooFrequent": "刚才取的链接太多，等一分钟再试",
+        "declined": "服务拒绝处理这项内容",
+        "ourFault": "服务器出了问题，可以再试一次"
       },
+      "failedLine": "{step}没有完成：{reason}",
+      "failedStep": "{step}没有完成",
       "failureTimes": "{line} ×{count}",
       "searching": "正在搜索「{query}」",
       "searchingImages": "正在找「{query}」的图片",
@@ -365,7 +404,28 @@
       "readingGuide": "正在查产品怎么用",
       "understanding": "正在查看媒体",
       "judging": "正在权衡",
-      "running": "正在调用 {tool}"
+      "searchingConversations": "正在查找你的对话",
+      "readingConversation": "正在读对话记录",
+      "readingNodeHistory": "正在查节点的历史",
+      "readingActivity": "正在查 Project 活动",
+      "running": "正在调用 {tool}",
+      "step": {
+        "webSearch": "搜索「{query}」",
+        "searchImages": "找「{query}」的图片",
+        "understandMedia": "查看媒体",
+        "saveImage": "保存图片",
+        "judge": "权衡",
+        "proposeCanvas": "拟提议",
+        "proposeDocument": "拟修改提议",
+        "listModels": "查可用的模型",
+        "canvasCapabilities": "查 Canvas 能做什么",
+        "productGuide": "查产品怎么用",
+        "searchConversations": "查找你的对话",
+        "readConversation": "读对话记录",
+        "readNodeHistory": "查节点的历史",
+        "readActivity": "查 Project 活动",
+        "other": "调用 {tool}"
+      }
     },
     "loadEarlier": "加载更早的消息",
     "conversation": {
@@ -446,6 +506,19 @@
       "kind": "{kind, select, canvas {Canvas} image {图片} video {视频} audio {音频} text {文本} other {内容}}",
       "nodes": "{count} 个节点",
       "more": "还有 {count} 个"
+    },
+    "questionnaire": {
+      "submit": "提交",
+      "hint": "以上都不认可时，可以直接在输入框回复",
+      "other": "其他，自己写…",
+      "ownWords": "写下你的回答…",
+      "multi": "可多选",
+      "skipped": "跳过",
+      "yourAnswers": "你的回答",
+      "replied": "你已在对话中回复",
+      "show": "展开",
+      "hide": "收起",
+      "atLeastOne": "至少答一题"
     }
   },
   "canvas": {
@@ -525,6 +598,14 @@
       "couldNotStart": "没能开始，可以重试。",
       "sourceGone": "被读取的节点已不存在。这次理解没有连线。"
     },
+    "transcribe": {
+      "title": "转写",
+      "keepFillers": "保留口头禅",
+      "keepFillersOn": "「嗯」「呃」「um」这类词照说的写",
+      "keepFillersOff": "去掉「嗯」「呃」「um」这类词，偶尔会顺带改动个别字",
+      "couldNotStart": "转写没能开始，可以重试。",
+      "sourceGone": "被转写的节点已不存在。这次转写没有连线。"
+    },
     "generatePanel": {
       "focus": "聚焦",
       "reference": "参考",
@@ -580,6 +661,7 @@
       "errorCredits": "积分不足，无法生成。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
+      "errorTooLargeNoLimit": "请求内容过大，请缩短提示词或减少引用的文字。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
       "errorTooManyReferences": "该模型最多接受 {limit} {kind, select, video {段参考视频} audio {段参考音频} other {张参考图}} —— 移除一些再生成。",
       "referenceAddFailed": "无法添加参考——该节点已不存在。",
@@ -737,7 +819,14 @@
         "motion_prompt": "动作描述",
         "append_duration": "延长时长",
         "ambience": "环境音",
-        "double_output": "生成两版"
+        "double_output": "生成两版",
+        "light_azimuth": "光源方向",
+        "light_elevation": "光源高度",
+        "light_color": "光的颜色",
+        "light_color_hex": "自定义光色",
+        "light_intensity": "强度",
+        "light_quality": "光质",
+        "strength": "强度"
       },
       "paramField": {
         "speaker": "名字",
@@ -793,7 +882,8 @@
       "history": "历史记录",
       "snapshot": "保存快照",
       "download": "下载",
-      "understand": "理解"
+      "understand": "理解",
+      "transcribe": "转写"
     },
     "edge": {
       "delete": "删除连线"
@@ -906,8 +996,8 @@
       "failure": {
         "aborted": "上传没传完就中断了。",
         "over_cap": "这个文件超过了上传大小上限。",
-        "understand_over_cap": "{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}",
-        "understand_unsupported_type": "{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}",
+        "understand_over_cap": "{reading, select, transcribe {{file, select, none {{limit, select, unknown {这个文件超过了转写的大小上限。} other {这个文件超过了转写的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了转写的大小上限（{file}）。} other {这个文件超过了转写的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了转写的大小上限（{file}，{bytes}）。} other {这个文件超过了转写的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}} other {{file, select, none {{limit, select, unknown {这个文件超过了理解的大小上限。} other {这个文件超过了理解的大小上限，上限是 {limit}。}}} other {{bytes, select, none {{limit, select, unknown {这个文件超过了理解的大小上限（{file}）。} other {这个文件超过了理解的大小上限（{file}），上限是 {limit}。}}} other {{limit, select, unknown {这个文件超过了理解的大小上限（{file}，{bytes}）。} other {这个文件超过了理解的大小上限（{file}，{bytes}），上限是 {limit}。}}}}}}}}",
+        "understand_unsupported_type": "{reading, select, transcribe {{file, select, none {{type, select, none {不能转写的文件类型。} other {不能转写的文件类型（{type}）。}}} other {{type, select, none {不能转写的文件类型（{file}）。} other {不能转写的文件类型（{file}，{type}）。}}}}} other {{file, select, none {{type, select, none {不能理解的文件类型。} other {不能理解的文件类型（{type}）。}}} other {{type, select, none {不能理解的文件类型（{file}）。} other {不能理解的文件类型（{file}，{type}）。}}}}}}",
         "expired": "它超时了。",
         "no_result": "这次运行没有产出内容。",
         "source_unreachable": "这个地址打不开。",
@@ -916,15 +1006,18 @@
         "empty": "没有拿到任何内容。",
         "internal": "服务器内部错误。",
         "no_credits": "没有可用积分。",
+        "credits_held": "积分正被进行中的任务冻结。",
         "declined": "模型拒绝了这次请求。",
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。",
-        "no_audio_track": "这个视频没有音轨。"
+        "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}",
+        "cut_short": "内容太长，没能转写完。"
       },
       "kind": {
         "upload": "上传",
         "generate": "生成",
-        "understand": "理解"
+        "understand": "理解",
+        "transcribe": "转写"
       }
     },
     "panel": {
@@ -974,6 +1067,29 @@
         },
         "mark": {
           "label": "备注"
+        },
+        "angle": {
+          "label": "多角度",
+          "prompt": "想补充的可以写在这里，比如：背景保持清晰"
+        },
+        "relight": {
+          "label": "重新打光",
+          "prompt": "想补充光照的可以写在这里，比如：烛光、身后有霓虹灯牌",
+          "slot": {
+            "light_reference": "选一张图，照它的光照来打光"
+          }
+        },
+        "restyle": {
+          "label": "风格化",
+          "prompt": "想补充的可以写在这里，比如：颜色柔和一些",
+          "slotTitle": "风格图",
+          "slot": {
+            "style": "选最多三张图，照它们的风格来画"
+          }
+        },
+        "quickEdit": {
+          "label": "快速编辑",
+          "prompt": "写下要改什么，比如：改成下雨的夜晚、把衬衫换成黑夹克"
         }
       },
       "video": {
@@ -1038,6 +1154,40 @@
         "extend": {
           "label": "延长",
           "prompt": "描述要接上的声音"
+        },
+        "denoise": {
+          "label": "降噪"
+        },
+        "normalize": {
+          "label": "响度标准化",
+          "note": "峰值上限 −1 dBTP"
+        },
+        "speed": {
+          "label": "变速"
+        },
+        "cut": {
+          "label": "剪切"
+        },
+        "eq": {
+          "label": "均衡"
+        },
+        "compress": {
+          "label": "压缩"
+        },
+        "pan": {
+          "label": "声像"
+        },
+        "reverb": {
+          "label": "混响"
+        },
+        "voice": {
+          "label": "人声增强"
+        },
+        "pitch": {
+          "label": "变调"
+        },
+        "enhance": {
+          "label": "增强"
         }
       },
       "param": {
@@ -1076,6 +1226,36 @@
         },
         "cols": {
           "label": "列数"
+        },
+        "target": {
+          "label": "目标响度"
+        },
+        "keepPitch": {
+          "label": "保持音调"
+        },
+        "eq": {
+          "label": "预设"
+        },
+        "dynamics": {
+          "label": "预设"
+        },
+        "pan": {
+          "label": "左右"
+        },
+        "width": {
+          "label": "宽度"
+        },
+        "room": {
+          "label": "空间"
+        },
+        "amount": {
+          "label": "混响量"
+        },
+        "semitones": {
+          "label": "半音"
+        },
+        "cents": {
+          "label": "音分"
         }
       },
       "panel": {
@@ -1098,7 +1278,9 @@
         "reset": "重置",
         "imageTooLarge": "这张图片太大，这台设备上无法调色。",
         "sourceTooLargeToExpand": "这张图片已经到外扩能做的最大尺寸。",
-        "ratioTooLarge": "超出外扩能做的最大尺寸"
+        "ratioTooLarge": "超出外扩能做的最大尺寸",
+        "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
+        "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1148,6 +1330,22 @@
         "picked": "已选 {picked} / {total}",
         "pickAll": "全选",
         "pickNone": "全不选"
+      },
+      "relight": {
+        "lightTitle": "光源",
+        "referenceTitle": "光照参考图",
+        "optional": "可选",
+        "followsReference": "光照跟随这张图",
+        "referenceNote": "光照取自这张图。右侧的颜色、强度、光质会覆盖它。",
+        "fromReference": "跟随参考图",
+        "sourceFromReference": "跟随参考图"
+      },
+      "dynamics": {
+        "threshold": "阈值",
+        "ratio": "比率",
+        "attack": "启动",
+        "release": "释放",
+        "makeup": "补偿增益"
       }
     },
     "template": {
@@ -1206,7 +1404,10 @@
         "resendIn": "{seconds} 秒后可重新发送",
         "changeEmail": "换一个邮箱",
         "newCodeSent": "新验证码已发送。"
-      }
+      },
+      "invitedBanner": "{inviterName} 邀请你加入 {targetName}",
+      "invitedEmailMismatch": "邀请发给了 {email}，用其他邮箱注册不会收到这条邀请。",
+      "inviteClosed": "这条邀请已失效。"
     },
     "onboarding": {
       "title": "选择你的 Slug",
@@ -1288,7 +1489,11 @@
       "title": "有未完成的操作,确定离开?",
       "description": "上传或编辑还没同步完,现在离开可能丢失。",
       "stay": "留下",
-      "leave": "仍然离开"
+      "leave": "仍然离开",
+      "unsyncedDescription": "部分修改尚未同步，现在刷新或离开可能丢失这些修改。",
+      "combinedDescription": "部分修改尚未同步，且仍有上传或编辑操作正在进行。现在刷新或离开可能丢失这些工作。",
+      "completeDescription": "修改已同步，操作已完成。",
+      "completeTitle": "可以继续"
     },
     "header": {
       "renameFailed": "重命名 Project 失败"
@@ -1318,7 +1523,7 @@
       "title": "有新版本可用",
       "description": "新版本已上线，刷新后即可使用。",
       "busy": "有上传或其他操作正在进行，刷新会中断操作。建议完成后再刷新。",
-      "later": "稍后",
+      "later": "稍后更新",
       "refresh": "更新"
     },
     "archived": {
@@ -1332,6 +1537,11 @@
       "confirm": "退出",
       "done": "已退出「{name}」",
       "failed": "退出失败"
+    },
+    "refreshGuard": {
+      "title": "仍有未完成的工作，要刷新吗？",
+      "refresh": "仍然刷新",
+      "failed": "刷新失败，请重试。"
     }
   },
   "common": {
@@ -1654,7 +1864,14 @@
     "role": {
       "view": "Viewer",
       "edit": "Editor"
-    }
+    },
+    "inviteSentPendingSignup": "{email} 还没注册，已发邮件邀请对方注册。",
+    "awaitingSignup": "等待注册",
+    "pendingTitle": "邀请中",
+    "pendingBadge": "{role} · 待确认",
+    "revoke": "撤销",
+    "revokeSuccess": "邀请已撤销。",
+    "revokeFailed": "无法撤销邀请，请重试。"
   },
   "notifications": {
     "title": "通知",
@@ -1743,6 +1960,11 @@
       "home": "Studio 主页",
       "account": "账号",
       "signOut": "退出登录",
+      "logoutOthers": "登出其他设备",
+      "logoutOthersTitle": "登出其他设备？",
+      "logoutOthersBody": "这台设备保持登录。其他设备上的登录都会失效，那里打开着的 Canvas 和 Document 会立即断开。",
+      "logoutOthersDone": "已登出其他设备",
+      "logoutOthersFailed": "登出其他设备失败，请重试。",
       "credits": "积分",
       "creditsUnavailable": "当前不可用",
       "membership": "会员",
@@ -1831,9 +2053,12 @@
         "spendableHint": "在这个 Studio 的 Project 里生成，花的都是这里的积分。",
         "noneHint": "还没有积分指定给这个 Studio。",
         "nonePrompt": "买来的积分需要先指定给一个 Studio 才能使用。到账号积分里指定。",
-        "lotsTitle": "积分明细",
+        "lotsTitle": "积分包明细",
         "lotsDebt": "欠账",
         "lotsTotal": "合计",
+        "lotsHeld": "进行中冻结",
+        "lotsHeldNote": "任务结束后按实际花费扣除，多出的部分会退回",
+        "heldHint": "积分都被进行中的任务冻结，直到任务结束。",
         "depletedHint": "这个 Studio 的积分已经用完。",
         "debtHint": "新指定进来的积分会先抵掉欠账。",
         "depletedPrompt": "到账号积分里指定新的积分。",
@@ -1885,7 +2110,9 @@
         "pendingBadge": "{role} · 待确认",
         "revoke": "撤销",
         "revokeSuccess": "已撤销邀请。",
-        "inviteSent": "邀请已发送。"
+        "inviteSent": "邀请已发送。",
+        "inviteSentPendingSignup": "{email} 还没注册，已发邮件邀请对方注册。",
+        "awaitingSignup": "等待注册"
       },
       "settings": {
         "basicTitle": "基本信息",
@@ -1951,10 +2178,9 @@
         "nameLabel": "名称",
         "namePlaceholder": "我的 Project",
         "slugLabel": "Slug",
-        "slugPlaceholder": "my-project",
-        "slugHelperProject": "Project 网址的一部分，会出现在浏览器网址里。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符。",
-        "slugHelperCollection": "Collection 网址的一部分，会出现在浏览器网址里。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符。",
-        "descriptionLabel": "简介(可选)",
+        "slugPlaceholder": "不填会按名称自动生成",
+        "slugHelperProject": "Project 网址的一部分，不填会按名称自动生成。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符。",
+        "slugHelperCollection": "Collection 网址的一部分，不填会按名称自动生成。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符。",
         "create": "创建",
         "cancel": "取消",
         "slugFormat": "要以小写字母开头，只能用小写字母、数字和连字符，连字符不能连用或放在末尾。",
@@ -1967,8 +2193,13 @@
         "namePlaceholderStudio": "我的 Studio",
         "namePlaceholderCollection": "我的 Collection",
         "slugPlaceholderStudio": "my-studio",
-        "slugPlaceholderCollection": "my-collection",
-        "slugHelperStudio": "Studio 网址的一部分（/studio/…）。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符。"
+        "slugPlaceholderCollection": "不填会按名称自动生成",
+        "slugHelperStudio": "Studio 网址的一部分（/studio/…）。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符。",
+        "nameRequired": "请填写名称。",
+        "slugRequired": "请填写 Slug。",
+        "emailRequired": "请填写邮箱。",
+        "slugUnverified": "暂时无法检查，提交时由服务器判断。",
+        "slugLabelOptional": "Slug（选填）"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -2237,7 +2468,7 @@
       "month": "月付",
       "year": "年付"
     },
-    "saveTwoMonths": "十二个月，按十个月的价",
+    "saveTwoMonths": "省两个月",
     "yearSaving": "年付约省 {percent}%",
     "tierWithPeriod": "{tier} · {period}",
     "priceSuffix": {
@@ -2436,6 +2667,13 @@
         "title": "广告",
         "description": "衡量广告带来的注册、购买等关键步骤。"
       }
+    }
+  },
+  "app": {
+    "staleRelease": {
+      "title": "页面版本已过期",
+      "description": "当前页面是旧版本，这次操作没有完成。刷新后即可继续。",
+      "refresh": "更新"
     }
   }
 }

@@ -13,7 +13,8 @@ import { PasswordInput } from '@web/components/ui/password-input';
 import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardButton, AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
+import { looksLikeEmail } from '@web/lib/looks-like-email';
 
 /**
  * Password reset — branches on the query string:
@@ -115,7 +116,7 @@ function TokenResetForm({
               setPassword(e.target.value);
               if (passwordError) setPasswordError(null);
             }}
-            disabled={submitting}
+            readOnly={submitting}
             aria-invalid={!!passwordError || undefined}
             aria-describedby={passwordError ? 'reset-password-error' : undefined}
             showLabel={t('auth.passwordShow')}
@@ -170,7 +171,7 @@ function RecoveryResetForm(): React.JSX.Element {
     const trimmedEmail = email.trim();
     const trimmedCode = recoveryCode.trim();
     const nextErrors: typeof errors = {};
-    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!looksLikeEmail(trimmedEmail)) {
       nextErrors.email = t('auth.invalidEmail');
     }
     if (!trimmedCode) nextErrors.recoveryCode = t('auth.reset.recoveryCodeRequired');
@@ -217,7 +218,7 @@ function RecoveryResetForm(): React.JSX.Element {
                 setEmail(e.target.value);
                 if (errors.email) setErrors((p) => ({ ...p, email: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.email || undefined}
               aria-describedby={errors.email ? 'recovery-email-error' : undefined}
             />
@@ -238,7 +239,7 @@ function RecoveryResetForm(): React.JSX.Element {
                 setRecoveryCode(e.target.value.toUpperCase());
                 if (errors.recoveryCode) setErrors((p) => ({ ...p, recoveryCode: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.recoveryCode || undefined}
               aria-describedby={errors.recoveryCode ? 'recovery-code-error' : undefined}
               className='font-mono tracking-wider'
@@ -260,7 +261,7 @@ function RecoveryResetForm(): React.JSX.Element {
                 setNewPassword(e.target.value);
                 if (errors.newPassword) setErrors((p) => ({ ...p, newPassword: undefined }));
               }}
-              disabled={submitting}
+              readOnly={submitting}
               aria-invalid={!!errors.newPassword || undefined}
               aria-describedby={errors.newPassword ? 'recovery-new-password-error' : undefined}
               showLabel={t('auth.passwordShow')}

@@ -13,8 +13,27 @@
 /** A modality a tool acts on or produces. */
 export type MiniToolMedium = "image" | "video" | "audio";
 
-/** The ffmpeg operations the mini-tool container runs. */
-export const CONTAINER_OPS = ["crop", "speed", "cut", "adjust", "audio_denoise", "stabilize", "hdr"] as const;
+/** The operations the mini-tool container runs, with ffmpeg and, for reverb and pitch, sox. */
+export const CONTAINER_OPS = [
+  "crop",
+  "speed",
+  "cut",
+  "adjust",
+  "audio_denoise",
+  "stabilize",
+  "hdr",
+  // inner#1305: the operations on an audio source, each writing audio.
+  "denoise",
+  "normalize",
+  "audio_speed",
+  "audio_cut",
+  "eq",
+  "compress",
+  "pan",
+  "reverb",
+  "voice",
+  "pitch",
+] as const;
 
 /** One of {@link CONTAINER_OPS}. */
 export type ContainerOp = (typeof CONTAINER_OPS)[number];
@@ -60,7 +79,19 @@ export type MiniToolIcon =
   | "Timer"
   | "Highlighter"
   | "Expand"
-  | "Grid3x3";
+  | "Grid3x3"
+  | "Rotate3d"
+  | "Lightbulb"
+  | "Palette"
+  | "SquarePen"
+  | "Volume2"
+  | "SlidersVertical"
+  | "Shrink"
+  | "MoveHorizontal"
+  | "Waves"
+  | "Mic"
+  | "Music2"
+  | "Sparkles";
 
 /**
  * One choice of an enum param. It reads as its `label` when it has one — the
@@ -81,6 +112,31 @@ export interface NumberParam {
   readonly max: number;
   readonly step: number;
   readonly unit?: string;
+  /**
+   * How the value reads beside the slider, when not as the number and its
+   * unit: `signed` with a plus on positives; `balance` as Center, L n or R n;
+   * `denoiseDb` as the noise reduction it sets.
+   */
+  readonly format?: "signed" | "balance" | "denoiseDb";
+}
+
+/** A switch. */
+export interface ToggleParam {
+  readonly kind: "toggle";
+  readonly key: string;
+  readonly default: boolean;
+}
+
+/** The audio equaliser's ten bands and the preset they came from (shared `audio-eq.ts`). */
+export interface EqParam {
+  readonly kind: "eq";
+  readonly key: string;
+}
+
+/** The audio compressor's settings and the preset they came from (shared `audio-dynamics.ts`). */
+export interface DynamicsParam {
+  readonly kind: "dynamics";
+  readonly key: string;
 }
 
 /** A row of choices. */
@@ -89,6 +145,8 @@ export interface EnumParam {
   readonly key: string;
   readonly default: string;
   readonly options: readonly MiniToolOption[];
+  /** `stack` lists the options one to a row, for long labels of equal weight. */
+  readonly layout?: "stack";
 }
 
 /** A crop rectangle in source pixels; null until the panel reads the source size. */
@@ -143,7 +201,10 @@ export type MiniToolParam =
   | AdjustParam
   | OrientParam
   | ListParam
-  | CellsParam;
+  | CellsParam
+  | ToggleParam
+  | EqParam
+  | DynamicsParam;
 
 /** One output size a megapixel param offers: the source's long edge scaled to `longEdge`. */
 export interface SizeTier {
@@ -160,6 +221,19 @@ export interface MiniToolModelParam {
    * tier's label, and the run is sent the megapixels it comes to on the source.
    */
   readonly sizeTiers?: readonly SizeTier[];
+  /**
+   * The tool's own starting value, over the catalog's default, which the
+   * generation panel keeps for the same model. One of the catalog's values.
+   */
+  readonly default?: string | number;
+  /**
+   * How the panel draws the param, when not by its declaration: `swatches` a
+   * row of colours; `swatchCustom` the colour picked by hand, drawn as the
+   * last cell of that row; `lightAngle` the light sphere, which takes the two
+   * params so marked, the azimuth first; `percent` a 0–1 range read as a
+   * whole percentage.
+   */
+  readonly display?: "swatches" | "swatchCustom" | "lightAngle" | "percent";
 }
 
 /** A second piece of media the tool reads, picked from the canvas. */
@@ -172,6 +246,10 @@ export interface MiniToolSlot {
   readonly many: boolean;
   /** The pick banner's text. */
   readonly bannerKey: string;
+  /** Present when the tool needs the slot filled, though its param is optional in the catalog. */
+  readonly required?: true;
+  /** The name shown above the slot's tiles, when the tiles alone do not say what they are for. */
+  readonly titleKey?: string;
 }
 
 /** One result node the tool produces. */
@@ -227,9 +305,27 @@ interface MiniToolBase {
   /**
    * Present on a model tool whose pinned model takes a prompt. `defaultText`,
    * when given, is sent in place of an empty prompt, so the reader may leave
-   * it empty.
+   * it empty. `preamble`, when given, is always sent, with what the reader
+   * wrote after it.
    */
-  readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string };
+  readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string; readonly preamble?: string };
+  /** A line the panel shows under the controls, saying what the tool fixes for the reader. */
+  readonly noteKey?: string;
+  /**
+   * A catalog param the server fills with the aspect ratio nearest the
+   * source's size, read off the request; the reader never sets it.
+   */
+  readonly sourceAspectParam?: string;
+  /**
+   * How the panel lays the tool out, when not as one column: `columns.left`
+   * names the params drawn in a left column, the rest going on the right;
+   * `whenSlotFilled` hides params while a slot holds a pick, which then shows
+   * large in the left column. Hidden params are not sent.
+   */
+  readonly panel?: {
+    readonly columns?: { readonly left: readonly string[] };
+    readonly whenSlotFilled?: { readonly slot: string; readonly hide: readonly string[] };
+  };
 }
 
 /**

@@ -10,7 +10,19 @@ import { describe, it, expect } from "vitest";
 
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
 import type { ChatAttachedChip } from "@breatic/shared";
-import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel } from "@server/agent/user-turn.js";
+import { UNCHANGED_SPACE_NOTE, openSpaceKey, userMessageForModel, userTurnForModel as modelUserTurn } from "@server/agent/user-turn.js";
+
+/**
+ * Narrow the legacy fixtures, which supply no prepared pictures, to their text contract.
+ * @param args - The original fixture arguments.
+ * @returns The unchanged text result.
+ * @throws {Error} When a fixture unexpectedly produces native media content.
+ */
+function userTurnForModel(...args: Parameters<typeof modelUserTurn>): string {
+  const content = modelUserTurn(...args);
+  if (typeof content !== "string") throw new Error("A legacy fixture without prepared pictures must remain text");
+  return content;
+}
 
 const image: ChatAttachedChip = {
   id: "a1",

@@ -91,10 +91,10 @@ const CONVERSATION = "22222222-2222-4222-8222-222222222222";
 const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 /**
- * The window as the caller hands it over, converted.
- * @returns The window, in the shape `foldIfOverBudget` builds it.
+ * The window as the caller hands it over, converted, turn by turn.
+ * @returns The window, in the shape `foldIfTooLong` builds it.
  */
-async function handedWindow(): Promise<ModelMessage[]> {
+async function handedWindow(): Promise<Array<{ turnIndex: number; messages: ModelMessage[] }>> {
   const { toModelMessages } = await import("@server/agent/model-messages.js");
   const history = [1, 2, 3, 4].flatMap((n) => [
     {
@@ -122,10 +122,10 @@ async function handedWindow(): Promise<ModelMessage[]> {
       turnIndex: n,
     },
   ]);
-  return toModelMessages(history);
+  return [1, 2, 3, 4].map((n) => ({ turnIndex: n, messages: toModelMessages(history.filter((row) => row.turnIndex === n)) }));
 }
 
-const TRANSCRIPT: ModelMessage[] = await handedWindow();
+const TURNS = await handedWindow();
 
 /**
  * Ask for one consolidation, with everything the caller would have worked out.
@@ -137,7 +137,7 @@ async function consolidate(over: Record<string, unknown> = {}) {
     userId: USER,
     conversationId: CONVERSATION,
     projectId: PROJECT,
-    transcript: TRANSCRIPT,
+    turns: TURNS,
     watermarkBefore: 7,
     newWatermark: 19,
     ...over,
@@ -241,19 +241,18 @@ describe("a consolidation that works", () => {
 
   it("asks the consolidation model for no reasoning the way that model takes it", async () => {
     // Folding a transcript into a summary has no reasoning step in it. The
-    // consolidation model is Claude Opus 5.5, reached through OpenRouter in
-    // this suite, and Opus 5.5 rejects a request that turns thinking off: the
-    // one spelling every Claude model accepts is no reasoning field at all.
+    // consolidation model is DeepSeek V4.1 Flash 1017, reached through
+    // OpenRouter in this suite, where `none` is the documented way to turn
+    // reasoning off.
     await consolidate();
 
     const call = generateTextRetry.mock.calls[0]?.[0] as {
       providerOptions?: Record<string, Record<string, unknown>>;
       temperature?: number;
     };
-    expect(call.providerOptions).toEqual({ openrouter: {} });
-    // Opus 5.5 returns a 400 for any non-default temperature, so the fixed 0
-    // the fold asks for is not sent to it.
-    expect(call.temperature).toBeUndefined();
+    expect(call.providerOptions).toEqual({ openrouter: { reasoning: { effort: "none" } } });
+    // The fixed 0 the fold asks for goes out: unlike Claude, DeepSeek takes it.
+    expect(call.temperature).toBe(0);
   });
 
   it("tells the model the ceiling its answer is read through", async () => {
@@ -305,7 +304,7 @@ describe("a consolidation that works", () => {
       { role: "user" as const, content: "my regex is $`abc$& and $' too" },
     ];
 
-    await consolidate({ transcript: withDollars });
+    await consolidate({ turns: [{ turnIndex: 19, messages: withDollars }] });
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
@@ -343,7 +342,7 @@ describe("a consolidation that works", () => {
       },
     ];
 
-    await consolidate({ transcript: window });
+    await consolidate({ turns: [{ turnIndex: 19, messages: window }] });
 
     const prompt = String(
       (generateTextRetry.mock.calls[0]?.[0] as { messages: { content: string }[] })
@@ -381,6 +380,18 @@ describe("a consolidation that works", () => {
       actorUserId: USER,
       projectId: PROJECT,
     });
+  });
+
+  it("logs a charge whose readers could not be told", async () => {
+    chargeOnceForGeneration.mockResolvedValueOnce({
+      billed: true, charged: 400, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
+    } as never);
+    await consolidate();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT }),
+      "credits_signal_failed",
+    );
   });
 
   it("records the call under its generation id, and hands what it could not price to the lookup", async () => {

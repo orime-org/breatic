@@ -275,6 +275,7 @@ export interface CanvasSessionState {
     | 'tasks'
     | 'annotation'
     | 'miniTool'
+    | 'transcribe'
     | null;
   /** The open mini-tool panel's draft; null whenever another panel or none is open. */
   miniTool: MiniToolDraft | null;
@@ -437,6 +438,8 @@ export interface CanvasSessionState {
    * note this reader has open never goes into the document.
    */
   openAnnotationPanel: (nodeId: string) => void;
+  /** Open the transcribe panel on an audio or video node (inner#856). */
+  openTranscribePanel: (nodeId: string) => void;
   /** Close whichever bottom panel is open (exit button, or execute hands off). */
   closeActivePanel: () => void;
   /**
@@ -830,6 +833,7 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           s.taskPanelStatus = status;
         }),
       openAnnotationPanel: (nodeId) => set((s) => openPanel(s, nodeId, 'annotation')),
+      openTranscribePanel: (nodeId) => set((s) => openPanel(s, nodeId, 'transcribe')),
       closeActivePanel: () => set(endPanel),
       startTextEdit: (nodeId) =>
         set((s) => {

@@ -11,6 +11,9 @@
  * decide what to run.
  */
 
+import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
+import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
+
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
@@ -64,7 +67,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -130,6 +133,44 @@ export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[
 const COVER_SCALE =
   "scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease";
 
+/** What a peaks file is stored as. */
+export const PEAKS_CONTENT_TYPE = "application/json";
+
+/**
+ * What ffmpeg writes to stderr when the object's stream ends before its
+ * length, such as a read cut off mid-object. A damaged frame does not write it.
+ */
+export const SOURCE_BROKE_OFF = "Error during demuxing";
+
+/**
+ * The one ffmpeg call that reads an audio object's peaks (inner#1305 §4.4).
+ *
+ * The sound alone, mixed to mono at the peaks' rate, as 32-bit floats on
+ * stdout for the reader to fold into stretches as they arrive. A damaged
+ * frame is skipped, as players skip it; a source that breaks off still exits
+ * 0, so the reader tells it apart by `SOURCE_BROKE_OFF` on stderr.
+ * @param objectUrl - Where the container reads the object.
+ * @returns The argument list, without the program name.
+ */
+export function peaksArgs(objectUrl: string): string[] {
+  return [
+    "-v",
+    "error",
+    "-protocol_whitelist",
+    protocolsFor("object"),
+    "-i",
+    objectUrl,
+    "-vn",
+    "-ac",
+    "1",
+    "-ar",
+    String(AUDIO_PEAK_RATE),
+    "-f",
+    "f32le",
+    "pipe:1",
+  ];
+}
+
 /** What vips writes a preview as. */
 export const PREVIEW_CONTENT_TYPE = "image/webp";
 
@@ -172,6 +213,21 @@ export function previewArgs(): string[] {
   ];
 }
 
+/**
+ * Encode the first image frame as an upright sRGB JPEG on a white background.
+ * @param spec - Versioned JPEG dimensions and quality.
+ * @returns The vips arguments, reading stdin and writing JPEG to stdout.
+ * @throws {never} Never.
+ */
+export function agentPictureArgs(spec: AgentPictureSpec): string[] {
+  return [
+    "thumbnail_source", "[descriptor=0]",
+    `.jpg[Q=${spec.quality},keep=none,background=255]`,
+    String(spec.longEdge), "--height", String(spec.longEdge), "--size", "down",
+    "--output-profile", "srgb",
+  ];
+}
+
 /** One stream as ffprobe writes it. */
 interface RawStream {
   index?: number;
@@ -184,6 +240,22 @@ interface RawStream {
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
+  sample_rate?: string;
+  channels?: number;
+}
+
+/**
+ * The sample rate and channel count an audio stream names, as numbers; a
+ * field ffprobe could not read is left off.
+ * @param raw - The stream as ffprobe wrote it.
+ * @returns The fields it carries.
+ */
+function audioFieldsOf(raw: RawStream): { sampleRate?: number; channels?: number } {
+  const rate = numberOrNull(raw.sample_rate);
+  return {
+    ...(rate === null || rate <= 0 ? {} : { sampleRate: rate }),
+    ...(typeof raw.channels === "number" && raw.channels > 0 ? { channels: raw.channels } : {}),
+  };
 }
 
 /**
@@ -273,6 +345,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
+    ...audioFieldsOf(raw),
   }));
   return {
     streams,

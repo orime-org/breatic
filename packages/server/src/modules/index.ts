@@ -18,14 +18,16 @@ export * as membershipService from "@server/modules/account/membership.service.j
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
+export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
+export * as invitationService from "@server/modules/invitation/invitation.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
 export * as signupCodeService from "@server/modules/auth/signup-code.service.js";
 export * as conversationService from "@server/modules/conversation/conversation.service.js";
 export * as attachmentService from "@server/modules/conversation/conversation-attachment.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
-export { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+export { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,
@@ -39,3 +41,5 @@ export * as projectJoinRequestService from "@server/modules/project-join-request
 export * as notificationService from "@server/modules/notification/notification.service.js";
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
+export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/recording.service.js";
+export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";

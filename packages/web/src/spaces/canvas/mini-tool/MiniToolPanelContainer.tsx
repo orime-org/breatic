@@ -20,6 +20,7 @@ import {
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
+import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
@@ -32,14 +33,14 @@ import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
   creditMode,
   expandCapOf,
-  laysOutInSourcePixels,
+  readsShownSize,
   miniToolRefusal,
   resolvedParams,
   sizeTierChoices,
   slotLengthCap,
+  sourceLimitOf,
   type MiniToolSourceInfo,
 } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { expandDrop, frameForRatio, ratioFits, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
 import type { MiniToolCapture } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
@@ -211,11 +212,7 @@ function OpenMiniToolPanel({
     spaceId,
     nodeId,
     content,
-    (tieredParamKeys(spec).length > 0 ||
-      spec.drawing !== undefined ||
-      laysOutInSourcePixels(spec) ||
-      keepsSourceSize(spec)) &&
-      (dataWidth === undefined || dataHeight === undefined),
+    readsShownSize(spec) && (dataWidth === undefined || dataHeight === undefined),
   );
   const source = React.useMemo<MiniToolSourceInfo>(
     () => ({
@@ -223,6 +220,7 @@ function OpenMiniToolPanel({
       height: crops ? measured?.height : (dataHeight ?? shown?.height),
       duration: view !== undefined && 'duration' in view ? view.duration : undefined,
       url: content === '' ? undefined : content,
+      sizeBytes: view !== undefined && 'sizeBytes' in view ? view.sizeBytes : undefined,
     }),
     [crops, measured, dataWidth, dataHeight, view, shown, content],
   );
@@ -284,17 +282,20 @@ function OpenMiniToolPanel({
     () => sizeTierChoices(spec, entry, draftParams ?? {}, source),
     [spec, entry, draftParams, source],
   );
+  const slots = draft?.slots ?? NO_SLOTS;
   const params = React.useMemo(
-    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers),
-    [spec, entry, draftParams, source, sizeTiers],
+    () => resolvedParams(spec, entry, draftParams ?? {}, source, sizeTiers, slots),
+    [spec, entry, draftParams, source, sizeTiers, slots],
   );
   // A param chosen as an output size draws as tiers; the rest as the model's controls.
   const modelControls = React.useMemo(() => {
     if (entry === undefined) return undefined;
     const tiered = new Set(tieredParamKeys(spec));
-    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)));
+    const display = Object.fromEntries(
+      isModelTool(spec) ? spec.params.flatMap((param) => (param.display === undefined ? [] : [[param.key, param.display]])) : [],
+    );
+    return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)), display);
   }, [entry, spec]);
-  const slots = draft?.slots ?? NO_SLOTS;
   const prompt = draft?.prompt ?? '';
   const slotCaps = React.useMemo(
     () => Object.fromEntries(spec.slots.map((slot) => [slot.key, entry?.params[slot.param]?.max_items])),
@@ -378,6 +379,15 @@ function OpenMiniToolPanel({
       toast.warning(t('canvas.miniTool.panel.slotTooLong', { limit: slotLengthCap(spec, entry, slots) ?? 0 }));
       return;
     }
+    if (refusal === 'sourceTooLong' || refusal === 'sourceTooLarge') {
+      const limit = sourceLimitOf(spec, entry, source)?.limit ?? 0;
+      toast.warning(
+        refusal === 'sourceTooLong'
+          ? t('canvas.miniTool.panel.sourceTooLong', { minutes: Math.round(limit / 60) })
+          : t('canvas.miniTool.panel.sourceTooLarge', { size: formatBytes(limit) }),
+      );
+      return;
+    }
     if (refusal !== null) return;
     // What the reader made on the node is copied out now, so a later change
     // to the draft does not reach this run.
@@ -400,8 +410,10 @@ function OpenMiniToolPanel({
     // A grid lays its tiles out from the source's pixels before the export.
     const sourceSize =
       source.width !== undefined && source.height !== undefined ? { width: source.width, height: source.height } : undefined;
+    // Pressing Run leaves picking, as pressing generate does (inner#1304).
+    if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source.width, source.height, sessionStore, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

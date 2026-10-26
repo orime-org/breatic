@@ -51,7 +51,6 @@ export const ProposalCard = React.memo(function ProposalCard({
   const outcome = useCanvasStore((s) => s.proposalOutcome);
   const clearOutcome = useCanvasStore((s) => s.clearProposalOutcome);
   const [building, setBuilding] = React.useState(false);
-  const [failed, setFailed] = React.useState(false);
   const { data: catalog } = useQuery(modelCatalogQuery());
 
   const shape = React.useMemo(() => shapeOf(proposal), [proposal]);
@@ -75,13 +74,16 @@ export const ProposalCard = React.memo(function ProposalCard({
 
   // The canvas answers once the group is placed or once placing threw. Only
   // the card that is waiting reads it: placing runs to completion inside one
-  // synchronous effect, so no second card can have posted in between.
+  // synchronous effect, so no second card can have posted in between. A
+  // failure is told in a toast as it is answered (inner#1530); the button is
+  // free to press again.
+  const failedLine = t('chat.proposal.failed');
   React.useEffect(() => {
     if (!building || outcome === null) return;
     setBuilding(false);
-    setFailed(outcome === 'failed');
+    if (outcome === 'failed') toast.error(failedLine);
     clearOutcome();
-  }, [building, outcome, clearOutcome]);
+  }, [building, outcome, clearOutcome, failedLine]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud
@@ -92,7 +94,6 @@ export const ProposalCard = React.memo(function ProposalCard({
       toast.warning(t('chat.proposal.needCanvas'));
       return;
     }
-    setFailed(false);
     setBuilding(true);
     requestNodeCreate({ proposal });
   }, [canvasListening, proposal, requestNodeCreate, t]);
@@ -210,11 +211,6 @@ export const ProposalCard = React.memo(function ProposalCard({
               </ul>
             </div>
           ))}
-        </div>
-      ) : null}
-      {failed ? (
-        <div data-testid='proposal-failed' className='text-xs text-status-error'>
-          {t('chat.proposal.failed')}
         </div>
       ) : null}
       <ProposalActions>

@@ -43,7 +43,7 @@ import * as studioAvatarService from "@server/modules/studio/studioAvatar.servic
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 
-/** Invite body — a registered email + the granted role (never admin). */
+/** Invite body — recipient mailbox and granted role (never admin). */
 const inviteMemberSchema = z.object({
   email: emailSchema,
   role: z.enum(["maintainer", "guest"]),
@@ -283,32 +283,35 @@ studio.get("/:slug/members", async (c) => {
 });
 
 /**
- * `POST /api/v1/studio/:slug/members` — invite a registered user (by email) to
- * the studio. Admin-only; creates a PENDING invite + an actionable bell
- * notification, and (best-effort) sends an email link. The invitee becomes a
- * member only on confirm (invite-confirm handshake, 2026-06-14).
- * @returns `201` with `{ data: { ok: true } }`; `404` unregistered email,
- *   `403` personal studio / caller not admin, `409` already a member or already
- *   invited
+ * `POST /api/v1/studio/:slug/members` — admin invites an account or mailbox.
+ * Account invitations create a notification and optional best-effort mail;
+ * unregistered mailboxes require enabled mail and a signup-mail enqueue.
+ * Matching verified signup converts the original invitation and creates its
+ * notification. Membership requires explicit confirmation at `/decision?token=`.
+ * @returns `201` with `{ data: { ok: true, pendingSignup: boolean } }`;
+ *   `404` target/invitation closed or unregistered mailbox with mail disabled;
+ *   `403` personal Studio or caller not admin; `409` member, duplicate, capacity
+ *   or mail enqueue failure; `429` shared invitation quota exceeded.
  */
 studio.post(
   "/:slug/members",
   requireStudioRole("admin"),
+  rateLimitFor("invite", "user"),
   validate("json", inviteMemberSchema),
   async (c) => {
     const user = c.get("user");
     const slug = c.req.param("slug");
     const body = c.req.valid("json");
-    // The optional best-effort invite email is sent inside the service (the bell
-    // notification is the always-delivered path); the route only passes the Origin.
-    await studioInviteService.createInvite(
+    // The shared service settles account notifications and signup mail;
+    // the route supplies the trusted frontend origin.
+    const result = await studioInviteService.createInvite(
       slug,
       user.id,
       body.email,
       body.role,
       frontendOrigin(c.req.header("Origin")),
     );
-    return c.json({ data: { ok: true } }, 201);
+    return c.json({ data: { ok: true, pendingSignup: result.pendingSignup } }, 201);
   },
 );
 

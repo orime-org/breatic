@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { ReactElement } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Sentry from '@sentry/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import LoginPage from '../LoginPage';
 import type * as AuthModule from '@web/data/api/auth';
 import { authApi } from '@web/data/api/auth';
@@ -153,5 +154,39 @@ describe('official Google login', () => {
     } finally {
       changeLocale('en');
     }
+  });
+});
+
+
+/** Shows the destination chosen after the Google credential is exchanged. */
+function GoogleDestinationProbe(): ReactElement {
+  const location = useLocation();
+  return <output data-testid='google-destination'>{location.pathname}{location.search}</output>;
+}
+
+describe('Google invitation destination', () => {
+  it.each([
+    ['/decision?token=google-invitation', '/decision?token=google-invitation'],
+    ['//outside.example/path', '/studio'],
+    ['https://outside.example/path', '/studio'],
+  ])('returns safely from Google sign-in for %s', async (next, destination) => {
+    vi.mocked(authApi.google).mockResolvedValueOnce({
+      user: { id: 'google-invitee', email: 'recipient@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' },
+      created: true,
+    });
+    render(
+      <MemoryRouter initialEntries={[`/login?next=${encodeURIComponent(next)}`]}>
+        <Routes>
+          <Route path='/login' element={<LoginPage />} />
+          <Route path='/decision' element={<GoogleDestinationProbe />} />
+          <Route path='/studio' element={<GoogleDestinationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const script = document.querySelector('script[src^="https://accounts.google.com/gsi/client"]');
+    if (!script) throw new Error('The Google sign-in script was not mounted.');
+    fireEvent.load(script);
+    respond();
+    expect(await screen.findByTestId('google-destination')).toHaveTextContent(destination);
   });
 });

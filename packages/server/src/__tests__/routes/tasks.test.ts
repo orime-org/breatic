@@ -48,7 +48,7 @@ describe("Tasks routes", () => {
     vi.clearAllMocks();
     mocks.projectService.assertAccess.mockResolvedValue(undefined);
     mocks.taskService.create.mockResolvedValue({ id: "task-1", taskType: "image" });
-    mocks.creditLotService.getSpendableCredits.mockResolvedValue(100);
+    mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: true });
   });
 
   describe("GET /tasks — list", () => {
@@ -124,7 +124,7 @@ describe("Tasks routes", () => {
     });
 
     it("rejects with 402 when the balance is below the estimate — no task row created (#1580 #7 pre-check)", async () => {
-      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -147,6 +147,9 @@ describe("Tasks routes", () => {
     it("holds the balance to the estimate of the run the request describes", async () => {
       // 100 spendable, and the run as described prices at 150.
       vi.mocked(domain.estimateTaskCredits).mockResolvedValueOnce(150);
+      mocks.creditHoldService.reserveCredits.mockImplementation(async (r: { amount: number }) =>
+        r.amount <= 100 ? { ok: true } : { ok: false, studioId: "s1", spendable: 100, held: 0 },
+      );
       const app = createApp();
       const res = await app.request("/api/v1/canvas/tasks", {
         method: "POST",
@@ -299,6 +302,86 @@ describe("Tasks routes", () => {
       expect(mockQueueAdd).toHaveBeenCalledTimes(2);
     });
 
+    describe("credit hold (inner#1611)", () => {
+      const NODE = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+      const BODY = JSON.stringify({
+        task_type: "image",
+        params: { prompt: "a cat" },
+        model: "test-model",
+        source: "task",
+        project_id: PID,
+        space_id: SID,
+        mode: "overwrite",
+        target_node_id: NODE,
+      });
+
+      /**
+       * Send the run.
+       * @returns The response.
+       */
+      async function send(): Promise<Response> {
+        return createApp().request("/api/v1/canvas/tasks", { method: "POST", headers: AUTH, body: BODY });
+      }
+
+      /**
+       * The key the admission held under.
+       * @returns It.
+       */
+      function heldKey(): string {
+        const call = mocks.creditHoldService.reserveCredits.mock.calls[0]?.[0] as { referenceId: string } | undefined;
+        if (!call) throw new Error("nothing was held");
+        return call.referenceId;
+      }
+
+      it("holds the estimate under the id the task row is then created with", async () => {
+        vi.mocked(domain.estimateTaskCredits).mockResolvedValueOnce(12);
+        const res = await send();
+        expect(res.status).toBe(201);
+        expect(mocks.creditHoldService.reserveCredits).toHaveBeenCalledWith(
+          expect.objectContaining({ projectId: PID, actorUserId: "user-1", amount: 12, ttlMs: expect.any(Number) }),
+        );
+        expect(mocks.taskService.create.mock.calls[0]?.[8]).toBe(heldKey());
+        expect(mocks.creditHoldService.releaseHold).not.toHaveBeenCalled();
+      });
+
+      it("releases the hold when the storage gate refuses after admission", async () => {
+        mocks.assertStorageAllowance.mockRejectedValueOnce(Object.assign(new Error("full"), { statusCode: 403 }));
+        await send();
+        expect(mocks.creditHoldService.releaseHold).toHaveBeenCalledWith(heldKey());
+        expect(mocks.taskService.create).not.toHaveBeenCalled();
+      });
+
+      it("releases the hold when the node's row cannot be opened", async () => {
+        mocks.nodeTaskService.open.mockRejectedValueOnce(new Error("collab down"));
+        const res = await send();
+        expect(res.status).toBeGreaterThanOrEqual(500);
+        expect(mocks.creditHoldService.releaseHold).toHaveBeenCalledWith(heldKey());
+        expect(mockQueueAdd).not.toHaveBeenCalled();
+      });
+
+      it("releases the hold when the job cannot be queued", async () => {
+        mockQueueAdd.mockRejectedValueOnce(new Error("redis down"));
+        const res = await send();
+        expect(res.status).toBe(500);
+        expect(mocks.creditHoldService.releaseHold).toHaveBeenCalledWith(heldKey());
+      });
+
+      it("keeps the hold of a queued run whose job id cannot be recorded", async () => {
+        mocks.taskService.setJobId.mockRejectedValueOnce(new Error("db down"));
+        await send();
+        expect(mockQueueAdd).toHaveBeenCalled();
+        expect(mocks.creditHoldService.releaseHold).not.toHaveBeenCalled();
+      });
+
+      it("creates nothing when the admission is refused", async () => {
+        mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
+        const res = await send();
+        expect(res.status).toBe(402);
+        expect(mocks.taskService.create).not.toHaveBeenCalled();
+        expect(mocks.creditHoldService.releaseHold).not.toHaveBeenCalled();
+      });
+    });
+
   });
 
   describe("POST /canvas/node-history/snapshot", () => {
@@ -382,7 +465,7 @@ describe("Tasks routes", () => {
     // and a refusal has to finish both — a task left `pending` is one no
     // worker will ever touch and no sweep will ever end.
     it("ends the task it created when the balance is short", async () => {
-      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -408,7 +491,7 @@ describe("Tasks routes", () => {
     // something only this route knows — whether a row exists — and a 500
     // raised before the row opened looks exactly like one raised after.
     it("answers with the row's own state once a row is open", async () => {
-      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -627,6 +710,85 @@ describe("Tasks routes", () => {
     );
   });
 
+  // inner#856: a transcription is a reading with its own action, question
+  // and switch; it lands in the same lane and on the same row machinery.
+  describe("POST /canvas/transcribe", () => {
+    const TRANSCRIBE = {
+      project_id: PID,
+      space_id: SID,
+      source_type: "audio",
+      source_url: "https://cdn/x.m4a",
+      node_ids: [READ_INTO],
+      keep_fillers: false,
+      reader_locale: "zh-TW",
+    };
+
+    /**
+     * Send one transcription press.
+     * @param body - The request body.
+     * @returns The response.
+     */
+    const press = async (body: Record<string, unknown>): Promise<Response> =>
+      await createApp().request("/api/v1/canvas/transcribe", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify(body),
+      });
+
+    it("opens a transcription row named after the pinned model", async () => {
+      const res = await press(TRANSCRIBE);
+      expect(res.status).toBe(201);
+      expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "transcribe", label: UNDERSTAND_PINS.model }),
+      );
+    });
+
+    it("queues a reading that asks for a transcription", async () => {
+      await press(TRANSCRIBE);
+      expect(mockQueueAdd).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          taskType: "understand",
+          source: "understand",
+          params: expect.objectContaining({
+            reading: "transcribe",
+            keep_fillers: false,
+            reader_locale: "zh-TW",
+            source_type: "audio",
+          }),
+        }),
+        expect.anything(),
+      );
+      expect(mocks.taskService.create).toHaveBeenCalledWith(
+        expect.anything(),
+        PID,
+        SID,
+        "understand",
+        "append",
+        expect.objectContaining({ reading: "transcribe" }),
+        UNDERSTAND_PINS.model,
+        "understand",
+      );
+    });
+
+    it("asks its own throttle", async () => {
+      await press(TRANSCRIBE);
+      expect(mocks.checkRateLimit).toHaveBeenCalledWith(expect.anything(), [
+        { key: expect.stringContaining("transcribe:"), max: expect.any(Number), windowSeconds: expect.any(Number) },
+      ]);
+    });
+
+    it.each([
+      ["a picture", { ...TRANSCRIBE, source_type: "image" }],
+      ["no filler switch", { ...TRANSCRIBE, keep_fillers: undefined }],
+      ["two nodes", { ...TRANSCRIBE, node_ids: [READ_INTO, READ_INTO] }],
+    ])("refuses %s", async (_name, body) => {
+      const res = await press(body);
+      expect(res.status).toBe(422);
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+  });
+
   describe("POST /canvas/understand — a refused run still has a row", () => {
     // The node is on the canvas before this request goes out, so a refusal
     // has somewhere to be said: the row this run opened is settled `failed`
@@ -634,7 +796,7 @@ describe("Tasks routes", () => {
     // decision, stage 4). A toast with no row behind it would leave a node
     // sitting there with nothing to explain it.
     it("settles the row it opened when the balance is short", async () => {
-      mocks.creditLotService.getSpendableCredits.mockResolvedValue(0);
+      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: 0, held: 0 });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
         method: "POST",
@@ -685,6 +847,27 @@ describe("Tasks routes", () => {
       });
       expect(mocks.taskService.markFailed).not.toHaveBeenCalled();
       expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
+    });
+
+    it("holds the estimate under the task's id and releases it when the job cannot be queued (inner#1611)", async () => {
+      mockQueueAdd.mockRejectedValueOnce(new Error("redis down"));
+      const app = createApp();
+      await app.request("/api/v1/canvas/understand", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          project_id: PID,
+          space_id: SID,
+          source_type: "image",
+          source_url: "https://cdn/x.png",
+          node_ids: [READ_INTO],
+        }),
+      });
+
+      const held = mocks.creditHoldService.reserveCredits.mock.calls[0]?.[0] as { referenceId: string } | undefined;
+      expect(held?.referenceId).toEqual(expect.any(String));
+      expect(mocks.creditHoldService.releaseHold).toHaveBeenCalledWith(held?.referenceId);
+      expect(mocks.taskService.markFailed).toHaveBeenCalledWith(held?.referenceId, "internal");
     });
 
     // A row on the node is the only thing that carries a cause back to the

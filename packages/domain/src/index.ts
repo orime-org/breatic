@@ -23,7 +23,8 @@
 export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
-export { SMALLEST_CREDIT } from "@domain/credit/credit-math.js";
+export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export { SMALLEST_CREDIT, toChargeCredits } from "@domain/credit/credit-math.js";
 export {
   containerCostUsd,
   type ContainerPrices,
@@ -78,6 +79,7 @@ export {
 } from "@domain/asset/upload-finish.service.js";
 export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
+export { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
 export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";
@@ -87,6 +89,13 @@ export {
   type MediaReadJob,
   type MediaReadResult,
 } from "@domain/asset/media-read.service.js";
+export * as audioPeaksService from "@domain/asset/audio-peaks.service.js";
+export {
+  AUDIO_PEAKS_QUEUE,
+  AudioPeaksReadFailed,
+  type AudioPeaksJob,
+  type AudioPeaksResult,
+} from "@domain/asset/audio-peaks.service.js";
 export type {
   BackendUploadContext,
   StoredAsset,
@@ -109,12 +118,53 @@ export {
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
+  RECORD_TOOL_NAMES,
 } from "@domain/agent/tools/index.js";
 export type { OpenDocument } from "@domain/agent/tools/propose-document-edit.js";
-export type { AskUserPayload } from "@domain/agent/tools/ask-user.js";
 export { STOPPED_BY_USER } from "@domain/agent/tools/failure.js";
 export { SaveRefused, type SavedMaterial, type SaveToStorage } from "@domain/agent/tools/save-image.js";
-export { buildAgentConfig } from "@domain/agent/agent-config.js";
+export { MAX_TURN_INDEX, RecordsRefused } from "@domain/agent/tools/project-records.js";
+export type {
+  ProjectRecords,
+  RecordsRefusalKind,
+  ConversationSummary,
+  ConversationListPage,
+  MessageHit,
+  MessageHitPage,
+  StoredMessage,
+  ConversationTurns,
+  NodeTaskRecord,
+  NodeRecords,
+  ActivityPage,
+} from "@domain/agent/tools/project-records.js";
+export { buildAgentConfig, instructionsForAgentMemory } from "@domain/agent/agent-config.js";
+export {
+  createAgentPicturePreparer,
+  type AgentPictureSource,
+  type AgentPictureSourceAsset,
+  type AgentPictureFacts,
+  type AgentPictureUnavailable,
+  type PreparedAgentPicture,
+  type PrepareAgentPictures,
+  type ToolPictureContext,
+  type AgentPicturePreparation,
+} from "@domain/agent/prepare-agent-pictures.js";
+export { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
+export { pictureMiddleware } from "@domain/agent/picture-middleware.js";
+export {
+  projectAgentRequest,
+  expandAgentPictures,
+  agentPictureOutputOf,
+  AGENT_PICTURE_PROJECTION_VERSION,
+  AGENT_TOOL_PICTURE_MARKER,
+  agentPictureLabelFor,
+  type AgentPicture,
+  type AgentPicturePolicy,
+  type AgentGenerationStep,
+  type AgentPictureOutput,
+  type AgentRequestProjection,
+  type ProjectedAgentRequest,
+} from "@domain/agent/project-agent-request.js";
 export { instructionsText } from "@domain/agent/instructions.js";
 export { finalizeTurn } from "@domain/agent/turn-finalizer.js";
 export type { TurnSteps, TurnStepFailure } from "@domain/agent/turn-finalizer.js";

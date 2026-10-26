@@ -272,9 +272,9 @@ describe('StudioContainerPage', () => {
     await screen.findByText('Real Studio Project');
     await user.click(screen.getByRole('button', { name: 'New project' }));
     await user.type(screen.getByLabelText('Name'), 'Fresh');
-    await user.type(screen.getByLabelText('Slug'), 'fresh-proj');
-    // Create waits for the live slug check to settle.
-    await screen.findByText('Slug is available');
+    // The slug follows the name until the reader writes their own.
+    await user.clear(screen.getByLabelText(/^Slug/));
+    await user.type(screen.getByLabelText(/^Slug/), 'fresh-proj');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     // studioId is the current studio (s-acme), and the first space defaults to
     // canvas (the only selectable type today). The studio selector that would
@@ -285,7 +285,6 @@ describe('StudioContainerPage', () => {
       name: 'Fresh',
       slug: 'fresh-proj',
       spaceType: 'canvas',
-      description: undefined,
     }, expect.any(String));
   });
 

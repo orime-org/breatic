@@ -10,7 +10,7 @@ import { Button } from '@web/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@web/components/ui/input-otp';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
-import { FieldError } from '@web/pages/auth/_shared/FieldError';
+import { FieldError } from '@web/components/FieldError';
 
 const CODE_LENGTH = 6;
 const SLOT_INDEXES = Array.from({ length: CODE_LENGTH }, (_, i) => i);

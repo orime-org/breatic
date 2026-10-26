@@ -787,11 +787,23 @@ describe("what the guide says about each surface", () => {
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the reader's own included/);
-    expect(wrong).toMatch(/Closing or reloading the browser tab, including by the reload buttons above, shows the browser's own prompt/);
+    expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
+    expect(wrong).toMatch(/background Space tabs of the current Project/);
+    expect(wrong).toMatch(/connection banner's refresh button asks/);
+    expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
     expect(wrong).toMatch(/With a document open, "[^"]+" also shows for a moment; nothing typed after it is saved/);
     expect(wrong).toMatch(/until they upgrade/);
     expect(wrong).toMatch(/press Cmd\/Ctrl\+A twice, then Cmd\/Ctrl\+C, to copy it out before signing in again or reloading/);
     expect(wrong).toMatch(/as many open editing connections as the plan of the studio's admin allows \(only their upgrade raises it\)/);
+  });
+
+  it("says where to sign out of other devices, and what those devices then show", () => {
+    // inner#1548: the account menu is on the studio pages, which the coverage
+    // test does not reach, so this pins the sentence directly.
+    const wrong = section("When something is wrong");
+    expect(wrong).toContain(`"${t("studio.topBar.logoutOthers")}"`);
+    expect(wrong).toMatch(/account menu on the studio pages/);
+    expect(wrong).toMatch(/every device except the one/);
   });
 
   it("says where credits are bought and that only the studio's admin assigns them", () => {
@@ -850,6 +862,17 @@ describe("mini-tools and the task rows", () => {
     const tools = section("Mini-tools");
     for (const tool of MINI_TOOLS) {
       expect(tools).toContain(`"${t(tool.labelKey)}": ${tool.guide}`);
+    }
+  });
+
+  // The cost sentence points at the marks in the list instead of naming the
+  // tools, so only the mark says which tools are billed by run time.
+  it("marks exactly the tools run in the media container as billed by run time", () => {
+    const tools = section("Mini-tools");
+    expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in the list above are billed that way/);
+    for (const tool of MINI_TOOLS) {
+      const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
+      expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
     }
   });
 

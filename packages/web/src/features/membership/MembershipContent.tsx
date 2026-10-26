@@ -24,7 +24,7 @@ import { SALES_EMAIL } from '@web/features/membership/pricing';
 import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
 import { useSubscriptionActions } from '@web/features/membership/use-subscription-actions';
 import { TierCards } from '@web/features/membership/TierCards';
-import { TierComparison } from '@web/features/membership/TierComparison';
+import { TierComparison, TierComparisonSkeleton } from '@web/features/membership/TierComparison';
 import { useTranslation } from '@web/i18n/use-translation';
 
 /** The loaded panel's input. */
@@ -318,7 +318,7 @@ export function MembershipContent({
                       than what the reader is looking at. */}
                     {selectedPeriod === 'year' ? (
                       <span
-                        className='text-xs text-foreground-secondary'
+                        className='text-xs text-status-success-foreground'
                         data-testid='membership-save-line'
                       >
                         {t('membership.saveTwoMonths')}
@@ -377,18 +377,7 @@ export function MembershipContent({
                 choosing={pending?.kind === 'choose' ? pending.offer : null}
                 onChoose={handleChoose}
               />
-              {/* Two sentences the page has to carry, together because both are
-                about what a price does and does not cover. Membership and
-                credits are separate legs, and a reader who assumes a tier comes
-                with generation credits finds out mid-generation; the tax line
-                stops at "excluded" because nothing anywhere calculates tax
-                (#170), and #106 deleted the half-sentence that said otherwise. */}
-              <ul className='flex flex-col gap-1 text-sm text-foreground-secondary'>
-                <li data-testid='membership-no-credits'>
-                  {t('membership.noCreditsIncluded')}
-                </li>
-                <li data-testid='membership-tax-note'>{t('membership.taxNote')}</li>
-              </ul>
+              <PriceNotes />
             </section>
           ) : null}
 
@@ -478,6 +467,25 @@ const QUOTA_ROW_SKELETONS = ['team-studios', 'storage'] as const;
 const TIER_CARD_SKELETONS = [...COMPARABLE_MEMBERSHIP_TIERS, 'enterprise'] as const;
 
 /**
+ * Two sentences the price list has to carry, together because both are about
+ * what a price does and does not cover. Membership and credits are separate
+ * legs, and a reader who assumes a tier comes with generation credits finds
+ * out mid-generation; the tax line stops at "excluded" because nothing
+ * anywhere calculates tax (#170), and #106 deleted the half-sentence that said
+ * otherwise. The loading frame draws them too: they never depend on the answer.
+ * @returns The two lines.
+ */
+function PriceNotes(): React.JSX.Element {
+  const t = useTranslation();
+  return (
+    <ul className='flex flex-col gap-1 text-sm text-foreground-secondary'>
+      <li data-testid='membership-no-credits'>{t('membership.noCreditsIncluded')}</li>
+      <li data-testid='membership-tax-note'>{t('membership.taxNote')}</li>
+    </ul>
+  );
+}
+
+/**
  * The panel while its one request is in flight.
  *
  * The same rows as the loaded panel, with bars only where the answer goes:
@@ -563,6 +571,20 @@ export function MembershipLoading({
                   />
                 ))}
               </div>
+              <PriceNotes />
+            </section>
+          ) : null}
+          {tier !== null && isComparableMembershipTier(tier) ? (
+            // The loaded panel's last section, with words where they never
+            // depend on the answer, so the dialog is as tall now as it will be.
+            <section className='flex flex-col gap-4'>
+              <ScrollArea scrollbars='horizontal'>
+                <TierComparisonSkeleton />
+              </ScrollArea>
+              <ContactLine
+                text={t('membership.contactEnterprise')}
+                testId='membership-contact-priced'
+              />
             </section>
           ) : null}
         </div>

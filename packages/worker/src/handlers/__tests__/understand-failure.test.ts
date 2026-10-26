@@ -13,8 +13,13 @@
 import { describe, expect, it } from "vitest";
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 
+import { readTaskFailure } from "@breatic/shared";
+
 import {
   AnsweredNothing,
+  CutShort,
+  StoppedPartWay,
+  TranscriptionBlocked,
   understandFailureCode,
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
@@ -204,5 +209,56 @@ describe("which refusals a second attempt would only repeat", () => {
   it("leaves anything it does not recognise open", () => {
     expect(verdictStands(new Error("boom"))).toBe(false);
     expect(verdictStands(new AnsweredNothing())).toBe(false);
+  });
+});
+
+// inner#856: explicit service failures remain transcription failures.
+describe("what a transcription that put nothing on the node is stored as", () => {
+  it.each([
+    [new CutShort(), "cut_short"],
+    [new StoppedPartWay("error"), "internal"],
+    [new TranscriptionBlocked("content_filter"), "declined"],
+  ])("stores %o as %s", (err, code) => {
+    expect(understandFailureCode(err)).toBe(code);
+  });
+
+  // Preserve the existing retry policy for explicit service failures.
+  it("tries a block and a broken answer again, and stands by length", () => {
+    expect(verdictStands(new TranscriptionBlocked("content_filter"))).toBe(false);
+    expect(verdictStands(new StoppedPartWay("error"))).toBe(false);
+    expect(verdictStands(new CutShort())).toBe(true);
+  });
+
+  it("writes down that the truncated result was a transcription", () => {
+    const stored = storedFailure(
+      "understand",
+      new CutShort(),
+      "https://assets.invalid/video/a.mp4",
+      "transcribe",
+    );
+    expect(readTaskFailure(stored)).toEqual({
+      reason: "cut_short",
+      reading: "transcribe",
+    });
+  });
+
+  it("keeps the file it refused beside the reading", () => {
+    const stored = storedFailure(
+      "understand",
+      new MediaUnavailable("too-large", { bytes: 99 }),
+      "https://assets.invalid/audio/1_a.m4a",
+      "transcribe",
+    );
+    expect(readTaskFailure(stored)).toEqual({
+      reason: "understand_over_cap",
+      reading: "transcribe",
+      file: "1_a.m4a",
+      bytes: 99,
+    });
+  });
+
+  it("names no reading for an understanding", () => {
+    const stored = storedFailure("understand", new AnsweredNothing(), "https://assets.invalid/a.png");
+    expect(readTaskFailure(stored)).toEqual({ reason: "no_result" });
   });
 });

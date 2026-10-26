@@ -39,7 +39,7 @@ describe("a call turned away to steer the model", () => {
         errorCarrying({
           kind: "turned_away",
           forModel: "ask one thing at a time",
-          readerKey: FAILURE_LINES.generic,
+          readerKey: FAILURE_LINES.ourFault,
         }),
       ),
     ).toBeUndefined();
@@ -53,8 +53,8 @@ describe("a call turned away to steer the model", () => {
   it("puts each ending's own value on the wire", () => {
     expect(wireLineOf({ kind: "turned_away", forModel: "x" })).toBe(TURNED_AWAY);
     expect(
-      wireLineOf({ kind: "tool_failed", forModel: "x", readerKey: FAILURE_LINES.upstream }),
-    ).toBe(FAILURE_LINES.upstream);
+      wireLineOf({ kind: "tool_failed", forModel: "x", readerKey: FAILURE_LINES.busy }),
+    ).toBe(FAILURE_LINES.busy);
     expect(
       wireLineOf({ kind: "user_aborted", forModel: "x", readerKey: FAILURE_LINES.stopped }),
     ).toBe(FAILURE_LINES.stopped);

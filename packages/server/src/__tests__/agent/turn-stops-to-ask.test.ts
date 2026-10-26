@@ -5,20 +5,14 @@
  * A turn that asks the user something stops there and waits.
  *
  * The model asking a question is not a step on the way to an answer -- it is
- * the end of what this turn can do. Whatever the user says back opens the next
- * turn. A turn that carried on would be talking past a question it just asked,
- * and would spend the reader's credits doing it.
- *
- * Nothing about the model's own stream says which of these happened: the
- * question and a step that merely ran out of room end the same way, so the
- * reason is ours to keep. What stops it is the condition on `stopWhen`, and
- * what tells the two apart at the end is that same condition writing down
- * that it fired.
+ * where this segment of the turn stops, until the reader answers on the card
+ * or writes a message (inner#1542). `ask_user` has no `execute`, so the SDK
+ * stops the step at the call and the call is stored as `awaiting`; the panel
+ * is told on the wire which call it is, because it cannot work that out.
  *
  * Only the tool that asks something stops a turn. `search_images` puts
  * something on screen and the model is meant to keep writing around it,
- * several times in one turn if it likes; stopping on that would make the
- * first row of pictures a turn draws the last thing it says.
+ * several times in one turn if it likes.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -26,7 +20,7 @@ import { FINISHED, FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js
 import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>) => 1);
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 const logInfo = vi.fn();
 
 /**
@@ -106,7 +100,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       modelId: "test",
       instructions: { base: "system" },
       tools: {
-        ask_user: makeAskUserTool(),
+        ask_user: makeAskUserTool({ mediaUrlAllowed: () => false }),
         search_images: imageSearch,
       },
     }),
@@ -131,6 +125,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 
 vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   addMessage,
+  addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }),
   getMessages: vi.fn(async () => ({ messages: [], hasMore: false })),
 }));
 
@@ -138,20 +133,20 @@ vi.mock("@server/modules/conversation/conversation.service.js", () => ({
   titleForTurn: vi.fn(async () => null),
 }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({ foldIfOverBudget }));
+vi.mock("@server/agent/turn-fold.js", () => ({ foldIfTooLong }));
 vi.mock("@server/agent/context.js", () => ({ buildSystemPrompt: () => "system" }));
 
 const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
 /**
- * A call each real tool accepts, so that every one of them answers.
+ * A call each real tool accepts.
  *
- * The turn stops on a `tool-result`, so a call the schema refuses proves
- * nothing about which tool ends a turn -- it proves the arguments were wrong.
+ * A call the schema refuses proves nothing about which tool ends a turn -- it
+ * proves the arguments were wrong.
  */
 const VALID_INPUT: Record<string, Record<string, unknown>> = {
-  ask_user: { question: "要什么风格?", options: ["冷淡", "热闹"] },
+  ask_user: { questions: [{ header: "Style", question: "Which style?", options: [{ label: "Calm" }, { label: "Busy" }] }] },
   search_images: { query: "a subject" },
 };
 
@@ -225,68 +220,62 @@ describe("a turn that asked the user something", () => {
     vi.clearAllMocks();
   });
 
-  it("stops after the question instead of talking past it", async () => {
+  it("stops at the card instead of talking past it", async () => {
     const { modelCalls, answered } = await runTurn([asksFor("ask_user"), carriesOn]);
-    expect(answered).toEqual(new Set(["ask_user"]));
 
-    // One call, not two. The second entry in the script is what the model
-    // would have said next, and the point is that it never gets asked.
+    // One call, not two, and no result for the card: the reader gives it.
     expect(modelCalls).toBe(1);
+    expect(answered).toEqual(new Set());
   });
 
   it("stops on a question asked partway in, not only on the first thing it did", async () => {
-    // 问题很少出现在第一步:模型往往先查点什么,拿到结果才知道该问什么。判断
-    // 「问过没有」要是读错了步 —— 比如一直读第一步 —— 这一轮就不会停,而这个
-    // 分歧在只有一步的用例上完全看不出来:那时第一步就是最后一步,读哪个都对。
-    const { modelCalls, exit, answered } = await runTurn([
-      asksFor("search_images"),
-      asksFor("ask_user"),
-      carriesOn,
-    ]);
+    const { modelCalls, exit, answered } = await runTurn([asksFor("search_images"), asksFor("ask_user"), carriesOn]);
 
-    // 两次:第一次画了张卡片继续写,第二次问了问题就停在那儿。第三段是模型
-    // 拿到第三次机会才会说的话,而它不该拿到。
-    expect(answered).toEqual(new Set(["search_images", "ask_user"]));
+    expect(answered).toEqual(new Set(["search_images"]));
     expect(modelCalls).toBe(2);
     expect(exit).toBe("blocked");
   });
 
-  it("says on the wire that it is waiting, so the panel need not read the tool list", async () => {
-    // The panel draws a neutral line for this ending and no retry: it is not
-    // a fault. Which tool blocks is the one name `ASK_USER`, which lives in
-    // `@breatic/domain` -- a package the web build may not import. Telling it
-    // here is what keeps the list in one place instead of two.
+  it("says on the wire which call it is waiting on, so the panel draws a card rather than a call that came to nothing", async () => {
     const { sent } = await runTurn([asksFor("ask_user"), carriesOn]);
 
-    expect(sent).toContain("data-blocked");
+    expect(sent).toContain("data-ask-awaiting");
+    expect(sent).not.toContain("data-blocked");
+  });
+
+  it("names no card when the step that asked ended on a provider error, since the call is stored as never run", async () => {
+    const failedAfterAsking: ModelStreamPart[] = [
+      { type: "tool-call", toolCallId: "call-ask_user", toolName: "ask_user", input: JSON.stringify(VALID_INPUT.ask_user) },
+      { type: "error", error: new Error("upstream went away") },
+    ];
+    const { sent, exit } = await runTurn([failedAfterAsking]);
+
+    expect(exit).toBe("failed");
+    expect(sent).not.toContain("data-ask-awaiting");
   });
 
   it("says nothing of the sort on a turn that answered and stopped", async () => {
     const { sent } = await runTurn([carriesOn]);
 
-    expect(sent).not.toContain("data-blocked");
+    expect(sent).not.toContain("data-ask-awaiting");
   });
 
-  it("says in the log that this is why it stopped", async () => {
-    const { exit } = await runTurn([asksFor("ask_user"), carriesOn]);
+  it("goes on when the card was refused for its arguments, so the model can read why and fix it", async () => {
+    const refused: ModelStreamPart[] = [
+      { type: "tool-call", toolCallId: "call-bad", toolName: "ask_user", input: JSON.stringify({ questions: [] }) },
+      FINISHED_ASKING_FOR_A_TOOL,
+    ];
+    const { modelCalls, exit, sent } = await runTurn([refused, carriesOn]);
 
-    // Not "completed": a turn waiting on an answer and a turn that finished
-    // what it had to say read the same in every other respect, and the
-    // difference is what an on-call reader is looking at this line for. The
-    // word is the one the old loop used, so a search for it still finds
-    // both.
-    expect(exit).toBe("blocked");
+    expect(modelCalls).toBe(2);
+    expect(exit).toBe("completed");
+    expect(sent).not.toContain("data-ask-awaiting");
   });
 
   it("keeps going after a tool that only shows the user something", async () => {
-    const { modelCalls, exit, answered } = await runTurn([
-      asksFor("search_images"),
-      carriesOn,
-    ]);
+    const { modelCalls, exit, answered } = await runTurn([asksFor("search_images"), carriesOn]);
     expect(answered).toEqual(new Set(["search_images"]));
 
-    // Two calls: the model drew a card and then carried on writing around it,
-    // which is what those tools are for.
     expect(modelCalls).toBe(2);
     expect(exit).toBe("completed");
   });

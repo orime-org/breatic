@@ -15,12 +15,18 @@
 import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
-import type { Instructions } from "@domain/agent/instructions.js";
+import { instructionsForAgentMemory, type Instructions } from "@domain/agent/instructions.js";
+import { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
+import { resolveModelContextWindow } from "@domain/agent/model-context-window.js";
+import type { AgentPicturePolicy } from "@domain/agent/project-agent-request.js";
 import {
   BASELINE_TOOLS,
   CANVAS_TOOLS,
   buildToolSet,
+  type ToolContext,
 } from "@domain/agent/tools/index.js";
+
+export { instructionsForAgentMemory } from "@domain/agent/instructions.js";
 
 /** What a caller tells the factory about the run it is about to start. */
 export interface AgentConfigRequest {
@@ -33,6 +39,10 @@ export interface AgentConfigRequest {
   basePrompt: string;
   /** The conversation and project layers, when the caller has any. */
   memoryContext?: MemoryContext;
+  /** What the turn knows that a tool needs when it is built. */
+  toolContext?: ToolContext;
+  /** Stop this turn's wait without cancelling the shared model-directory query. */
+  signal?: AbortSignal;
 }
 
 /** The three things, resolved. */
@@ -48,30 +58,54 @@ export interface ResolvedAgentConfig {
   instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
+  /** Fixed native-picture capability shared by messages and tools for this turn. */
+  seesPictures: boolean;
+  /** Fixed request-projection policy, also included in the history prefix seed. */
+  picturePolicy?: AgentPicturePolicy;
+  /**
+   * The main model's context window in tokens: the smallest endpoint's, or
+   * `context_window_fallback_tokens` when the directory could not say.
+   */
+  contextWindow: number;
+  /** Set when `contextWindow` is the configured fallback, so the caller can say so. */
+  contextWindowFallback?: true;
 }
 
 /**
  * Resolve model, instructions and tools for one agent run.
  * @param request - What the caller knows about this run.
  * @returns The three things, decided in one place.
- * @throws {never} Never.
+ * @throws {unknown} The turn's stop reason when capability resolution is cancelled.
  */
-export function buildAgentConfig(
+export async function buildAgentConfig(
   request: AgentConfigRequest,
-): ResolvedAgentConfig {
-  const { basePrompt, memoryContext } = request;
-
+): Promise<ResolvedAgentConfig> {
+  const { basePrompt, memoryContext, toolContext } = request;
+  const config = getAgentConfig();
+  const modelId = config.default_model;
+  const catalogPolicy = {
+    timeoutMs: config.model_catalog_timeout_ms,
+    ttlMs: config.model_catalog_ttl_ms,
+    retryMs: config.model_catalog_retry_ms,
+  };
+  const [seesPictures, resolvedWindow] = await Promise.all([
+    resolveModelPictureCapability(modelId, { override: config.main_model_sees_pictures, ...catalogPolicy }, request.signal),
+    resolveModelContextWindow(modelId, catalogPolicy, request.signal),
+  ]);
+  const picturePolicy: AgentPicturePolicy = {
+    seesPictures,
+    maxPictures: config.chat_pictures_max,
+    maxBytes: config.chat_pictures_max_bytes,
+    pictureTokensEstimate: config.picture_tokens_estimate,
+  };
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
-
   return {
-    modelId: getAgentConfig().default_model,
-    instructions: {
-      base: basePrompt,
-      ...(memoryContext?.projectMemory ? { project: `## Project Context\n${memoryContext.projectMemory}` } : {}),
-      ...(memoryContext?.conversationMemory
-        ? { conversation: `## Conversation Memory\n${memoryContext.conversationMemory}` }
-        : {}),
-    },
-    tools: buildToolSet(toolNames),
+    modelId,
+    instructions: instructionsForAgentMemory(basePrompt, memoryContext),
+    tools: buildToolSet(toolNames, { ...toolContext, mediaUrlAllowed: toolContext?.mediaUrlAllowed ?? (() => false), seesPictures }),
+    seesPictures,
+    picturePolicy,
+    contextWindow: resolvedWindow ?? config.context_window_fallback_tokens,
+    ...(resolvedWindow === undefined ? { contextWindowFallback: true as const } : {}),
   };
 }
