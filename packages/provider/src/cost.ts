@@ -34,6 +34,11 @@ export type Cost =
  * @returns The cost.
  */
 export async function lookupCost(config: ProviderConfig, options: ProviderOptions, lookup: CostLookup, lastAttempt: boolean): Promise<Cost> {
+  /**
+   * The answer when the upstream did not say: pending, or missing on the last attempt.
+   * @param reason - Why.
+   * @returns The cost.
+   */
   const unanswered = (reason: string): Cost => (lastAttempt ? { state: "missing", reason } : { state: "pending", lookup });
   const decl = config.upstreams[lookup.upstream];
   if (decl === undefined) return { state: "missing", reason: `unknown upstream ${lookup.upstream}` };

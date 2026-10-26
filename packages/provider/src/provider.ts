@@ -51,9 +51,19 @@ export interface Provider {
  */
 export function createProvider(options: ProviderOptions): Provider {
   const config = parseProviderConfig(options.config);
+  /**
+   * A model's upstreams in effective weight order, each with its key state.
+   * @param model - Our model id.
+   * @returns The availability.
+   */
   const availability = (model: string): Availability => ({
     upstreams: candidatesOf(config, model, options.keyOf).map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })),
   });
+  /**
+   * A model's pricing on each upstream.
+   * @param model - Our model id.
+   * @returns The rules.
+   */
   const pricingRules = (model: string): PricingRules => ({ model, upstreams: (config.models[model] ?? []).map(pricingOf) });
   return {
     options,

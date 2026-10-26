@@ -12,6 +12,7 @@ export class NoUpstreamAvailable extends Error {
   readonly reasons: readonly UnavailableReason[];
 
   /**
+   * Record what the error carries.
    * @param model - Our model id.
    * @param reasons - One entry per upstream that was skipped or failed, in try order.
    */
@@ -29,6 +30,7 @@ export class UpstreamRequestRejected extends Error {
   readonly upstream: string;
 
   /**
+   * Record what the error carries.
    * @param model - Our model id.
    * @param upstream - The upstream that refused, or the one asked for.
    * @param message - What was refused.
@@ -46,6 +48,7 @@ export class SendNotAccepted extends Error {
   readonly upstream: string;
 
   /**
+   * Record what the error carries.
    * @param upstream - The upstream that did not accept it.
    * @param cause - The failure.
    */
@@ -63,6 +66,7 @@ export class UpstreamTaskFailed extends Error {
   readonly upstreamError: string;
 
   /**
+   * Record what the error carries.
    * @param upstream - The upstream.
    * @param upstreamError - What it said.
    */
@@ -77,6 +81,7 @@ export class UpstreamTaskFailed extends Error {
 /** The caller's deadline had passed before a request that needs it could start. */
 export class DeadlinePassed extends Error {
   /**
+   * Record what the error carries.
    * @param deadlineAt - The deadline, in epoch milliseconds.
    */
   constructor(deadlineAt: number) {

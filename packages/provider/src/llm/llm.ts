@@ -65,6 +65,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     retryAfter: 0,
   };
 
+  /**
+   * An upstream's adapter kind.
+   * @param upstream - The upstream.
+   * @returns Its kind.
+   */
   const kindOf = (upstream: string): string => config.upstreams[upstream]!.kind;
 
   /**
@@ -117,6 +122,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
     // Cheapest by unit price: input first, then output; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
+    /**
+     * An upstream's input and output unit prices.
+     * @param c - The upstream.
+     * @returns Both prices; infinite when unknown.
+     */
     const price = (c: Candidate): [number, number] => {
       const p = kindOf(c.upstream) === "openrouter" ? undefined : config.llm.prices[modelId];
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
@@ -253,7 +263,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const temperature = wants.temperature === undefined || isClaude(modelId) ? {} : { temperature: wants.temperature };
       return {
         model,
-        options: { providerOptions: providerOptionsFor(plan, modelId, wants) as Record<string, Record<string, JSONValue>>, ...temperature },
+        options: { providerOptions: providerOptionsFor(plan, modelId, wants), ...temperature },
         system(parts: SystemParts): SystemModelMessage[] {
           const marks: Record<string, VendorOptions> = {};
           for (const { upstream } of plan.order) {
@@ -301,7 +311,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             maxOutputTokens: request.maxOutputTokens,
             maxRetries: 0,
             abortSignal,
-            ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) as Record<string, JSONValue> } } : {}),
+            ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
           });
         },
       });

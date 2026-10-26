@@ -85,6 +85,7 @@ export class SwitchingModel implements ModelV4 {
   private pinned: Candidate | undefined;
 
   /**
+   * Build the model of one prepared call.
    * @param setup - The call's route and upstream models.
    */
   constructor(private readonly setup: SwitchingSetup) {
@@ -135,7 +136,7 @@ export class SwitchingModel implements ModelV4 {
    * One model call, whole.
    * @param options - The AI SDK's call options.
    * @returns The answer, its metadata naming the upstream that served it.
-   * @throws {unknown} As {@link attempt}.
+   * @throws {unknown} As `attempt` throws.
    */
   async doGenerate(options: CallOptions): Promise<GenerateResult> {
     const { value, servedBy } = await this.attempt((c) => Promise.resolve(this.setup.modelFor(c).doGenerate(options)));
@@ -148,7 +149,7 @@ export class SwitchingModel implements ModelV4 {
    * One model call, streamed; parts before the first content are held until it arrives.
    * @param options - The AI SDK's call options.
    * @returns The stream, its finish naming the upstream that served it.
-   * @throws {unknown} As {@link attempt}.
+   * @throws {unknown} As `attempt` throws.
    */
   async doStream(options: CallOptions): Promise<StreamResult> {
     const switching = this.pinned === undefined;

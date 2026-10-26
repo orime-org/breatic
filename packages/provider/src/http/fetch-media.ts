@@ -17,6 +17,7 @@ export class MediaRefused extends Error {
   readonly status: number | undefined;
 
   /**
+   * Record what the error carries.
    * @param kind - Why.
    * @param status - The status code, for an address that answered with one we do not read.
    */

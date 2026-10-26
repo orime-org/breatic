@@ -85,13 +85,18 @@ export function isPricingRule(value: unknown): value is PricingRule {
 }
 
 /**
- * Whether a value is one upstream's pricing as {@link pricingRulesOf} writes it.
+ * Whether a value is one upstream's pricing as the provider writes it.
  * @param value - The value.
  * @returns True for a well-formed entry.
  */
 function isUpstreamPricing(value: unknown): value is UpstreamPricing {
   if (typeof value !== "object" || value === null) return false;
   const entry = value as Record<string, unknown>;
+  /**
+   * Whether a field is absent or a string.
+   * @param v - The field.
+   * @returns True when it is.
+   */
   const optionalString = (v: unknown): boolean => v === undefined || typeof v === "string";
   return typeof entry.upstream === "string"
     && optionalString(entry.prompt_field)
@@ -155,6 +160,11 @@ function reads(formulas: readonly string[], field: string): boolean {
  * @throws {Error} When a formula does not produce a finite price.
  */
 async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<Estimate> {
+  /**
+   * The upstream field one of our params is priced under.
+   * @param param - Our param.
+   * @returns The field.
+   */
   const fieldOf = (param: string): string => rule.fields[param] ?? param;
   const formulas = [rule.pricing.formula, ...rule.steps.map((s) => s.pricing?.formula ?? "")];
   const fields: Record<string, unknown> = {};
@@ -168,6 +178,12 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<
   const ownReused = rule.reused_by !== undefined && isPresent(input.params[rule.reused_by]);
   const stepReused = rule.steps.some((s) => s.reused === true && (s.for_param === undefined || isPresent(input.params[s.for_param])));
 
+  /**
+   * The run's price with the prompt field set to one value.
+   * @param prompt - What the prompt field carries.
+   * @param skippable - Whether to count the calls a reused source skips.
+   * @returns USD.
+   */
   const priceAt = async (prompt: string, skippable: boolean): Promise<number> => {
     if (promptField !== undefined) fields[promptField] = prompt;
     let usd = skippable || !ownReused ? await priceUsd(contractOf(rule.pricing), fields, durations) : 0;

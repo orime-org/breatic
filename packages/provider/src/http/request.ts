@@ -62,6 +62,10 @@ const NOT_SENT_CODES = new Set([
 function codesOf(error: unknown): string[] {
   const codes: string[] = [];
   const seen = new Set<unknown>();
+  /**
+   * Collect the codes of one value and what it wraps.
+   * @param value - The value.
+   */
   const walk = (value: unknown): void => {
     if (typeof value !== "object" || value === null || seen.has(value)) return;
     seen.add(value);
@@ -92,7 +96,12 @@ function classify(url: string, error: unknown): NotSent | NoAnswer {
  */
 function boundSignal(options: SendOptions): { signal: AbortSignal; dispose: () => void } {
   const controller = new AbortController();
-  const onAbort = (): void => controller.abort();
+  /**
+   * End the delivery.
+   */
+  const onAbort = (): void => {
+    controller.abort();
+  };
   options.signal?.addEventListener("abort", onAbort, { once: true });
   if (options.signal?.aborted === true) controller.abort();
   const timer = options.deadlineAt === undefined
@@ -150,6 +159,9 @@ async function wait(ms: number, options: SendOptions, url: string): Promise<void
   try {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(resolve, ms);
+      /**
+       * End the wait early.
+       */
       const stop = (): void => {
         clearTimeout(timer);
         reject(new Aborted(url));

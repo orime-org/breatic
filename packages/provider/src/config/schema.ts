@@ -121,6 +121,7 @@ export class ProviderConfigError extends Error {
   readonly problems: readonly string[];
 
   /**
+   * Record what the error carries.
    * @param problems - One line per problem.
    */
   constructor(problems: readonly string[]) {
@@ -259,6 +260,12 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   for (const name of Object.keys(raw.routing?.models ?? {})) {
     if (models[name] === undefined) problems.push(`${name}: the override names a model that has no bindings`);
   }
+  /**
+   * One LLM route with the deployment's weights, its problems reported.
+   * @param route - The route.
+   * @param label - What problems call it.
+   * @returns The route with effective weights, lowest first.
+   */
   const llmRoute = (route: LlmRoute, label: string): LlmRoute => {
     const upstreams = overridden(label, route.upstreams, raw.routing?.llm?.[route.prefix]?.weights, problems);
     checkList(label, upstreams, raw.upstreams, problems);

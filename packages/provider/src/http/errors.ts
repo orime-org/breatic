@@ -4,6 +4,7 @@
 /** The request never left this machine: DNS failed or the connection was refused. */
 export class NotSent extends Error {
   /**
+   * Record what the error carries.
    * @param url - Where it was going.
    * @param cause - The platform error.
    */
@@ -16,6 +17,7 @@ export class NotSent extends Error {
 /** The request was sent but no complete answer came back: a timeout or a reset. Whether the upstream accepted it is unknown. */
 export class NoAnswer extends Error {
   /**
+   * Record what the error carries.
    * @param url - Where it went.
    * @param cause - The platform error.
    */
@@ -32,6 +34,7 @@ export class HttpStatus extends Error {
   readonly retryAfterMs: number | undefined;
 
   /**
+   * Record what the error carries.
    * @param url - Where it went.
    * @param status - The response status.
    * @param bodySnippet - The start of the body, for logs.
@@ -49,6 +52,7 @@ export class HttpStatus extends Error {
 /** The body was larger than the caller allows. */
 export class BodyTooLarge extends Error {
   /**
+   * Record what the error carries.
    * @param url - Where it came from.
    * @param limit - The allowed bytes.
    */
@@ -61,6 +65,7 @@ export class BodyTooLarge extends Error {
 /** The caller's signal fired or its deadline passed. */
 export class Aborted extends Error {
   /**
+   * Record what the error carries.
    * @param url - Where it was going.
    */
   constructor(url: string) {

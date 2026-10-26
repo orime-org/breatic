@@ -136,6 +136,11 @@ export async function ask(reach: Reach, predictionId: string, bounds: RequestBou
  * @returns The cost and anything to log.
  */
 export async function billed(reach: Reach, predictionId: string, bounds: RequestBounds, lastAttempt: boolean): Promise<{ cost: Cost; warnings: MediaWarning[] }> {
+  /**
+   * The answer when billing did not say: pending, or missing on the last attempt.
+   * @param reason - Why.
+   * @returns The cost.
+   */
   const unknown = (reason: string): Cost =>
     lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
   let body: unknown;
