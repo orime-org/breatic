@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Euler, Quaternion } from 'three';
 import { SceneObjectValuesSchema, type SceneObject } from '@breatic/shared';
 import type { SceneEditorProps } from '@web/spaces/three-d/SceneEditor';
-import type { SceneField } from '@web/spaces/three-d/SceneField';
+import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 
@@ -39,10 +39,12 @@ function inspectorGeometry(object: SceneObject): Record<'position' | 'rotation' 
  * @param root0.namedPeers - Resolved collaborator names and selection hints.
  * @param root0.spaceId - Space that owns field blur and visibility.
  * @param root0.Field - Eager field control keeping shared input helpers outside this lazy geometry module.
+ * @param root0.fieldDrafts - Temporary input retained by the owning editor.
+ * @param root0.onFieldDraftChange - Updates the current object's temporary field input.
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
-export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & { Field: typeof SceneField }): React.JSX.Element {
+export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, fieldDrafts, onFieldDraftChange }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & { Field: typeof SceneField }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
@@ -94,9 +96,11 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
   return <div className='space-y-4 p-4' data-testid='scene-properties-panel'>
     {selected.length === 0 ? <p className='text-xs text-muted-foreground'>{t('spaces.threeD.selectObject')}</p> : <>
       {object && geometry ? <><Field key={`${object.id}:name`} label={t('spaces.threeD.name')} value={object.name} disabled={!mutable} spaceId={spaceId}
+        draftKey={`${object.id}:name`} draft={fieldDrafts.get(`${object.id}:name`)} onFieldDraftChange={onFieldDraftChange}
         maxLength={SceneObjectValuesSchema.shape.name.maxLength ?? undefined} onCommit={commits.name} />
       {(['position', 'rotation', 'scale'] as const).map((field, fieldIndex) => <fieldset key={field} className='min-w-0 space-y-2'><legend className='text-xs font-medium'>{geometryLabels[field]}</legend>
         <div className='grid grid-cols-3 gap-1'>{(['X', 'Y', 'Z'] as const).map((axis, index) => <Field key={`${object.id}:${field}:${axis}`}
+          draftKey={`${object.id}:${field}:${axis}`} draft={fieldDrafts.get(`${object.id}:${field}:${axis}`)} onFieldDraftChange={onFieldDraftChange}
           label={axis} numeric value={numberText(geometry[field][index])} disabled={!mutable} spaceId={spaceId} onCommit={commits.geometry[fieldIndex][index]} />)}</div>
       </fieldset>)}</> : <><p className='text-xs font-medium'>{t('spaces.threeD.selectedCount', { count: selected.length })}</p><p className='text-xs text-muted-foreground'>{t('spaces.threeD.multiTransform')}</p>
         {(['position', 'rotation', 'scale'] as const).map((field) => <p key={field} className='text-xs'>{geometryLabels[field]}: {geometries.every((item) => JSON.stringify(item[field]) === JSON.stringify(geometries[0]?.[field])) ? geometries[0]?.[field].map(numberText).join(', ') : t('spaces.threeD.mixed')}</p>)}</>}

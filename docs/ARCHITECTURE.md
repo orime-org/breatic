@@ -528,6 +528,13 @@ The scene schema supplies its existing length limit. The shared
 `lib/inline-edit-exit.ts` handles composition and held-key exits;
 `lib/blur-left.ts` keeps drafts when the browser loses focus or the Space hides.
 The inspector submits accepted names through the same scene command owner.
+`SceneEditor` owns temporary text, validation and editing state for the name and
+nine transform inputs, keyed by object and field. Activity hiding releases the
+floating panel while retaining that input state; explicit dismissal, another
+panel or overlay, selection changes and editor disposal end the corresponding
+input. The panel portals into its scene allocation so Space-tab activation
+preserves field focus until Activity hides it. These drafts remain temporary
+interface state and do not enter the shared document or browser storage.
 
 ### Brand home links
 

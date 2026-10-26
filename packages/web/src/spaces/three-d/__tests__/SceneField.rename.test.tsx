@@ -10,7 +10,7 @@ import { SceneObjectValuesSchema, t, type SceneObject } from '@breatic/shared';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
-import { SceneField } from '@web/spaces/three-d/SceneField';
+import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const owners: Array<{ doc: Y.Doc; session: SceneSession }> = [];
@@ -24,8 +24,18 @@ const owners: Array<{ doc: Y.Doc; session: SceneSession }> = [];
  */
 function BoundInspector({ session }: { session: SceneSession }): React.JSX.Element {
   const snapshot = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
+  const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
+  const onFieldDraftChange = (key: string, draft: SceneFieldDraft | undefined): void => {
+    setFieldDrafts((previous) => {
+      const next = new Map(previous);
+      if (draft) next.set(key, draft);
+      else next.delete(key);
+      return next;
+    });
+  };
   return <div data-testid='scene-right-panel' tabIndex={-1}>
     <SceneInspector spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
+      fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
       readObjects={() => readSceneDocument(session.doc).objects} />
     <input autoComplete='off' aria-label='Next field' />
   </div>;

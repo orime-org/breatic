@@ -41,7 +41,7 @@ function setup(): { session: SceneSession; doc: Y.Doc; page: ReturnType<typeof r
   const page = render(tree(session, client)); return { session, doc, page, client };
 }
 function tree(session: SceneSession, client: QueryClient, mode: 'visible' | 'hidden' = 'visible'): React.JSX.Element {
-  return <QueryClientProvider client={client}><TooltipProvider><React.Activity mode={mode}><Bound session={session} /></React.Activity></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={client}><TooltipProvider><React.Activity mode={mode}><div data-space-outlet='scene'><Bound session={session} /></div></React.Activity></TooltipProvider></QueryClientProvider>;
 }
 // jsdom clears its focused element before dispatching blur, unlike the browser.
 beforeEach(() => { vi.spyOn(document, 'hasFocus').mockReturnValue(true); });
@@ -126,12 +126,12 @@ describe('approved scene layout (inner#1724)', () => {
     const { session, doc } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => session.select(ID, false));
     const input = await screen.findByLabelText(t('spaces.threeD.name'));
-    fireEvent.focus(input); input.focus(); fireEvent.change(input, { target: { value: 'Uncommitted draft' } });
+    fireEvent.focus(input); act(() => input.focus()); fireEvent.change(input, { target: { value: 'Uncommitted draft' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(input).toHaveValue('Figure');
     expect(screen.getByTestId('scene-right-panel')).toBeVisible();
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)?.name).toBe('Figure');
-    const canvas = screen.getByTestId('scene-native-boundary'); canvas.focus();
+    const canvas = screen.getByTestId('scene-native-boundary'); act(() => canvas.focus());
     fireEvent.keyDown(canvas, { key: 'Escape' });
     expect(screen.queryByTestId('scene-right-panel')).toBeNull();
     expect(session.getSnapshot().selectedIds).toEqual([ID]);
@@ -150,7 +150,7 @@ describe('approved scene layout (inner#1724)', () => {
   it('keeps focus in the shared panel when an object row opens its properties', async () => {
     setup(); await screen.findByTestId('scene-native-boundary');
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));
-    const row = await screen.findByTestId(`scene-object-${ID}`); row.focus();
+    const row = await screen.findByTestId(`scene-object-${ID}`); act(() => row.focus());
     fireEvent.click(row);
     expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Figure');
     expect(screen.getByTestId('scene-right-panel')).toHaveFocus();
@@ -165,7 +165,7 @@ describe('approved scene layout (inner#1724)', () => {
     const { session } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => initial.forEach((id) => session.select(id, true)));
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));
-    const row = await screen.findByTestId(`scene-object-${target}`); row.focus();
+    const row = await screen.findByTestId(`scene-object-${target}`); act(() => row.focus());
     fireEvent.click(row, { shiftKey: shift });
     expect(session.getSnapshot().selectedIds).toEqual(selected);
     if (selected.length === 0) {
@@ -188,7 +188,7 @@ describe('approved scene layout (inner#1724)', () => {
   ])('leaves the field draft to the input method for $key (composing=$isComposing, code=$keyCode)', async (event) => {
     const { session, doc } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => session.select(ID, false));
-    const input = await screen.findByLabelText(t('spaces.threeD.name')); input.focus();
+    const input = await screen.findByLabelText(t('spaces.threeD.name')); act(() => input.focus());
     fireEvent.change(input, { target: { value: 'Composition draft' } });
     fireEvent.keyDown(input, event);
     expect(input).toHaveFocus();
@@ -202,9 +202,114 @@ describe('approved scene layout (inner#1724)', () => {
     const { session, page, client } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => session.select(ID, false)); await screen.findByTestId('scene-right-panel');
     await act(async () => page.rerender(tree(session, client, 'hidden')));
-    expect(screen.getByTestId('scene-right-panel')).not.toBeVisible();
+    expect(screen.queryByTestId('scene-right-panel')).toBeNull();
     expect(session.getSnapshot().selectedIds).toEqual([ID]);
     expect(useUIStore.getState().activeOverlayId).toBeNull();
+  });
+  it('retains an unfinished name across Activity hiding without committing it', async () => {
+    const { session, doc, page, client } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const input = await screen.findByLabelText(t('spaces.threeD.name'));
+    expect(input.closest('[data-space-outlet]')).toHaveAttribute('data-space-outlet', 'scene');
+    act(() => input.focus()); fireEvent.change(input, { target: { value: 'Unsubmitted figure name' } });
+    await act(async () => page.rerender(tree(session, client, 'hidden')));
+    expect(useUIStore.getState().activeOverlayId).toBeNull();
+    await act(async () => page.rerender(tree(session, client)));
+    fireEvent.click(screen.getByTestId('scene-properties-trigger'));
+    const restored = await screen.findByLabelText(t('spaces.threeD.name'));
+    expect(restored).toHaveValue('Unsubmitted figure name');
+    expect(readSceneDocument(doc).objects[0]?.name).toBe('Figure');
+    expect(session.history.undoStack).toHaveLength(0);
+    act(() => restored.focus()); fireEvent.keyDown(restored, { key: 'Enter' });
+    expect(readSceneDocument(doc).objects[0]?.name).toBe('Unsubmitted figure name');
+    expect(session.history.undoStack).toHaveLength(1);
+  });
+  it.each((['position', 'rotation', 'scale'] as const).flatMap((field) => ['X', 'Y', 'Z'].map((axis) => ({ field, axis }))))(
+    'retains the rejected $field $axis draft and error across Activity hiding', async ({ field, axis }) => {
+      const { session, doc, page, client } = setup(); await screen.findByTestId('scene-native-boundary');
+      act(() => session.select(ID, false));
+      const group = within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t(`spaces.threeD.${field}`) });
+      const input = within(group).getByLabelText(axis, { exact: true });
+      act(() => input.focus()); fireEvent.change(input, { target: { value: field === 'scale' ? '-2' : 'invalid' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      expect(input).toHaveAttribute('aria-invalid', 'true');
+      const committed = Y.encodeStateAsUpdate(doc);
+      await act(async () => page.rerender(tree(session, client, 'hidden')));
+      await act(async () => page.rerender(tree(session, client)));
+      fireEvent.click(screen.getByTestId('scene-properties-trigger'));
+      const restoredGroup = within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t(`spaces.threeD.${field}`) });
+      const restored = within(restoredGroup).getByLabelText(axis, { exact: true });
+      expect(restored).toHaveValue(field === 'scale' ? '-2' : 'invalid');
+      expect(restored).toHaveAttribute('aria-invalid', 'true');
+      expect(Y.encodeStateAsUpdate(doc)).toEqual(committed);
+      expect(session.history.undoStack).toHaveLength(0);
+      act(() => restored.focus()); fireEvent.keyDown(restored, { key: 'Escape' });
+      expect(restored).toHaveValue(field === 'scale' ? '1' : '0');
+      expect(restored).toHaveAttribute('aria-invalid', 'false');
+    },
+  );
+  it.each(['close', 'toggle', 'tasks', 'objects'] as const)('discards rejected input when explicitly leaving properties with %s', async (exit) => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const group = within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t('spaces.threeD.scale') });
+    const input = within(group).getByLabelText('X', { exact: true });
+    act(() => input.focus()); fireEvent.change(input, { target: { value: '-2' } }); fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(exit === 'close' ? screen.getByRole('button', { name: t('spaces.threeD.closePanel') }) : screen.getByTestId(`scene-${exit === 'toggle' ? 'properties' : exit}-trigger`));
+    fireEvent.click(screen.getByTestId('scene-properties-trigger'));
+    const restored = within(within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t('spaces.threeD.scale') })).getByLabelText('X', { exact: true });
+    expect(restored).toHaveValue('1'); expect(restored).toHaveAttribute('aria-invalid', 'false');
+    expect(session.history.undoStack).toHaveLength(0);
+  });
+  it('drops the previous selection draft when another object becomes selected', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const input = await screen.findByLabelText(t('spaces.threeD.name')); act(() => input.focus());
+    fireEvent.change(input, { target: { value: 'Previous selection draft' } });
+    act(() => session.select(SECOND, false));
+    expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Box');
+    act(() => session.select(ID, false));
+    expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Figure');
+    expect(session.history.undoStack).toHaveLength(0);
+  });
+  it('ends a rejected field draft when a different exclusive overlay takes ownership', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const group = within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t('spaces.threeD.scale') });
+    const input = within(group).getByLabelText('X', { exact: true });
+    act(() => input.focus()); fireEvent.change(input, { target: { value: '-2' } }); fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: t('spaces.threeD.generate') }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t('common.cancel') }));
+    fireEvent.click(screen.getByTestId('scene-properties-trigger'));
+    const restored = within(within(await screen.findByTestId('scene-properties-panel')).getByRole('group', { name: t('spaces.threeD.scale') })).getByLabelText('X', { exact: true });
+    expect(restored).toHaveValue('1'); expect(restored).toHaveAttribute('aria-invalid', 'false');
+  });
+  it.each(['role', 'lock'] as const)('keeps retained input subordinate to a hidden %s change', async (change) => {
+    const { session, doc, page, client } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const input = await screen.findByLabelText(t('spaces.threeD.name')); act(() => input.focus());
+    fireEvent.change(input, { target: { value: 'Retained draft' } });
+    await act(async () => page.rerender(tree(session, client, 'hidden')));
+    act(() => {
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true);
+      if (change === 'lock') applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol('peer'), true);
+      if (change === 'role') session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
+    });
+    await act(async () => page.rerender(tree(session, client)));
+    fireEvent.click(screen.getByTestId('scene-properties-trigger'));
+    const restored = await screen.findByLabelText(t('spaces.threeD.name'));
+    expect(restored).toHaveValue('Retained draft'); expect(restored).toBeDisabled();
+    expect(readSceneDocument(doc).objects[0]?.name).toBe('Peer name');
+    expect(session.history.undoStack).toHaveLength(0);
+  });
+  it('drops temporary input when the editor owner unmounts', async () => {
+    const { session, page, client } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const input = await screen.findByLabelText(t('spaces.threeD.name')); act(() => input.focus());
+    fireEvent.change(input, { target: { value: 'Closed editor draft' } });
+    page.unmount();
+    render(tree(session, client));
+    expect(await screen.findByLabelText(t('spaces.threeD.name'))).toHaveValue('Figure');
+    expect(session.history.undoStack).toHaveLength(0);
   });
   it('retains viewer browsing and disables shared mutation controls', async () => {
     const { session } = setup(); await screen.findByTestId('scene-native-boundary');
@@ -221,7 +326,7 @@ describe('approved scene layout (inner#1724)', () => {
     act(() => session.select(ID, false));
     const inspector = await screen.findByTestId('scene-properties-panel');
     const field = within(within(inspector).getByRole('group', { name: t('spaces.threeD.position') })).getByLabelText('X', { exact: true });
-    field.focus(); fireEvent.change(field, { target: { value: '2.5' } });
+    act(() => field.focus()); fireEvent.change(field, { target: { value: '2.5' } });
     act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [0, 7, 0] }] }, Symbol('peer'), true); });
     await act(async () => { fireEvent.blur(field); });
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)?.position).toEqual([2.5, 7, 0]);
@@ -232,7 +337,7 @@ describe('approved scene layout (inner#1724)', () => {
     act(() => session.select(ID, false)); await screen.findByTestId('scene-right-panel');
     act(() => { session.beginGesture(); session.previewGesture([{ id: ID, position: [9, 0, 0] }]); });
     act(() => { applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, name: 'Peer name' }] }, Symbol('peer'), true); });
-    const canvas = screen.getByTestId('scene-native-boundary'); canvas.focus();
+    const canvas = screen.getByTestId('scene-native-boundary'); act(() => canvas.focus());
     fireEvent.keyDown(canvas, { key: 'Escape' });
     expect(session.getSnapshot().gestureActive).toBe(false);
     expect(session.getSnapshot().selectedIds).toEqual([ID]);

@@ -16,7 +16,7 @@ import { toast } from '@web/lib/toast';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
-import { SceneField } from '@web/spaces/three-d/SceneField';
+import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
@@ -72,6 +72,19 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const [rendererRevision, setRendererRevision] = React.useState(0);
   const [rendererFailed, setRendererFailed] = React.useState(false);
   const [modelStates, setModelStates] = React.useState<ReadonlyMap<string, SceneModelState>>(new Map());
+  const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
+  /**
+   * Retain temporary field input for this Activity's lifetime, outside its floating panel.
+   * @throws {never} Never.
+   */
+  const onFieldDraftChange = React.useCallback((key: string, draft: SceneFieldDraft | undefined): void => {
+    setFieldDrafts((previous) => {
+      const next = new Map(previous);
+      if (draft) next.set(key, draft);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
   const pendingFocusIds = React.useRef(new Set<string>());
   const reportedCommandError = React.useRef<SceneSessionSnapshot['commandError']>(null);
   const [initialView] = React.useState<SceneView>(() => {
@@ -181,6 +194,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const returnTarget = React.useRef<HTMLElement | null>(null);
   const [panel, setPanel] = React.useState<ScenePanel>('properties');
   const [rightOpen, setRightOpen] = useExclusiveOverlay(`scene:${spaceId}:right`);
+  const wasRightOpen = React.useRef(false);
+  React.useEffect(() => {
+    if (wasRightOpen.current && !rightOpen) setFieldDrafts(new Map());
+    wasRightOpen.current = rightOpen;
+  }, [rightOpen]);
   const [minimap, setMinimap] = React.useState(true);
   const [overviewHost, setOverviewHost] = React.useState<HTMLDivElement | null>(null);
   const selection = JSON.stringify([...snapshot.selectedIds].sort());
@@ -188,13 +206,18 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   React.useEffect(() => {
     if (selection === lastSelection.current) return;
     lastSelection.current = selection;
+    setFieldDrafts(new Map());
     if (snapshot.selectedIds.length > 0) {
       automaticPanel.current = true;
       returnTarget.current = stage.current?.querySelector('canvas') ?? null;
       setPanel('properties'); setRightOpen(true);
     } else if (panel === 'properties') setRightOpen(false);
   }, [selection, snapshot.selectedIds.length, panel, setRightOpen]);
-  React.useEffect(() => () => setRightOpen(false), [setRightOpen]);
+  React.useEffect(() => (): void => {
+    // Activity hiding releases the overlay while the editor retains unfinished input.
+    wasRightOpen.current = false;
+    setRightOpen(false);
+  }, [setRightOpen]);
   /**
    * Switch a right panel while recording a valid keyboard return target.
    * @param next - The requested right panel.
@@ -202,6 +225,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
    */
   const showPanel = React.useCallback((next: ScenePanel): void => {
     automaticPanel.current = false;
+    if (panel !== next || rightOpen) setFieldDrafts(new Map());
     returnTarget.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (panel === next && rightOpen) { setRightOpen(false); return; }
     setPanel(next); setRightOpen(true);
@@ -296,11 +320,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, userId
   const viewportFallback = React.useMemo(() => <div className='grid h-full place-items-center text-sm'>{loadingText}</div>, [loadingText]);
   const panelContent = React.useMemo(() => panel === 'properties'
     ? <React.Suspense fallback={inspectorFallback}>
-      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} />
+      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField}
+        fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
     </React.Suspense>
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
       : <p className='p-4 text-sm text-muted-foreground' data-testid='scene-tasks-panel'>{tasksText}</p>,
-  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, modelStates, showSelectedProperties, tasksText]);
+  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties, tasksText]);
   return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
     <div className='absolute inset-0' data-testid='scene-stage' style={stageStyle}>
       {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>

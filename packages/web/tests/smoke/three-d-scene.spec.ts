@@ -37,6 +37,60 @@ async function committedX(page: Page, spaceId: string): Promise<number> {
   }, { managerAt, sceneAt, projectId: smokeProjectId(), spaceId });
 }
 
+/** Read the committed name and personal history without touching a retained input draft. */
+async function nameAndHistory(page: Page, spaceId: string): Promise<{ name: string; undo: number }> {
+  const managerAt = await liveModuleUrl(page, 'data/yjs/manager.ts');
+  const sceneAt = await liveModuleUrl(page, 'data/yjs/scene-session.ts');
+  return page.evaluate(async ({ managerAt, sceneAt, projectId, spaceId }) => {
+    const manager = await import(/* @vite-ignore */ managerAt) as typeof ManagerModule;
+    const scene = await import(/* @vite-ignore */ sceneAt) as typeof SceneSessionModule;
+    const session = scene.peekSceneSession(manager.docName.threeDSpace(projectId, spaceId));
+    if (!session || session.getSnapshot().objects.length !== 1) throw new Error('Expected one object in the displayed scene session.');
+    return { name: session.getSnapshot().objects[0].name, undo: session.history.undoStack.length };
+  }, { managerAt, sceneAt, projectId: smokeProjectId(), spaceId });
+}
+
+test('Space tab clicks retain unfinished 3D input without changing shared content or personal history', async ({ page }) => {
+  await openSmokeProject(page);
+  const otherTab = page.getByRole('tab').first();
+  const otherId = await otherTab.getAttribute('data-space-tab');
+  if (!otherId) throw new Error('Expected an existing Space tab.');
+  const id = await createSpace(page, '3d', `scene-input-${Date.now()}`);
+  try {
+    await visibleSpace(page).getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Add figure', exact: true }).click();
+    const name = page.getByTestId('scene-properties-panel').getByLabel('Name', { exact: true });
+    await expect(name).toHaveValue('Figure');
+    await name.fill('Unsubmitted figure name');
+    expect(await nameAndHistory(page, id)).toEqual({ name: 'Figure', undo: 1 });
+    // Real pointer events exercise both Radix outside dismissal and SpaceTab focus preservation.
+    await page.getByTestId(`space-tab-${otherId}`).click();
+    await expect(page.getByTestId(`space-tab-${otherId}`)).toHaveAttribute('aria-selected', 'true');
+    expect(await nameAndHistory(page, id)).toEqual({ name: 'Figure', undo: 1 });
+    await page.getByTestId(`space-tab-${id}`).click();
+    await visibleSpace(page).getByTestId('scene-properties-trigger').click();
+    await expect(name).toHaveValue('Unsubmitted figure name');
+    await name.press('Enter');
+    expect(await nameAndHistory(page, id)).toEqual({ name: 'Unsubmitted figure name', undo: 2 });
+    await visibleSpace(page).getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(name).toHaveValue('Figure');
+    const scale = page.getByTestId('scene-properties-panel').getByRole('group', { name: 'Scale', exact: true }).getByLabel('X', { exact: true });
+    await scale.fill('-2'); await scale.press('Enter');
+    await expect(scale).toHaveAttribute('aria-invalid', 'true');
+    await page.getByTestId(`space-tab-${otherId}`).click();
+    await page.getByTestId(`space-tab-${id}`).click();
+    await visibleSpace(page).getByTestId('scene-properties-trigger').click();
+    await expect(scale).toHaveValue('-2');
+    await expect(scale).toHaveAttribute('aria-invalid', 'true');
+    expect(await nameAndHistory(page, id)).toEqual({ name: 'Figure', undo: 1 });
+    await scale.press('Escape');
+    await expect(scale).toHaveValue('1');
+    await expect(scale).toHaveAttribute('aria-invalid', 'false');
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
 test('3D Space creates, edits independent copies, locks, undoes and reopens its scene', async ({ page }) => {
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `scene-edit-${Date.now()}`);

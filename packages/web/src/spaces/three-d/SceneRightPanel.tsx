@@ -43,7 +43,7 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   return <Popover open={open} onOpenChange={onOpenChange}>
     <Anchor asChild><div className='pointer-events-none absolute bottom-[calc(61px_+_142px_+_var(--space-5))] right-[var(--space-5)] top-[var(--space-5)] w-0' /></Anchor>
-    <PopoverContent ref={contentRef} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
+    <PopoverContent ref={contentRef} container={stage.current} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
       onOpenAutoFocus={(event) => { event.preventDefault(); if (!automatic.current) (event.currentTarget as HTMLElement).focus(); }}
       onEscapeKeyDown={(event) => {
         if (event.repeat || event.isComposing || event.keyCode === 229) { event.preventDefault(); return; }
@@ -56,7 +56,11 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
         if (target?.isConnected && !target.closest('[data-testid="scene-right-panel"]') && !target.matches(':disabled')) target.focus();
         else stage.current?.querySelector<HTMLElement>('canvas')?.focus();
       }}
-      onInteractOutside={(event) => { if (event.target instanceof Node && stage.current?.contains(event.target)) event.preventDefault(); }}>
+      onInteractOutside={(event) => {
+        if (event.target instanceof Node && stage.current?.contains(event.target)) event.preventDefault();
+        // Space activation owns hiding; dismissing on its pointerdown would end an unfinished edit first.
+        if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+      }}>
       <div className='flex shrink-0 items-center justify-between gap-2 border-b border-border p-3' data-testid='scene-panel-header'><h2 className='min-w-0 truncate text-sm font-medium'>{title}</h2>
         <div className='flex shrink-0 items-center gap-1'>{actions}<SceneIconButton label={t('spaces.threeD.closePanel')} onClick={close}>{closeIcon}</SceneIconButton></div>
       </div>

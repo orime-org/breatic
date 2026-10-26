@@ -172,7 +172,7 @@ describe('real scene connection lifetime outside a hidden Activity body', () => 
     session.previewGesture([{ id: ID, position: [9, 0, 0] }]);
     expect(connection.provider?.awareness?.getLocalState()?.scenePresence).toEqual({ selectedIds: [ID], gesture: [{ ...OBJECT, name: 'Edited', position: [9, 0, 0] }] });
     const committed = Y.encodeStateAsUpdate(doc);
-    const offline: SocketState = { ...connection, status: 'disconnected', synced: false, writeAccess: 'unknown' };
+    const offline: SocketState = { ...connection, status: 'disconnected', synced: false };
 
     rerender(tab(offline));
     expect(session.getSnapshot().gestureActive).toBe(false);
