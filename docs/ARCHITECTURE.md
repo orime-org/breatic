@@ -172,6 +172,8 @@ worker 的 `lookupMiniToolConsumption` 只读取原 WaveSpeed prediction 账单�
 
 共享的 `miniToolPlannedRequestSchema` 保留完整版本化草稿、run 身份、分析引用及逐索引输出映射。视频去背景要求唯一索引零、独立目标节点和严格自有 `{kind:"remove-bg"}` recipe；输出数量、索引及源目标冲突是值错误。`miniToolSubmissionSchema` 将该成员与原 model/container 请求合并，保留原请求形状；公共执行 recipe 不携带容器作业的 storage key、命令或能力票据。
 
+`acceptMiniToolExecution` 在首个异步步骤前复制完整请求，先查目标 Project 当前编辑权限，再按 run UUID 读取原 SQL 任务。相同 actor、Project、Space 和完整请求指纹直接回放原身份及状态，不重新读取源资产或当前模型配置；不同身份或正文冲突。新执行从 `config/mini-tools.yaml` 的 `executions` 读取内部模型映射，准备真实源和报价，按工具重建输出 recipe，并把完整计划及独立计划指纹存入 `tasks.params.miniToolExecution`。task 主键唯一约束认领胜出者，只有胜出者调用应用层节点任务、hold 与排队适配器；SQL 事务不包含这些外部操作，后续计算不重写原计划。
+
 计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求。提交前重新检查原期限并用它限定传输；两次查询间隔的最终报告窗口只供读取。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。
 
 `advanceRegisteredMiniToolPlanJob` 保存原终态报告与实测用量后，逐项登记实际写出的产物；原步骤缓存每个索引的 canonical assetId，重入复用报告和已登记兄弟项。分析 JSON 从该真实资产行的 canonical URL 有限读取，字节界取登记大小，读取仍受原任务期限约束。领域装配器保留受理身份和六位微秒时间：场景结果核对完整源帧账本、原区间映射与切点；人物结果核对 display 锚帧和保存的整数像素区域，按原 detectionIndex 关联缩略图计划、实测报告及登记行。人物 ID 由原 analysisRunId 与检测编号确定，去重允许多个人引用同一资产；引用的 URL、hash、MIME、kind 和大小取登记胜出行。显式 display 人物检测与缩略图使用同向 PNG，裁切保持奇数尺寸、单像素和透明分量。

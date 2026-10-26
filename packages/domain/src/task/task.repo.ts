@@ -12,6 +12,7 @@ import { db } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+import type { MiniToolMedium } from "@breatic/shared/mini-tools";
 import type { DueMiniToolSettlement, DueMiniToolSettlementPage, MiniToolSettlement, MiniToolSettlementClaim, MiniToolSettlementCursor } from "@domain/mini-tool/consumption.types.js";
 
 /** Parent facts read while serializing one task's consumption writes. */
@@ -353,6 +354,40 @@ export async function getTaskById(id: string): Promise<TaskEntity | null> {
     .where(and(eq(tasks.id, id), isNull(tasks.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Read a durable execution identity even after its user-facing history is hidden.
+ * @param id - The immutable task/run UUID.
+ * @returns The original parent, including an occupied non-execution identity for collision checks.
+ * @throws {Error} When the database read fails.
+ */
+export async function getMiniToolExecutionTask(id: string): Promise<TaskEntity | null> {
+  const rows = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * Claim one planned run before its adapter opens node rows, holds credits or queues it.
+ * @param data - The authenticated owner and complete server-frozen execution.
+ * @param data.id - The press-generated durable run UUID.
+ * @param data.userId - The authenticated actor.
+ * @param data.projectId - The project owning the result and consumption.
+ * @param data.spaceId - Its canvas Space.
+ * @param data.taskType - The planned output medium.
+ * @param data.model - The internally selected model.
+ * @param data.params - The complete immutable execution namespace.
+ * @returns Whether this caller inserted the durable winner.
+ * @throws {Error} When the database write fails.
+ */
+export async function claimMiniToolExecutionTask(data: {
+  id: string; userId: string; projectId: string; spaceId: string;
+  taskType: MiniToolMedium; model: string; params: Record<string, unknown>;
+}): Promise<boolean> {
+  const rows = await db.insert(tasks).values({
+    ...data, mode: "append", source: "mini_tool",
+  }).onConflictDoNothing({ target: tasks.id }).returning({ id: tasks.id });
+  return rows.length === 1;
 }
 
 /**

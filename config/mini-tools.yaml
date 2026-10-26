@@ -9,6 +9,10 @@
 # How often the worker asks the ingest Worker how a job is doing.
 poll_interval_ms: 5000
 
+executions:
+  video.remove-bg:
+    model: "bria-fibo-video-background-remover"
+
 # Frozen into each planned job; oversized output fails without truncating its ledger.
 plan_limits:
   probeStdoutBytes: 268435456

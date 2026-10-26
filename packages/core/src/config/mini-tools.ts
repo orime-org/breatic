@@ -45,6 +45,9 @@ const analysisConfigSchema = z.strictObject({
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
+    executions: z.strictObject({
+      "video.remove-bg": z.strictObject({ model: z.string().min(1) }),
+    }).default({ "video.remove-bg": { model: "bria-fibo-video-background-remover" } }),
     presentation: z.strictObject({
       container_class: z.string().min(1).default("MediaContainer"),
       max_source_bytes: z.number().int().positive().default(1_073_741_824),
