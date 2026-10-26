@@ -311,6 +311,8 @@ describe('how a stored turn reads when the conversation is reopened', () => {
     const line = screen.getByTestId('message-bubble-error');
     expect(line).toHaveTextContent('This turn had too much to process and could not finish. Try a narrower request.');
     expect(line).not.toHaveTextContent('Try sending it again');
+    // A ceiling the request hit, drawn like the length-limit ending.
+    expect(line).toHaveClass('text-status-warning-foreground');
   });
 
   it('says a turn that produced nothing produced nothing', () => {

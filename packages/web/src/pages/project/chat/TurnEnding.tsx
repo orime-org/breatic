@@ -89,11 +89,14 @@ export function TurnEnding({ message }: TurnEndingProps): React.JSX.Element | nu
   if (message.streaming === true) return null;
 
   if (message.failed === true) {
+    // A turn too long to fit hit a ceiling, like a reply cut off at the
+    // length limit; sending it again would not change it.
+    const tooLong = message.failedReason === 'too_long';
     return (
       <EndingLine
         testId='message-bubble-error'
-        text={t(message.failedReason === 'too_long' ? 'chat.error.turnTooLong' : 'chat.error.turnFailed')}
-        tone='error'
+        text={t(tooLong ? 'chat.error.turnTooLong' : 'chat.error.turnFailed')}
+        tone={tooLong ? 'warning' : 'error'}
         {...(message.failedJustNow === true ? { alert: true } : {})}
       />
     );

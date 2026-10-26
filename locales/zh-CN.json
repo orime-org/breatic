@@ -359,7 +359,7 @@
     "error": {
       "network": "网络错误",
       "turnFailed": "这条回复没能完成，可以再发一次。",
-      "turnTooLong": "这次要处理的内容太长，没能完成。可以缩小范围再试。"
+      "turnTooLong": "这次要处理的内容太多，没能完成。可以缩小范围再试。"
     },
     "message": {
       "interrupted": "已停止",
