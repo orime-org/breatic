@@ -4,11 +4,12 @@
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { encodeInitialSpaceContent, readBodyTree } from '@breatic/shared/document-body';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -124,6 +125,60 @@ describe('the existing URL form owner during a records pause', () => {
 });
 
 describe('real comment and caption owners during a records pause', () => {
+  it.each(['registering', 'committing', 'projecting'] as const)('retains the original caption input when its actual commit fails while %s', async (phase) => {
+    const handle = openBody(`caption-commit-${phase}`);
+    act(() => {
+      handle.editor.replaceBlocks(handle.editor.document, [
+        { type: 'paragraph', content: 'Above' },
+        { type: 'image', props: { url: 'https://example.com/image.png', name: 'image.png', caption: 'Shared' } },
+        { type: 'paragraph', content: 'Below' },
+      ] as never);
+      const view = handle.editor.prosemirrorView;
+      let at = -1;
+      view.state.doc.descendants((node, pos) => { if (node.type.name === 'image') at = pos; });
+      view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, at)));
+      view.focus();
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('doc-media-caption-button'));
+    const input = screen.getByTestId<HTMLInputElement>('doc-media-caption-input');
+    fireEvent.change(input, { target: { value: 'Local uncommitted caption' } });
+    const media = handle.editor.document[1] as { id: string };
+    const session = handle.captionDrafts.get(media.id)!.session;
+    const binding = bodyBindingOf(handle.editor.prosemirrorState)!;
+    const error = new Error(`Caption ${phase} failed`);
+    /** Throws at an actual source phase after its genuine mutation boundary. */
+    const fail = (): void => { if (binding.phase() === phase) throw error; };
+    if (phase !== 'projecting') binding.doc.on('update', fail);
+    const stop = phase === 'projecting' ? binding.subscribeApplied(() => { throw error; }) : (): void => undefined;
+    try {
+      await user.keyboard('{Enter}');
+    } finally {
+      binding.doc.off('update', fail);
+      stop();
+    }
+    const snapshot = handle.runtime.read();
+    expect(snapshot.status).toBe('failed');
+    expect(snapshot.failure).toMatchObject({ error, phase });
+    const source = readBodyTree(binding.doc);
+    expect(source.status).toBe('ready');
+    if (source.status !== 'ready') throw new Error('Expected complete current caption source');
+    expect(source.view.owners.find((owner) => owner.id === media.id)!.attrs['caption']).toBe(phase === 'registering' ? 'Shared' : 'Local uncommitted caption');
+    let acceptedCaption: unknown;
+    (snapshot.failure!.accepted as PMNode).descendants((node) => { if (node.type.name === 'image') acceptedCaption = node.attrs['caption']; });
+    expect(acceptedCaption).toBe('Local uncommitted caption');
+    expect(handle.captionDrafts.get(media.id)).toMatchObject({ session, value: 'Local uncommitted caption', phase: 'suspended', composing: false });
+    expect(screen.getByTestId('doc-media-caption-input')).toBe(input);
+    expect(input.value).toBe('Local uncommitted caption');
+    expect(input.readOnly).toBe(true);
+    expect(input.disabled).toBe(false);
+    act(() => {
+      input.focus();
+      input.setSelectionRange(0, input.value.length);
+    });
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 'Local uncommitted caption'.length]);
+  });
+
   it.each(['waiting', 'failed'] as const)('retains a failed upload placeholder and removes its unavailable retry while %s', async (status) => {
     let finish: (stored: StoredUpload) => void = () => { throw new Error('Upload has not started'); };
     const uploader = createDocumentUploader({

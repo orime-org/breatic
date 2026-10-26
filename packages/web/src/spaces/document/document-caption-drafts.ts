@@ -31,7 +31,7 @@ export type CaptionDraftEvent =
   | { readonly type: 'pause'; readonly session: number; readonly value: string }
   | { readonly type: 'detach'; readonly session: number; readonly value?: string }
   | { readonly type: 'cancel'; readonly session: number; readonly caption: string }
-  | ({ readonly type: 'commit'; readonly session: number; readonly write: (value: string) => void } & CaptionDraftContext);
+  | ({ readonly type: 'commit'; readonly session: number; readonly write: (value: string) => boolean } & CaptionDraftContext);
 
 /** Stable snapshots and one event entry point for a document's local captions. */
 export interface CaptionDrafts {
@@ -163,7 +163,7 @@ export function createCaptionDrafts(): CaptionDrafts {
           return;
         }
         const value = next.value !== next.base ? next.value : event.caption;
-        if (next.value !== next.base) event.write(value);
+        if (next.value !== next.base && !event.write(value)) return;
         publish({
           ...next, phase: 'closed', base: value, value, shared: value,
           composing: false, session: next.session + 1,

@@ -160,7 +160,7 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       if (!view.isDestroyed) patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
       return;
     }
-    insertSlotBlock(
+    const inserted = insertSlotBlock(
       view,
       slotId,
       {
@@ -176,7 +176,8 @@ export function createDocumentUploader(deps: DocumentUploaderDeps): DocumentUplo
       },
       deps.undo,
     );
-    if (mayWrite(view, owner)) held.delete(slotId);
+    if (inserted !== null && mayWrite(view, owner)) held.delete(slotId);
+    else if (!view.isDestroyed) patchUploadSlot(view, slotId, { phase: 'failed', failure: READ_ONLY });
   }
 
   return {
