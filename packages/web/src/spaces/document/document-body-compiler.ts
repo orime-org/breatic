@@ -4,7 +4,7 @@
 import type { Mark } from '@tiptap/pm/model';
 import { AddMarkStep, AddNodeMarkStep, RemoveMarkStep, RemoveNodeMarkStep, ReplaceStep } from '@tiptap/pm/transform';
 import * as Y from 'yjs';
-import { type BodyContext, type BodyFact, type BodyGroup, type BodyJsonObject, type BodyJsonValue, type BodyMarkPayload, type BodyParentEdge, type BodyRecord, type BodyRegistration, type BodySource, type BodyTreeUnit, type BodyTreeView } from '@breatic/shared';
+import { type BodyContext, type BodyFact, type BodyGroup, type BodyJsonObject, type BodyJsonValue, type BodyMarkPayload, type BodyParentEdge, type BodyRecord, type BodyRegistration, type BodySource, type BodyTreeOwner, type BodyTreeUnit, type BodyTreeView } from '@breatic/shared';
 import { assertBodySourceBoundary, BODY_MARK_ATTRIBUTE_PREFIX, bodyCutId, bodyTreeDependencies, bodyTreeOrderBetween, bodyTreeRecordProperties, bodyTreeSourcePoint, documentBodyRecords, documentBodySource, planBodyJoin, planBodyRangeMove, planBodyReparent, planBodySplit, readBodyTree, registerBodyCut, registerDocumentBodyRecords } from '@breatic/shared/document-body';
 
 import { compilerFrames, compilerJson, type CompilerFrame, type CompilerNode } from '@web/spaces/document/document-body-compiler-frames';
@@ -98,6 +98,13 @@ function skeleton(frame: CompilerFrame, owner: string): string[] {
   return (frame.owners.get(owner) ?? []).filter((unit) => unit.origin === 'existing').map((unit) => unit.token);
 }
 
+/** Native lookups derived from one immutable planner view. */
+interface PlannerIndex {
+  readonly units: ReadonlyMap<string, BodyTreeUnit>;
+  readonly ownersByUnit: ReadonlyMap<string, BodyTreeOwner>;
+  readonly labels: ReadonlyMap<string, readonly string[]>;
+}
+
 /** Compiles explicit descriptors and writes using only an isolated native planning snapshot. */
 class BodyBatchCompiler {
   private readonly input: CompileBodyBatchOptions;
@@ -117,6 +124,44 @@ class BodyBatchCompiler {
   private readonly markFacts = new Map<string, string>();
   private readonly history: BodyGroup['history'];
   private sequence = 0;
+  private cachedView: BodyTreeView | undefined;
+  private readonly indices = new WeakMap<BodyTreeView, PlannerIndex>();
+
+  /**
+   * Invalidates derived reads on actual updates, including deletion-only updates.
+   * @throws {never}
+   */
+  private readonly invalidateView = (): void => { this.cachedView = undefined; };
+
+  /**
+   * Reads one complete view per private source revision.
+   * @returns The current private planner view.
+   * @throws {Error} If native records are invalid.
+   */
+  private view(): BodyTreeView {
+    this.cachedView ??= viewOf(this.planner);
+    return this.cachedView;
+  }
+
+  /**
+   * Indexes native identities once for each immutable view retained by this batch.
+   * @param view - The exact immutable planner view.
+   * @returns Its native identity and visible owner lookups.
+   * @throws {never}
+   */
+  private index(view: BodyTreeView): PlannerIndex {
+    const prior = this.indices.get(view);
+    if (prior !== undefined) return prior;
+    const ownersByUnit = new Map<string, BodyTreeOwner>();
+    const labels = new Map<string, readonly string[]>();
+    for (const owner of view.owners) {
+      labels.set(owner.id, owner.units.filter((unit) => this.known.has(unit.id)).map((unit) => unit.id));
+      for (const unit of owner.units) ownersByUnit.set(unit.id, owner);
+    }
+    const result = { units: new Map(view.units.map((unit) => [unit.id, unit])), ownersByUnit, labels };
+    this.indices.set(view, result);
+    return result;
+  }
 
   /**
    * Starts from the exact native source associated with the original codec frame.
@@ -140,11 +185,13 @@ class BodyBatchCompiler {
       this.reserved.add(node.id);
       if (node.kind === 'cut') this.reserved.add(node.cut);
     }
+    this.planner.on('update', this.invalidateView);
     try {
       Y.applyUpdate(this.planner, Y.encodeStateAsUpdate(input.doc));
-      const current = viewOf(this.planner);
+      const current = this.view();
       requireCompiler(current.units.every((unit) => this.originals.has(unit.id)) && current.units.length === this.originals.size, 'Compiler native source changed since projection');
     } catch (error) {
+      this.planner.off('update', this.invalidateView);
       this.planner.destroy();
       throw error;
     }
@@ -262,8 +309,8 @@ class BodyBatchCompiler {
    * @returns The known observed native identities in visible order.
    * @throws {never}
    */
-  private labels(view: BodyTreeView, owner: string): string[] {
-    return (view.owners.find((entry) => entry.id === owner)?.units ?? []).filter((unit) => this.known.has(unit.id)).map((unit) => unit.id);
+  private labels(view: BodyTreeView, owner: string): readonly string[] {
+    return this.index(view).labels.get(owner) ?? [];
   }
 
   /**
@@ -357,7 +404,7 @@ class BodyBatchCompiler {
    */
   private registerNodes(frame: CompilerFrame): void {
     for (const node of frame.nodes.values()) {
-      const view = viewOf(this.planner);
+      const view = this.view();
       const derived = this.input.projection.index.derived.get(node.id);
       const existing = view.body.records.get(node.id);
       if (existing !== undefined) {
@@ -401,7 +448,7 @@ class BodyBatchCompiler {
    */
   private positionNodes(frame: CompilerFrame): void {
     for (const [parent, children] of frame.children) {
-      const view = viewOf(this.planner);
+      const view = this.view();
       const current = (view.tree.children.get(parent) ?? []).filter((id) => frame.nodes.has(id));
       if (JSON.stringify(current) === JSON.stringify(children) && children.every((id) => view.tree.parents.get(id) === parent)) continue;
       let prior = '';
@@ -421,7 +468,7 @@ class BodyBatchCompiler {
    */
   private properties(before: CompilerFrame, after: CompilerFrame): void {
     for (const node of after.nodes.values()) {
-      const view = viewOf(this.planner);
+      const view = this.view();
       const observed = before.nodes.get(node.id);
       if (this.input.projection.index.opaque.has(node.id) && node.type === observed?.type) continue;
       const materializing = observed === undefined || this.input.projection.synthetic;
@@ -449,8 +496,8 @@ class BodyBatchCompiler {
    * @throws {Error} If an identity or scalar endpoint is invalid.
    */
   private nativeRanges(ids: readonly string[]): NativeRange[] {
-    const view = viewOf(this.planner);
-    const units = new Map(view.units.map((unit) => [unit.id, unit]));
+    const view = this.view();
+    const units = this.index(view).units;
     const selected = ids.map((id) => {
       const unit = units.get(id);
       requireCompiler(unit !== undefined, 'Compiler mutation names an absent native unit');
@@ -492,7 +539,7 @@ class BodyBatchCompiler {
    * @throws {Error} If an owner or scalar boundary is invalid.
    */
   private cut(owner: string, offset: number, rightInside = true): string {
-    const view = viewOf(this.planner);
+    const view = this.view();
     const record = this.owner(view, owner);
     const point = bodyTreeSourcePoint(view, owner, offset);
     if (point === null) {
@@ -539,7 +586,7 @@ class BodyBatchCompiler {
    */
   private destination(frame: CompilerFrame, owner: string, selected: readonly string[]): number {
     const expected = skeleton(frame, owner);
-    const current = this.labels(viewOf(this.planner), owner);
+    const current = this.labels(this.view(), owner);
     const moving = new Set(selected);
     const start = expected.indexOf(selected[0]);
     requireCompiler(start >= 0, 'A declared move has no target occurrence');
@@ -558,8 +605,8 @@ class BodyBatchCompiler {
    */
   private move(selected: readonly string[], target: string, after: CompilerFrame): void {
     if (selected.length === 0) return;
-    let view = viewOf(this.planner);
-    const source = view.owners.find((owner) => owner.units.some((unit) => unit.id === selected[0]));
+    let view = this.view();
+    const source = this.index(view).ownersByUnit.get(selected[0]);
     requireCompiler(source !== undefined, 'A transferred native unit has no current owner');
     const start = source.units.findIndex((unit) => unit.id === selected[0]);
     requireCompiler(source.units.slice(start, start + selected.length).every((unit, index) => unit.id === selected[index]), 'A declared native interval is not contiguous');
@@ -568,7 +615,7 @@ class BodyBatchCompiler {
     const endCut = this.cut(source.id, start + selected.length);
     const startCut = this.cut(source.id, start);
     const targetCut = this.cut(target, offset, false);
-    view = viewOf(this.planner);
+    view = this.view();
     this.structure(view, planBodyRangeMove(view, source.id, startCut, endCut, target, targetCut, this.id('range')));
   }
 
@@ -581,7 +628,7 @@ class BodyBatchCompiler {
   private joins(before: CompilerFrame, after: CompilerFrame): void {
     for (const [id] of before.owners) {
       if (after.owners.has(id)) continue;
-      let view = viewOf(this.planner);
+      let view = this.view();
       const labels = this.labels(view, id);
       const sourceNode = before.nodes.get(id)!;
       const boundaryJoin = after.step instanceof ReplaceStep && after.step.slice.size === 0 && sourceNode.from === after.step.to
@@ -595,7 +642,7 @@ class BodyBatchCompiler {
       if (target === undefined) continue;
       const offset = labels.length === 0 ? this.labels(view, target).length : this.destination(after, target, labels);
       const cut = this.cut(target, offset, false);
-      view = viewOf(this.planner);
+      view = this.view();
       this.structure(view, planBodyJoin(view, target, id, cut, this.id('join')));
     }
   }
@@ -611,13 +658,13 @@ class BodyBatchCompiler {
       if (before.owners.has(target)) continue;
       const wanted = skeleton(after, target);
       if (wanted.length === 0) continue;
-      let view = viewOf(this.planner);
-      const source = view.owners.find((owner) => owner.id !== target && owner.units.some((unit) => unit.id === wanted[0]));
-      if (source === undefined) continue;
+      let view = this.view();
+      const source = this.index(view).ownersByUnit.get(wanted[0]);
+      if (source === undefined || source.id === target) continue;
       const start = source.units.findIndex((unit) => unit.id === wanted[0]);
       if (source.units.length - start !== wanted.length || !source.units.slice(start).every((unit, index) => unit.id === wanted[index])) continue;
       const cut = this.cut(source.id, start);
-      view = viewOf(this.planner);
+      view = this.view();
       this.structure(view, planBodySplit(view, source.id, cut, target, this.id('split')));
     }
   }
@@ -668,10 +715,10 @@ class BodyBatchCompiler {
       if (this.input.projection.index.opaque.has(owner)) continue;
       const expected = skeleton(after, owner);
       for (let index = 0; index < expected.length; index += 1) {
-        const view = viewOf(this.planner);
+        const view = this.view();
         const current = this.labels(view, owner);
         if (current[index] === expected[index]) continue;
-        const source = view.owners.find((candidate) => candidate.units.some((unit) => unit.id === expected[index]));
+        const source = this.index(view).ownersByUnit.get(expected[index]);
         requireCompiler(source !== undefined, 'A retained stage label has no native source');
         const start = source.units.findIndex((unit) => unit.id === expected[index]);
         let length = 1;
@@ -679,7 +726,7 @@ class BodyBatchCompiler {
         this.move(expected.slice(index, index + length), owner, after);
       }
     }
-    const checked = viewOf(this.planner);
+    const checked = this.view();
     for (const [owner] of after.owners) {
       if (this.input.projection.index.opaque.has(owner)) continue;
       requireCompiler(JSON.stringify(this.labels(checked, owner)) === JSON.stringify(skeleton(after, owner)), 'Planned native skeleton differs from the accepted stage');
@@ -719,8 +766,8 @@ class BodyBatchCompiler {
       if (prior === undefined) continue;
       const left = new Map((before.document.nodeAt(prior.pos)?.marks ?? []).map((mark) => { const payload = markPayload(mark); return [semanticMarkKey(payload), payload]; }));
       const right = new Map((after.document.nodeAt(unit.pos)?.marks ?? []).map((mark) => { const payload = markPayload(mark); return [semanticMarkKey(payload), payload]; }));
-      const view = viewOf(this.planner);
-      const native = view.units.find((candidate) => candidate.id === unit.token)!;
+      const view = this.view();
+      const native = this.index(view).units.get(unit.token)!;
       const attributes: Record<string, BodyJsonValue> = {};
       for (const key of new Set([...left.keys(), ...right.keys()])) {
         const previous = left.get(key);
@@ -755,7 +802,7 @@ class BodyBatchCompiler {
   private hideAbsent(initial: CompilerFrame, final: CompilerFrame): void {
     for (const node of initial.nodes.values()) {
       if (final.nodes.has(node.id)) continue;
-      const view = viewOf(this.planner);
+      const view = this.view();
       const record = view.body.records.get(node.id);
       if (record?.kind === 'owner' && view.tree.parents.get(record.facet) !== node.id) continue;
       this.emit([{ id: this.id('delete'), kind: 'delete', owner: node.id, dependencies: this.dependencies(view, [node.id]) }]);
@@ -773,7 +820,7 @@ class BodyBatchCompiler {
    */
   private freshSlot(owner: string, offset: number): { readonly parent: string; readonly order: string } {
     this.cut(owner, offset, false);
-    const view = viewOf(this.planner);
+    const view = this.view();
     const facet = this.owner(view, owner).facet;
     const slots: { readonly parent: string; readonly before: string; readonly after: string; readonly dependencies: number; readonly depth: number }[] = [];
     let cursor = 0;
@@ -815,12 +862,12 @@ class BodyBatchCompiler {
    */
   private freshRun(frame: CompilerFrame, owner: string, units: readonly BodyInlineUnit[], nativeOffset: number): void {
     const slot = this.freshSlot(owner, nativeOffset);
-    let view = viewOf(this.planner);
+    let view = this.view();
     const source: BodySource = { id: this.id('fresh-source'), facet: this.owner(view, owner).facet, head: this.id('fresh-head'), tail: this.id('fresh-tail') };
     this.register({ sources: [source] });
-    view = viewOf(this.planner);
+    view = this.view();
     this.structure(view, planBodyReparent(view, [{ child: `C:${source.head}`, parent: slot.parent, order: slot.order }], this.id('fresh-placement')));
-    view = viewOf(this.planner);
+    view = this.view();
     const dependencies = this.dependencies(view, [`P:${source.head}`]);
     const context = this.id('context');
     this.register({ contexts: [{ id: context, dependencies }] });
@@ -936,6 +983,8 @@ class BodyBatchCompiler {
         expected: { doc: this.input.journal.doc, units: this.input.journal.units },
       };
     } finally {
+      this.planner.off('update', this.invalidateView);
+      this.cachedView = undefined;
       this.planner.destroy();
     }
   }
