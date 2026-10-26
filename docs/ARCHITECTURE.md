@@ -533,8 +533,8 @@ nine transform inputs, keyed by object and field. Activity hiding releases the
 floating panel while retaining that input state; explicit dismissal, another
 panel or overlay, selection changes and editor disposal end the corresponding
 input. The panel portals into its scene allocation so Space-tab activation
-preserves field focus until Activity hides it. These drafts remain temporary
-interface state and do not enter the shared document or browser storage.
+preserves field focus until Activity hides it. The editor's memory owns this
+temporary interface state.
 
 ### Brand home links
 

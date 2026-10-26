@@ -37,7 +37,7 @@ async function committedX(page: Page, spaceId: string): Promise<number> {
   }, { managerAt, sceneAt, projectId: smokeProjectId(), spaceId });
 }
 
-/** Read the committed name and personal history without touching a retained input draft. */
+/** Inspect the app's live session to distinguish committed content from input text. */
 async function nameAndHistory(page: Page, spaceId: string): Promise<{ name: string; undo: number }> {
   const managerAt = await liveModuleUrl(page, 'data/yjs/manager.ts');
   const sceneAt = await liveModuleUrl(page, 'data/yjs/scene-session.ts');
