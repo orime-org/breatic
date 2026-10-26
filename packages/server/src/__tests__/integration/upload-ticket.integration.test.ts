@@ -1188,6 +1188,9 @@ describe("POST /assets/upload-ticket — the server opens the upload (inner#1595
 
   it("T63: opens with the shared secret, bound by the task's deadline", async () => {
     const { projectId, cookie } = await seedEditor();
+    // The bound is computed before the ticket is signed and the open recorded,
+    // so the moment before the request is its upper limit.
+    const before = Date.now();
 
     const res = await requestTicket(cookie, picture(projectId));
     const { data } = (await res.json()) as { data: { storageKey: string } };
@@ -1198,7 +1201,7 @@ describe("POST /assets/upload-ticket — the server opens the upload (inner#1595
     expect(call.bound?.signal?.aborted).toBe(false);
     const timeoutMs = call.bound?.timeoutMs ?? 0;
     expect(timeoutMs).toBeGreaterThan(0);
-    expect(timeoutMs).toBeLessThanOrEqual(call.payload.deadlineAt - call.at);
+    expect(timeoutMs).toBeLessThanOrEqual(call.payload.deadlineAt - before);
     expect(call.payload.deadlineAt - call.at).toBeLessThanOrEqual(getNodeTaskConfig().default_budget_ms);
   });
 
