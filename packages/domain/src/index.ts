@@ -59,6 +59,12 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
+export {
+  acceptMiniToolExecution,
+  type AcceptedMiniToolExecution,
+  type MiniToolExecutionAdmission,
+  type MiniToolExecutionTaskParams,
+} from "@domain/mini-tool/execution-admission.service.js";
 export * as miniToolSceneAnalysis from "@domain/mini-tool/scene-analysis.js";
 export * as miniToolPeopleAnalysis from "@domain/mini-tool/people-analysis.js";
 export type { MiniToolDisplayPeople, MiniToolPeopleAnalysisResult, MiniToolRegisteredAnalysisJob } from "@domain/mini-tool/people-analysis.js";
