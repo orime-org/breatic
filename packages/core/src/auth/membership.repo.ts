@@ -139,7 +139,7 @@ export async function getUserMembershipTier(
 /**
  * Read the tier an account is actually entitled to right now.
  *
- * The same complete snapshot prices its limits and resolves enterprise or
+ * The same complete snapshot resolves its limits and enterprise or
  * ordinary subscription expiry.
  * @param userId - The account to look up
  * @param tx - Transaction handle, if the caller is inside one
@@ -242,8 +242,9 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
 /**
  * Who administers a studio, and how many bytes that account's tier allows.
  *
- * Active enterprise membership keeps its storage exemption. Other effective
- * tiers use their configured storage ceiling from the same membership read.
+ * Effective enterprise membership keeps its storage exemption, including a
+ * legacy account awaiting complete information. Other effective tiers use
+ * their configured storage ceiling from the same membership read.
  *
  * Answers the admin id too, because a storage decision needs it twice over:
  * the usage roll-up is per ACCOUNT across every studio that account
@@ -253,7 +254,7 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
  *   for why a caller inside a transaction must pass it
  * @returns The current admin's account id, and that account's storage ceiling
- *   in bytes — `null` on the enterprise tier, which has no configured ceiling
+ *   in bytes — `null` while the effective tier is enterprise
  * @throws {Error} if the studio is gone, or has no live admin, or that admin's
  *   stored tier is not one this build knows — all three are corruption
  */

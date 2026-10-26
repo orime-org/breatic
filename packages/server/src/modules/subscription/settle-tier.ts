@@ -2,20 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The one door a subscription's tier goes through (task #106, design §9).
+ * Settle ordinary subscription tiers through one shared path.
  *
- * Every path that can move an account's tier because of Stripe comes here
- * through `applySubscriptionWrite`: the webhook, the checkout-return confirm,
- * the panel's own cancel / resume / plan change, and the re-check before a
- * second checkout. That matters for the notice attached to it, which is owed
- * whenever the account lands back on the free tier — and the ways that happens
- * do not share an event. `unpaid` and `incomplete_expired` arrive as
- * `customer.subscription.updated` and produce no `deleted` at all, and the
- * paths that store Stripe's answer to our own call settle the tier without
- * handling any Stripe event. Hanging the notice on an event type would cover
- * only some of them.
- *
- * So it hangs on the RESULT: the tier moved, and where it landed is `base`.
+ * Webhooks, checkout confirmation, subscription-panel actions and checkout
+ * rechecks arrive through applySubscriptionWrite. A membership reading first
+ * protects active or unresolved enterprise membership and self-hosted origins.
+ * An actual pro/team-to-base change writes the ended bell in the transaction;
+ * its email is sent after commit. Enterprise-to-base expiry does not produce
+ * that ordinary subscription notice.
  */
 
 import { changeMembershipTier, getMembershipReadingForUser } from "@breatic/core";
