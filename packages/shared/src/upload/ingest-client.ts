@@ -79,7 +79,7 @@ export class UploadHttpError extends Error {
   }
 }
 
-/** What sending bytes to the Worker needs off a ticket. */
+/** What opening an upload or fetching a source needs off a ticket. */
 export interface IngestTarget {
   /** The signed permission slip the Worker verifies. */
   ticket: string;
@@ -89,12 +89,6 @@ export interface IngestTarget {
   partSize: number;
   /** How many parts the bytes were cut into. */
   totalParts: number;
-  /**
-   * What Node sends the parts through, timing the socket for a part whose
-   * bytes stopped moving (core's `idleSocketDispatcher`). A page leaves it
-   * out and the transport judges the same from upload progress.
-   */
-  dispatcher?: unknown;
 }
 
 /**
@@ -103,24 +97,15 @@ export interface IngestTarget {
  * our services open uploads, and whoever sends the bytes starts from the first
  * session token.
  */
-export interface OpenedIngestTarget {
-  /** The ingest Worker's base address. */
-  uploadUrl: string;
-  /** R2's id for the open multipart upload. */
-  uploadId: string;
-  /** The session token the first part carries. */
-  token: string;
-  /** How long every part but the last must be. */
-  partSize: number;
-  /** How many parts the bytes are cut into. */
-  totalParts: number;
-  /**
-   * What Node sends the parts through, timing the socket for a part whose
-   * bytes stopped moving (core's `idleSocketDispatcher`). A page leaves it
-   * out and the transport judges the same from upload progress.
-   */
-  dispatcher?: unknown;
-}
+export type OpenedIngestTarget = Omit<IngestTarget, "ticket"> &
+  OpenedUpload & {
+    /**
+     * What Node sends the parts through, timing the socket for a part whose
+     * bytes stopped moving (core's `idleSocketDispatcher`). A page leaves it
+     * out and the transport judges the same from upload progress.
+     */
+    dispatcher?: unknown;
+  };
 
 /**
  * What the Worker turns a picture upright under (inner#1367). It reads no
@@ -154,7 +139,9 @@ export interface PartReceipt {
 
 /** What opening an upload answers with. */
 export interface OpenedUpload {
+  /** R2's id for the open multipart upload. */
   uploadId: string;
+  /** The session token the first part carries. */
   token: string;
 }
 
@@ -409,7 +396,6 @@ export async function sendBytesToIngest(
     const slice = bytes.slice(start, start + opened.partSize);
     const landed = await sendPart(
       opened,
-      opened.uploadId,
       part,
       slice,
       token,
@@ -738,8 +724,7 @@ export async function openUploadAtIngest(
 
 /**
  * Write one part and take the token that lets the next one through.
- * @param target - The open upload's address and how its parts are sent.
- * @param uploadId - The upload these parts belong to.
+ * @param target - The open upload, its address and how its parts are sent.
  * @param part - This part's number, counting from one.
  * @param bytes - This part's bytes.
  * @param token - The token this part is authorised by.
@@ -750,7 +735,6 @@ export async function openUploadAtIngest(
  */
 async function sendPart(
   target: OpenedIngestTarget,
-  uploadId: string,
   part: number,
   bytes: Blob,
   token: string,
@@ -758,7 +742,7 @@ async function sendPart(
   bound: PartBound | undefined,
 ): Promise<PartReceipt & { token: string }> {
   return askWorker<PartReceipt & { token: string }>(
-    `${target.uploadUrl}/uploads/${uploadId}/parts/${part}`,
+    `${target.uploadUrl}/uploads/${target.uploadId}/parts/${part}`,
     { method: "PUT", body: bytes, headers: { "x-upload-token": token } },
     // Cut only once its bytes stop moving: in a page the transport reads
     // upload progress, in Node the caller's dispatcher times the socket. A

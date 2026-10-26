@@ -769,7 +769,6 @@ export {
   type UploadClientConfig,
   type IngestTarget,
   type OpenedIngestTarget,
-  type OpenedUpload,
   type MediaLimits,
   type HeldUpload,
   type PartReceipt,
