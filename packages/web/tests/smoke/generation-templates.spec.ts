@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * The template button in a generate panel's corner (inner#977): the image
- * panel lists its templates, picking one sets the panel up and reminds the
- * reader to edit the marked parts, and a panel with no templates says so.
+ * The template button in a generate panel's corner (inner#977, inner#1345):
+ * the image panel lists its templates; picking one sets the panel up, @s the
+ * reference already wired in or places an empty one beside the node, wired
+ * and @'d, and picking it again reuses what it placed; a panel with no
+ * templates says so.
  *
  * Needs a running dev stack (`pnpm dev`) and a smoke account:
  *
@@ -66,26 +68,95 @@ test.afterEach(async () => {
   await page.close();
 });
 
-test('picking a template sets the image panel up and reminds the reader', async () => {
-  await openPanelOnNewNode('image');
+/**
+ * Wire one node into another through the live canvas module.
+ * @param from - The node wired in.
+ * @param to - The node it goes into.
+ */
+async function wire(from: string, to: string): Promise<void> {
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  await page.evaluate(
+    async ([pid, sid, source, target, at]: [string, string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addEdge: (p: string, s: string, e: unknown) => boolean;
+      };
+      canvas.addEdge(pid, sid, { id: `${source}->${target}`, source, target, createdAt: Date.now() });
+    },
+    [projectId, spaceId, from, to, canvasAt] as [string, string, string, string, string],
+  );
+}
+
+/**
+ * Pick the storyboard template in the open image panel.
+ */
+async function pickStoryboard(): Promise<void> {
+  // A menu still closing from the last pick takes the next press as its own.
+  await expect(page.getByTestId('generate-template-storyboard-grid-25')).toHaveCount(0);
+  const trigger = page.getByTestId('generate-template-trigger');
+  await expect(trigger).toBeVisible({ timeout: 15_000 });
+  await trigger.click();
+  await expect(page.getByTestId('generate-template-costume-sheet')).toBeVisible();
+  await page.getByTestId('generate-template-storyboard-grid-25').click();
+}
+
+test('picking a template places the reference it asks for, wired and @\'d, and picking it again places nothing', async () => {
+  const nodeId = await openPanelOnNewNode('image');
   const trigger = page.getByTestId('generate-template-trigger');
   await expect(trigger).toBeVisible({ timeout: 15_000 });
   // Right before the close button, in the panel's corner.
   expect(await trigger.evaluate((el) => el.nextElementSibling?.getAttribute('data-testid'))).toBe('generate-exit');
-
-  await trigger.click();
-  await expect(page.getByTestId('generate-template-costume-sheet')).toBeVisible();
-  await page.getByTestId('generate-template-storyboard-grid-25').click();
+  await pickStoryboard();
 
   await expect(page.getByTestId('generate-mode-trigger')).toHaveText('Image to Image');
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
+  const nodes = visibleSpace(page).locator('.react-flow__node');
+  await expect(nodes).toHaveCount(2, { timeout: 15_000 });
+  const reference = visibleSpace(page).locator('.react-flow__node').filter({ hasText: 'character or scene reference' });
+  await expect(reference).toHaveCount(1);
+  await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(1);
+  // The new node stands left of the panel's node.
+  const anchorBox = await visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`).boundingBox();
+  const referenceBox = await reference.boundingBox();
+  expect((referenceBox?.x ?? 0) + (referenceBox?.width ?? 0)).toBeLessThanOrEqual(anchorBox?.x ?? 0);
   const prompt = page.getByTestId('generate-prompt-editor');
-  await expect(prompt).toContainText('[📎 Use @ to pick character or scene reference]');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
   await expect(prompt).toContainText('{✏️ the story}');
-  // Nothing is @'d for the reader.
-  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(0);
-  await expect(page.getByText('Replace the text in square brackets and braces.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Replace the text in braces.', { exact: false })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('image-template-applied.png') });
+
+  await pickStoryboard();
+  await expect(nodes).toHaveCount(2);
+  await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(1);
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1);
+});
+
+test('picking a template @s the reference already wired in and places nothing new', async () => {
+  const nodeId = await openPanelOnNewNode('image');
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const heroId = crypto.randomUUID();
+  await page.evaluate(
+    async ([pid, sid, id, at]: [string, string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        addNode: (p: string, s: string, n: unknown) => void;
+      };
+      canvas.addNode(pid, sid, {
+        id,
+        type: 'image',
+        position: { x: -600, y: 0 },
+        data: { name: 'Hero photo', createdAt: Date.now(), createdBy: 'template-e2e', locked: false, state: 'idle', attachments: [] },
+      });
+    },
+    [projectId, spaceId, heroId, canvasAt] as [string, string, string, string],
+  );
+  await wire(heroId, nodeId);
+  await pickStoryboard();
+
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1, { timeout: 15_000 });
+  await expect(prompt.locator('[data-reference-mention]')).toContainText('Hero photo');
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(0);
 });
 
 test('a panel with no templates says so', async () => {

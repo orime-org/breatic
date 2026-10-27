@@ -22,7 +22,9 @@ import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { projectIdOf } from '../helpers/tab-restore';
 
 let page: Page;
 let spaceId = '';
@@ -290,13 +292,13 @@ async function templatesProposed(p: Page): Promise<string[]> {
       await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })
     ).json();
     const messages = (read?.data?.messages ?? []) as {
-      parts?: { type?: string; input?: { nodes?: { template?: string }[] } }[];
+      parts?: { type?: string; input?: { nodes?: { template?: { id?: string } }[] } }[];
     }[];
     return messages
       .flatMap((m) => m.parts ?? [])
       .filter((part) => part.type === 'tool-propose_canvas_action')
       .flatMap((part) => part.input?.nodes ?? [])
-      .flatMap((node) => (node.template ? [node.template] : []));
+      .flatMap((node) => (node.template?.id ? [node.template.id] : []));
   });
 }
 
@@ -434,4 +436,93 @@ test('writes the proposal prompt in the language the reader asked in @needs-mode
   });
   expect(words, 'a proposal was made').not.toBe('');
   expect(words, `the prompt is in Chinese. Read: "${words}"`).toMatch(/[\u4e00-\u9fff]/);
+});
+
+/** The steps of the guide the replayed template proposal carries. */
+const GUIDE_WORDS = 'Template smoke\n1. Split the result into a grid\n2. Pick the panel you like';
+
+/**
+ * A template proposal as the tool answers it once the check has passed
+ * (inner#1345): the anchor, an empty reference wired into its pool and @'d,
+ * and the guide text node pointing at the anchor.
+ */
+const TEMPLATE_ANSWER = {
+  placed: true,
+  nodes: [
+    {
+      role: 'generate',
+      type: 'image',
+      name: 'Storyboard',
+      mode: 'i2i',
+      model: 'nano-banana-pro-edit-ultra',
+      params: { aspect_ratio: '1:1', resolution: '4k' },
+      takesPrompt: true,
+      prompt: [
+        { slot: { kind: 'note', label: 'Put the character in Character first' } },
+        { text: 'Use ' },
+        { ref: 1 },
+        { text: ' for a 5x5 storyboard.' },
+      ],
+    },
+    { role: 'source', type: 'image', name: 'Character' },
+    {
+      role: 'written',
+      type: 'text',
+      name: 'Template smoke',
+      prompt: [{ text: GUIDE_WORDS }],
+      templateNode: { template: 'storyboard-grid-25', key: 'guide', anchor: 0 },
+    },
+  ],
+  edges: [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+  rationale: '',
+  groupName: 'Template smoke',
+};
+
+test('places a template proposal with its guide text node pointing at the anchor', async () => {
+  const chunks = [
+    { type: 'data-heartbeat', transient: true, data: {} },
+    { type: 'data-conversation-titled', data: { title: 'template smoke' } },
+    { type: 'start', messageId: 'm-reply' },
+    { type: 'start-step' },
+    { type: 'tool-input-available', toolCallId: 'call-1', toolName: 'propose_canvas_action', input: { action: 'add_nodes' } },
+    { type: 'tool-output-available', toolCallId: 'call-1', output: TEMPLATE_ANSWER },
+    { type: 'finish-step' },
+    { type: 'finish' },
+  ];
+  await page.route('**/chat/message', (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+      body: chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join(''),
+    }),
+  );
+  await startNewConversation(page);
+  const composer = page.getByTestId('chat-composer-box');
+  await composer.fill('Make a storyboard of my character.');
+  await composer.press('Enter');
+
+  const card = page.getByTestId('proposal-card').last();
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  // The guide is drawn on the card as words already written.
+  await expect(card.getByTestId('proposal-words')).toContainText('Split the result into a grid');
+  await card.getByTestId('proposal-use').click();
+
+  const guide = visibleSpace(page).locator('.react-flow__node').filter({ hasText: 'Pick the panel you like' });
+  await expect(guide).toHaveCount(1, { timeout: 20_000 });
+  const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
+  const tags = await page.evaluate(
+    async ([pid, sid, at]: [string, string, string]) => {
+      const canvas = (await import(/* @vite-ignore */ at)) as {
+        readCanvasGraph: (p: string, s: string) => { nodes: { id: string; type: string; data: { name?: string; templateNode?: { anchor?: string } } }[] };
+      };
+      const nodes = canvas.readCanvasGraph(pid, sid).nodes;
+      const anchor = nodes.find((n) => n.data.name === 'Storyboard')?.id;
+      const guideNode = nodes.find((n) => n.type === 'text');
+      return { anchor, guideAnchor: guideNode?.data.templateNode?.anchor };
+    },
+    [projectIdOf(page.url()), spaceId, canvasAt] as [string, string, string],
+  );
+  expect(typeof tags.anchor).toBe('string');
+  expect(tags.guideAnchor).toBe(tags.anchor);
+  await page.screenshot({ path: test.info().outputPath('template-proposal-placed.png') });
 });
