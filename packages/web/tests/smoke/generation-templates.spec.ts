@@ -156,7 +156,8 @@ test('picking a template @s the reference already wired in and places nothing ne
   await expect(prompt.locator('[data-reference-mention]')).toHaveCount(1, { timeout: 15_000 });
   await expect(prompt.locator('[data-reference-mention]')).toContainText('Hero photo');
   await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2);
-  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(0);
+  // The photo wired in still holds nothing, so the note says to put it there.
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
 });
 
 test('a panel with no templates says so', async () => {
