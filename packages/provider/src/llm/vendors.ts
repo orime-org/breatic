@@ -60,7 +60,6 @@ function messageOf(body: unknown): string {
 export interface Vendor {
   /** The key its AI SDK provider reads `providerOptions` and message options by. */
   sdkName: string;
-  /** Builds its model factory. */
   /** Builds its model factory; `fetch` is provider's own unless the caller wraps it. */
   build: (decl: UpstreamDecl, apiKey: string, fetch: typeof globalThis.fetch) => (modelId: string) => ModelV4;
   /** The id it serves a model under, from what follows the route prefix (or the whole id for a gateway). */
