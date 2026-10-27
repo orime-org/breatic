@@ -280,11 +280,8 @@ export const projects = pgTable(
     // URL slug for /project/{slug}-{uuid}. Format-validated app-side, NOT
     // unique (same-name projects disambiguate by uuid; URL design §5.7).
     slug: varchar("slug", { length: 120 }).notNull(),
-    // Initial Space type seeded on first open (B.2). varchar with NO check
-    // constraint — same pattern as studio_members.role, so adding 3d/plan
-    // later is a zero-migration change. Canvas is the only editable type
-    // today; document/timeline are stored + seeded but disabled in the
-    // create picker until their editors ship.
+    // Initial Space type seeded on first open. Stored as a varchar;
+    // accepted Space types are validated by the shared schema.
     initialSpaceType: varchar("initial_space_type", { length: 16 })
       .default("canvas")
       .notNull(),

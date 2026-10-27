@@ -35,8 +35,8 @@ Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge
 | Control or action | Result |
 | --- | --- |
 | **Add media** | Open the material dialog and choose **Project videos** or **Local upload**. |
-| Select a Project video or use **Choose video** | Prepare that registered video or upload the selected local file through the upload service. |
-| **Start frame**, then **Add to Timeline** | Confirm a whole-frame position. The default is the sequence end; each addition creates an independent clip. |
+| Select a Project video or use **Choose video** | Select a registered Project video or a local video file. |
+| **Start frame**, then **Add to Timeline** | Confirm a whole-frame position and add the clip; a local file uploads and registers at this step. The default is the sequence end, and each addition creates an independent clip. |
 | Select a clip and press **Change start frame** | Enter its new whole-frame start and press **Apply**. Overlapping clips appear in the conflict list, where each row can be selected for adjustment. |
 | **Play**, **Pause** and the preview slider | Play the valid sequence, pause it or select its global frame. Video buffering holds the frame until playback can continue. |
 | Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it. |

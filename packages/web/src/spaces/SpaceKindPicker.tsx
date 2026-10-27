@@ -108,8 +108,8 @@ export function SpaceKindPicker({
                   ? 'border-active-border bg-accent-strong text-foreground'
                   : 'border-border bg-transparent text-foreground',
                 // The picked card keeps its own fill under the pointer: plain
-                // hover outranks it and would drop it to the fill the other
-                // two take, leaving the three reading alike.
+                // hover outranks it and would drop it to the fill of the
+                // hoverable sibling cards.
                 card.available
                   ? selected
                     ? 'hover:bg-accent-strong'
