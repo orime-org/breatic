@@ -35,7 +35,7 @@ export interface ReadOptions extends SendOptions {
   idleMs: number;
 }
 
-/** Deliveries a replay-safe request gets in all. */
+/** Deliveries a request gets in all: any request on a 408 or 429, a replay-safe one also on NotSent and 5xx. */
 const MAX_DELIVERIES = 3;
 /** Base of the full-jitter exponential backoff between deliveries. */
 const BASE_DELAY_MS = 1_000;

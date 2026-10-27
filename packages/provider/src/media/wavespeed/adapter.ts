@@ -86,7 +86,7 @@ function dataOf(body: unknown): Record<string, unknown> {
 }
 
 /**
- * Submit one prediction; never sent twice.
+ * Submit one prediction; resent only on a 408 or 429, which the upstream did not process.
  * @param reach - The upstream.
  * @param endpoint - The model path.
  * @param body - The request body.
