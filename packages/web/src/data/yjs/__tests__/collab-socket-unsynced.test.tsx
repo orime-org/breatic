@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import * as Y from 'yjs';
@@ -111,7 +111,7 @@ vi.mock('@web/data/api', async (importOriginal) => {
 });
 
 import { COLLAB_REAUTH_REASONS, spaceContentDocName, projectMetaDocName } from '@breatic/shared';
-import { acquireDocProvider, releaseDocProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
+import { acquireDocProvider, releaseDocProvider, _resetCollabSocketForTests, CollabSocketProvider, useProjectUnsyncedEdits } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { LeaveProjectGuard } from '@web/pages/project/LeaveProjectGuard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -622,6 +622,43 @@ describe('registered content edits drive project leave protection (inner#1641)',
     const fresh = content();
     expect(fresh.doc).not.toBe(item.doc);
     expect(blocked()).toBe(false);
+  });
+
+  it.each(['canvas', 'document'] as const)('publishes clean state when a dirty %s provider is replaced', (kind) => {
+    vi.useFakeTimers();
+    const item = content(kind);
+    const { result } = renderHook(() => useProjectUnsyncedEdits(PID));
+    act(() => { item.doc.getText('body').insert(0, 'old edit'); });
+    expect(result.current).toBe(true);
+    const replacement = new Y.Doc();
+    try {
+      act(() => { acquireDocProvider(item.name, replacement); });
+      expect(result.current).toBe(false);
+      act(() => { replacement.getText('body').insert(0, 'new edit'); });
+      expect(result.current).toBe(true);
+      act(() => { releaseDocProvider(item.name, item.doc); vi.runOnlyPendingTimers(); });
+      expect(result.current).toBe(true);
+      expect(replacement.getText('body').toString()).toBe('new edit');
+      act(() => { releaseDocProvider(item.name, replacement); vi.runOnlyPendingTimers(); });
+      expect(result.current).toBe(false);
+    } finally {
+      replacement.destroy();
+    }
+  });
+
+  it.each(['canvas', 'document'] as const)('publishes clean state when the account owning dirty %s content changes', (kind) => {
+    const boundary = render(<CollabSocketProvider userId='account-a'>{null}</CollabSocketProvider>);
+    const item = content(kind);
+    const { result } = renderHook(() => useProjectUnsyncedEdits(PID));
+    act(() => { item.doc.getText('body').insert(0, 'account-a edit'); });
+    expect(result.current).toBe(true);
+    boundary.rerender(<CollabSocketProvider userId='account-b'>{null}</CollabSocketProvider>);
+    expect(result.current).toBe(false);
+    expect(item.doc.isDestroyed).toBe(true);
+    const next = content(kind);
+    act(() => { next.doc.getText('body').insert(0, 'account-b edit'); });
+    expect(result.current).toBe(true);
+    expect(next.doc.getText('body').toString()).toBe('account-b edit');
   });
 
   it('preserves either remaining risk across generated edit and operation combinations', () => {

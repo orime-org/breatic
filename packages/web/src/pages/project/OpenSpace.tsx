@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import type { ProjectRole, SpaceType } from '@breatic/shared';
+import { type ProjectRole, type SpaceType } from '@breatic/shared';
 
 import { getDoc } from '@web/data/yjs/manager';
 import {
@@ -11,6 +11,7 @@ import {
   SpaceConnectionContext,
 } from '@web/data/yjs/space-connection';
 import { useSocket } from '@web/data/yjs/use-socket';
+import { SceneConnectionLifetime } from '@web/data/yjs/scene-lifetime';
 import { SpaceOutlet } from '@web/pages/project/SpaceOutlet';
 import { CanvasActivityPublisher } from '@web/spaces/canvas/use-publish-activity';
 import { DocumentInterceptGuard } from '@web/spaces/document/DocumentInterceptGuard';
@@ -112,6 +113,7 @@ export const OpenSpace = React.memo(function OpenSpace({
       {/* What this reader is waiting on in a canvas Space stays on the peers'
         screens while another tab is on screen, so it is published with the tab. */}
       {type === 'canvas' ? <CanvasActivityPublisher spaceId={spaceId} /> : null}
+      {type === '3d' ? <SceneConnectionLifetime name={buildName(projectId, spaceId)} readOnly={readOnly} /> : null}
       {body}
     </SpaceConnection>
   );

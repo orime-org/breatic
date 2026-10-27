@@ -22,8 +22,8 @@ describe("projectCreateSchema — spaceType (B.2 create→seed plumbing)", () =>
     expect(projectCreateSchema.parse(base).spaceType).toBe("canvas");
   });
 
-  it("accepts the three known space types", () => {
-    for (const type of ["canvas", "document", "timeline"] as const) {
+  it("accepts the known Space types including 3D Space", () => {
+    for (const type of ["canvas", "document", "timeline", "3d"] as const) {
       expect(projectCreateSchema.parse({ ...base, spaceType: type }).spaceType).toBe(
         type,
       );
@@ -31,7 +31,7 @@ describe("projectCreateSchema — spaceType (B.2 create→seed plumbing)", () =>
   });
 
   it("rejects an unknown space type", () => {
-    expect(() => projectCreateSchema.parse({ ...base, spaceType: "3d" })).toThrow();
+    expect(() => projectCreateSchema.parse({ ...base, spaceType: "voxel" })).toThrow();
   });
 });
 

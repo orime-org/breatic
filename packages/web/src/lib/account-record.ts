@@ -21,14 +21,16 @@ export interface AccountRecord {
   entry: AccountEntry | null;
   /**
    * Replace that account's entry, keeping every other account's entry as it
-   * was when the key was read. Gives up silently when the browser refuses.
+   * was when the key was read. Reports false when the browser refuses.
+   * @param next - The complete replacement entry for the account selected when this record was opened.
+   * @returns True when localStorage accepts the serialized record, or false when serialization or storage fails.
    */
-  write: (next: AccountEntry) => void;
+  write: (next: AccountEntry) => boolean;
 }
 
 /**
  * Whether a value is a plain object, the only shape these records hold.
- * @param value - What was parsed.
+ * @param value - The decoded storage entry whose non-null, non-array object shape is being checked.
  * @returns True for a non-null, non-array object.
  */
 function isObject(value: unknown): value is AccountEntry {
@@ -37,10 +39,9 @@ function isObject(value: unknown): value is AccountEntry {
 
 /**
  * Read a key once and pick out one account's entry.
- * @param key - The localStorage key.
- * @param userId - The signed-in account; without one there is nothing to read
- *   or write.
- * @returns That account's view of the key, or null without an account.
+ * @param key - The localStorage key containing the map of account identifiers to entries.
+ * @param userId - The signed-in account whose entry is selected; an absent or empty identifier disables access.
+ * @returns The selected account's entry and replacement writer, or null when no account is selected.
  */
 export function openAccountRecord(
   key: string,
@@ -60,9 +61,11 @@ export function openAccountRecord(
     write: (next) => {
       try {
         window.localStorage.setItem(key, JSON.stringify({ ...record, [userId]: next }));
+        return true;
       } catch {
         // Quota and blocked site data both throw; the value is still held in
         // memory for this session, it just is not remembered.
+        return false;
       }
     },
   };
