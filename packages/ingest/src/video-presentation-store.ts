@@ -530,8 +530,9 @@ export class VideoPresentationStore {
     const prior = record.snapshot.sourceLedger;
     if (prior?.state === 'ready') {
       const receipt = prior.receipt;
-      if (object !== null && receipt.sourceFingerprint === record.admission.sourceFingerprint && receipt.etag === object.etag && receipt.size === object.size &&
-        object.httpMetadata?.contentType === 'application/json' && object.customMetadata?.sourceLedgerJobId === receipt.attempt.jobId) return;
+      const producer = await this.originalRecord({ sourceFingerprint: receipt.sourceFingerprint, ...receipt.attempt });
+      if (producer !== undefined && receipt.sourceFingerprint === record.admission.sourceFingerprint && this.ledgerObjectMatches(producer, object) &&
+        receipt.etag === object!.etag && receipt.size === object!.size) return;
       this.failLedger(record, object === null ? 'source_ledger_missing' : 'source_ledger_invalid', true);
       await this.persist(record);
     }
