@@ -75,6 +75,45 @@ export interface Vendor {
    * (design 5.3: each vendor's forms, never another's).
    */
   refusal: (status: number, body: unknown) => Refusal | undefined;
+  /** The status this vendor's own plain error part stands for, when its SDK hands one over as it came. */
+  inBandStatus?: (error: unknown) => number | undefined;
+}
+
+/** Anthropic's error types and the statuses its error docs give them (https://platform.claude.com/docs/en/api/errors). */
+const ANTHROPIC_STATUS: Readonly<Record<string, number>> = {
+  invalid_request_error: 400,
+  authentication_error: 401,
+  billing_error: 402,
+  permission_error: 403,
+  not_found_error: 404,
+  request_too_large: 413,
+  rate_limit_error: 429,
+  api_error: 500,
+  timeout_error: 504,
+  overloaded_error: 529,
+};
+
+/**
+ * The status an error part before content stands for, read the answering vendor's way:
+ * a value carrying a numeric statusCode (the stream errors the DeepSeek and
+ * OpenAI-compatible SDKs build, plain objects or Errors), else the vendor's own plain form.
+ * @param vendor - The vendor that answered.
+ * @param error - What the error part carried.
+ * @returns The status, or undefined when the part says none.
+ */
+export function inBandStatusOf(vendor: Vendor | undefined, error: unknown): number | undefined {
+  const status = (error as { statusCode?: unknown } | null | undefined)?.statusCode;
+  if (typeof status === "number" && Number.isInteger(status)) return status;
+  return error instanceof Error ? undefined : vendor?.inBandStatus?.(error);
+}
+
+/**
+ * The body a vendor's refusal is read from for an error part.
+ * @param error - What the error part carried.
+ * @returns The SDK's own chunk when its stream error kept one, else `{ error }`.
+ */
+export function inBandBodyOf(error: unknown): unknown {
+  return (error as { data?: unknown } | null | undefined)?.data ?? { error };
 }
 
 /**
@@ -111,6 +150,10 @@ const cachesOnItsOwn = (): VendorOptions => ({});
 const VENDORS: Readonly<Record<string, Vendor>> = {
   anthropic: {
     sdkName: "anthropic",
+    inBandStatus: (error) => {
+      const type = (error as { type?: unknown } | null)?.type;
+      return typeof type === "string" ? ANTHROPIC_STATUS[type] : undefined;
+    },
     build: (decl, apiKey) => createAnthropic({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch() }),
     // Ids are written the way OpenRouter names Claude (`claude-opus-5.5`); Anthropic serves `claude-opus-5-5`.
     vendorId: (modelId) => modelId.replace(/(\d)\.(\d)/g, "$1-$2"),
@@ -162,6 +205,10 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
   },
   openrouter: {
     sdkName: "openrouter",
+    inBandStatus: (error) => {
+      const code = (error as { code?: unknown } | null)?.code;
+      return typeof code === "number" && Number.isInteger(code) ? code : undefined;
+    },
     build: (decl, apiKey) => createOpenRouter({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch() }),
     vendorId: asWritten,
     gateway: true,

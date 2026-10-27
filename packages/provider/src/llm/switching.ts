@@ -13,8 +13,8 @@ import { APICallError } from "ai";
 import type { Cost } from "@provider/cost.js";
 import { Aborted, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, wait } from "@provider/http/request.js";
-import type { ModelV4, Vendor } from "@provider/llm/vendors.js";
-import { decide, type Failure } from "@provider/routing/decide.js";
+import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
+import type { Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
 
@@ -104,8 +104,8 @@ export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
   }
   if (APICallError.isInstance(error) && typeof error.statusCode === "number") return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
   if (error instanceof InBandError) {
-    const code = Number((error.error as { code?: unknown } | null)?.code);
-    return Number.isInteger(code) && code >= 100 ? statusFailure(code, { error: error.error }, vendor) : null;
+    const status = inBandStatusOf(vendor, error.error);
+    return status === undefined ? null : statusFailure(status, inBandBodyOf(error.error), vendor);
   }
   return null;
 }
@@ -193,9 +193,11 @@ export class SwitchingModel implements ModelV4 {
         try {
           return { value: await run(pinned), servedBy: pinned };
         } catch (error) {
-          // Pinned: a failure that would move a first step on is retried here instead, never elsewhere (design 12.4).
+          // Pinned (design 12.4): only a request that never left and a 429 or 5xx are retried, here and
+          // never elsewhere; a missing model or balance is thrown at once, since a retry cannot fix it.
           const failure = classifyLlm(error, this.setup.vendorFor(pinned.upstream));
-          if (failure === null || decide(failure, "llm_before_content", retries, this.setup.maxRetries) === "stop" || retries >= this.setup.maxRetries) throw error;
+          const passing = failure?.kind === "not_sent" || (failure?.kind === "http_status" && (failure.status === 429 || failure.status >= 500));
+          if (!passing || retries >= this.setup.maxRetries) throw error;
           if ((await pauseBeforeRetry(error, retries + 1, signal)) === "switch") throw error;
         }
       }
@@ -264,7 +266,7 @@ export class SwitchingModel implements ModelV4 {
         }
         if (part.type === "error") {
           await reader.cancel().catch(() => undefined);
-          throw part.error instanceof Error ? part.error : new InBandError(part.error);
+          throw new InBandError(part.error);
         }
         held.push(read.value);
         if (CONTENT.has(read.value.type) || read.value.type === "finish") break;
