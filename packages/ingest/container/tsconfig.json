@@ -23,6 +23,7 @@
   "include": [
     "*.ts",
     "./analysis-frame-reader.ts",
+    "./assemble-video-source-ledger.ts",
     "./alpha-clock.ts",
     "./iso-bmff-metadata.ts",
     "./matroska-metadata.ts",
