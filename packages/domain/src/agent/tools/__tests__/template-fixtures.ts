@@ -20,6 +20,7 @@ import {
   markedSegments,
   setLocaleMessages,
   t,
+  templateMarkTargets,
   templateSkeleton,
   type GenerationTemplate,
   type PromptSegment,
@@ -225,18 +226,15 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
   const base = `canvas.template.${template.id}`;
   const nodes: SentNode[] = [];
   const at: Identities = new Map();
-  const names = new Map<string, string>();
   for (const [key, node] of skeleton.nodes) {
     const anchor = key === skeleton.anchor;
     const name = anchor ? t(`${base}.name`) : t(`${base}.node.${key}.name`);
-    names.set(`node:${key}`, name);
     at.set(`node:${key}`, nodes.length);
     const tag = anchor && options.anchorKey !== true ? { id: template.id } : { id: template.id, key };
     nodes.push({ role: node.role, type: node.type, name, template: tag });
   }
   for (const input of skeleton.inputs) {
     const name = t(`${base}.input.${input.key}.name`);
-    names.set(`input:${input.key}`, name);
     at.set(`input:${input.key}`, nodes.length);
     nodes.push({
       role: "source",
@@ -260,12 +258,10 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
     if (node.role !== "generate") continue;
     const words = key === skeleton.anchor ? t(`${base}.prompt`) : t(`${base}.node.${key}.prompt`);
     const fedBy = skeleton.inputs.filter((input) => input.feeds.includes(key));
-    const targets = new Map<string, number>([
-      ...fedBy.map((input): [string, number] => [names.get(`input:${input.key}`) as string, index(`input:${input.key}`)]),
-      ...skeleton.edges
-        .filter((edge) => edge.to === key && (edge.into === undefined || edge.into === "pool"))
-        .map((edge): [string, number] => [names.get(`node:${edge.from}`) as string, index(`node:${edge.from}`)]),
-    ]);
+    // The same binding the panel and the tool description use.
+    const targets = new Map(
+      [...templateMarkTargets(template, key)].map(([name, target]): [string, number] => [name, index("input" in target ? `input:${target.input}` : `node:${target.node}`)]),
+    );
     const notes = fedBy.map((input) => ({ slot: { kind: "note" as const, label: t(`${base}.input.${input.key}.note`) } }));
     const prompt = [...notes, ...markedSegments(words).map((segment) => sentSegment(segment, targets))];
     const at_ = index(`node:${key}`);
