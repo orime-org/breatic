@@ -371,9 +371,11 @@ describe('useApplyTemplate', () => {
       expect(proposal.edges).toEqual([]);
       expect(refsOf(proposal, existing, 0)).toEqual(['src']);
       const anchor = proposal.nodes[0];
+      // The reference already holds its file, so no note says to put one in.
+      expect(anchor?.prompt).not.toContainEqual({ slot: { kind: 'note', label: t('canvas.template.storyboard-grid-25.input.reference.note') } });
       expect(anchor?.mode).toBe('i2i');
       expect(anchor?.model).toBe('nano-banana-pro-edit-ultra');
-      // The anchor's params as `templateWrites` merges them: its other models kept.
+      // The anchor's params as `templateParams` merges them: its other models kept.
       expect(existing.get(0)?.paramsByModel?.['nano-banana']).toEqual({ aspect_ratio: '16:9' });
       expect(existing.get(0)?.paramsByModel?.['nano-banana-pro-edit-ultra']).toEqual({ aspect_ratio: '1:1', resolution: '4k' });
     });
