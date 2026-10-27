@@ -512,7 +512,7 @@ describe('matchTemplateInstance, round-1 review (inner#1345)', () => {
   });
 });
 
-describe('matchTemplateInstance, round-3 review (inner#1345)', () => {
+describe('matchTemplateInstance, whatever order the template lists its edges (inner#1345)', () => {
   /**
    * A skeleton of image generate nodes, `a` the anchor.
    * @param keys - The non-anchor keys.
@@ -542,14 +542,28 @@ describe('matchTemplateInstance, round-3 review (inner#1345)', () => {
     }
   });
 
-  it('settles every key the same whatever order the template lists its edges, one node per key', () => {
+  it('counts every node tagged for a key wherever the key goes, whatever order the template lists its edges', () => {
+    // X1 is wired into A and U, X2 into A only: both stand where x goes.
+    const nodes: TemplateGraphNode[] = [plain('A'), tagged('U', 'u', 'image', 'chain'), tagged('X1', 'x', 'image', 'chain'), tagged('X2', 'x', 'image', 'chain')];
+    const graph = graphOf(nodes, [['U', 'A'], ['X2', 'A'], ['X1', 'A'], ['X1', 'U']]);
+    for (const order of [
+      [['u', 'a'], ['x', 'a'], ['x', 'u']],
+      [['u', 'a'], ['x', 'u'], ['x', 'a']],
+    ] as const) {
+      // Listed in the graph's node order, wherever each was found.
+      expect(matchTemplateInstance(chain(['u', 'x'], order), graph, 'A').keys.get('x')).toEqual({ kind: 'many', nodes: ['X1', 'X2'] });
+    }
+  });
+
+  it('settles every key the same whatever order the template lists its edges', () => {
     const drawArb = fc
       .record({
         // Key k<i> is wired into earlier keys only, so the template has no circle.
         outs: fc.array(fc.array(fc.nat(), { minLength: 1, maxLength: 3 }), { minLength: 1, maxLength: 4 }),
-        present: fc.array(fc.boolean(), { minLength: 4, maxLength: 4 }),
-        keeps: fc.array(fc.boolean(), { minLength: 5, maxLength: 5 }),
-        wires: fc.array(fc.tuple(fc.nat(), fc.nat()), { maxLength: 8 }),
+        // Up to two nodes per key, each kept on the settings or not.
+        copies: fc.array(fc.tuple(fc.boolean(), fc.boolean()), { minLength: 4, maxLength: 4 }),
+        keeps: fc.array(fc.boolean(), { minLength: 9, maxLength: 9 }),
+        wires: fc.array(fc.tuple(fc.nat(), fc.nat(), fc.nat(), fc.nat()), { maxLength: 12 }),
       })
       .chain((draw) => {
         const edges = [
@@ -560,19 +574,22 @@ describe('matchTemplateInstance, round-3 review (inner#1345)', () => {
     fc.assert(
       fc.property(drawArb, ([draw, edges, shuffled]) => {
         const keys = draw.outs.map((_, i) => `k${String(i + 1)}`);
-        const idOf = (i: number): string => (i === 0 ? 'A' : `N${String(i)}`);
+        const idOf = (key: number, copy: number): string => (key === 0 ? 'A' : `N${String(key)}${copy % 2 === 0 ? 'a' : 'b'}`);
         const nodes: TemplateGraphNode[] = [
           { ...plain('A'), keeps: draw.keeps[0] ?? true },
           ...keys.flatMap((key, i) =>
-            draw.present[i] === false ? [] : [{ ...tagged(idOf(i + 1), key, 'image', 'chain'), keeps: draw.keeps[i + 1] ?? true }],
+            (draw.copies[i] ?? [false, false]).flatMap((present, copy) =>
+              present ? [{ ...tagged(idOf(i + 1, copy), key, 'image', 'chain'), keeps: draw.keeps[1 + 2 * i + copy] ?? true }] : [],
+            ),
           ),
         ];
         const ids = new Set(nodes.map((node) => node.id));
         const wires: GraphEdge[] = [
           ...new Set(
-            draw.wires
-              .map(([from, to]) => [1 + (from % keys.length), to % (1 + (from % keys.length))] as const)
-              .map(([from, to]) => `${idOf(from)}>${idOf(to)}`),
+            draw.wires.map(([from, fromCopy, to, toCopy]) => {
+              const key = 1 + (from % keys.length);
+              return `${idOf(key, fromCopy)}>${idOf(to % key, toCopy)}`;
+            }),
           ),
         ]
           .map((pair) => pair.split('>') as [string, string])
