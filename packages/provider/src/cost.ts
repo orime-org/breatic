@@ -65,7 +65,7 @@ export async function lookupCost(config: ProviderConfig, options: ProviderOption
   }
   if (decl.kind !== "openrouter" || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
   try {
-    const { body } = await fetchJson(
+    const body = await fetchJson(
       { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
       { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: LOOKUP_IDLE_MS },
     );

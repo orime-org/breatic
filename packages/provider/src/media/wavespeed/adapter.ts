@@ -100,7 +100,7 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
     { url: `${reach.decl.base_url}/${endpoint}`, method: "POST", headers: headers(reach), body: JSON.stringify(body) },
     { replaySafe: false, ...bounds, ...limits(bounds) },
   );
-  const data = dataOf(answer.body);
+  const data = dataOf(answer);
   const id = typeof data.id === "string" && data.id !== "" ? data.id : undefined;
   const outputs = Array.isArray(data.outputs) && data.outputs.length > 0 ? (data.outputs as unknown[]) : undefined;
   if (id === undefined && outputs === undefined) throw new Error(`${reach.name} answered no prediction id and no outputs`);
@@ -121,7 +121,7 @@ export async function ask(reach: Reach, predictionId: string, bounds: RequestBou
     { url: `${reach.decl.base_url}/predictions/${encodeURIComponent(predictionId)}/result`, method: "GET", headers: headers(reach) },
     { replaySafe: true, ...bounds, ...limits(bounds) },
   );
-  const data = dataOf(answer.body);
+  const data = dataOf(answer);
   if (data.status === "completed") return { state: "done", outputs: Array.isArray(data.outputs) ? (data.outputs as unknown[]) : [] };
   if (data.status === "failed") return { state: "failed", error: typeof data.error === "string" ? data.error : "unknown" };
   return { state: "running" };
@@ -145,10 +145,10 @@ export async function billed(reach: Reach, predictionId: string, bounds: Request
     lastAttempt ? { state: "missing", reason } : { state: "pending", lookup: { upstream: reach.name, predictionId } };
   let body: unknown;
   try {
-    body = (await fetchJson(
+    body = await fetchJson(
       { url: `${reach.decl.base_url}/billings/search`, method: "POST", headers: headers(reach), body: JSON.stringify({ prediction_uuids: [predictionId] }) },
       { replaySafe: true, ...bounds, ...limits(bounds) },
-    )).body;
+    );
   } catch (error) {
     const code = error instanceof HttpStatus ? "billing_query_rejected" : "billing_query_failed";
     return { cost: unknown(code), warnings: [{ code, detail: { upstream: reach.name, predictionId, error: String(error) } }] };

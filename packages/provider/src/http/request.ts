@@ -330,7 +330,7 @@ export async function readBody(url: string, response: Response, maxBytes: number
  * Send a request and read a JSON body within limits; any non-2xx is a failure.
  * @param request - The request.
  * @param options - Replay, abort, deadline and body limits.
- * @returns The status and the parsed body.
+ * @returns The parsed body.
  * @throws {NotSent} When the request never left.
  * @throws {NoAnswer} When no complete answer came.
  * @throws {HttpStatus} When the status is not 2xx (after any allowed resends).
@@ -338,14 +338,14 @@ export async function readBody(url: string, response: Response, maxBytes: number
  * @throws {Aborted} When the signal fired or the deadline passed.
  * @throws {SyntaxError} When a 2xx body is not JSON.
  */
-export async function fetchJson(request: OutgoingRequest, options: ReadOptions): Promise<{ status: number; body: unknown }> {
+export async function fetchJson(request: OutgoingRequest, options: ReadOptions): Promise<unknown> {
   const response = await send(request, options);
   const bytes = await readBody(request.url, response, options.maxBodyBytes, options.idleMs, options);
   const text = new TextDecoder().decode(bytes);
   if (response.status < 200 || response.status >= 300) {
     throw new HttpStatus(request.url, response.status, text.slice(0, SNIPPET_CHARS));
   }
-  return { status: response.status, body: JSON.parse(text) as unknown };
+  return JSON.parse(text) as unknown;
 }
 
 /**
