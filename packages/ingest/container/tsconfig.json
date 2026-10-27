@@ -29,6 +29,7 @@
     "./matroska-metadata.ts",
     "./matroska-video-presentation.ts",
     "./iso-bmff-presentation.ts",
+    "./explicit-iso-video-presentation.ts",
     "./unedited-iso-video-presentation.ts",
     "./alpha-presentation.ts",
     "./plan-command.ts",
