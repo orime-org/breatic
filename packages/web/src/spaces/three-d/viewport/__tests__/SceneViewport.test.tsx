@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneViewport from '@web/spaces/three-d/viewport/SceneViewport';
@@ -28,7 +29,7 @@ function props(): SceneViewportProps {
   return {
     objects: [], selectedIds: [], mode: 'translate', readOnly: false,
     view: { position: [7, 5, 8], target: [0, 1, 0] }, focusRevision: 0, cancelRevision: 0,
-    remotePeers: [], scaleSensitivity: 0.006,
+    remotePeers: [], scaleSensitivity: 0.006, importLimits: IMPORT_LIMITS,
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
     resolveAsset: vi.fn(),
   };

@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
 import { Mesh } from 'three';
+import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import type { Group } from 'three';
 import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
@@ -19,16 +20,7 @@ vi.mock('@breatic/shared', async (importOriginal) => ({
 const templates = new Set<Group>();
 const TRIANGLE = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
 const ASSET_URL = 'https://assets.example/registered-model';
-const IMPORT_LIMITS: SceneImportLimits = {
-  maxInputBytes: 67108864,
-  maxExpandedBytes: 268435456,
-  maxArtifactBytes: 268435456,
-  maxFiles: 4096,
-  maxEntryJsonBytes: 4194304,
-  decoderWorkerLimit: 1,
-  maxTextureEdge: 8192,
-  maxTextureBytes: 268435456,
-};
+
 
 /**
  * Describe a real mesh, hierarchy and original PBR material for the installed loader.
@@ -82,8 +74,8 @@ function triangleGlb(rootName: string, requiredExtension?: string): Uint8Array<A
  */
 function modelPackage(entryPath: string, files: Record<string, Uint8Array>, formatVersion = 1): ArrayBuffer {
   return Uint8Array.from(zipSync({
-    ...files,
-    'manifest.json': strToU8(JSON.stringify({ formatVersion, entryPath })),
+    ...Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, Uint8Array.from(bytes)])),
+    'manifest.json': Uint8Array.from(strToU8(JSON.stringify({ formatVersion, entryPath }))),
   }, { level: 0 })).buffer;
 }
 
