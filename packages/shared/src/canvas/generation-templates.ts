@@ -19,20 +19,57 @@ import { t } from "@shared/i18n/index.js";
 import { markedSegments, type PromptSegment } from "@shared/types/canvas-proposal.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
-/** One template: a fixed way to generate, with the places the reader fills in. */
-export interface GenerationTemplate {
-  /** Stable id: the panel, the agent and the locale keys name it by this. */
-  id: string;
-  /** The generate panel that lists it. */
-  nodeType: GenerationNodeType;
+/** A template node's key: names its locale strings and lets marks point at it. */
+export type TemplateNodeKey = string;
+
+/** A node of the template that generates. */
+export interface TemplateGenerateNode {
+  key: TemplateNodeKey;
+  role: "generate";
+  type: GenerationNodeType;
   /** A mode of `config/models/modes.yaml`. */
   mode: string;
   /** A model name of the catalog. */
   model: string;
   /** Only the params the template fixes. */
   params: Readonly<Record<string, unknown>>;
-  /** How many reference images its prompt asks for: its `[📎 …]` marks in every language. */
-  references: number;
+}
+
+/** A node of the template that holds a file we host. */
+export interface TemplateResourceNode {
+  key: TemplateNodeKey;
+  role: "source";
+  type: GenerationNodeType;
+  /** Path under the hosted-resources address: `templates/<template id>/<file>`. */
+  resource: string;
+}
+
+/** Material the reader supplies. */
+export interface TemplateInput {
+  key: string;
+  type: GenerationNodeType;
+  /** The generate nodes whose pool it is wired into; the anchor when left out. */
+  feeds?: readonly TemplateNodeKey[];
+}
+
+/** Wiring between two template nodes, `into` as in a proposal edge. */
+export interface TemplateEdge {
+  from: TemplateNodeKey;
+  to: TemplateNodeKey;
+  into?: string;
+}
+
+/** One template: the nodes and wiring a reader or the agent starts a flow from. */
+export interface GenerationTemplate {
+  /** Stable id: the panel, the agent and the locale keys name it by this. */
+  id: string;
+  /** The generate node the panel applies the template to; every other node is upstream of it. */
+  anchor: TemplateNodeKey;
+  nodes: readonly (TemplateGenerateNode | TemplateResourceNode)[];
+  edges: readonly TemplateEdge[];
+  inputs: readonly TemplateInput[];
+  /** Keys of the follow-up steps the reader does by hand once the anchor has generated; listed in the guide text node. */
+  steps: readonly string[];
   /** What it makes and what it is for, in the words the agent reads. */
   agentNote: string;
 }

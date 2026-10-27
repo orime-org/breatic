@@ -750,7 +750,27 @@ export {
   templatePrompt,
   templatesFor,
   type GenerationTemplate,
+  type TemplateEdge,
+  type TemplateGenerateNode,
+  type TemplateInput,
+  type TemplateNodeKey,
+  type TemplateResourceNode,
 } from "@shared/canvas/generation-templates.js";
+export {
+  TEMPLATE_GUIDE_KEY,
+  expandTemplate,
+  matchTemplateInstance,
+  templateGuideNode,
+  templateNodeDefaults,
+  templateSkeleton,
+  type TemplateExpansionInput,
+  type TemplateExpansionResult,
+  type TemplateGraph,
+  type TemplateGraphNode,
+  type TemplateInstanceMatch,
+  type TemplateKeyMatch,
+  type TemplateSkeleton,
+} from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
