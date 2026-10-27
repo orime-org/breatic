@@ -3,20 +3,10 @@
 
 import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
 import type { MediaInput } from "@provider/media/runner.js";
+import { isPresent } from "@provider/pricing/estimate.js";
 
 /** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>` (design 4.2). */
 const REFERENCE = /<<ref:([\w-]+):(\d+)>>/g;
-
-/**
- * Whether a value carries anything to send.
- * @param value - The value.
- * @returns False for null, undefined, an empty string or an empty list.
- */
-function isPresent(value: unknown): boolean {
-  if (value === undefined || value === null) return false;
-  if (typeof value === "string" || Array.isArray(value)) return value.length > 0;
-  return true;
-}
 
 /**
  * One pronunciation entry as `text/pronunciation`, or undefined when either half is missing.

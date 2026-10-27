@@ -8,7 +8,7 @@ import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
 import { buildBody } from "@provider/media/wavespeed/body.js";
-import { orderByPrice } from "@provider/pricing/estimate.js";
+import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -191,17 +191,6 @@ interface Ticket {
 const UPLOAD_PURPOSE: Readonly<Partial<Record<StepKind, string>>> = { upload_reference: "reference", upload_melody: "melody" };
 /** Kling caps an element's description at 100 characters. */
 const ELEMENT_DESCRIPTION_MAX = 100;
-
-/**
- * Whether a value carries anything to send.
- * @param value - The value.
- * @returns False for null, undefined, an empty string or an empty list.
- */
-function isPresent(value: unknown): boolean {
-  if (value === undefined || value === null) return false;
-  if (typeof value === "string" || Array.isArray(value)) return value.length > 0;
-  return true;
-}
 
 /**
  * The common part of an answer.

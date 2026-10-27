@@ -123,7 +123,7 @@ function contractOf(rule: PricingRule): PriceContract {
  * @param value - The value.
  * @returns False for null, undefined, an empty string or an empty list.
  */
-function isPresent(value: unknown): boolean {
+export function isPresent(value: unknown): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value === "string" || Array.isArray(value)) return value.length > 0;
   return true;
