@@ -78,6 +78,17 @@ function joined(frames: unknown[]): Uint8Array {
   return out;
 }
 
+/**
+ * Compare bytes with a memcmp; deep equality on large arrays is slow.
+ * @param actual - Bytes produced.
+ * @param expected - Bytes wanted.
+ * @returns Whether they are identical.
+ */
+function same(actual: unknown, expected: Uint8Array): boolean {
+  if (!(actual instanceof Uint8Array)) return false;
+  return Buffer.compare(Buffer.from(actual), Buffer.from(expected)) === 0;
+}
+
 type ChunkingCtor = new (url: string) => FakeBase;
 
 /**
@@ -108,7 +119,7 @@ describe('ChunkingWebSocket', () => {
     expect(JSON.parse(ws.sent[0] as string)).toEqual({ type: 'chunked', bytes: 131073 });
     expect((ws.sent[1] as Uint8Array).byteLength).toBe(131_072);
     expect((ws.sent[2] as Uint8Array).byteLength).toBe(1);
-    expect(joined(ws.sent)).toEqual(m);
+    expect(same(joined(ws.sent), m)).toBe(true);
   });
 
   it('WU02 sends a Uint8Array of exactly the cap as one unchanged frame', async () => {
@@ -117,7 +128,7 @@ describe('ChunkingWebSocket', () => {
     const m = msg(131_072);
     ws.send(m);
     expect(ws.sent).toHaveLength(1);
-    expect(ws.sent[0]).toEqual(m);
+    expect(same(ws.sent[0], m)).toBe(true);
   });
 
   it.each([0, 2_048])('WU03 sends a %i-byte Uint8Array as one unchanged frame', async (n) => {
@@ -126,7 +137,7 @@ describe('ChunkingWebSocket', () => {
     const m = msg(n);
     ws.send(m);
     expect(ws.sent).toHaveLength(1);
-    expect(ws.sent[0]).toEqual(m);
+    expect(same(ws.sent[0], m)).toBe(true);
   });
 
   it('WU04 sends a long string unchanged', async () => {
@@ -143,7 +154,7 @@ describe('ChunkingWebSocket', () => {
     const m = msg(1_200_000);
     ws.send(m);
     expect(ws.sent).toHaveLength(11);
-    expect(joined(ws.sent)).toEqual(m);
+    expect(same(joined(ws.sent), m)).toBe(true);
   });
 
   it.each([
@@ -182,7 +193,7 @@ describe('ChunkingWebSocket', () => {
       const run = socket.sent.slice(start, start + 4);
       expect(JSON.parse(run[0] as string)).toEqual({ type: 'chunked', bytes: 300000 });
       expect(run.slice(1).map((f) => (f as Uint8Array).byteLength)).toEqual([131_072, 131_072, 37_856]);
-      expect(joined(run)).toEqual(m);
+      expect(same(joined(run), m)).toBe(true);
       expect(socket.sent.some((f) => f instanceof Uint8Array && f.byteLength === 300_000)).toBe(false);
     } finally {
       provider.destroy();
