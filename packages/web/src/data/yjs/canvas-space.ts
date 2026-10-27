@@ -810,6 +810,29 @@ export function setNodeName(
 }
 
 /**
+ * Marks a node as the generation template node it was placed as
+ * (inner#1345). A plain value under `data`: written once, when the template
+ * lands, inside that landing's undo step.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The node.
+ * @param templateNode - The template, its key, and on a guide node the anchor's id.
+ */
+export function setNodeTemplateNode(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  templateNode: NonNullable<CanvasNodeFields['data']['templateNode']>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
+}
+
+/**
  * Lock / unlock a node — frontend-owned operation. Writes into the nested
  * `data` Y.Map so the flag merges field-wise with concurrent collaborator /
  * backend writes.
