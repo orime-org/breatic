@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../config/schema.js";
 import { MediaRefused } from "../../http/fetch-media.js";
 import { createProvider } from "../../provider.js";
-import { UpstreamTaskFailed } from "../../errors.js";
+import { DeadlinePassed, SendNotAccepted, UpstreamTaskFailed } from "../../errors.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
@@ -98,12 +98,25 @@ function config(): ProviderConfigInput {
 }
 
 /**
+ * The same model bound a second time, to another WaveSpeed-kind upstream at weight 2.
+ * @param second - The second upstream's fake.
+ * @returns The raw configuration.
+ */
+function twoUpstreams(second: FakeUpstream): ProviderConfigInput {
+  const raw = config();
+  const [binding] = raw.media.models["kling-elements"]!.upstreams;
+  raw.upstreams.wavespeed_b = { kind: "wavespeed", base_url: second.url, key_env: "WAVESPEED_B_API_KEY" };
+  raw.media.models["kling-elements"]!.upstreams.push({ ...binding!, upstream: "wavespeed_b", weight: 2 });
+  return raw;
+}
+
+/**
  * A runner over the fakes.
  * @returns The runner.
  */
-function runner(): MediaRunner {
-  const keys: Record<string, string> = { WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" };
-  const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+function runner(raw: ProviderConfigInput = config()): MediaRunner {
+  const keys: Record<string, string> = { WAVESPEED_API_KEY: "ws-key", WAVESPEED_B_API_KEY: "ws-b-key", OPENROUTER_API_KEY: "or-key" };
+  const provider = createProvider({ config: raw, keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
   return createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
 }
 
@@ -264,3 +277,65 @@ describe("cached elements", () => {
   });
 });
 
+
+describe("a describe step followed by a switch (design 3.4, 5.3)", () => {
+  it("keeps the paid description in the moved ticket's costs", async () => {
+    const second = await fakeUpstream(({ method }) => (method === "POST" ? accepted("p-el") : result("p-el", "processing")));
+    try {
+      const r = runner(twoUpstreams(second));
+      wavespeed.answer(() => ({ status: 503, body: {} }));
+      const planned = expectState(
+        await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+          idempotencyKey: "task-1",
+          sourceKeys: { [imageUrl]: "sha-img" },
+          clones: [],
+        }),
+        "send",
+      );
+      const element = expectState(await r.send(stored(planned.ticket), live()), "send");
+      const moved = expectState(await r.send(stored(element.ticket), live()), "send");
+      expect(moved.ticket.upstream).toBe("wavespeed_b");
+      expect(moved.ticket.costs).toEqual([{ state: "known", usd: 0.0004, source: "reported" }]);
+    } finally {
+      await second.close();
+    }
+  });
+});
+
+describe("a describe step that cannot read its image (design 3.2)", () => {
+  /**
+   * Plan the model over one image and send its describe step.
+   * @param image - The image url.
+   * @param bounds - The send's bounds.
+   * @returns What send did.
+   */
+  async function describeOnly(image: string, bounds: { deadlineAt: number }): Promise<unknown> {
+    const r = runner();
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [image] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      "send",
+    );
+    return r.send(stored(planned.ticket), bounds).catch((e: unknown) => e);
+  }
+
+  it("throws SendNotAccepted when the image host refuses the connection", async () => {
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, "127.0.0.1", () => done()));
+    const { port } = closed.address() as AddressInfo;
+    await new Promise<void>((done) => closed.close(() => done()));
+    expect(await describeOnly(`http://127.0.0.1:${port}/fox.png`, live())).toBeInstanceOf(SendNotAccepted);
+    expect(openrouter.seen).toHaveLength(0);
+  });
+
+  it("throws DeadlinePassed when the deadline passes while the image is read", async () => {
+    const silent = createServer(() => undefined);
+    await new Promise<void>((done) => silent.listen(0, "127.0.0.1", () => done()));
+    try {
+      const { port } = silent.address() as AddressInfo;
+      expect(await describeOnly(`http://127.0.0.1:${port}/fox.png`, { deadlineAt: Date.now() + 300 })).toBeInstanceOf(DeadlinePassed);
+    } finally {
+      silent.closeAllConnections();
+      await new Promise<void>((done) => silent.close(() => done()));
+    }
+  });
+});

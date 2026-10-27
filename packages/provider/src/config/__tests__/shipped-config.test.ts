@@ -4,6 +4,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createProvider } from "../../provider.js";
 import { assertBindsCatalog, parseProviderConfig } from "../schema.js";
 import { catalog, ROOT, shipped, yaml } from "./shipped.js";
 
@@ -35,6 +36,18 @@ describe("the shipped provider configuration (design 4.1)", () => {
     }
     expect(llm?.routes.at(-1)).toEqual({ prefix: "", upstreams: [{ upstream: "openrouter", weight: 0 }] });
     expect(llm?.understand_routes?.find((r) => r.prefix === "google/")?.upstreams[0]).toEqual({ upstream: "openrouter", weight: 0 });
+  });
+
+  it("prices every model a full deployment reaches directly: the agent's and the element descriptions'", () => {
+    const keys = Object.fromEntries(Object.values(shipped().upstreams).map((u) => [u.key_env, "k"]));
+    const provider = createProvider({ config: shipped(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const agent = yaml<{ default_model: string; consolidation_model: string }>("agent.yaml");
+    const describers = Object.values(parseProviderConfig(shipped()).models)
+      .flat()
+      .flatMap((b) => b.extra_steps ?? [])
+      .flatMap((step) => (step.describe === undefined ? [] : [step.describe.model]));
+    expect(describers.length).toBeGreaterThan(0);
+    expect(() => provider.llm.assertModelsPriced([agent.default_model, agent.consolidation_model, ...describers])).not.toThrow();
   });
 
   it("ships the deployment override only as a template", () => {

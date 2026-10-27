@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
+import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
 import type { LanguageModelUsage } from "ai";
 import type { CapabilityPolicy } from "../api.js";
@@ -69,8 +70,15 @@ describe("cost.lookup (design 3.6)", () => {
   it("reads the generation's total cost from OpenRouter", async () => {
     fakes.openrouter.answer(({ path }) => (path === "/api/v1/generation" ? { status: 200, body: { data: { id: "gen-9", total_cost: 0.0002 } } } : undefined));
     const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup({ upstream: "openrouter", generationId: "gen-9" }, { lastAttempt: false });
-    expect(cost).toEqual({ state: "known", usd: 0.0002, source: "billing" });
+    expect(cost).toEqual({ state: "known", usd: 0.0002, source: "billing", tokens: { input: 0, cachedInput: 0, output: 0, reasoning: 0 } });
     expect(fakes.openrouter.seen[0]?.query).toBe("id=gen-9");
+  });
+
+  it("carries the generation's native token counts", async () => {
+    const data = { id: "gen-9", total_cost: 0.0002, native_tokens_prompt: 11, native_tokens_cached: 2, native_tokens_completion: 3, native_tokens_reasoning: 1 };
+    fakes.openrouter.answer(({ path }) => (path === "/api/v1/generation" ? { status: 200, body: { data } } : undefined));
+    const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup({ upstream: "openrouter", generationId: "gen-9" }, { lastAttempt: false });
+    expect(cost).toEqual({ state: "known", usd: 0.0002, source: "billing", tokens: { input: 11, cachedInput: 2, output: 3, reasoning: 1 } });
   });
 
   it("stays pending while OpenRouter has not recorded it, and is missing on the last attempt", async () => {
@@ -128,6 +136,30 @@ describe("understand (design 6.5)", () => {
     expect(answer.upstream).toBe("google");
     expect(answer.cost).toMatchObject({ state: "known", source: "price_table" });
     expect(JSON.stringify(posted(fakes.google)[0])).toContain(Buffer.from(picture.bytes).toString("base64"));
+  });
+
+  it("answers pending with OpenRouter's generation when the answer carried no cost", async () => {
+    const { cost: _cost, ...withoutCost } = CHAT_REPLY.usage;
+    fakes.openrouter.answer(() => ({ status: 200, body: { ...CHAT_REPLY, usage: withoutCost } }));
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.cost).toEqual({ state: "pending", lookup: { upstream: "openrouter", generationId: "gen-test" } });
+  });
+
+  it("runs without a deadline when the caller passes an endless one", async () => {
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture],
+      maxOutputTokens: 200,
+      deadlineAt: Number.POSITIVE_INFINITY,
+    });
+    expect(answer.text).toBe("ok");
   });
 
   it("passes the question through the caller's text cleaning", async () => {
@@ -199,8 +231,15 @@ describe("capabilities (design 3.5, U6)", () => {
     expect(listed()).toBe(1);
   });
 
+  it("resends the list request after a passing 503, as a read-only request", async () => {
+    let n = 0;
+    fakes.openrouter.answer(({ path }) => (path !== "/api/v1/models" ? undefined : ++n === 1 ? { status: 503, body: {} } : { status: 200, body: models }));
+    expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.capabilities("google/gemini-3.8-flash", policy)).toEqual({ pictures: true });
+    expect(listed()).toBe(2);
+  });
+
   it("answers false on a failed list and asks again only after the cooldown", async () => {
-    fakes.openrouter.answer(() => ({ status: 500, body: {} }));
+    fakes.openrouter.answer(() => ({ status: 400, body: {} }));
     const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
     expect(await llm.capabilities("google/gemini-3.8-flash", policy)).toEqual({ pictures: false });
     expect(await llm.capabilities("google/gemini-3.8-flash", policy)).toEqual({ pictures: false });
@@ -229,5 +268,26 @@ describe("capabilities (design 3.5, U6)", () => {
     const started = Date.now();
     expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.capabilities("google/gemini-3.8-flash", { ...policy, timeoutMs: 300 })).toEqual({ pictures: false });
     expect(Date.now() - started).toBeLessThan(3_000);
+  });
+});
+
+describe("assertModelsPriced (design 10)", () => {
+  it("refuses a model this deployment reaches directly without a token price", () => {
+    const llm = llmProvider(fakes, { ANTHROPIC_API_KEY: "k", OPENROUTER_API_KEY: "or" }).llm;
+    expect(() => llm.assertModelsPriced(["anthropic/claude-unpriced", "deepseek/deepseek-v4-pro"])).toThrow(ProviderConfigError);
+    try {
+      llm.assertModelsPriced(["anthropic/claude-unpriced"]);
+    } catch (error) {
+      expect((error as ProviderConfigError).problems).toEqual([expect.stringContaining("anthropic/claude-unpriced")]);
+    }
+  });
+
+  it("accepts it when the direct upstream has no key and the call goes through OpenRouter", () => {
+    expect(() => llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.assertModelsPriced(["anthropic/claude-unpriced"])).not.toThrow();
+  });
+
+  it("counts the upstreams that read media", () => {
+    const llm = llmProvider(fakes, { GOOGLE_API_KEY: "g", OPENROUTER_API_KEY: "or" }).llm;
+    expect(() => llm.assertModelsPriced(["google/gemini-unpriced"])).toThrow(ProviderConfigError);
   });
 });

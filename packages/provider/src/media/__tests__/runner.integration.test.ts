@@ -86,6 +86,19 @@ function config(): ProviderConfigInput {
         seedance: { upstreams: seedance() },
         "voice-clone": { upstreams: voiceClone },
         mureka: { upstreams: mureka },
+        // ws_a bills $0.10 per second of the source clip, ws_b $0.30 a call.
+        lipsync: {
+          upstreams: [
+            {
+              upstream: "ws_a",
+              weight: 1,
+              model_id: "sync/lipsync",
+              params: { video: { field: "video" } },
+              pricing: { kind: "formula", base_price: 100_000, formula: '{"total_price": get_duration(video) * base_price}', discount_rate: 100 },
+            },
+            { upstream: "ws_b", weight: 2, model_id: "sync/lipsync", params: { video: { field: "video" } }, pricing: { ...pricing, base_price: 300_000 } },
+          ],
+        },
         "seedance-priced": {
           upstreams: seedance().map((b) => ({ ...b, pricing: { ...pricing, base_price: b.upstream === "ws_a" ? 200_000 : 100_000 } })),
         },
@@ -162,6 +175,17 @@ describe("plan", () => {
     const r = runner();
     b.answer(() => accepted("p1"));
     const planned = expectState(await r.plan("seedance-priced", video, { mode: "cheapest" }, options()), "send");
+    await r.send(stored(planned.ticket), live());
+    expect(submits(a.seen)).toHaveLength(0);
+    expect(submits(b.seen)).toHaveLength(1);
+  });
+
+  it("prices a clip-length formula with the clip lengths the caller passes in cheapest mode", async () => {
+    const r = runner();
+    a.answer(() => accepted("p1"));
+    b.answer(() => accepted("p1"));
+    const clip = { prompt: "", params: { video: "https://cdn.example/v.mp4" } };
+    const planned = expectState(await r.plan("lipsync", clip, { mode: "cheapest" }, { ...options(), durations: { video: [10] } }), "send");
     await r.send(stored(planned.ticket), live());
     expect(submits(a.seen)).toHaveLength(0);
     expect(submits(b.seen)).toHaveLength(1);
@@ -716,3 +740,22 @@ describe("ticketFromLegacy — what earlier pickups left", () => {
   });
 });
 
+
+describe("cost.lookup on WaveSpeed (design 3.6, critical path)", () => {
+  const lookup = { upstream: "ws_a", predictionId: "p1" };
+  const provider = (): ReturnType<typeof createProvider> =>
+    createProvider({ config: config(), keyOf: (name) => ({ WS_A_KEY: "key-a" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+
+  it("reads the prediction's billing lines", async () => {
+    a.answer(({ path }) => (path === "/billings/search" ? billing([{ type: "deduct", price: 0.1 }]) : undefined));
+    expect(await provider().cost.lookup(lookup, { lastAttempt: false })).toEqual({ state: "known", usd: 0.1, source: "billing" });
+    expect(billedIds(a.seen)).toEqual(["p1"]);
+    expect(a.seen[0]?.authorization).toBe("Bearer key-a");
+  });
+
+  it("stays pending while billing has no line, and is missing on the last attempt", async () => {
+    a.answer(({ path }) => (path === "/billings/search" ? billing([]) : undefined));
+    expect(await provider().cost.lookup(lookup, { lastAttempt: false })).toEqual({ state: "pending", lookup });
+    expect((await provider().cost.lookup(lookup, { lastAttempt: true })).state).toBe("missing");
+  });
+});

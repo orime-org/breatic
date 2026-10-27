@@ -204,3 +204,14 @@ describe("aiSdkFetch", () => {
     await expect(response.text()).resolves.toHaveLength(3_000_000);
   });
 });
+
+describe("a deadline beyond what a timer can hold (design 2.2)", () => {
+  it.each([
+    ["thirty days away", (): number => Date.now() + 30 * 24 * 60 * 60 * 1000],
+    ["endless", (): number => Number.POSITIVE_INFINITY],
+  ])("%s runs the request", async (_name, deadline) => {
+    const { url } = await serve((_req, res) => setTimeout(() => json(res, 200, { ok: 1 }), 50));
+    const { body } = await fetchJson({ url, method: "GET" }, { replaySafe: false, deadlineAt: deadline(), ...read });
+    expect(body).toEqual({ ok: 1 });
+  });
+});

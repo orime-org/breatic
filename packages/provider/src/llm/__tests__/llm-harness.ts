@@ -152,3 +152,12 @@ export function llmProvider(
 export function posted(fake: FakeUpstream): Record<string, unknown>[] {
   return fake.seen.filter((s) => s.method === "POST").map((s) => s.body as Record<string, unknown>);
 }
+
+/**
+ * When a fake received each model request.
+ * @param fake - The fake.
+ * @returns The arrival times of its POSTs, in order.
+ */
+export function postedAt(fake: FakeUpstream): number[] {
+  return fake.seen.filter((s) => s.method === "POST").map((s) => s.at);
+}

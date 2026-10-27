@@ -12,6 +12,7 @@ describe("decide — media submit (design 5.3, media column)", () => {
     ["500", { kind: "http_status", status: 500 }, "switch"],
     ["503", { kind: "http_status", status: 503 }, "switch"],
     ["upstream has no such model", { kind: "model_not_found" }, "switch"],
+    ["the account has no balance", { kind: "insufficient_balance" }, "switch"],
     ["400", { kind: "http_status", status: 400 }, "stop"],
     ["422", { kind: "http_status", status: 422 }, "stop"],
     ["sent but no answer (timeout, reset)", { kind: "no_answer" }, "stop"],
@@ -33,6 +34,7 @@ describe("decide — LLM before the first content part (design 5.3, LLM column)"
   it.each<[string, Failure, "switch" | "stop"]>([
     ["request never left", { kind: "not_sent" }, "switch"],
     ["upstream has no such model", { kind: "model_not_found" }, "switch"],
+    ["the account has no balance", { kind: "insufficient_balance" }, "switch"],
     ["400", { kind: "http_status", status: 400 }, "stop"],
     ["422", { kind: "http_status", status: 422 }, "stop"],
     ["sent but no answer, or the stream broke", { kind: "no_answer" }, "stop"],
@@ -84,6 +86,7 @@ function failureArb(): fc.Arbitrary<Failure> {
     fc.constant<Failure>({ kind: "not_sent" }),
     fc.constant<Failure>({ kind: "no_answer" }),
     fc.constant<Failure>({ kind: "model_not_found" }),
+    fc.constant<Failure>({ kind: "insufficient_balance" }),
     fc.constant<Failure>({ kind: "aborted" }),
     fc.integer({ min: 400, max: 599 }).map<Failure>((status) => ({ kind: "http_status", status })),
   );
