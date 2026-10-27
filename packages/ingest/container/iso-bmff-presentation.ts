@@ -31,6 +31,36 @@ export interface OwnedPresentationOccurrence {
 export interface OwnedVideoPresentation { edits: OwnedEditInterval[]; frames: OwnedPresentationOccurrence[] }
 
 /**
+ * Preserve a complete unedited physical schedule and its declared final-sample dwell.
+ * @param frames - Original dense frame identities in presentation order.
+ * @param sourceTimeBase - Original exact physical clock, without rebasing.
+ * @param terminalDuration - Duration of the final displayed sample from its own track table.
+ * @param maxOccurrences - Frozen maximum expansion.
+ * @returns Exact occurrences without an invented edit list or movie-duration tail.
+ * @throws {Error} When clocks, frame identities, final dwell or the ceiling are invalid.
+ */
+export function planUneditedVideoPresentation(
+  frames: PhysicalVideoFrame[],
+  sourceTimeBase: ExactPresentationTime,
+  terminalDuration: ExactPresentationTime,
+  maxOccurrences: number,
+): OwnedVideoPresentation {
+  if (!Number.isSafeInteger(maxOccurrences) || maxOccurrences <= 0) throw presentationError("invalid_limits", "Occurrence ceiling must be a positive safe integer");
+  if (frames.length === 0) throw presentationError("invalid_ledger", "Expected a complete nonempty physical frame ledger");
+  if (frames.length > maxOccurrences) throw presentationError("resource_limit", "Presentation occurrence ceiling exceeded");
+  const times = physicalTimes(frames, positiveClock(sourceTimeBase.numerator), positiveClock(sourceTimeBase.denominator));
+  const dwell = rational(positiveClock(terminalDuration.numerator), positiveClock(terminalDuration.denominator));
+  return {
+    edits: [],
+    frames: frames.map((frame, index) => ({
+      presentationOrdinal: index, editOccurrence: 0, rawDecodeOrdinal: frame.rawDecodeOrdinal,
+      sourcePtsTicks: frame.ptsTicks, mappedPts: exact(times[index]!), displayStart: exact(times[index]!),
+      displayEnd: exact(times[index + 1] ?? add(times[index]!, dwell)),
+    })),
+  };
+}
+
+/**
  * Project complete rate-one edits onto physical frames, including clipped overlap at an edit start.
  * @param input - Integer source facts and a complete explicitly supplied edit schedule.
  * @param maxOccurrences - Frozen maximum expansion, independent from raw-frame count.

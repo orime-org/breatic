@@ -100,6 +100,7 @@ export async function inspectIsoBmffFile(path: string, limits: IsoBmffReadLimits
 interface MetadataBox { kind: string; start: bigint; end: bigint }
 interface HeaderClock { timescale: string; duration: string }
 interface TrackHeader { trackId: number; trackFlags: number; duration: string }
+interface SampleRuns { version: 0 | 1; entries: { sampleCount: number; value: string }[] }
 
 /** Construct a classified metadata failure without replacing the underlying IO cause.
  * @throws {never} Never.
@@ -239,6 +240,71 @@ class MetadataReader {
     return edits;
   }
 
+  /** Read compressed sample runs with their actual full-box signedness.
+   * @param box - The track's stts or ctts table.
+   * @returns Exact counts and integer deltas or composition offsets.
+   * @throws {Error} When a version, extent or cumulative read budget fails.
+   */
+  private async sampleRuns(box: MetadataBox): Promise<SampleRuns> {
+    if (box.end - box.start < 8n) throw metadataError("invalid_box", "Incomplete sample timing header");
+    const prefix = await this.read(box.start, 8);
+    const header = new DataView(prefix.buffer, prefix.byteOffset, prefix.byteLength);
+    const version = header.getUint8(0);
+    if (version !== 0 && (box.kind !== "ctts" || version !== 1)) {
+      throw metadataError("unsupported_version", "Unsupported sample timing version");
+    }
+    const count = header.getUint32(4);
+    const length = count * 8;
+    if (BigInt(length) > box.end - box.start - 8n) throw metadataError("invalid_box", "Sample timing count exceeds its payload");
+    const bytes = await this.read(box.start + 8n, length);
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const entries: SampleRuns["entries"] = [];
+    for (let index = 0; index < count; index += 1) {
+      entries.push({ sampleCount: view.getUint32(index * 8), value: String(version === 1 ? view.getInt32(index * 8 + 4) : view.getUint32(index * 8 + 4)) });
+    }
+    return { version, entries };
+  }
+
+  /** Preserve the five signed composition-shift facts without choosing a display window.
+   * @param box - The selected track's cslg box.
+   * @returns The actual version and exact signed fields.
+   * @throws {Error} When the version, extent or read budget fails.
+   */
+  private async compositionShift(box: MetadataBox): Promise<IsoBmffCompositionShift> {
+    const view = await this.fixedHeader(box, 24, 44);
+    const version = view.getUint8(0) as 0 | 1;
+    const values: string[] = [];
+    for (let index = 0; index < 5; index += 1) {
+      values.push((version === 0 ? BigInt(view.getInt32(4 + index * 4)) : view.getBigInt64(4 + index * 8)).toString());
+    }
+    return { version, compositionToDtsShift: values[0]!, leastDecodeToDisplayDelta: values[1]!, greatestDecodeToDisplayDelta: values[2]!, compositionStartTime: values[3]!, compositionEndTime: values[4]! };
+  }
+
+  /** Traverse this track's sample tables under the existing cumulative metadata ceilings.
+   * @param mediaChildren - Direct children of the identified track's mdia box.
+   * @returns Sample timing when stts exists, preserving the old absent-field shape otherwise.
+   * @throws {Error} When hierarchy, timing versions, duplicates or budgets fail.
+   */
+  private async sampleTiming(mediaChildren: MetadataBox[]): Promise<IsoBmffSampleTiming | undefined> {
+    const minf = this.unique(mediaChildren, "minf", false);
+    if (!minf) return undefined;
+    const stbl = this.unique(await this.children(minf.start, minf.end), "stbl", false);
+    if (!stbl) return undefined;
+    const tables = await this.children(stbl.start, stbl.end);
+    const stts = this.unique(tables, "stts", false);
+    const ctts = this.unique(tables, "ctts", false);
+    const cslg = this.unique(tables, "cslg", false);
+    if (!stts) return undefined;
+    const decode = await this.sampleRuns(stts);
+    const composition = ctts ? await this.sampleRuns(ctts) : null;
+    return {
+      decodeRuns: decode.entries.map((entry) => ({ sampleCount: entry.sampleCount, deltaTicks: entry.value })),
+      cttsVersion: composition?.version ?? null,
+      compositionRuns: composition?.entries.map((entry) => ({ sampleCount: entry.sampleCount, offsetTicks: entry.value })) ?? null,
+      compositionShift: cslg ? await this.compositionShift(cslg) : null,
+    };
+  }
+
   /** Select one required child without silently discarding duplicate metadata.
    * @throws {Error} When a required child is absent or multiple matching children exist.
    */
@@ -264,7 +330,8 @@ class MetadataReader {
       const edit = this.unique(await this.children(editContainer.start, editContainer.end), "elst", false);
       if (edit) edits = await this.editList(edit);
     }
-    return { trackId: header.trackId, trackFlags: header.trackFlags, durationMovieTicks: header.duration, mediaTimescale: clock.timescale, mediaDurationTicks: clock.duration, edits };
+    const sampleTiming = await this.sampleTiming(mediaChildren);
+    return { trackId: header.trackId, trackFlags: header.trackFlags, durationMovieTicks: header.duration, mediaTimescale: clock.timescale, mediaDurationTicks: clock.duration, edits, ...(sampleTiming === undefined ? {} : { sampleTiming }) };
   }
 
   /** Inspect a single movie and every identified track using only bounded metadata reads.
