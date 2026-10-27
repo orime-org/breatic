@@ -40,7 +40,9 @@ const MAX_DELIVERIES = 3;
 /** Base of the full-jitter exponential backoff between deliveries. */
 const BASE_DELAY_MS = 1_000;
 /** A Retry-After longer than this is not waited for. */
-const MAX_RETRY_AFTER_MS = 60_000;
+export const MAX_RETRY_AFTER_MS = 60_000;
+/** The longest delay a timer holds; a longer one fires at once, so a deadline beyond it sets no timer. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 /** How much of a failed body an HttpStatus keeps. */
 const SNIPPET_CHARS = 500;
 /** Error codes that mean the request never left this machine. */
@@ -104,9 +106,8 @@ function boundSignal(options: SendOptions): { signal: AbortSignal; dispose: () =
   };
   options.signal?.addEventListener("abort", onAbort, { once: true });
   if (options.signal?.aborted === true) controller.abort();
-  const timer = options.deadlineAt === undefined
-    ? undefined
-    : setTimeout(onAbort, Math.max(0, options.deadlineAt - Date.now()));
+  const left = options.deadlineAt === undefined ? Infinity : options.deadlineAt - Date.now();
+  const timer = left > MAX_TIMER_MS ? undefined : setTimeout(onAbort, Math.max(0, left));
   return {
     signal: controller.signal,
     dispose: () => {
@@ -130,7 +131,7 @@ function ended(options: SendOptions): boolean {
  * @param raw - The header.
  * @returns The delay, or undefined when absent or unreadable.
  */
-function retryAfterOf(raw: string | null): number | undefined {
+export function retryAfterOf(raw: string | null): number | undefined {
   if (raw === null) return undefined;
   const value = raw.trim();
   if (/^\d+$/.test(value)) return Number(value) * 1_000;
@@ -154,7 +155,7 @@ function resendable(status: number): boolean {
  * @param url - For the error.
  * @throws {Aborted} When the bounds end first.
  */
-async function wait(ms: number, options: SendOptions, url: string): Promise<void> {
+export async function wait(ms: number, options: SendOptions, url: string): Promise<void> {
   const { signal, dispose } = boundSignal(options);
   try {
     await new Promise<void>((resolve, reject) => {
@@ -269,7 +270,7 @@ export async function send(request: OutgoingRequest, options: SendOptions): Prom
  * @param delivery - The delivery just made, from 1.
  * @returns Milliseconds.
  */
-function backoff(delivery: number): number {
+export function backoff(delivery: number): number {
   return Math.random() * BASE_DELAY_MS * 2 ** (delivery - 1);
 }
 
@@ -293,7 +294,7 @@ export async function readBody(url: string, response: Response, maxBytes: number
   for (;;) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const idle = new Promise<"idle">((resolve) => {
-      timer = setTimeout(() => resolve("idle"), idleMs);
+      if (idleMs <= MAX_TIMER_MS) timer = setTimeout(() => resolve("idle"), idleMs);
     });
     let next: ReadableStreamReadResult<Uint8Array> | "idle";
     try {
@@ -352,18 +353,15 @@ export async function fetchJson(request: OutgoingRequest, options: ReadOptions):
  * NotSent and NoAnswer are thrown, so they survive on the `cause` chain of AI SDK's
  * own error (design 2.2, S2). An abort is rethrown as the platform raised it, so the
  * SDK reads it as an abort.
- * @param signal - An extra signal to honour besides the SDK's own.
  * @returns A fetch-compatible function.
  */
-export function aiSdkFetch(signal?: AbortSignal): typeof fetch {
+export function aiSdkFetch(): typeof fetch {
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const signals = [init?.signal, signal].filter((s): s is AbortSignal => s !== undefined && s !== null);
-    const combined = signals.length === 0 ? undefined : AbortSignal.any(signals);
     const url = input instanceof Request ? input.url : String(input);
     try {
-      return await globalThis.fetch(input, { ...init, ...(combined ? { signal: combined } : {}) });
+      return await globalThis.fetch(input, init);
     } catch (error) {
-      if (combined?.aborted === true) throw error;
+      if (init?.signal?.aborted === true) throw error;
       throw classify(url, error);
     }
   };

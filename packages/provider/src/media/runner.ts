@@ -79,6 +79,8 @@ export interface PlanOptions {
   sourceKeys: Record<string, string>;
   /** Live clones of these sources on every upstream. */
   clones: MediaClone[];
+  /** Clip lengths in seconds of the sources whose lengths are known, by our param name; priced in cheapest mode. */
+  durations?: Record<string, number[]>;
 }
 
 /** The bounds of one call. */
@@ -221,6 +223,21 @@ function classify(error: unknown): Failure | null {
   if (error instanceof Aborted) return { kind: "aborted" };
   if (error instanceof HttpStatus) return modelNotFound(error) ? { kind: "model_not_found" } : { kind: "http_status", status: error.status };
   return null;
+}
+
+/**
+ * Whether an error or anything on its cause chain passes a test.
+ * @param error - The error.
+ * @param test - The test.
+ * @returns True when one does.
+ */
+function inChain(error: unknown, test: (e: Error) => boolean): boolean {
+  const seen = new Set<unknown>();
+  for (let current = error; current instanceof Error && !seen.has(current); current = current.cause) {
+    seen.add(current);
+    if (test(current)) return true;
+  }
+  return false;
 }
 
 /**
@@ -609,17 +626,18 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param model - The model.
    * @param input - The run.
    * @param route - The caller's mode.
+   * @param durations - Known clip lengths, by our param name.
    * @returns The plan.
    * @throws {NoUpstreamAvailable} When no upstream is configured.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
-  const route = async (model: string, input: MediaInput, route: Route): Promise<RoutePlan> => {
+  const route = async (model: string, input: MediaInput, route: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
     let candidates = candidatesOf(config, model, keyOf);
     if (route.mode === "cheapest") {
       const estimates = await orderByPrice(provider.pricingRules(model), provider.availability(model), {
         params: input.params,
         prompt: input.prompt,
-        durations: {},
+        durations,
         placeholders: [],
         durationsMissing: [],
       });
@@ -647,7 +665,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   ): Promise<Omit<Ticket, "steps"> | MediaAnswer> => {
     let plan: RoutePlan;
     try {
-      plan = await route(model, input, chosen);
+      plan = await route(model, input, chosen, planOptions.durations ?? {});
     } catch (error) {
       if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common() };
       throw error;
@@ -690,26 +708,33 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param index - The describe step's place; the element step follows it.
    * @param bounds - The deadline and signal.
    * @returns The send answer for the element step, or failed when the image is refused.
+   * @throws {SendNotAccepted} When the image host or the understand upstream could not be reached.
+   * @throws {DeadlinePassed} When the deadline cut the read or the description.
    */
   const describe = async (ticket: Ticket, index: number, bounds: CallBounds): Promise<MediaAnswer> => {
     const step = ticket.steps[index]!;
     const spec = bindingOf(ticket).extra_steps?.find((s) => s.kind === "element")?.describe;
     if (spec === undefined) throw new Error(`${ticket.model} has no description step on ${ticket.upstream}`);
-    let media;
+    let answer;
     try {
-      media = await fetchMedia({ url: sourceOf(ticket, step), maxBytes: options.mediaLimits.maxMediaBytes, deadlineAt: bounds.deadlineAt, ...(bounds.signal ? { signal: bounds.signal } : {}) });
+      const media = await fetchMedia({ url: sourceOf(ticket, step), maxBytes: options.mediaLimits.maxMediaBytes, deadlineAt: bounds.deadlineAt, ...(bounds.signal ? { signal: bounds.signal } : {}) });
+      answer = await provider.llm.understand({
+        model: spec.model,
+        question: spec.question,
+        media: [media],
+        maxOutputTokens: spec.max_output_tokens,
+        deadlineAt: bounds.deadlineAt,
+        ...(bounds.signal ? { signal: bounds.signal } : {}),
+      });
     } catch (error) {
       if (error instanceof MediaRefused) return failed(ticket, error);
+      // Nothing reached the media upstream: the caller clears its sending mark and retries the ticket.
+      if (inChain(error, (e) => e instanceof NotSent)) throw new SendNotAccepted(ticket.upstream, error);
+      if (Date.now() >= bounds.deadlineAt && inChain(error, (e) => e instanceof Aborted || e.name === "AbortError" || e.name === "TimeoutError")) {
+        throw new DeadlinePassed(bounds.deadlineAt);
+      }
       throw error;
     }
-    const answer = await provider.llm.understand({
-      model: spec.model,
-      question: spec.question,
-      media: [media],
-      maxOutputTokens: spec.max_output_tokens,
-      deadlineAt: bounds.deadlineAt,
-      ...(bounds.signal ? { signal: bounds.signal } : {}),
-    });
     const description = answer.text.trim().slice(0, ELEMENT_DESCRIPTION_MAX);
     const steps = ticket.steps.map((s, i) => {
       if (i === index) return { ...s, status: "done" as const, output: {} };
@@ -749,7 +774,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
           if (failure.kind === "model_not_found") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
           throw new SendNotAccepted(ticket.upstream, error);
         }
-        const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons, costs: [] });
+        const moved = planned({ ...ticket, version: ticket.version + 1, upstream: to, next: rest, reasons });
         return waiting(moved, { warnings: [{ code: "upstream_switched", detail: { model: ticket.model, from: ticket.upstream, to, failure: failure.kind } }] });
       }
       if (answer.outputs !== undefined) {
