@@ -177,19 +177,19 @@ describe("reading the body", () => {
 describe("aiSdkFetch", () => {
   it("returns a 500 as a Response for AI SDK to parse", async () => {
     const { url } = await serve((_req, res) => json(res, 500, { error: { message: "overloaded" } }));
-    const response = await aiSdkFetch()(url, { method: "POST", body: "{}" });
+    const response = await aiSdkFetch(url, { method: "POST", body: "{}" });
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: { message: "overloaded" } });
   });
 
   it("throws NotSent for a refused connection", async () => {
     const url = await closedPort();
-    await expect(aiSdkFetch()(url, { method: "POST" })).rejects.toBeInstanceOf(NotSent);
+    await expect(aiSdkFetch(url, { method: "POST" })).rejects.toBeInstanceOf(NotSent);
   });
 
   it("never resends: a 503 reaches the server once", async () => {
     const { url, count } = await serve((_req, res) => json(res, 503, {}));
-    await aiSdkFetch()(url, { method: "POST", body: "{}" });
+    await aiSdkFetch(url, { method: "POST", body: "{}" });
     expect(count()).toBe(1);
   });
 
@@ -199,7 +199,7 @@ describe("aiSdkFetch", () => {
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.end(big);
     });
-    const response = await aiSdkFetch()(url, { method: "POST" });
+    const response = await aiSdkFetch(url, { method: "POST" });
     await expect(response.text()).resolves.toHaveLength(3_000_000);
   });
 });
