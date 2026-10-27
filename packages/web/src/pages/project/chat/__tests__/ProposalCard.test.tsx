@@ -16,8 +16,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
-import { t } from '@breatic/shared';
+import type { CanvasProposal, GenerationTemplate, ModelCatalog, ProposalNode } from '@breatic/shared';
+import { setLocaleMessages, t, templateGuideNode } from '@breatic/shared';
+import en from '@locales/en.json';
 
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
@@ -125,6 +126,7 @@ function renderCard(listening = true, proposal: CanvasProposal = PAIR): QueryCli
 }
 
 afterEach(() => {
+  setLocaleMessages('en', en as Record<string, unknown>);
   cleanup();
   listModels.mockReset();
   warn.mockReset();
@@ -457,5 +459,66 @@ describe('the Use button', () => {
     const shared = screen.getByText('shared').closest('button')!;
     expect(use.className).toBe(shared.className);
     expect(use.parentElement!.className).toBe(shared.parentElement!.className);
+  });
+});
+
+describe('a proposal made from a template (inner#1345)', () => {
+  /** A template with two follow-up steps, so it carries a guide text node. */
+  const STEPPED: GenerationTemplate = {
+    id: 'fixture-stepped',
+    anchor: 'final',
+    nodes: [{ key: 'final', role: 'generate', type: 'image', mode: 'i2i', model: 'some-model', params: {} }],
+    edges: [],
+    inputs: [],
+    steps: ['split', 'animate'],
+    agentNote: 'a fixture',
+  };
+
+  /** English with the fixture's strings added; no locale file carries them. */
+  const EN_WITH_FIXTURE = {
+    ...en,
+    canvas: {
+      ...en.canvas,
+      template: {
+        ...en.canvas.template,
+        'fixture-stepped': {
+          name: 'Stepped fixture',
+          step: { split: 'Split the grid into panels', animate: 'Turn the panels into a video' },
+        },
+      },
+    },
+  };
+
+  it('draws the guide text node in full, as words already written', () => {
+    setLocaleMessages('en', EN_WITH_FIXTURE as Record<string, unknown>);
+    listModels.mockResolvedValue(CATALOG);
+    const guide = templateGuideNode(STEPPED, 1);
+    if (!guide) throw new Error('a template with steps has a guide');
+    renderCard(true, { ...PAIR, nodes: [...PAIR.nodes, guide], groupName: 'Stepped' });
+
+    expect(screen.getAllByTestId('proposal-words-name').map((el) => el.textContent)).toEqual(['Stepped fixture']);
+    const words = screen.getByTestId('proposal-words').textContent ?? '';
+    expect(words.split('\n')[0]).toBe('Stepped fixture');
+    expect(words).toContain('Split the grid into panels');
+    expect(words).toContain('Turn the panels into a video');
+    expect(words.indexOf('Split the grid into panels')).toBeLessThan(words.indexOf('Turn the panels into a video'));
+  });
+
+  it('draws a resource node’s chip as filled, not as a node the reader fills in', () => {
+    listModels.mockResolvedValue(CATALOG);
+    const resource = {
+      role: 'source',
+      type: 'image',
+      name: 'Style',
+      resource: 'templates/fixture-stepped/style.png',
+    } as ProposalNode;
+    renderCard(true, {
+      ...PAIR,
+      nodes: [resource, PAIR.nodes[1] as ProposalNode],
+    });
+
+    const chips = screen.getAllByTestId('proposal-chip');
+    expect(chips.map((c) => c.textContent)).toEqual(['Style', 'On white']);
+    expect(chips[0]?.className).not.toContain('border-dashed');
   });
 });

@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { findTemplate, templatePrompt, type ProposalNode } from "@breatic/shared";
+import { findTemplate, templatePrompt, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -22,12 +22,15 @@ import { inputSchema } from "../proposal-input.js";
 import { markTypedAsWords } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
+import { FIXTURES, loadFixtureLocales } from "./template-fixtures.js";
+
 beforeEach(() => {
-  loadLocales();
+  loadFixtureLocales();
   useFullCatalog();
 });
 
 afterAll(() => {
+  loadLocales();
   restoreProcessEnv();
 });
 
@@ -51,6 +54,8 @@ interface RefusalCase {
    * can reach its own: the copies test holds each doubling to it.
    */
   noCopies?: RefusalId;
+  /** The template registry the case is judged against, where it is not the real one. */
+  templates?: readonly GenerationTemplate[];
 }
 
 const PIC = "https://resource.example/image/2026-10-09/1_pic.png";
@@ -172,6 +177,48 @@ function NOTES(count: number): (typeof NOTE)[] {
 /** The values the multiple-angles model has a control for. */
 const ANGLES_SETTABLE = ["distance", "horizontal_angle", "vertical_angle"];
 
+/** A note to generate a node first. */
+const GEN_FIRST = { slot: { kind: "note" as const, label: "Generate Still first" } };
+/** The one-node fixture's anchor, its empty reference at index 0 @'d and noted. */
+const SOLO_ANCHOR: Sent["nodes"][number] = { role: "generate", type: "image", name: "Gen", template: { id: "fixture-solo" }, prompt: [{ text: "Redraw " }, { ref: 0 }, NOTE] };
+/** The multi-shot fixture's generated still, under its key. */
+const STILL: Sent["nodes"][number] = { role: "generate", type: "image", name: "Still", template: { id: "fixture-shots", key: "still" }, prompt: [{ text: "A woman in a yellow coat." }] };
+/** The multi-shot fixture's anchor, with one shot naming nothing. */
+const CLIP_ANCHOR: Sent["nodes"][number] = { role: "generate", type: "video", name: "Clip", template: { id: "fixture-shots" }, shots: [{ prompt: [{ text: "She walks along the shore." }], duration: 5 }] };
+/** The note the fixture sheet's anchor carries for its generated sketch, picked into a slot. */
+const SKETCH_FIRST = { slot: { kind: "note" as const, label: "Generate Sketch first, then pick it into the style slot" } };
+/**
+ * A note to put material in a node first.
+ * @param name - The node's name.
+ * @returns The note segment.
+ */
+function putFirst(name: string): { slot: { kind: "note"; label: string } } {
+  return { slot: { kind: "note", label: `Put the picture in ${name} first` } };
+}
+/**
+ * The multi-node fixture as the agent sends it, every edge but the one from
+ * the sketch into the sheet's style slot: 0 the anchor, 1 the sketch, 2 the
+ * palette resource, 3 to 6 the inputs pose, front, back and character.
+ */
+const SHEET_NODES: Sent["nodes"] = [
+  { role: "generate", type: "image", name: "Sheet", template: { id: "fixture-sheet" }, prompt: [putFirst("Front"), putFirst("Back"), putFirst("Character"), { text: "Draw " }, { ref: 4 }, { text: " and " }, { ref: 5 }, { text: " of " }, { ref: 6 }, { text: "." }] },
+  { role: "generate", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" }, prompt: [putFirst("Pose"), putFirst("Character"), { text: "A sketch of " }, { ref: 6 }, { text: " posed as " }, { ref: 3 }, { text: " in the colours of " }, { ref: 2 }, { text: "." }] },
+  { role: "source", type: "image", name: "Palette", template: { id: "fixture-sheet", key: "palette" } },
+  { role: "source", type: "image", name: "Pose" },
+  { role: "source", type: "image", name: "Front" },
+  { role: "source", type: "image", name: "Back" },
+  { role: "source", type: "image", name: "Character" },
+];
+/** The fixture sheet's edges, all but the sketch's into the sheet. */
+const SHEET_EDGES: Sent["edges"] = [
+  { fromIndex: 2, toIndex: 1, into: "pool" },
+  { fromIndex: 3, toIndex: 1, into: "pool" },
+  { fromIndex: 4, toIndex: 0, into: "pool" },
+  { fromIndex: 5, toIndex: 0, into: "pool" },
+  { fromIndex: 6, toIndex: 1, into: "pool" },
+  { fromIndex: 6, toIndex: 0, into: "pool" },
+];
+
 // The template's words are read from the locales while the cases are built.
 loadLocales();
 
@@ -254,27 +301,91 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([EMPTY_PIC, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }],
   "template-unknown": [{
-    meets: group([EMPTY_PIC, { ...EDIT_POOL, template: "no-such-template", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    meets: group([EMPTY_PIC, { ...EDIT_POOL, template: { id: "no-such-template" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['No template "no-such-template". Templates: storyboard-grid-25'],
+  }, {
+    meets: group([EMPTY_PIC, { ...EDIT_POOL, template: { id: "no-such-template" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['No template "no-such-template". Templates: fixture-sheet, fixture-solo, fixture-steps, fixture-shots.'],
+    templates: FIXTURES,
   }],
-  "template-role": [{
-    meets: group([{ ...EMPTY_PIC, template: "storyboard-grid-25" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['Template "storyboard-grid-25" goes on a generate node; "Pic" is a source node.'],
+  // Design 6.7 step 2: the key and input checks below replace "template-role" and "template-type".
+  "template-key-unknown": [{
+    meets: group([EMPTY_PIC, { ...SOLO_ANCHOR, template: { id: "fixture-solo", key: "nope" } }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['"nope"', '"fixture-solo"', '"edit"'],
+    templates: FIXTURES,
+  }, {
+    meets: group([{ ...EMPTY_PIC, template: { id: "fixture-solo", input: "nope" } }, SOLO_ANCHOR], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['"nope"', '"fixture-solo"', '"reference"'],
+    templates: FIXTURES,
   }],
-  "template-type": [{
-    meets: group([gen("video", "t2v", SHOTS, { template: "storyboard-grid-25" })]),
-    states: ['Template "storyboard-grid-25" is for image nodes, not video.'],
+  "template-key-kind": [{
+    // A generate key on a source node.
+    meets: group([{ ...EMPTY_PIC, template: { id: "fixture-shots", key: "still" } }, DRAW]),
+    states: ['"still"', "generate", "source"],
+    templates: FIXTURES,
+  }, {
+    // An image key on a video node.
+    meets: group([gen("video", "t2v", SHOTS, { template: { id: "fixture-shots", key: "still" } })]),
+    states: ['"still"', "image", "video"],
+    templates: FIXTURES,
+  }, {
+    // An image input tagged on a video node.
+    meets: group([{ ...CLIP_EMPTY, template: { id: "fixture-solo", input: "reference" } }, { ...SOLO_ANCHOR, prompt: [{ text: "Make it." }] }]),
+    states: ['"reference"', "image", "video"],
+    templates: FIXTURES,
+  }],
+  "template-key-missing": [{
+    meets: group([CLIP_ANCHOR]),
+    states: ['"still"', '"fixture-shots"'],
+    templates: FIXTURES,
+  }, {
+    // Two candidates, neither wired in: the reason lists both.
+    meets: group([STILL, { ...STILL, name: "Still 2" }, CLIP_ANCHOR]),
+    states: ['"still"', 'node 0 ("Still")', 'node 1 ("Still 2")'],
+    templates: FIXTURES,
+  }],
+  "template-key-repeated": [{
+    meets: group(
+      [STILL, { ...STILL, name: "Still 2" }, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, GEN_FIRST, { ref: 0 }, { text: " meets " }, { ref: 1 }, { text: "." }], duration: 5 }] }],
+      [{ fromIndex: 0, toIndex: 2, into: "pool" }, { fromIndex: 1, toIndex: 2, into: "pool" }],
+    ),
+    states: ['"still"', 'node 0 ("Still")', 'node 1 ("Still 2")'],
+    templates: FIXTURES,
+  }],
+  "template-edge-missing": [{
+    // The missing template edge goes into a slot param.
+    meets: group(SHEET_NODES, SHEET_EDGES),
+    states: ['node 1 ("Sketch")', 'node 0 ("Sheet")', '"style_images"'],
+    fix: group([{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)], [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }]),
+    templates: FIXTURES,
+  }, {
+    // The node the edge goes into runs multi_shot: the ref goes in a shot.
+    meets: group([STILL, CLIP_ANCHOR]),
+    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "shot"],
+    fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    templates: FIXTURES,
+  }],
+  "template-input-missing": [{
+    meets: group([{ ...SOLO_ANCHOR, prompt: [{ text: "Make it a watercolour." }] }]),
+    states: ['"reference"', '"fixture-solo"'],
+    templates: FIXTURES,
   }],
   "template-no-prompt": [{
-    meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: "storyboard-grid-25", mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    meets: group([EMPTY_PIC, { ...EDIT_POOL, prompt: undefined, template: { id: "storyboard-grid-25" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', 'On node 1 ("Gen"), write a prompt.', "The template's prompt, to rewrite in the reader's language with their story or detail in it:", 'an empty one by an edge with into: "pool" and a ref @\'ing it and a note saying what to do first'],
-    fix: group([EMPTY_PIC, { ...EDIT_POOL, template: "storyboard-grid-25", mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    fix: group([EMPTY_PIC, { ...EDIT_POOL, template: { id: "storyboard-grid-25" }, mode: undefined, model: undefined, prompt: [...storyboardSegments(), NOTE] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
   }, {
     // The node settles its own model, which takes no picture: the pool the template's own model has is not its.
-    meets: group([{ ...DRAW, prompt: undefined, template: "storyboard-grid-25" }]),
+    meets: group([{ ...DRAW, prompt: undefined, template: { id: "storyboard-grid-25" } }]),
     states: ['"Gen" names template "storyboard-grid-25" and sends no prompt.', 'On node 0 ("Gen"), write a prompt.'],
     absent: ['into: "pool"', "goes into the pool"],
-    fix: group([{ ...DRAW, template: "storyboard-grid-25" }]),
+    fix: group([{ ...DRAW, template: { id: "storyboard-grid-25" } }]),
+  }, {
+    // A multi_shot generate node naming a template and sending no shots.
+    meets: group([STILL, { ...CLIP_ANCHOR, shots: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['"Clip" names template "fixture-shots" and sends no prompt.', 'On node 1 ("Clip"), write a prompt.'],
+    fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    templates: FIXTURES,
   }],
   "sources-no-taker": [{
     meets: group([EMPTY_PIC, DRAW]),
@@ -752,6 +863,25 @@ function actsWhereItSays(meets: Sent, fix: Sent, sentence: string): void {
   expect(fix.edges, `"${sentence}" leaves the edges alone`).toEqual(meets.edges);
 }
 
+/**
+ * Hold the fix of a missing template edge (design 6.7 step 3) to what it
+ * says: one edge added into node j, and only node j changed besides, where
+ * the ref (or, into a slot, the note) goes. Every other edge stays.
+ * @param meets - The proposal refused.
+ * @param fix - The proposal after the fix.
+ */
+function wiresOneEdgeIn(meets: Sent, fix: Sent): void {
+  const added = [...fix.edges];
+  for (const edge of meets.edges) {
+    const at = added.findIndex((e) => JSON.stringify(e) === JSON.stringify(edge));
+    expect(at, "the fix keeps every edge the proposal had").toBeGreaterThanOrEqual(0);
+    added.splice(at, 1);
+  }
+  expect(added, "the fix adds one edge").toHaveLength(1);
+  const into = (added[0] as Sent["edges"][number]).toIndex;
+  expect(fix.nodes.filter((_, i) => i !== into), "the fix leaves every node but the one wired into alone").toEqual(meets.nodes.filter((_, i) => i !== into));
+}
+
 describe("every refusal states its fault, its rule and its facts", () => {
   for (const [refusal, cases] of Object.entries(CASES) as [RefusalId, RefusalCase[]][]) {
     for (const [at, entry] of cases.entries()) {
@@ -760,7 +890,7 @@ describe("every refusal states its fault, its rule and its facts", () => {
         // Every proposal here is one the tool would take in, so a fix is proven on what the agent can send.
         expect(inputSchema.safeParse(entry.meets).success, "the met proposal passes the tool's schema").toBe(true);
         if (entry.fix !== undefined) expect(inputSchema.safeParse(entry.fix).success, "the fixed proposal passes the tool's schema").toBe(true);
-        const met = verdictFor(entry.meets, MATERIALS);
+        const met = verdictFor(entry.meets, MATERIALS, entry.templates);
         expect(met).toMatchObject({ ok: false, refusal });
         const reason = met.ok ? "" : met.reason;
         // The words are pinned so a changed reason is read in review.
@@ -770,10 +900,11 @@ describe("every refusal states its fault, its rule and its facts", () => {
         // A fix is written only where the table marks the refusal as having one.
         expect(entry.fix !== undefined, `${refusal} carries a fix exactly when REFUSALS marks one`).toBe(REFUSALS[refusal] !== false);
         if (entry.fix === undefined) return;
-        const after = verdictFor(entry.fix, MATERIALS);
+        const after = verdictFor(entry.fix, MATERIALS, entry.templates);
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
         // The fix proposal changes only what the sentence names.
-        actsWhereItSays(entry.meets, entry.fix, lastSentence(reason));
+        if (refusal === "template-edge-missing") wiresOneEdgeIn(entry.meets, entry.fix);
+        else actsWhereItSays(entry.meets, entry.fix, lastSentence(reason));
       });
     }
   }
@@ -835,11 +966,11 @@ describe("a fix names what to take out by value, so the copies of it do not chan
       if (changing.length === 0) continue;
       it(`${refusal} (${String(at)}): ends on the same fix with its elements written twice`, () => {
         entry.catalog?.();
-        const once = verdictFor(entry.meets, MATERIALS);
+        const once = verdictFor(entry.meets, MATERIALS, entry.templates);
         // Writing everything twice can trip an earlier check first, so each case
         // has to meet its own refusal under one doubling that changes it at least,
         // or name in noCopies the refusal every doubling meets first instead.
-        const verdicts = changing.map((double) => verdictFor(double(entry.meets), MATERIALS));
+        const verdicts = changing.map((double) => verdictFor(double(entry.meets), MATERIALS, entry.templates));
         if (entry.noCopies !== undefined) {
           for (const verdict of verdicts) expect(verdict).toMatchObject({ ok: false, refusal: entry.noCopies });
           return;

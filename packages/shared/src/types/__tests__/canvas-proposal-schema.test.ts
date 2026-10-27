@@ -78,6 +78,32 @@ describe("canvasProposalSchema", () => {
     expect(canvasProposalSchema.safeParse({ placed: false, reason: "no" }).success).toBe(false);
   });
 
+  it("keeps a template node's resource and templateNode through parse (inner#1345)", () => {
+    const templated = {
+      ...CURRENT,
+      nodes: [
+        ...CURRENT.nodes,
+        {
+          role: "source",
+          type: "image",
+          name: "house style",
+          resource: "templates/fixture-flow/style.png",
+          templateNode: { template: "fixture-flow", key: "style" },
+        },
+        {
+          role: "written",
+          type: "text",
+          name: "Fixture flow",
+          prompt: [{ text: "Fixture flow\n1. Split the grid" }],
+          templateNode: { template: "fixture-flow", key: "guide", anchor: 1 },
+        },
+      ],
+    };
+    const parsed = canvasProposalSchema.parse(templated);
+    expect(parsed.nodes[4]).toEqual(templated.nodes[4]);
+    expect(parsed.nodes[5]).toEqual(templated.nodes[5]);
+  });
+
   it("describes a material's media fields exactly as a node's media fields", () => {
     expectTypeOf<NonNullable<ProposalNode["materialMedia"]>>().toEqualTypeOf<NodeMediaFields>();
   });

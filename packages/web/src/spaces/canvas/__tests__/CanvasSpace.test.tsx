@@ -5392,3 +5392,28 @@ describe('the camera this Space is left on (#2165)', () => {
     expect(viewport.style.transform).toBe('translate(-300px,-200px) scale(2)');
   });
 });
+
+// The panels apply a template through the same placing the agent's proposals
+// use (inner#1345 6.5). The callback reads ReactFlow's measurements, which
+// jsdom cannot supply, so its wiring is pinned the way the proposal camera
+// above is; what it places is `placeProposalAt`'s and `useApplyTemplate`'s,
+// each with its own tests.
+describe('the placing callback the generate panels receive', () => {
+  const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
+  const start = src.indexOf('const placeTemplate');
+  const body = start < 0 ? '' : src.slice(start, src.indexOf('\n  );\n', start));
+
+  it('hands all three generate panel containers the same callback', () => {
+    for (const container of ['<GeneratePanelContainer', '<VideoGeneratePanelContainer', '<AudioGeneratePanelContainer']) {
+      const at = src.indexOf(container);
+      expect(src.slice(at, src.indexOf('/>', at))).toContain('placeTemplate={placeTemplate}');
+    }
+  });
+
+  it('places with the reused nodes and leaves the viewport and focus alone', () => {
+    expect(start).toBeGreaterThan(-1);
+    expect(body).toMatch(/placeProposalAt\([^,]+,[^,]+,[^,]+,[^)]+\)/);
+    expect(body).not.toContain('setViewport');
+    expect(body).not.toContain('whatToFocus');
+  });
+});

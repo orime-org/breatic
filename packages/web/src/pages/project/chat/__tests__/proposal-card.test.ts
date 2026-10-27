@@ -121,6 +121,21 @@ describe('the little diagram of what gets built', () => {
     expect(groups[0]?.[1]?.[0]?.label).toBe('Talking head');
   });
 
+  it('draws a template resource node as filled: we supply it, the reader does not (inner#1345 6.7)', () => {
+    // The node lands empty and is fetched into storage right after; nothing is
+    // left for the reader to drop in, so the chip is not an outline.
+    const resource = {
+      ...empty('Style'),
+      resource: 'templates/fixture-flow/style.png',
+      templateNode: { template: 'fixture-flow', key: 'style' },
+    } as ProposalNode;
+    const proposal = flow([resource, generates('Sheet')], [[0, 1]]);
+
+    const groups = shapeOf(proposal);
+
+    expect(groups[0]?.[0]?.[0]).toEqual({ label: 'Style', empty: false });
+  });
+
   it('marks the node the reader fills in, wherever it sits', () => {
     const proposal = flow([empty('Your photo'), generates('On white')], [[0, 1]]);
 

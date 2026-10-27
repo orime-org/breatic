@@ -2,17 +2,51 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What picking a template in a generate panel writes (inner#977).
+ * What picking a template in a generate panel writes to each of its generate
+ * nodes (inner#977, inner#1345 6.4): the anchor and every reused upstream
+ * generation. The prompts come from `expandTemplate`, not from here.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { findTemplate, setLocale, templatePrompt, type ModelEntry } from '@breatic/shared';
+import type { ModelEntry, TemplateGenerateNode } from '@breatic/shared';
 
 import { templateWrites } from '@web/spaces/canvas/generate/template-writes';
 
-const grid = findTemplate('storyboard-grid-25');
-if (!grid) throw new Error('grid template missing');
+/** The storyboard's anchor node, as the migrated template declares it. */
+const grid: TemplateGenerateNode = {
+  key: 'grid',
+  role: 'generate',
+  type: 'image',
+  mode: 'i2i',
+  model: 'nano-banana-pro-edit-ultra',
+  params: { aspect_ratio: '1:1', resolution: '4k' },
+};
+
+/** An upstream generation of a multi-node template, on another model. */
+const upstream: TemplateGenerateNode = {
+  key: 'sheet',
+  role: 'generate',
+  type: 'image',
+  mode: 't2i',
+  model: 'sheet-model',
+  params: { aspect_ratio: '16:9' },
+};
+
+/** The upstream node's model. */
+const SHEET: ModelEntry = {
+  name: 'sheet-model',
+  display_name: 'Sheet',
+  modality: 'image',
+  mode: 't2i',
+  description: '',
+  guide: '',
+  tier: 'recommended',
+  generation_time: 10,
+  takes_prompt: true,
+  providers: [],
+  params: { aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' } },
+};
 
 /** The template's model, declaring one param the template leaves alone. */
 const ULTRA: ModelEntry = {
@@ -34,13 +68,21 @@ const ULTRA: ModelEntry = {
 };
 
 describe('templateWrites', () => {
-  it('writes the template mode, model and prompt in the reader’s language', () => {
-    setLocale('zh-CN');
+  it('writes the node’s mode and model and nothing else', () => {
     const out = templateWrites(grid, undefined, ULTRA);
-    setLocale('en');
     expect(out.mode).toBe('i2i');
     expect(out.model).toBe('nano-banana-pro-edit-ultra');
-    expect(out.prompt.map((s) => s.text ?? '').join('')).toContain('5 行 5 列');
+    expect(Object.keys(out).sort()).toEqual(['mode', 'model', 'paramsByModel']);
+  });
+
+  it('writes a non-anchor generation’s own mode, model and params, keeping its other records', () => {
+    const out = templateWrites(upstream, { paramsByModel: { 'nano-banana': { aspect_ratio: '4:3' } } }, SHEET);
+    expect(out.mode).toBe('t2i');
+    expect(out.model).toBe('sheet-model');
+    expect(out.paramsByModel).toEqual({
+      'nano-banana': { aspect_ratio: '4:3' },
+      'sheet-model': { aspect_ratio: '16:9' },
+    });
   });
 
   it('keeps what the node remembers for other models', () => {
@@ -69,6 +111,5 @@ describe('templateWrites', () => {
       resolution: '4k',
       output_format: 'png',
     });
-    expect(out.prompt).toEqual(templatePrompt(grid));
   });
 });
