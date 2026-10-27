@@ -353,16 +353,19 @@ export async function fetchJson(request: OutgoingRequest, options: ReadOptions):
  * NotSent and NoAnswer are thrown, so they survive on the `cause` chain of AI SDK's
  * own error (design 2.2, S2). An abort is rethrown as the platform raised it, so the
  * SDK reads it as an abort.
- * @returns A fetch-compatible function.
+ * @param input - The request target.
+ * @param init - The request options.
+ * @returns The response, whatever its status.
+ * @throws {NotSent} When the request never left.
+ * @throws {NoAnswer} When it was sent and no response came.
+ * @throws {Error} The platform's abort error when the request's signal fired.
  */
-export function aiSdkFetch(): typeof fetch {
-  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = input instanceof Request ? input.url : String(input);
-    try {
-      return await globalThis.fetch(input, init);
-    } catch (error) {
-      if (init?.signal?.aborted === true) throw error;
-      throw classify(url, error);
-    }
-  };
+export async function aiSdkFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = input instanceof Request ? input.url : String(input);
+  try {
+    return await globalThis.fetch(input, init);
+  } catch (error) {
+    if (init?.signal?.aborted === true) throw error;
+    throw classify(url, error);
+  }
 }

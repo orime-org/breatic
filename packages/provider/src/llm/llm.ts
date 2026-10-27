@@ -116,7 +116,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     const key = options.keyOf(decl.key_env) ?? "";
     let factory = fetch === undefined ? factories.get(upstream) : vendor.build(decl, key, fetch);
     if (factory === undefined) {
-      factory = vendor.build(decl, key, aiSdkFetch());
+      factory = vendor.build(decl, key, aiSdkFetch);
       factories.set(upstream, factory);
     }
     const pinnedId = config.llm.vendor_ids[modelId]?.[upstream];
@@ -379,7 +379,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
        * @throws {NotSent | NoAnswer} As provider's fetch throws.
        */
       const keepingBody = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const response = await aiSdkFetch()(input, init);
+        const response = await aiSdkFetch(input, init);
         lastBody = await response.clone().text().catch(() => undefined);
         return response;
       };
