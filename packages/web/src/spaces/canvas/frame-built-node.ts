@@ -191,14 +191,16 @@ export const CHROME_GAP_PX = 24;
 
 /**
  * Where to slide the camera so a box on screen is in front of the reader
- * (inner#1345): a template applied in a generate panel, with the nodes it
- * placed and the panel grown around its prompt. The room it has is the pane
+ * (inner#1345): nodes just placed and the generate panel opened on one of
+ * them, grown around its prompt. The boxes come widest first, each one the
+ * reader can do with less of: the first that fits the room is shown, else the
+ * last is. The room it has is the pane
  * less what floats over it, each taken off the side it sits on: one centred
  * in the bottom third off the bottom, else one in the left half off the left,
- * else off the right. Nothing moves while the box is inside that room; else
+ * else off the right. Nothing moves while that box is inside that room; else
  * it is centred in it at the reader's zoom, top left kept when it is larger.
  * The panel keeps its size on screen, so zooming out would not make it fit.
- * @param box - The box, in screen pixels from the pane's top left.
+ * @param boxes - The boxes, widest first, in screen pixels from the pane's top left.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
@@ -207,7 +209,7 @@ export const CHROME_GAP_PX = 24;
  * @returns The viewport to move to, or null to stay.
  */
 export function viewportToShow(
-  box: Rect,
+  boxes: readonly [Rect, ...Rect[]],
   pane: { width: number; height: number },
   now: Viewport,
   chrome: readonly Rect[],
@@ -223,6 +225,7 @@ export function viewportToShow(
     else right = Math.min(right, one.x - CHROME_GAP_PX);
   }
   const room = { x: left, y: top, width: right - left, height: bottom - top };
+  const box = boxes.find((one) => one.width <= room.width && one.height <= room.height) ?? boxes[boxes.length - 1] ?? boxes[0];
   if (contains(box, room)) return null;
   const dx = box.width > room.width ? room.x - box.x : room.x + room.width / 2 - (box.x + box.width / 2);
   const dy = box.height > room.height ? room.y - box.y : room.y + room.height / 2 - (box.y + box.height / 2);

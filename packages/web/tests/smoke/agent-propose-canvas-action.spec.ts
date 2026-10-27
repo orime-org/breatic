@@ -22,6 +22,7 @@ import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
+import { expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { projectIdOf } from '../helpers/tab-restore';
@@ -524,5 +525,7 @@ test('places a template proposal with its guide text node pointing at the anchor
   );
   expect(typeof tags.anchor).toBe('string');
   expect(tags.guideAnchor).toBe(tags.anchor);
+  // The panel opened on the anchor is brought clear of what floats over the canvas.
+  await expectPanelInView(page);
   await page.screenshot({ path: test.info().outputPath('template-proposal-placed.png') });
 });

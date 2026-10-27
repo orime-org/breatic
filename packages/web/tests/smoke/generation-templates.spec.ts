@@ -12,10 +12,11 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Locator, type Page } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
+import { expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -97,18 +98,6 @@ async function wire(from: string, to: string): Promise<void> {
 }
 
 /**
- * Whether two elements on screen share any area.
- * @param a - One element.
- * @param b - The other.
- * @returns True when they overlap.
- */
-async function overlapping(a: Locator, b: Locator): Promise<boolean> {
-  const [one, two] = await Promise.all([a.boundingBox(), b.boundingBox()]);
-  if (one === null || two === null) return false;
-  return one.x < two.x + two.width && two.x < one.x + one.width && one.y < two.y + two.height && two.y < one.y + one.height;
-}
-
-/**
  * Pick the storyboard template in the open image panel.
  */
 async function pickStoryboard(): Promise<void> {
@@ -150,16 +139,10 @@ test('picking a template places the reference it asks for, wired and @\'d, and p
   await expect(prompt).toContainText('{✏️ the story}');
   await expect(page.getByText('Replace the text in braces.', { exact: false })).toBeVisible();
   // The camera brings the placed reference and the panel, grown around the
-  // prompt, clear of the toolbars floating over the canvas.
-  const panel = page.locator('[data-canvas-panel]');
+  // prompt, clear of the menu, toolbar and minimap floating over the canvas.
   const menu = await page.getByTestId('left-floating-menu').boundingBox();
-  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
   await expect.poll(async () => (await reference.boundingBox())?.x ?? 0, { timeout: 5_000 }).toBeGreaterThanOrEqual((menu?.x ?? 0) + (menu?.width ?? 0));
-  await expect
-    .poll(async () => { const box = await panel.boundingBox(); return (box?.y ?? 0) + (box?.height ?? 0); }, { timeout: 5_000 })
-    .toBeLessThanOrEqual((pane?.y ?? 0) + (pane?.height ?? 0));
-  await expect.poll(() => overlapping(panel, page.getByTestId('viewport-toolbar')), { timeout: 5_000 }).toBe(false);
-  await expect.poll(() => overlapping(panel, visibleSpace(page).locator('.react-flow__minimap')), { timeout: 5_000 }).toBe(false);
+  await expectPanelInView(page);
   await page.screenshot({ path: test.info().outputPath('image-template-applied.png') });
 
   await pickStoryboard();
