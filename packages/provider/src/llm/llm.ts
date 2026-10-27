@@ -7,11 +7,11 @@
  * reading media, the decisions endpoint and the picture capability.
  */
 
-import { generateText, type JSONValue, type SystemModelMessage } from "ai";
+import { APICallError, generateText, type JSONValue, type SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
-import { MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
+import { aiSdkFetch, MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
@@ -107,14 +107,16 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param route - The route that matched.
    * @param upstream - The upstream.
    * @param modelId - Our model id.
+   * @param fetch - A fetch for this call only; the upstream's shared factory is used without one.
    * @returns Its model.
    */
-  const modelOn = (route: LlmRoute, upstream: string, modelId: string): ModelV4 => {
+  const modelOn = (route: LlmRoute, upstream: string, modelId: string, fetch?: typeof globalThis.fetch): ModelV4 => {
     const decl = config.upstreams[upstream]!;
     const vendor = vendorOf(decl.kind);
-    let factory = factories.get(upstream);
+    const key = options.keyOf(decl.key_env) ?? "";
+    let factory = fetch === undefined ? factories.get(upstream) : vendor.build(decl, key, fetch);
     if (factory === undefined) {
-      factory = vendor.build(decl, options.keyOf(decl.key_env) ?? "");
+      factory = vendor.build(decl, key, aiSdkFetch());
       factories.set(upstream, factory);
     }
     const pinnedId = config.llm.vendor_ids[modelId]?.[upstream];
@@ -229,6 +231,36 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
+   * An understand call the route stopped on, as the refusal it is, carrying what the
+   * refused answer cost: the upstream may bill it, so it is read before the refusal is
+   * judged, as domain's understand did.
+   * @param model - Our model id.
+   * @param upstream - The upstream that answered last.
+   * @param error - What the call threw.
+   * @param answerBody - The text of the last answer, when the SDK error kept no body.
+   * @returns UpstreamRequestRejected for an answered refusal; the error itself otherwise.
+   */
+  const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined): unknown => {
+    if (upstream === undefined || !APICallError.isInstance(error) || error.statusCode === undefined) return error;
+    if (classifyLlm(error, vendorOf(kindOf(upstream)))?.kind !== "http_status") return error;
+    let body: { id?: unknown; usage?: { cost?: unknown } } | undefined;
+    try {
+      body = JSON.parse(error.responseBody ?? answerBody ?? "") as typeof body;
+    } catch {
+      body = undefined;
+    }
+    const reported = body?.usage?.cost;
+    const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body?.id, undefined);
+    const ok = error.statusCode >= 200 && error.statusCode < 300;
+    const cost: Cost | undefined = typeof reported === "number" && Number.isFinite(reported)
+      ? { state: "known", usd: reported, source: "reported" }
+      : ref !== undefined
+        ? { state: "pending", lookup: ref }
+        : ok ? { state: "missing", reason: `${upstream} refused with no cost and no generation id` } : undefined;
+    return new UpstreamRequestRejected(model, upstream, error.message, cost);
+  };
+
+  /**
    * The first upstream of OpenRouter's kind the route allows.
    * @param chosen - The caller's mode.
    * @returns Its name and key.
@@ -334,15 +366,32 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
           { type: "file" as const, data: media.bytes, mediaType: media.contentType },
         ]),
       ];
+      let answering: string | undefined;
+      // The body of the last answer: a refused call may be billed, and its SDK error keeps only part of it.
+      let lastBody: string | undefined;
+      /**
+       * provider's fetch, keeping the text of each answer for a refusal's cost.
+       * @param input - The request.
+       * @param init - Its options.
+       * @returns The response, its body still readable.
+       * @throws {NotSent | NoAnswer} As provider's fetch throws.
+       */
+      const keepingBody = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const response = await aiSdkFetch()(input, init);
+        lastBody = await response.clone().text().catch(() => undefined);
+        return response;
+      };
       const served = await tryInOrder(plan, {
         phase: "llm_before_content",
         maxRetries: options.llmMaxRetries,
         classify: (error, c) => classifyLlm(error, vendorOf(kindOf(c.upstream))),
         pause: (error, retry) => pauseBeforeRetry(error, retry, abortSignal),
         attempt: (c) => {
+          answering = c.upstream;
+          lastBody = undefined;
           const vendor = vendorOf(kindOf(c.upstream));
           return generateText({
-            model: modelOn(route, c.upstream, request.model),
+            model: modelOn(route, c.upstream, request.model, keepingBody),
             messages: [{ role: "user", content }],
             maxOutputTokens: request.maxOutputTokens,
             maxRetries: 0,
@@ -350,6 +399,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
           });
         },
+      }).catch((error: unknown) => {
+        throw refusedCall(request.model, answering, error, lastBody);
       });
       const result = served.value;
       const generationId = result.response.id;

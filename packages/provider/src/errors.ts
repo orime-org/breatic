@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { Cost } from "@provider/cost.js";
+
 /** Why one upstream could not serve a call. */
 export type UnavailableReason =
   | { upstream: string; kind: "missing_key"; envVar: string }
@@ -28,18 +30,22 @@ export class NoUpstreamAvailable extends Error {
 export class UpstreamRequestRejected extends Error {
   readonly model: string;
   readonly upstream: string;
+  /** What the refused call cost, when the upstream bills a refusal (design 3.5, 5.4). */
+  readonly cost?: Cost;
 
   /**
    * Record what the error carries.
    * @param model - Our model id.
    * @param upstream - The upstream that refused, or the one asked for.
    * @param message - What was refused.
+   * @param cost - What the refused call cost, when the answer says.
    */
-  constructor(model: string, upstream: string, message: string) {
+  constructor(model: string, upstream: string, message: string, cost?: Cost) {
     super(message);
     this.name = "UpstreamRequestRejected";
     this.model = model;
     this.upstream = upstream;
+    if (cost !== undefined) this.cost = cost;
   }
 }
 
