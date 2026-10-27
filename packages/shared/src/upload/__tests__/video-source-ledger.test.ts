@@ -306,7 +306,7 @@ describe('receipt-bound null parser and mandatory frozen array ceilings', () => 
 
   it.each([{}, { maxPhysicalFrames: 1024 }, { maxOccurrences: 1024 }])('does not supply a fallback for missing mandatory limits %j', (limits) => {
     const value = ledgerFixture();
-    expect(parseVideoSourceLedger(value, receiptFor(value), limits as VideoSourceLedgerParseLimits)).toBeNull();
+    expect(parseVideoSourceLedger(value, receiptFor(value), limits as unknown as VideoSourceLedgerParseLimits)).toBeNull();
   });
 
   it('accepts exact ceilings and returns null rather than a prefix when either is exceeded', () => {
