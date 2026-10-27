@@ -171,10 +171,10 @@ describe("POST /canvas/ingest-url — template_resource", () => {
     ["a path under a template id the registry does not have", "templates/no-such-template/style.png"],
     ["a declared path walked out of with ..", "templates/test-resource-template/../../secret.png"],
     ["a full address instead of a path", "https://evil.test.invalid/templates/test-resource-template/style.png"],
-  ])("answers 400 to %s and opens nothing", async (_label, path) => {
+  ])("answers 422 to %s and opens nothing", async (_label, path) => {
     const res = await submit({ template_resource: path });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     expect(vi.mocked(openUpload)).not.toHaveBeenCalled();
     expect(mockQueueAdd).not.toHaveBeenCalled();
   });
