@@ -49,9 +49,18 @@ export async function fixture(options: { requested?: boolean; deadlineAt?: numbe
   return { owner, admission, identity, bytes, declaration: { producerVersion: 1, strategy: 'iso_unedited_rate_one', byteLength: bytes.length, physicalFrameCount: 3, occurrenceCount: 3 } };
 }
 
-/** Expose exactly one finite complete byte body. @throws {never} Never. */
+/** Expose complete bytes, keeping cancellation-observed sources live until demand. @throws {never} Never. */
 export function stream(bytes: Uint8Array, canceled?: () => void): ReadableStream<Uint8Array> {
-  return new ReadableStream({ start(controller) { controller.enqueue(bytes); controller.close(); }, cancel() { canceled?.(); } });
+  if (canceled === undefined) return new ReadableStream({ start(controller) { controller.enqueue(bytes); controller.close(); } });
+  let emitted = false;
+  return new ReadableStream({
+    pull(controller) {
+      if (emitted) { controller.close(); return; }
+      emitted = true;
+      controller.enqueue(bytes);
+    },
+    cancel() { canceled(); },
+  }, { highWaterMark: 0 });
 }
 
 /** Compute an independent standard SHA over literal input, not through the production hash helper. @throws {Error} When the platform digest fails. */
