@@ -947,6 +947,21 @@ export {
   type VideoPresentationRect,
 } from "@shared/upload/video-presentation.js";
 export {
+  videoSourceLedgerCompanionSchema,
+  videoSourceLedgerReceiptSchema,
+  videoSourceLedgerStateSchema,
+  parseVideoSourceLedger,
+  videoSourceLedgerKeyFor,
+} from "@shared/upload/video-source-ledger.js";
+export type {
+  VideoSourceLedgerAttempt,
+  VideoSourceLedgerStrategy,
+  VideoSourceLedgerReceipt,
+  VideoSourceLedgerCompanion,
+  VideoSourceLedgerState,
+  VideoSourceLedgerParseLimits,
+} from "@shared/upload/video-source-ledger-types.js";
+export {
   videoPresentationSourceBindingSchema,
   videoPresentationResponseSchema,
   videoPresentationRepairResponseSchema,
