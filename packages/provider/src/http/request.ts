@@ -21,7 +21,7 @@ export interface OutgoingRequest {
 
 /** What the caller decides about one request (design 2.2). */
 export interface SendOptions {
-  /** True only when sending again has no second side effect (queries, billing reads). Submits are false. */
+  /** True only when sending again has no second side effect (queries, billing reads). Submits are false. A 408 or 429 is resent either way: the server did not process it. */
   replaySafe: boolean;
   signal?: AbortSignal;
   /** Epoch ms after which nothing is sent and anything in flight is cut. */
@@ -140,12 +140,14 @@ export function retryAfterOf(raw: string | null): number | undefined {
 }
 
 /**
- * Whether a status may be resent by a replay-safe request.
+ * Whether a status may be resent. A 408 or 429 says the server did not process the
+ * request, so it is resent whatever the caller declared; a 5xx only for a replay-safe one.
  * @param status - The status.
- * @returns True for 408, 429 and 5xx.
+ * @param replaySafe - Whether the caller declared the request safe to send again.
+ * @returns True when the request may go again.
  */
-function resendable(status: number): boolean {
-  return status === 408 || status === 429 || status >= 500;
+function resendable(status: number, replaySafe: boolean): boolean {
+  return status === 408 || status === 429 || (replaySafe && status >= 500);
 }
 
 /**
@@ -248,16 +250,16 @@ function withRelease(response: Response, release: () => void): Response {
  */
 export async function send(request: OutgoingRequest, options: SendOptions): Promise<Response> {
   for (let delivery = 1; ; delivery++) {
-    const last = !options.replaySafe || delivery >= MAX_DELIVERIES;
+    const last = delivery >= MAX_DELIVERIES;
     let response: Response;
     try {
       response = await deliver(request, options);
     } catch (error) {
-      if (last || !(error instanceof NotSent)) throw error;
+      if (last || !options.replaySafe || !(error instanceof NotSent)) throw error;
       await wait(backoff(delivery), options, request.url);
       continue;
     }
-    if (last || !resendable(response.status)) return response;
+    if (last || !resendable(response.status, options.replaySafe)) return response;
     const asked = retryAfterOf(response.headers.get("retry-after"));
     if (asked !== undefined && asked > MAX_RETRY_AFTER_MS) return response;
     await response.body?.cancel();
