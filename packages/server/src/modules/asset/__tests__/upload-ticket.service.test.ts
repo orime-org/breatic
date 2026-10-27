@@ -408,6 +408,79 @@ describe("inner#1595: issueUploadTicket opens the upload itself", () => {
   });
 });
 
+describe("scene model upload provenance", () => {
+  it.each([
+    ["model/gltf-binary", "model.glb"],
+    ["application/zip", "model.zip"],
+  ])("records %s as a node-free upload owned by the Project's Studio", async (contentType, filename) => {
+    openUpload.mockResolvedValue({ key: K, studioId: SCOPE.studioId, taskId: undefined });
+    const admitStorage = vi.fn(async () => true);
+    const model = {
+      filename, content_type: contentType, size: 4096, client_hash: "a".repeat(64),
+      purpose: "scene_model" as const,
+    };
+
+    const outcome = await issueUploadTicket(SCOPE, model, admitStorage);
+
+    expect(outcome).toEqual({
+      kind: "ticket", uploadId: OK.uploadId, token: OK.token, storageKey: K,
+      uploadUrl: UPLOAD_URL, assetKind: "file", partSize: PART, totalParts: 1, taskId: undefined,
+    });
+    expect(admitStorage).toHaveBeenCalledTimes(1);
+    expect(checkUploadDedup).toHaveBeenCalledWith({ studioId: SCOPE.studioId, contentHash: model.client_hash });
+    expect(openUpload).toHaveBeenCalledWith({
+      projectId: SCOPE.projectId, actingUserId: SCOPE.userId, declaredSize: model.size,
+      taskType: "file", ext: filename.slice(filename.lastIndexOf(".")), expiresAt: expect.any(Date),
+      context: {
+        nodeId: null, spaceId: null, source: null, toolName: null,
+        derived: true, filename, assetSource: null,
+      },
+    }, { budgetMs: 7200000, action: "upload", label: filename });
+    expect(openSignedUpload.mock.calls[0]?.[0]).toMatchObject({
+      studioId: SCOPE.studioId, userId: SCOPE.userId,
+      contentType, declaredSize: model.size,
+    });
+  });
+
+  it("returns the registered model dedup hit without opening or consuming storage", async () => {
+    const assetId = "55555555-5555-4555-8555-555555555555";
+    const fileUrl = "https://assets.example.test/registered-model.glb";
+    checkUploadDedup.mockResolvedValue({ assetId, fileUrl, kind: "file", width: null, height: null });
+    const admitStorage = vi.fn(async () => true);
+    const model = {
+      filename: "model.glb", content_type: "model/gltf-binary", size: 4096,
+      client_hash: "a".repeat(64), purpose: "scene_model" as const,
+    };
+
+    expect(await issueUploadTicket(SCOPE, model, admitStorage)).toEqual({
+      kind: "alreadyExists", assetId, fileUrl, assetKind: "file", width: null, height: null,
+    });
+    expect(admitStorage).not.toHaveBeenCalled();
+    expect(openUpload).not.toHaveBeenCalled();
+    expect(openSignedUpload).not.toHaveBeenCalled();
+    expect(settleDedupHit).toHaveBeenCalledWith({
+      projectId: SCOPE.projectId,
+      hit: { assetId, fileUrl, kind: "file", width: null, height: null },
+      userId: SCOPE.userId,
+      metadata: { filename: model.filename, size: model.size, mimeType: model.content_type },
+      row: { action: "upload", label: model.filename }, nodeId: undefined, spaceId: undefined,
+    });
+  });
+
+  it.each(["project_cover", "studio_avatar"] as const)("preserves the existing %s ledger source", async (purpose) => {
+    const image = { filename: "picture.png", content_type: "image/png", size: 4096,
+      client_hash: "a".repeat(64), purpose };
+    const scope = purpose === "studio_avatar" ? { userId: SCOPE.userId, studioId: SCOPE.studioId } : SCOPE;
+
+    await issueUploadTicket(scope, image, async () => true);
+
+    expect(openUpload.mock.calls[0]?.[0].context).toMatchObject({
+      assetSource: purpose, nodeId: null, spaceId: null,
+      derived: purpose === "project_cover" ? true : null,
+    });
+  });
+});
+
 describe("inner#1595: issueUploadTicketBatch", () => {
   const CONTEXT = { spaceId: ITEM.space_id, toolName: "image.grid" };
   const Ka = "image/2026-10-26/a.png";
