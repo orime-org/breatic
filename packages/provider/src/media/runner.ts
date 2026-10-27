@@ -784,11 +784,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
         const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.failure === "model_not_found");
-        if (lasting) return failed(ticket, error);
+        if (lasting) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
+        // The error stays as the cause: it carries what the answers it moved past cost.
         throw new SendNotAccepted(ticket.upstream, error);
       }
       if (error instanceof UpstreamRequestRejected) {
-        return failed(error.cost === undefined ? ticket : { ...ticket, costs: [...ticket.costs, error.cost] }, error);
+        return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
       }
       if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt);
       throw error;
@@ -798,7 +799,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (i === index) return { ...s, status: "done" as const, output: {} };
       return i === index + 1 ? { ...s, description } : s;
     });
-    return waiting(next(ticket, { steps, costs: [...ticket.costs, answer.cost] }));
+    return waiting(next(ticket, { steps, costs: [...ticket.costs, ...answer.costs] }));
   };
 
   return {

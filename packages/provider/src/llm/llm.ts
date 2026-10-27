@@ -225,26 +225,39 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param upstream - The upstream that answered last.
    * @param error - What the call threw.
    * @param answerBody - The text of the last answer, when the SDK error kept no body.
-   * @returns UpstreamRequestRejected for an answered refusal; the error itself otherwise.
+   * @param billed - The billed answers the call moved past.
+   * @returns UpstreamRequestRejected for an answered refusal, NoUpstreamAvailable carrying the billed answers, or the error itself.
    */
-  const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined): unknown => {
+  const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined, billed: Cost[]): unknown => {
+    if (error instanceof NoUpstreamAvailable) return new NoUpstreamAvailable(error.model, error.reasons, billed);
     // The status the answer came with: an error on a 200's choice came with a 200.
     const status = APICallError.isInstance(error) ? error.statusCode : error instanceof InBandError ? 200 : undefined;
     if (upstream === undefined || status === undefined) return error;
     const failure = classifyLlm(error, vendorOf(kindOf(upstream)));
     if (failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") return error;
-    const text = APICallError.isInstance(error) ? (error.responseBody ?? answerBody) : answerBody;
+    const said = error instanceof InBandError ? (error.error as { message?: unknown } | null)?.message : undefined;
+    const message = typeof said === "string" ? said : (error as Error).message;
+    // A choice error's answer was costed where it was read; an answer refused by its status is costed here.
+    if (error instanceof InBandError) return new UpstreamRequestRejected(model, upstream, message, billed);
+    const cost = answerCost(upstream, status, APICallError.isInstance(error) ? (error.responseBody ?? answerBody) : answerBody);
+    return new UpstreamRequestRejected(model, upstream, message, cost === undefined ? billed : [...billed, cost]);
+  };
+
+  /**
+   * What an answer that served nothing cost, read from its body (design 3.5): the cost it
+   * reported, else a lookup by an OpenRouter generation id, else missing for a 2xx.
+   * @param upstream - The upstream that answered.
+   * @param status - The answer's status.
+   * @param text - The answer's body.
+   * @returns The cost, or undefined for a refusal status whose body names none.
+   */
+  const answerCost = (upstream: string, status: number, text: string | undefined): Cost | undefined => {
     const body = parsed(text) as { id?: unknown; usage?: { cost?: unknown } } | null | undefined;
     const reported = usdOf(body?.usage?.cost);
+    if (reported !== undefined) return { state: "known", usd: reported, source: "reported" };
     const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body?.id, undefined);
-    const ok = status >= 200 && status < 300;
-    const cost: Cost | undefined = reported !== undefined
-      ? { state: "known", usd: reported, source: "reported" }
-      : ref !== undefined
-        ? { state: "pending", lookup: ref }
-        : ok ? { state: "missing", reason: `${upstream} refused with no cost and no generation id` } : undefined;
-    const said = error instanceof InBandError ? (error.error as { message?: unknown } | null)?.message : undefined;
-    return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, cost);
+    if (ref !== undefined) return { state: "pending", lookup: ref };
+    return status >= 200 && status < 300 ? { state: "missing", reason: `${upstream} answered with no cost and no generation id` } : undefined;
   };
 
   /**
@@ -354,6 +367,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         ]),
       ];
       let answering: string | undefined;
+      // Answers an upstream billed that the call moved past.
+      const billed: Cost[] = [];
       // The body of the last answer: a refused call may be billed, and its SDK error keeps only part of it.
       let lastBody: string | undefined;
       /**
@@ -377,25 +392,51 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
           answering = c.upstream;
           lastBody = undefined;
           const vendor = vendorOf(kindOf(c.upstream));
-          const result = await generateText({
-            model: modelOn(route, c.upstream, request.model, keepingBody),
-            messages: [{ role: "user", content }],
-            maxOutputTokens: request.maxOutputTokens,
-            maxRetries: 0,
-            abortSignal,
-            ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
-          });
           // A gateway answers 200 with an error on the choice when the model failed while
-          // producing output. With nothing written it is judged by its code like any status;
-          // with words already written it is a stop, answered as it is.
-          const choiceError = vendor.gateway && result.text === ""
-            ? (parsed(lastBody) as { choices?: { error?: unknown }[] } | null | undefined)?.choices?.[0]?.error
-            : undefined;
-          if (choiceError !== undefined && choiceError !== null) throw new InBandError(choiceError);
+          // producing output. With nothing written it is judged by its code like any status,
+          // whether or not its SDK could read the rest of the answer; with words already
+          // written it is a stop, answered as it is.
+          /**
+           * The error on the kept answer's first choice, when that choice wrote nothing.
+           * @returns The error, or undefined.
+           */
+          const choiceError = (): unknown => {
+            if (!vendor.gateway) return undefined;
+            const choice = (parsed(lastBody) as { choices?: { error?: unknown; message?: { content?: unknown } }[] } | null | undefined)?.choices?.[0];
+            const written = choice?.message?.content;
+            return typeof written === "string" && written !== "" ? undefined : (choice?.error ?? undefined);
+          };
+          /**
+           * Cost the answer and throw its choice error, to be judged by its code.
+           * @param error - The choice's error.
+           * @throws {InBandError} Always.
+           */
+          const throwChoiceError = (error: unknown): never => {
+            const cost = answerCost(c.upstream, 200, lastBody);
+            if (cost !== undefined) billed.push(cost);
+            throw new InBandError(error);
+          };
+          let result;
+          try {
+            result = await generateText({
+              model: modelOn(route, c.upstream, request.model, keepingBody),
+              messages: [{ role: "user", content }],
+              maxOutputTokens: request.maxOutputTokens,
+              maxRetries: 0,
+              abortSignal,
+              ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
+            });
+          } catch (error) {
+            const carried = choiceError();
+            if (carried !== undefined && carried !== null) throwChoiceError(carried);
+            throw error;
+          }
+          const carried = result.text === "" ? choiceError() : undefined;
+          if (carried !== undefined && carried !== null) throwChoiceError(carried);
           return result;
         },
       }).catch((error: unknown) => {
-        throw refusedCall(request.model, answering, error, lastBody);
+        throw refusedCall(request.model, answering, error, lastBody, billed);
       }).finally(dispose);
       const result = served.value;
       const generationId = result.response.id;
@@ -406,7 +447,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         usage: result.usage,
         providerMetadata: { ...result.providerMetadata, breatic: { upstream: served.servedBy, ...costRef } },
       });
-      return { text: result.text, finishReason: result.finishReason, cost, upstream: served.servedBy };
+      return { text: result.text, finishReason: result.finishReason, costs: [...billed, cost], upstream: served.servedBy };
     },
 
     async judge(request, chosen = DEFAULT_ROUTE) {

@@ -12,17 +12,21 @@ export type UnavailableReason =
 export class NoUpstreamAvailable extends Error {
   readonly model: string;
   readonly reasons: readonly UnavailableReason[];
+  /** What the answers it moved past cost, in order, when an upstream billed them (design 3.5). */
+  readonly costs: Cost[];
 
   /**
    * Record what the error carries.
    * @param model - Our model id.
    * @param reasons - One entry per upstream that was skipped or failed, in try order.
+   * @param costs - The billed answers it moved past.
    */
-  constructor(model: string, reasons: readonly UnavailableReason[]) {
+  constructor(model: string, reasons: readonly UnavailableReason[], costs: Cost[] = []) {
     super(`No upstream can serve ${model}`);
     this.name = "NoUpstreamAvailable";
     this.model = model;
     this.reasons = reasons;
+    this.costs = costs;
   }
 }
 
@@ -30,22 +34,22 @@ export class NoUpstreamAvailable extends Error {
 export class UpstreamRequestRejected extends Error {
   readonly model: string;
   readonly upstream: string;
-  /** What the refused call cost, when the upstream bills a refusal (design 3.5, 5.4). */
-  readonly cost?: Cost;
+  /** What the billed answers cost, in order: those moved past, then the refused one (design 3.5, 5.4). */
+  readonly costs: Cost[];
 
   /**
    * Record what the error carries.
    * @param model - Our model id.
    * @param upstream - The upstream that refused, or the one asked for.
    * @param message - What was refused.
-   * @param cost - What the refused call cost, when the answer says.
+   * @param costs - What the billed answers cost; empty when none was billed.
    */
-  constructor(model: string, upstream: string, message: string, cost?: Cost) {
+  constructor(model: string, upstream: string, message: string, costs: Cost[] = []) {
     super(message);
     this.name = "UpstreamRequestRejected";
     this.model = model;
     this.upstream = upstream;
-    if (cost !== undefined) this.cost = cost;
+    this.costs = costs;
   }
 }
 

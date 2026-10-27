@@ -55,7 +55,8 @@ export interface UnderstandAnswer {
   text: string;
   /** Why the model stopped, in the AI SDK's unified words, the same for every upstream. */
   finishReason: FinishReason;
-  cost: Cost;
+  /** Every billed answer, in order: those moved past by a retry or switch, then the one answered. */
+  costs: Cost[];
   upstream: string;
 }
 
