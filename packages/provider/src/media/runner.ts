@@ -845,6 +845,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
           ...(row.status === "done" ? { output } : {}),
           ...(typeof output.description === "string" ? { description: output.description } : {}),
         };
+        // A clone step not yet sent takes the cache as a fresh plan does (and as run-steps did).
+        const cached = row.status === "pending" ? cachedOutput({ ...base, steps }, step) : undefined;
+        if (cached !== undefined) {
+          steps.push({ ...step, status: "done", output: cached });
+          continue;
+        }
         const describes = row.kind === "element" && row.status === "pending" && step.description === undefined
           && binding.extra_steps?.find((s) => s.kind === "element")?.describe !== undefined;
         if (describes) steps.push({ kind: "describe", endpoint: "", ...(param === undefined ? {} : { param }), itemIndex: row.itemIndex, status: "pending" });
