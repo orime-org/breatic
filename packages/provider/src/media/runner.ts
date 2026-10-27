@@ -13,6 +13,7 @@ import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
 import { decide, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
+import { failedReason } from "@provider/routing/try-in-order.js";
 
 /**
  * Everything provider knows about one media run. The caller stores it as JSON
@@ -823,7 +824,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (decide(failure, "media_submit", 0, 0) === "stop") {
           return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "")));
         }
-        const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), { upstream: ticket.upstream, kind: "failed", failure: failure.kind }];
+        const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
         if (ticket.accepted || ticket.route.mode === "upstream" || to === undefined) {
           // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.

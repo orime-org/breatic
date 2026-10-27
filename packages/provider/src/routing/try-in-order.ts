@@ -26,6 +26,16 @@ export interface Attempts<T> {
 }
 
 /**
+ * The reason entry of an upstream that failed in a way that moves the call on.
+ * @param upstream - The upstream.
+ * @param failure - How it failed.
+ * @returns The entry, with the status for an `http_status` failure.
+ */
+export function failedReason(upstream: string, failure: Failure): UnavailableReason {
+  return { upstream, kind: "failed", failure: failure.kind, ...(failure.kind === "http_status" ? { status: failure.status } : {}) };
+}
+
+/**
  * Run a call on the planned upstreams in order, switching and retrying by {@link decide}.
  * @param plan - The ordered upstreams and the skipped ones.
  * @param attempts - How to attempt and classify.
@@ -46,7 +56,7 @@ export async function tryInOrder<T>(plan: RoutePlan, attempts: Attempts<T>): Pro
         if (decision === "stop") throw error;
         if (decision === "retry" && attempts.pause !== undefined) decision = await attempts.pause(error, retries + 1);
         if (decision === "retry") continue;
-        reasons.push({ upstream: candidate.upstream, kind: "failed", failure: failure.kind });
+        reasons.push(failedReason(candidate.upstream, failure));
         break;
       }
     }
