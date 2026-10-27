@@ -413,7 +413,7 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       if (index !== undefined) targets.set(text(`input.${one.key}.name`), index);
     }
     for (const edge of skeleton.edges) {
-      if (edge.to === key && edge.into === "pool") targets.set(text(`node.${edge.from}.name`), indexOf.get(edge.from) as number);
+      if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(`node.${edge.from}.name`), indexOf.get(edge.from) as number);
     }
     const notes = skeleton.inputs
       .filter((one) => fresh.has(one.key) && one.feeds.includes(key))
