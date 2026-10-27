@@ -968,3 +968,138 @@ describe("createCollabServer — a Space RPC answer goes to its sender", () => {
     expect(broadcastStateless).not.toHaveBeenCalled();
   });
 });
+
+describe("createCollabServer — frame reassembly wiring (inner#1585)", () => {
+  /** The reassembly hooks and options handed to the server. */
+  interface FrameWiring {
+    websocketOptions?: { maxPayload?: number };
+    receiveFrame?: (peer: unknown, message: unknown) => Uint8Array | undefined;
+    onPeerClose?: (peer: unknown, event: unknown) => void;
+    onPeerError?: (peer: unknown, error: unknown) => void;
+    extensions: unknown[];
+  }
+
+  let nextPeer = 0;
+
+  /**
+   * A crossws peer as the reassembler sees it.
+   * @param nodeReq - The upgrade request it belongs to.
+   * @returns The peer.
+   */
+  function fakePeer(nodeReq: object = {}): { close: ReturnType<typeof vi.fn> } {
+    const n = ++nextPeer;
+    return { id: `w${n}`, remoteAddress: `10.1.0.${n}`, _hocuspocus: { socketId: `ws-${n}` }, _internal: { nodeReq }, close: vi.fn() } as never;
+  }
+
+  /**
+   * A declaration text frame.
+   * @param bytes - Declared bytes.
+   * @returns The message.
+   */
+  function declaration(bytes: number): unknown {
+    const s = JSON.stringify({ type: "chunked", bytes });
+    return { rawData: s, text: () => s, uint8Array: () => new TextEncoder().encode(s) };
+  }
+
+  /**
+   * Build the server and return what it handed to `Server`.
+   * @returns The wiring and a cleanup.
+   */
+  async function wired(): Promise<{ config: FrameWiring; done: () => Promise<void> }> {
+    serverSpy.mockClear();
+    const result = await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3",
+      port: 1234,
+      redisKeyPrefix: "dev",
+      shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls.at(-1)?.[0] as FrameWiring;
+    return {
+      config,
+      done: async () => {
+        sessionGateFrom(config.extensions).stop();
+        result.storeLoop.stop();
+        await result.seatHandover.stop();
+      },
+    };
+  }
+
+  it("W01 caps a single frame at the shared constant", async () => {
+    const { COLLAB_FRAME_MAX_BYTES } = await import("@breatic/shared");
+    const { config, done } = await wired();
+    try {
+      expect(config.websocketOptions?.maxPayload).toBe(131_072);
+      expect(config.websocketOptions?.maxPayload).toBe(COLLAB_FRAME_MAX_BYTES);
+    } finally {
+      await done();
+    }
+  });
+
+  it("W02 wires a reassembler built with the per-connection cap from the shipped config", async () => {
+    const { config, done } = await wired();
+    try {
+      expect(config.receiveFrame).toBeTypeOf("function");
+      expect(config.onPeerClose).toBeTypeOf("function");
+      expect(config.onPeerError).toBeTypeOf("function");
+      const over = fakePeer();
+      const at = fakePeer();
+      config.receiveFrame!(over, declaration(10_551_297));
+      expect(over.close).toHaveBeenCalledWith(1009, "message too large");
+      expect(config.receiveFrame!(at, declaration(10_551_296))).toBeUndefined();
+      expect(at.close).not.toHaveBeenCalled();
+      config.onPeerClose!(at, { code: 1000, reason: "" });
+    } finally {
+      await done();
+    }
+  });
+
+  it("W03 wires the shipped process budget", async () => {
+    const { config, done } = await wired();
+    try {
+      const peers = Array.from({ length: 7 }, () => fakePeer());
+      for (const p of peers) config.receiveFrame!(p, declaration(10_551_296));
+      for (const p of peers.slice(0, 6)) expect(p.close).not.toHaveBeenCalled();
+      expect(peers[6]!.close).toHaveBeenCalledWith(1013, "reassembly budget exhausted");
+      for (const p of peers) config.onPeerClose!(p, { code: 1000, reason: "" });
+    } finally {
+      await done();
+    }
+  });
+
+  it("W04 wires the shipped idle timeout", async () => {
+    const { config, done } = await wired();
+    vi.useFakeTimers();
+    try {
+      const p = fakePeer();
+      config.receiveFrame!(p, declaration(131_073));
+      vi.advanceTimersByTime(29_999);
+      expect(p.close).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(p.close).toHaveBeenCalledWith(1008, "reassembly idle timeout");
+    } finally {
+      vi.useRealTimers();
+      await done();
+    }
+  });
+
+  it("W05 keys the per-user share by the session gate's user", async () => {
+    const { config, done } = await wired();
+    const stream = new Duplex({ read() {}, write(_chunk, _encoding, callback) { callback(); } });
+    const request = new IncomingMessage(stream as unknown as Socket);
+    request.headers.cookie = "breatic_session_wiring-test=valid-session";
+    try {
+      await sessionGateFrom(config.extensions).onUpgrade({ request, socket: stream, head: Buffer.alloc(0) });
+      const first = fakePeer(request);
+      const second = fakePeer(request);
+      config.receiveFrame!(first, declaration(10_551_296));
+      config.receiveFrame!(second, declaration(10_551_296));
+      expect(first.close).not.toHaveBeenCalled();
+      expect(second.close).toHaveBeenCalledWith(1013, "reassembly budget exhausted");
+      config.onPeerClose!(first, { code: 1000, reason: "" });
+      config.onPeerClose!(second, { code: 1000, reason: "" });
+    } finally {
+      stream.destroy();
+      await done();
+    }
+  });
+});
