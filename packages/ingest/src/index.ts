@@ -42,6 +42,24 @@ import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
 import { JOB_PATH, readJob, submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 import {
+  LONG_MEDIA_JOB_PATH,
+  LONG_MEDIA_CANCEL_PATH,
+  LONG_MEDIA_PLAN_PATH,
+  LONG_MEDIA_PROBE_REPORT_PATH,
+  LONG_MEDIA_RUN_PATH,
+  LONG_MEDIA_SEGMENT_REGISTERED_PATH,
+  LONG_MEDIA_SEGMENTS_PATH,
+  applyLongMediaPlan,
+  acknowledgeLongMediaSegmentRegistration,
+  cancelLongMediaJob,
+  readLongMediaJob,
+  readLongMediaProbeReport,
+  readLongMediaSegments,
+  runLongMediaSegments,
+  submitLongMediaJob,
+  type LongMediaRoutesEnv,
+} from "@ingest/jobs/long-media-routes.js";
+import {
   monitoringOptions,
   noted,
   noteFailure,
@@ -78,6 +96,8 @@ import {
 export { ContainerProxy } from "@cloudflare/containers";
 export { MediaContainer } from "@ingest/media-container.js";
 export { MiniToolContainerStd1, MiniToolContainerStd4 } from "@ingest/jobs/mini-tool-container.js";
+export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
+export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -101,7 +121,7 @@ const ALLOWED_METHODS = "PUT, OPTIONS";
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
 
 /** What wrangler binds into the Worker. */
-export interface Env extends MediaEnv, MonitoringEnv, JobsEnv {
+export interface Env extends MediaEnv, MonitoringEnv, JobsEnv, LongMediaRoutesEnv {
   BUCKET: R2Bucket;
   /** Signs the ticket we verify, and authenticates what we send back. */
   INGEST_SHARED_SECRET: string;
@@ -127,6 +147,7 @@ const REQUIRED_SETTINGS = [
   "MEDIA",
   "MINI_TOOL_STD1",
   "MINI_TOOL_STD4",
+  "LONG_MEDIA",
 ] as const;
 
 /**
@@ -1434,6 +1455,47 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   if (request.method === "POST" && pathname === "/jobs") {
     return submitJob(request, env);
+  }
+
+  if (request.method === "POST" && pathname === "/long-media/jobs") {
+    return submitLongMediaJob(request, env);
+  }
+
+  const longMediaJob = LONG_MEDIA_JOB_PATH.exec(pathname);
+  if (request.method === "GET" && longMediaJob) {
+    return readLongMediaJob(request, env, longMediaJob[1] ?? "");
+  }
+
+  const longMediaCancel = LONG_MEDIA_CANCEL_PATH.exec(pathname);
+  if (request.method === "POST" && longMediaCancel) {
+    return cancelLongMediaJob(request, env, longMediaCancel[1] ?? "");
+  }
+
+  const longMediaProbeReport = LONG_MEDIA_PROBE_REPORT_PATH.exec(pathname);
+  if (request.method === "GET" && longMediaProbeReport) {
+    return readLongMediaProbeReport(request, env, longMediaProbeReport[1] ?? "");
+  }
+
+  const longMediaSegments = LONG_MEDIA_SEGMENTS_PATH.exec(pathname);
+  if (request.method === "GET" && longMediaSegments) {
+    return readLongMediaSegments(request, env, longMediaSegments[1] ?? "");
+  }
+
+  const longMediaPlan = LONG_MEDIA_PLAN_PATH.exec(pathname);
+  if (request.method === "PUT" && longMediaPlan) {
+    return applyLongMediaPlan(request, env, longMediaPlan[1] ?? "");
+  }
+
+  const longMediaRun = LONG_MEDIA_RUN_PATH.exec(pathname);
+  if (request.method === "POST" && longMediaRun) {
+    return runLongMediaSegments(request, env, longMediaRun[1] ?? "");
+  }
+
+  const longMediaSegmentRegistered = LONG_MEDIA_SEGMENT_REGISTERED_PATH.exec(pathname);
+  if (request.method === "POST" && longMediaSegmentRegistered) {
+    return acknowledgeLongMediaSegmentRegistration(
+      request, env, longMediaSegmentRegistered[1] ?? "", longMediaSegmentRegistered[2] ?? "",
+    );
   }
 
   const job = JOB_PATH.exec(pathname);

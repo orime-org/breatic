@@ -113,6 +113,8 @@ const urlIngestQueue = createQueue("url-ingest");
  * number has to reach it — and it comes from the same file the run itself
  * reads, which is what keeps the two from drifting into a refusal the browser
  * allows and the run rejects.
+ * `understandLongMediaMaxBytes`: largest audio or video source the long-media
+ * path will segment before understanding.
  *
  * `waveformMaxSeconds` / `waveformMaxBytes`: the longest and largest audio the
  * cut band decodes in the browser while its peaks file is missing; past either
@@ -128,6 +130,7 @@ canvas.get("/limits", (c) => {
       referencePoolCap: getCanvasReferencePoolCap(),
       nodeHistoryPageSize: getNodeHistoryPageSize(),
       understandMaxBytes: getUnderstandConfig().max_media_bytes,
+      understandLongMediaMaxBytes: getUnderstandConfig().long_media.max_source_bytes,
       waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
       waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,

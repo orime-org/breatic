@@ -20,6 +20,7 @@ import type { Media } from "@domain/understand/types.js";
 
 const fetchMediaMock = vi.fn();
 const understandMediaMock = vi.fn();
+const requestSendingMock = vi.fn();
 
 vi.mock("@domain/understand/fetch-media.js", async (importOriginal) => {
   const actual = await importOriginal<typeof fetchModule>();
@@ -33,6 +34,7 @@ vi.mock("@domain/understand/understand.js", async (importOriginal) => {
 
 /** Every figure distinct, so a pair swapped between them shows as a wrong number. */
 const request = {
+  onRequestSending: requestSendingMock,
   onBilled: (): void => undefined,
   items: [{ url: "https://example.com/clip.mp4" }],
   question: "What happens?",
@@ -56,6 +58,7 @@ const media: Media = { kind: "video", bytes: new Uint8Array([1, 2, 3]), format: 
 beforeEach(() => {
   fetchMediaMock.mockReset();
   understandMediaMock.mockReset();
+  requestSendingMock.mockReset();
   fetchMediaMock.mockResolvedValue(media);
   understandMediaMock.mockResolvedValue({
     text: "A rabbit wakes up.",
@@ -126,5 +129,16 @@ describe("understandMediaAt — the order", () => {
 
     await expect(understandMediaAt(request)).rejects.toBeInstanceOf(MediaUnavailable);
     expect(understandMediaMock).not.toHaveBeenCalled();
+    expect(requestSendingMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the send-authority callback to the model stage after media reads", async () => {
+    await understandMediaAt(request);
+
+    expect(understandMediaMock).toHaveBeenCalledWith(expect.objectContaining({
+      media: [media],
+      onRequestSending: requestSendingMock,
+    }));
+    expect(requestSendingMock).not.toHaveBeenCalled();
   });
 });
