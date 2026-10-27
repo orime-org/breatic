@@ -31,6 +31,17 @@ export interface OwnedPresentationOccurrence {
 export interface OwnedVideoPresentation { edits: OwnedEditInterval[]; frames: OwnedPresentationOccurrence[] }
 
 /**
+ * Materialize a reduced exact time using the existing presentation arithmetic.
+ * @param numerator - Signed original integer time.
+ * @param denominator - Caller-validated positive clock divisor.
+ * @returns The owned decimal-string fraction.
+ * @throws {never} Callers supply a positive denominator.
+ */
+export function exactPresentationTime(numerator: bigint, denominator: bigint): ExactPresentationTime {
+  return exact(rational(numerator, denominator));
+}
+
+/**
  * Preserve a complete unedited physical schedule and its declared final-sample dwell.
  * @param frames - Original dense frame identities in presentation order.
  * @param sourceTimeBase - Original exact physical clock, without rebasing.

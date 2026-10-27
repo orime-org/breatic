@@ -14,11 +14,61 @@ export interface MatroskaPhysicalVideoProbe {
 
 /**
  * Bind original selected FFprobe frame tokens to exact Matroska block headers.
- * @throws {Error} Until the independently specified physical bridge is implemented.
+ * @param streamMetadata - Original stream facts from the same immutable source.
+ * @param physicalFrameBytes - Complete original frame JSON, including packet positions.
+ * @param matroska - Bounded metadata from those same bytes.
+ * @returns Dense selected frames and their actual Matroska track and block identities.
+ * @throws {TypeError} When source facts or complete one-frame block association fail.
+ * @throws {SyntaxError} When the original frame JSON is incomplete.
  */
 export function parseMatroskaPhysicalVideoProbe(streamMetadata: unknown, physicalFrameBytes: Buffer, matroska: MatroskaMetadata): MatroskaPhysicalVideoProbe {
-  void streamMetadata; void physicalFrameBytes; void matroska;
-  throw Object.assign(new Error("Matroska physical bridge is not implemented"), { code: "not_implemented" });
+  const streams = probeObject(streamMetadata).streams;
+  if (!Array.isArray(streams)) throw new TypeError("Expected original video stream metadata");
+  const selected = streams.map(probeObject).find((stream) => stream.codec_type === "video");
+  if (selected === undefined || typeof selected.index !== "number" || !Number.isSafeInteger(selected.index) || selected.index < 0 || streams.map(probeObject).filter((stream) => stream.index === selected.index).length !== 1) {
+    throw new TypeError("Expected an unambiguous selected video stream");
+  }
+  const streamIndex = selected.index;
+  const sourceTimeBase = probeTimeBase(selected.time_base);
+  // The immutable reader supplies file-order, non-overlapping header intervals.
+  // Index them once: each decoded position then costs a binary search instead
+  // of scanning every audio and video block again for every frame.
+  const headers = matroska.blocks.map((block) => ({ block, start: BigInt(block.elementOffset), end: BigInt(block.dataOffset) }));
+  for (const [index, header] of headers.entries()) {
+    if (header.start < 0n || header.end <= header.start || (index > 0 && headers[index - 1]!.end > header.start)) throw new TypeError("Expected unambiguous file-order block headers");
+  }
+  const parsed: unknown = JSON.parse(physicalFrameBytes.toString("utf8"),
+    (key: string, value: unknown, context?: { source?: string }): unknown =>
+      (key === "pts" || key === "pkt_pos") && typeof value === "number" ? context?.source : value);
+  const values = probeObject(parsed).frames;
+  if (!Array.isArray(values)) throw new TypeError("Expected complete original frame facts");
+  const frames: MatroskaPhysicalVideoProbe["frames"] = [];
+  const seen = new Set<number>();
+  let trackNumber: string | undefined;
+  for (const value of values) {
+    const frame = probeObject(value);
+    if (frame.stream_index !== streamIndex) continue;
+    if (frame.media_type !== "video" || typeof frame.pts !== "string" || !/^-?\d+$/u.test(frame.pts) || typeof frame.pkt_pos !== "string" || !/^\d+$/u.test(frame.pkt_pos)) throw new TypeError("Expected exact selected-video PTS and original packet position");
+    const position = BigInt(frame.pkt_pos);
+    let low = 0;
+    let high = headers.length;
+    while (low < high) {
+      const middle = low + Math.floor((high - low) / 2);
+      if (headers[middle]!.start < position) low = middle + 1;
+      else high = middle;
+    }
+    const header = headers[low - 1];
+    if (header === undefined || position >= header.end) throw new TypeError("Packet position does not identify a source block header");
+    const block = header.block;
+    if (seen.has(block.blockOrdinal) || block.lacing !== "none" || block.frameCount !== 1) throw new TypeError("Expected a complete one-frame block association");
+    if (trackNumber !== undefined && trackNumber !== block.trackNumber) throw new TypeError("Selected frames cross Matroska tracks");
+    trackNumber = block.trackNumber;
+    seen.add(block.blockOrdinal);
+    frames.push({ rawDecodeOrdinal: frames.length, ptsTicks: frame.pts, blockOrdinal: block.blockOrdinal });
+  }
+  const tracks = matroska.tracks.filter((track) => track.trackNumber === trackNumber);
+  if (frames.length === 0 || tracks.length !== 1 || tracks[0]!.trackType !== "1" || matroska.blocks.filter((block) => block.trackNumber === trackNumber).length !== frames.length) throw new TypeError("Expected complete selected video-track provenance");
+  return { streamIndex, trackNumber: tracks[0]!.trackNumber, trackUid: tracks[0]!.trackUid, sourceTimeBase, frames };
 }
 
 /** Exact physical video facts retain their original selected stream and integer clock. */
