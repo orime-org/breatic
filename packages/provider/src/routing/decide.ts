@@ -25,7 +25,8 @@ export type Decision = "switch" | "retry" | "stop";
  * @returns The next step.
  */
 export function decide(failure: Failure, phase: Phase, retriesUsed: number, maxRetries: number): Decision {
-  // No key's worth of retrying: the upstream lacks the model, or the account its balance.
+  // Retrying the same upstream cannot help, because the upstream lacks the model or the account its
+  // balance; a request that never left also goes to the next upstream at once.
   if (failure.kind === "not_sent" || failure.kind === "model_not_found" || failure.kind === "insufficient_balance") return "switch";
   if (failure.kind !== "http_status") return "stop";
   if (failure.status !== 429 && failure.status < 500) return "stop";
