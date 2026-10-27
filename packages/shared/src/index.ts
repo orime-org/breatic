@@ -960,6 +960,7 @@ export type {
   VideoSourceLedgerCompanion,
   VideoSourceLedgerState,
   VideoSourceLedgerParseLimits,
+  VideoSourceLedgerProcessLimits,
 } from "@shared/upload/video-source-ledger-types.js";
 export {
   videoPresentationSourceBindingSchema,

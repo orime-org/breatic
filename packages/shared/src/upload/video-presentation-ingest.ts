@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
+
 import type { VideoPresentation, AlphaManifest } from '@shared/upload/video-presentation.js';
 import type { ContainerUsage } from '@shared/upload/mini-tool-job.js';
 import { z } from 'zod';
@@ -36,6 +38,7 @@ export interface VideoPresentationIngestAttempt {
 }
 /** A read never infers native from missing sidecars. */
 export interface VideoPresentationIngestSnapshot {
+  sourceLedger?: VideoSourceLedgerState;
   presentation: VideoPresentation | null;
   manifest?: AlphaManifest;
   attempt: VideoPresentationIngestAttempt | null;

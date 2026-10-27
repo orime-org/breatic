@@ -7,6 +7,7 @@ import { advanceVideoPresentation, type AcceptedVideoPresentationAttempt } from 
 import type { AlphaPresentationReport, AlphaProbeEvidence } from '@ingest/alpha-run-contract.js';
 import type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
+import type { VideoSourceLedgerStrategy } from '@breatic/shared';
 
 /** Backend-authorized admission of one canonical source's auxiliary work. */
 export interface VideoPresentationAdmission extends AcceptedVideoPresentationAttempt {
@@ -22,6 +23,8 @@ export interface VideoPresentationAdmission extends AcceptedVideoPresentationAtt
   projectId?: string | null;
   packedURL?: string;
   manifestURL?: string;
+  sourceLedgerURL?: string;
+  ledgerOnly?: boolean;
 }
 
 /** Private durable state remains valid even while original metadata is unknown. */
@@ -44,6 +47,12 @@ export interface AlphaPackedIdentity extends AcceptedVideoPresentationAttempt { 
 export interface AlphaPackedWriteClaim { owner: string; key: string; etag: string | null; byteLength: number }
 /** Facts measured from the complete stored bytes, never from an HTTP caller. */
 export interface AlphaPackedReceipt { etag: string; size: number; sha256: string }
+/** The original trusted producer's complete byte and count declaration. */
+export interface SourceLedgerDeclaration {
+  producerVersion: 1; strategy: VideoSourceLedgerStrategy; byteLength: number; physicalFrameCount: number; occurrenceCount: number;
+}
+/** Durable authorization for one conditional companion write. */
+export interface SourceLedgerWriteClaim { owner: string; key: string; priorETag: string | null; byteLength: number }
 const RECORD_KEY = 'video-presentation-v1';
 
 /** Durable gate shared by the production container and a storage-only test object. */
@@ -62,6 +71,40 @@ export class VideoPresentationStore {
     private readonly bucket: R2Bucket,
     private readonly gate: PresentationStorageGate,
   ) {}
+
+  /**
+   * Reserve one source-ledger writer before bytes reach R2.
+   * @param _identity - The original accepted private capability.
+   * @param _declaration - Complete original producer byte/count facts.
+   * @returns One persisted claim or a refusal.
+   * @throws {Error} Until source-ledger ownership is implemented.
+   */
+  claimSourceLedger(_identity: AlphaPackedIdentity, _declaration: SourceLedgerDeclaration): Promise<SourceLedgerWriteClaim | null> {
+    return Promise.reject(new Error('Source-ledger claim is not implemented'));
+  }
+
+  /**
+   * Retain an actual measured companion receipt under its original intent.
+   * @param _identity - The original accepted private capability.
+   * @param _owner - The original durable write nonce.
+   * @param _measured - Actual stored byte facts.
+   * @returns Whether that original receipt was accepted.
+   * @throws {Error} Until source-ledger completion is implemented.
+   */
+  completeSourceLedger(_identity: AlphaPackedIdentity, _owner: string, _measured: AlphaPackedReceipt): Promise<boolean> {
+    return Promise.reject(new Error('Source-ledger completion is not implemented'));
+  }
+
+  /**
+   * Release active ownership while preserving the original write intent.
+   * @param _identity - The original accepted private capability.
+   * @param _owner - The matching original durable writer.
+   * @returns Nothing after release.
+   * @throws {Error} Until source-ledger release is implemented.
+   */
+  releaseSourceLedger(_identity: AlphaPackedIdentity, _owner: string): Promise<void> {
+    return Promise.reject(new Error('Source-ledger release is not implemented'));
+  }
 
   /**
    * Reserve this accepted identity before a packed byte reaches R2.
@@ -199,6 +242,7 @@ export class VideoPresentationStore {
    * @throws {Error} When persistence or descriptor publication fails.
    */
   async report(fact: AlphaPresentationReport): Promise<boolean> {
+    if (fact.kind === 'source_ledger_failed') throw new Error('Source-ledger failure reporting is not implemented');
     let proposed: VideoPresentation | null = null;
     let rejectedProbe = false;
     const accepted = await this.gate(async () => {

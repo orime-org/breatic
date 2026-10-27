@@ -150,3 +150,15 @@ export type VideoSourceLedgerState = null | {
 };
 /** Mandatory caller ceilings without operational defaults in the parser. */
 export interface VideoSourceLedgerParseLimits { maxPhysicalFrames: number; maxOccurrences: number }
+
+/** Frozen operations ceilings for one original source-ledger preparation. */
+export interface VideoSourceLedgerProcessLimits {
+  maxBytes: number;
+  probeStdoutBytes: number;
+  metadataBytes: number;
+  maxPhysicalFrames: number;
+  maxOccurrences: number;
+  isoBoxCount: number;
+  matroskaElementCount: number;
+  matroskaMaxBlocks: number;
+}

@@ -3,12 +3,36 @@
 
 import { DurableObject } from 'cloudflare:workers';
 import type { VideoPresentation, VideoPresentationIngestSnapshot } from '@breatic/shared';
-import { VideoPresentationStore, type VideoPresentationAdmission, type PreparedAlphaAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt } from '@ingest/video-presentation-store.js';
+import { VideoPresentationStore, type VideoPresentationAdmission, type PreparedAlphaAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt, type SourceLedgerDeclaration, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
 import type { AlphaPresentationReport } from '@ingest/alpha-run-contract.js';
 import type { AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
 
 /** Real workerd storage fixture; it deliberately does not pretend to be a container. */
 export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucket }> {
+  /** Delegate the new claim to the production owner over actual storage. @throws {Error} When the production owner rejects. */
+  claimSourceLedger(identity: AlphaPackedIdentity, declaration: SourceLedgerDeclaration): Promise<SourceLedgerWriteClaim | null> {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).claimSourceLedger(identity, declaration);
+  }
+
+  /** Delegate actual stored measurement publication. @throws {Error} When the production owner rejects. */
+  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: AlphaPackedReceipt): Promise<boolean> {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).completeSourceLedger(identity, owner, measured);
+  }
+
+  /** Release only the original active writer. @throws {Error} When the production owner rejects. */
+  releaseSourceLedger(identity: AlphaPackedIdentity, owner: string): Promise<void> {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).releaseSourceLedger(identity, owner);
+  }
+
+  /** Apply original failure semantics through the actual owner. @throws {Error} When persistence fails. */
+  fail(identity: AcceptedVideoPresentationAttempt, error: string): Promise<VideoPresentationIngestSnapshot> {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).fail(identity, error);
+  }
+
+  /** Acknowledge original actual usage without substituting current work. @throws {Error} When persistence fails. */
+  acknowledgeUsage(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).acknowledgeUsage(identity);
+  }
   /**
    * Expose the production accepted capability using actual durable state.
    * @param identity - Original source and deadline.

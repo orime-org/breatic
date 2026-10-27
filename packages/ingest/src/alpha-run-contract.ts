@@ -41,6 +41,7 @@ export type AlphaPresentationReport = {
   | { kind: 'probe'; classification: 'confirmed_alpha' | 'confirmed_opaque'; original: VideoPresentation['original']; evidence: AlphaProbeEvidence }
   | { kind: 'encoded'; packedWidth: number; packedHeight: number; colorRect: VideoPresentationRect; alphaRect: VideoPresentationRect }
   | { kind: 'finished'; usage: { wallMs: number; cpuUsec: number | null }; error?: string }
+  | { kind: 'source_ledger_failed'; error: string }
 );
 /** The HTTP result acknowledges work; storage readiness comes from its durable owner. */
 export interface AlphaRunResult { ok: boolean; error?: string }
