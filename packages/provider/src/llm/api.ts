@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { JSONValue, LanguageModel, LanguageModelUsage, ProviderMetadata, SystemModelMessage } from "ai";
+import type { FinishReason, JSONValue, LanguageModel, LanguageModelUsage, ProviderMetadata, SystemModelMessage } from "ai";
 import type { Cost } from "@provider/cost.js";
 import type { Route } from "@provider/routing/route.js";
 
@@ -53,7 +53,8 @@ export interface UnderstandRequest {
 /** What the understand model answered. */
 export interface UnderstandAnswer {
   text: string;
-  finishReason: string;
+  /** Why the model stopped, in the AI SDK's unified words, the same for every upstream. */
+  finishReason: FinishReason;
   cost: Cost;
   upstream: string;
 }
