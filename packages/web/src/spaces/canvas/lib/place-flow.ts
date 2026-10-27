@@ -13,13 +13,14 @@
  * so the arrangement can be read by a test with no canvas around it.
  */
 
-import { layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
+import { TEMPLATE_GUIDE_KEY, layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { getViewportForBounds, type Viewport } from '@xyflow/react';
 
 import type { NodePlacement } from '@web/data/yjs/canvas-space';
 import { CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 import { EMPTY_NODE_SIZE, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
+import { GENERATE_PANEL_WIDTH_PX } from '@web/spaces/canvas/generate/panel-width';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 
 /** A point in flow coordinates. */
@@ -38,6 +39,15 @@ export interface Placed {
 
 /** How far apart two layers of the flow sit, left to right. */
 export const LAYER_STEP_PX = 360;
+
+/**
+ * How far a template guide text node's column sits left of its anchor's
+ * (inner#1345): the generate panel opens under the anchor, centred on it, and
+ * at 100% zoom ends one column gap short of the guide. The panel keeps its
+ * size on screen, so zoomed out further it reaches further across the canvas.
+ */
+export const GUIDE_STEP_PX =
+  GENERATE_PANEL_WIDTH_PX / 2 + EMPTY_NODE_SIZE.width / 2 + (LAYER_STEP_PX - EMPTY_NODE_SIZE.width);
 
 /** How far apart two nodes of one layer sit, top to bottom. */
 export const ROW_GAP_PX = 48;
@@ -120,6 +130,15 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
   // of its own there; here it stands in the first column beside whatever else
   // starts the flow, which is what the design asks for (§6.2).
   const layer = layersOf(proposal);
+  const guideColumns = new Set(
+    proposal.nodes.flatMap((node, index) => (node.templateNode?.key === TEMPLATE_GUIDE_KEY ? [layer[index] ?? 0] : [])),
+  );
+  // Each column's left edge: one layer step past the last, or one guide step
+  // past a column holding a guide.
+  const columnX: number[] = [0];
+  for (let at = 1; at <= Math.max(0, ...layer); at += 1) {
+    columnX[at] = (columnX[at - 1] ?? 0) + (guideColumns.has(at - 1) ? GUIDE_STEP_PX : LAYER_STEP_PX);
+  }
 
   const height = proposal.nodes.map((node) => estimateHeight(node));
   const columns = new Map<number, number[]>();
@@ -143,7 +162,7 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
     for (const index of members) {
       const own = height[index] ?? 0;
       placed[index] = {
-        x: at * LAYER_STEP_PX,
+        x: columnX[at] ?? 0,
         y,
         width: EMPTY_NODE_SIZE.width,
         height: own,

@@ -14,7 +14,8 @@ import { describe, it, expect } from 'vitest';
 import type { CanvasProposal, ProposalNode } from '@breatic/shared';
 
 import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
-import { LAYER_STEP_PX, estimateHeight, planFlowLayout, type Placed } from '@web/spaces/canvas/lib/place-flow';
+import { GUIDE_STEP_PX, LAYER_STEP_PX, estimateHeight, planFlowLayout, type Placed } from '@web/spaces/canvas/lib/place-flow';
+import { GENERATE_PANEL_WIDTH_PX } from '@web/spaces/canvas/generate/panel-width';
 
 const AT = { x: 1000, y: 500 };
 
@@ -229,31 +230,31 @@ describe('where a template guide lands (inner#1345)', () => {
   const overlaps = (a: Placed, b: Placed): boolean =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-  it('puts the guide one column left of an anchor nothing in the proposal feeds', () => {
+  it('puts the guide one guide step left of an anchor nothing in the proposal feeds', () => {
     const placed = planFlowLayout(flow([generates('Anchor'), guide(0)]), AT);
 
-    expect(placed[1]!.x).toBe(placed[0]!.x - LAYER_STEP_PX);
+    expect(placed[1]!.x).toBe(placed[0]!.x - GUIDE_STEP_PX);
   });
 
-  it('puts the guide one column left of an anchor one node feeds', () => {
+  it('puts the guide one guide step left of an anchor one node feeds', () => {
     const placed = planFlowLayout(flow([empty('Reference'), generates('Anchor'), guide(1)], [[0, 1]]), AT);
 
-    expect(placed[2]!.x).toBe(placed[1]!.x - LAYER_STEP_PX);
+    expect(placed[2]!.x).toBe(placed[1]!.x - GUIDE_STEP_PX);
     expect(overlaps(placed[2]!, placed[0]!)).toBe(false);
   });
 
-  it('puts the guide one column left of an anchor two layers downstream', () => {
+  it('puts the guide one guide step left of an anchor two layers downstream', () => {
     const placed = planFlowLayout(
       flow([empty('Reference'), generates('Sketch'), generates('Anchor'), guide(2)], [[0, 1], [1, 2]]),
       AT,
     );
 
-    expect(placed[3]!.x).toBe(placed[2]!.x - LAYER_STEP_PX);
+    expect(placed[3]!.x).toBe(placed[2]!.x - GUIDE_STEP_PX);
     expect(placed[3]!.x).toBe(placed[1]!.x);
     expect(overlaps(placed[3]!, placed[1]!)).toBe(false);
   });
 
-  it('keeps the guide one column left of, and clear of, a 9:16 anchor whose reference is wired already', () => {
+  it('keeps the guide one guide step left of, and clear of, a 9:16 anchor whose reference is wired already', () => {
     // The panel hands the anchor and the reference it already has as
     // placeholders, with no edge between them: the canvas holds that edge.
     const tall = {
@@ -262,7 +263,26 @@ describe('where a template guide lands (inner#1345)', () => {
     } as ProposalNode;
     const placed = planFlowLayout(flow([tall, empty('Reference'), guide(0)]), AT);
 
-    expect(placed[2]!.x).toBe(placed[0]!.x - LAYER_STEP_PX);
+    expect(placed[2]!.x).toBe(placed[0]!.x - GUIDE_STEP_PX);
     expect(overlaps(placed[2]!, placed[0]!)).toBe(false);
+  });
+
+  it('leaves the column gap between the guide and the generate panel opened on its anchor, at 100% zoom', () => {
+    const placed = planFlowLayout(flow([empty('Reference'), generates('Anchor'), guide(1)], [[0, 1]]), AT);
+    const anchor = placed[1]!;
+    const panelLeft = anchor.x + anchor.width / 2 - GENERATE_PANEL_WIDTH_PX / 2;
+
+    expect(panelLeft - (placed[2]!.x + placed[2]!.width)).toBe(LAYER_STEP_PX - EMPTY_NODE_SIZE.width);
+    // The reference shares the guide's column, so it stays stacked with it.
+    expect(placed[0]!.x).toBe(placed[2]!.x);
+  });
+
+  it('keeps every other column one layer step apart', () => {
+    const placed = planFlowLayout(
+      flow([empty('Reference'), generates('Sketch'), generates('Anchor'), guide(2)], [[0, 1], [1, 2]]),
+      AT,
+    );
+
+    expect(placed[1]!.x - placed[0]!.x).toBe(LAYER_STEP_PX);
   });
 });
