@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { MiniToolOutput } from '@breatic/shared/mini-tools';
-import type { OutputSize, PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
+import { placeMiniToolOutput, type OutputSize, type PlacedOutput } from '@web/spaces/canvas/mini-tool/output-placement';
+import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 
 /**
  * Places the complete internally planned output list in its original order.
- * @param _outputs - Complete descriptors, independent from public recipes.
- * @param _sizes - Known per-output pixel sizes.
- * @param _sourceName - The original source's name.
- * @throws {Error} Until planned placement is implemented.
+ * @param outputs - Complete descriptors, independent from public recipes.
+ * @param sizes - Known per-output pixel sizes.
+ * @param sourceName - The original source's name.
+ * @returns Every output's placement in the existing column layout.
+ * @throws {never} Never.
  */
-export function plannedOutputPlacementOf(_outputs: readonly MiniToolOutput[], _sizes: readonly (OutputSize | undefined)[], _sourceName: string | undefined): PlacedOutput[] {
-  throw new Error('Planned output placement is not implemented');
+export function plannedOutputPlacementOf(outputs: readonly MiniToolOutput[], sizes: readonly (OutputSize | undefined)[], sourceName: string | undefined): PlacedOutput[] {
+  return outputs.map((output, index) => placeMiniToolOutput(output, outputs.length > 1 ? `${index + 1}-` : '', sourceName, 0, index * NODE_STEP.y, sizes[index]));
 }

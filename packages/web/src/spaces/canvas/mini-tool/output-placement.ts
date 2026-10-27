@@ -90,6 +90,26 @@ export function plannedOutputSizes(
 }
 
 /**
+ * Build the shared footprint and name of one output in a complete layout.
+ * @param output - Its registry descriptor.
+ * @param label - The plan's optional index or grid-cell label.
+ * @param sourceName - The source node's name.
+ * @param x - Its horizontal offset within the batch.
+ * @param y - Its vertical offset within the batch.
+ * @param size - Known output pixels.
+ * @returns The output's name and node footprint.
+ * @throws {never} Never.
+ */
+export function placeMiniToolOutput(output: MiniToolOutput, label: string, sourceName: string | undefined, x: number, y: number, size: OutputSize | undefined): PlacedOutput {
+  return {
+    output,
+    name: `${output.namePrefix}-${label}${sourceName ?? MODALITY_LABEL[output.modality]}`,
+    x, y, width: EMPTY_NODE_SIZE.width, height: nodeHeight(size),
+    ...(size !== undefined && size.width > 0 && size.height > 0 && { size }),
+  };
+}
+
+/**
  * Lays a run's results out: a column for every tool, except a `"grid"` tool,
  * whose results each sit at their own cell's row and column. Every row is as
  * tall as its tallest tile across the whole grid, picked or not, so a row
@@ -109,35 +129,10 @@ export function outputPlacementOf(
   sourceName: string | undefined,
 ): PlacedOutput[] {
   const outputs = outputsOf(spec, params);
-  /**
-   * One result's placement.
-   * @param output - The result.
-   * @param label - What goes between the prefix and the source name.
-   * @param x - Its left, from the batch's.
-   * @param y - Its top, from the batch's.
-   * @param size - Its pixel size, when planned.
-   * @returns The placement.
-   */
-  const placed = (
-    output: MiniToolOutput,
-    label: string,
-    x: number,
-    y: number,
-    size: OutputSize | undefined,
-  ): PlacedOutput => ({
-    output,
-    name: `${output.namePrefix}-${label}${sourceName ?? MODALITY_LABEL[output.modality]}`,
-    x,
-    y,
-    width: EMPTY_NODE_SIZE.width,
-    height: nodeHeight(size),
-    ...(size !== undefined && size.width > 0 && size.height > 0 && { size }),
-  });
-
   const shape = gridShapeOf(spec, params);
   if (shape === null) {
     return outputs.map((output, index) =>
-      placed(output, spec.output ? `${index + 1}-` : '', 0, index * NODE_STEP.y, sizes[index]),
+      placeMiniToolOutput(output, spec.output ? `${index + 1}-` : '', sourceName, 0, index * NODE_STEP.y, sizes[index]),
     );
   }
 
@@ -156,9 +151,10 @@ export function outputPlacementOf(
   return cells.map((cell, index) => {
     const row = Math.floor(cell / cols);
     const col = cell % cols;
-    return placed(
+    return placeMiniToolOutput(
       outputs[index]!,
       `r${row + 1}c${col + 1}-`,
+      sourceName,
       (col - firstCol) * NODE_STEP.x,
       tops[row]!,
       sizes[cell],

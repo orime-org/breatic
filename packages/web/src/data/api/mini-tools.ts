@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { MiniToolExecutionRecord, MiniToolPlannedRequest, MiniToolRequest } from '@breatic/shared/mini-tools';
+import { miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolPlannedRequest, type MiniToolRequest } from '@breatic/shared/mini-tools';
 
-import { apiPost, runOnceRequest } from '@web/data/api/request';
+import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
 
 /** What the server answers a run with: the task it opened. */
@@ -21,23 +21,25 @@ export interface MiniToolPlannedRunAnswer {
 export const miniToolsApi = {
   /**
    * Sends one complete planned request with its stable press key.
-   * @param _body - The frozen public plan.
-   * @param _key - The original press identity.
+   * @param body - The frozen public plan.
+   * @param key - The original press identity.
    * @returns The admitted task's state.
-   * @throws {Error} Until planned API wiring is implemented.
+   * @throws {import('@web/data/api/types').ApiException} When admission is refused or unreachable.
    */
-  runPlanned(_body: MiniToolPlannedRequest, _key: string): Promise<MiniToolPlannedRunAnswer> {
-    return Promise.reject(new Error('Planned video API submission is not implemented'));
+  runPlanned(body: MiniToolPlannedRequest, key: string): Promise<MiniToolPlannedRunAnswer> {
+    return apiPost<MiniToolPlannedRunAnswer>('/mini-tools', body, runOnceRequest(key)).finally(() =>
+      noteCreditsChanged(body.project_id),
+    );
   },
   /**
    * Reads the project-authorized original run and canonical results.
-   * @param _projectId - The containing Project.
-   * @param _runId - The original accepted run identity.
+   * @param projectId - The containing Project.
+   * @param runId - The original accepted run identity.
    * @returns The validated public execution record.
-   * @throws {Error} Until planned API reading is implemented.
+   * @throws {Error} When the request fails or its execution record is invalid.
    */
-  getRun(_projectId: string, _runId: string): Promise<MiniToolExecutionRecord> {
-    return Promise.reject(new Error('Planned video API reading is not implemented'));
+  async getRun(projectId: string, runId: string): Promise<MiniToolExecutionRecord> {
+    return miniToolExecutionRecordSchema.parse(await apiGet<unknown>(`/projects/${projectId}/mini-tool-runs/${runId}`));
   },
   /**
    * Run a model or container mini-tool into nodes that already exist
