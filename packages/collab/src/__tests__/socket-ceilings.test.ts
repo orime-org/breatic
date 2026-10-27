@@ -34,7 +34,7 @@
  * the peak rather than a moving number.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import WebSocket from "ws";
 import * as encoding from "lib0/encoding";
 import { outdatedTimeout } from "y-protocols/awareness";
@@ -218,6 +218,18 @@ describe("deriving the ceilings from a project's Space cap", () => {
   });
 });
 
+/**
+ * A bare instance whose authentication never settles, so every document a
+ * connection opens stays pending.
+ * @returns The instance.
+ */
+function pendingHocuspocus(): Hocuspocus {
+  return new Hocuspocus({
+    quiet: true,
+    onAuthenticate: () => new Promise<never>(() => {}),
+  });
+}
+
 describe("a frame queued before authentication", () => {
   it("keeps only its own bytes, not the read buffer it arrived in", () => {
     // ws hands each frame over as a view into the socket read chunk (up to
@@ -226,10 +238,7 @@ describe("a frame queued before authentication", () => {
     // queued-frame ceiling into a gigabyte. The patch in
     // `patches/@hocuspocus__server@4.6.0.patch` copies the frame on the way
     // into the queue.
-    const hocuspocus = new Hocuspocus({
-      quiet: true,
-      onAuthenticate: () => new Promise<never>(() => {}),
-    });
+    const hocuspocus = pendingHocuspocus();
     const socket = { readyState: 1, close: () => {}, send: () => {} };
     const connection = hocuspocus.handleConnection(
       socket,
@@ -287,10 +296,7 @@ describe("request parameters of one connection", () => {
     ["a query smuggled in through Host", "http://a?k=1/ws"],
     ["a path the URL parser rewrites", `http://h/ws${'"'.repeat(20)}`],
   ])("shares one parse across pending documents for %s", (_label, url) => {
-    const hocuspocus = new Hocuspocus({
-      quiet: true,
-      onAuthenticate: () => new Promise<never>(() => {}),
-    });
+    const hocuspocus = pendingHocuspocus();
     const connection = connect(hocuspocus, url);
 
     connection.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
@@ -306,10 +312,6 @@ describe("request parameters of one connection", () => {
 
   it("hands hooks after authentication the same parse the pending documents hold", async () => {
     let loaded: URLSearchParams | undefined;
-    let markLoaded: () => void = () => {};
-    const onLoad = new Promise<void>((resolve) => {
-      markLoaded = resolve;
-    });
     const hocuspocus = new Hocuspocus({
       quiet: true,
       onAuthenticate: ({ documentName }) =>
@@ -318,7 +320,6 @@ describe("request parameters of one connection", () => {
           : new Promise<never>(() => {}),
       onLoadDocument: async ({ requestParameters }) => {
         loaded = requestParameters;
-        markLoaded();
       },
     });
     const connection = connect(hocuspocus, "http://h/ws?a=1");
@@ -326,7 +327,7 @@ describe("request parameters of one connection", () => {
     connection.handleMessage(frame("project-p/canvas-1", WIRE_AUTH, AUTH_SUB_TOKEN));
     const pending = connection.hookPayloads["project-p/canvas-1"]?.requestParameters;
     connection.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
-    await onLoad;
+    await vi.waitFor(() => expect(loaded).toBeDefined());
     connection.handleClose();
 
     expect(pending).toBeDefined();
@@ -335,10 +336,7 @@ describe("request parameters of one connection", () => {
 
   it("gives two connections with the same URL a parse each", () => {
     const url = "http://h/ws?a=1";
-    const hocuspocus = new Hocuspocus({
-      quiet: true,
-      onAuthenticate: () => new Promise<never>(() => {}),
-    });
+    const hocuspocus = pendingHocuspocus();
     const one = connect(hocuspocus, url);
     const other = connect(hocuspocus, url);
 
@@ -356,10 +354,7 @@ describe("request parameters of one connection", () => {
   });
 
   it("parses a request without a URL to empty parameters", () => {
-    const hocuspocus = new Hocuspocus({
-      quiet: true,
-      onAuthenticate: () => new Promise<never>(() => {}),
-    });
+    const hocuspocus = pendingHocuspocus();
     const connection = connect(hocuspocus, undefined);
 
     connection.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
