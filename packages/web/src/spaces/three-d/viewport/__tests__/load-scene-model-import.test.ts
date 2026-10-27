@@ -7,6 +7,7 @@ import { Mesh } from 'three';
 import type { Group } from 'three';
 import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
+import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { disposeModelTemplate, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 
@@ -18,6 +19,16 @@ vi.mock('@breatic/shared', async (importOriginal) => ({
 const templates = new Set<Group>();
 const TRIANGLE = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
 const ASSET_URL = 'https://assets.example/registered-model';
+const IMPORT_LIMITS: SceneImportLimits = {
+  maxInputBytes: 67108864,
+  maxExpandedBytes: 268435456,
+  maxArtifactBytes: 268435456,
+  maxFiles: 4096,
+  maxEntryJsonBytes: 4194304,
+  decoderWorkerLimit: 1,
+  maxTextureEdge: 8192,
+  maxTextureBytes: 268435456,
+};
 
 /**
  * Describe a real mesh, hierarchy and original PBR material for the installed loader.
@@ -80,10 +91,10 @@ function modelPackage(entryPath: string, files: Record<string, Uint8Array>, form
  * Isolate the asset HTTP request while retaining the real model decoder.
  * @throws {Error} When the production model loader rejects the input.
  */
-function loadRegistered(bytes: ArrayBuffer, mimeType: string, sizeBytes = bytes.byteLength): Promise<Group> {
+function loadRegistered(bytes: ArrayBuffer, mimeType: string, sizeBytes = bytes.byteLength, limits: SceneImportLimits = IMPORT_LIMITS): Promise<Group> {
   vi.mocked(httpRequest).mockResolvedValue(new Response(bytes));
   const resolve = vi.fn(async () => ({ url: ASSET_URL, mimeType, sizeBytes }));
-  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888')
+  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888', limits)
     .then((root) => { templates.add(root); return root; });
 }
 
@@ -171,5 +182,23 @@ describe('registered model import containers (inner#1690)', () => {
     const loading = loadRegistered(triangleGlb('CharacterRoot').buffer, 'model/gltf-binary', 268435457);
     await expect(loading).rejects.toBeInstanceOf(Error);
     expect(httpRequest).toHaveBeenCalledTimes(0);
+  });
+
+  it('uses a lower configured artifact budget to reject registered bytes before transfer', async () => {
+    const bytes = triangleGlb('CharacterRoot');
+    const limits = { ...IMPORT_LIMITS, maxArtifactBytes: bytes.byteLength - 1 };
+    const loading = loadRegistered(bytes.buffer, 'model/gltf-binary', bytes.byteLength, limits);
+
+    await expect(loading).rejects.toBeInstanceOf(Error);
+    expect(httpRequest).toHaveBeenCalledTimes(0);
+  });
+
+  it('loads the same registered size when it fits the configured artifact budget', async () => {
+    const bytes = triangleGlb('CharacterRoot');
+    const limits = { ...IMPORT_LIMITS, maxArtifactBytes: bytes.byteLength };
+    const root = await loadRegistered(bytes.buffer, 'model/gltf-binary', bytes.byteLength, limits);
+
+    expectTriangle(root, 'CharacterRoot');
+    expect(httpRequest).toHaveBeenCalledTimes(1);
   });
 });
