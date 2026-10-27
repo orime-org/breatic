@@ -275,7 +275,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   // (user 2026-09-02).
   if (promptSlot === null) {
     return (
-      <div className={SHELL} style={GENERATE_PANEL_WIDTH_STYLE}>
+      <div data-canvas-panel='' className={SHELL} style={GENERATE_PANEL_WIDTH_STYLE}>
         <div className='flex items-start justify-between gap-2'>
           <p
             data-testid='generate-audio-legacy'
@@ -290,7 +290,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   }
 
   return (
-    <div className={SHELL} style={GENERATE_PANEL_WIDTH_STYLE}>
+    <div data-canvas-panel='' className={SHELL} style={GENERATE_PANEL_WIDTH_STYLE}>
       <div className='flex items-start justify-between'>
         <AudioGenerateToolbar
           onReference={onAddReference}

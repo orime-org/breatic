@@ -14,7 +14,7 @@
 
 import type { Viewport } from '@xyflow/react';
 
-import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
+import { FRAME_PADDING, frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
   centerOf,
   groupRectForMembers,
@@ -184,4 +184,32 @@ export function viewportToInspect(
     y: (pane.height - tall) / 2 - node.y * zoom,
     zoom,
   };
+}
+
+/**
+ * Where to slide the camera so a box on screen is in front of the reader
+ * (inner#1345): a template applied in a generate panel, with the nodes it
+ * placed and the panel grown around its prompt. Nothing moves while the box
+ * is inside the margin a proposal is framed with, which is what keeps it
+ * clear of the toolbars floating over the canvas's edges; else it is centred
+ * at the reader's zoom, top left kept when it is larger than that room. The
+ * panel keeps its size on screen, so zooming out would not make it fit.
+ * @param box - The box, in screen pixels from the pane's top left.
+ * @param pane - The canvas pane's size in screen pixels.
+ * @param pane.width - Its width.
+ * @param pane.height - Its height.
+ * @param now - The viewport the reader is at.
+ * @returns The viewport to move to, or null to stay.
+ */
+export function viewportToShow(box: Rect, pane: { width: number; height: number }, now: Viewport): Viewport | null {
+  const room = {
+    x: pane.width * FRAME_PADDING,
+    y: pane.height * FRAME_PADDING,
+    width: pane.width * (1 - 2 * FRAME_PADDING),
+    height: pane.height * (1 - 2 * FRAME_PADDING),
+  };
+  if (contains(box, room)) return null;
+  const dx = box.width > room.width ? room.x - box.x : pane.width / 2 - (box.x + box.width / 2);
+  const dy = box.height > room.height ? room.y - box.y : pane.height / 2 - (box.y + box.height / 2);
+  return { x: now.x + dx, y: now.y + dy, zoom: now.zoom };
 }

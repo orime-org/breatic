@@ -87,6 +87,7 @@ import {
   freshNodesBox,
   viewportForBuilt,
   viewportToInspect,
+  viewportToShow,
 } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { cropSourceSelector, intrinsicSize, isCropSource, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
@@ -1341,10 +1342,50 @@ function CanvasSpaceInner({
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
 
+  // Once a template's nodes and the panel, grown around the prompt it was
+  // given, are laid out, the camera slides them in front of the reader when
+  // they reach under the toolbars floating over the canvas (inner#1345).
+  // Waits for every node to be measured and the panel to hold one height for
+  // two frames; past that many frames it frames what is there.
+  const showTemplate = React.useCallback(
+    (nodeIds: readonly string[]): void => {
+      let tries = 0;
+      let lastHeight = -1;
+      /** One frame of waiting for the nodes and the panel to be laid out. */
+      const step = (): void => {
+        const container = containerRef.current;
+        if (!container) return;
+        const rects = nodeIds.map((id) => {
+          const node = getInternalNode(id);
+          const width = node?.measured?.width;
+          const height = node?.measured?.height;
+          return node && width && height ? { ...node.internals.positionAbsolute, width, height } : null;
+        });
+        const panel = container.querySelector<HTMLElement>('[data-canvas-panel]')?.getBoundingClientRect();
+        const settled = rects.every((rect) => rect !== null) && panel !== undefined && panel.height === lastHeight;
+        lastHeight = panel?.height ?? -1;
+        if (!settled && tries++ < TEMPLATE_SHOW_FRAMES) {
+          requestAnimationFrame(step);
+          return;
+        }
+        const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
+        const origin = container.getBoundingClientRect();
+        const boxes = rects.flatMap((rect) =>
+          rect ? [{ x: rect.x * zoom + x, y: rect.y * zoom + y, width: rect.width * zoom, height: rect.height * zoom }] : [],
+        );
+        if (panel) boxes.push({ x: panel.left - origin.left, y: panel.top - origin.top, width: panel.width, height: panel.height });
+        const box = groupRectForMembers(boxes, 0);
+        const next = box === null ? null : viewportToShow(box, { width, height }, { x, y, zoom });
+        if (next !== null) void setViewport(next, { duration: FRAME_PAN_MS, interpolate: 'linear' });
+      };
+      requestAnimationFrame(step);
+    },
+    [getInternalNode, rfStoreApi, setViewport],
+  );
+
   // A template picked in a generate panel lands around that panel's node
   // (inner#1345 6.5): every other node is in the way, and so is every group
-  // but the one the node sits in, which grows around what joins it. The
-  // viewport stays where the reader is working.
+  // but the one the node sits in, which grows around what joins it.
   const placeTemplate = React.useCallback(
     (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
       const anchorId = existing.get(0)?.nodeId;
@@ -1354,9 +1395,11 @@ function CanvasSpaceInner({
         const measured = getInternalNode(id)?.measured;
         return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
       });
-      return placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+      showTemplate(placed.nodeIds);
+      return placed;
     },
-    [projectId, spaceId, getInternalNode, placeProposalAt],
+    [projectId, spaceId, getInternalNode, placeProposalAt, showTemplate],
   );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
@@ -5137,6 +5180,9 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
  * is on the canvas: the template lines up on that node.
  */
 const TEMPLATE_AIM = { x: 0, y: 0 };
+
+/** How many frames placing a template waits for its nodes and panel to be laid out before framing them. */
+const TEMPLATE_SHOW_FRAMES = 30;
 
 /**
  * Canvas space body. Wraps `CanvasSpaceInner` in a

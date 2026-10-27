@@ -12,7 +12,7 @@
  *
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
@@ -87,6 +87,18 @@ async function wire(from: string, to: string): Promise<void> {
 }
 
 /**
+ * Whether two elements on screen share any area.
+ * @param a - One element.
+ * @param b - The other.
+ * @returns True when they overlap.
+ */
+async function overlapping(a: Locator, b: Locator): Promise<boolean> {
+  const [one, two] = await Promise.all([a.boundingBox(), b.boundingBox()]);
+  if (one === null || two === null) return false;
+  return one.x < two.x + two.width && two.x < one.x + one.width && one.y < two.y + two.height && two.y < one.y + one.height;
+}
+
+/**
  * Pick the storyboard template in the open image panel.
  */
 async function pickStoryboard(): Promise<void> {
@@ -123,6 +135,12 @@ test('picking a template places the reference it asks for, wired and @\'d, and p
   await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
   await expect(prompt).toContainText('{✏️ the story}');
   await expect(page.getByText('Replace the text in braces.', { exact: false })).toBeVisible();
+  // The camera brings the placed reference and the panel, grown around the
+  // prompt, clear of the toolbars floating over the canvas.
+  const panel = page.locator('[data-canvas-panel]');
+  await expect.poll(() => overlapping(reference, page.getByTestId('left-floating-menu')), { timeout: 5_000 }).toBe(false);
+  await expect.poll(() => overlapping(panel, page.getByTestId('viewport-toolbar')), { timeout: 5_000 }).toBe(false);
+  await expect.poll(() => overlapping(panel, page.locator('.react-flow__minimap')), { timeout: 5_000 }).toBe(false);
   await page.screenshot({ path: test.info().outputPath('image-template-applied.png') });
 
   await pickStoryboard();

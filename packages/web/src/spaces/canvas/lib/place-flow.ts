@@ -290,7 +290,7 @@ function footprintOf(
 }
 
 /** Room left around a framed proposal, as `fitView` leaves around the canvas. */
-const FRAME_PADDING = 0.1;
+export const FRAME_PADDING = 0.1;
 
 /**
  * Where to put the camera once a proposal has landed: centred on what was

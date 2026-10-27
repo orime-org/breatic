@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox, freshNodesBox, viewportForBuilt, viewportToInspect } from '@web/spaces/canvas/frame-built-node';
+import { frameBuiltNode, framedBox, freshNodesBox, viewportForBuilt, viewportToInspect, viewportToShow } from '@web/spaces/canvas/frame-built-node';
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
@@ -222,5 +222,27 @@ describe('freshNodesBox', () => {
   // A result planned taller than a fresh node is framed whole (inner#1303 §6.7).
   it('is the one node for a press that built one, as tall as it was planned', () => {
     expect(freshNodesBox([{ x: 10, y: 20, width: 288, height: 700 }])).toEqual({ x: 10, y: 20, width: 288, height: 700 });
+  });
+});
+
+describe('viewportToShow (inner#1345)', () => {
+  const pane = { width: 1000, height: 800 };
+  const now = { x: -200, y: -100, zoom: 1.5 };
+
+  it('stays put while the box is inside the framing margin', () => {
+    expect(viewportToShow({ x: 100, y: 80, width: 800, height: 640 }, pane, now)).toBeNull();
+  });
+
+  it('slides at the reader zoom to centre a box that reaches into the margin', () => {
+    // Left edge at 40, under a toolbar floating over the canvas's left side.
+    const next = viewportToShow({ x: 40, y: 200, width: 500, height: 300 }, pane, now);
+
+    expect(next).toEqual({ x: -200 + (500 - 290), y: -100 + (400 - 350), zoom: 1.5 });
+  });
+
+  it('keeps the top left of a box too large to fit inside the margin', () => {
+    const next = viewportToShow({ x: 300, y: 300, width: 900, height: 700 }, pane, now);
+
+    expect(next).toEqual({ x: -200 + (100 - 300), y: -100 + (80 - 300), zoom: 1.5 });
   });
 });

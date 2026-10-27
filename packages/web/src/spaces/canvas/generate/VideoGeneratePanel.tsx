@@ -209,7 +209,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   const t = useTranslation();
   const currentModel = models.find((m) => m.name === model);
   return (
-    <div style={GENERATE_PANEL_WIDTH_STYLE} className='flex flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
+    <div data-canvas-panel='' style={GENERATE_PANEL_WIDTH_STYLE} className='flex flex-col gap-2.5 rounded-overlay border border-border bg-popover p-3 text-popover-foreground shadow-md'>
       <div className='flex items-start justify-between'>
         <VideoGenerateToolbar
           onReference={onAddReference}
