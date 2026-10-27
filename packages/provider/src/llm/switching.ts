@@ -75,11 +75,23 @@ function statusFailure(status: number, body: unknown, vendor: Vendor | undefined
 }
 
 /**
+ * The failure an error carried as a value stands for (an in-band error part, or the error
+ * OpenRouter's SDK puts on a status-200 answer), read with the vendor's own forms.
+ * @param value - The error value.
+ * @param vendor - The vendor that answered.
+ * @returns The failure, or undefined when the value names no status.
+ */
+function valueFailure(value: unknown, vendor: Vendor | undefined): Failure | undefined {
+  const status = inBandStatusOf(vendor, value);
+  return status === undefined ? undefined : statusFailure(status, inBandBodyOf(value), vendor);
+}
+
+/**
  * A response body parsed as JSON.
  * @param text - The body.
  * @returns The value, or undefined when it is not JSON.
  */
-function parsed(text: string | undefined): unknown {
+export function parsed(text: string | undefined): unknown {
   if (text === undefined) return undefined;
   try {
     return JSON.parse(text) as unknown;
@@ -105,16 +117,11 @@ export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
   if (APICallError.isInstance(error) && typeof error.statusCode === "number") {
     // OpenRouter's SDK throws a 200 whose body is an error as a status-200 error carrying that
     // error as data; it is judged by its own code, as the same error in a stream is.
-    if (error.statusCode === 200 && error.data !== undefined) {
-      const status = inBandStatusOf(vendor, error.data);
-      if (status !== undefined) return statusFailure(status, inBandBodyOf(error.data), vendor);
-    }
+    const carried = error.statusCode === 200 && error.data !== undefined ? valueFailure(error.data, vendor) : undefined;
+    if (carried !== undefined) return carried;
     return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
   }
-  if (error instanceof InBandError) {
-    const status = inBandStatusOf(vendor, error.error);
-    return status === undefined ? null : statusFailure(status, inBandBodyOf(error.error), vendor);
-  }
+  if (error instanceof InBandError) return valueFailure(error.error, vendor) ?? null;
   return null;
 }
 
@@ -133,8 +140,16 @@ export function isGenerationId(id: unknown): id is string {
  * @returns The cost in USD, or undefined.
  */
 export function reportedCost(metadata: unknown): number | undefined {
-  const cost = (metadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined)?.openrouter?.usage?.cost;
-  return typeof cost === "number" && Number.isFinite(cost) ? cost : undefined;
+  return usdOf((metadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined)?.openrouter?.usage?.cost);
+}
+
+/**
+ * A reported amount in USD.
+ * @param value - The field as the upstream sent it.
+ * @returns The amount when it is a finite number, else undefined.
+ */
+export function usdOf(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /**

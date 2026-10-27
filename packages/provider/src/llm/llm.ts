@@ -13,7 +13,7 @@ import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { aiSdkFetch, MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, costRefOf, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
+import { classifyLlm, costRefOf, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import { decide } from "@provider/routing/decide.js";
@@ -245,16 +245,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (upstream === undefined || !APICallError.isInstance(error) || error.statusCode === undefined) return error;
     const failure = classifyLlm(error, vendorOf(kindOf(upstream)));
     if (failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") return error;
-    let body: { id?: unknown; usage?: { cost?: unknown } } | undefined;
-    try {
-      body = JSON.parse(error.responseBody ?? answerBody ?? "") as typeof body;
-    } catch {
-      body = undefined;
-    }
-    const reported = body?.usage?.cost;
+    const body = parsed(error.responseBody ?? answerBody) as { id?: unknown; usage?: { cost?: unknown } } | null | undefined;
+    const reported = usdOf(body?.usage?.cost);
     const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body?.id, undefined);
     const ok = error.statusCode >= 200 && error.statusCode < 300;
-    const cost: Cost | undefined = typeof reported === "number" && Number.isFinite(reported)
+    const cost: Cost | undefined = reported !== undefined
       ? { state: "known", usd: reported, source: "reported" }
       : ref !== undefined
         ? { state: "pending", lookup: ref }
@@ -427,15 +422,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const bounds = { replaySafe: false, deadlineAt: Date.now() + request.budgetMs, ...(request.signal ? { signal: request.signal } : {}) };
       const response = await send({ url, method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body }, bounds);
       const text = new TextDecoder().decode(await readBody(url, response, Number.MAX_SAFE_INTEGER, Math.max(1, bounds.deadlineAt - Date.now()), bounds));
-      let reported: number | undefined;
-      if (response.ok) {
-        try {
-          const cost = (JSON.parse(text) as { usage?: { cost?: unknown } } | null)?.usage?.cost;
-          reported = typeof cost === "number" && Number.isFinite(cost) ? cost : undefined;
-        } catch {
-          reported = undefined;
-        }
-      }
+      const reported = response.ok ? usdOf((parsed(text) as { usage?: { cost?: unknown } } | null | undefined)?.usage?.cost) : undefined;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
       return { status: response.status, body: text, cost };
     },
