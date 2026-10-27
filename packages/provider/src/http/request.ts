@@ -42,7 +42,7 @@ const BASE_DELAY_MS = 1_000;
 /** A Retry-After longer than this is not waited for. */
 export const MAX_RETRY_AFTER_MS = 60_000;
 /** The longest delay a timer holds; a longer one fires at once, so a deadline beyond it sets no timer. */
-const MAX_TIMER_MS = 2 ** 31 - 1;
+export const MAX_TIMER_MS = 2 ** 31 - 1;
 /** How much of a failed body an HttpStatus keeps. */
 const SNIPPET_CHARS = 500;
 /** Error codes that mean the request never left this machine. */

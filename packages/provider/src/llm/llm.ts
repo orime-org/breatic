@@ -11,7 +11,7 @@ import { generateText, type JSONValue, type SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
-import { readBody, send } from "@provider/http/request.js";
+import { MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, isGenerationId, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
@@ -24,8 +24,6 @@ const JEV_MODEL = "typesafe/jev-1.13";
 /** The decisions endpoint, beside the OpenRouter API base. */
 const JEV_PATH = "../alpha/decisions";
 const DEFAULT_ROUTE: Route = { mode: "default" };
-/** The longest delay a timer holds. */
-const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * The deadline signal of a call, joined with the caller's.
@@ -39,6 +37,32 @@ function untilDeadline(deadlineAt: number, signal?: AbortSignal): AbortSignal | 
   const deadline = left > MAX_TIMER_MS ? undefined : AbortSignal.timeout(Math.max(0, Math.trunc(left)));
   const signals = [signal, deadline].filter((s): s is AbortSignal => s !== undefined);
   return signals.length < 2 ? signals[0] : AbortSignal.any(signals);
+}
+
+/**
+ * Wait for the shared refresh while letting just this caller leave
+ * (ported from domain's agent/model-picture-capability.ts).
+ * @param pending - The shared request, which this function never cancels.
+ * @param signal - This caller's stop signal.
+ * @returns Once the refresh settles, for a caller still waiting.
+ * @throws {unknown} The stop signal's reason when the caller leaves.
+ */
+async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  if (signal === undefined) return pending;
+  return new Promise<void>((resolve, reject) => {
+    /**
+     * Reject only this wait and leave the refresh alive.
+     */
+    const stop = (): void => {
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", stop, { once: true });
+    void pending.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", stop);
+    });
+    if (signal.aborted) stop();
+  });
 }
 
 /**
@@ -379,13 +403,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         });
         catalog.refreshing = refreshing;
       }
-      if (catalog.refreshing !== undefined) {
-        const waiting = catalog.refreshing;
-        await (signal === undefined ? waiting : Promise.race([
-          waiting,
-          new Promise<never>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason as Error), { once: true })),
-        ]));
-      }
+      if (catalog.refreshing !== undefined) await waitForCatalog(catalog.refreshing, signal);
       signal?.throwIfAborted();
       return { pictures: catalog.pictures.get(modelId) === true };
     },
