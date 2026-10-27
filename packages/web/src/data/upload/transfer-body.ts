@@ -13,7 +13,12 @@
  */
 
 import { encodeTransferBody } from '@breatic/shared';
-import { assetsApi, requestBodyLimitOf, type UploadConfig } from '@web/data/api/assets';
+import {
+  assetsApi,
+  NO_CLIENT_TIMEOUT,
+  requestBodyLimitOf,
+  type UploadConfig,
+} from '@web/data/api/assets';
 import { apiPost } from '@web/data/api/request';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
@@ -75,7 +80,7 @@ async function transfer(
   signal?.throwIfAborted();
 
   const file = new Blob([encodeTransferBody(json)]);
-  const config = signal === undefined ? undefined : { signal };
+  const config = signal === undefined ? NO_CLIENT_TIMEOUT : { signal, ...NO_CLIENT_TIMEOUT };
   const ticket = await apiPost<UploadTicket>(
     '/assets/transfer-ticket',
     { project_id: projectId, size: file.size },

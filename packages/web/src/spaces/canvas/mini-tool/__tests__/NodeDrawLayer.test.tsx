@@ -182,9 +182,9 @@ describe('NodeDrawLayer', () => {
 
     beforeEach(() => {
       clears.clear();
-      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement) {
-        return countingContext(this);
-      });
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((function (this: HTMLCanvasElement, contextId: string): unknown {
+        return contextId === '2d' ? countingContext(this) : null;
+      }) as typeof HTMLCanvasElement.prototype.getContext);
     });
 
     /**

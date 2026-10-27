@@ -4,7 +4,7 @@
 >
 > DD → TDD 衔接图详见 [docs/DD-PROCESS.md](./DD-PROCESS.md) 第 11 节。
 >
-> **边界**:本文管**单测 / 集成的红绿蓝节奏**(测试五层中的 unit / integration 两层);ship 前 **smoke / E2E 端到端验证**(测试五层最上层)见 [docs/TEST-MANDATE.md](./TEST-MANDATE.md)。
+> **边界**:本文管**单测 / 集成的红绿蓝节奏**(测试分层中的 unit / integration 两层);ship 前 **smoke / E2E 端到端验证**(测试分层最上层)见 [docs/TEST-MANDATE.md](./TEST-MANDATE.md)。
 
 ## 业界共识(为什么 TDD 在 AI 时代升级而非过时)
 
@@ -287,4 +287,4 @@ DD 锁定方案后走 TDD。完整衔接见 [docs/DD-PROCESS.md](./DD-PROCESS.md
 
 ### 项目内文档
 - DD 流程:[docs/DD-PROCESS.md](./DD-PROCESS.md)(第 11 节衔接 TDD)
-- smoke / E2E ship 验证:[docs/TEST-MANDATE.md](./TEST-MANDATE.md)(测试五层 / smoke 定义 / 关键路径 E2E / 边界)
+- smoke / E2E ship 验证:[docs/TEST-MANDATE.md](./TEST-MANDATE.md)(测试分层 / smoke 定义 / 关键路径 E2E / 边界)

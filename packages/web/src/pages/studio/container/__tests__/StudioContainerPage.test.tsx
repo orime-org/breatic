@@ -3,13 +3,14 @@
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import type { ProjectSummary, StudioProjectPage, StudioDetail, StudioSummary } from '@breatic/shared';
 
 vi.mock('@web/data/api/studios', () => ({

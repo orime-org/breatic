@@ -360,7 +360,8 @@
     },
     "error": {
       "network": "ネットワークエラー",
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
+      "turnTooLong": "今回処理する内容が多すぎて完了できませんでした。範囲を絞ってもう一度お試しください。"
     },
     "message": {
       "interrupted": "停止しました",
@@ -1488,7 +1489,11 @@
       "title": "作業中ですが移動しますか?",
       "description": "アップロードまたは編集がまだ同期されていません。今移動すると失われる可能性があります。",
       "stay": "とどまる",
-      "leave": "移動する"
+      "leave": "移動する",
+      "unsyncedDescription": "一部の変更が未同期です。今すぐ再読み込みするか離れると、変更が失われる可能性があります。",
+      "combinedDescription": "一部の変更が未同期で、アップロードまたは編集が進行中です。今すぐ再読み込みするか離れると、作業が失われる可能性があります。",
+      "completeDescription": "変更の同期と操作が完了しました。",
+      "completeTitle": "続行できます"
     },
     "header": {
       "renameFailed": "Project 名を変更できませんでした"
@@ -1532,6 +1537,11 @@
       "confirm": "退出",
       "done": "「{name}」から退出しました",
       "failed": "退出できませんでした"
+    },
+    "refreshGuard": {
+      "title": "未完了の作業があります。再読み込みしますか？",
+      "refresh": "再読み込みする",
+      "failed": "再読み込みできませんでした。もう一度お試しください。"
     }
   },
   "common": {
@@ -1615,6 +1625,9 @@
       }
     },
     "kind": {
+      "developmentBadge": "DEV",
+      "threeD": "3D",
+      "threeDSub": "3D で配置と共同編集",
       "canvas": "Canvas",
       "canvasSub": "無限 Canvas + ノード",
       "document": "Document",
@@ -1794,7 +1807,58 @@
         "leftOut": "{count} 件の画像・動画・音声は貼り付けられませんでした。ファイルを直接ドロップまたは貼り付けてください。"
       }
     },
-    "readOnlyReconnect": "再接続"
+    "readOnlyReconnect": "再接続",
+    "threeD": {
+      "loading": "シーンを読み込み中…",
+      "loadFailed": "シーンを読み込めませんでした。",
+      "reload": "ページを再読み込み",
+      "valueFailed": "値を適用できませんでした。",
+      "figure": "人物",
+      "box": "ステージブロック",
+      "move": "移動",
+      "rotate": "回転",
+      "scale": "拡大縮小",
+      "focus": "選択対象を表示",
+      "duplicate": "複製",
+      "delete": "削除",
+      "undo": "元に戻す",
+      "redo": "やり直す",
+      "objects": "オブジェクト",
+      "properties": "プロパティ",
+      "addFigure": "人物を追加",
+      "addBox": "ブロックを追加",
+      "position": "位置 (m)",
+      "rotation": "回転 (°)",
+      "name": "名前",
+      "lock": "ロック",
+      "unlock": "ロック解除",
+      "selectedCount": "{count} 個を選択中",
+      "multiTransform": "シーンのギズモで、選択したオブジェクトを中心の周りで変形します。",
+      "mixed": "複数の値",
+      "selectObject": "オブジェクトを選択してプロパティを編集します。",
+      "refused": "このシーンへの接続が拒否されました。変更は保存されません。",
+      "retry": "再試行",
+      "viewFailed": "個人の視点を保存できませんでした。",
+      "commandFailed": "操作を適用できませんでした。選択、ロック、編集権限を確認してください。",
+      "invalidObject": "読み取れないオブジェクト: {id}",
+      "empty": "人物やブロックを追加してシーンを配置します。",
+      "unsupported": "このシーンの形式に対応していません。ページを再読み込みしてください。",
+      "modelFailed": "モデルを読み込めませんでした。",
+      "peerSelection": "{name}: {count} 個を選択中",
+      "add": "追加",
+      "generate": "AI 生成",
+      "annotationsLater": "注釈（後日提供）",
+      "help": "ヘルプ",
+      "tasks": "生成タスク",
+      "minimap": "シーンのミニマップ",
+      "generationDev": "3D モデル生成は開発中です",
+      "prompt": "生成する 3D モデルを説明してください",
+      "reference": "参照画像（任意）",
+      "chooseReference": "参照画像を選択",
+      "submit": "生成",
+      "helpBody": "オブジェクトをクリックして選択します。空白をドラッグして視点を回転し、ホイールで拡大縮小します。選択後はフローティングメニューで移動・回転・拡大縮小できます。",
+      "closePanel": "閉じる"
+    }
   },
   "menu": {
     "createAria": "作成メニュー",

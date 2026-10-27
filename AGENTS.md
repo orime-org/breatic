@@ -6,7 +6,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 
 ## Project overview
 
-breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 9 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document or timeline); never invent a `Workspace` entity or name.
+breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 9 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
 
 | Read | When |
 |---|---|
@@ -85,7 +85,7 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 **Every task on a canvas node (upload, generation, understanding, mini-tool, container tools) has one limit, two hours: `default_budget_ms` in `config/node-tasks.yaml`.** Container deadlines and worker waits take this value; a shorter limit kills healthy tasks inside their budget. Check: writing a timeout or deadline for a task? It is two hours; any other value is asked about first.
 
 ### Storage
-**Cloudflare R2 is the only storage (`STORAGE_PROVIDER` accepts only `r2`), and the browser never writes to it directly.** The browser exchanges a signed ticket from `POST /assets/upload-ticket` and sends chunks to the ingest Worker, which writes R2 and hashes the bytes as it writes; our services finish the upload, and the Worker never calls us back. Check: who holds the bytes now?
+**Cloudflare R2 is the only storage (`STORAGE_PROVIDER` accepts only `r2`), and the browser never writes to it directly.** The browser asks `POST /assets/upload-ticket`, whose answer is an upload our server has already opened at the ingest Worker with the shared secret (a signed ticket never leaves our services, so each opens exactly one upload), and sends chunks to the Worker, which writes R2 and hashes the bytes as it writes; our services finish the upload, and the Worker never calls us back. Check: who holds the bytes now?
 
 | Bytes are | Path |
 |---|---|

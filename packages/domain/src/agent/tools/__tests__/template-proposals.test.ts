@@ -9,6 +9,10 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
+vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+}));
 
 import { loadLocales } from "@breatic/core";
 import { GENERATION_TEMPLATES, setLocale } from "@breatic/shared";

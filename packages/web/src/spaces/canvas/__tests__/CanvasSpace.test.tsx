@@ -2886,7 +2886,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     });
     vi.mocked(hashFile).mockResolvedValueOnce('a'.repeat(64));
     vi.spyOn(assetsApi, 'requestUploadTicket').mockResolvedValue({
-      ticket: 'signed',
+      uploadId: 'upload-9',
+      token: 'token-9',
       storageKey,
       uploadUrl: 'https://ingest.example.com',
       kind: 'image',

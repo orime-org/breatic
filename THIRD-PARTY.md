@@ -134,6 +134,42 @@ front-end bundle covered by the next section.
 | `sentry` | `0.45.0` | `packages/server`, `packages/worker`, `packages/collab` → `@sentry/node` → `@sentry/bundler-plugins` | **FSL-1.1-Apache-2.0** (Functional Source License 1.1), per the tarball's `LICENSE.md`: use and redistribution for any purpose other than a product competing with Sentry, becoming Apache-2.0 two years after each release. It is Sentry's command-line tool; `@sentry/node` imports it only from its bundler-plugin entry points (`/vite`, `/rollup`, `/webpack`, `/esbuild`), which none of our services load, so it sits in the image without running | https://github.com/getsentry/cli |
 | `slick` | `1.12.2` | `packages/server` → `mjml` → `mjml-core` → `juice` | Reported as `MIT (http://mootools.net/license.txt)`, which is what its `package.json` declares. Neither the published tarball nor the upstream repository carries a licence file, and that address no longer serves the licence text. We use it under the author's MIT declaration | https://github.com/kamicane/slick |
 
+## Source copied into our own files
+
+### OpenCode's context-overflow wording list
+
+| | |
+|---|---|
+| What | The `patterns` and `exclusions` regular-expression lists that recognise a provider's "prompt is over the context window" error |
+| Where it lives here | [packages/server/src/agent/context-overflow.ts](./packages/server/src/agent/context-overflow.ts), between the comment that names the source and the one that ends the copy; the full licence text is repeated there |
+| Copied from | `packages/ai/src/provider-error.ts` of https://github.com/anomalyco/opencode at commit `16cd50db2278fc9b780808e44d40d1ceaf2f5e80` |
+| Changes | The `request_too_large` entry is left out (it is a byte limit, which shortening the conversation cannot fix); the one entry carrying Chinese characters is written with `\u` escapes |
+| Licence | **MIT**, Copyright (c) 2025 opencode |
+
+```
+MIT License
+
+Copyright (c) 2025 opencode
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ## Packages reachable from the front-end bundle
 
 ### BlockNote

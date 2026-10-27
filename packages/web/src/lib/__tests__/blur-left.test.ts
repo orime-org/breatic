@@ -3,7 +3,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
-import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 
 /**
  * Puts a Space outlet on the page.

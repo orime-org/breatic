@@ -52,4 +52,5 @@ export const DOC_NAME_BUILDERS: Partial<
   canvas: docName.canvasSpace,
   document: docName.documentSpace,
   timeline: docName.timelineSpace,
+  '3d': docName.threeDSpace,
 };

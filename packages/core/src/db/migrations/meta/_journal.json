@@ -740,8 +740,15 @@
     {
       "idx": 105,
       "version": "7",
+      "when": 1792923631252,
+      "tag": "0105_enterprise_memberships",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
       "when": 1792925232939,
-      "tag": "0105_project_asset_references",
+      "tag": "0106_project_asset_references",
       "breakpoints": true
     }
   ]

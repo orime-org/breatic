@@ -7,6 +7,7 @@ import {
   canvasSpaceDocName,
   documentSpaceDocName,
   timelineSpaceDocName,
+  threeDSpaceDocName,
 } from '@breatic/shared';
 
 /**
@@ -75,10 +76,11 @@ export function hasDoc(name: string): boolean {
  *
  * Safe to call with an unknown name — no-op.
  * @param name - Canonical document name to destroy and evict from the cache.
+ * @param expectedDoc - Exact document instance owned by the retiring provider.
  */
-export function destroyDoc(name: string): void {
+export function destroyDoc(name: string, expectedDoc?: Y.Doc): void {
   const doc = docs.get(name);
-  if (!doc) return;
+  if (!doc || (expectedDoc && expectedDoc !== doc)) return;
   doc.destroy();
   docs.delete(name);
   // Let sibling caches keyed by this name drop their reference too (#1786) —
@@ -99,6 +101,7 @@ export const docName = {
   canvasSpace: canvasSpaceDocName,
   documentSpace: documentSpaceDocName,
   timelineSpace: timelineSpaceDocName,
+  threeDSpace: threeDSpaceDocName,
 };
 
 /**

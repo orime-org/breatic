@@ -80,6 +80,7 @@ export {
 } from "@domain/asset/upload-finish.service.js";
 export * as uploadTicketService from "@domain/asset/upload-ticket.service.js";
 export * as backendUploadService from "@domain/asset/backend-upload.service.js";
+export { UploadOpenFailed } from "@domain/asset/upload-open-failure.js";
 export { openContainerOutputs } from "@domain/asset/container-outputs.service.js";
 export * as mediaReadService from "@domain/asset/media-read.service.js";
 export { extFromUrl, labelForUrl, readerUrlSchema, safeExt } from "@domain/asset/source-url.js";

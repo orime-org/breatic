@@ -253,15 +253,17 @@ describe("listedContentDocNames", () => {
   const PID = "11111111-1111-4111-8111-111111111111";
   const CANVAS = "22222222-2222-4222-9222-222222222222";
   const DOC = "33333333-3333-4333-9333-333333333333";
+  const THREE_D = "44444444-4444-4444-8444-444444444444";
 
   it("names one content doc per listed Space, under the entry's own type", () => {
     const doc = new Y.Doc();
     const spaces = doc.getMap("spaces");
     writeSpaceEntry(spaces, { spaceId: CANVAS, type: "canvas", name: "A", order: 0, createdAt: 1, createdBy: "u" });
     writeSpaceEntry(spaces, { spaceId: DOC, type: "document", name: "B", order: 1, createdAt: 1, createdBy: "u" });
+    writeSpaceEntry(spaces, { spaceId: THREE_D, type: "3d", name: "C", order: 2, createdAt: 1, createdBy: "u" });
 
     expect(listedContentDocNames(PID, spaces)).toEqual(
-      new Set([`project-${PID}/canvas-${CANVAS}`, `project-${PID}/document-${DOC}`]),
+      new Set([`project-${PID}/canvas-${CANVAS}`, `project-${PID}/document-${DOC}`, `project-${PID}/3d-${THREE_D}`]),
     );
   });
 
@@ -286,6 +288,16 @@ describe("listedContentDocNamesInState", () => {
 
     expect(listedContentDocNamesInState(PID, Y.encodeStateAsUpdate(doc))).toEqual(
       new Set([`project-${PID}/timeline-${SID}`]),
+    );
+  });
+
+  it("keeps a 3D Space's type and exact name after encoding meta", () => {
+    const projectId = "11111111-1111-4111-8111-111111111111";
+    const spaceId = "22222222-2222-4222-9222-222222222222";
+    const bytes = encodeInitialMetaState({ spaceId, kind: "3d", name: "3D Space", createdBy: "u", ts: 1 });
+
+    expect(listedContentDocNamesInState(projectId, bytes)).toEqual(
+      new Set([`project-${projectId}/3d-${spaceId}`]),
     );
   });
 });

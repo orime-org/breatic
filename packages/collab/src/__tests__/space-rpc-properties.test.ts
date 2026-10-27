@@ -157,11 +157,13 @@ const TOKEN = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
  * Create one Space and return the id the server minted for it.
  * @param ctx - The fake collab context.
  * @param name - Space name to create it under.
+ * @param kind - Space content kind to create.
  * @returns The minted id.
  */
 async function createSpace(
   ctx: { hocuspocus: Hocuspocus },
   name: string,
+  kind: "canvas" | "document" | "timeline" | "3d" = "canvas",
 ): Promise<string> {
   const r = await handleSpaceRpc(
     ctx,
@@ -170,7 +172,7 @@ async function createSpace(
     {
       id: `req-${name}`,
       type: "space:create",
-      payload: { type: "canvas", name, claimToken: TOKEN },
+      payload: { type: kind, name, claimToken: TOKEN },
     },
   );
   expect(r.ok).toBe(true);
@@ -188,12 +190,13 @@ describe("space:create — the server mints the id", () => {
       fc.asyncProperty(
         fc.integer({ min: 1, max: 20 }),
         fc.string({ minLength: 1, maxLength: 20 }),
-        async (n, name) => {
+        fc.constantFrom("canvas", "document", "timeline", "3d"),
+        async (n, name, kind) => {
           fakeDoc = new Y.Doc();
           const ctx = { hocuspocus: makeHocuspocus() };
           const ids: string[] = [];
           for (let i = 0; i < n; i += 1) {
-            ids.push(await createSpace(ctx, `${name}-${i}`));
+            ids.push(await createSpace(ctx, `${name}-${i}`, kind));
           }
           expect(new Set(ids).size).toBe(n);
           const spaces = fakeDoc.getMap("spaces");
@@ -209,11 +212,12 @@ describe("space:create — the server mints the id", () => {
     await fc.assert(
       fc.asyncProperty(
         fc.string({ minLength: 1, maxLength: 40 }),
-        async (name) => {
+        fc.constantFrom("canvas", "document", "timeline", "3d"),
+        async (name, kind) => {
           fakeDoc = new Y.Doc();
           const ctx = { hocuspocus: makeHocuspocus() };
 
-          const id = await createSpace(ctx, name);
+          const id = await createSpace(ctx, name, kind);
           await handleSpaceRpc(
             ctx,
             PID,
@@ -236,7 +240,7 @@ describe("space:create — the server mints the id", () => {
           const restored = entry as Y.Map<unknown>;
           expect(restored.get("id")).toBe(id);
           expect(restored.get("name")).toBe(name);
-          expect(restored.get("type")).toBe("canvas");
+          expect(restored.get("type")).toBe(kind);
         },
       ),
       { numRuns: 50 },

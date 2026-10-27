@@ -1,8 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { canvasRootOf } from '@web/spaces/canvas/canvas-context';
-
 /**
  * Runs `leave` if a blur on a box that ends on blur was the reader leaving it.
  *
@@ -20,7 +18,7 @@ import { canvasRootOf } from '@web/spaces/canvas/canvas-context';
  */
 export function whenBlurLeaves(spaceId: string, leave: () => void): void {
   if (!document.hasFocus()) return;
-  const space = canvasRootOf(spaceId);
+  const space = document.querySelector(`[data-space-outlet="${CSS.escape(spaceId)}"]`);
   queueMicrotask(() => {
     if (space instanceof Element && getComputedStyle(space).display === 'none') return;
     leave();

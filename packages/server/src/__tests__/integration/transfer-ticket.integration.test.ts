@@ -12,7 +12,7 @@
  * never counts toward storage.
  */
 
-import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -29,6 +29,12 @@ vi.mock("ai", () => ({
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({
   sendBestEffortMail: async () => {},
 }));
+
+// The ingest Worker's `POST /uploads`, which the server now calls itself
+// (inner#1595): counted and answered by a double.
+vi.mock("@breatic/shared", async (importOriginal) =>
+  (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
+);
 
 /**
  * What the route logs, at each level. Core's logger answers through a proxy
@@ -47,8 +53,9 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import { initCore, loadLocales, getStorageConfig, getMembershipLimits } from "@breatic/core";
-import { assetRepo } from "@breatic/domain";
-import { t, verifyUploadTicket, TRANSFER_MEDIA_TYPE } from "@breatic/shared";
+import { assetRepo, UploadOpenFailed } from "@breatic/domain";
+import { t, verifyUploadTicket, TRANSFER_MEDIA_TYPE, INGEST_NO_ANSWER } from "@breatic/shared";
+import { onlyOpenOf, opensByKey, resetOpenDouble, setOpenMode } from "../helpers/ingest-open-double.js";
 import {
   seedMember,
   seedOwner,
@@ -79,6 +86,10 @@ beforeAll(async () => {
   });
   const { createApp } = await import("@server/app.js");
   app = createApp();
+});
+
+beforeEach(() => {
+  resetOpenDouble();
 });
 
 afterAll(async () => {
@@ -157,7 +168,9 @@ describe("the shared transfer type", () => {
 });
 
 describe("T18 / S01: a transfer ticket and the grant it opens", () => {
-  it("answers 201 with a ticket for a transfer file and records an open transfer grant", async () => {
+  // inner#1595 T74, T77: the answer carries the opened upload's id and first
+  // token instead of the ticket, which only the server and the Worker see.
+  it("answers 201 with an opened upload for a transfer file and records an open transfer grant", async () => {
     const a: SeededOwner = await seedOwner(sql);
     logged.info.mockClear();
 
@@ -166,7 +179,7 @@ describe("T18 / S01: a transfer ticket and the grant it opens", () => {
     expect(res.status).toBe(201);
     const { data } = (await res.json()) as { data: Record<string, unknown> };
     expect(Object.keys(data).sort()).toEqual(
-      ["kind", "partSize", "storageKey", "ticket", "totalParts", "uploadUrl"],
+      ["kind", "partSize", "storageKey", "token", "totalParts", "uploadId", "uploadUrl"],
     );
     expect(data.kind).toBe("file");
     expect(data.partSize).toBe(getStorageConfig().ingest.part_size_bytes);
@@ -220,7 +233,10 @@ describe("T18 / S01: a transfer ticket and the grant it opens", () => {
     `;
     expect(tasks[0]!.n).toBe(0);
 
-    const verified = await verifyUploadTicket(data.ticket as string, INGEST_SECRET, Date.now());
+    const opened = onlyOpenOf(key);
+    expect(data.uploadId).toBe(opened.answer?.uploadId);
+    expect(data.token).toBe(opened.answer?.token);
+    const verified = await verifyUploadTicket(opened.ticket, INGEST_SECRET, Date.now());
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
     expect(verified.payload.contentType).toBe(TRANSFER_TYPE);
@@ -231,7 +247,7 @@ describe("T18 / S01: a transfer ticket and the grant it opens", () => {
     expect(messages).not.toContain("upload_ticket_issued");
     const issued = logged.info.mock.calls.filter((call) => call[1] === "transfer_ticket_issued");
     expect(issued).toHaveLength(1);
-    expect(issued[0]![0]).toMatchObject({ key, userId: a.userId, size: 1500019 });
+    expect(issued[0]![0]).toMatchObject({ key, userId: a.userId, size: 1500019, uploadId: data.uploadId });
   });
 });
 
@@ -384,9 +400,9 @@ describe("T24: the server fixes the type and the file name", () => {
     });
 
     expect(res.status).toBe(201);
-    const { data } = (await res.json()) as { data: { ticket: string; storageKey: string } };
+    const { data } = (await res.json()) as { data: { storageKey: string } };
     expect(data.storageKey).toMatch(/\.transfer$/);
-    const verified = await verifyUploadTicket(data.ticket, INGEST_SECRET, Date.now());
+    const verified = await verifyUploadTicket(onlyOpenOf(data.storageKey).ticket, INGEST_SECRET, Date.now());
     expect(verified.ok).toBe(true);
     if (!verified.ok) return;
     expect(verified.payload.contentType).toBe(TRANSFER_TYPE);
@@ -443,5 +459,31 @@ describe("T27: the limiter runs before validation", () => {
     }
 
     expect(statuses).toEqual([422, 422, 422, 422, 422, 422, 422, 422, 422, 422, 429]);
+  });
+});
+
+describe("inner#1595 T75: a transfer whose open fails", () => {
+  it("answers 500, voids the grant and is logged once, by the error handler", async () => {
+    const a = await seedOwner(sql);
+    setOpenMode(() => new TypeError("fetch failed"));
+    logged.error.mockClear();
+
+    const res = await transferTicket(a.cookie, { project_id: a.projectId, size: 1500019 });
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: { code: 500, message: expect.any(String) } });
+    const grants = await sql<{ storage_key: string; voided_at: Date | null }[]>`
+      SELECT storage_key, voided_at FROM upload_grants WHERE user_id = ${a.userId}
+    `;
+    expect(grants).toHaveLength(1);
+    expect(grants[0]!.voided_at).not.toBeNull();
+    const unhandled = logged.error.mock.calls.filter((call) => call[1] === "Unhandled error");
+    expect(unhandled).toHaveLength(1);
+    const err = (unhandled[0]![0] as { err: unknown }).err;
+    expect(err).toBeInstanceOf(UploadOpenFailed);
+    expect((err as { reason: string }).reason).toBe(INGEST_NO_ANSWER);
+    expect((err as { storageKey: string }).storageKey).toBe(grants[0]!.storage_key);
+    expect(logged.error.mock.calls.filter((call) => call[1] === "upload_open_failed")).toEqual([]);
+    expect(opensByKey().get(grants[0]!.storage_key)).toBe(1);
   });
 });

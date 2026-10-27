@@ -8,9 +8,10 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { COLLAB_REAUTH_REASONS, isReauthCloseReason } from '@breatic/shared';
+import { COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
+import { bindDocSync, type DocSyncBinding } from '@web/data/yjs/doc-sync-binding';
 
 /**
  * Placeholder token the Hocuspocus client must send purely to trip the
@@ -108,16 +109,71 @@ export interface DocFacts {
 }
 
 interface DocEntry {
+  doc: Y.Doc;
   provider: HocuspocusProvider;
   refcount: number;
   pendingRelease: ReturnType<typeof setTimeout> | null;
   facts: Omit<DocFacts, 'sessionEnded'>;
+  sync: DocSyncBinding | null;
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
 const docEntries = new Map<string, DocEntry>();
 const providerObservers = new Map<string, Set<() => void>>();
+const projectSyncObservers = new Map<string, Set<() => void>>();
 let sessionEnded = false;
+let boundAccount: string | undefined;
+
+/**
+ * Reads unsynced edits across the Project's open Canvas and Document entries.
+ * @param projectId - Canonical Project identifier.
+ * @returns Whether a registered content document has unconfirmed edits.
+ * @throws {never} Never.
+ */
+export function hasProjectUnsyncedEdits(projectId: string): boolean {
+  for (const [name, entry] of docEntries) {
+    if (parseDocName(name)?.projectId === projectId && entry.sync?.hasUnsyncedEdits()) return true;
+  }
+  return false;
+}
+
+/**
+ * Observes the Project's derived risk without acquiring document references.
+ * @param projectId - Canonical Project identifier.
+ * @param listener - Called when a contributing entry's risk changes.
+ * @returns The subscription cleanup.
+ * @throws {never} Never.
+ */
+export function subscribeProjectSync(projectId: string, listener: () => void): () => void {
+  const listeners = projectSyncObservers.get(projectId) ?? new Set<() => void>();
+  listeners.add(listener);
+  projectSyncObservers.set(projectId, listeners);
+  return (): void => {
+    listeners.delete(listener);
+    if (listeners.size === 0) projectSyncObservers.delete(projectId);
+  };
+}
+
+/**
+ * Publishes a changed document contribution to its Project observers.
+ * @param projectId - Canonical Project identifier.
+ * @throws {never} Never.
+ */
+function notifyProjectSync(projectId: string): void {
+  projectSyncObservers.get(projectId)?.forEach((listener) => listener());
+}
+
+/**
+ * Renders from the same version facts read by event-time leave checks.
+ * @param projectId - Canonical Project identifier.
+ * @returns Whether local content edits await confirmation.
+ * @throws {never} Never.
+ */
+export function useProjectUnsyncedEdits(projectId: string): boolean {
+  const subscribe = React.useCallback((listener: () => void): (() => void) => subscribeProjectSync(projectId, listener), [projectId]);
+  const read = React.useCallback((): boolean => hasProjectUnsyncedEdits(projectId), [projectId]);
+  return React.useSyncExternalStore(subscribe, read);
+}
 
 /**
  * Read the existing connection without retaining it.
@@ -170,6 +226,35 @@ export function useDocProvider(name: string | null): HocuspocusProvider | null {
   const read = React.useCallback((): HocuspocusProvider | null =>
     name === null ? null : readDocProvider(name), [name]);
   return React.useSyncExternalStore(subscribe, read);
+}
+
+/**
+ * Release one provider before asking the document manager to release its data.
+ * @param name - Canonical wire name.
+ * @param entry - The exact provider/document pair being retired.
+ */
+function destroyDocEntry(name: string, entry: DocEntry): void {
+  if (entry.pendingRelease !== null) clearTimeout(entry.pendingRelease);
+  if (docEntries.get(name) === entry) docEntries.delete(name);
+  entry.sync?.dispose();
+  entry.provider.destroy();
+  destroyDoc(name, entry.doc);
+  const projectId = parseDocName(name)?.projectId;
+  if (projectId) notifyProjectSync(projectId);
+  notifyDocProvider(name);
+}
+
+/** Release the previous account's transports and their document-scoped state. */
+function destroyAccountTransport(): void {
+  const entries = [...docEntries];
+  // Retired provider callbacks must not mutate the current registry or session facts.
+  docEntries.clear();
+  entries.forEach(([name, entry]) => destroyDocEntry(name, entry));
+  sessionEnded = false;
+  if (sharedSocket) {
+    sharedSocket.destroy();
+    sharedSocket = null;
+  }
 }
 
 /**
@@ -290,7 +375,7 @@ export function acquireDocProvider(
   url: string = COLLAB_WS_PATH,
 ): HocuspocusProvider {
   const existing = docEntries.get(name);
-  if (existing) {
+  if (existing?.doc === doc) {
     if (existing.pendingRelease !== null) {
       clearTimeout(existing.pendingRelease);
       existing.pendingRelease = null;
@@ -298,6 +383,7 @@ export function acquireDocProvider(
     existing.refcount += 1;
     return existing.provider;
   }
+  if (existing) destroyDocEntry(name, existing);
   const websocketProvider = ensureSharedSocket(url);
   const provider = new HocuspocusProvider({
     websocketProvider,
@@ -306,25 +392,34 @@ export function acquireDocProvider(
     token: COOKIE_AUTH_PLACEHOLDER,
   });
   const entry: DocEntry = {
+    doc,
     provider,
     refcount: 1,
     pendingRelease: null,
     facts: { hasEverSynced: false, authFailure: null },
+    sync: null,
   };
+  const parsed = parseDocName(name);
+  if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
+    entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
+  }
   docEntries.set(name, entry);
   // The registry watches for these itself rather than letting a consumer report
   // them: consumers come and go, and the one that happens to be mounted when
   // the server answers is not necessarily the one that needs to know later.
   // Subscribed before `attach` so nothing can precede them.
   provider.on('synced', () => {
+    if (docEntries.get(name) !== entry) return;
     entry.facts.hasEverSynced = true;
   });
   provider.on('authenticationFailed', (data: { reason?: string } | undefined) => {
+    if (docEntries.get(name) !== entry) return;
     entry.facts.authFailure = data?.reason ?? 'unknown';
   });
   // The other direction. Without it a refusal is permanent even after the
   // server has started accepting this document again.
   provider.on('authenticated', () => {
+    if (docEntries.get(name) !== entry) return;
     entry.facts.authFailure = null;
     sessionEnded = false;
   });
@@ -338,6 +433,7 @@ export function acquireDocProvider(
   // When the socket itself is down there is no open payload, and the socket's
   // reconnect re-opens every attached document anyway.
   provider.on('close', (data: { event?: { reason?: string } } | undefined) => {
+    if (docEntries.get(name) !== entry) return;
     if (data?.event?.reason === COLLAB_REAUTH_REASONS.sessionEnded) sessionEnded = true;
     const opened = websocketProvider.receivedOnOpenPayload;
     if (!isReauthCloseReason(data?.event?.reason) || opened === undefined) return;
@@ -373,18 +469,17 @@ export function readDocFacts(name: string): DocFacts {
  * the shared socket — without closing the socket — and closes the socket only
  * once the last document is gone.
  * @param name - Document name previously passed to {@link acquireDocProvider}.
+ * @param expectedDoc - When supplied, release only this document's provider generation.
  */
-export function releaseDocProvider(name: string): void {
+export function releaseDocProvider(name: string, expectedDoc?: Y.Doc): void {
   const entry = docEntries.get(name);
-  if (!entry) return;
+  if (!entry || (expectedDoc !== undefined && entry.doc !== expectedDoc)) return;
   entry.refcount -= 1;
   if (entry.refcount > 0) return;
   entry.pendingRelease = setTimeout(() => {
+    if (docEntries.get(name) !== entry) return;
     // detaches from the shared socket (CloseMessage + providerMap removal);
     // does NOT close the shared socket (manageSocket is false).
-    entry.provider.destroy();
-    docEntries.delete(name);
-    notifyDocProvider(name);
     // Co-locate the Y.Doc lifecycle with the provider's (#1786): the last
     // consumer is gone, so evict + destroy the cached doc — otherwise the
     // manager cache grows unbounded across a session (destroyDoc had zero
@@ -392,7 +487,7 @@ export function releaseDocProvider(name: string): void {
     // attached provider when it is torn down. StrictMode-safe: a re-acquire
     // cancels this deferred callback before it fires, so the doc is never
     // evicted mid-oscillation.
-    destroyDoc(name);
+    destroyDocEntry(name, entry);
     maybeDestroySharedSocket();
   }, 0);
 }
@@ -402,23 +497,15 @@ export function releaseDocProvider(name: string): void {
  * and clear pending releases. Not for production use.
  */
 export function _resetCollabSocketForTests(): void {
-  const names = [...docEntries.keys()];
-  docEntries.forEach((entry) => {
-    if (entry.pendingRelease !== null) clearTimeout(entry.pendingRelease);
-    entry.provider.destroy();
-  });
-  docEntries.clear();
-  names.forEach(notifyDocProvider);
-  sessionEnded = false;
-  if (sharedSocket) {
-    sharedSocket.destroy();
-    sharedSocket = null;
-  }
+  destroyAccountTransport();
+  boundAccount = undefined;
 }
 
 // ───────────────────────── userId gate (React context) ─────────────────────────
 
 interface CollabSocketContextValue {
+  /** Current resolved account; local document scope, never part of the wire name. */
+  userId?: string;
   /** Whether the shared socket may be dialed (userId resolved). */
   ready: boolean;
   /** WebSocket URL or same-origin path. */
@@ -447,8 +534,9 @@ interface CollabSocketProviderProps {
 /**
  * Gates the shared collab socket on `userId` for the whole project subtree.
  * Holds no socket itself — the socket + per-document providers live in the
- * module-level reference-counted registry above; this only signals readiness so
- * `useSocket` knows when it may acquire a document.
+ * module-level reference-counted registry above. Account changes first retire
+ * that registry and socket so a new cookie handshake precedes new documents;
+ * the same account keeps the existing deferred reference-counted lifecycle.
  * @param root0 - Provider props.
  * @param root0.userId - Current user id; documents are not attached until this is set.
  * @param root0.url - WebSocket URL or same-origin path; defaults to `VITE_COLLAB_URL` or same-origin `/ws`.
@@ -460,13 +548,27 @@ export function CollabSocketProvider({
   url = COLLAB_WS_PATH,
   children,
 }: CollabSocketProviderProps): React.JSX.Element {
+  const [preparedAccount, setPreparedAccount] = React.useState(boundAccount);
+  const accountReady = preparedAccount === userId && boundAccount === userId;
+  React.useLayoutEffect(() => {
+    if (boundAccount !== userId) {
+      // A WebSocket upgrade carries one cookie identity for its whole lifetime.
+      // Finish the old registry before new children render/get their documents;
+      // otherwise a new account could acquire an old meta doc during render.
+      destroyAccountTransport();
+      boundAccount = userId;
+    }
+    setPreparedAccount(userId);
+    // Ordinary unmount has no account reset: document refcounts own teardown,
+    // including StrictMode's cleanup/setup oscillation for the same account.
+  }, [userId]);
   const value = React.useMemo<CollabSocketContextValue>(
-    () => ({ ready: Boolean(userId), url }),
-    [userId, url],
+    () => ({ ready: Boolean(userId) && accountReady, userId, url }),
+    [userId, accountReady, url],
   );
   return (
     <CollabSocketContext.Provider value={value}>
-      {children}
+      {accountReady ? children : null}
     </CollabSocketContext.Provider>
   );
 }

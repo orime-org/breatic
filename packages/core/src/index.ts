@@ -77,6 +77,7 @@ export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@cor
 export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
+export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export {
   getUsagePricing,
   parseUsagePricing,
@@ -104,7 +105,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
 export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
@@ -231,6 +232,10 @@ export {
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
+export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
+export type { MembershipReading } from "@core/auth/membership.repo.js";
+export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema } from "@core/auth/enterprise-membership-contract.js";
+export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, RawMembershipSnapshot, EnterpriseRecord } from "@core/auth/enterprise-membership-contract.js";
 // Subscriptions: the rows, and the reading that turns them into the situation
 // an account is in. The reading is here rather than in server because the
 // ceilings above are read here too, and a subscription whose paid period ran

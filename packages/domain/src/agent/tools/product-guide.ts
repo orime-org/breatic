@@ -215,7 +215,8 @@ export function renderProductGuide(): string {
       "browser currently knows of ongoing work in that space, including collaborator tasks reflected in its " +
       `current state; its tooltip also shows ${quoted(t("canvas.task.status.running"))}. ` +
       "The mark keeps updating while another space is shown. Click a tab to switch to it; switching back finds " +
-      "the space as it was left: the same view, selection, open panels, unfinished text and caret. A canvas " +
+      "a Canvas or Document as it was left: the same view, selection, open panels, unfinished text and caret. A 3D Space " +
+      "retains its view, selection and personal editing history across switches; switching away closes its floating panels. A canvas " +
       "tab closed and opened again starts at the view it was closed on. Double-click the name " +
       "to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. A locked space shows a " +
       `small padlock after its name, and trying to rename it shows ${quoted(t("spaces.rename.locked"))} ` +
@@ -226,9 +227,12 @@ export function renderProductGuide(): string {
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
-      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ` +
-      `${quoted(t("spaces.kind.document"))} or ${quoted(t("spaces.kind.timeline"))} card ` +
-      `(${quoted(t("spaces.kind.canvas"))} is selected when it opens), type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
+      `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
+      `${quoted(t("spaces.kind.threeD"))} or ${quoted(t("spaces.kind.timeline"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
+      `The four cards show an icon and name in one row. Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
+      `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))} and ${quoted(t("spaces.kind.timelineSub"))}, respectively. ` +
+      `The ${quoted(t("spaces.kind.threeD"))} card has a ${quoted(t("spaces.kind.developmentBadge"))} badge at its top right to mark it as in development. ` +
+      `Type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
       `${quoted(t("spaces.create.cancel"))}. While it is made the page shows ` +
@@ -340,7 +344,7 @@ export function renderProductGuide(): string {
       "that failed and then worked when the same tool ran again before the reply went on leaves no line; once " +
       "the reply has written something after the failure, the line stays. A stopped reply says so in its own line. " +
       `${quoted(t("chat.message.consolidating"))} can show while a ` +
-      "long conversation is tidied before the reply. Links in a reply open in a new tab. A code block shows a " +
+      "long conversation is tidied, before the reply or partway through it, and the reply then carries on. Links in a reply open in a new tab. A code block shows a " +
       "copy icon when hovered. A to-do list in a reply shows each item's box ticked or empty. Small numbered " +
       "circles in the text are sources: hovering one shows it and " +
       "clicking opens it. Pictures found for the reader appear as a row of squares, the last showing a plus and " +
@@ -352,6 +356,7 @@ export function renderProductGuide(): string {
       `when it used sources, a button such as ${quoted(t("chat.sources.count", { count: 3 }))}, which lists ` +
       "them. A reply that did not end normally says so on its last line, with one of these:",
     `  - ${quoted(t("chat.error.turnFailed"))}`,
+    `  - ${quoted(t("chat.error.turnTooLong"))} (what the turn had to handle at once, such as its attachments or what its steps read, was too much; sending it again changes nothing, a narrower request in the same conversation can work)`,
     `  - ${quoted(t("chat.message.truncated"))}`,
     `  - ${quoted(t("chat.message.interrupted"))}`,
     `  - ${quoted(t("chat.message.empty"))}`,
@@ -1180,6 +1185,70 @@ export function renderProductGuide(): string {
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
       `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
+    "## 3D spaces",
+    `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
+      "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +
+      "This interface arranges built-in objects and existing scene content.",
+    `The floating left rail starts with a plus icon, ${quoted(t("spaces.threeD.add"))}. Its menu offers ` +
+      `${quoted(t("spaces.threeD.addBox"))} and ${quoted(t("spaces.threeD.addFigure"))}, which place a ` +
+      `${quoted(t("spaces.threeD.box"))} or ${quoted(t("spaces.threeD.figure"))}. ` +
+      `The sparkle icon opens ${quoted(t("spaces.threeD.generate"))}, a dialog displaying ` +
+      `${quoted(t("spaces.threeD.generationDev"))}. It has a disabled ${quoted(t("spaces.threeD.prompt"))} field, ` +
+      `a disabled ${quoted(t("spaces.threeD.chooseReference"))} button under ${quoted(t("spaces.threeD.reference"))}, ` +
+      `and a disabled ${quoted(t("spaces.threeD.submit"))} button; ` +
+      `${quoted(t("common.cancel"))} and its X close it. The dimmed speech-bubble entry shows ${quoted(t("spaces.threeD.annotationsLater"))} on hover. ` +
+      `The question-mark icon opens ${quoted(t("spaces.threeD.help"))}, which says ${quoted(t("spaces.threeD.helpBody"))}`,
+    `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
+      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
+      "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
+      `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
+      "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
+      `The tasks panel currently says ${quoted(t("spaces.threeD.generationDev"))}; the minimap button toggles the scene's top view; ` +
+      "clicking that map navigates your personal viewing camera.",
+    `The ${quoted(t("spaces.threeD.objects"))} panel lists scene objects; when empty it says ${quoted(t("spaces.threeD.empty"))} ` +
+      "Click an object in the list or viewport to select it; Shift-click adds it to or removes it from the selection. " +
+      "Click empty space to clear the selection. Selected objects have outlines; the list also marks selected rows and locked objects.",
+    `Selecting an object shows a floating menu at the bottom centre with ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} and ` +
+      `${quoted(t("spaces.threeD.scale"))}: select a mode and drag its scene handles. A multi-selection transforms around its centre. ` +
+      `${quoted(t("spaces.threeD.focus"))} frames the selection, ${quoted(t("spaces.threeD.duplicate"))} makes independent selected copies, ` +
+      `and ${quoted(t("spaces.threeD.delete"))} removes the selection. The viewport's mouse controls orbit, pan and zoom your own view; ` +
+      "they do not move another reader's camera. Your last view is kept for this account and scene on this browser. " +
+      `If it cannot be stored, ${quoted(t("spaces.threeD.viewFailed"))} appears.`,
+    `Selecting objects automatically opens the right ${quoted(t("spaces.threeD.properties"))} panel; changing the selection updates it. ` +
+      "Clearing the selection closes its properties panel. The properties button is available with a selection. " +
+      `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
+      `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
+      "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
+      "switching to another Space keeps unfinished input and validation errors. Return and reopen Properties to continue. " +
+      "Closing the panel, opening another panel or overlay, or changing the selection ends that temporary input. " +
+      "Names follow Canvas renaming: trim surrounding whitespace, leave the existing name for a blank draft, and keep composition-confirming or repeated keys in the input. " +
+      `Escape cancels its draft. A rejected value stays in the box, which shows ${quoted(t("spaces.threeD.valueFailed"))} Correct it or cancel. ` +
+      `For several objects the panel shows a selection count, ${quoted(t("spaces.threeD.mixed"))} where their values differ, and ` +
+      `${quoted(t("spaces.threeD.multiTransform"))} Use the viewport handles to change them together.`,
+    `The padlock button in the properties header, just left of its X, shows an open or closed lock using the ordinary button colours. ` +
+      `Its tooltip is ${quoted(t("spaces.threeD.lock"))} or ${quoted(t("spaces.threeD.unlock"))}. ` +
+      `${quoted(t("spaces.threeD.lock"))} protects selected objects from movement, renaming and deletion; ` +
+      `${quoted(t("spaces.threeD.unlock"))} is available to a reader with editing access, even if another reader set the lock and left. ` +
+      "For a multi-selection, it unlocks all selected objects if all are locked, and otherwise locks the selection. " +
+      "If any selected object is locked, changes to the whole selection are disabled. Copies start unlocked. " +
+      "Readers can edit the same unlocked object concurrently; selecting or dragging it does not reserve it. " +
+      `The toolbar's ${quoted(t("spaces.threeD.undo"))} and ${quoted(t("spaces.threeD.redo"))} act on your own editing history, including through a lock. ` +
+      "Other readers' selected objects have coloured outlines, with each reader's name and selected-object count in the properties panel. " +
+      `If an action cannot apply, an error toast says ${quoted(t("spaces.threeD.commandFailed"))}`,
+    "With the Space holding keyboard focus and no text box being edited, Cmd/Ctrl+D duplicates, Delete or Backspace deletes, " +
+      "Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z redoes, and Ctrl+Y also redoes on Windows. F focuses the selection. " +
+      "Escape in a property box cancels its draft; outside a box it cancels an active handle gesture first, then closes an open panel, " +
+      "and clears the selection when neither owns the key. Losing focus, hiding the scene " +
+      "or losing editing access cancels an unfinished handle gesture. A Viewer can browse and select, but cannot change shared objects.",
+    `A refused scene connection says ${quoted(t("spaces.threeD.refused"))} ` +
+      "The scene uses the same live collaborative document while its tab stays open, including across Space switches and reconnects. " +
+      "Switching away stops its rendering and cancels unfinished gestures; closing its tab discards personal selection and undo history.",
+    `During loading the viewport says ${quoted(t("spaces.threeD.loading"))}. A scene load failure says ` +
+      `${quoted(t("spaces.threeD.loadFailed"))} and offers ${quoted(t("spaces.threeD.retry"))}; ${quoted(t("spaces.threeD.reload"))} reloads the page when offered. ` +
+      `${quoted(t("spaces.threeD.modelFailed"))} has its own retry button for model loading. Unreadable objects appear as rows naming their object id, ` +
+      "while valid objects remain usable. An unsupported document format stays preserved and read-only, with " +
+      `${quoted(t("spaces.threeD.unsupported"))} and a reload button.`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
@@ -1407,10 +1476,16 @@ export function renderProductGuide(): string {
       "plan of the studio's admin allows (only their upgrade raises it), and every browser tab that has the " +
       "space open counts, the reader's own included. Closing other tabs on it and reconnecting, which reloads " +
       "the page, can free one.",
-    "- Going elsewhere in the site while an upload, or a file being read into a text node, is unfinished asks " +
-      `${quoted(t("project.leaveGuard.title"))} (${quoted(t("project.leaveGuard.description"))}) with ` +
-      `${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. Closing or ` +
-      "reloading the browser tab, including by the reload buttons above, shows the browser's own prompt instead.",
+    "- Going elsewhere in the site while local Canvas or Document edits have not synced, or an upload or file read is unfinished, asks " +
+      `${quoted(t("project.leaveGuard.title"))} with ${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. ` +
+      "This covers content in background Space tabs of the current Project too. " +
+      `The notice says ${quoted(t("project.leaveGuard.unsyncedDescription"))} for unsynced edits, ` +
+      `${quoted(t("project.leaveGuard.description"))} for ongoing operations, or ${quoted(t("project.leaveGuard.combinedDescription"))} for both. ` +
+      `The connection banner's refresh button asks ${quoted(t("project.refreshGuard.title"))} with ${quoted(t("common.cancel"))} and ` +
+      `${quoted(t("project.refreshGuard.refresh"))}. Cancelling keeps the current edits. When work finishes while the choice is open, ` +
+      `it says ${quoted(t("project.leaveGuard.completeTitle"))}: ${quoted(t("project.leaveGuard.completeDescription"))} and waits for a choice. ` +
+      `A failed refresh reports ${quoted(t("project.refreshGuard.failed"))} The browser's own refresh or tab close uses its native confirmation ` +
+      "when local work remains; a connection drop by itself needs no confirmation.",
     `- A document shows ${quoted(t("spaces.document.loading"))} until it arrives; one that cannot be opened ` +
       `shows ${quoted(t("spaces.document.unavailable.text"))} with ` +
       `${quoted(t("spaces.document.unavailable.action"))}; a page older than the document editor shows ` +
@@ -1436,7 +1511,8 @@ export const productGuide: Tool<z.infer<typeof inputSchema>, string> = tool({
   description:
     "How the reader operates our product: the top bar, the space tabs and the spaces list, this chat panel, and " +
     "on a canvas making, filling and connecting nodes, node menus, tasks, notes, moving around, the generation " +
-    "panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card; writing in a " +
+    "panel and what is in it, source slots, focus crops, mentions, groups, placing a proposal card; 3D Space " +
+    "objects, transforms, locks, personal view and collaboration; writing in a " +
     "document; and what the screen shows when something goes wrong. Read it before telling the reader how to do something here: you cannot see " +
     "their screen. Describe only what it says. Name a control with words on it by the quoted name it gives, " +
     "which is what the reader's screen shows; describe an icon-only control the way it describes it.",

@@ -35,10 +35,6 @@
  * deletion as its own edit. Seeding one block leaves nothing for either side
  * to invent, so what merges is only what users actually did.
  *
- * The selection ruling, the empty-state interaction and the select-all tiers
- * that sit on top of this shape are the editor's business — the decision
- * record lives in the private engineering repo (document structure DD,
- * 2026-08-17).
  */
 
 import { v4 as uuidv4 } from "uuid";
@@ -47,6 +43,7 @@ import * as Y from "yjs";
 import type { SpaceType } from "@shared/types/space.js";
 import type { TimelineSettings } from "@shared/timeline/schema.js";
 import { initializeTimelineDocument } from "@shared/timeline/document.js";
+import { initializeSceneDocument } from "@shared/scene-version.js";
 
 /**
  * Top-level key holding a document Space's body.
@@ -155,7 +152,7 @@ function buildInitialDocumentBlock(): Y.XmlElement {
 export function encodeInitialSpaceContent(kind: SpaceType, timelineSettings?: TimelineSettings): Uint8Array {
   const doc = new Y.Doc();
   // Returning from inside each branch keeps the switch exhaustive: TypeScript
-  // reports a missing return path when a fourth kind is added, which is the
+  // reports a missing return path when another kind is added, which is the
   // point — a new kind must state its initial content on purpose.
   try {
     switch (kind) {
@@ -165,6 +162,9 @@ export function encodeInitialSpaceContent(kind: SpaceType, timelineSettings?: Ti
       case "timeline":
         if (timelineSettings === undefined) throw new Error("Timeline creation settings are required");
         initializeTimelineDocument(doc, timelineSettings);
+        return Y.encodeStateAsUpdate(doc);
+      case "3d":
+        initializeSceneDocument(doc);
         return Y.encodeStateAsUpdate(doc);
       case "canvas":
         return Y.encodeStateAsUpdate(doc);
