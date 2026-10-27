@@ -237,7 +237,8 @@ function instance(suffix: string): { nodes: TemplateGraphNode[]; edges: GraphEdg
 
 const FULL = instance('');
 
-const byFrom = <T extends { from: string }>(list: readonly T[]): T[] => [...list].sort((a, b) => a.from.localeCompare(b.from));
+const byFrom = <T extends { from: string; to?: string }>(list: readonly T[]): T[] =>
+  [...list].sort((a, b) => a.from.localeCompare(b.from) || (a.to ?? '').localeCompare(b.to ?? ''));
 const byInputAndFed = <T extends { input: string; fed: string }>(list: readonly T[]): T[] =>
   [...list].sort((a, b) => `${a.input}/${a.fed}`.localeCompare(`${b.input}/${b.fed}`));
 
@@ -506,8 +507,84 @@ describe('matchTemplateInstance, round-1 review (inner#1345)', () => {
       steps: [],
     };
     const match = matchTemplateInstance(circle, graphOf([plain('A')], []), 'A');
-    expect(match.keys.get('u')).toEqual({ kind: 'missing' });
-    expect(match.keys.get('v')).toEqual({ kind: 'missing' });
+    expect(match.keys.get('u')).toEqual({ kind: 'unreached' });
+    expect(match.keys.get('v')).toEqual({ kind: 'unreached' });
+  });
+});
+
+describe('matchTemplateInstance, round-3 review (inner#1345)', () => {
+  /**
+   * A skeleton of image generate nodes, `a` the anchor.
+   * @param keys - The non-anchor keys.
+   * @param edges - The template edges, in order.
+   * @returns The skeleton.
+   */
+  const chain = (keys: readonly string[], edges: ReadonlyArray<readonly [string, string]>): TemplateSkeleton => ({
+    id: 'chain',
+    anchor: 'a',
+    nodes: new Map(['a', ...keys].map((key) => [key, { role: 'generate', type: 'image' }])),
+    edges: edges.map(([from, to]) => ({ from, to })),
+    inputs: [],
+    steps: [],
+  });
+
+  it('settles a key behind a node that left the settings the same whatever order the template lists its edges', () => {
+    // X is tagged but left the settings and is wired only into U; there is no Y.
+    const nodes: TemplateGraphNode[] = [plain('A'), tagged('U', 'u', 'image', 'chain'), { ...tagged('X', 'x', 'image', 'chain'), keeps: false }];
+    const graph = graphOf(nodes, [['U', 'A'], ['X', 'U']]);
+    for (const order of [
+      [['x', 'a'], ['u', 'a'], ['x', 'u'], ['y', 'x']],
+      [['u', 'a'], ['x', 'a'], ['x', 'u'], ['y', 'x']],
+    ] as const) {
+      const match = matchTemplateInstance(chain(['u', 'x', 'y'], order), graph, 'A');
+      expect(match.keys.get('x')).toEqual({ kind: 'one', node: 'X' });
+      expect(match.keys.get('y')).toEqual({ kind: 'unreached' });
+    }
+  });
+
+  it('settles every key the same whatever order the template lists its edges, one node per key', () => {
+    const drawArb = fc
+      .record({
+        // Key k<i> is wired into earlier keys only, so the template has no circle.
+        outs: fc.array(fc.array(fc.nat(), { minLength: 1, maxLength: 3 }), { minLength: 1, maxLength: 4 }),
+        present: fc.array(fc.boolean(), { minLength: 4, maxLength: 4 }),
+        keeps: fc.array(fc.boolean(), { minLength: 5, maxLength: 5 }),
+        wires: fc.array(fc.tuple(fc.nat(), fc.nat()), { maxLength: 8 }),
+      })
+      .chain((draw) => {
+        const edges = [
+          ...new Set(draw.outs.flatMap((outs, i) => outs.map((n) => `k${String(i + 1)}>${n % (i + 1) === 0 ? 'a' : `k${String(n % (i + 1))}`}`))),
+        ].map((pair) => pair.split('>') as [string, string]);
+        return fc.tuple(fc.constant(draw), fc.constant(edges), fc.shuffledSubarray(edges, { minLength: edges.length, maxLength: edges.length }));
+      });
+    fc.assert(
+      fc.property(drawArb, ([draw, edges, shuffled]) => {
+        const keys = draw.outs.map((_, i) => `k${String(i + 1)}`);
+        const idOf = (i: number): string => (i === 0 ? 'A' : `N${String(i)}`);
+        const nodes: TemplateGraphNode[] = [
+          { ...plain('A'), keeps: draw.keeps[0] ?? true },
+          ...keys.flatMap((key, i) =>
+            draw.present[i] === false ? [] : [{ ...tagged(idOf(i + 1), key, 'image', 'chain'), keeps: draw.keeps[i + 1] ?? true }],
+          ),
+        ];
+        const ids = new Set(nodes.map((node) => node.id));
+        const wires: GraphEdge[] = [
+          ...new Set(
+            draw.wires
+              .map(([from, to]) => [1 + (from % keys.length), to % (1 + (from % keys.length))] as const)
+              .map(([from, to]) => `${idOf(from)}>${idOf(to)}`),
+          ),
+        ]
+          .map((pair) => pair.split('>') as [string, string])
+          .filter(([from, to]) => ids.has(from) && ids.has(to));
+        const graph = graphOf(nodes, wires);
+        const one = matchTemplateInstance(chain(keys, edges), graph, 'A');
+        const other = matchTemplateInstance(chain(keys, shuffled), graph, 'A');
+        expect(other.keys).toEqual(one.keys);
+        expect(byFrom(other.unwired)).toEqual(byFrom(one.unwired));
+      }),
+      { numRuns: 2000 },
+    );
   });
 });
 
