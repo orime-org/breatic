@@ -155,12 +155,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
-   * A route's upstreams as routing candidates, lowest weight first.
+   * A route's upstreams as routing candidates, in the order the route holds them:
+   * lowest weight first, since parseProviderConfig sorts every route when it loads.
    * @param route - The route.
    * @returns One candidate per upstream.
    */
   const candidatesOn = (route: LlmRoute): Candidate[] =>
-    route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf)).sort((a, b) => a.weight - b.weight);
+    route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf));
 
   /**
    * The routes an understand call of a model uses: the understanding routes when one matches, else the call routes.
