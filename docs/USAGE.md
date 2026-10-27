@@ -28,9 +28,26 @@ If you are joining an existing instance, use the address provided by its operato
 - **Generate and refine:** choose a model you have configured, provide a prompt and any references, and wait for the task result before continuing with the asset. Missing provider credentials or quota can prevent generation even when the application is healthy.
 - **Collaborate and keep your work:** canvas changes synchronize through the collaboration service. Check that synchronization and uploads have completed before leaving; a disconnected browser or unfinished task is not proof that work has been stored. Refresh and reopen the project when verifying persistence.
 
+## Arrange videos in Timeline
+
+Choose **Timeline** when creating a Project or adding a Space. Its **DEV** badge marks the editor as under development. The current editor places videos on one visual track.
+
+| Control or action | Result |
+| --- | --- |
+| **Add media** | Open the material dialog and choose **Project videos** or **Local upload**. |
+| Select a Project video or use **Choose video** | Prepare that registered video or upload the selected local file through the upload service. |
+| **Start frame**, then **Add to Timeline** | Confirm a whole-frame position. The default is the sequence end; each addition creates an independent clip. |
+| Select a clip and press **Change start frame** | Enter its new whole-frame start and press **Apply**. Overlapping clips appear in the conflict list, where each row can be selected for adjustment. |
+| **Play**, **Pause** and the preview slider | Play the valid sequence, pause it or select its global frame. Video buffering holds the frame until playback can continue. |
+| Close and reopen the Space from the Space list | Continue from the shared Timeline document. Viewers can inspect and preview it. |
+
+A selected conflict row retains its selection border while you edit its start. Its properties show a short conflict status; the preview and conflict list provide the full adjustment instruction. A failed local upload retains its selected file and start frame in the open form for retry.
+
+Full multi-track editing, audio/image/text placement, Web Animation creation and video export are planned additions.
+
 ## Arrange a 3D scene
 
-Choose **3D** when creating a project or adding a Space. The type picker orders Canvas, Document, 3D and Timeline; Canvas is selected by default. The 3D card carries **DEV**, and a project created with this type starts with a Space named **3D**.
+Choose **3D** when creating a project or adding a Space. The type picker orders Canvas, Document, 3D and Timeline; Canvas is selected by default. The 3D and Timeline cards carry **DEV**, and a project created with this type starts with a Space named **3D**.
 
 | Control or action | Result |
 | --- | --- |

@@ -657,7 +657,7 @@ lib/        工具(cn / format / 存储键 / toast)+ 不 import 上层的 hook
 
 Timeline 在现有 Project 标签中创建、打开和关闭,使用 `SpaceConnectionContext` 持有的内容 `Y.Doc`。服务端种下 `TimelineDocumentV1`;首次同步后,前端从同一份文档投影轨道、片段和固定素材身份。整数帧和有理数 fps、半开区间、编排校验与编辑事务定义在 `@breatic/shared` 的 `timeline/`。当前编辑界面提供单画面轨上的视频添加、开始帧调整和重叠冲突定位。
 
-素材入口使用现有 Dialog、ScrollArea 和上传链:Project 视频目录及单素材读取先核当前 Project 成员权限,再返回 `project_asset_refs` 关联的规范资产;本地文件经 ingest 登记后进入相同的片段准备流程。每次添加产生独立 clip id,保存 asset id 和源区间。移除一个摆放不撤销 Project 的长期素材关系。上传 File、进度和对话框草稿由已有 `createDocScopedCache` 按实际文档在内存持有,文档释放时销毁。协作文档保存已接受的片段和固定素材身份。
+素材入口使用现有 Dialog、ScrollArea 和上传链:Project 视频目录及单素材读取先核当前 Project 成员权限,再返回 `project_asset_refs` 关联的规范资产;本地文件经 ingest 登记后进入相同的片段准备流程。每次添加产生独立 clip id,保存 asset id 和源区间。Project 素材关系独立记录在业务数据库,片段通过固定源引用该登记身份。上传 File、进度和对话框草稿由已有 `createDocScopedCache` 按实际文档在内存持有,文档释放时销毁。协作文档保存已接受的片段和固定素材身份。
 
 预览通过原生视频元素播放已授权的素材,界面控件采用项目的 Button 和 Slider。全局整数帧经统一源时间换算,源切换及 seek 等待当前世代真实就绪;媒体缓冲冻结播放头,恢复后重建时钟锚点,等待中暂停保留用户的暂停意图。隐藏或卸载内容区暂停播放。协作连接、定时持久化、关闭和重开沿用其他 Space 的共用链路,连接提示使用 Project 现有界面。
 
