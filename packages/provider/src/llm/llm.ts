@@ -88,7 +88,8 @@ function cleanDeep(value: unknown, clean: (text: string) => string): unknown {
  */
 export function createLlm(config: ProviderConfig, options: ProviderOptions): LlmApi {
   const factories = new Map<string, (modelId: string) => ModelV4>();
-  let catalog: { pictures: ReadonlyMap<string, boolean>; freshUntil: number; retryAfter: number; refreshing?: Promise<void> } = {
+  let refreshing: Promise<void> | undefined;
+  let catalog: { pictures: ReadonlyMap<string, boolean>; freshUntil: number; retryAfter: number } = {
     pictures: new Map(),
     freshUntil: 0,
     retryAfter: 0,
@@ -296,7 +297,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const temperature = wants.temperature === undefined || isClaude(modelId) ? {} : { temperature: wants.temperature };
       return {
         model,
-        options: { providerOptions: providerOptionsFor(plan, modelId, wants), ...temperature },
+        // provider retries and switches itself; an AI SDK retry around it would resend what it gave up on.
+        options: { providerOptions: providerOptionsFor(plan, modelId, wants), maxRetries: 0, ...temperature },
         system(parts: SystemParts): SystemModelMessage[] {
           const marks: Record<string, VendorOptions> = {};
           for (const { upstream } of plan.order) {
@@ -402,13 +404,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       signal?.throwIfAborted();
       if (policy.override !== "auto") return { pictures: policy.override === "yes" };
       const now = Date.now();
-      if (catalog.refreshing === undefined && now >= catalog.freshUntil && now >= catalog.retryAfter) {
-        const refreshing = refreshCatalog(policy).finally(() => {
-          catalog.refreshing = undefined;
+      if (now >= catalog.freshUntil && now >= catalog.retryAfter) {
+        refreshing ??= refreshCatalog(policy).finally(() => {
+          refreshing = undefined;
         });
-        catalog.refreshing = refreshing;
+        await waitForCatalog(refreshing, signal);
+      } else if (refreshing !== undefined) {
+        await waitForCatalog(refreshing, signal);
       }
-      if (catalog.refreshing !== undefined) await waitForCatalog(catalog.refreshing, signal);
       signal?.throwIfAborted();
       return { pictures: catalog.pictures.get(modelId) === true };
     },

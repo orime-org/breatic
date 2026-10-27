@@ -26,7 +26,7 @@ export interface SystemParts {
 export interface PreparedCall {
   /** Tries the route's upstreams in order until the first content, then stays on the one that served it. */
   model: LanguageModel;
-  options: { providerOptions: Record<string, Record<string, JSONValue>>; temperature?: number };
+  options: { providerOptions: Record<string, Record<string, JSONValue>>; maxRetries: 0; temperature?: number };
   /** The system messages, with each upstream's cache marks. */
   system(parts: SystemParts): SystemModelMessage[];
   /** The lookup of every model call this call opened that has not finished. */
