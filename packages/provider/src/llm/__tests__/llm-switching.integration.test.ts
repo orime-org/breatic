@@ -490,3 +490,119 @@ describe("a pinned step whose stream reports an error before its content (design
     expect(posted(fakes.openrouter)).toHaveLength(3);
   });
 });
+
+/**
+ * One Anthropic server-sent event.
+ * @param name - The event name.
+ * @param body - Its data.
+ * @returns The event lines.
+ */
+const anthropicEvent = (name: string, body: unknown): string => `event: ${name}\ndata: ${JSON.stringify(body)}\n\n`;
+
+describe("each vendor's own in-band error form before the first content (design 5.5, DD 22)", () => {
+  beforeEach(() => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+  });
+
+  it("retries Anthropic's in-stream overload, then moves on", async () => {
+    const opening = anthropicEvent("message_start", { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model: "claude", content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 1 } } })
+      + anthropicEvent("ping", { type: "ping" })
+      + anthropicEvent("error", { type: "error", error: { type: "overloaded_error", message: "Overloaded" } });
+    fakes.anthropic.answer(() => ({ status: 200, raw: opening, contentType: "text/event-stream" }));
+    fakes.openrouter.answer(() => ({ status: 200, raw: sse(true), contentType: "text/event-stream" }));
+    const prepared = llmProvider(fakes, { ANTHROPIC_API_KEY: "a", OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 1 }).llm.prepare("anthropic/claude-opus-5.5", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
+    expect(await stream.text).toBe("he");
+    expect(posted(fakes.anthropic)).toHaveLength(2);
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("retries DeepSeek's in-stream server error, then moves on", async () => {
+    fakes.deepseek.answer(() => ({ status: 200, raw: event({ error: { code: "server_error", message: "busy" } }), contentType: "text/event-stream" }));
+    fakes.openrouter.answer(() => ({ status: 200, raw: sse(true), contentType: "text/event-stream" }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 1 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
+    expect(await stream.text).toBe("he");
+    expect(posted(fakes.deepseek)).toHaveLength(2);
+  });
+});
+
+describe("a pinned step on an answer a retry cannot fix (design 5.3, 12.4)", () => {
+  /**
+   * A two-step call through OpenRouter whose second step gets this answer.
+   * @param second - The second step's answer.
+   * @returns What the call threw.
+   */
+  async function secondStep(second: Reply): Promise<unknown> {
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? { status: 200, body: TOOL_CALL_REPLY } : second));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 3 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    return generateText({
+      model: prepared.model,
+      prompt: "hi",
+      tools: { lookup: tool({ inputSchema: z.object({}), execute: async () => "found" }) },
+      stopWhen: stepCountIs(2),
+      ...prepared.options,
+    }).then(() => undefined, (e: unknown) => e);
+  }
+
+  it("does not retry an exhausted balance", async () => {
+    expect(await secondStep({ status: 402, body: { error: { message: "Insufficient credits", code: 402 } } })).toBeInstanceOf(Error);
+    expect(posted(fakes.openrouter)).toHaveLength(2);
+  });
+
+  it("does not retry a missing model", async () => {
+    expect(await secondStep({ status: 400, body: { error: { message: "x/y is not a valid model ID", code: 400 } } })).toBeInstanceOf(Error);
+    expect(posted(fakes.openrouter)).toHaveLength(2);
+  });
+
+  it("does not wait out a Retry-After longer than a minute", async () => {
+    expect(await secondStep({ status: 429, body: {}, headers: { "retry-after": "3600" } })).toBeInstanceOf(Error);
+    expect(posted(fakes.openrouter)).toHaveLength(2);
+  });
+});
+
+describe("streams cut or left early (design 5.3, 3.5)", () => {
+  it("moves on from an error body that is not JSON", async () => {
+    fakes.deepseek.answer(() => ({ status: 503, raw: "upstream busy", contentType: "text/plain" }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 0 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(result.providerMetadata?.breatic?.upstream).toBe("openrouter");
+  });
+
+  it("fails without moving on when the connection is cut before the first content", async () => {
+    const opening = event({ id: "gen-c", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] });
+    fakes.openrouter.answer(() => ({ status: 200, raw: opening, contentType: "text/event-stream", hold: true }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("meta/llama-x", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
+    setTimeout(() => void fakes.openrouter.close(), 100);
+    expect(await stream.text.then(() => "done", () => "failed")).toBe("failed");
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("hands the generation of a stream whose connection is cut after content over exactly once", async () => {
+    fakes.openrouter.answer(() => ({ status: 200, raw: sse(false), contentType: "text/event-stream", hold: true }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("meta/llama-x", THINK);
+    const ends: unknown[] = [];
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, onFinish: (e) => void ends.push(e.providerMetadata?.breatic), ...prepared.options });
+    for await (const text of stream.textStream) {
+      if (text !== "") {
+        void fakes.openrouter.close();
+        break;
+      }
+    }
+    await Promise.resolve(stream.consumeStream()).catch(() => undefined);
+    const handed = [...ends.map((e) => (e as { costRef?: { generationId?: string } } | undefined)?.costRef?.generationId), ...prepared.pendingCosts().map((c) => (c as { lookup: { generationId: string } }).lookup.generationId)];
+    expect(handed.filter((id) => id === "gen-1")).toHaveLength(1);
+  });
+
+  it("keeps the lookup of a stream its reader leaves early", async () => {
+    fakes.openrouter.answer(() => ({ status: 200, raw: sse(false), contentType: "text/event-stream", hold: true }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("meta/llama-x", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    const reader = stream.textStream.getReader();
+    await reader.read();
+    await reader.cancel();
+    expect(prepared.pendingCosts()).toEqual([{ state: "pending", lookup: expect.objectContaining({ generationId: "gen-1" }) }]);
+  });
+});

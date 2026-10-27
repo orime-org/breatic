@@ -79,7 +79,7 @@ afterEach(async () => {
 function config(): ProviderConfigInput {
   return {
     upstreams: {
-      ws_a: { kind: "wavespeed", base_url: a.url, key_env: "WS_A_KEY" },
+      ws_a: { kind: "wavespeed", base_url: a.url, key_env: "WS_A_KEY", concurrency: 1 },
       ws_b: { kind: "wavespeed", base_url: b.url, key_env: "WS_B_KEY" },
     },
     media: {
@@ -815,5 +815,40 @@ describe("a run never leaves the upstream that accepted one of its steps (design
       ),
       { numRuns: 40 },
     );
+  });
+});
+
+describe("send — what the upstream answers back (design 6.2)", () => {
+  it("answers failed when a submit that finished at once carries no output url", async () => {
+    a.answer(({ path }) => (path === "/billings/search" ? billing([]) : finishedAtOnce("p1", [{ not: "a url" }])));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    expectState(await r.send(stored(planned.ticket), live()), "failed");
+  });
+
+  it("keeps a 400 whose body is not JSON as a refusal of the request", async () => {
+    a.answer(() => ({ status: 400, raw: "<html>bad</html>", contentType: "text/html" }));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const failed = expectState(await r.send(stored(planned.ticket), live()), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamRequestRejected);
+  });
+});
+
+describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurrency)", () => {
+  it("holds a second submit to a capped upstream until the first one has its answer", async () => {
+    const body = JSON.stringify({ code: 200, data: { id: "p1", status: "created", outputs: [] } });
+    a.answer(() => ({ status: 200, raw: body, contentType: "application/json", hold: true }));
+    const r = runner();
+    const first = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const second = expectState(await r.plan("seedance", video, DEFAULT, { ...options(), idempotencyKey: "task-2" }), "send");
+    const sending = [r.send(stored(first.ticket), live()), r.send(stored(second.ticket), live())];
+    await new Promise((done) => setTimeout(done, 200));
+    expect(submits(a.seen)).toHaveLength(1);
+    a.release();
+    await new Promise((done) => setTimeout(done, 200));
+    a.release();
+    await Promise.all(sending);
+    expect(submits(a.seen)).toHaveLength(2);
   });
 });

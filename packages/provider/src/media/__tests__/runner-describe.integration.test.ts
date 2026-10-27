@@ -375,3 +375,63 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(answer.reason).toBeInstanceOf(UpstreamRequestRejected);
   });
 });
+
+describe("a describe step and the understand model's answer (design 3.5, 5.4)", () => {
+  /**
+   * Plan the model over the image and send its describe step.
+   * @param image - The image url.
+   * @returns What send did.
+   */
+  async function describeImage(image = imageUrl): Promise<unknown> {
+    const r = runner();
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [image] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      "send",
+    );
+    return r.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+  }
+
+  it("answers failed naming the understand upstream, and keeps the cost it billed for the refusal", async () => {
+    openrouter.answer(() => ({ status: 200, body: { id: "gen-r", error: { message: "The model declined", code: 200 }, usage: { cost: 0.0005 } } }));
+    const answer = expectState((await describeImage()) as MediaAnswer, "failed");
+    expect(answer.reason).toBeInstanceOf(UpstreamRequestRejected);
+    expect((answer.reason as UpstreamRequestRejected).upstream).toBe("openrouter");
+    expect(answer.costs).toContainEqual(expect.objectContaining({ state: "known", usd: 0.0005 }));
+  });
+
+  it("throws SendNotAccepted when the image host drops the connection, since nothing paid was sent", async () => {
+    const dropping = createServer((req) => req.socket.destroy());
+    await new Promise<void>((done) => dropping.listen(0, "127.0.0.1", () => done()));
+    try {
+      const { port } = dropping.address() as AddressInfo;
+      expect(await describeImage(`http://127.0.0.1:${port}/fox.png`)).toBeInstanceOf(SendNotAccepted);
+      expect(openrouter.seen).toHaveLength(0);
+    } finally {
+      await new Promise<void>((done) => dropping.close(() => done()));
+    }
+  });
+
+  it("throws the lost answer of the understand call as it is, since that call may have been billed", async () => {
+    openrouter.answer(() => "reset");
+    const error = await describeImage();
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(SendNotAccepted);
+    expect((error as { state?: unknown }).state).toBeUndefined();
+  });
+});
+
+describe("ticketFromLegacy for an element step not yet sent (design 3.4, X3)", () => {
+  it("describes the image first, as a fresh plan does", async () => {
+    const legacy = {
+      steps: [
+        { position: 0, kind: "element" as const, endpoint: "kwaivgi/kling-elements", itemIndex: 0, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 },
+        { position: 1, kind: "generate" as const, endpoint: "kwaivgi/kling-video", itemIndex: null, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 },
+      ],
+    };
+    const answer = expectState(
+      await runner().ticketFromLegacy("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }, legacy),
+      "send",
+    );
+    expect(answer.step.kind).toBe("describe");
+  });
+});

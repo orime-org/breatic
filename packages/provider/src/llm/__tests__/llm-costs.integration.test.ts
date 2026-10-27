@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
-import type { LanguageModelUsage } from "ai";
+import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
+import { generateText, type LanguageModelUsage } from "ai";
+import { createProvider } from "../../provider.js";
 import type { CapabilityPolicy } from "../api.js";
-import { CHAT_REPLY, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
+import { CHAT_REPLY, llmConfig, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
 let fakes: LlmFakes;
 
@@ -18,6 +20,9 @@ beforeEach(async () => {
 afterEach(async () => {
   await stopFakes(fakes);
 });
+
+/** The buckets of `usage` below, as domain's bucketsOf splits it. */
+const TOKENS = { input: 11, cachedInput: 0, output: 3, reasoning: 0 };
 
 const usage: LanguageModelUsage = {
   inputTokens: 11,
@@ -34,7 +39,7 @@ describe("costOf (design 3.6)", () => {
       usage,
       providerMetadata: { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: 0.000136764 } } },
     });
-    expect(cost).toEqual({ state: "known", usd: 0.000136764, source: "reported" });
+    expect(cost).toEqual({ state: "known", usd: 0.000136764, tokens: TOKENS, source: "reported" });
   });
 
   it("answers pending with the lookup when OpenRouter did not say", () => {
@@ -52,7 +57,7 @@ describe("costOf (design 3.6)", () => {
       usage,
       providerMetadata: { breatic: { upstream: "deepseek" } },
     });
-    expect(cost).toMatchObject({ state: "known", source: "price_table" });
+    expect(cost).toMatchObject({ state: "known", source: "price_table", tokens: TOKENS });
     expect((cost as { usd: number }).usd).toBeCloseTo((11 * 1.32 + 3 * 3.96) / 1_000_000, 12);
   });
 
@@ -62,7 +67,25 @@ describe("costOf (design 3.6)", () => {
       usage,
       providerMetadata: { breatic: { upstream: "anthropic" } },
     });
-    expect(cost.state).toBe("missing");
+    expect(cost).toMatchObject({ state: "missing", tokens: TOKENS });
+  });
+
+  it("splits cached and reasoning tokens into their own buckets", () => {
+    const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
+      model: "deepseek/deepseek-v4-pro",
+      usage: { ...usage, inputTokens: 20, inputTokenDetails: { noCacheTokens: 12, cacheReadTokens: 8, cacheWriteTokens: 0 }, outputTokens: 9, outputTokenDetails: { textTokens: 4, reasoningTokens: 5 } },
+      providerMetadata: { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: 0.001 } } },
+    });
+    expect(cost).toEqual({ state: "known", usd: 0.001, tokens: { input: 20, cachedInput: 8, output: 9, reasoning: 5 }, source: "reported" });
+  });
+
+  it("answers missing, with the tokens, for an OpenRouter call that reported no cost and no generation", () => {
+    const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
+      model: "deepseek/deepseek-v4-pro",
+      usage,
+      providerMetadata: { breatic: { upstream: "openrouter" } },
+    });
+    expect(cost).toMatchObject({ state: "missing", tokens: TOKENS });
   });
 });
 
@@ -79,6 +102,15 @@ describe("cost.lookup (design 3.6)", () => {
     fakes.openrouter.answer(({ path }) => (path === "/api/v1/generation" ? { status: 200, body: { data } } : undefined));
     const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup({ upstream: "openrouter", generationId: "gen-9" }, { lastAttempt: false });
     expect(cost).toEqual({ state: "known", usd: 0.0002, source: "billing", tokens: { input: 11, cachedInput: 2, output: 3, reasoning: 1 } });
+  });
+
+  it.each([
+    ["an upstream the configuration does not have", { upstream: "nowhere", generationId: "gen-9" }],
+    ["an OpenRouter handle with no generation", { upstream: "openrouter" }],
+  ])("answers missing for %s, asking nobody", async (_name, lookup) => {
+    const cost = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup(lookup, { lastAttempt: false });
+    expect(cost.state).toBe("missing");
+    expect(fakes.openrouter.seen).toHaveLength(0);
   });
 
   it("stays pending while OpenRouter has not recorded it, and is missing on the last attempt", async () => {
@@ -118,7 +150,7 @@ describe("understand (design 6.5)", () => {
       maxOutputTokens: 200,
       deadlineAt: Date.now() + 60_000,
     });
-    expect(answer).toEqual({ text: "ok", finishReason: "stop", cost: { state: "known", usd: CHAT_REPLY.usage.cost, source: "reported" }, upstream: "openrouter" });
+    expect(answer).toEqual({ text: "ok", finishReason: "stop", cost: { state: "known", usd: CHAT_REPLY.usage.cost, tokens: TOKENS, source: "reported" }, upstream: "openrouter" });
     const [body] = posted(fakes.openrouter);
     expect(body?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
     expect(JSON.stringify(body)).toContain(`data:image/png;base64,${Buffer.from(picture.bytes).toString("base64")}`);
@@ -289,5 +321,94 @@ describe("assertModelsPriced (design 10)", () => {
   it("counts the upstreams that read media", () => {
     const llm = llmProvider(fakes, { GOOGLE_API_KEY: "g", OPENROUTER_API_KEY: "or" }).llm;
     expect(() => llm.assertModelsPriced(["google/gemini-unpriced"])).toThrow(ProviderConfigError);
+  });
+});
+
+describe("a refused understand call (design 3.5, 5.4)", () => {
+  const picture = { bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
+  /**
+   * Ask through the harness and catch what it throws.
+   * @param keys - The environment keys.
+   * @returns The thrown error.
+   */
+  const refused = (keys: Record<string, string>): Promise<unknown> =>
+    llmProvider(fakes, keys).llm.understand({ model: "google/gemini-3.8-flash", question: "What?", media: [picture], maxOutputTokens: 50, deadlineAt: Date.now() + 60_000 }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+
+  it.each([
+    ["the cost it reported", { id: "gen-123", error: { message: "The model declined", code: 200 }, usage: { cost: 0.0123 } }, { state: "known", usd: 0.0123, source: "reported" }],
+    ["a lookup by its generation", { id: "gen-123", error: { message: "The model declined", code: 200 } }, { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-123" } }],
+    ["a missing cost when the answer says neither", { error: { message: "The model declined", code: 200 } }, { state: "missing" }],
+  ])("throws UpstreamRequestRejected naming OpenRouter, carrying %s, for a 200 that refuses", async (_name, body, cost) => {
+    fakes.openrouter.answer(() => ({ status: 200, body }));
+    const error = await refused({ OPENROUTER_API_KEY: "or" });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).upstream).toBe("openrouter");
+    expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toMatchObject(cost);
+  });
+
+  it("carries no cost for a refusal status whose body names none, and names the upstream that refused", async () => {
+    fakes.google.answer(() => ({ status: 400, body: { error: { code: 400, message: "bad image", status: "INVALID_ARGUMENT" } } }));
+    const error = await refused({ GOOGLE_API_KEY: "g" });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).upstream).toBe("google");
+    expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toBeUndefined();
+  });
+});
+
+describe("cheapest mode for LLM calls (design 5.1)", () => {
+  it("serves a priced direct upstream before OpenRouter, whatever their weights", async () => {
+    const config = llmConfig(fakes);
+    config.llm!.routes = [{ prefix: "deepseek/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "deepseek", weight: 1 }] }, ...config.llm!.routes.filter((r) => r.prefix !== "deepseek/")];
+    const provider = createProvider({ config, keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", { thinking: false, cache: false }, { mode: "cheapest" });
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(result.providerMetadata?.breatic?.upstream).toBe("deepseek");
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
+  it("keeps the weight order for a model without a direct price", async () => {
+    const config = llmConfig(fakes);
+    config.llm!.routes = [{ prefix: "deepseek/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "deepseek", weight: 1 }] }, ...config.llm!.routes.filter((r) => r.prefix !== "deepseek/")];
+    const provider = createProvider({ config, keyOf: (name) => ({ DEEPSEEK_API_KEY: "ds", OPENROUTER_API_KEY: "or" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const prepared = provider.llm.prepare("deepseek/unpriced", { thinking: false, cache: false }, { mode: "cheapest" });
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(result.providerMetadata?.breatic?.upstream).toBe("openrouter");
+  });
+});
+
+describe("judge routing (JEV)", () => {
+  const request = { state: { a: 1 }, questions: { likely: { kind: "probability" } }, budgetMs: 5_000 };
+
+  it("refuses an upstream that is not OpenRouter's kind", async () => {
+    await expect(llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request, { mode: "upstream", upstream: "deepseek" })).rejects.toBeInstanceOf(UpstreamRequestRejected);
+  });
+
+  it("answers NoUpstreamAvailable naming the key when OpenRouter has none", async () => {
+    const error = await llmProvider(fakes, {}).llm.judge(request).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NoUpstreamAvailable);
+    expect((error as NoUpstreamAvailable).reasons).toEqual([{ upstream: "openrouter", kind: "missing_key", envVar: "OPENROUTER_API_KEY" }]);
+  });
+
+  it("answers a missing cost for a body that is not JSON", async () => {
+    fakes.openrouter.answer(() => ({ status: 200, raw: "not json", contentType: "text/plain" }));
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request);
+    expect(answer.cost.state).toBe("missing");
+  });
+});
+
+describe("capabilities with a stop signal (design 3.5, U6)", () => {
+  it("lets a caller leave a pending refresh when its signal ends, without cancelling it for others", async () => {
+    const policy: CapabilityPolicy = { override: "auto", timeoutMs: 2_000, ttlMs: 60_000, retryMs: 200 };
+    fakes.openrouter.answer(() => "hang");
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    const stop = new AbortController();
+    const leaving = llm.capabilities("google/gemini-3.8-flash", policy, stop.signal).catch((e: unknown) => e);
+    const staying = llm.capabilities("google/gemini-3.8-flash", policy);
+    stop.abort(new Error("turn ended"));
+    expect(await leaving).toBeInstanceOf(Error);
+    expect(await staying).toEqual({ pictures: false });
   });
 });
