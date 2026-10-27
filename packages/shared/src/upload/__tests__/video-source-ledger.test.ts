@@ -216,7 +216,9 @@ describe('strict complete source structure, identity, clocks and references', ()
   });
 
   it('does not equate zero legal occurrences with a missing physical source ledger', () => {
-    const value = ledgerFixture(); value.physical.frames = []; value.presentation = { edits: [], frames: [] };
+    const value = ledgerFixture();
+    if (value.container.kind !== 'iso_bmff') throw new Error('Expected original ISO fixture');
+    value.container.track.edits = []; value.physical.frames = []; value.presentation = { edits: [], frames: [] };
     expectRejected(value);
   });
 
