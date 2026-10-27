@@ -49,6 +49,24 @@ export type SceneObject = z.infer<typeof SceneObjectSchema>;
 export const SCENE_EDITABLE_FIELDS = ['name', 'position', 'rotation', 'scale', 'locked', 'exists'] as const;
 export type SceneEditableField = typeof SCENE_EDITABLE_FIELDS[number];
 
+/** Configured import budgets carried by the readable Project API. */
+export interface SceneImportLimits {
+  maxInputBytes: number;
+  maxExpandedBytes: number;
+  maxArtifactBytes: number;
+  maxFiles: number;
+  maxEntryJsonBytes: number;
+  decoderWorkerLimit: number;
+  maxTextureEdge: number;
+  maxTextureBytes: number;
+}
+
+/** Scene controls and import configuration from the owning Project. */
+export interface SceneControlsConfig {
+  scaleSensitivity: number;
+  import: SceneImportLimits;
+}
+
 /**
  * Identify the registered containers that carry a complete scene model.
  * @param value - A reduced MIME essence from an upload or the asset ledger.

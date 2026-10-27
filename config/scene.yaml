@@ -1,2 +1,13 @@
 # Uniform-scale screen-drag sensitivity for the versioned Three controls adapter.
 scale_sensitivity: 0.01
+
+# Bounded local model preparation and registered-asset rendering.
+import:
+  max_input_bytes: 67108864
+  max_expanded_bytes: 268435456
+  max_artifact_bytes: 268435456
+  max_files: 4096
+  max_entry_json_bytes: 4194304
+  decoder_worker_limit: 1
+  max_texture_edge: 8192
+  max_texture_bytes: 268435456

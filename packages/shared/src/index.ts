@@ -948,5 +948,5 @@ export {
 } from "@shared/analytics/attribution.js";
 
 export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS, isSceneModelMediaType } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";

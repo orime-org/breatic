@@ -11,6 +11,16 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 /** Runtime parameters for the versioned 3D scene controls adapter. */
 export const sceneConfigSchema = z.object({
   scale_sensitivity: z.number().finite().positive().default(0.01),
+  import: z.object({
+    max_input_bytes: z.number().int().positive().default(67108864),
+    max_expanded_bytes: z.number().int().positive().default(268435456),
+    max_artifact_bytes: z.number().int().positive().default(268435456),
+    max_files: z.number().int().positive().default(4096),
+    max_entry_json_bytes: z.number().int().positive().default(4194304),
+    decoder_worker_limit: z.number().int().positive().default(1),
+    max_texture_edge: z.number().int().positive().default(8192),
+    max_texture_bytes: z.number().int().positive().default(268435456),
+  }).prefault({}),
 });
 
 /** Validated scene runtime configuration. */
