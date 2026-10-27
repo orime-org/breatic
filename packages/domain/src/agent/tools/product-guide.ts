@@ -645,7 +645,9 @@ export function renderProductGuide(): string {
       "connected and @'d, and a note at the top of the prompt says what to put in it. Files the template brings " +
       "with it land as nodes to the left as well, connected and @'d. A template with steps to take after it " +
       "generates (such as splitting the result into a grid) also places a text node listing them. Picking it " +
-      "again on the same node reuses what it placed before. Inside a group, the new nodes join the group. On a " +
+      "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
+      "reach under the left menu, the toolbar at the bottom right or the minimap, the canvas slides them into " +
+      "view, keeping the zoom. Inside a group, the new nodes join the group. On a " +
       `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
       `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
       `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
@@ -1072,9 +1074,11 @@ export function renderProductGuide(): string {
     "## Proposal cards",
     "A proposal you make appears in this chat as a card: a summary of a sentence or two; the nodes as chips, one " +
       "column per step with arrows between steps in the order they run (nodes of the same step stacked, empty " +
-      "nodes drawn dashed), with a | between runs that do not feed each other; any finished text in full under " +
-      "its node's name; when every generating node uses the same model and you gave a model note, a line with " +
-      "that model's name and the note; the list of what is left for the reader; and a " +
+      "nodes drawn dashed), with a | between runs that do not feed each other (a template's text node listing " +
+      "its steps is stacked in the step before the node it explains); any finished text in full under its " +
+      "node's name; when every generating node uses the same model and you gave a model note, a line with " +
+      "that model's name and the note; the list of what is left for the reader; a template's steps in full " +
+      "under that text node's name; and a " +
       `${quoted(t("chat.proposal.use"))} button. The card shows no credits and no run time; the credit ` +
       "estimate is in each node's generation panel.",
     "The list of what is left is headed by node names when the proposal places more than one node; nodes with " +
@@ -1089,7 +1093,9 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.proposal.failed"))} if it fails, with nothing placed. A proposal kept from before its shape changed shows ` +
       `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
-      "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
+      "With one generating node its panel opens by itself, and the view then slides, keeping the zoom, so the " +
+      "nodes and the panel sit clear of the left menu, the toolbar at the bottom right and the minimap (or, " +
+      "when they do not all fit, the panel and its node); with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
       "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
