@@ -252,3 +252,123 @@ describe("a frame queued before authentication", () => {
     expect(queued?.buffer.byteLength).toBe(payload.byteLength);
   });
 });
+
+/** What a test reads off a connection made through `handleConnection`. */
+type ParsedConnection = {
+  handleMessage: (data: Uint8Array) => void;
+  hookPayloads: Record<string, { requestParameters: URLSearchParams }>;
+  handleClose: (event?: unknown) => void;
+};
+
+/**
+ * Open a connection on a bare Hocuspocus instance, without a listening server.
+ * @param hocuspocus - The instance to connect to.
+ * @param url - The request URL as crossws hands it over; undefined leaves the
+ *   request without one.
+ * @returns The connection, typed down to what the cases read.
+ */
+function connect(hocuspocus: Hocuspocus, url: string | undefined): ParsedConnection {
+  const socket = { readyState: 1, close: () => {}, send: () => {} };
+  return hocuspocus.handleConnection(
+    socket,
+    { headers: {}, url } as never,
+  ) as unknown as ParsedConnection;
+}
+
+describe("request parameters of one connection", () => {
+  // Every document a socket opens gets a hook payload that holds the parsed
+  // request URL until it authenticates, up to 201 per socket. Parsed once per
+  // document, a client-chosen URL is multiplied by that count; the patch in
+  // `patches/@hocuspocus__server@4.6.0.patch` parses it once per request
+  // (inner#1589).
+
+  it.each([
+    ["a query string", "http://h/ws?a=1&b=2"],
+    ["a query smuggled in through Host", "http://a?k=1/ws"],
+    ["a path the URL parser rewrites", `http://h/ws${'"'.repeat(20)}`],
+  ])("shares one parse across pending documents for %s", (_label, url) => {
+    const hocuspocus = new Hocuspocus({
+      quiet: true,
+      onAuthenticate: () => new Promise<never>(() => {}),
+    });
+    const connection = connect(hocuspocus, url);
+
+    connection.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
+    connection.handleMessage(frame("project-p/canvas-1", WIRE_AUTH, AUTH_SUB_TOKEN));
+    const first = connection.hookPayloads["project-p/meta"]?.requestParameters;
+    const second = connection.hookPayloads["project-p/canvas-1"]?.requestParameters;
+    connection.handleClose();
+
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+    expect(first?.toString()).toBe(new URL(url).searchParams.toString());
+  });
+
+  it("hands hooks after authentication the same parse the pending documents hold", async () => {
+    let loaded: URLSearchParams | undefined;
+    let markLoaded: () => void = () => {};
+    const onLoad = new Promise<void>((resolve) => {
+      markLoaded = resolve;
+    });
+    const hocuspocus = new Hocuspocus({
+      quiet: true,
+      onAuthenticate: ({ documentName }) =>
+        documentName === "project-p/meta"
+          ? Promise.resolve()
+          : new Promise<never>(() => {}),
+      onLoadDocument: async ({ requestParameters }) => {
+        loaded = requestParameters;
+        markLoaded();
+      },
+    });
+    const connection = connect(hocuspocus, "http://h/ws?a=1");
+
+    connection.handleMessage(frame("project-p/canvas-1", WIRE_AUTH, AUTH_SUB_TOKEN));
+    const pending = connection.hookPayloads["project-p/canvas-1"]?.requestParameters;
+    connection.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
+    await onLoad;
+    connection.handleClose();
+
+    expect(pending).toBeDefined();
+    expect(loaded).toBe(pending);
+  });
+
+  it("gives two connections with the same URL a parse each", () => {
+    const url = "http://h/ws?a=1";
+    const hocuspocus = new Hocuspocus({
+      quiet: true,
+      onAuthenticate: () => new Promise<never>(() => {}),
+    });
+    const one = connect(hocuspocus, url);
+    const other = connect(hocuspocus, url);
+
+    one.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
+    other.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
+    const fromOne = one.hookPayloads["project-p/meta"]?.requestParameters;
+    const fromOther = other.hookPayloads["project-p/meta"]?.requestParameters;
+    one.handleClose();
+    other.handleClose();
+
+    expect(fromOne).toBeDefined();
+    expect(fromOther).not.toBe(fromOne);
+    expect(fromOne?.get("a")).toBe("1");
+    expect(fromOther?.get("a")).toBe("1");
+  });
+
+  it("parses a request without a URL to empty parameters", () => {
+    const hocuspocus = new Hocuspocus({
+      quiet: true,
+      onAuthenticate: () => new Promise<never>(() => {}),
+    });
+    const connection = connect(hocuspocus, undefined);
+
+    connection.handleMessage(frame("project-p/meta", WIRE_AUTH, AUTH_SUB_TOKEN));
+    connection.handleMessage(frame("project-p/canvas-1", WIRE_AUTH, AUTH_SUB_TOKEN));
+    const first = connection.hookPayloads["project-p/meta"]?.requestParameters;
+    const second = connection.hookPayloads["project-p/canvas-1"]?.requestParameters;
+    connection.handleClose();
+
+    expect(first?.toString()).toBe("");
+    expect(second?.toString()).toBe("");
+  });
+});
