@@ -108,24 +108,6 @@ export function templatePlace(tag: TemplateTag, node: ProposalNode, templates: r
 }
 
 /**
- * Reads a node's template tag and fills the node from the template.
- * @param node - The node as the agent sent it, naming a template.
- * @param at - The node, as a fix names it.
- * @param templates - The registry to read the tag against.
- * @returns The expanded node, or a reason the agent can act on.
- * @throws {never} Never.
- */
-export function expandTemplate(
-  node: ProposalNode & { template: TemplateTag },
-  at: NodeLabel,
-  templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
-): TemplateExpansion {
-  const { template: tag, ...rest } = node;
-  const place = templatePlace(tag, rest, templates);
-  return "ok" in place ? place : expandAt(place, rest, at);
-}
-
-/**
  * Fills a node from the template its tag has been read into.
  * @param place - Where the node stands in its template.
  * @param rest - The node, without its tag.

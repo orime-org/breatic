@@ -12,10 +12,10 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 
-import type { ProposalNode } from "@breatic/shared";
+import type { GenerationTemplate, ProposalNode } from "@breatic/shared";
 
-import { nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
-import { expandTemplate } from "@domain/agent/tools/template-expansion.js";
+import { nodeLabel, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
+import { expandAt, templatePlace, type TemplateExpansion } from "@domain/agent/tools/template-expansion.js";
 
 import { EDIT, FIXTURES, SHOT_MODEL, loadFixtureLocales } from "./template-fixtures.js";
 
@@ -43,6 +43,19 @@ type Tag = { id: string; key?: string };
  */
 function named(template: Tag, extra: Partial<ProposalNode> = {}): ProposalNode & { template: Tag } {
   return { role: "generate", type: "image", name: "Sheet", template, prompt: PROMPT, ...extra };
+}
+
+/**
+ * Reads a node's tag and fills it, as the tool does for each node it is sent.
+ * @param node - The node as the agent sent it.
+ * @param at - The node, as a fix names it.
+ * @param templates - The registry.
+ * @returns The expanded node, or the refusal.
+ */
+function expandTemplate(node: ProposalNode & { template: Tag }, at: NodeLabel, templates?: readonly GenerationTemplate[]): TemplateExpansion {
+  const { template: tag, ...rest } = node;
+  const place = templatePlace(tag, rest, templates);
+  return "ok" in place ? place : expandAt(place, rest, at);
 }
 
 const SHEET_ANCHOR: Tag = { id: "fixture-sheet" };
