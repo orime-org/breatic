@@ -166,9 +166,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
           keyToUrl.set(key, url);
           return url;
         },
-        // Our-own URLs = whatever upload() produced, and the key comes back out
-        // of one. Provider temp URLs ("https://oss/result-*.png" etc.) are
-        // external → re-hosted by Case 2.
+        // Registered-output fixtures use the real adapter's URL format.
         keyFromUrl: (url: string) =>
           url.startsWith("https://oss/uploaded/")
             ? url.slice("https://oss/uploaded/".length)
