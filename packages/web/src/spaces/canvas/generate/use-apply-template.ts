@@ -26,7 +26,7 @@ import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
 import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
-import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
+import { standsEmpty, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
 export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>) => unknown;
@@ -177,16 +177,6 @@ function writable(view: CanvasNodeView): boolean {
   if (block === null) return true;
   warnNodeGate(t(block.toastKey));
   return false;
-}
-
-/**
- * Whether a node holds nothing yet and nothing is fetching or generating into it.
- * @param view - The node.
- * @returns Whether it stands empty.
- */
-function standsEmpty(view: CanvasNodeView | undefined): boolean {
-  if (!view || view.type === 'group' || view.type === 'annotation') return false;
-  return (view.data as { content?: unknown }).content === undefined && (view.data.taskCounts?.running ?? 0) === 0;
 }
 
 /**

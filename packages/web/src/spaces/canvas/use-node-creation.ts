@@ -34,6 +34,7 @@ import {
   setNodeParent,
   setNodeTemplateNode,
   writeSnapshotNodes,
+  type CanvasNodeView,
   type SnapshotNode,
 } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
@@ -271,6 +272,16 @@ function arrangeProposal(
 }
 
 /**
+ * Whether a node holds nothing yet and nothing is fetching or generating into it.
+ * @param view - The node.
+ * @returns Whether it stands empty.
+ */
+export function standsEmpty(view: CanvasNodeView | undefined): boolean {
+  if (!view || view.type === 'group' || view.type === 'annotation') return false;
+  return (view.data as { content?: unknown }).content === undefined && (view.data.taskCounts?.running ?? 0) === 0;
+}
+
+/**
  * Hands every template resource node this press placed, or found still empty
  * with nothing fetching into it, to the ingest Worker -- after the batch,
  * never inside it, so a refused fetch cannot take the batch back.
@@ -294,12 +305,7 @@ function fetchTemplateResources(
   proposal.nodes.forEach((node, i) => {
     const id = nodeIds[i];
     if (node.resource === undefined || !id) return;
-    if (!fresh[i]) {
-      const view = views.find((n) => n.id === id);
-      if (!view || view.type === 'group' || view.type === 'annotation') return;
-      const content = (view.data as { content?: unknown }).content;
-      if (content !== undefined || (view.data.taskCounts?.running ?? 0) > 0) return;
-    }
+    if (!fresh[i] && !standsEmpty(views.find((n) => n.id === id))) return;
     canvasApi
       .ingestUrl({ template_resource: node.resource, project_id: projectId, space_id: spaceId, node_id: id })
       .catch((err: unknown) => {
