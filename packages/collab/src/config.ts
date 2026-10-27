@@ -41,10 +41,9 @@ const collabConfigSchema = z.object({
 
   // Connection limits.
   //
-  // The per-document ceiling on WRITABLE connections is not here: it comes
-  // from the membership tier of the studio that owns the project
-  // (`concurrent_editors` in config/membership.yaml), so it differs per
-  // project and cannot be a process-wide constant (#88).
+  // Each document's writable connection ceiling comes from the owning
+  // Studio's current admin membership reading. It resolves configured or
+  // negotiated concurrent_editors and expiry together for each new handshake.
 
   // Throttle (coarse per-IP DoS backstop; loopback is exempt)
   throttle_enabled: z.boolean().default(true),

@@ -1,6 +1,6 @@
 # packages/web
 
-`@breatic/web` is the React front end and runs in the browser. These rules cover everything under `packages/web`; repo-wide rules are in the [root AGENTS.md](../../AGENTS.md). Read [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend) when you need the implementation detail behind a rule here (node model, token bridge, scroll and overlay contracts).
+`@breatic/web` is the React front end and runs in the browser. It includes the Canvas, Document and 3D editors; `spaces/three-d/` renders the scene and `data/yjs/` owns its document commands and document-scoped editing session. These rules cover everything under `packages/web`; repo-wide rules are in the [root AGENTS.md](../../AGENTS.md). Read [docs/ARCHITECTURE.md#frontend](../../docs/ARCHITECTURE.md#frontend) when you need the implementation detail behind a rule here (node model, token bridge, scroll and overlay contracts).
 
 ## Package boundary
 **Imports flow one way: `app → pages → spaces → features → stores → data → ui`, and `components`, `theme`, `i18n`, `lib` form one bottom group whose members may import each other.** The `web-layer-*` rules of `lint:dependency-cruiser` fail CI on an upward import; read [docs/ARCHITECTURE.md#layered-architecture](../../docs/ARCHITECTURE.md#layered-architecture) before moving code between layers.

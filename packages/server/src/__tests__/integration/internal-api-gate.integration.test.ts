@@ -66,6 +66,7 @@ vi.mock("@server/infra/stripe.js", async () => {
   };
 });
 
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getRedis } from "@breatic/core";
@@ -119,6 +120,58 @@ async function pendingLot() {
 }
 
 const REJECT_BODY = { reason: "Buyer asked twice; policy says no." };
+const ENTERPRISE_BODY = {
+  targetTier: "enterprise",
+  expiresAt: "2099-10-26T00:00:00.000Z",
+  entryTimezone: "UTC",
+  contractNumber: "GATE-ENTERPRISE",
+  limits: { team_studios: 8, projects_per_studio: 500, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 },
+  expectedRevision: null,
+  expectedStoredTier: "pro",
+};
+
+/**
+ * The enterprise profile and write path for one account.
+ * @param userId - The account under test.
+ * @returns Its internal path.
+ */
+function enterprisePath(userId: string): string {
+  return `/internal/v1/accounts/${userId}/enterprise-membership`;
+}
+
+/**
+ * The enterprise operation lookup path for one request.
+ * @param key - The immutable request key.
+ * @returns Its internal path.
+ */
+function enterpriseOperationPath(key: string): string {
+  return `/internal/v1/enterprise-membership-operations/${key}`;
+}
+
+/**
+ * Create a real account so a mistakenly admitted write could change it.
+ * @returns The account id.
+ */
+async function enterpriseAccount(): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO users (email, membership_tier) VALUES (${`${randomUUID()}@example.test`}, 'pro') RETURNING id
+  `;
+  return row!.id;
+}
+
+/**
+ * A refusal must leave the account, membership, operation and tier history untouched.
+ * @param userId - The account under test.
+ * @param key - The request key that must not have been claimed.
+ */
+async function expectEnterpriseUntouched(userId: string, key: string): Promise<void> {
+  expect(await sql`SELECT membership_tier FROM users WHERE id = ${userId}`).toEqual([{ membership_tier: "pro" }]);
+  expect(await sql`SELECT user_id FROM enterprise_memberships WHERE user_id = ${userId}`).toEqual([]);
+  expect(await sql`SELECT key FROM enterprise_membership_operations WHERE target_user_id = ${userId} OR key = ${key}`).toEqual([]);
+  expect(await sql`SELECT id FROM membership_tier_changes WHERE user_id = ${userId}`).toEqual([]);
+  expect(fakeStripe.listCalls).toEqual([]);
+  expect(fakeStripe.createCalls).toEqual([]);
+}
 
 /**
  * The fields of every line logged at one level under one message.
@@ -317,6 +370,30 @@ describe("Redis unavailable is 503, never let through (§4.2, §4.4)", () => {
   });
 });
 
+describe("enterprise endpoints use the shared signature gate", () => {
+  it.each([
+    ["GET", "profile", "unsigned"],
+    ["GET", "profile", "wrong signature"],
+    ["GET", "operation", "unsigned"],
+    ["GET", "operation", "wrong signature"],
+    ["POST", "profile", "unsigned"],
+    ["POST", "profile", "wrong signature"],
+  ] as const)("%s %s refuses %s without changing membership", async (method, target, authentication) => {
+    const userId = await enterpriseAccount();
+    const key = `bo-${randomUUID()}`;
+    const path = target === "operation" ? enterpriseOperationPath(key) : enterprisePath(userId);
+    const res = await call(running.baseUrl, path, {
+      method,
+      ...(method === "POST" ? { body: ENTERPRISE_BODY, idempotencyKey: key } : {}),
+      ...(authentication === "unsigned" ? { unsigned: true } : { secret: "not-the-shared-secret-at-all-0000" }),
+    });
+
+    expect(res.status).toBe(401);
+    expect(res.json).toEqual({ code: "unauthorized" });
+    await expectEnterpriseUntouched(userId, key);
+  });
+});
+
 describe("authorisation table (§4.3)", () => {
   it.each([
     ["GET", "/internal/v1/health"],
@@ -339,7 +416,7 @@ describe("authorisation table (§4.3)", () => {
 
   // A route that mounts `validate()` before its handler is listed once per
   // handler, so the table is compared as a set of method and path.
-  it("registers exactly the nine endpoints of §4.5, by method and path template", async () => {
+  it("registers exactly the approved refund and enterprise endpoints, by method and path template", async () => {
     const { createInternalApp } = await import("@server/internal-app.js");
     const registered = [
       ...new Set(
@@ -360,8 +437,38 @@ describe("authorisation table (§4.3)", () => {
         "POST /internal/v1/credit-lots/:lotId/refund/resolved-outside",
         "POST /internal/v1/credit-lots/:lotId/refund/restore-credits",
         "POST /internal/v1/refund-operations/:operationId/mail/resend",
+        "GET /internal/v1/accounts/:userId/enterprise-membership",
+        "GET /internal/v1/enterprise-membership-operations/:key",
+        "POST /internal/v1/accounts/:userId/enterprise-membership",
       ].sort(),
     );
+  });
+
+  it.each([
+    ["PUT", "profile"],
+    ["DELETE", "profile"],
+    ["POST", "operation"],
+    ["GET", "wrong version"],
+    ["POST", "similar path"],
+    ["HEAD", "profile"],
+    ["HEAD", "operation"],
+  ] as const)("a signed %s on the enterprise %s path is forbidden", async (method, target) => {
+    const userId = await enterpriseAccount();
+    const key = `bo-${randomUUID()}`;
+    let path = enterprisePath(userId);
+    if (target === "operation") path = enterpriseOperationPath(key);
+    if (target === "wrong version") path = path.replace("/v1/", "/v2/");
+    if (target === "similar path") path = `${path}/delete`;
+    const res = await call(running.baseUrl, path, {
+      // The harness signs any method; its public type lists the allowed ones.
+      method: method as "GET" | "POST",
+      ...(["POST", "PUT", "DELETE"].includes(method) ? { body: ENTERPRISE_BODY, idempotencyKey: key } : {}),
+    });
+
+    expect(res.status).toBe(403);
+    if (method === "HEAD") expect(res.json).toBeNull();
+    else expect(res.json).toEqual({ code: "forbidden" });
+    await expectEnterpriseUntouched(userId, key);
   });
 });
 
@@ -407,6 +514,27 @@ describe("the public app has no internal surface (§4.1, acceptance #1)", () => 
     expect(source).not.toMatch(/internal-app/);
     expect(source).not.toMatch(/routes\/internal/);
   });
+
+  it.each([
+    ["GET", "profile"],
+    ["GET", "operation"],
+    ["POST", "profile"],
+  ] as const)("the public app answers 404 for enterprise %s %s directly and under /api/v1", async (method, target) => {
+    const { createApp } = await import("@server/app.js");
+    const app = createApp();
+    const userId = await enterpriseAccount();
+    const key = `bo-${randomUUID()}`;
+    const path = target === "operation" ? enterpriseOperationPath(key) : enterprisePath(userId);
+
+    for (const publicPath of [path, `/api/v1${path}`]) {
+      const res = await app.request(publicPath, {
+        method,
+        ...(method === "POST" ? { headers: { "content-type": "application/json", "idempotency-key": key }, body: JSON.stringify(ENTERPRISE_BODY) } : {}),
+      });
+      expect(res.status).toBe(404);
+    }
+    await expectEnterpriseUntouched(userId, key);
+  });
 });
 
 describe("request body size (§4.6): over 64 KiB is 413 before the signature is read", () => {
@@ -446,6 +574,23 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     expect(await getRedis().exists(nonceKey(nonce))).toBe(0);
     expect(await worldOf(sql, lot)).toEqual(before);
     expect(fakeStripe.listCalls).toEqual([]);
+  });
+
+  it.each([true, false])("an enterprise oversize POST is 413 before authentication (unsigned=%s) and writes nothing", async (unsigned) => {
+    const userId = await enterpriseAccount();
+    const key = `bo-${randomUUID()}`;
+    const nonce = freshNonce();
+    const res = await call(running.baseUrl, enterprisePath(userId), {
+      rawBody: OVERSIZE,
+      idempotencyKey: key,
+      nonce,
+      unsigned,
+    });
+
+    expect(res.status).toBe(413);
+    expect(res.json).toEqual({ code: "invalid_body" });
+    expect(await getRedis().exists(nonceKey(nonce))).toBe(0);
+    await expectEnterpriseUntouched(userId, key);
   });
 
   // The largest honest body: a 500-character reason and 100 refund ids of 255
@@ -494,6 +639,20 @@ describe("body contract of every write endpoint (§4.5, §4.6)", () => {
     expect(res.json).toEqual({ code: "invalid_body", detail: t("server.internal.invalid_body") });
     expect(res.json.detail).not.toBe(t("server.error.validation"));
     expect(fakeStripe.listCalls).toEqual([]);
+  });
+
+  it.each([
+    { name: "malformed JSON", rawBody: "{ not json", status: 400 },
+    { name: "a body outside the schema", rawBody: JSON.stringify({ unexpected: true }), status: 422 },
+  ] as const)("enterprise: $name is $status invalid_body and writes nothing", async ({ rawBody, status }) => {
+    const userId = await enterpriseAccount();
+    const key = `bo-${randomUUID()}`;
+    const res = await call(running.baseUrl, enterprisePath(userId), { rawBody, idempotencyKey: key });
+
+    expect(res.status).toBe(status);
+    expect(res.json.code).toBe("invalid_body");
+    if (status === 422) expect(res.json.detail).toBe(t("server.internal.invalid_body"));
+    await expectEnterpriseUntouched(userId, key);
   });
 
   // Whatever maps the schema failure to the internal sentence must leave the

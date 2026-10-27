@@ -25,6 +25,7 @@ import {
 } from "@server/modules/credit-refund/disposition.service.js";
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
+import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
 
 const LOT = "/internal/v1/credit-lots/:lotId/refund";
 const RESEND = "/internal/v1/refund-operations/:operationId/mail/resend";
@@ -187,4 +188,5 @@ const ROUTES: Route[] = [
  */
 export function registerInternalRoutes(app: Hono): void {
   for (const route of ROUTES) app.on(route.method.toUpperCase(), [route.path], ...route.handlers);
+  registerEnterpriseMembershipRoutes(app);
 }

@@ -104,7 +104,8 @@ export async function createPersonalStudio(
  * Create a team studio with the creator as its sole admin, atomically.
  *
  * Unlike a personal studio, how many active team studios a user may administer
- * comes from their membership tier (`config/membership.yaml`). The studio row +
+ * comes from their complete membership reading: configured or negotiated
+ * limits, with expiry resolved at read time. The studio row +
  * the creator's admin `studio_members` row are written in one transaction
  * (mirrors `createPersonalStudio`); the limit is checked inside the same
  * transaction, on that same handle so the check does not reach for a second

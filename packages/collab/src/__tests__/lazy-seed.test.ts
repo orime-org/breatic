@@ -147,4 +147,27 @@ describe("lazySeedMeta", () => {
     Y.applyUpdate(doc, call?.[1] as Uint8Array);
     expect(doc.share.size).toBe(0);
   });
+
+  it("seeds a 3D scene before publishing its typed meta entry", async () => {
+    loadInitialSpaceTypeMock.mockResolvedValue("3d");
+    const metaName = projectMetaDocName(PID);
+    const bytes = (await lazySeedMeta(metaName)) as Uint8Array;
+    const spaceId = deriveId(PID);
+    const contentName = `project-${PID}/3d-${spaceId}`;
+    const calls = seedInitialStateMock.mock.calls;
+    expect(calls.map((call) => call[0])).toEqual([contentName, metaName]);
+
+    const scene = new Y.Doc();
+    Y.applyUpdate(scene, calls[0]![1] as Uint8Array);
+    expect(scene.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(scene.getMap("objects").toJSON()).toEqual({});
+
+    const meta = new Y.Doc();
+    Y.applyUpdate(meta, bytes);
+    const entry = meta.getMap("spaces").get(spaceId) as Y.Map<unknown>;
+    expect(entry.get("type")).toBe("3d");
+    expect(entry.get("name")).toBe("3D");
+    scene.destroy();
+    meta.destroy();
+  });
 });
