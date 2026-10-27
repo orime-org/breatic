@@ -876,4 +876,20 @@ describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurren
     expectState(await r.send(stored(next), live()), "running");
     expect(submits(a.seen)).toHaveLength(2);
   });
+
+  it("does not queue a submit whose signal already fired while the upstream is full", async () => {
+    const body = JSON.stringify({ code: 200, data: { id: "p1", status: "created", outputs: [] } });
+    a.answer(() => ({ status: 200, raw: body, contentType: "application/json", hold: true }));
+    const r = runner();
+    const first = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const second = expectState(await r.plan("seedance", video, DEFAULT, { ...options(), idempotencyKey: "task-2" }), "send");
+    const sendingFirst = r.send(stored(first.ticket), live());
+    await new Promise((done) => setTimeout(done, 100));
+    const stop = new AbortController();
+    stop.abort();
+    expect(await r.send(stored(second.ticket), { ...live(), signal: stop.signal }).catch((e: unknown) => e)).toBeInstanceOf(Aborted);
+    a.release();
+    await sendingFirst;
+    expect(submits(a.seen)).toHaveLength(1);
+  });
 });
