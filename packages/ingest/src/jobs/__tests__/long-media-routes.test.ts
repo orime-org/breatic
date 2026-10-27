@@ -394,19 +394,19 @@ describe("POST /long-media/jobs", () => {
       params: { jobId: rootPayload.jobId },
     };
     const refusedWrite = await writeLongMediaSegment(
-      new Request("http://long-media-output.local/not-granted.mp4", { method: "PUT", body: head("m4a") }),
+      new Request("http://long-media-output.local/not-granted.mp4", { method: "PUT", body: head("mp3") }),
       env,
       context,
     );
     expect(refusedWrite.status).toBe(403);
     const concurrentWrites = await Promise.all([
       writeLongMediaSegment(
-        new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("m4a") }),
+        new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("mp3") }),
         env,
         context,
       ),
       writeLongMediaSegment(
-        new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("m4a") }),
+        new Request("http://long-media-output.local/understand/root-0.mp3", { method: "PUT", body: head("mp3") }),
         env,
         context,
       ),
@@ -416,7 +416,7 @@ describe("POST /long-media/jobs", () => {
       id: segmentId,
       status: "stored",
       version: 2,
-      measured: { sizeBytes: head("m4a").byteLength, contentType: "audio/mp4" },
+      measured: { sizeBytes: head("mp3").byteLength, contentType: "audio/mpeg" },
     }]);
     await expect(stub.segmentWritePermit("understand/root-0.mp3")).resolves.toBeNull();
     const registeredPath = `/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/segments/${encodeURIComponent(segmentId)}/registered`;

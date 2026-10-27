@@ -42,6 +42,8 @@ describe("what FFmpeg is asked to encode for long media", () => {
     expect(args).toContain("0:a?");
     expect(args).toContain("libmp3lame");
     expect(args).toContain("128k");
+    expect(args.slice(args.indexOf("-f"))).toEqual(["-f", "mp3", "pipe:1"]);
+    expect(args).not.toContain("-movflags");
     expect(args).toContain("pipe:1");
     expect(args).not.toContain("0:a:0");
   });
@@ -56,6 +58,7 @@ describe("what FFmpeg is asked to encode for long media", () => {
     expect(args).toContain("0:a?");
     expect(args).toContain("libx264");
     expect(args).toContain("23");
+    expect(args[args.indexOf("-f") + 1]).toBe("mp4");
     expect(args).toContain("+frag_keyframe+empty_moov");
   });
 });
@@ -80,7 +83,7 @@ describe("what ffprobe is asked", () => {
     expect(entries).toContain("channel_layout");
     // The first frame carries the EXIF orientation of a JPEG, which the stream
     // section does not report.
-    expect(entries).toContain("frame=stream_index");
+    expect(entries).toContain("frame=stream_index,pts,best_effort_timestamp");
     expect(entries).toContain("frame_side_data=rotation");
     expect(args[args.indexOf("-read_intervals") + 1]).toBe("%+#1");
     expect(args).toContain("-of");

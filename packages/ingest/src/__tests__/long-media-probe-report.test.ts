@@ -61,4 +61,27 @@ describe("buildLongMediaProbeReport", () => {
       sourceRange: { startUs: "0", endUs: "20000000" },
     });
   });
+
+  it("uses the first decoded audio frame when a WAV stream omits start_pts", () => {
+    const report = buildLongMediaProbeReport(JSON.stringify({
+      frames: [{ stream_index: 0, pts: 0, best_effort_timestamp: 0 }],
+      streams: [{
+        index: 0,
+        codec_name: "pcm_s16le",
+        codec_type: "audio",
+        sample_rate: "16000",
+        channels: 2,
+        time_base: "1/16000",
+        duration_ts: 5248000,
+        disposition: { attached_pic: 0 },
+      }],
+      format: { format_name: "wav", duration: "328.000000" },
+    }), "c".repeat(64), "whole-file-v1");
+
+    expect(report.mediaInputs).toHaveLength(1);
+    expect(report.mediaInputs[0]).toMatchObject({
+      descriptor: { inputKind: "source_file", mediaKind: "audio" },
+      sourceRange: { startUs: "0", endUs: "328000000" },
+    });
+  });
 });

@@ -13,6 +13,12 @@ interface RawStream {
   time_base?: string;
 }
 
+interface RawFrame {
+  stream_index?: number;
+  pts?: string | number;
+  best_effort_timestamp?: string | number;
+}
+
 interface StreamTiming {
   startUs: string;
   endUs: string;
@@ -32,9 +38,9 @@ export function buildLongMediaProbeReport(
   profileVersion: string,
 ): LongMediaProbeReport {
   if (profileVersion.length === 0) throw new Error("The long media profile version is missing");
-  let raw: { streams?: RawStream[] };
+  let raw: { streams?: RawStream[]; frames?: RawFrame[] };
   try {
-    raw = JSON.parse(stdout) as { streams?: RawStream[] };
+    raw = JSON.parse(stdout) as { streams?: RawStream[]; frames?: RawFrame[] };
   } catch {
     throw new Error("The long media ffprobe output is invalid");
   }
@@ -57,7 +63,8 @@ export function buildLongMediaProbeReport(
     if (stream.codec_type !== "audio" && stream.codec_type !== "video") {
       throw new Error("The long media stream kind is invalid");
     }
-    return { index: stream.index, kind: stream.codec_type, ...streamTiming(stream) };
+    const firstFrame = raw.frames?.find((frame) => frame.stream_index === stream.index);
+    return { index: stream.index, kind: stream.codec_type, ...streamTiming(stream, firstFrame) };
   });
   const sourceRange = sourceTimeEnvelope(streams);
   const descriptor = {
@@ -84,8 +91,10 @@ export function buildLongMediaProbeReport(
  * @returns Its measured start and end on the source timeline.
  * @throws {Error} When PTS, duration or time base is unavailable.
  */
-function streamTiming(raw: RawStream): StreamTiming {
-  const startPts = exactIntegerText(raw.start_pts, true);
+function streamTiming(raw: RawStream, firstFrame: RawFrame | undefined): StreamTiming {
+  const startPts = exactIntegerText(raw.start_pts, true) ??
+    exactIntegerText(firstFrame?.pts, true) ??
+    exactIntegerText(firstFrame?.best_effort_timestamp, true);
   const durationTicks = exactIntegerText(raw.duration_ts, false);
   if (startPts === null || durationTicks === null || BigInt(durationTicks) <= 0n) {
     throw new Error("The long media stream time is not measured");

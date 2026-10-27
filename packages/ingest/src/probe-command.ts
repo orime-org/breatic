@@ -41,7 +41,7 @@ export type ReadFrom = "object" | "own-file";
  * @param mediaKind - The source file's probed audio or video kind.
  * @param interval - The half-open source-time interval to encode.
  * @param profile - The encoding parameters frozen into this media job.
- * @returns FFmpeg arguments that write one fragmented MP4 file to stdout.
+ * @returns FFmpeg arguments that write one MP3 audio file or one fragmented MP4 video file to stdout.
  * @throws {RangeError} When the source-time interval is invalid.
  */
 export function longMediaSegmentArgs(
@@ -78,13 +78,13 @@ export function longMediaSegmentArgs(
       "-b:a", profile.audioBitrate,
     );
   }
-  args.push(
-    "-sn",
-    "-dn",
-    "-movflags", "+frag_keyframe+empty_moov",
-    "-f", "mp4",
-    "pipe:1",
-  );
+  args.push("-sn", "-dn");
+  if (mediaKind === "video") {
+    args.push("-movflags", "+frag_keyframe+empty_moov", "-f", "mp4");
+  } else {
+    args.push("-f", "mp3");
+  }
+  args.push("pipe:1");
   return args;
 }
 
@@ -115,8 +115,10 @@ function protocolsFor(from: ReadFrom): string {
  *
  * The first frame is read as well, because a JPEG's EXIF orientation shows up
  * only on its decoded frame: the stream section of a phone photo taken upright
- * reports the sensor's landscape pair and no rotation. `%+#1` stops after one
- * packet, so a long video costs no more than a photo.
+ * reports the sensor's landscape pair and no rotation. Its timestamp also
+ * supplies the start of an audio stream when the demuxer omits `start_pts`, as
+ * it does for WAV. `%+#1` stops after one packet, so a long video costs no more
+ * than a photo.
  * @param objectUrl - Where the container reads the object.
  * @param from - Whether that is a served object or the container's own file.
  * @returns The argument list, without the program name.
@@ -130,7 +132,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
