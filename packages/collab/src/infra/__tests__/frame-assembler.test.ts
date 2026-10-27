@@ -865,7 +865,7 @@ describe("frame assembler — properties", () => {
       { M: 524_288, B: 524_288, T: 1_000 },
     );
     const command = fc.oneof(
-      fc.record({ k: fc.constant("declare" as const), p: fc.nat(5), pick: fc.nat(6), r: fc.nat() }),
+      fc.record({ k: fc.constant("declare" as const), p: fc.nat(5), pick: fc.nat(8), r: fc.nat() }),
       fc.record({ k: fc.constant("chunk" as const), p: fc.nat(5), kind: fc.constantFrom("full", "exactLast", "lastMinus1", "short", "overflowWithinM", "overflowPastM", "empty") }),
       fc.record({ k: fc.constant("small" as const), p: fc.nat(5), n: fc.integer({ min: 0, max: F }) }),
       fc.record({ k: fc.constant("text" as const), p: fc.nat(5), s: fc.string({ maxLength: 40 }) }),
@@ -906,7 +906,8 @@ describe("frame assembler — properties", () => {
           const closesBefore = peers.map((p) => p.close.mock.calls.length);
           let expectedReturn: Uint8Array | undefined;
           const expectedCloses = new Map<FakePeer, keyof typeof CLOSE>();
-          let expectedWarn = 0;
+          // Each refusal as "event:reason|scope|source", so the kind of refusal is checked too.
+          const expectedWarns: string[] = [];
           let expectedError = 0;
 
           if (c.k === "advance") {
@@ -916,25 +917,29 @@ describe("frame assembler — properties", () => {
               const st = model.get(p)!;
               if (st.s === "assembling" && st.deadline <= now) {
                 expectedCloses.set(p, reject(p, 1008));
-                expectedWarn++;
+                expectedWarns.push("collab_reassembly_idle_timeout:");
               }
             }
             vi.advanceTimersByTime(ms);
           } else {
-            const p = peers[c.p % peers.length]!;
+            // A chunk goes to a connection that is reassembling whenever there is one,
+            // so the overflow, short-chunk and timer paths are reached often.
+            const assembling = peers.filter((q) => model.get(q)!.s === "assembling");
+            const p = c.k === "chunk" && assembling.length > 0 ? assembling[c.p % assembling.length]! : peers[c.p % peers.length]!;
             const st = model.get(p)!;
             if (c.k === "close") {
               release(p);
               model.set(p, { s: "idle" });
               r.a.onPeerClose(p, { code: 1000, reason: "" });
             } else if (c.k === "error") {
-              if (c.tooLarge) expectedWarn++; else expectedError++;
+              if (c.tooLarge) expectedWarns.push("collab_frame_too_large:"); else expectedError++;
               if (st.s !== "closed") { release(p); model.set(p, { s: "closed" }); }
               r.a.onPeerError(p, new WSError(c.tooLarge ? TOO_LARGE : "Error: read ECONNRESET"));
             } else {
               let frame: FakeMessage;
               if (c.k === "declare") {
-                const choices = [F + 1, lim.M - 1, lim.M, lim.M + 1, lim.B - inUse, lim.B - inUse + 1, F + 1 + (c.r % (lim.M - F + 1))];
+                const bothShort = Math.max(lim.M - (userIn.get(keyOf(p)) ?? 0), lim.B - inUse) + 1;
+                const choices = [F, F + 1, lim.M - 1, lim.M, lim.M + 1, lim.B - inUse, lim.B - inUse + 1, bothShort, F + 1 + (c.r % (lim.M - F + 1))];
                 const bytes = choices[c.pick % choices.length]!;
                 frame = decl(bytes);
               } else if (c.k === "text") {
@@ -960,7 +965,7 @@ describe("frame assembler — properties", () => {
                 // dropped: no return, no close, no log
               } else if (typeof frame.rawData === "string") {
                 if (st.s === "assembling") {
-                  expectedCloses.set(p, reject(p, 1002)); expectedWarn++;
+                  expectedCloses.set(p, reject(p, 1002)); expectedWarns.push("collab_frame_malformed:text_during_reassembly");
                 } else {
                   let header: unknown;
                   try { header = JSON.parse(frame.text()); } catch { header = undefined; }
@@ -968,14 +973,16 @@ describe("frame assembler — properties", () => {
                   const ok = typeof h === "object" && h !== null && !Array.isArray(h) && h.type === "chunked"
                     && typeof h.bytes === "number" && Number.isInteger(h.bytes) && h.bytes > F;
                   if (!ok) {
-                    expectedCloses.set(p, reject(p, 1002)); expectedWarn++;
+                    expectedCloses.set(p, reject(p, 1002)); expectedWarns.push("collab_frame_malformed:bad_header");
                   } else {
                     const bytes = h.bytes as number;
                     const k = keyOf(p);
                     if (bytes > lim.M) {
-                      expectedCloses.set(p, reject(p, 1009)); expectedWarn++;
-                    } else if ((userIn.get(k) ?? 0) + bytes > lim.M || inUse + bytes > lim.B) {
-                      expectedCloses.set(p, reject(p, 1013)); expectedWarn++;
+                      expectedCloses.set(p, reject(p, 1009)); expectedWarns.push("collab_message_too_large:declared");
+                    } else if ((userIn.get(k) ?? 0) + bytes > lim.M) {
+                      expectedCloses.set(p, reject(p, 1013)); expectedWarns.push("collab_reassembly_budget_exhausted:user");
+                    } else if (inUse + bytes > lim.B) {
+                      expectedCloses.set(p, reject(p, 1013)); expectedWarns.push("collab_reassembly_budget_exhausted:process");
                     } else {
                       inUse += bytes;
                       userIn.set(k, (userIn.get(k) ?? 0) + bytes);
@@ -989,10 +996,12 @@ describe("frame assembler — properties", () => {
                   expectedReturn = data;
                 } else {
                   const after = st.received + data.byteLength;
-                  if (after > st.bytes) {
-                    expectedCloses.set(p, reject(p, after > lim.M ? 1009 : 1002)); expectedWarn++;
+                  if (after > lim.M) {
+                    expectedCloses.set(p, reject(p, 1009)); expectedWarns.push("collab_message_too_large:received");
+                  } else if (after > st.bytes) {
+                    expectedCloses.set(p, reject(p, 1002)); expectedWarns.push("collab_frame_malformed:overflow");
                   } else if (after < st.bytes && data.byteLength < F) {
-                    expectedCloses.set(p, reject(p, 1002)); expectedWarn++;
+                    expectedCloses.set(p, reject(p, 1002)); expectedWarns.push("collab_frame_malformed:short_chunk");
                   } else {
                     st.chunks.push(data);
                     st.received = after;
@@ -1020,7 +1029,9 @@ describe("frame assembler — properties", () => {
             if (code === undefined) expect(fresh).toHaveLength(0);
             else expect(fresh).toEqual([[code, CLOSE[code]]]);
           });
-          expect(logs.warn.mock.calls.length - warnBefore).toBe(expectedWarn);
+          const warned = (logs.warn.mock.calls.slice(warnBefore) as Array<[{ ctx: Record<string, unknown> }, string]>)
+            .map(([arg, event]) => `${event}:${String(arg.ctx.reason ?? arg.ctx.scope ?? arg.ctx.source ?? "")}`);
+          expect(warned.sort()).toEqual(expectedWarns.sort());
           expect(logs.error.mock.calls.length - errorBefore).toBe(expectedError);
           expect(r.a.inUseBytes()).toBe(inUse);
           expect(r.a.inUseBytes()).toBeGreaterThanOrEqual(0);
