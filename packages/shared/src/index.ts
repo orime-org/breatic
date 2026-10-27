@@ -239,6 +239,8 @@ export {
   occurrences,
   feedsOf,
   layersOf,
+  layoutFeedsOf,
+  TEMPLATE_GUIDE_KEY,
   proposalMarkSegments,
   markReadsBack,
   markText,
@@ -756,7 +758,6 @@ export {
   type TemplateResourceNode,
 } from "@shared/canvas/generation-templates.js";
 export {
-  TEMPLATE_GUIDE_KEY,
   expandTemplate,
   matchTemplateInstance,
   templateGuideNode,

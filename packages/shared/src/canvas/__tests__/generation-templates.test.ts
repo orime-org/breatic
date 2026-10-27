@@ -16,7 +16,8 @@ import {
   type GenerationTemplate,
   type TemplateGenerateNode,
 } from '@shared/canvas/generation-templates.js';
-import { TEMPLATE_GUIDE_KEY, templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
+import { templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
+import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import { setLocale, setLocaleMessages, t } from '@shared/i18n/index.js';
 import { MAX_NODE_NAME_LEN } from '@shared/types/canvas-node.js';
 import { markedSegments } from '@shared/types/canvas-proposal.js';

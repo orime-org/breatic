@@ -136,6 +136,20 @@ describe('the little diagram of what gets built', () => {
     expect(groups[0]?.[0]?.[0]).toEqual({ label: 'Style', empty: false });
   });
 
+  it('stacks a template guide under what feeds its anchor, as the canvas places it (inner#1345)', () => {
+    const guide = {
+      ...written('Guide'),
+      templateNode: { template: 'storyboard-grid-25', key: 'guide', anchor: 0 },
+    } as ProposalNode;
+    const proposal = flow([generates('Storyboard'), empty('Character'), guide], [[1, 0]]);
+
+    const groups = shapeOf(proposal);
+
+    expect(groups.map((group) => group.map((layer) => layer.map((c) => c.label)))).toEqual([
+      [['Character', 'Guide'], ['Storyboard']],
+    ]);
+  });
+
   it('marks the node the reader fills in, wherever it sits', () => {
     const proposal = flow([empty('Your photo'), generates('On white')], [[0, 1]]);
 

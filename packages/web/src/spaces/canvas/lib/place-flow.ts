@@ -13,7 +13,7 @@
  * so the arrangement can be read by a test with no canvas around it.
  */
 
-import { TEMPLATE_GUIDE_KEY, layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
+import { layersOf, promptPlainText, type CanvasProposal, type ProposalNode } from '@breatic/shared';
 
 import { getViewportForBounds, type Viewport } from '@xyflow/react';
 
@@ -119,16 +119,7 @@ export function planFlowLayout(proposal: CanvasProposal, centre: Spot): Placed[]
   // its chips into runs on top of this, so a node wired to nothing gets a row
   // of its own there; here it stands in the first column beside whatever else
   // starts the flow, which is what the design asks for (§6.2).
-  // A template's guide text node stands one column left of the anchor it
-  // explains (inner#1345). It is laid out as if it fed the anchor, an edge the
-  // canvas never draws, so the anchor is never in the first column with the
-  // guide stacked under it where the generate panel opens.
-  const guides = proposal.nodes.flatMap((node, index) => {
-    const anchor = node.templateNode?.key === TEMPLATE_GUIDE_KEY ? node.templateNode.anchor : undefined;
-    return anchor === undefined || proposal.nodes[anchor] === undefined ? [] : [{ fromIndex: index, toIndex: anchor }];
-  });
-  const layer = layersOf({ ...proposal, edges: [...proposal.edges, ...guides] });
-  for (const { fromIndex, toIndex } of guides) layer[fromIndex] = Math.max(0, (layer[toIndex] ?? 1) - 1);
+  const layer = layersOf(proposal);
 
   const height = proposal.nodes.map((node) => estimateHeight(node));
   const columns = new Map<number, number[]>();

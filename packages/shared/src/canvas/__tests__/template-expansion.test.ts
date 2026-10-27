@@ -12,8 +12,8 @@ import fc from 'fast-check';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { GenerationTemplate, TemplateNodeKey } from '@shared/canvas/generation-templates.js';
+import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import {
-  TEMPLATE_GUIDE_KEY,
   expandTemplate,
   matchTemplateInstance,
   templateGuideNode,

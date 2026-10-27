@@ -11,6 +11,7 @@
 import { templateAnchor, type GenerationTemplate, type TemplateNodeKey } from "@shared/canvas/generation-templates.js";
 import { t } from "@shared/i18n/index.js";
 import {
+  TEMPLATE_GUIDE_KEY,
   markedSegments,
   type CanvasProposal,
   type PromptSegment,
@@ -18,9 +19,6 @@ import {
   type ProposalNodeType,
 } from "@shared/types/canvas-proposal.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
-
-/** The key the guide text node carries; no template node may use it. */
-export const TEMPLATE_GUIDE_KEY = "guide";
 
 /** A template's structure, by key. */
 export interface TemplateSkeleton {

@@ -10,7 +10,7 @@
  * display name.
  */
 
-import { feedsOf, layersOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
+import { layersOf, layoutFeedsOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -125,16 +125,16 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
 /**
  * Which run of the flow each node belongs to.
  *
- * Every node an edge or a slot fill touches is in the same run as the node at
- * its other end, whichever way it points: what matters for drawing is that
- * they are one piece of work, not which of them came first.
+ * Every node an edge, a slot fill or a template guide touches is in the same
+ * run as the node at its other end, whichever way it points: what matters for
+ * drawing is that they are one piece of work, not which of them came first.
  * @param proposal - The proposal the card draws.
  * @returns One run number per node, in the proposal's own order.
  * @throws {never} Never.
  */
 function runsOf(proposal: CanvasProposal): number[] {
   const run = proposal.nodes.map((_, at) => at);
-  const feeds = feedsOf(proposal);
+  const feeds = layoutFeedsOf(proposal);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
     for (const edge of feeds) {
