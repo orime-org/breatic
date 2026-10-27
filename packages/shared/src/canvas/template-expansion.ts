@@ -205,14 +205,15 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
     edge.into === undefined ? { from: edge.from, to: edge.to } : { from: edge.from, to: edge.to, into: edge.into };
   /**
    * Settles a key once every key it is wired into is settled: the nodes
-   * tagged for it wired into any open node it goes into are its match, in
+   * tagged for it wired into any open node it goes into are its match, each
+   * ranked by its earliest place among those nodes' incoming edges, then by
    * the graph's node order; open nodes without one make it missing; with
    * every node blocked it is unreached if any of them is, else missing.
    * @param key - The key.
    * @param out - Its template edges.
    */
   const settle = (key: TemplateNodeKey, out: readonly TemplateSkeleton["edges"][number][]): void => {
-    const near = new Set<string>();
+    const near = new Map<string, number>();
     let open = false;
     let unreached = false;
     for (const edge of out) {
@@ -224,9 +225,11 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
       open = true;
       walked.push(crossing(edge));
       // Whether it is wired along each of its edges is read after the walk.
-      for (const wire of incoming(at.get(edge.to) as string)) near.add(wire.from);
+      incoming(at.get(edge.to) as string).forEach((wire, place) => near.set(wire.from, Math.min(near.get(wire.from) ?? place, place)));
     }
-    const found = [...graph.nodes.keys()].filter((id) => near.has(id) && isTagged(id, key));
+    const found = [...graph.nodes.keys()]
+      .filter((id) => near.has(id) && isTagged(id, key))
+      .sort((one, other) => (near.get(one) as number) - (near.get(other) as number));
     const first = found[0];
     if (first !== undefined) {
       keys.set(key, found.length === 1 ? { kind: "one", node: first } : { kind: "many", nodes: found });

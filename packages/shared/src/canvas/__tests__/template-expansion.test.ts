@@ -555,6 +555,13 @@ describe('matchTemplateInstance, whatever order the template lists its edges (in
     }
   });
 
+  it('lists the nodes found for a key in the order they are wired in, whatever order the graph holds them', () => {
+    // X1 is wired into A first, so it stands first in A's references.
+    const nodes: TemplateGraphNode[] = [plain('A'), tagged('X2', 'x', 'image', 'chain'), tagged('X1', 'x', 'image', 'chain')];
+    const match = matchTemplateInstance(chain(['x'], [['x', 'a']]), graphOf(nodes, [['X1', 'A'], ['X2', 'A']]), 'A');
+    expect(match.keys.get('x')).toEqual({ kind: 'many', nodes: ['X1', 'X2'] });
+  });
+
   it('settles every key the same whatever order the template lists its edges', () => {
     const drawArb = fc
       .record({
