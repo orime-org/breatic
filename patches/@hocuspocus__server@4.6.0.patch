@@ -1,5 +1,5 @@
 diff --git a/dist/hocuspocus-server.cjs b/dist/hocuspocus-server.cjs
-index 39719e3862b1ff097c49f2673dafc445f90bd218..c04a782ebaac17cefff2f3452f87ae3cfe0fdc0a 100644
+index 39719e3862b1ff097c49f2673dafc445f90bd218..afe9908f06928fe82683e21fb9764967e6e2505e 100644
 --- a/dist/hocuspocus-server.cjs
 +++ b/dist/hocuspocus-server.cjs
 @@ -807,13 +807,21 @@ var version = "4.6.0";
@@ -34,8 +34,31 @@ index 39719e3862b1ff097c49f2673dafc445f90bd218..c04a782ebaac17cefff2f3452f87ae3c
  					this.incomingMessageQueueBytes[rawKey] = (this.incomingMessageQueueBytes[rawKey] ?? 0) + data.byteLength;
  					return;
  				}
+@@ -5717,15 +5725,21 @@ var Server = class {
+ 					peer._hocuspocus = this.hocuspocus.handleConnection(peer.websocket, peer.request);
+ 				},
+ 				message: (peer, message) => {
+-					peer._hocuspocus?.handleMessage(message.uint8Array());
++					const data = this.configuration.receiveFrame ? this.configuration.receiveFrame(peer, message) : message.uint8Array();
++					if (data) peer._hocuspocus?.handleMessage(data);
+ 				},
+ 				close: (peer, event) => {
++					this.configuration.onPeerClose?.(peer, event);
+ 					peer._hocuspocus?.handleClose({
+ 						code: event.code,
+ 						reason: event.reason
+ 					});
+ 				},
+ 				error: (peer, error) => {
++					if (this.configuration.onPeerError) {
++						this.configuration.onPeerError(peer, error);
++						return;
++					}
+ 					console.error("WebSocket error for peer:", peer.id);
+ 					console.error(error);
+ 				}
 diff --git a/dist/hocuspocus-server.esm.js b/dist/hocuspocus-server.esm.js
-index 0fce8e277d9cb44197070c7e52c43586b65b306d..c83ae2790ca694fdca442fd8e2823f87583465e3 100644
+index 0fce8e277d9cb44197070c7e52c43586b65b306d..a1dfb610c7e2316c4e6229f7188bc9668b0394eb 100644
 --- a/dist/hocuspocus-server.esm.js
 +++ b/dist/hocuspocus-server.esm.js
 @@ -777,13 +777,21 @@ var version = "4.6.0";
@@ -70,3 +93,47 @@ index 0fce8e277d9cb44197070c7e52c43586b65b306d..c83ae2790ca694fdca442fd8e2823f87
  					this.incomingMessageQueueBytes[rawKey] = (this.incomingMessageQueueBytes[rawKey] ?? 0) + data.byteLength;
  					return;
  				}
+@@ -1662,15 +1670,21 @@ var Server = class {
+ 					peer._hocuspocus = this.hocuspocus.handleConnection(peer.websocket, peer.request);
+ 				},
+ 				message: (peer, message) => {
+-					peer._hocuspocus?.handleMessage(message.uint8Array());
++					const data = this.configuration.receiveFrame ? this.configuration.receiveFrame(peer, message) : message.uint8Array();
++					if (data) peer._hocuspocus?.handleMessage(data);
+ 				},
+ 				close: (peer, event) => {
++					this.configuration.onPeerClose?.(peer, event);
+ 					peer._hocuspocus?.handleClose({
+ 						code: event.code,
+ 						reason: event.reason
+ 					});
+ 				},
+ 				error: (peer, error) => {
++					if (this.configuration.onPeerError) {
++						this.configuration.onPeerError(peer, error);
++						return;
++					}
+ 					console.error("WebSocket error for peer:", peer.id);
+ 					console.error(error);
+ 				}
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index a23622934ca8129aa1368447f9302633f19cdc16..6b4b4ec978c586a9313f07fd8c25397a4985491e 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -118,6 +118,16 @@ interface ServerConfiguration<Context = any> extends Configuration<Context> {
+    * Supports all ws ServerOptions, e.g. { maxPayload: 1024 * 1024 }
+    */
+   websocketOptions?: Record<string, any>;
++  /**
++   * Called with every crossws message before Hocuspocus sees it; the bytes it
++   * returns are handed to Hocuspocus, and nothing is handed on when it returns
++   * undefined.
++   */
++  receiveFrame?(peer: unknown, message: unknown): Uint8Array | undefined;
++  /** Called when a peer's socket closes, before Hocuspocus handles the close. */
++  onPeerClose?(peer: unknown, event: unknown): void;
++  /** Called with a ws error in place of the default console output. */
++  onPeerError?(peer: unknown, error: unknown): void;
+ }
+ declare const defaultServerConfiguration: {
+   port: number;
