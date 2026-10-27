@@ -117,7 +117,6 @@ describe("resending (design 2.2)", () => {
     const started = Date.now();
     const error = await fetchJson({ url, method: "GET" }, { replaySafe: true, ...read }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(HttpStatus);
-    expect((error as HttpStatus).retryAfterMs).toBe(120_000);
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(count()).toBe(1);
   });

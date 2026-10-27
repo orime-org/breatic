@@ -343,7 +343,7 @@ export async function fetchJson(request: OutgoingRequest, options: ReadOptions):
   const bytes = await readBody(request.url, response, options.maxBodyBytes, options.idleMs, options);
   const text = new TextDecoder().decode(bytes);
   if (response.status < 200 || response.status >= 300) {
-    throw new HttpStatus(request.url, response.status, text.slice(0, SNIPPET_CHARS), retryAfterOf(response.headers.get("retry-after")));
+    throw new HttpStatus(request.url, response.status, text.slice(0, SNIPPET_CHARS));
   }
   return { status: response.status, body: JSON.parse(text) as unknown };
 }

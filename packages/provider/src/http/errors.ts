@@ -31,21 +31,18 @@ export class NoAnswer extends Error {
 export class HttpStatus extends Error {
   readonly status: number;
   readonly bodySnippet: string;
-  readonly retryAfterMs: number | undefined;
 
   /**
    * Record what the error carries.
    * @param url - Where it went.
    * @param status - The response status.
    * @param bodySnippet - The start of the body, for logs.
-   * @param retryAfterMs - The parsed Retry-After header, when there was one.
    */
-  constructor(url: string, status: number, bodySnippet: string, retryAfterMs?: number) {
+  constructor(url: string, status: number, bodySnippet: string) {
     super(`Request to ${url} answered ${status}`);
     this.name = "HttpStatus";
     this.status = status;
     this.bodySnippet = bodySnippet;
-    this.retryAfterMs = retryAfterMs;
   }
 }
 
