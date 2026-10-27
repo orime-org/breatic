@@ -82,6 +82,37 @@ const textKey = (template: GenerationTemplate, rest: string): string => `canvas.
 const promptKeyOf = (template: GenerationTemplate, key: string): string =>
   key === template.anchor ? textKey(template, 'prompt') : textKey(template, `node.${key}.prompt`);
 
+/**
+ * A circle among a template's edges, walked depth first.
+ * @param template - The template.
+ * @returns The keys around the first circle found, back to where it starts, or undefined.
+ */
+function circleIn(template: GenerationTemplate): string[] | undefined {
+  const done = new Set<string>();
+  /**
+   * Walk on from one key along the path that led to it.
+   * @param path - The keys from the start to here.
+   * @returns The circle, or undefined.
+   */
+  const walk = (path: string[]): string[] | undefined => {
+    const at = path[path.length - 1] as string;
+    for (const edge of template.edges.filter((one) => one.from === at)) {
+      const back = path.indexOf(edge.to);
+      if (back >= 0) return [...path.slice(back), edge.to];
+      if (done.has(edge.to)) continue;
+      const found = walk([...path, edge.to]);
+      if (found) return found;
+    }
+    done.add(at);
+    return undefined;
+  };
+  for (const edge of template.edges) {
+    const found = done.has(edge.from) ? undefined : walk([edge.from]);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 afterEach(() => {
   setLocale('en');
 });
@@ -186,6 +217,17 @@ describe('generation template registry checks', () => {
       }
       expect([...reaches].sort(), template.id).toEqual(template.nodes.map((node) => node.key).sort());
     }
+  });
+
+  it('wires its nodes with no circle, as a canvas takes no edge that closes one', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      expect(circleIn(template), template.id).toBeUndefined();
+    }
+  });
+
+  it('finds the circle in edges that run in one', () => {
+    const circle = { ...(byId('costume-sheet') as GenerationTemplate), edges: [{ from: 'u', to: 'v' }, { from: 'v', to: 'u' }] };
+    expect(circleIn(circle)).toEqual(['u', 'v', 'u']);
   });
 
   it('wires template edges between keys it has and feeds inputs only into generate nodes', () => {

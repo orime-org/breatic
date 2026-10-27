@@ -198,48 +198,57 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   const queue: TemplateNodeKey[] = [skeleton.anchor];
   const blocked = new Map<TemplateNodeKey, "missing" | "unreached">();
   if (!keepsAt(skeleton.anchor)) blocked.set(skeleton.anchor, "unreached");
+  /**
+   * A template edge as the match reports it.
+   * @param edge - The edge.
+   * @returns Its ends, and its into when it names one.
+   */
+  const crossing = (edge: TemplateSkeleton["edges"][number]): { from: TemplateNodeKey; to: TemplateNodeKey; into?: string } =>
+    edge.into === undefined ? { from: edge.from, to: edge.to } : { from: edge.from, to: edge.to, into: edge.into };
+  // A key is queued again only when an edge changes what it matched, so the
+  // walk ends whatever the template's edges look like.
   for (let i = 0; i < queue.length; i += 1) {
     const to = queue[i] as TemplateNodeKey;
     for (const edge of skeleton.edges) {
       if (edge.to !== to) continue;
-      const crossed = edge.into === undefined ? { from: edge.from, to: edge.to } : { from: edge.from, to: edge.to, into: edge.into };
       const settled = keys.get(edge.from);
-      // A key two template edges leave is matched through the first; the
-      // second only asks that its node is wired there too.
-      if (settled?.kind === "one" || settled?.kind === "many") {
-        if (blocked.has(to)) continue;
-        walked.push(crossed);
-        const id = at.get(edge.from);
-        if (!incoming(at.get(to) as string).some((wire) => wire.from === id)) unwired.push(crossed);
-        continue;
-      }
       const status = blocked.get(to);
       if (status) {
-        if (settled === undefined) {
-          keys.set(edge.from, { kind: status });
-          blocked.set(edge.from, status);
-        }
+        if (settled !== undefined) continue;
+        keys.set(edge.from, { kind: status });
+        blocked.set(edge.from, status);
+        queue.push(edge.from);
+        continue;
+      }
+      walked.push(crossing(edge));
+      // A key two template edges leave is matched through the first edge that
+      // finds it; whether it is wired along the others is read after the walk.
+      if (settled?.kind === "one" || settled?.kind === "many") continue;
+      const found = incoming(at.get(to) as string)
+        .map((wire) => wire.from)
+        .filter((id) => isTagged(id, edge.from));
+      const first = found[0];
+      if (first === undefined) {
+        if (settled?.kind === "missing") continue;
+        keys.set(edge.from, { kind: "missing" });
+        blocked.set(edge.from, "missing");
       } else {
-        walked.push(crossed);
-        const found = incoming(at.get(to) as string)
-          .map((wire) => wire.from)
-          .filter((id) => isTagged(id, edge.from));
-        const first = found[0];
-        if (first === undefined) {
-          keys.set(edge.from, { kind: "missing" });
-          blocked.set(edge.from, "missing");
-        } else {
-          keys.set(edge.from, found.length === 1 ? { kind: "one", node: first } : { kind: "many", nodes: found });
-          at.set(edge.from, first);
-          blocked.delete(edge.from);
-          if (!keepsAt(edge.from)) blocked.set(edge.from, "unreached");
-        }
+        keys.set(edge.from, found.length === 1 ? { kind: "one", node: first } : { kind: "many", nodes: found });
+        at.set(edge.from, first);
+        blocked.delete(edge.from);
+        if (!keepsAt(edge.from)) blocked.set(edge.from, "unreached");
       }
       queue.push(edge.from);
     }
   }
   for (const key of skeleton.nodes.keys()) {
     if (key !== skeleton.anchor && !keys.has(key)) keys.set(key, { kind: "unreached" });
+  }
+  for (const edge of skeleton.edges) {
+    const from = keys.get(edge.from);
+    const to = at.get(edge.to);
+    if ((from?.kind !== "one" && from?.kind !== "many") || to === undefined || blocked.has(edge.to)) continue;
+    if (!incoming(to).some((wire) => wire.from === at.get(edge.from))) unwired.push(crossing(edge));
   }
 
   // Inputs go to nodes wired into each fed node that keeps the template:

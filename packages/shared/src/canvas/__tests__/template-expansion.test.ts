@@ -464,6 +464,51 @@ describe('matchTemplateInstance, round-1 review (inner#1345)', () => {
     ]);
     expect(match.unwired).toEqual([{ from: 'x', to: 'u', into: 'pool' }]);
   });
+
+  it('lists the edge into the anchor as not wired when the node is wired only further up', () => {
+    const fan: TemplateSkeleton = {
+      id: 'fan',
+      anchor: 'a',
+      nodes: new Map([
+        ['a', { role: 'generate', type: 'image' }],
+        ['u', { role: 'generate', type: 'image' }],
+        ['x', { role: 'source', type: 'image', resource: 'templates/fan/x.png' }],
+      ]),
+      edges: [
+        { from: 'x', to: 'u', into: 'pool' },
+        { from: 'x', to: 'a', into: 'pool' },
+        { from: 'u', to: 'a', into: 'pool' },
+      ],
+      inputs: [],
+      steps: [],
+    };
+    const nodes: TemplateGraphNode[] = [plain('A'), tagged('U', 'u', 'image', 'fan'), tagged('X', 'x', 'image', 'fan')];
+    const match = matchTemplateInstance(fan, graphOf(nodes, [['X', 'U', 'pool'], ['U', 'A', 'pool']]), 'A');
+    expect(match.keys.get('x')).toEqual({ kind: 'one', node: 'X' });
+    expect(match.unwired).toEqual([{ from: 'x', to: 'a', into: 'pool' }]);
+  });
+
+  it('ends on a template whose edges run in a circle', () => {
+    const circle: TemplateSkeleton = {
+      id: 'circle',
+      anchor: 'a',
+      nodes: new Map([
+        ['a', { role: 'generate', type: 'image' }],
+        ['u', { role: 'generate', type: 'image' }],
+        ['v', { role: 'generate', type: 'image' }],
+      ]),
+      edges: [
+        { from: 'u', to: 'a' },
+        { from: 'v', to: 'u' },
+        { from: 'u', to: 'v' },
+      ],
+      inputs: [],
+      steps: [],
+    };
+    const match = matchTemplateInstance(circle, graphOf([plain('A')], []), 'A');
+    expect(match.keys.get('u')).toEqual({ kind: 'missing' });
+    expect(match.keys.get('v')).toEqual({ kind: 'missing' });
+  });
 });
 
 describe('templateMarkTargets', () => {

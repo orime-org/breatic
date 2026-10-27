@@ -672,7 +672,12 @@ describe("the consistency check, round-1 review (inner#1345)", () => {
     expect(verdict).toMatchObject({ ok: false, refusal: "template-edge-into", reason: expect.stringContaining('"style_images"') });
   });
 
-  it("refuses a node two template edges leave when one of them is not wired", () => {
+  // Look goes into First and into Final: each wiring leaves one of the two out.
+  for (const [left, wired] of [
+    ["into First", { fromIndex: 2, toIndex: 0, into: "pool" }],
+    ["into Final", { fromIndex: 2, toIndex: 1, into: "pool" }],
+  ] as const) {
+  it(`refuses a node two template edges leave when the one ${left} is not wired`, () => {
     const fan: GenerationTemplate = {
       id: "fixture-fan",
       anchor: "final",
@@ -693,20 +698,18 @@ describe("the consistency check, round-1 review (inner#1345)", () => {
     const note = { slot: { kind: "note" as const, label: "Generate First first" } };
     const sent: Sent = {
       nodes: [
-        { role: "generate", type: "image", name: "Final", template: { id: "fixture-fan" }, prompt: [note, { text: "Final of " }, { ref: 1 }, { text: " in " }, { ref: 2 }] },
-        { role: "generate", type: "image", name: "First", template: { id: "fixture-fan", key: "first" }, prompt: [{ text: "A first take." }] },
+        { role: "generate", type: "image", name: "Final", template: { id: "fixture-fan" }, prompt: [note, { text: "Final of " }, { ref: 1 }, ...(wired.toIndex === 0 ? [{ text: " in " }, { ref: 2 }] : [])] },
+        { role: "generate", type: "image", name: "First", template: { id: "fixture-fan", key: "first" }, prompt: [{ text: "A first take" }, ...(wired.toIndex === 1 ? [{ text: " in " }, { ref: 2 }] : [])] },
         { role: "source", type: "image", name: "Look", template: { id: "fixture-fan", key: "look" } },
       ],
-      edges: [
-        { fromIndex: 1, toIndex: 0, into: "pool" },
-        { fromIndex: 2, toIndex: 0, into: "pool" },
-      ],
+      edges: [{ fromIndex: 1, toIndex: 0, into: "pool" }, wired],
       rationale: "r",
       groupName: "Fan",
     };
     const verdict = verdictFor(sent, undefined, [...FIXTURES, fan]);
     expect(verdict).toMatchObject({ ok: false, refusal: "template-edge-missing", reason: expect.stringContaining('node 2 ("Look")') });
   });
+  }
 
   it("says where a missing key goes: its role, type, the node it is wired into and how", () => {
     const shape = withoutNode(agentShape(SHEET), "node:sketch", SKETCH_FIRST);
