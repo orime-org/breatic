@@ -242,7 +242,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    */
   const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined): unknown => {
     if (upstream === undefined || !APICallError.isInstance(error) || error.statusCode === undefined) return error;
-    if (classifyLlm(error, vendorOf(kindOf(upstream)))?.kind !== "http_status") return error;
+    // Only an answer the route stopped on is a refusal: a passing status moved on or was retried.
+    const failure = classifyLlm(error, vendorOf(kindOf(upstream)));
+    if (failure?.kind !== "http_status" || failure.status === 429 || failure.status >= 500) return error;
     let body: { id?: unknown; usage?: { cost?: unknown } } | undefined;
     try {
       body = JSON.parse(error.responseBody ?? answerBody ?? "") as typeof body;

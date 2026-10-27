@@ -102,7 +102,15 @@ export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
     if (current instanceof NoAnswer) return { kind: "no_answer" };
     if (current instanceof Aborted || current.name === "AbortError" || current.name === "TimeoutError") return { kind: "aborted" };
   }
-  if (APICallError.isInstance(error) && typeof error.statusCode === "number") return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
+  if (APICallError.isInstance(error) && typeof error.statusCode === "number") {
+    // OpenRouter's SDK throws a 200 whose body is an error as a status-200 error carrying that
+    // error as data; it is judged by its own code, as the same error in a stream is.
+    if (error.statusCode === 200 && error.data !== undefined) {
+      const status = inBandStatusOf(vendor, error.data);
+      if (status !== undefined) return statusFailure(status, inBandBodyOf(error.data), vendor);
+    }
+    return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
+  }
   if (error instanceof InBandError) {
     const status = inBandStatusOf(vendor, error.error);
     return status === undefined ? null : statusFailure(status, inBandBodyOf(error.error), vendor);
