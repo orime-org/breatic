@@ -33,6 +33,7 @@ const NOW = Date.parse(OPENED) + 60_000;
 function entry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
   return {
     id: 't-1',
+    taskId: null,
     projectId: 'p-1',
     spaceId: 's-1',
     nodeId: 'n-1',

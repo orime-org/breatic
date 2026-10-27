@@ -480,6 +480,7 @@ describe("read_conversation given a last turn", () => {
 function task(over: Partial<NodeTaskRecord>): NodeTaskRecord {
   return {
     id: "t-1",
+    taskId: null,
     projectId: "p",
     spaceId: SPACE,
     nodeId: NODE_ID,

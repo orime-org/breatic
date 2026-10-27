@@ -9,14 +9,16 @@
  * behind a number is asked for only while somebody is looking at it.
  */
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskEntry } from '@breatic/shared';
+import { miniToolById } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
+import { miniToolsApi } from '@web/data/api/mini-tools';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -144,6 +146,32 @@ function OpenNodeTaskPanel({
     gcTime: 0,
   });
   const entries = React.useMemo(() => query.data ?? [], [query.data]);
+  // The node row and its parent execution have separate identities. Read the
+  // full authoritative execution without writing its media back to the node;
+  // the existing result delivery owns that write. A matching label is only a
+  // lookup candidate: the project-scoped endpoint checks the actual plan.
+  const parentRunIds = React.useMemo(
+    () => [...new Set(entries.flatMap((entry) =>
+      entry.action === 'mini_tool' &&
+      miniToolById(entry.label)?.run.kind === 'planned' &&
+      typeof entry.taskId === 'string' && entry.taskId.length > 0
+        ? [entry.taskId]
+        : [],
+    ))],
+    [entries],
+  );
+  useQueries({
+    queries: parentRunIds.map((runId) => ({
+      queryKey: ['mini-tool-run', projectId, runId],
+      queryFn: () => miniToolsApi.getRun(projectId, runId),
+      retry: false,
+      // As with the node list, reopening or changing the counts must read the
+      // current persisted result and bill even when the usual cache is fresh.
+      staleTime: 0,
+      gcTime: 0,
+      refetchOnMount: 'always' as const,
+    })),
+  });
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
   const counting = React.useMemo(

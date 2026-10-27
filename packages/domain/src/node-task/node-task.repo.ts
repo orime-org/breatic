@@ -30,6 +30,8 @@ export interface NodeTaskCounts {
 /** A task row as the list endpoint hands it out. */
 export interface NodeTaskRow {
   id: string;
+  /** Persistent parent job identity, distinct from this node-task row. */
+  taskId: string | null;
   projectId: string;
   spaceId: string;
   nodeId: string;
@@ -82,6 +84,7 @@ export interface NodeTaskListRow extends NodeTaskRow {
 function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
   return {
     id: row.id,
+    taskId: row.taskId,
     projectId: row.projectId,
     spaceId: row.spaceId,
     nodeId: row.nodeId,

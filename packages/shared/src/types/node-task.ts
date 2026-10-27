@@ -24,6 +24,8 @@ export type NodeTaskAction = (typeof NODE_TASK_ACTIONS)[number];
  */
 export interface NodeTaskEntry {
   id: string;
+  /** Persistent parent job identity; null for tasks without a parent. */
+  taskId: string | null;
   projectId: string;
   spaceId: string;
   nodeId: string;
