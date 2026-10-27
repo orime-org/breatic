@@ -438,3 +438,55 @@ describe("a stream stopped before its first content (design 3.5, S4)", () => {
     expect(prepared.pendingCosts()).toEqual([{ state: "pending", lookup: expect.objectContaining({ upstream: "openrouter", generationId: "gen-early" }) }]);
   });
 });
+
+/**
+ * One server-sent chunk.
+ * @param body - The chunk.
+ * @returns Its event line.
+ */
+const event = (body: unknown): string => `data: ${JSON.stringify(body)}\n\n`;
+
+describe("a stream that reports an error and then finishes (design 3.5, 5.5)", () => {
+  it("hands its generation over once, on the finish, and keeps none in pendingCosts", async () => {
+    const raw = event({ id: "gen-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "he" }, finish_reason: null }] })
+      + event({ id: "gen-1", error: { code: 502, message: "Provider returned error" } })
+      + "data: [DONE]\n\n";
+    fakes.openrouter.answer(() => ({ status: 200, raw, contentType: "text/event-stream" }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("meta/llama-x", THINK);
+    const ends: unknown[] = [];
+    const stream = streamText({ model: prepared.model, prompt: "hi", ...prepared.options, onError: () => undefined, onFinish: (e) => void ends.push(e.providerMetadata?.breatic) });
+    await stream.consumeStream();
+    expect(ends).toEqual([expect.objectContaining({ costRef: { upstream: "openrouter", generationId: "gen-1" } })]);
+    expect(prepared.pendingCosts()).toEqual([]);
+  });
+});
+
+describe("a pinned step whose stream reports an error before its content (design 12.4)", () => {
+  it("is retried on the same upstream", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const toolCall = event({
+      id: "gen-a",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "m",
+      choices: [{ index: 0, delta: { role: "assistant", tool_calls: [{ index: 0, id: "call-1", type: "function", function: { name: "lookup", arguments: "{}" } }] }, finish_reason: null }],
+    }) + event({ id: "gen-a", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] }) + "data: [DONE]\n\n";
+    let n = 0;
+    fakes.openrouter.answer(() => {
+      n++;
+      const raw = n === 1 ? toolCall : n === 2 ? inBandError(502) : sse(true);
+      return { status: 200, raw, contentType: "text/event-stream" };
+    });
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("meta/llama-x", THINK);
+    const stream = streamText({
+      model: prepared.model,
+      prompt: "hi",
+      tools: { lookup: tool({ inputSchema: z.object({}), execute: async () => "found" }) },
+      stopWhen: stepCountIs(2),
+      onError: () => undefined,
+      ...prepared.options,
+    });
+    expect(await stream.text).toBe("he");
+    expect(posted(fakes.openrouter)).toHaveLength(3);
+  });
+});

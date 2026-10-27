@@ -12,6 +12,7 @@ import {
   type MediaBinding,
   type ProviderConfigInput,
 } from "../schema.js";
+import { createProvider } from "../../provider.js";
 
 const pricing = { kind: "formula", base_price: 0.1, formula: "", discount_rate: 100 };
 
@@ -195,5 +196,68 @@ describe("assertBindsCatalog", () => {
     const problems = catalogProblems([bind("fal", 2)], { models: [...catalog.models, { name: "kling", params: {} }] });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain("kling");
+  });
+});
+
+describe("provider.assertBindsCatalog (design 4.2)", () => {
+  /**
+   * The problems the instance's catalog check reports.
+   * @param bindings - The model's bindings.
+   * @param shape - The catalog.
+   * @returns The problem lines; empty when it passes.
+   */
+  function problems(bindings: MediaBinding[], shape: CatalogShape): readonly string[] {
+    const provider = createProvider({ config: input(bindings), keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t });
+    try {
+      provider.assertBindsCatalog(shape);
+      return [];
+    } catch (error) {
+      if (error instanceof ProviderConfigError) return error.problems;
+      throw error;
+    }
+  }
+
+  const joined: CatalogShape = { models: [{ name: "seedance", params: { images: {}, style: { joins: "images" } } }] };
+
+  it("checks the configuration the instance was built from", () => {
+    expect(problems([bind("fal", 2, { params: { images: { field: "images" } }, mentions: { images: "@image{n}" } })], joined)).toEqual([]);
+  });
+
+  it("reports a param other params join whose binding has no mentions template, naming model, upstream and param", () => {
+    const found = problems([bind("fal", 2, { params: { images: { field: "images" } } })], joined);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("seedance");
+    expect(found[0]).toContain("fal");
+    expect(found[0]).toContain("images");
+  });
+});
+
+describe("deployment overrides of LLM routes (design 4.4)", () => {
+  const llm = {
+    routes: [{ prefix: "google/", upstreams: [{ upstream: "google", weight: 0 }, { upstream: "openrouter", weight: 1 }] }],
+    understand_routes: [{ prefix: "google/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "google", weight: 1 }] }],
+  };
+  const llmUpstreams = {
+    ...upstreams,
+    google: { kind: "google", base_url: "https://g.example", key_env: "GOOGLE_API_KEY" },
+    openrouter: { kind: "openrouter", base_url: "https://or.example", key_env: "OPENROUTER_API_KEY" },
+  };
+  const order = (list: readonly { upstreams: readonly { upstream: string }[] }[]): string[] => list[0]!.upstreams.map((u) => u.upstream);
+
+  it("applies an llm override to the chat routes only", () => {
+    const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { llm: { "google/": { weights: { google: 0, openrouter: 1 } } } } });
+    expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
+    expect(order(config.llm.understand_routes)).toEqual(["openrouter", "google"]);
+  });
+
+  it("applies an understand override to the understand routes only", () => {
+    const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 0, openrouter: 1 } } } } } as ProviderConfigInput);
+    expect(order(config.llm.understand_routes)).toEqual(["google", "openrouter"]);
+    expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
+  });
+
+  it("refuses an understand override naming a prefix no understand route has", () => {
+    const found = problemsOf({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "deepseek/": { weights: { openrouter: 0 } } } } } as ProviderConfigInput);
+    expect(found).toEqual([expect.stringContaining("deepseek/")]);
   });
 });

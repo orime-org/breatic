@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../config/schema.js";
 import { MediaRefused } from "../../http/fetch-media.js";
 import { createProvider } from "../../provider.js";
-import { DeadlinePassed, SendNotAccepted, UpstreamTaskFailed } from "../../errors.js";
+import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
@@ -337,5 +337,41 @@ describe("a describe step that cannot read its image (design 3.2)", () => {
       silent.closeAllConnections();
       await new Promise<void>((done) => silent.close(() => done()));
     }
+  });
+});
+
+describe("a describe step whose understand call reaches no upstream (design 3.2, 5.3, 9)", () => {
+  /**
+   * Plan the model and send its describe step with the given keys.
+   * @param keys - The environment keys.
+   * @returns What send did.
+   */
+  async function describeWith(keys: Record<string, string>): Promise<unknown> {
+    const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      "send",
+    );
+    return r.send(stored(planned.ticket), live()).catch((e: unknown) => e);
+  }
+
+  it("answers failed naming the missing key when no understand upstream is configured", async () => {
+    const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key" })) as MediaAnswer, "failed");
+    expect(answer.reason).toBeInstanceOf(NoUpstreamAvailable);
+    expect((answer.reason as NoUpstreamAvailable).reasons).toEqual([{ upstream: "openrouter", kind: "missing_key", envVar: "OPENROUTER_API_KEY" }]);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
+  it("throws SendNotAccepted when the understand upstreams fail in a passing way", async () => {
+    openrouter.answer(() => ({ status: 503, body: {} }));
+    expect(await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })).toBeInstanceOf(SendNotAccepted);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
+  it("answers failed with UpstreamRequestRejected when the understand upstream refuses the request", async () => {
+    openrouter.answer(() => ({ status: 400, body: { error: { message: "image unreadable", code: 400 } } }));
+    const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })) as MediaAnswer, "failed");
+    expect(answer.reason).toBeInstanceOf(UpstreamRequestRejected);
   });
 });

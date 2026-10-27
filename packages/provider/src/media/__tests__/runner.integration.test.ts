@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import fc from "fast-check";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { NoAnswer } from "../../http/errors.js";
@@ -85,6 +86,7 @@ function config(): ProviderConfigInput {
       models: {
         seedance: { upstreams: seedance() },
         "voice-clone": { upstreams: voiceClone },
+        "voice-clone-both": { upstreams: [voiceClone[0]!, { ...voiceClone[0]!, upstream: "ws_b", weight: 2 }] },
         mureka: { upstreams: mureka },
         // ws_a bills $0.10 per second of the source clip, ws_b $0.30 a call.
         lipsync: {
@@ -725,6 +727,22 @@ describe("ticketFromLegacy — what earlier pickups left", () => {
     expect(a.seen.map((s) => `${s.method} ${s.path}`)).toEqual(["GET /predictions/p-voice/result"]);
   });
 
+  it("uses a cached clone for a clone step that had not been sent, as a fresh plan does", async () => {
+    const r = runner();
+    a.answer(({ method }) => (method === "POST" ? accepted("p-speak") : result("p-speak", "processing")));
+    const legacy = {
+      steps: [
+        { position: 0, kind: "voice" as const, endpoint: "minimax/voice-clone", itemIndex: null, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 },
+        { position: 1, kind: "speak" as const, endpoint: "minimax/speech-2.8-hd", itemIndex: null, status: "pending" as const, predictionId: null, output: {}, inlineCostUsd: 0 },
+      ],
+    };
+    const cached: MediaClone[] = [{ upstream: "ws_a", kind: "voice", sourceKey: "sha-a", upstreamId: "voice-on-a" }];
+    const answer = expectState(await r.ticketFromLegacy("voice-clone", speech, DEFAULT, options(cached), legacy), "send");
+    expect(answer.step.kind).toBe("speak");
+    await r.send(stored(answer.ticket), live());
+    expect(submits(a.seen).map((s) => s.body)).toEqual([{ text: "hello there", voice_id: "voice-on-a" }]);
+  });
+
   it.each([
     ["a list of urls", { urls: ["https://out.example/1.png", "https://out.example/2.png"], prediction: "p1" }, ["https://out.example/1.png", "https://out.example/2.png"]],
     ["one url, as steps stored it before lists", { url: "https://out.example/1.png", prediction: "p1" }, ["https://out.example/1.png"]],
@@ -757,5 +775,45 @@ describe("cost.lookup on WaveSpeed (design 3.6, critical path)", () => {
     a.answer(({ path }) => (path === "/billings/search" ? billing([]) : undefined));
     expect(await provider().cost.lookup(lookup, { lastAttempt: false })).toEqual({ state: "pending", lookup });
     expect((await provider().cost.lookup(lookup, { lastAttempt: true })).state).toBe("missing");
+  });
+});
+
+describe("a run never leaves the upstream that accepted one of its steps (design 5.2, 13.1, critical path)", () => {
+  const speech = { prompt: "hello there", params: { audio: "https://cdn.example/a.mp3" } };
+  const answers = { accept: null, "503": { status: 503, body: {} }, "429": { status: 429, body: {} }, missing: { status: 400, body: { code: 400, message: "Model not found." } } } as const;
+
+  it("property: whatever the submits answer, in every mode", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom(...(Object.keys(answers) as (keyof typeof answers)[])), { maxLength: 8 }),
+        fc.constantFrom<Route>({ mode: "default" }, { mode: "cheapest" }, { mode: "upstream", upstream: "ws_b" }),
+        async (script, route) => {
+          let n = 0;
+          const fake = ({ method, path }: { method: string; path: string }): ReturnType<typeof accepted> => {
+            if (path === "/billings/search") return billing([]);
+            if (method !== "POST") return result(path.split("/")[2] ?? "", "completed", ["https://out.example/s.mp3"]);
+            const next = script[n++] ?? "accept";
+            return answers[next] ?? accepted(`p-${n}`);
+          };
+          a.answer(fake);
+          b.answer(fake);
+          const r = runner();
+          let answer: MediaAnswer = await r.plan("voice-clone-both", speech, route, options());
+          let stuckTo: string | undefined;
+          for (let turn = 0; turn < 40 && (answer.state === "send" || answer.state === "running"); turn++) {
+            const { ticket } = answer as { ticket: MediaTicket & { upstream: string; accepted?: boolean } };
+            if (stuckTo !== undefined) expect(ticket.upstream).toBe(stuckTo);
+            if (ticket.accepted === true) stuckTo = ticket.upstream;
+            try {
+              answer = answer.state === "send" ? await r.send(stored(ticket), live()) : await r.poll(stored(ticket), live());
+            } catch (error) {
+              if (!(error instanceof SendNotAccepted)) throw error;
+            }
+          }
+          if (stuckTo !== undefined && "ticket" in answer) expect((answer.ticket as { upstream: string }).upstream).toBe(stuckTo);
+        },
+      ),
+      { numRuns: 40 },
+    );
   });
 });
