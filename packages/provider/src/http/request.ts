@@ -96,7 +96,7 @@ function classify(url: string, error: unknown): NotSent | NoAnswer {
  * @param options - The caller's signal and deadline.
  * @returns The combined signal and a disposer for its timer.
  */
-function boundSignal(options: SendOptions): { signal: AbortSignal; dispose: () => void } {
+export function boundSignal(options: Pick<SendOptions, "signal" | "deadlineAt">): { signal: AbortSignal; dispose: () => void } {
   const controller = new AbortController();
   /**
    * End the delivery.

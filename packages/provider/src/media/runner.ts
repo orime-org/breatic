@@ -6,6 +6,7 @@ import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
+import { boundSignal } from "@provider/http/request.js";
 import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
 import { buildBody } from "@provider/media/wavespeed/body.js";
 import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
@@ -269,17 +270,58 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const inFlight = new Map<string, { count: number; waiting: (() => void)[] }>();
 
   /**
+   * Wait for a free slot of an upstream, leaving the queue when the request's bounds end.
+   * @param upstream - The upstream.
+   * @param slot - Its slot state.
+   * @param slot.waiting - The queue of requests waiting for a slot.
+   * @param bounds - The request's deadline and signal.
+   * @throws {Aborted} When the deadline passed or the signal fired before a slot was free.
+   */
+  const waitForSlot = async (upstream: string, slot: { waiting: (() => void)[] }, bounds: RequestBounds): Promise<void> => {
+    const { signal, dispose } = boundSignal(bounds);
+    try {
+      await new Promise<void>((resolve, reject) => {
+        /**
+         * Take the free slot.
+         */
+        const woken = (): void => {
+          signal.removeEventListener("abort", leave);
+          resolve();
+        };
+        /**
+         * Leave the queue without a slot.
+         */
+        const leave = (): void => {
+          const at = slot.waiting.indexOf(woken);
+          if (at >= 0) slot.waiting.splice(at, 1);
+          reject(new Aborted(upstream));
+        };
+        if (signal.aborted) {
+          reject(new Aborted(upstream));
+          return;
+        }
+        slot.waiting.push(woken);
+        signal.addEventListener("abort", leave, { once: true });
+      });
+    } finally {
+      dispose();
+    }
+  };
+
+  /**
    * Run one request inside the upstream's concurrency cap.
    * @param upstream - The upstream.
+   * @param bounds - The request's deadline and signal, which also end its wait for a slot.
    * @param work - The request.
    * @returns What the request answered.
+   * @throws {Aborted} When the bounds end while it waits for a slot.
    */
-  const capped = async <T>(upstream: string, work: () => Promise<T>): Promise<T> => {
+  const capped = async <T>(upstream: string, bounds: RequestBounds, work: () => Promise<T>): Promise<T> => {
     const cap = config.upstreams[upstream]?.concurrency;
     if (cap === undefined) return work();
     const slot = inFlight.get(upstream) ?? { count: 0, waiting: [] };
     inFlight.set(upstream, slot);
-    while (slot.count >= cap) await new Promise<void>((resolve) => slot.waiting.push(resolve));
+    while (slot.count >= cap) await waitForSlot(upstream, slot, bounds);
     slot.count++;
     try {
       return await work();
@@ -576,7 +618,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
     for (const prediction of done.predictions) {
-      const read = await capped(ticket.upstream, () => billed(up, prediction, bounds, false));
+      const read = await capped(ticket.upstream, bounds, () => billed(up, prediction, bounds, false));
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }
@@ -770,7 +812,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const requestBounds = { deadlineAt: bounds.deadlineAt, ...(bounds.signal ? { signal: bounds.signal } : {}) };
       let answer;
       try {
-        answer = await capped(ticket.upstream, () => submit(reach(ticket.upstream), at.step.endpoint, body, requestBounds));
+        answer = await capped(ticket.upstream, requestBounds, () => submit(reach(ticket.upstream), at.step.endpoint, body, requestBounds));
       } catch (error) {
         const failure = classify(error);
         if (failure === null || failure.kind === "no_answer") throw error;
@@ -812,7 +854,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (at === undefined) return finish(ticket, bounds, {});
       let asked;
       try {
-        asked = await capped(ticket.upstream, () => ask(reach(ticket.upstream), at.step.predictionId!, bounds));
+        asked = await capped(ticket.upstream, bounds, () => ask(reach(ticket.upstream), at.step.predictionId!, bounds));
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent
           || (error instanceof HttpStatus && (error.status === 429 || error.status >= 500));
