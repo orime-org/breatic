@@ -190,22 +190,55 @@ export function viewportToInspect(
 export const CHROME_GAP_PX = 24;
 
 /**
+ * Whether two rects share any area; touching edges do not.
+ * @param a - One rect.
+ * @param b - The other.
+ * @returns True when they overlap.
+ */
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+/**
+ * The shortest slide that puts a box inside a room and off every block: each
+ * candidate edge is the box where it is, against a side of the room, or
+ * against a side of a block.
+ * @param box - The box.
+ * @param room - Where it has to end up inside.
+ * @param blocks - What it must not cover.
+ * @returns The slide, or null when no candidate is clear.
+ */
+function clearSlide(box: Rect, room: Rect, blocks: readonly Rect[]): { dx: number; dy: number } | null {
+  const xs = [box.x, room.x, room.x + room.width - box.width, ...blocks.flatMap((b) => [b.x - box.width, b.x + b.width])];
+  const ys = [box.y, room.y, room.y + room.height - box.height, ...blocks.flatMap((b) => [b.y - box.height, b.y + b.height])];
+  let best: { dx: number; dy: number } | null = null;
+  for (const x of xs) {
+    for (const y of ys) {
+      const at = { ...box, x, y };
+      if (!contains(at, room) || blocks.some((b) => overlaps(at, b))) continue;
+      const dx = x - box.x;
+      const dy = y - box.y;
+      if (best === null || Math.abs(dx) + Math.abs(dy) < Math.abs(best.dx) + Math.abs(best.dy)) best = { dx, dy };
+    }
+  }
+  return best;
+}
+
+/**
  * Where to slide the camera so a box on screen is in front of the reader
  * (inner#1345): nodes just placed and the generate panel opened on one of
  * them, grown around its prompt. The boxes come widest first, each one the
- * reader can do with less of: the first that fits the room is shown, else the
- * last is. The room it has is the pane
- * less what floats over it, each taken off the side it sits on: one centred
- * in the bottom third off the bottom, else one in the left half off the left,
- * else off the right. Nothing moves while that box is inside that room; else
- * it is centred in it at the reader's zoom, top left kept when it is larger.
- * The panel keeps its size on screen, so zooming out would not make it fit.
+ * reader can do with less of. The first that can sit inside the pane, a gap
+ * in from its edges and from the menu, toolbar and minimap floating over it,
+ * is slid there the shortest way at the reader's zoom; when none can, the
+ * last is put at the pane's top left. The panel keeps its size on screen, so
+ * zooming out would not make it fit.
  * @param boxes - The boxes, widest first, in screen pixels from the pane's top left.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
  * @param now - The viewport the reader is at.
- * @param chrome - What floats over the pane, in the box's pixels.
+ * @param chrome - What floats over the pane, in the boxes' pixels.
  * @returns The viewport to move to, or null to stay.
  */
 export function viewportToShow(
@@ -214,20 +247,21 @@ export function viewportToShow(
   now: Viewport,
   chrome: readonly Rect[],
 ): Viewport | null {
-  let left = CHROME_GAP_PX;
-  const top = CHROME_GAP_PX;
-  let right = pane.width - CHROME_GAP_PX;
-  let bottom = pane.height - CHROME_GAP_PX;
-  for (const one of chrome) {
-    if (one.x + one.width <= 0 || one.x >= pane.width || one.y + one.height <= 0 || one.y >= pane.height) continue;
-    if (one.y + one.height / 2 > (pane.height * 2) / 3) bottom = Math.min(bottom, one.y - CHROME_GAP_PX);
-    else if (one.x + one.width / 2 < pane.width / 2) left = Math.max(left, one.x + one.width + CHROME_GAP_PX);
-    else right = Math.min(right, one.x - CHROME_GAP_PX);
+  const room = { x: CHROME_GAP_PX, y: CHROME_GAP_PX, width: pane.width - 2 * CHROME_GAP_PX, height: pane.height - 2 * CHROME_GAP_PX };
+  const blocks = chrome
+    .filter((one) => overlaps(one, { x: 0, y: 0, ...pane }))
+    .map((one) => ({
+      x: one.x - CHROME_GAP_PX,
+      y: one.y - CHROME_GAP_PX,
+      width: one.width + 2 * CHROME_GAP_PX,
+      height: one.height + 2 * CHROME_GAP_PX,
+    }));
+  for (const box of boxes) {
+    const slide = clearSlide(box, room, blocks);
+    if (slide === null) continue;
+    if (slide.dx === 0 && slide.dy === 0) return null;
+    return { x: now.x + slide.dx, y: now.y + slide.dy, zoom: now.zoom };
   }
-  const room = { x: left, y: top, width: right - left, height: bottom - top };
-  const box = boxes.find((one) => one.width <= room.width && one.height <= room.height) ?? boxes[boxes.length - 1] ?? boxes[0];
-  if (contains(box, room)) return null;
-  const dx = box.width > room.width ? room.x - box.x : room.x + room.width / 2 - (box.x + box.width / 2);
-  const dy = box.height > room.height ? room.y - box.y : room.y + room.height / 2 - (box.y + box.height / 2);
-  return { x: now.x + dx, y: now.y + dy, zoom: now.zoom };
+  const last = boxes[boxes.length - 1] ?? boxes[0];
+  return { x: now.x + room.x - last.x, y: now.y + room.y - last.y, zoom: now.zoom };
 }

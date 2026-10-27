@@ -236,46 +236,46 @@ describe('freshNodesBox', () => {
 describe('viewportToShow (inner#1345)', () => {
   const pane = { width: 1000, height: 800 };
   const now = { x: -200, y: -100, zoom: 1.5 };
+  const G = CHROME_GAP_PX;
   // A menu down the left side; a toolbar and a minimap in the bottom right.
   const menu = { x: 16, y: 250, width: 48, height: 300 };
   const toolbar = { x: 700, y: 740, width: 280, height: 44 };
   const minimap = { x: 780, y: 580, width: 200, height: 150 };
   const chrome = [menu, toolbar, minimap];
-  // The room left: right of the menu, above the minimap, a gap in from the pane.
-  const room = { left: 64 + CHROME_GAP_PX, top: CHROME_GAP_PX, right: 1000 - CHROME_GAP_PX, bottom: 580 - CHROME_GAP_PX };
-  const middle = { x: (room.left + room.right) / 2, y: (room.top + room.bottom) / 2 };
 
   it('stays put while the box is clear of what floats over the canvas', () => {
-    expect(viewportToShow([{ x: 100, y: 40, width: 800, height: 500 }], pane, now, chrome)).toBeNull();
+    expect(viewportToShow([{ x: 100, y: 40, width: 600, height: 500 }], pane, now, chrome)).toBeNull();
   });
 
-  it('slides at the reader zoom to centre in the room a box under the left menu', () => {
+  it('slides a box under the left menu just clear of it, at the reader zoom', () => {
     const next = viewportToShow([{ x: 40, y: 100, width: 400, height: 300 }], pane, now, chrome);
 
-    expect(next).toEqual({ x: -200 + middle.x - 240, y: -100 + middle.y - 250, zoom: 1.5 });
+    expect(next).toEqual({ x: -200 + (menu.x + menu.width + G - 40), y: -100, zoom: 1.5 });
   });
 
-  it('lifts a box whose bottom right reaches the minimap', () => {
+  it('slides a box reaching the minimap the shorter way clear of it', () => {
+    // Up 44 clears it; left would take 144.
     const next = viewportToShow([{ x: 300, y: 300, width: 600, height: 300 }], pane, now, chrome);
 
-    expect(next).toEqual({ x: -200 + middle.x - 600, y: -100 + middle.y - 450, zoom: 1.5 });
+    expect(next).toEqual({ x: -200, y: -100 + (minimap.y - G - 600), zoom: 1.5 });
   });
 
-  it('keeps the top left of a box too large for the room', () => {
-    const next = viewportToShow([{ x: 300, y: 300, width: 900, height: 700 }], pane, now, chrome);
-
-    expect(next).toEqual({ x: -200 + room.left - 300, y: -100 + room.top - 300, zoom: 1.5 });
-  });
-
-  it('centres the first box that fits, the next when the first is too large', () => {
-    const everything = { x: 300, y: 100, width: 600, height: 700 };
-    const panelAndNode = { x: 500, y: 300, width: 400, height: 500 };
+  it('shows the next box when the first cannot be placed clear', () => {
+    const everything = { x: 100, y: 100, width: 980, height: 600 };
+    const panelAndNode = { x: 600, y: 300, width: 300, height: 300 };
     const next = viewportToShow([everything, panelAndNode], pane, now, chrome);
 
-    expect(next).toEqual({ x: -200 + middle.x - 700, y: -100 + middle.y - 550, zoom: 1.5 });
+    // Up 44 clears the minimap for the panel and its node.
+    expect(next).toEqual({ x: -200, y: -100 + (minimap.y - G - 600), zoom: 1.5 });
+  });
+
+  it('puts the last box top left in the pane when none can be placed clear', () => {
+    const next = viewportToShow([{ x: 300, y: 300, width: 980, height: 700 }], pane, now, chrome);
+
+    expect(next).toEqual({ x: -200 + G - 300, y: -100 + G - 300, zoom: 1.5 });
   });
 
   it('has the whole pane less the gap when nothing floats over it', () => {
-    expect(viewportToShow([{ x: CHROME_GAP_PX, y: CHROME_GAP_PX, width: 900, height: 700 }], pane, now, [])).toBeNull();
+    expect(viewportToShow([{ x: G, y: G, width: 1000 - 2 * G, height: 800 - 2 * G }], pane, now, [])).toBeNull();
   });
 });
