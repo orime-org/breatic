@@ -47,8 +47,11 @@ import {
   miniToolById,
   miniToolsFor,
   servedMiniToolsFor,
+  type MiniToolAnalysisRecord,
   type MiniToolSnapshot,
   type MiniToolSpec,
+  type VideoToolDraft,
+  type VideoToolId,
 } from '@breatic/shared/mini-tools';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 
@@ -231,10 +234,13 @@ import { CanvasVideoExpandBridge } from '@web/spaces/canvas/video-presentation/C
 import { useCanvasVideoBindings } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
+import { startPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { toolLayerOpen, useToolLayerArrows } from '@web/spaces/canvas/mini-tool/tool-layer-input';
 import {
   startMiniToolRun,
+  type BuiltGroup,
   type MiniToolCapture,
+  type MiniToolRun,
 } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import {
   activeMiniToolSlot,
@@ -4022,6 +4028,24 @@ function CanvasSpaceInner({
     },
     [readingRunOf, readOnly, nodes, t],
   );
+  /**
+   * Select and frame the output graph of the still-open mini-tool press.
+   * @param sourceId - Original host used by the existing framing owner.
+   * @param built - Complete newly created result footprints.
+   * @param group - The tool's declared output group, when present.
+   * @throws {never} Never.
+   */
+  const showMiniToolResults = React.useCallback((sourceId: string, built: Parameters<MiniToolRun['onBuilt']>[0], group?: BuiltGroup): void => {
+    if (group !== undefined) {
+      setSelectAfterCreate([group.id]);
+      frameBuilt({ ...group.position, width: group.width, height: group.height }, sourceId);
+      return;
+    }
+    setSelectAfterCreate(built.map((node) => node.id));
+    const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
+    if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), sourceId);
+  }, [frameBuilt]);
+
   // A mini-tool's Run (inner#888 §7.5): the snapshot was taken by the panel.
   // Whatever the press makes in the browser first (a browser tool's file, a
   // drawing tool's images), the build and the upload are one tracked
@@ -4072,18 +4096,7 @@ function CanvasSpaceInner({
         uploadImage: (file) => uploadDerivedImage(file, { projectId, spaceId }),
         setExporting: (exporting) => sessionStore.getState().setMiniToolExporting(exporting, session),
         stillOpen: () => sessionStore.getState().panelSession === session,
-        onBuilt: (built, group) => {
-          // A grouped batch is one thing to act on next: the group is what is
-          // selected and what the camera frames.
-          if (group !== undefined) {
-            setSelectAfterCreate([group.id]);
-            frameBuilt({ ...group.position, width: group.width, height: group.height }, nodeId);
-            return;
-          }
-          setSelectAfterCreate(built.map((node) => node.id));
-          const [first, ...rest] = built.map((node) => ({ ...node.position, width: node.width, height: node.height }));
-          if (first !== undefined) frameBuilt(freshNodesBox([first, ...rest]), nodeId);
-        },
+        onBuilt: (built, group) => showMiniToolResults(nodeId, built, group),
       });
       if (exportsBeforeRun(spec)) trackOperation(newId(), work);
       return work;
@@ -4096,11 +4109,40 @@ function CanvasSpaceInner({
       buffer,
       fillUpload,
       fillUploads,
-      frameBuilt,
+      showMiniToolResults,
       trackOperation,
       sessionStore,
     ],
   );
+  /**
+   * Execute the complete video draft from the current source and Canvas session.
+   * @param nodeId - The original video host.
+   * @param toolId - Its selected planned tool.
+   * @param draft - Complete press-frozen editable parameters and inputs.
+   * @param analyses - Matching accepted analysis facts.
+   * @returns The existing tracked press outcome.
+   * @throws {never} The press owns request errors and node marks.
+   */
+  const runVideoMiniTool = React.useCallback((nodeId: string, toolId: VideoToolId, draft: VideoToolDraft, analyses: readonly MiniToolAnalysisRecord[]): Promise<unknown> => {
+    if (readOnly) return Promise.resolve();
+    const host = nodes.find((node) => node.id === nodeId);
+    const view = asContentView(host?.data);
+    if (host === undefined || host.type !== 'video' || view === undefined) return Promise.resolve();
+    const gate = evaluateNodeGate({ locked: isNodeLocked(projectId, spaceId, nodeId) });
+    if (gate !== null) { warnNodeGate(t(gate.toastKey)); return Promise.resolve(); }
+    const group = host.parentId === undefined ? undefined : nodes.find((node) => node.id === host.parentId);
+    const session = sessionStore.getState().panelSession;
+    return startPlannedVideoRun({
+      projectId, spaceId, userId: viewerId ?? '', toolId, draft, analyses,
+      source: { id: host.id, name: view.name, position: host.position, groupOrigin: group?.position ?? null,
+        mimeType: view.mimeType, width: draft.source.mediaInfo.width, height: draft.source.mediaInfo.height },
+      sourceExists: () => buffer.settled().some((node) => node.id === nodeId),
+      canWrite: () => !readOnly && !isNodeLocked(projectId, spaceId, nodeId),
+      stillOpen: () => sessionStore.getState().panelSession === session,
+      onBuilt: (built, outputGroup) => showMiniToolResults(nodeId, built, outputGroup),
+    });
+  }, [readOnly, nodes, projectId, spaceId, viewerId, t, sessionStore, buffer, showMiniToolResults]);
+
   const onUploadInputChange = React.useCallback(
     (event: React.ChangeEvent<HTMLInputElement>): void => {
       const file = event.target.files?.[0];
@@ -4852,6 +4894,7 @@ function CanvasSpaceInner({
               nodes={nodes}
               getLastWriteWasLocal={getLastWriteWasLocal}
               onRun={runMiniTool}
+              onRunVideo={runVideoMiniTool}
               videoPresentation={videoRuntime.presentations}
               videoBindings={videoRuntime.bindings}
               renderVideoDecoder={renderVideoDecoder}
