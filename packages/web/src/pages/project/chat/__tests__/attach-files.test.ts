@@ -17,8 +17,9 @@ beforeEach(() => {
 });
 
 import { UploadFailedError } from '@web/data/upload/media-upload';
-import { uploadableFormatList } from '@breatic/shared';
-import { attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
+import { uploadableFormatList, uploadableSpellings } from '@breatic/shared';
+import { attachAccept, attachFiles, type AttachDeps } from '@web/pages/project/chat/attach-files';
+import { pickExtractor } from '@web/spaces/canvas/text-extract';
 import { chatAttachments } from '@web/stores/chat-attachments';
 
 const CONV = 'c1';
@@ -82,6 +83,30 @@ async function pick(files: File[], d: AttachDeps = deps()): Promise<void> {
 beforeEach(() => {
   chatAttachments.forget([CONV]);
   ids = 0;
+});
+
+describe('attachment picker formats', () => {
+  it.each([
+    'text/plain', 'text/markdown', 'text/csv',
+    'application/json', 'application/xml', 'application/javascript',
+    'application/ecmascript', 'application/x-yaml', 'application/yaml',
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+  ])('offers the existing extractor capability for %s', (mime) => {
+    expect(pickExtractor(mime)).not.toBeNull();
+    const tokens = attachAccept().split(',');
+    expect(tokens.includes(mime) || (mime.startsWith('text/') && tokens.includes('text/*'))).toBe(true);
+  });
+
+  it('retains supported media aliases and document extensions', () => {
+    const tokens = attachAccept().split(',');
+    expect(tokens).toEqual(expect.arrayContaining([...uploadableSpellings(), '.pdf', '.docx', '.xlsx', '.xls', '.txt']));
+    for (const unsupported of ['.doc', 'application/zip', 'image/*', 'video/*', 'audio/*']) {
+      expect(tokens).not.toContain(unsupported);
+    }
+  });
 });
 
 describe('attaching picked files', () => {
