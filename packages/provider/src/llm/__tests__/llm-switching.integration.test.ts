@@ -592,7 +592,7 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
       }
     }
     await Promise.resolve(stream.consumeStream()).catch(() => undefined);
-    const handed = [...ends.map((e) => (e as { costRef?: { generationId?: string } } | undefined)?.costRef?.generationId), ...prepared.pendingCosts().map((c) => (c as { lookup: { generationId: string } }).lookup.generationId)];
+    const handed = [...ends.map((e) => (e as { costRef?: { generationId?: string } } | undefined)?.costRef?.generationId), ...prepared.pendingCosts().map((c) => (c as unknown as { lookup: { generationId: string } }).lookup.generationId)];
     expect(handed.filter((id) => id === "gen-1")).toHaveLength(1);
   });
 

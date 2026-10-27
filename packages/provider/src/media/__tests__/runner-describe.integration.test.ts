@@ -186,7 +186,7 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
     expect(submits(wavespeed.seen)[1]?.body).toEqual({ prompt: "Element 1 walks", elements: [{ element_id: "el-1" }] });
 
     const done = expectState(await r.poll(stored(generating.ticket), live()), "done");
-    expect(done.costs).toContainEqual({ state: "known", usd: 0.0004, source: "reported" });
+    expect(done.costs).toContainEqual({ state: "known", usd: 0.0004, tokens: { input: 10, cachedInput: 0, output: 40, reasoning: 0 }, source: "reported" });
   });
 
   it("answers failed with MediaRefused for an image at a private address, asking no model", async () => {
@@ -295,7 +295,7 @@ describe("a describe step followed by a switch (design 3.4, 5.3)", () => {
       const element = expectState(await r.send(stored(planned.ticket), live()), "send");
       const moved = expectState(await r.send(stored(element.ticket), live()), "send");
       expect(moved.ticket.upstream).toBe("wavespeed_b");
-      expect(moved.ticket.costs).toEqual([{ state: "known", usd: 0.0004, source: "reported" }]);
+      expect(moved.ticket.costs).toEqual([{ state: "known", usd: 0.0004, tokens: { input: 10, cachedInput: 0, output: 40, reasoning: 0 }, source: "reported" }]);
     } finally {
       await second.close();
     }
