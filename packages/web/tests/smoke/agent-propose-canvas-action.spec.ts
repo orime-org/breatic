@@ -395,13 +395,16 @@ test('chains a generated character into a template storyboard, a ref @-ing it @n
       parts?: {
         type?: string;
         output?: { placed?: boolean };
-        input?: { nodes?: { template?: string; prompt?: { ref?: number }[] }[] };
+        input?: { nodes?: { template?: { id?: string; key?: string; input?: string }; prompt?: { ref?: number }[] }[] };
       }[];
     }[];
     const placed = messages
       .flatMap((m) => m.parts ?? [])
       .filter((part) => part.type === 'tool-propose_canvas_action' && part.output?.placed === true);
-    const grid = placed.flatMap((part) => part.input?.nodes ?? []).find((n) => n.template === 'storyboard-grid-25');
+    // The storyboard's anchor names the template and no key or input.
+    const grid = placed
+      .flatMap((part) => part.input?.nodes ?? [])
+      .find((n) => n.template?.id === 'storyboard-grid-25' && n.template.key === undefined && n.template.input === undefined);
     return grid?.prompt?.flatMap((s) => (s.ref === undefined ? [] : [s.ref])) ?? null;
   });
   expect(refs, 'a placed proposal carried the storyboard template').not.toBeNull();
