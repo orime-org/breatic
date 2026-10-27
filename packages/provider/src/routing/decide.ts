@@ -17,6 +17,17 @@ export type Phase = "media_submit" | "llm_before_content";
 export type Decision = "switch" | "retry" | "stop";
 
 /**
+ * Whether a status says the upstream may serve the same request if asked again: 408, 429
+ * and 5xx, and before an LLM's content also 409, the statuses the AI SDK retries (DD 25).
+ * @param status - The status.
+ * @param phase - Where the call was.
+ * @returns True for a passing status.
+ */
+export function passingStatus(status: number, phase: Phase): boolean {
+  return status === 408 || status === 429 || status >= 500 || (phase === "llm_before_content" && status === 409);
+}
+
+/**
  * Decide what a failure leads to (design section 5.3).
  * @param failure - How the attempt failed.
  * @param phase - Where the call was.
@@ -29,6 +40,6 @@ export function decide(failure: Failure, phase: Phase, retriesUsed: number, maxR
   // balance; a request that never left also goes to the next upstream at once.
   if (failure.kind === "not_sent" || failure.kind === "model_not_found" || failure.kind === "insufficient_balance") return "switch";
   if (failure.kind !== "http_status") return "stop";
-  if (failure.status !== 429 && failure.status < 500) return "stop";
+  if (!passingStatus(failure.status, phase)) return "stop";
   return phase === "llm_before_content" && retriesUsed < maxRetries ? "retry" : "switch";
 }

@@ -14,7 +14,7 @@ import type { Cost } from "@provider/cost.js";
 import { Aborted, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
-import type { Failure } from "@provider/routing/decide.js";
+import { passingStatus, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
 
@@ -217,10 +217,10 @@ export class SwitchingModel implements ModelV4 {
         try {
           return { value: await run(pinned), servedBy: pinned };
         } catch (error) {
-          // Pinned (design 12.4): only a request that never left and a 429 or 5xx are retried, here and
-          // never elsewhere; a missing model or balance is thrown at once, since a retry cannot fix it.
+          // Pinned (design 12.4): only a request that never left and a passing status are retried, here
+          // and never elsewhere; a missing model or balance is thrown at once, since a retry cannot fix it.
           const failure = classifyLlm(error, this.setup.vendorFor(pinned.upstream));
-          const passing = failure?.kind === "not_sent" || (failure?.kind === "http_status" && (failure.status === 429 || failure.status >= 500));
+          const passing = failure?.kind === "not_sent" || (failure?.kind === "http_status" && passingStatus(failure.status, "llm_before_content"));
           if (!passing || retries >= this.setup.maxRetries) throw error;
           if ((await pauseBeforeRetry(error, retries + 1, signal)) === "switch") throw error;
         }
