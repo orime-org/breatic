@@ -59,9 +59,12 @@ function matroska(id = "K01"): MatroskaInput {
  * @throws {Error} When assembly, exact equality or the already-validated shared shape fails.
  */
 function expectOutput(input: VideoSourceLedgerAssemblyInput, presentation: OwnedVideoPresentation, strategy: VideoSourceLedgerCompanion["strategy"], container: VideoSourceLedgerCompanion["container"]): VideoSourceLedgerCompanion {
+  const before = structuredClone(input);
+  const originalContainer = structuredClone(container);
+  const expected = { schemaVersion: 1, producerVersion: 1, sourceFingerprint: before.sourceFingerprint, attempt: before.attempt, strategy, physical: before.physical, container: originalContainer, presentation };
   const actual = assembleVideoSourceLedger(input);
-  const expected = { schemaVersion: 1, producerVersion: 1, sourceFingerprint: input.sourceFingerprint, attempt: input.attempt, strategy, physical: input.physical, container, presentation };
   expect(actual).toEqual(expected);
+  expect(input).toEqual(before);
   expect(videoSourceLedgerCompanionSchema.parse(actual)).toEqual(expected);
   return actual;
 }
