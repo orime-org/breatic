@@ -369,6 +369,12 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(wavespeed.seen).toHaveLength(0);
   });
 
+  it("throws SendNotAccepted when OpenRouter answers 200 with an error that stands for a 502", async () => {
+    openrouter.answer(() => ({ status: 200, body: { error: { message: "Provider returned error", code: 502 } } }));
+    expect(await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })).toBeInstanceOf(SendNotAccepted);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
   it("answers failed with UpstreamRequestRejected when the understand upstream refuses the request", async () => {
     openrouter.answer(() => ({ status: 400, body: { error: { message: "image unreadable", code: 400 } } }));
     const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })) as MediaAnswer, "failed");

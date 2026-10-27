@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fc from "fast-check";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
-import { NoAnswer } from "../../http/errors.js";
+import { Aborted, NoAnswer } from "../../http/errors.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
@@ -849,6 +849,31 @@ describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurren
     await new Promise((done) => setTimeout(done, 200));
     a.release();
     await Promise.all(sending);
+    expect(submits(a.seen)).toHaveLength(2);
+  });
+
+  it("lets a held submit leave on its deadline or its signal, and the slot still serves the next one", async () => {
+    const body = JSON.stringify({ code: 200, data: { id: "p1", status: "created", outputs: [] } });
+    a.answer(() => ({ status: 200, raw: body, contentType: "application/json", hold: true }));
+    const r = runner();
+    const plan = async (key: string): Promise<MediaTicket> =>
+      expectState(await r.plan("seedance", video, DEFAULT, { ...options(), idempotencyKey: key }), "send").ticket;
+    const [first, late, stopped, next] = await Promise.all([plan("task-1"), plan("task-2"), plan("task-3"), plan("task-4")]);
+    const sendingFirst = r.send(stored(first), live());
+    await new Promise((done) => setTimeout(done, 100));
+    const started = Date.now();
+    const stop = new AbortController();
+    const lateOutcome = r.send(stored(late), { deadlineAt: Date.now() + 300 }).catch((e: unknown) => e);
+    const stoppedOutcome = r.send(stored(stopped), { ...live(), signal: stop.signal }).catch((e: unknown) => e);
+    setTimeout(() => stop.abort(), 100);
+    expect(await stoppedOutcome).toBeInstanceOf(Aborted);
+    expect(await lateOutcome).toBeInstanceOf(DeadlinePassed);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(submits(a.seen)).toHaveLength(1);
+    a.release();
+    await sendingFirst;
+    a.answer(() => accepted("p4"));
+    expectState(await r.send(stored(next), live()), "running");
     expect(submits(a.seen)).toHaveLength(2);
   });
 });

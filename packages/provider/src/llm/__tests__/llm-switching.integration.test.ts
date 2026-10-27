@@ -5,8 +5,9 @@ import { generateText, stepCountIs, streamText, tool } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { NoUpstreamAvailable } from "../../errors.js";
+import { createProvider } from "../../provider.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
-import { CHAT_REPLY, llmProvider, posted, postedAt, startFakes, stopFakes, vendorReply, type LlmFakes } from "./llm-harness.js";
+import { CHAT_REPLY, llmConfig, llmProvider, posted, postedAt, startFakes, stopFakes, vendorReply, type LlmFakes } from "./llm-harness.js";
 
 let fakes: LlmFakes;
 
@@ -369,6 +370,59 @@ describe("an error part before the first content is judged like a status (design
   });
 });
 
+/**
+ * OpenRouter's whole answer of 200 whose body is an error, the form its SDK throws as a status-200 APICallError.
+ * @param code - The error's code.
+ * @returns The reply.
+ */
+const wholeError = (code: number): Reply => ({ status: 200, body: { error: { code, message: "Provider returned error" } } });
+
+describe("OpenRouter's 200 whose body is an error is judged by its code, as in a stream (design 5.3, 5.5)", () => {
+  beforeEach(() => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+  });
+
+  it("retries OpenRouter on a 429 in the body", async () => {
+    let n = 0;
+    fakes.openrouter.answer(({ path }) => (++n === 1 ? wholeError(429) : vendorReply(path)));
+    const outcome = await run({ OPENROUTER_API_KEY: "or" }, "meta/llama-x");
+    expect((outcome as { text?: unknown }).text).toBe("ok");
+    expect(posted(fakes.openrouter)).toHaveLength(2);
+  });
+
+  it("moves to the next upstream on a 502 in the body", async () => {
+    const config = llmConfig(fakes);
+    config.llm!.routes = [{ prefix: "deepseek/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "deepseek", weight: 1 }] }];
+    fakes.openrouter.answer(() => wholeError(502));
+    const provider = createProvider({ config, keyOf: (name) => BOTH[name as keyof typeof BOTH], llmMaxRetries: 0, cleanText: (t) => t });
+    const prepared = provider.llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(result.providerMetadata?.breatic?.upstream).toBe("deepseek");
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("keeps a 200 in the body as a refusal", async () => {
+    fakes.openrouter.answer(() => wholeError(200));
+    const outcome = await run({ OPENROUTER_API_KEY: "or" }, "meta/llama-x");
+    expect(outcome).toBeInstanceOf(Error);
+    expect(outcome).not.toBeInstanceOf(NoUpstreamAvailable);
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("moves an understand call on to Google on a 502 in the body", async () => {
+    fakes.openrouter.answer(() => wholeError(502));
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, { llmMaxRetries: 0 }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
+      maxOutputTokens: 50,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.upstream).toBe("google");
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+});
+
 describe("waiting before a retry on the same upstream (design 5.3)", () => {
   /**
    * The gaps between the requests a fake received, in milliseconds.
@@ -573,6 +627,18 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
     const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
     await expect(generateText({ model: prepared.model, prompt: "hi", ...prepared.options })).rejects.toThrow();
     expect(posted(fakes.deepseek)).toHaveLength(1);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
+  it("stops on what the vendor's SDK refuses before sending, without moving on", async () => {
+    const prepared = llmProvider(fakes, { ANTHROPIC_API_KEY: "k", OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("anthropic/claude-opus-5.5", THINK);
+    const outcome = await generateText({
+      model: prepared.model,
+      messages: [{ role: "user", content: [{ type: "file", data: new Uint8Array([1, 2, 3]), mediaType: "application/x-unknown" }] }],
+      ...prepared.options,
+    }).catch((e: unknown) => e);
+    expect(outcome).toMatchObject({ name: "AI_UnsupportedFunctionalityError" });
+    expect(posted(fakes.anthropic)).toHaveLength(0);
     expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 
