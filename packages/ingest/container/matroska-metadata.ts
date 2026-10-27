@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { MatroskaTrackScale, MatroskaTrackMetadata, MatroskaBlockMetadata } from "@shared/upload/video-source-ledger-types.js";
+export type { MatroskaTrackScale, MatroskaTrackMetadata, MatroskaBlockMetadata } from "@shared/upload/video-source-ledger-types.js";
+
 import { open } from "node:fs/promises";
 
 /** Immutable source bytes with exact integer random-access offsets. */
@@ -10,38 +13,6 @@ export interface MatroskaByteSource {
 }
 /** All metadata resource ceilings are supplied by the caller. */
 export interface MatroskaReadLimits { metadataBytes: number; elementCount: number; maxBlocks: number }
-/** Exact rational value of the original IEEE-754 track-scale representation. */
-export interface MatroskaTrackScale { numerator: string; denominator: string }
-/** Track identity and effective format defaults, without choosing a video stream. */
-export interface MatroskaTrackMetadata {
-  trackNumber: string;
-  trackUid: string;
-  trackType: string;
-  codecId: string;
-  enabled: boolean;
-  defaultDurationNs: string | null;
-  trackTimestampScale: MatroskaTrackScale;
-  codecDelayNs: string;
-}
-/** Physical block facts in file order; offsets never identify a BlockGroup wrapper. */
-export interface MatroskaBlockMetadata {
-  blockOrdinal: number;
-  kind: "simple" | "group";
-  /** Absolute byte offset of the SimpleBlock or internal Block element ID. */
-  elementOffset: string;
-  /** First codec frame byte, after the complete block and lace headers. */
-  dataOffset: string;
-  /** Total codec frame payload bytes, excluding every metadata header. */
-  dataBytes: string;
-  trackNumber: string;
-  clusterTimestampTicks: string;
-  relativeTimestampTicks: string;
-  invisible: boolean;
-  lacing: "none" | "xiph" | "fixed" | "ebml";
-  frameCount: number;
-  blockDurationTicks: string | null;
-  discardPaddingNs: string | null;
-}
 /** Complete bounded container metadata; no decoded or legal presentation schedule. */
 export interface MatroskaMetadata {
   timestampScaleNs: string;

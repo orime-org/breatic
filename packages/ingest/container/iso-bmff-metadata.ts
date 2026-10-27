@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { IsoBmffEdit, IsoBmffCompositionShift, IsoBmffSampleTiming, IsoBmffTrackMetadata } from "@shared/upload/video-source-ledger-types.js";
+export type { IsoBmffEdit, IsoBmffDecodeRun, IsoBmffCompositionRun, IsoBmffCompositionShift, IsoBmffSampleTiming, IsoBmffTrackMetadata } from "@shared/upload/video-source-ledger-types.js";
+
 import { open } from "node:fs/promises";
 
 /** A read-only immutable byte object; offsets retain the full source integer domain. */
@@ -10,42 +13,6 @@ export interface IsoBmffByteSource {
 }
 /** Caller-frozen resource ceilings, with no operational defaults in the reader. */
 export interface IsoBmffReadLimits { metadataBytes: number; boxCount: number }
-/** Complete source edit facts; fixed rate is the original signed 32-bit 16.16 integer. */
-export interface IsoBmffEdit {
-  segmentDurationMovieTicks: string;
-  mediaTimeTrackTicks: string;
-  mediaRateFixed16_16: string;
-}
-/** Compressed decode timing preserves its actual unsigned sample count and delta. */
-export interface IsoBmffDecodeRun { sampleCount: number; deltaTicks: string }
-/** Composition offsets preserve their versioned integer signedness. */
-export interface IsoBmffCompositionRun { sampleCount: number; offsetTicks: string }
-/** Original signed cslg fields, without applying a display-window policy. */
-export interface IsoBmffCompositionShift {
-  version: 0 | 1;
-  compositionToDtsShift: string;
-  leastDecodeToDisplayDelta: string;
-  greatestDecodeToDisplayDelta: string;
-  compositionStartTime: string;
-  compositionEndTime: string;
-}
-/** Selected-track sample facts, present only when an actual stts table was read. */
-export interface IsoBmffSampleTiming {
-  decodeRuns: IsoBmffDecodeRun[];
-  cttsVersion: 0 | 1 | null;
-  compositionRuns: IsoBmffCompositionRun[] | null;
-  compositionShift: IsoBmffCompositionShift | null;
-}
-/** One explicitly identified track, without inferring its codec or legal display extent. */
-export interface IsoBmffTrackMetadata {
-  trackId: number;
-  trackFlags: number;
-  durationMovieTicks: string;
-  mediaTimescale: string;
-  mediaDurationTicks: string;
-  edits: IsoBmffEdit[] | null;
-  sampleTiming?: IsoBmffSampleTiming;
-}
 /** Integer container facts only; decoder and native playback observations remain separate. */
 export interface IsoBmffMetadata {
   movieTimescale: string;

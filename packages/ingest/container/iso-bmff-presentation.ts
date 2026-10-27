@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { ExactPresentationTime, PhysicalVideoFrame, OwnedVideoPresentation } from "@shared/upload/video-source-ledger-types.js";
+export type { ExactPresentationTime, PhysicalVideoFrame, OwnedEditInterval, OwnedPresentationOccurrence, OwnedVideoPresentation } from "@shared/upload/video-source-ledger-types.js";
+
 import type { IsoBmffEdit } from "@ingest/container/iso-bmff-metadata.js";
 
-/** Exact owned seconds, reduced with a positive denominator. */
-export interface ExactPresentationTime { numerator: string; denominator: string }
-/** One actual physical frame in an explicitly unedited decoder clock. */
-export interface PhysicalVideoFrame { rawDecodeOrdinal: number; ptsTicks: string }
 /** A complete source ledger and its explicitly supplied edit schedule. */
 export interface RateOnePresentationInput {
   movieTimescale: string;
@@ -15,21 +14,6 @@ export interface RateOnePresentationInput {
   edits: IsoBmffEdit[];
   frames: PhysicalVideoFrame[];
 }
-/** A movie-time interval declared by an edit, including empty intervals with no fabricated frame. */
-export interface OwnedEditInterval { editOccurrence: number; empty: boolean; start: ExactPresentationTime; end: ExactPresentationTime }
-/** A physical frame may occupy multiple distinct presentation occurrences. */
-export interface OwnedPresentationOccurrence {
-  presentationOrdinal: number;
-  editOccurrence: number;
-  rawDecodeOrdinal: number;
-  sourcePtsTicks: string;
-  mappedPts: ExactPresentationTime;
-  displayStart: ExactPresentationTime;
-  displayEnd: ExactPresentationTime;
-}
-/** A pure frozen schedule, distinct from native callbacks and media-clock transport schemas. */
-export interface OwnedVideoPresentation { edits: OwnedEditInterval[]; frames: OwnedPresentationOccurrence[] }
-
 /**
  * Materialize a reduced exact time using the existing presentation arithmetic.
  * @param numerator - Signed original integer time.

@@ -1,16 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
+import type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upload/video-source-ledger-types.js";
+export type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upload/video-source-ledger-types.js";
 
-/** Exact physical Matroska frames bound to original packet/block provenance. */
-export interface MatroskaPhysicalVideoProbe {
-  streamIndex: number;
-  trackNumber: string;
-  trackUid: string;
-  sourceTimeBase: { numerator: string; denominator: string };
-  frames: { rawDecodeOrdinal: number; ptsTicks: string; blockOrdinal: number }[];
-}
+import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
 
 /**
  * Bind original selected FFprobe frame tokens to exact Matroska block headers.
@@ -69,14 +63,6 @@ export function parseMatroskaPhysicalVideoProbe(streamMetadata: unknown, physica
   const tracks = matroska.tracks.filter((track) => track.trackNumber === trackNumber);
   if (frames.length === 0 || tracks.length !== 1 || tracks[0]!.trackType !== "1" || matroska.blocks.filter((block) => block.trackNumber === trackNumber).length !== frames.length) throw new TypeError("Expected complete selected video-track provenance");
   return { streamIndex, trackNumber: tracks[0]!.trackNumber, trackUid: tracks[0]!.trackUid, sourceTimeBase, frames };
-}
-
-/** Exact physical video facts retain their original selected stream and integer clock. */
-export interface PhysicalVideoProbe {
-  streamIndex: number;
-  trackId: number;
-  sourceTimeBase: { numerator: string; denominator: string };
-  frames: { rawDecodeOrdinal: number; ptsTicks: string }[];
 }
 
 /**

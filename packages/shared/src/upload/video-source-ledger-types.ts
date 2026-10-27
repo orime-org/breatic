@@ -3,11 +3,11 @@
 
 /** Exact owned seconds, reduced with a positive denominator. */
 export interface ExactPresentationTime { numerator: string; denominator: string }
-/** One actual physical frame in its original decoder clock. */
+/** One actual physical frame in an explicitly unedited decoder clock. */
 export interface PhysicalVideoFrame { rawDecodeOrdinal: number; ptsTicks: string }
-/** A declared edit interval may be empty or have zero width. */
+/** A movie-time interval declared by an edit, including empty intervals with no fabricated frame. */
 export interface OwnedEditInterval { editOccurrence: number; empty: boolean; start: ExactPresentationTime; end: ExactPresentationTime }
-/** A physical picture may have several independent legal presentation occurrences. */
+/** A physical frame may occupy multiple distinct presentation occurrences. */
 export interface OwnedPresentationOccurrence {
   presentationOrdinal: number;
   editOccurrence: number;
@@ -17,15 +17,20 @@ export interface OwnedPresentationOccurrence {
   displayStart: ExactPresentationTime;
   displayEnd: ExactPresentationTime;
 }
-/** Owned exact schedule, independent of native playback equivalence. */
+/** A pure frozen schedule, distinct from native callbacks and media-clock transport schemas. */
 export interface OwnedVideoPresentation { edits: OwnedEditInterval[]; frames: OwnedPresentationOccurrence[] }
-/** Original signed fixed-point rate and exact ISO edit fields. */
-export interface IsoBmffEdit { segmentDurationMovieTicks: string; mediaTimeTrackTicks: string; mediaRateFixed16_16: string }
-/** Compressed original unsigned decode timing. */
+
+/** Complete source edit facts; fixed rate is the original signed 32-bit 16.16 integer. */
+export interface IsoBmffEdit {
+  segmentDurationMovieTicks: string;
+  mediaTimeTrackTicks: string;
+  mediaRateFixed16_16: string;
+}
+/** Compressed decode timing preserves its actual unsigned sample count and delta. */
 export interface IsoBmffDecodeRun { sampleCount: number; deltaTicks: string }
-/** Versioned original composition timing. */
+/** Composition offsets preserve their versioned integer signedness. */
 export interface IsoBmffCompositionRun { sampleCount: number; offsetTicks: string }
-/** The five original signed composition-shift fields. */
+/** Original signed cslg fields, without applying a display-window policy. */
 export interface IsoBmffCompositionShift {
   version: 0 | 1;
   compositionToDtsShift: string;
@@ -34,14 +39,14 @@ export interface IsoBmffCompositionShift {
   compositionStartTime: string;
   compositionEndTime: string;
 }
-/** Complete declared selected-track sample timing, when physically present. */
+/** Selected-track sample facts, present only when an actual stts table was read. */
 export interface IsoBmffSampleTiming {
   decodeRuns: IsoBmffDecodeRun[];
   cttsVersion: 0 | 1 | null;
   compositionRuns: IsoBmffCompositionRun[] | null;
   compositionShift: IsoBmffCompositionShift | null;
 }
-/** Original selected ISO track without a synthetic edit list. */
+/** One explicitly identified track, without inferring its codec or legal display extent. */
 export interface IsoBmffTrackMetadata {
   trackId: number;
   trackFlags: number;
@@ -51,16 +56,17 @@ export interface IsoBmffTrackMetadata {
   edits: IsoBmffEdit[] | null;
   sampleTiming?: IsoBmffSampleTiming;
 }
-/** Exact original ISO physical facts. */
+/** Exact physical video facts retain their original selected stream and integer clock. */
 export interface PhysicalVideoProbe {
   streamIndex: number;
   trackId: number;
   sourceTimeBase: { numerator: string; denominator: string };
   frames: { rawDecodeOrdinal: number; ptsTicks: string }[];
 }
-/** Exact rational value of the original IEEE track-scale representation. */
+
+/** Exact rational value of the original IEEE-754 track-scale representation. */
 export interface MatroskaTrackScale { numerator: string; denominator: string }
-/** Original selected Matroska track and its effective normative defaults. */
+/** Track identity and effective format defaults, without choosing a video stream. */
 export interface MatroskaTrackMetadata {
   trackNumber: string;
   trackUid: string;
@@ -71,23 +77,26 @@ export interface MatroskaTrackMetadata {
   trackTimestampScale: MatroskaTrackScale;
   codecDelayNs: string;
 }
-/** Original selected block; its ordinal remains global across unselected tracks. */
+/** Physical block facts in file order; offsets never identify a BlockGroup wrapper. */
 export interface MatroskaBlockMetadata {
   blockOrdinal: number;
-  kind: 'simple' | 'group';
+  kind: "simple" | "group";
+  /** Absolute byte offset of the SimpleBlock or internal Block element ID. */
   elementOffset: string;
+  /** First codec frame byte, after the complete block and lace headers. */
   dataOffset: string;
+  /** Total codec frame payload bytes, excluding every metadata header. */
   dataBytes: string;
   trackNumber: string;
   clusterTimestampTicks: string;
   relativeTimestampTicks: string;
   invisible: boolean;
-  lacing: 'none' | 'xiph' | 'fixed' | 'ebml';
+  lacing: "none" | "xiph" | "fixed" | "ebml";
   frameCount: number;
   blockDurationTicks: string | null;
   discardPaddingNs: string | null;
 }
-/** Original physical Matroska picture identities and their actual block association. */
+/** Exact physical Matroska frames bound to original packet/block provenance. */
 export interface MatroskaPhysicalVideoProbe {
   streamIndex: number;
   trackNumber: string;
@@ -95,6 +104,7 @@ export interface MatroskaPhysicalVideoProbe {
   sourceTimeBase: { numerator: string; denominator: string };
   frames: { rawDecodeOrdinal: number; ptsTicks: string; blockOrdinal: number }[];
 }
+
 /** The existing accepted platform preparation identity. */
 export interface VideoSourceLedgerAttempt { jobId: string; deadlineAt: number }
 /** Only source strategies independently supported by the original producer. */

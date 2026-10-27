@@ -58,6 +58,7 @@
     "../../shared/src/audio-peaks.ts",
     "../../shared/src/mini-tools/types.ts",
     "../../shared/src/upload/video-presentation-types.ts",
+    "../../shared/src/upload/video-source-ledger-types.ts",
     "../../shared/src/mini-tools/video-frame-table.ts",
     "__tests__/*.ts"
   ]
