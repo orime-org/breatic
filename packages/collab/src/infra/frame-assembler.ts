@@ -38,14 +38,14 @@ const CLOSE = {
 type CloseSpec = (typeof CLOSE)[keyof typeof CLOSE];
 
 /** What the reassembler reads from a crossws peer. */
-interface FramePeer {
+export interface FramePeer {
   readonly remoteAddress?: string;
   _hocuspocus?: { socketId?: string };
   close(code?: number, reason?: string): void;
 }
 
 /** What the reassembler reads from a crossws message; text frames carry a string. */
-interface FrameMessage {
+export interface FrameMessage {
   rawData: unknown;
   uint8Array(): Uint8Array;
   text(): string;
@@ -82,11 +82,11 @@ export interface FrameAssemblerOptions {
 /** The crossws hooks and the counters they keep. */
 export interface FrameAssembler {
   /** The bytes to hand to Hocuspocus for one frame, or undefined for none. */
-  receiveFrame(peer: object, message: object): Uint8Array | undefined;
+  receiveFrame(peer: FramePeer, message: FrameMessage): Uint8Array | undefined;
   /** crossws reported the connection closed. */
-  onPeerClose(peer: object, event: unknown): void;
+  onPeerClose(peer: FramePeer, event: unknown): void;
   /** ws reported an error; it closes the connection itself. */
-  onPeerError(peer: object, error: unknown): void;
+  onPeerError(peer: FramePeer, error: unknown): void;
   /** Bytes reserved by every connection now reassembling. */
   inUseBytes(): number;
   /** Bytes reserved per user (or per connection without a user). */
@@ -230,49 +230,41 @@ export function createFrameAssembler(options: FrameAssemblerOptions): FrameAssem
       arm(peer, state);
       return undefined;
     }
-    const whole = new Uint8Array(after);
-    let offset = 0;
-    for (const part of state.chunks) {
-      whole.set(part, offset);
-      offset += part.byteLength;
-    }
+    const whole = Buffer.concat(state.chunks, after);
     release(peer);
     return whole;
   }
 
   return {
-    receiveFrame(peer: object, message: object): Uint8Array | undefined {
-      const p = peer as FramePeer;
-      const m = message as FrameMessage;
+    receiveFrame(peer: FramePeer, message: FrameMessage): Uint8Array | undefined {
       const state = states.get(peer);
       if (state?.kind === "closed") return undefined;
-      const isText = typeof m.rawData === "string";
+      const isText = typeof message.rawData === "string";
       if (state === undefined) {
-        if (!isText) return m.uint8Array();
-        declare(p, m.text());
+        if (!isText) return message.uint8Array();
+        declare(peer, message.text());
         return undefined;
       }
       if (isText) {
-        reject(p, CLOSE.malformed, "collab_frame_malformed", {
-          reason: "text_during_reassembly", frameBytes: Buffer.byteLength(m.text()), bytes: state.bytes, receivedBytes: state.received,
+        reject(peer, CLOSE.malformed, "collab_frame_malformed", {
+          reason: "text_during_reassembly", frameBytes: Buffer.byteLength(message.text()), bytes: state.bytes, receivedBytes: state.received,
         });
         return undefined;
       }
-      return take(p, state, m.uint8Array());
+      return take(peer, state, message.uint8Array());
     },
 
-    onPeerClose(peer: object): void {
+    onPeerClose(peer: FramePeer): void {
       release(peer);
       states.delete(peer);
     },
 
-    onPeerError(peer: object, error: unknown): void {
-      const p = peer as FramePeer;
+    onPeerError(peer: FramePeer, error: unknown): void {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes(PAYLOAD_TOO_LARGE)) {
-        logger.warn({ err: error, ctx: { ...identity(p), limit: COLLAB_FRAME_MAX_BYTES } }, "collab_frame_too_large");
+        logger.warn({ err: error, ctx: { ...identity(peer), limit: COLLAB_FRAME_MAX_BYTES } }, "collab_frame_too_large");
       } else {
-        logger.error({ err: error, ctx: identity(p) }, "collab_socket_error");
+        logger.error({ err: error, ctx: identity(peer) }, "collab_socket_error");
       }
       if (states.get(peer)?.kind === "closed") return;
       release(peer);

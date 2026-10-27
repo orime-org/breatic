@@ -167,7 +167,7 @@ function asm(opts: Partial<{ maxMessageBytes: number; budgetBytes: number; idleT
   return {
     a,
     users,
-    rx: (p, m) => (a.receiveFrame as (p: unknown, m: unknown) => Uint8Array | undefined)(p, m),
+    rx: (p, m) => a.receiveFrame(p, m),
     own: (user) => {
       const p = peer();
       if (user !== undefined) users.set(p, user);
@@ -263,7 +263,7 @@ describe("frame assembler — idle and complete messages", () => {
     expect(r.a.userInUse()).toEqual(new Map([["u", 131_073]]));
     expect(r.rx(p, c1!)).toBeUndefined();
     expect(r.a.inUseBytes()).toBe(131_073);
-    expect(r.rx(p, c2!)).toEqual(m);
+    expect(same(r.rx(p, c2!), m)).toBe(true);
     expect(r.a.inUseBytes()).toBe(0);
     expect(r.a.userInUse().size).toBe(0);
     expect(p.close).not.toHaveBeenCalled();
@@ -278,7 +278,7 @@ describe("frame assembler — idle and complete messages", () => {
     const [, c1, c2] = frames(m);
     expect(r.rx(p, txt(JSON.stringify({ type: "chunked", bytes: 131_073, extra: 1 })))).toBeUndefined();
     expect(r.rx(p, c1!)).toBeUndefined();
-    expect(r.rx(p, c2!)).toEqual(m);
+    expect(same(r.rx(p, c2!), m)).toBe(true);
     expect(p.close).not.toHaveBeenCalled();
   });
 
@@ -414,8 +414,8 @@ describe("frame assembler — limits", () => {
     expect(p2.close).not.toHaveBeenCalled();
     expect(r.a.inUseBytes()).toBe(2 * M);
     expect(r.a.userInUse().size).toBe(2);
-    expect(r.a.userInUse().get(p1 as never)).toBe(M);
-    expect(r.a.userInUse().get(p2 as never)).toBe(M);
+    expect(r.a.userInUse().get(p1)).toBe(M);
+    expect(r.a.userInUse().get(p2)).toBe(M);
 
     const p3 = r.own(undefined);
     r.rx(p3, decl(M + 1));
@@ -423,7 +423,7 @@ describe("frame assembler — limits", () => {
     expect(only("warn", "collab_message_too_large").ctx.userId).toBeNull();
 
     feed(r, p1, fs.slice(1));
-    expect(r.a.userInUse().has(p1 as never)).toBe(false);
+    expect(r.a.userInUse().has(p1)).toBe(false);
     expect(r.a.userInUse().size).toBe(1);
   });
 
@@ -527,7 +527,7 @@ describe("frame assembler — malformed sequences", () => {
     const p = r.own("u");
     const m = msg(262_145);
     const out = feed(r, p, frames(m));
-    expect(out.at(-1)).toEqual(m);
+    expect(same(out.at(-1), m)).toBe(true);
     expect(p.close).not.toHaveBeenCalled();
   });
 
