@@ -1,7 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { candidatesOf, parseProviderConfig, type MediaBinding, type ProviderConfigInput } from "@provider/config/schema.js";
+import {
+  assertBindsCatalog,
+  candidatesOf,
+  parseProviderConfig,
+  type CatalogShape,
+  type MediaBinding,
+  type ProviderConfigInput,
+} from "@provider/config/schema.js";
 import { lookupCost, type Cost, type CostLookup } from "@provider/cost.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
@@ -32,6 +39,11 @@ export interface Provider {
   readonly options: ProviderOptions;
   /** A model's upstreams in effective weight order, each saying whether its key is configured. */
   availability(model: string): Availability;
+  /**
+   * Check this instance's bindings against our catalog (design 4.2).
+   * @throws {ProviderConfigError} Listing every mismatch.
+   */
+  assertBindsCatalog(catalog: CatalogShape): void;
   /** A model's pricing on each upstream, for the browser to estimate with. */
   pricingRules(model: string): PricingRules;
   /** The estimate of the upstream the route would choose; null when it reaches none. */
@@ -68,6 +80,7 @@ export function createProvider(options: ProviderOptions): Provider {
   return {
     options,
     availability,
+    assertBindsCatalog: (catalog) => assertBindsCatalog(config, catalog),
     pricingRules,
     estimate: (model, input, route) => estimateCost(pricingRules(model), availability(model), input, route),
     llm: createLlm(config, options),

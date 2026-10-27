@@ -276,7 +276,8 @@ write("llm.yaml", `
 Where LLM calls go (design 4.3). A model id takes the first route whose prefix
 it starts with; within a route the configured upstream of lowest weight is
 tried first, and a call moves on before its first content when an upstream
-has no key, cannot be reached, keeps answering 429 or 5xx, or lacks the model.
+has no key, cannot be reached, keeps answering 429 or 5xx, lacks the model,
+or says its balance is exhausted.
 understand_routes is the same for reading media. vendor_ids is the id an
 upstream serves one of our models under. openrouter_backends pins the backend
 OpenRouter routes a model to. prices are the direct token prices, in USD per
@@ -299,7 +300,8 @@ This deployment's own upstream weights (design 4.4). Copy this file to
 config/provider/routing.yaml and change the weights there; the copy is not
 shipped. Without it every model keeps the weights in media/*.yaml and
 llm.yaml. Overrides change weights only: naming an upstream a model or route
-is not bound to is refused at startup, and so is a weight used twice.
+is not bound to is refused at startup, and so is a weight used twice. llm
+overrides llm.yaml's routes, understand its understand_routes, each by prefix.
 
 models:
   seedance-2.5-text-to-video:
@@ -307,6 +309,9 @@ models:
 llm:
   deepseek/:
     weights: { openrouter: 0, deepseek: 1 }
+understand:
+  google/:
+    weights: { google: 0, openrouter: 1 }
 `, null);
 
 process.stdout.write("config/provider written\n");

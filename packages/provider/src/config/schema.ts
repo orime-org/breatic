@@ -94,7 +94,10 @@ const llmSchema = z.object({
 
 const routingSchema = z.object({
   models: z.record(z.string(), z.object({ weights })).optional(),
+  /** By prefix of `llm.routes`. */
   llm: z.record(z.string(), z.object({ weights })).optional(),
+  /** By prefix of `llm.understand_routes`. */
+  understand: z.record(z.string(), z.object({ weights })).optional(),
 });
 
 const inputSchema = z.object({
@@ -136,7 +139,8 @@ export interface ProviderConfig {
 
 /** The catalog facts a binding is checked against: each model's params and the values each offers. */
 export interface CatalogShape {
-  models: { name: string; params: Record<string, { values?: (string | number | boolean)[] }> }[];
+  /** Each param's offered values, and the pool param a slot joins, when it joins one. */
+  models: { name: string; params: Record<string, { values?: (string | number | boolean)[]; joins?: string }> }[];
 }
 
 /** Every problem found while loading the provider configuration, one line each. */
@@ -233,22 +237,26 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
    * One LLM route with the deployment's weights, its problems reported.
    * @param route - The route.
    * @param label - What problems call it.
+   * @param override - The deployment's weights for this route list, by prefix.
    * @returns The route with effective weights, lowest first.
    */
-  const llmRoute = (route: LlmRoute, label: string): LlmRoute => {
-    const upstreams = overridden(label, route.upstreams, raw.routing?.llm?.[route.prefix]?.weights, problems);
+  const llmRoute = (route: LlmRoute, label: string, override: Record<string, { weights: Record<string, number> }> | undefined): LlmRoute => {
+    const upstreams = overridden(label, route.upstreams, override?.[route.prefix]?.weights, problems);
     checkList(label, upstreams, raw.upstreams, problems);
     return { prefix: route.prefix, upstreams: [...upstreams].sort((a, b) => a.weight - b.weight) };
   };
   const llm: ProviderConfig["llm"] = {
-    routes: (raw.llm?.routes ?? []).map((r) => llmRoute(r, `LLM route "${r.prefix}"`)),
-    understand_routes: (raw.llm?.understand_routes ?? []).map((r) => llmRoute(r, `LLM understand route "${r.prefix}"`)),
+    routes: (raw.llm?.routes ?? []).map((r) => llmRoute(r, `LLM route "${r.prefix}"`, raw.routing?.llm)),
+    understand_routes: (raw.llm?.understand_routes ?? []).map((r) => llmRoute(r, `LLM understand route "${r.prefix}"`, raw.routing?.understand)),
     vendor_ids: raw.llm?.vendor_ids ?? {},
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
   };
   for (const prefix of Object.keys(raw.routing?.llm ?? {})) {
     if (!llm.routes.some((r) => r.prefix === prefix)) problems.push(`LLM route "${prefix}": the override names a prefix no route has`);
+  }
+  for (const prefix of Object.keys(raw.routing?.understand ?? {})) {
+    if (!llm.understand_routes.some((r) => r.prefix === prefix)) problems.push(`LLM understand route "${prefix}": the override names a prefix no understand route has`);
   }
   if (problems.length > 0) throw new ProviderConfigError(problems);
   return { upstreams: raw.upstreams, models, llm };
@@ -306,7 +314,12 @@ export function assertBindsCatalog(config: ProviderConfig, catalog: CatalogShape
       problems.push(`${name}: the catalog model has no upstream binding`);
       continue;
     }
+    const pools = new Set(Object.values(params).flatMap((p) => (p.joins === undefined ? [] : [p.joins])));
     for (const binding of bindings) {
+      // A joined slot is named in the prompt by its pool's mention, so every binding writes one.
+      for (const pool of pools) {
+        if (binding.mentions?.[pool] === undefined) problems.push(`${name}: "${binding.upstream}" has no mentions template for "${pool}", which other params join`);
+      }
       for (const [param, bound] of Object.entries(binding.params ?? {})) {
         const declared = params[param];
         if (declared === undefined) {
