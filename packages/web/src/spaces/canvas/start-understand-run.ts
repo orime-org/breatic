@@ -19,7 +19,11 @@
 
 import { getLocale, t } from '@breatic/shared';
 
-import { canvasApi, getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import {
+  canvasApi,
+  getCachedUnderstandLongMediaMaxBytes,
+  getCachedUnderstandMaxBytes,
+} from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -230,6 +234,7 @@ function buildReadingRun(
       url: source.url,
     },
     getCachedUnderstandMaxBytes(),
+    getCachedUnderstandLongMediaMaxBytes(),
   );
   if (refusal !== null) {
     // Each refusal is the sentence its own row holds, filled from the same

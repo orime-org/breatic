@@ -37,6 +37,8 @@ export interface CanvasLimits {
    * judged there instead of here.
    */
   understandMaxBytes: number;
+  /** Largest audio or video source the long-media path will segment, in bytes. */
+  understandLongMediaMaxBytes: number;
   /**
    * The longest audio the cut band decodes in the browser to draw a waveform
    * while its peaks file is missing, in seconds (inner#1305 §4.4).
@@ -112,6 +114,15 @@ export function getCachedReferencePoolCap(): number | null {
  */
 export function getCachedUnderstandMaxBytes(): number | null {
   return limitsCache ? limitsCache.understandMaxBytes : null;
+}
+
+/**
+ * Sync accessor for the long audio/video source ceiling, or `null` before the
+ * canvas knobs load.
+ * @returns The cached long-media ceiling in bytes, or null before the first fetch.
+ */
+export function getCachedUnderstandLongMediaMaxBytes(): number | null {
+  return limitsCache?.understandLongMediaMaxBytes ?? null;
 }
 
 /**
