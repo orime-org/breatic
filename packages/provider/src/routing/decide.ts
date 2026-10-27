@@ -7,6 +7,7 @@ export type Failure =
   | { kind: "no_answer" }
   | { kind: "http_status"; status: number }
   | { kind: "model_not_found" }
+  | { kind: "insufficient_balance" }
   | { kind: "aborted" };
 
 /** Where the call was when it failed. */
@@ -24,7 +25,8 @@ export type Decision = "switch" | "retry" | "stop";
  * @returns The next step.
  */
 export function decide(failure: Failure, phase: Phase, retriesUsed: number, maxRetries: number): Decision {
-  if (failure.kind === "not_sent" || failure.kind === "model_not_found") return "switch";
+  // No key's worth of retrying: the upstream lacks the model, or the account its balance.
+  if (failure.kind === "not_sent" || failure.kind === "model_not_found" || failure.kind === "insufficient_balance") return "switch";
   if (failure.kind !== "http_status") return "stop";
   if (failure.status !== 429 && failure.status < 500) return "stop";
   return phase === "llm_before_content" && retriesUsed < maxRetries ? "retry" : "switch";

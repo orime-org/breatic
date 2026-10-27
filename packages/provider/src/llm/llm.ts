@@ -13,7 +13,7 @@ import type { Cost } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, isGenerationId, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
+import { classifyLlm, isGenerationId, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -257,6 +257,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         modelId,
         plan,
         modelFor: (c) => modelOn(route, c.upstream, modelId),
+        vendorFor: (upstream) => vendorOf(kindOf(upstream)),
         tracksGenerations: (upstream) => kindOf(upstream) === "openrouter",
         maxRetries: options.llmMaxRetries,
         pending,
@@ -304,7 +305,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const served = await tryInOrder(plan, {
         phase: "llm_before_content",
         maxRetries: options.llmMaxRetries,
-        classify: classifyLlm,
+        classify: (error, c) => classifyLlm(error, vendorOf(kindOf(c.upstream))),
+        pause: (error, retry) => pauseBeforeRetry(error, retry, abortSignal),
         attempt: (c) => {
           const vendor = vendorOf(kindOf(c.upstream));
           return generateText({

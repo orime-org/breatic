@@ -12,7 +12,8 @@
 import { APICallError } from "ai";
 import type { Cost } from "@provider/cost.js";
 import { Aborted, NoAnswer, NotSent } from "@provider/http/errors.js";
-import { openRouterModelNotFound, type ModelV4 } from "@provider/llm/vendors.js";
+import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, wait } from "@provider/http/request.js";
+import type { ModelV4, Vendor } from "@provider/llm/vendors.js";
 import { decide, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
@@ -28,6 +29,8 @@ export interface SwitchingSetup {
   plan: RoutePlan;
   /** The upstream's model for this call. */
   modelFor: (candidate: Candidate) => ModelV4;
+  /** How an upstream's vendor is spoken to, for reading its refusals. */
+  vendorFor: (upstream: string) => Vendor;
   /** Whether an upstream reports a generation id to look its cost up by later. */
   tracksGenerations: (upstream: string) => boolean;
   maxRetries: number;
@@ -41,11 +44,57 @@ export interface SwitchingSetup {
 const CONTENT = new Set(["text-delta", "reasoning-delta", "tool-input-start", "tool-input-delta", "tool-call", "file", "source"]);
 
 /**
+ * An error part a stream sent before its first content, as the vendor wrote it
+ * (often a plain `{ code, message }` object).
+ */
+export class InBandError extends Error {
+  /** The vendor's own error value. */
+  readonly error: unknown;
+
+  /**
+   * Record the vendor's error value.
+   * @param error - What the error part carried.
+   */
+  constructor(error: unknown) {
+    super(`The stream sent an error before its content: ${JSON.stringify(error) ?? String(error)}`, { cause: error });
+    this.name = "InBandError";
+    this.error = error;
+  }
+}
+
+/**
+ * The failure class of a status and body, read with the answering vendor's own forms.
+ * @param status - The status, or an in-band error's code.
+ * @param body - The parsed error body.
+ * @param vendor - The vendor that answered.
+ * @returns The failure.
+ */
+function statusFailure(status: number, body: unknown, vendor: Vendor | undefined): Failure {
+  const refusal = vendor?.refusal(status, body);
+  return refusal === undefined ? { kind: "http_status", status } : { kind: refusal };
+}
+
+/**
+ * A response body parsed as JSON.
+ * @param text - The body.
+ * @returns The value, or undefined when it is not JSON.
+ */
+function parsed(text: string | undefined): unknown {
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The failure class of an error a model call threw, read down its cause chain.
  * @param error - What the call threw.
+ * @param vendor - The vendor of the upstream that answered; its refusal forms are the only ones read.
  * @returns Its class, or null for an error that is none of them.
  */
-export function classifyLlm(error: unknown): Failure | null {
+export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
   const seen = new Set<unknown>();
   for (let current: unknown = error; current instanceof Error && !seen.has(current); current = current.cause) {
     seen.add(current);
@@ -53,9 +102,10 @@ export function classifyLlm(error: unknown): Failure | null {
     if (current instanceof NoAnswer) return { kind: "no_answer" };
     if (current instanceof Aborted || current.name === "AbortError" || current.name === "TimeoutError") return { kind: "aborted" };
   }
-  if (APICallError.isInstance(error) && typeof error.statusCode === "number") {
-    if (openRouterModelNotFound(error.statusCode, error.responseBody)) return { kind: "model_not_found" };
-    return { kind: "http_status", status: error.statusCode };
+  if (APICallError.isInstance(error) && typeof error.statusCode === "number") return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
+  if (error instanceof InBandError) {
+    const code = Number((error.error as { code?: unknown } | null)?.code);
+    return Number.isInteger(code) && code >= 100 ? statusFailure(code, { error: error.error }, vendor) : null;
   }
   return null;
 }
@@ -79,6 +129,25 @@ export function reportedCost(metadata: unknown): number | undefined {
   return typeof cost === "number" && Number.isFinite(cost) ? cost : undefined;
 }
 
+/**
+ * Wait before a retry on the same upstream (design 5.3): as long as the upstream
+ * asked, up to a minute; beyond that the upstream is not retried. Otherwise a
+ * full-jitter backoff. The wait ends with the call's signal.
+ * @param error - What the attempt threw.
+ * @param retry - The retry about to be made, from 1.
+ * @param signal - The call's signal.
+ * @returns Whether to retry or to leave the upstream.
+ * @throws {Aborted} When the signal ends the wait.
+ */
+export async function pauseBeforeRetry(error: unknown, retry: number, signal: AbortSignal | undefined): Promise<"retry" | "switch"> {
+  const headers = APICallError.isInstance(error) ? error.responseHeaders : undefined;
+  const ms = Number(headers?.["retry-after-ms"]);
+  const asked = Number.isFinite(ms) && ms >= 0 ? ms : retryAfterOf(headers?.["retry-after"] ?? null);
+  if (asked !== undefined && asked > MAX_RETRY_AFTER_MS) return "switch";
+  await wait(asked ?? backoff(retry), { replaySafe: false, ...(signal ? { signal } : {}) }, "the model call");
+  return "retry";
+}
+
 /** A language model that switches upstream before its first content and then stays. */
 export class SwitchingModel implements ModelV4 {
   readonly specificationVersion = "v4" as const;
@@ -100,22 +169,30 @@ export class SwitchingModel implements ModelV4 {
   /**
    * Run one model call: on the pinned upstream with its retries, or along the route.
    * @param run - The call on one upstream.
+   * @param signal - The call's signal, which ends a wait before a retry.
    * @returns What it answered and who served it.
    * @throws {unknown} The call's own error when it may not move on, or NoUpstreamAvailable.
    */
-  private async attempt<T>(run: (candidate: Candidate) => Promise<T>): Promise<{ value: T; servedBy: Candidate }> {
+  private async attempt<T>(run: (candidate: Candidate) => Promise<T>, signal: AbortSignal | undefined): Promise<{ value: T; servedBy: Candidate }> {
     const pinned = this.pinned;
     if (pinned !== undefined) {
       for (let retries = 0; ; retries++) {
         try {
           return { value: await run(pinned), servedBy: pinned };
         } catch (error) {
-          const failure = classifyLlm(error);
+          const failure = classifyLlm(error, this.setup.vendorFor(pinned.upstream));
           if (failure === null || decide(failure, "llm_before_content", retries, this.setup.maxRetries) !== "retry") throw error;
+          if ((await pauseBeforeRetry(error, retries + 1, signal)) === "switch") throw error;
         }
       }
     }
-    const served = await tryInOrder(this.setup.plan, { phase: "llm_before_content", maxRetries: this.setup.maxRetries, attempt: run, classify: classifyLlm });
+    const served = await tryInOrder(this.setup.plan, {
+      phase: "llm_before_content",
+      maxRetries: this.setup.maxRetries,
+      attempt: run,
+      classify: (error, c) => classifyLlm(error, this.setup.vendorFor(c.upstream)),
+      pause: (error, retry) => pauseBeforeRetry(error, retry, signal),
+    });
     const by = this.setup.plan.order.find((c) => c.upstream === served.servedBy)!;
     this.pinned = by;
     return { value: served.value, servedBy: by };
@@ -142,7 +219,7 @@ export class SwitchingModel implements ModelV4 {
    * @throws {unknown} As `attempt` throws.
    */
   async doGenerate(options: CallOptions): Promise<GenerateResult> {
-    const { value, servedBy } = await this.attempt((c) => Promise.resolve(this.setup.modelFor(c).doGenerate(options)));
+    const { value, servedBy } = await this.attempt((c) => Promise.resolve(this.setup.modelFor(c).doGenerate(options)), options.abortSignal);
     const id = isGenerationId(value.response?.id) ? value.response.id : undefined;
     const breatic = this.finished(servedBy.upstream, id, value.providerMetadata);
     return { ...value, providerMetadata: { ...value.providerMetadata, breatic: breatic as Record<string, never> } };
@@ -170,15 +247,20 @@ export class SwitchingModel implements ModelV4 {
           throw error;
         }
         if (read.done) break;
-        if (read.value.type === "error") {
+        // Registered as soon as it is read: a call stopped before its content is still billed.
+        const part = read.value;
+        if (part.type === "response-metadata" && isGenerationId(part.id) && this.setup.tracksGenerations(c.upstream)) {
+          this.setup.pending.set(part.id, { state: "pending", lookup: { upstream: c.upstream, generationId: part.id } });
+        }
+        if (part.type === "error") {
           await reader.cancel().catch(() => undefined);
-          throw read.value.error;
+          throw part.error instanceof Error ? part.error : new InBandError(part.error);
         }
         held.push(read.value);
         if (CONTENT.has(read.value.type) || read.value.type === "finish") break;
       }
       return { result, reader, held };
-    });
+    }, options.abortSignal);
     const { result, reader, held } = value;
     const upstream = servedBy.upstream;
     const { pending } = this.setup;

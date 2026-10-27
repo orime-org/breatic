@@ -16,8 +16,13 @@ export interface Attempts<T> {
   phase: Phase;
   maxRetries: number;
   attempt: (candidate: Candidate) => Promise<T>;
-  /** The failure class of a thrown error, or null when it is none of them (it is then rethrown as is). */
-  classify: (error: unknown) => Failure | null;
+  /** The failure class of an error the attempt on this upstream threw, or null when it is none of them (it is then rethrown as is). */
+  classify: (error: unknown, candidate: Candidate) => Failure | null;
+  /**
+   * Waits before a retry on the same upstream; answers "switch" when the upstream
+   * asked for longer than a retry may wait. Without it, the retry is immediate.
+   */
+  pause?: (error: unknown, retry: number) => Promise<"retry" | "switch">;
 }
 
 /**
@@ -35,10 +40,11 @@ export async function tryInOrder<T>(plan: RoutePlan, attempts: Attempts<T>): Pro
       try {
         return { value: await attempts.attempt(candidate), servedBy: candidate.upstream };
       } catch (error) {
-        const failure = attempts.classify(error);
+        const failure = attempts.classify(error, candidate);
         if (failure === null) throw error;
-        const decision = decide(failure, attempts.phase, retries, attempts.maxRetries);
+        let decision = decide(failure, attempts.phase, retries, attempts.maxRetries);
         if (decision === "stop") throw error;
+        if (decision === "retry" && attempts.pause !== undefined) decision = await attempts.pause(error, retries + 1);
         if (decision === "retry") continue;
         reasons.push({ upstream: candidate.upstream, kind: "failed", failure: failure.kind });
         break;

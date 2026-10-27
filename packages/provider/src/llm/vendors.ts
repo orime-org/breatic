@@ -26,8 +26,39 @@ export type ModelV4 = Extract<LanguageModel, { specificationVersion: "v4" }>;
 /** What one vendor's slot in `providerOptions` holds. */
 export type VendorOptions = Record<string, JSONValue>;
 
+/** What an upstream's refusal says beyond its status (design 5.3). */
+export type Refusal = "model_not_found" | "insufficient_balance";
+
+/** The `error` object of a vendor's error body. */
+interface ErrorBody {
+  message?: unknown;
+  status?: unknown;
+  code?: unknown;
+  type?: unknown;
+}
+
+/**
+ * The `error` object of a parsed error body, or an empty one.
+ * @param body - The parsed body.
+ * @returns Its `error` object.
+ */
+function errorOf(body: unknown): ErrorBody {
+  const error = (body as { error?: unknown } | null | undefined)?.error;
+  return typeof error === "object" && error !== null ? error : {};
+}
+
+/**
+ * The `error.message` of a parsed error body.
+ * @param body - The parsed body.
+ * @returns The message, or "".
+ */
+function messageOf(body: unknown): string {
+  const message = errorOf(body).message;
+  return typeof message === "string" ? message : "";
+}
+
 /** How one upstream kind is spoken to. */
-interface Vendor {
+export interface Vendor {
   /** The key its AI SDK provider reads `providerOptions` and message options by. */
   sdkName: string;
   /** Builds its model factory. */
@@ -39,6 +70,11 @@ interface Vendor {
   reasoning: { on: (modelId: string) => VendorOptions; off: VendorOptions };
   /** The cache mark for a lifetime, or nothing when it caches a repeated prefix on its own. */
   cache: (modelId: string, ttl: "5m" | "1h") => VendorOptions;
+  /**
+   * What this vendor's own refusal means, read from its status and parsed body
+   * (design 5.3: each vendor's forms, never another's).
+   */
+  refusal: (status: number, body: unknown) => Refusal | undefined;
 }
 
 /**
@@ -81,6 +117,11 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
     gateway: false,
     reasoning: { on: () => ({ thinking: { type: "adaptive", display: "summarized" }, effort: "high" }), off: {} },
     cache: (_modelId, ttl) => cacheControl(ttl),
+    // Measured 2026-10-27 for the balance; the missing model from Anthropic's error docs.
+    refusal: (status, body) => {
+      if (status === 404 && errorOf(body).type === "not_found_error") return "model_not_found";
+      return status === 400 && messageOf(body).includes("credit balance is too low") ? "insufficient_balance" : undefined;
+    },
   },
   google: {
     sdkName: "google",
@@ -89,6 +130,8 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
     gateway: false,
     reasoning: { on: () => ({ thinkingConfig: { thinkingBudget: -1, includeThoughts: true } }), off: { thinkingConfig: { thinkingBudget: 0 } } },
     cache: cachesOnItsOwn,
+    // Measured 2026-10-27; the free tier never answered with a balance refusal.
+    refusal: (status, body) => (status === 404 && errorOf(body).status === "NOT_FOUND" ? "model_not_found" : undefined),
   },
   openai: {
     sdkName: "openai",
@@ -97,6 +140,11 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
     gateway: false,
     reasoning: { on: () => ({ reasoningEffort: "high" }), off: { reasoningEffort: "none" } },
     cache: cachesOnItsOwn,
+    // Measured 2026-10-27.
+    refusal: (status, body) => {
+      if (status === 404 && errorOf(body).code === "model_not_found") return "model_not_found";
+      return status === 429 && errorOf(body).type === "insufficient_quota" ? "insufficient_balance" : undefined;
+    },
   },
   deepseek: {
     sdkName: "deepseek",
@@ -106,6 +154,11 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
     // DeepSeek's deepest level; inner#1650 measured Flash 1017 at it.
     reasoning: { on: () => ({ thinking: { type: "enabled" }, reasoningEffort: "max" }), off: { thinking: { type: "disabled" } } },
     cache: cachesOnItsOwn,
+    // The missing model measured 2026-10-27; 402 from DeepSeek's error code page.
+    refusal: (status, body) => {
+      if (status === 400 && messageOf(body).startsWith("The supported API model names are")) return "model_not_found";
+      return status === 402 ? "insufficient_balance" : undefined;
+    },
   },
   openrouter: {
     sdkName: "openrouter",
@@ -116,28 +169,13 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
     reasoning: { on: (modelId) => ({ reasoning: { effort: modelId.startsWith("deepseek/") ? "max" : "high" } }), off: { reasoning: { effort: "none" } } },
     // It turns a request-level mark into Anthropic's automatic caching; other models cache a prefix on their own.
     cache: (modelId, ttl) => (isClaude(modelId) ? cacheControl(ttl) : {}),
+    // The missing model measured 2026-10-26; 402 from OpenRouter's error docs.
+    refusal: (status, body) => {
+      if (status === 400 && messageOf(body).endsWith(" is not a valid model ID")) return "model_not_found";
+      return status === 402 ? "insufficient_balance" : undefined;
+    },
   },
 };
-
-/** How OpenRouter's 400 for a model id it does not serve ends (measured 2026-10-26). */
-const OPENROUTER_MODEL_NOT_FOUND = / is not a valid model ID$/;
-
-/**
- * Whether an error body is OpenRouter's answer that it has no such model,
- * rather than a refusal of the request's params: both are 400s, told apart by the message.
- * @param status - The response status.
- * @param body - The response body.
- * @returns True for the model-not-found answer.
- */
-export function openRouterModelNotFound(status: number, body: string | undefined): boolean {
-  if (status !== 400 || body === undefined) return false;
-  try {
-    const message = (JSON.parse(body) as { error?: { message?: unknown } } | null)?.error?.message;
-    return typeof message === "string" && OPENROUTER_MODEL_NOT_FOUND.test(message);
-  } catch {
-    return false;
-  }
-}
 
 /**
  * The vendor of an upstream kind.
