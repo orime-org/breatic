@@ -13,7 +13,7 @@ import type { Cost } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, isGenerationId, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
+import { classifyLlm, costRefOf, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -345,9 +345,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       });
       const result = served.value;
       const generationId = result.response.id;
-      const costRef = kindOf(served.servedBy) === "openrouter" && isGenerationId(generationId) && reportedCost(result.providerMetadata) === undefined
-        ? { costRef: { upstream: served.servedBy, generationId } }
-        : {};
+      const ref = costRefOf(served.servedBy, kindOf(served.servedBy) === "openrouter", generationId, result.providerMetadata);
+      const costRef = ref === undefined ? {} : { costRef: ref };
       const cost = costOf({
         model: request.model,
         usage: result.usage,

@@ -148,6 +148,19 @@ export async function pauseBeforeRetry(error: unknown, retry: number, signal: Ab
   return "retry";
 }
 
+/**
+ * The lookup a finished call carries (design 3.6): an upstream that reports
+ * generations, a generation id, and no cost reported on the answer.
+ * @param upstream - The upstream that served the call.
+ * @param tracksGenerations - Whether that upstream reports generations to look up.
+ * @param generationId - The id the answer carried, if any.
+ * @param metadata - The answer's provider metadata.
+ * @returns The lookup, or undefined when there is nothing to look up.
+ */
+export function costRefOf(upstream: string, tracksGenerations: boolean, generationId: unknown, metadata: unknown): { upstream: string; generationId: string } | undefined {
+  return tracksGenerations && isGenerationId(generationId) && reportedCost(metadata) === undefined ? { upstream, generationId } : undefined;
+}
+
 /** A language model that switches upstream before its first content and then stays. */
 export class SwitchingModel implements ModelV4 {
   readonly specificationVersion = "v4" as const;
@@ -180,8 +193,9 @@ export class SwitchingModel implements ModelV4 {
         try {
           return { value: await run(pinned), servedBy: pinned };
         } catch (error) {
+          // Pinned: a failure that would move a first step on is retried here instead, never elsewhere (design 12.4).
           const failure = classifyLlm(error, this.setup.vendorFor(pinned.upstream));
-          if (failure === null || decide(failure, "llm_before_content", retries, this.setup.maxRetries) !== "retry") throw error;
+          if (failure === null || decide(failure, "llm_before_content", retries, this.setup.maxRetries) === "stop" || retries >= this.setup.maxRetries) throw error;
           if ((await pauseBeforeRetry(error, retries + 1, signal)) === "switch") throw error;
         }
       }
@@ -206,10 +220,8 @@ export class SwitchingModel implements ModelV4 {
    * @returns The metadata to add.
    */
   private finished(upstream: string, generationId: string | undefined, metadata: unknown): Record<string, unknown> {
-    const lookup = this.setup.tracksGenerations(upstream) && generationId !== undefined && reportedCost(metadata) === undefined
-      ? { costRef: { upstream, generationId } }
-      : {};
-    return { ...this.setup.breatic, upstream, ...lookup };
+    const costRef = costRefOf(upstream, this.setup.tracksGenerations(upstream), generationId, metadata);
+    return { ...this.setup.breatic, upstream, ...(costRef === undefined ? {} : { costRef }) };
   }
 
   /**
@@ -232,12 +244,10 @@ export class SwitchingModel implements ModelV4 {
    * @throws {unknown} As `attempt` throws.
    */
   async doStream(options: CallOptions): Promise<StreamResult> {
-    const switching = this.pinned === undefined;
     const { value, servedBy } = await this.attempt(async (c) => {
       const result = await this.setup.modelFor(c).doStream(options);
       const reader = result.stream.getReader();
       const held: StreamPart[] = [];
-      if (!switching) return { result, reader, held };
       for (;;) {
         let read: ReadableStreamReadResult<StreamPart>;
         try {
@@ -265,21 +275,21 @@ export class SwitchingModel implements ModelV4 {
     const upstream = servedBy.upstream;
     const { pending } = this.setup;
     let generationId: string | undefined;
-    let broken = false;
     /**
      * Note the generation a part names and mark the finish with who served it.
      * @param part - One part of the stream.
      * @returns The part to hand on.
      */
     const pass = (part: StreamPart): StreamPart => {
-      if (part.type === "error") broken = true;
       if (part.type === "response-metadata" && isGenerationId(part.id) && this.setup.tracksGenerations(upstream)) {
         generationId = part.id;
         pending.set(generationId, { state: "pending", lookup: { upstream, generationId } });
       }
       if (part.type !== "finish") return part;
-      // A stream cut short still ends with a finish; its generation is billed whole and stays to be looked up.
-      if (generationId !== undefined && !broken && part.finishReason.unified !== "error") pending.delete(generationId);
+      // A finish hands its generation over as costRef, error endings included. A stream the caller
+      // stopped stays pending: the provider SDK still closes it with a finish, but the AI SDK reports
+      // no end of the call after an abort, so that finish never reaches the caller.
+      if (generationId !== undefined && options.abortSignal?.aborted !== true) pending.delete(generationId);
       const breatic = this.finished(upstream, generationId, part.providerMetadata);
       return { ...part, providerMetadata: { ...part.providerMetadata, breatic: breatic as Record<string, never> } };
     };
