@@ -43,6 +43,7 @@ async function holdingServer(seen: Seen[]): Promise<number> {
     port: 0,
     address: "127.0.0.1",
     quiet: true,
+    stopOnSignals: false,
     timeout: 60_000,
     ...SOCKET_CEILINGS,
     onAuthenticate: (data: { documentName: string; request: unknown; requestParameters: URLSearchParams }) => {
