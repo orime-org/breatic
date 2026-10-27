@@ -557,7 +557,7 @@ describe("template tags are checked before the defaults are filled (design 6.7 s
   it("refuses a key on a node of another role than the template's", () => {
     const shape = agentShape(SHEET);
     const at = shape.at.get("node:sketch") ?? -1;
-    const nodes = shape.sent.nodes.map((node, i) => (i === at ? ({ role: "source", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" } }) : node));
+    const nodes = shape.sent.nodes.map((node, i): SentNode => (i === at ? { role: "source", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" } } : node));
     expect(refusalOf({ ...shape.sent, nodes })).toBe("template-key-kind");
   });
 

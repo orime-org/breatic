@@ -72,7 +72,7 @@ export function templateSegmentsText(template: GenerationTemplate, key: Template
     if (input.feeds.includes(key)) targets.set(text(`input.${input.key}.name`), `input "${input.key}"`);
   }
   for (const edge of skeleton.edges) {
-    if (edge.to === key && edge.into === "pool") targets.set(text(`node.${edge.from}.name`), `node "${edge.from}"`);
+    if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(`node.${edge.from}.name`), `node "${edge.from}"`);
   }
   const words = text(key === template.anchor ? "prompt" : `node.${key}.prompt`);
   const parts = markedSegments(words).map((segment) => {
