@@ -747,6 +747,7 @@ export {
 export {
   GENERATION_TEMPLATES,
   findTemplate,
+  templateAnchor,
   templatePrompt,
   templatesFor,
   type GenerationTemplate,

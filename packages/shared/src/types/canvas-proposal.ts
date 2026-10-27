@@ -303,6 +303,20 @@ const proposalNodeSchema = z.object({
    * generates nothing.
    */
   takesPrompt: z.boolean().optional(),
+  /**
+   * The file we host that a template's resource node lands holding: a path
+   * under the hosted-resources address. Filled from the template, never by
+   * the model.
+   */
+  resource: z.string().optional(),
+  /**
+   * The template node this node stands for (inner#1345): its template and key,
+   * and for the guide text node the index of the anchor it explains. Written
+   * after the template check, never by the model.
+   */
+  templateNode: z
+    .object({ template: z.string(), key: z.string(), anchor: z.number().int().nonnegative().optional() })
+    .optional(),
 });
 
 /** One node, as {@link proposalNodeSchema} describes it. */

@@ -76,22 +76,40 @@ export interface GenerationTemplate {
 
 const STORYBOARD_GRID_25: GenerationTemplate = {
   id: "storyboard-grid-25",
-  nodeType: "image",
-  mode: "i2i",
-  model: "nano-banana-pro-edit-ultra",
-  params: { aspect_ratio: "1:1", resolution: "4k" },
-  references: 1,
+  anchor: "result",
+  nodes: [
+    {
+      key: "result",
+      role: "generate",
+      type: "image",
+      mode: "i2i",
+      model: "nano-banana-pro-edit-ultra",
+      params: { aspect_ratio: "1:1", resolution: "4k" },
+    },
+  ],
+  edges: [],
+  inputs: [{ key: "reference", type: "image" }],
+  steps: [],
   agentNote:
     "one 5x5 storyboard picture of a continuous story, the same characters and place in every panel; made to be turned into a video afterwards",
 };
 
 const COSTUME_SHEET: GenerationTemplate = {
   id: "costume-sheet",
-  nodeType: "image",
-  mode: "i2i",
-  model: "nano-banana-pro-edit-ultra",
-  params: { aspect_ratio: "16:9", resolution: "4k" },
-  references: 1,
+  anchor: "result",
+  nodes: [
+    {
+      key: "result",
+      role: "generate",
+      type: "image",
+      mode: "i2i",
+      model: "nano-banana-pro-edit-ultra",
+      params: { aspect_ratio: "16:9", resolution: "4k" },
+    },
+  ],
+  edges: [],
+  inputs: [{ key: "reference", type: "image" }],
+  steps: [],
   agentNote:
     "a character costume sheet: front, side and back full-body views plus close-ups of the hands or another body part, for keeping a character consistent",
 };
@@ -100,12 +118,25 @@ const COSTUME_SHEET: GenerationTemplate = {
 export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [STORYBOARD_GRID_25, COSTUME_SHEET];
 
 /**
- * The templates a generate panel lists.
+ * The generate node a template is applied to.
+ * @param template - The template.
+ * @returns Its anchor node.
+ * @throws {Error} When the anchor names no generate node, which the registry test rules out.
+ */
+export function templateAnchor(template: GenerationTemplate): TemplateGenerateNode {
+  const anchor = template.nodes.find((node) => node.key === template.anchor);
+  if (anchor?.role !== "generate") throw new Error(`template ${template.id} has no generate anchor`);
+  return anchor;
+}
+
+/**
+ * The templates a generate panel lists: those anchored on its node type.
  * @param nodeType - The panel's node type.
  * @returns Its templates, possibly none.
+ * @throws {never} Never for a registry the registry test passes.
  */
 export function templatesFor(nodeType: GenerationNodeType): readonly GenerationTemplate[] {
-  return GENERATION_TEMPLATES.filter((template) => template.nodeType === nodeType);
+  return GENERATION_TEMPLATES.filter((template) => templateAnchor(template).type === nodeType);
 }
 
 /**
