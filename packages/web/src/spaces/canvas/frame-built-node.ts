@@ -14,7 +14,7 @@
 
 import type { Viewport } from '@xyflow/react';
 
-import { FRAME_PADDING, frameProposal } from '@web/spaces/canvas/lib/place-flow';
+import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
   centerOf,
   groupRectForMembers,
@@ -186,30 +186,45 @@ export function viewportToInspect(
   };
 }
 
+/** The gap kept between a box brought into view and the pane's edges or what floats over them. */
+export const CHROME_GAP_PX = 24;
+
 /**
  * Where to slide the camera so a box on screen is in front of the reader
  * (inner#1345): a template applied in a generate panel, with the nodes it
- * placed and the panel grown around its prompt. Nothing moves while the box
- * is inside the margin a proposal is framed with, which is what keeps it
- * clear of the toolbars floating over the canvas's edges; else it is centred
- * at the reader's zoom, top left kept when it is larger than that room. The
- * panel keeps its size on screen, so zooming out would not make it fit.
+ * placed and the panel grown around its prompt. The room it has is the pane
+ * less what floats over it, each taken off the side it sits on: one centred
+ * in the bottom third off the bottom, else one in the left half off the left,
+ * else off the right. Nothing moves while the box is inside that room; else
+ * it is centred in it at the reader's zoom, top left kept when it is larger.
+ * The panel keeps its size on screen, so zooming out would not make it fit.
  * @param box - The box, in screen pixels from the pane's top left.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
  * @param now - The viewport the reader is at.
+ * @param chrome - What floats over the pane, in the box's pixels.
  * @returns The viewport to move to, or null to stay.
  */
-export function viewportToShow(box: Rect, pane: { width: number; height: number }, now: Viewport): Viewport | null {
-  const room = {
-    x: pane.width * FRAME_PADDING,
-    y: pane.height * FRAME_PADDING,
-    width: pane.width * (1 - 2 * FRAME_PADDING),
-    height: pane.height * (1 - 2 * FRAME_PADDING),
-  };
+export function viewportToShow(
+  box: Rect,
+  pane: { width: number; height: number },
+  now: Viewport,
+  chrome: readonly Rect[],
+): Viewport | null {
+  let left = CHROME_GAP_PX;
+  const top = CHROME_GAP_PX;
+  let right = pane.width - CHROME_GAP_PX;
+  let bottom = pane.height - CHROME_GAP_PX;
+  for (const one of chrome) {
+    if (one.x + one.width <= 0 || one.x >= pane.width || one.y + one.height <= 0 || one.y >= pane.height) continue;
+    if (one.y + one.height / 2 > (pane.height * 2) / 3) bottom = Math.min(bottom, one.y - CHROME_GAP_PX);
+    else if (one.x + one.width / 2 < pane.width / 2) left = Math.max(left, one.x + one.width + CHROME_GAP_PX);
+    else right = Math.min(right, one.x - CHROME_GAP_PX);
+  }
+  const room = { x: left, y: top, width: right - left, height: bottom - top };
   if (contains(box, room)) return null;
-  const dx = box.width > room.width ? room.x - box.x : pane.width / 2 - (box.x + box.width / 2);
-  const dy = box.height > room.height ? room.y - box.y : pane.height / 2 - (box.y + box.height / 2);
+  const dx = box.width > room.width ? room.x - box.x : room.x + room.width / 2 - (box.x + box.width / 2);
+  const dy = box.height > room.height ? room.y - box.y : room.y + room.height / 2 - (box.y + box.height / 2);
   return { x: now.x + dx, y: now.y + dy, zoom: now.zoom };
 }

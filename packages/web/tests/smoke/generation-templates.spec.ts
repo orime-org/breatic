@@ -28,9 +28,10 @@ let spaceId = '';
 /**
  * Write one empty node into the open Space's document and open its panel.
  * @param kind - The node type to write.
+ * @param pan - How far to drag the canvas sideways before opening the panel.
  * @returns The node's id.
  */
-async function openPanelOnNewNode(kind: 'image' | 'video'): Promise<string> {
+async function openPanelOnNewNode(kind: 'image' | 'video', pan = 0): Promise<string> {
   const nodeId = crypto.randomUUID();
   await expect(visibleSpace(page).locator('.react-flow')).toBeVisible({ timeout: 20_000 });
   const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
@@ -50,6 +51,15 @@ async function openPanelOnNewNode(kind: 'image' | 'video'): Promise<string> {
   );
   const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
   await expect(node).toBeVisible({ timeout: 15_000 });
+  if (pan !== 0) {
+    const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+    if (!pane) throw new Error('the canvas pane is not on screen');
+    const from = { x: pane.x + pane.width * 0.5, y: pane.y + 80 };
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(from.x + pan, from.y, { steps: 10 });
+    await page.mouse.up();
+  }
   await node.click({ button: 'right' });
   await page.getByTestId('node-menu-generate').click();
   return nodeId;
@@ -112,7 +122,11 @@ async function pickStoryboard(): Promise<void> {
 }
 
 test('picking a template places the reference it asks for, wired and @\'d, and picking it again places nothing', async () => {
-  const nodeId = await openPanelOnNewNode('image');
+  // Short enough that the grown panel reaches the viewport toolbar, and the
+  // node near enough the left that the reference lands under the left menu,
+  // unless the camera brings them into view.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const nodeId = await openPanelOnNewNode('image', -200);
   const trigger = page.getByTestId('generate-template-trigger');
   await expect(trigger).toBeVisible({ timeout: 15_000 });
   // Right before the close button, in the panel's corner.
@@ -138,9 +152,14 @@ test('picking a template places the reference it asks for, wired and @\'d, and p
   // The camera brings the placed reference and the panel, grown around the
   // prompt, clear of the toolbars floating over the canvas.
   const panel = page.locator('[data-canvas-panel]');
-  await expect.poll(() => overlapping(reference, page.getByTestId('left-floating-menu')), { timeout: 5_000 }).toBe(false);
+  const menu = await page.getByTestId('left-floating-menu').boundingBox();
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  await expect.poll(async () => (await reference.boundingBox())?.x ?? 0, { timeout: 5_000 }).toBeGreaterThanOrEqual((menu?.x ?? 0) + (menu?.width ?? 0));
+  await expect
+    .poll(async () => { const box = await panel.boundingBox(); return (box?.y ?? 0) + (box?.height ?? 0); }, { timeout: 5_000 })
+    .toBeLessThanOrEqual((pane?.y ?? 0) + (pane?.height ?? 0));
   await expect.poll(() => overlapping(panel, page.getByTestId('viewport-toolbar')), { timeout: 5_000 }).toBe(false);
-  await expect.poll(() => overlapping(panel, page.locator('.react-flow__minimap')), { timeout: 5_000 }).toBe(false);
+  await expect.poll(() => overlapping(panel, visibleSpace(page).locator('.react-flow__minimap')), { timeout: 5_000 }).toBe(false);
   await page.screenshot({ path: test.info().outputPath('image-template-applied.png') });
 
   await pickStoryboard();

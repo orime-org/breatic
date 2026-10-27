@@ -12,7 +12,15 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { frameBuiltNode, framedBox, freshNodesBox, viewportForBuilt, viewportToInspect, viewportToShow } from '@web/spaces/canvas/frame-built-node';
+import {
+  CHROME_GAP_PX,
+  frameBuiltNode,
+  framedBox,
+  freshNodesBox,
+  viewportForBuilt,
+  viewportToInspect,
+  viewportToShow,
+} from '@web/spaces/canvas/frame-built-node';
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
@@ -228,21 +236,38 @@ describe('freshNodesBox', () => {
 describe('viewportToShow (inner#1345)', () => {
   const pane = { width: 1000, height: 800 };
   const now = { x: -200, y: -100, zoom: 1.5 };
+  // A menu down the left side; a toolbar and a minimap in the bottom right.
+  const menu = { x: 16, y: 250, width: 48, height: 300 };
+  const toolbar = { x: 700, y: 740, width: 280, height: 44 };
+  const minimap = { x: 780, y: 580, width: 200, height: 150 };
+  const chrome = [menu, toolbar, minimap];
+  // The room left: right of the menu, above the minimap, a gap in from the pane.
+  const room = { left: 64 + CHROME_GAP_PX, top: CHROME_GAP_PX, right: 1000 - CHROME_GAP_PX, bottom: 580 - CHROME_GAP_PX };
+  const middle = { x: (room.left + room.right) / 2, y: (room.top + room.bottom) / 2 };
 
-  it('stays put while the box is inside the framing margin', () => {
-    expect(viewportToShow({ x: 100, y: 80, width: 800, height: 640 }, pane, now)).toBeNull();
+  it('stays put while the box is clear of what floats over the canvas', () => {
+    expect(viewportToShow({ x: 100, y: 40, width: 800, height: 500 }, pane, now, chrome)).toBeNull();
   });
 
-  it('slides at the reader zoom to centre a box that reaches into the margin', () => {
-    // Left edge at 40, under a toolbar floating over the canvas's left side.
-    const next = viewportToShow({ x: 40, y: 200, width: 500, height: 300 }, pane, now);
+  it('slides at the reader zoom to centre in the room a box under the left menu', () => {
+    const next = viewportToShow({ x: 40, y: 100, width: 400, height: 300 }, pane, now, chrome);
 
-    expect(next).toEqual({ x: -200 + (500 - 290), y: -100 + (400 - 350), zoom: 1.5 });
+    expect(next).toEqual({ x: -200 + middle.x - 240, y: -100 + middle.y - 250, zoom: 1.5 });
   });
 
-  it('keeps the top left of a box too large to fit inside the margin', () => {
-    const next = viewportToShow({ x: 300, y: 300, width: 900, height: 700 }, pane, now);
+  it('lifts a box whose bottom right reaches the minimap', () => {
+    const next = viewportToShow({ x: 300, y: 300, width: 600, height: 300 }, pane, now, chrome);
 
-    expect(next).toEqual({ x: -200 + (100 - 300), y: -100 + (80 - 300), zoom: 1.5 });
+    expect(next).toEqual({ x: -200 + middle.x - 600, y: -100 + middle.y - 450, zoom: 1.5 });
+  });
+
+  it('keeps the top left of a box too large for the room', () => {
+    const next = viewportToShow({ x: 300, y: 300, width: 900, height: 700 }, pane, now, chrome);
+
+    expect(next).toEqual({ x: -200 + room.left - 300, y: -100 + room.top - 300, zoom: 1.5 });
+  });
+
+  it('has the whole pane less the gap when nothing floats over it', () => {
+    expect(viewportToShow({ x: CHROME_GAP_PX, y: CHROME_GAP_PX, width: 900, height: 700 }, pane, now, [])).toBeNull();
   });
 });

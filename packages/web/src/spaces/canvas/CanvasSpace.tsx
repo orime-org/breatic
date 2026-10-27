@@ -1344,7 +1344,8 @@ function CanvasSpaceInner({
 
   // Once a template's nodes and the panel, grown around the prompt it was
   // given, are laid out, the camera slides them in front of the reader when
-  // they reach under the toolbars floating over the canvas (inner#1345).
+  // they reach under the menu, toolbar or minimap floating over the canvas
+  // (inner#1345).
   // Waits for every node to be measured and the panel to hold one height for
   // two frames; past that many frames it frames what is there.
   const showTemplate = React.useCallback(
@@ -1373,9 +1374,21 @@ function CanvasSpaceInner({
         const boxes = rects.flatMap((rect) =>
           rect ? [{ x: rect.x * zoom + x, y: rect.y * zoom + y, width: rect.width * zoom, height: rect.height * zoom }] : [],
         );
-        if (panel) boxes.push({ x: panel.left - origin.left, y: panel.top - origin.top, width: panel.width, height: panel.height });
+        /**
+         * A rect on screen, in pixels from the pane's top left.
+         * @param rect - The rect, in the window's pixels.
+         * @returns It from the pane.
+         */
+        const onPane = (rect: DOMRect): Rect => ({ x: rect.left - origin.left, y: rect.top - origin.top, width: rect.width, height: rect.height });
+        if (panel) boxes.push(onPane(panel));
+        // The project page's menu and toolbar float beside the Space outlets.
+        const stage = container.closest('[data-space-outlet]')?.parentElement;
+        const chrome = [
+          ...(stage?.querySelectorAll<HTMLElement>('[data-canvas-chrome]') ?? []),
+          ...container.querySelectorAll<HTMLElement>('.react-flow__minimap'),
+        ].map((el) => onPane(el.getBoundingClientRect()));
         const box = groupRectForMembers(boxes, 0);
-        const next = box === null ? null : viewportToShow(box, { width, height }, { x, y, zoom });
+        const next = box === null ? null : viewportToShow(box, { width, height }, { x, y, zoom }, chrome);
         if (next !== null) void setViewport(next, { duration: FRAME_PAN_MS, interpolate: 'linear' });
       };
       requestAnimationFrame(step);
