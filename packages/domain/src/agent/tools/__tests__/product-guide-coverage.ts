@@ -380,7 +380,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.storyboard-grid-25.input.reference.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.storyboard-grid-25.input.reference.note": { described: /a note at the top of the prompt says what to put in it/ },
   "canvas.template.storyboard-grid-25.prompt": { described: /replaces that mode's prompt with the template's/ },
-  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets asks the reader to @ a node/ },
+  "canvas.promptMark.reference": { described: /A 📎 mark in square brackets, where a prompt carries one, asks the reader to @ a node/ },
   "canvas.task.couldNotStart": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.task.countTip": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.dismissFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },

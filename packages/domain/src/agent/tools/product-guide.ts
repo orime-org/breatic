@@ -1109,8 +1109,8 @@ export function renderProductGuide(): string {
       "generation still to run -- comes with a note saying what to do first; generating before then sends " +
       "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
       "only when one does. A template applied from the panel and a proposal both arrive this way: their prompt " +
-      "or shot carries ✏️ marks and notes, and every node they wire in is @'d; a 📎 mark is left only where a " +
-      "reference could not be. A 📎 mark in square brackets asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
+      "or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d. A 📎 mark in " +
+      "square brackets, where a prompt carries one, asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
       `note, starting ${quoted(t("canvas.generatePanel.notePrefix").trim())}, on a line of its own at the top of the box says how to operate the panel, such as which slot to pick ` +
