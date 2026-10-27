@@ -5,104 +5,127 @@ import { z } from "zod";
 import { isPricingRule } from "@provider/pricing/estimate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
-/** One upstream as `config/provider/upstreams.yaml` declares it. */
-export interface UpstreamDecl {
-  kind: string;
-  base_url: string;
-  key_env: string;
-  concurrency?: number;
-}
+const choice = z.union([z.string(), z.number(), z.boolean()]);
+const weights = z.record(z.string(), z.number().int().min(0));
+const weighted = z.object({ upstream: z.string(), weight: z.number().int().min(0) });
 
-/** How one of our params is written for one upstream. */
-export interface ParamBinding {
-  field: string;
-  values?: Record<string, string | number | boolean>;
-  item_key?: string;
-  absent_value?: string | number | boolean;
-  /** A rewrite of the value into the upstream's own shape; `pronunciation_pairs` writes `{ text, pronunciation }` items as `text/pronunciation` strings. */
-  transform?: "pronunciation_pairs";
-}
+/**
+ * A pricing rule provider can evaluate. Kept as `unknown` in the types, so a
+ * caller's yaml reads in as it is; the check runs at load.
+ */
+const pricingRule = z.custom<unknown>((value) => isPricingRule(value), { message: "is not a valid pricing rule" });
 
-/** What the element step asks the understand model to write about each reference image. */
-export interface DescribeBinding {
+const upstreamSchema = z.object({
+  kind: z.string().min(1),
+  base_url: z.string().min(1),
+  key_env: z.string().min(1),
+  concurrency: z.number().int().positive().optional(),
+});
+
+const paramSchema = z.object({
+  field: z.string().min(1),
+  /** Our value to the upstream's spelling. */
+  values: z.record(z.string(), choice).optional(),
+  /** Each list entry is wrapped under this key. */
+  item_key: z.string().optional(),
+  /** Holding this value sends nothing. */
+  absent_value: choice.optional(),
+  /** `pronunciation_pairs` writes `{ text, pronunciation }` items as `text/pronunciation` strings. */
+  transform: z.literal("pronunciation_pairs").optional(),
+});
+
+const describeSchema = z.object({
   /** Our LLM model id, routed by `understand_routes`. */
-  model: string;
-  question: string;
-  max_output_tokens: number;
-}
+  model: z.string().min(1),
+  question: z.string().min(1),
+  max_output_tokens: z.number().int().positive(),
+});
 
-/** One extra upstream call of a binding, before or after the model's own call (design 4.2, 6.2). */
-export interface ExtraStepBinding {
-  kind: "upload_reference" | "upload_melody" | "vocal" | "element" | "speak";
-  endpoint: string;
-  at: "before" | "after";
+const extraStepSchema = z.object({
+  kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak"]),
+  endpoint: z.string().min(1),
+  at: z.enum(["before", "after"]),
   /** The param it serves; the step is skipped when the param carries nothing. */
-  for_param?: string;
+  for_param: z.string().optional(),
   /** One step per item of the param. */
-  per_item?: boolean;
+  per_item: z.boolean().optional(),
   /** For an element step: how its reference image is described first. */
-  describe?: DescribeBinding;
+  describe: describeSchema.optional(),
   /** What one call of this step costs. */
-  pricing?: unknown;
+  pricing: pricingRule.optional(),
   /** The step is skipped on a later run whose source it already made a clone of. */
-  reused?: boolean;
-}
+  reused: z.boolean().optional(),
+});
 
-/** One model bound to one upstream (design 4.2). */
-export interface MediaBinding {
-  upstream: string;
-  weight: number;
-  model_id: string;
-  prompt_field?: string;
-  params?: Record<string, ParamBinding>;
-  extra_steps?: ExtraStepBinding[];
+// Every binding carries its price (design 4.2): the cheapest mode and the
+// estimate both read it, and the shipped bindings all have one.
+const bindingSchema = z.object({
+  upstream: z.string().min(1),
+  weight: z.number().int().min(0),
+  model_id: z.string().min(1),
+  prompt_field: z.string().optional(),
+  params: z.record(z.string(), paramSchema).optional(),
+  extra_steps: z.array(extraStepSchema).optional(),
   /** The param a clone made by this binding is reused by; the model's own call is then a clone. */
-  reused_by?: string;
-  mentions?: Record<string, string>;
-  voice_map?: Record<string, string>;
-  pricing: unknown;
-}
+  reused_by: z.string().optional(),
+  mentions: z.record(z.string(), z.string()).optional(),
+  voice_map: z.record(z.string(), z.string()).optional(),
+  pricing: pricingRule,
+});
 
-/** The raw provider configuration, as read from the yaml files by the caller. */
-export interface ProviderConfigInput {
-  upstreams: Record<string, UpstreamDecl>;
-  media: { models: Record<string, { upstreams: MediaBinding[] }> };
+const llmRouteSchema = z.object({ prefix: z.string(), upstreams: z.array(weighted) });
+
+const llmPriceSchema = z.object({
+  input_cache_miss_per_mtok: z.number().min(0),
+  input_cache_hit_per_mtok: z.number().min(0).optional(),
+  input_cache_write_5m_per_mtok: z.number().min(0).optional(),
+  input_cache_write_1h_per_mtok: z.number().min(0).optional(),
+  output_per_mtok: z.number().min(0),
+});
+
+const llmSchema = z.object({
+  routes: z.array(llmRouteSchema),
+  understand_routes: z.array(llmRouteSchema).optional(),
+  vendor_ids: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+  openrouter_backends: z.record(z.string(), z.object({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
+  /** Direct token prices in USD per million tokens, by our model id. */
+  prices: z.record(z.string(), llmPriceSchema).optional(),
+});
+
+const routingSchema = z.object({
+  models: z.record(z.string(), z.object({ weights })).optional(),
+  llm: z.record(z.string(), z.object({ weights })).optional(),
+});
+
+const inputSchema = z.object({
+  upstreams: z.record(z.string(), upstreamSchema),
+  media: z.object({ models: z.record(z.string(), z.object({ upstreams: z.array(bindingSchema) })) }),
   /** `config/provider/llm.yaml` (design 4.3). */
-  llm?: LlmConfigInput;
+  llm: llmSchema.optional(),
   /** `config/provider/routing.yaml`; absent when the deployment ships none. */
-  routing?: RoutingOverride;
-}
+  routing: routingSchema.optional(),
+});
 
+/** One upstream as `config/provider/upstreams.yaml` declares it. */
+export type UpstreamDecl = z.infer<typeof upstreamSchema>;
+/** How one of our params is written for one upstream. */
+export type ParamBinding = z.infer<typeof paramSchema>;
+/** What the element step asks the understand model to write about each reference image. */
+export type DescribeBinding = z.infer<typeof describeSchema>;
+/** One extra upstream call of a binding, before or after the model's own call (design 4.2, 6.2). */
+export type ExtraStepBinding = z.infer<typeof extraStepSchema>;
+/** One model bound to one upstream (design 4.2). */
+export type MediaBinding = z.infer<typeof bindingSchema>;
+/** The raw provider configuration, as read from the yaml files by the caller. */
+export type ProviderConfigInput = z.input<typeof inputSchema>;
 /** The deployment's weight overrides (design 4.4): per media model, and per LLM route prefix. */
-export interface RoutingOverride {
-  models?: Record<string, { weights: Record<string, number> }>;
-  llm?: Record<string, { weights: Record<string, number> }>;
-}
-
+export type RoutingOverride = z.infer<typeof routingSchema>;
 /** One LLM route: the first whose prefix matches a model id wins. */
-export interface LlmRoute {
-  prefix: string;
-  upstreams: { upstream: string; weight: number }[];
-}
-
+export type LlmRoute = z.infer<typeof llmRouteSchema>;
 /** The LLM routing file (design 4.3). */
-export interface LlmConfigInput {
-  routes: LlmRoute[];
-  understand_routes?: LlmRoute[];
-  vendor_ids?: Record<string, Record<string, string>>;
-  openrouter_backends?: Record<string, { only: string[]; allow_fallbacks: boolean }>;
-  /** Direct token prices in USD per million tokens, by our model id (from `config/usage-pricing.yaml`). */
-  prices?: Record<string, LlmPrice>;
-}
-
+export type LlmConfigInput = z.infer<typeof llmSchema>;
 /** One model's direct token prices, USD per million tokens. */
-export interface LlmPrice {
-  input_cache_miss_per_mtok: number;
-  input_cache_hit_per_mtok?: number;
-  input_cache_write_5m_per_mtok?: number;
-  input_cache_write_1h_per_mtok?: number;
-  output_per_mtok: number;
-}
+export type LlmPrice = z.infer<typeof llmPriceSchema>;
 
 /** The validated configuration, with deployment overrides applied. */
 export interface ProviderConfig {
@@ -130,66 +153,6 @@ export class ProviderConfigError extends Error {
     this.problems = problems;
   }
 }
-
-const choice = z.union([z.string(), z.number(), z.boolean()]);
-const weights = z.record(z.string(), z.number().int().min(0));
-
-const inputSchema = z.object({
-  upstreams: z.record(z.string(), z.object({
-    kind: z.string().min(1),
-    base_url: z.string().min(1),
-    key_env: z.string().min(1),
-    concurrency: z.number().int().positive().optional(),
-  })),
-  media: z.object({
-    models: z.record(z.string(), z.object({
-      upstreams: z.array(z.object({
-        upstream: z.string().min(1),
-        weight: z.number().int().min(0),
-        model_id: z.string().min(1),
-        prompt_field: z.string().optional(),
-        params: z.record(z.string(), z.object({
-          field: z.string().min(1),
-          values: z.record(z.string(), choice).optional(),
-          item_key: z.string().optional(),
-          absent_value: choice.optional(),
-          transform: z.literal("pronunciation_pairs").optional(),
-        })).optional(),
-        extra_steps: z.array(z.object({
-          kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak"]),
-          endpoint: z.string().min(1),
-          at: z.enum(["before", "after"]),
-          for_param: z.string().optional(),
-          per_item: z.boolean().optional(),
-          describe: z.object({ model: z.string().min(1), question: z.string().min(1), max_output_tokens: z.number().int().positive() }).optional(),
-          pricing: z.unknown().optional(),
-          reused: z.boolean().optional(),
-        })).optional(),
-        reused_by: z.string().optional(),
-        mentions: z.record(z.string(), z.string()).optional(),
-        voice_map: z.record(z.string(), z.string()).optional(),
-        pricing: z.unknown().optional(),
-      })),
-    })),
-  }),
-  llm: z.object({
-    routes: z.array(z.object({ prefix: z.string(), upstreams: z.array(z.object({ upstream: z.string(), weight: z.number().int().min(0) })) })),
-    understand_routes: z.array(z.object({ prefix: z.string(), upstreams: z.array(z.object({ upstream: z.string(), weight: z.number().int().min(0) })) })).optional(),
-    vendor_ids: z.record(z.string(), z.record(z.string(), z.string())).optional(),
-    openrouter_backends: z.record(z.string(), z.object({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
-    prices: z.record(z.string(), z.object({
-      input_cache_miss_per_mtok: z.number().min(0),
-      input_cache_hit_per_mtok: z.number().min(0).optional(),
-      input_cache_write_5m_per_mtok: z.number().min(0).optional(),
-      input_cache_write_1h_per_mtok: z.number().min(0).optional(),
-      output_per_mtok: z.number().min(0),
-    })).optional(),
-  }).optional(),
-  routing: z.object({
-    models: z.record(z.string(), z.object({ weights })).optional(),
-    llm: z.record(z.string(), z.object({ weights })).optional(),
-  }).optional(),
-});
 
 /**
  * Apply one override to a list of weighted upstreams, reporting names it does not bind.
@@ -231,6 +194,22 @@ function checkList(owner: string, list: { upstream: string; weight: number }[], 
 }
 
 /**
+ * One schema problem as a line naming the model and upstream it is about.
+ * @param input - The raw files.
+ * @param path - Where the problem is.
+ * @param message - What is wrong.
+ * @returns The line.
+ */
+function issueLine(input: ProviderConfigInput, path: readonly PropertyKey[], message: string): string {
+  const [media, models, model, upstreams, index, ...rest] = path;
+  if (media === "media" && models === "models" && upstreams === "upstreams" && typeof index === "number") {
+    const upstream = (input.media.models[String(model)]?.upstreams[index] as { upstream?: unknown } | undefined)?.upstream;
+    return `${String(model)}: the binding to "${String(upstream)}": ${rest.map(String).join(".")} ${message}`;
+  }
+  return `${path.map(String).join(".")}: ${message}`;
+}
+
+/**
  * Validate the configuration and apply the deployment's weight overrides.
  * @param input - The raw files.
  * @returns The validated configuration.
@@ -238,23 +217,13 @@ function checkList(owner: string, list: { upstream: string; weight: number }[], 
  */
 export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig {
   const parsed = inputSchema.safeParse(input);
-  if (!parsed.success) {
-    throw new ProviderConfigError(parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`));
-  }
-  const raw = parsed.data as ProviderConfigInput;
+  if (!parsed.success) throw new ProviderConfigError(parsed.error.issues.map((issue) => issueLine(input, issue.path, issue.message)));
+  const raw = parsed.data;
   const problems: string[] = [];
   const models: Record<string, MediaBinding[]> = {};
   for (const [model, { upstreams }] of Object.entries(raw.media.models)) {
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
-    for (const binding of bindings) {
-      if (!isPricingRule(binding.pricing)) problems.push(`${model}: the binding to "${binding.upstream}" has no valid pricing`);
-      for (const step of binding.extra_steps ?? []) {
-        if (step.pricing !== undefined && !isPricingRule(step.pricing)) {
-          problems.push(`${model}: the ${step.kind} step on "${binding.upstream}" has invalid pricing`);
-        }
-      }
-    }
     models[model] = [...bindings].sort((a, b) => a.weight - b.weight);
   }
   for (const name of Object.keys(raw.routing?.models ?? {})) {
