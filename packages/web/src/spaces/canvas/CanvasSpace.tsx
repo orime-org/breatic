@@ -87,7 +87,7 @@ import {
   freshNodesBox,
   viewportForBuilt,
   viewportToInspect,
-  viewportToShow,
+  viewportToShowPlaced,
 } from '@web/spaces/canvas/frame-built-node';
 import { exportCropBlob } from '@web/spaces/canvas/focus/crop-export';
 import { cropSourceSelector, intrinsicSize, isCropSource, whenDecoded } from '@web/spaces/canvas/focus/crop-source';
@@ -1342,66 +1342,57 @@ function CanvasSpaceInner({
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
 
-  // Once nodes just placed and the generate panel opened on one of them, grown
-  // around its prompt, are laid out, the camera slides them in front of the
-  // reader when they reach under the menu, toolbar or minimap floating over
-  // the canvas (inner#1345): a template applied in a panel, and a proposal
-  // landed with its panel open. Waits for every node to be measured and the
-  // panel to hold one height for two frames; past that many frames it frames
-  // what is there.
+  // Once nodes just placed and the generate panel opened on one of them,
+  // grown around its prompt, are laid out, the camera moves once so all of
+  // it is in front of the reader, clear of the menu, toolbar and minimap
+  // floating over the canvas, zooming out only as far as that takes
+  // (inner#1345): a template applied in a panel, and a proposal landed with
+  // its panel open. A node off screen is not mounted, so its position comes
+  // from the canvas's own record and its size from the layout until it is
+  // measured. Waits for the panel to hold one height for two frames; past
+  // that many frames it frames what is there.
   const showPlaced = React.useCallback(
-    (nodeIds: readonly string[], panelNodeId: string): void => {
+    (placed: PlacedProposal, panelNodeId: string, duration: number): void => {
       let tries = 0;
       let lastHeight = -1;
-      /** One frame of waiting for the nodes and the panel to be laid out. */
+      /** One frame of waiting for the panel to be laid out. */
       const step = (): void => {
         const container = containerRef.current;
         if (!container) return;
-        const rects = nodeIds.map((id) => {
-          const node = getInternalNode(id);
-          const width = node?.measured?.width;
-          const height = node?.measured?.height;
-          return node && width && height ? { ...node.internals.positionAbsolute, width, height } : null;
-        });
         const panel = container.querySelector<HTMLElement>('[data-canvas-panel]')?.getBoundingClientRect();
-        const settled = rects.every((rect) => rect !== null) && panel !== undefined && panel.height === lastHeight;
+        const settled = panel !== undefined && panel.height === lastHeight;
         lastHeight = panel?.height ?? -1;
         if (!settled && tries++ < PLACED_SHOW_FRAMES) {
           requestAnimationFrame(step);
           return;
         }
+        const rects = placed.nodeIds.map((id, i): Rect => {
+          const laid = placed.rects[i] ?? { x: 0, y: 0, ...EMPTY_NODE_SIZE };
+          const node = getInternalNode(id);
+          return {
+            ...(node?.internals.positionAbsolute ?? laid),
+            width: node?.measured?.width ?? laid.width,
+            height: node?.measured?.height ?? laid.height,
+          };
+        });
+        const [first, ...rest] = rects;
+        const anchor = rects[placed.nodeIds.indexOf(panelNodeId)] ?? first;
+        if (first === undefined || anchor === undefined) return;
         const { transform: [x, y, zoom], width, height } = rfStoreApi.getState();
         const origin = container.getBoundingClientRect();
-        /**
-         * A node's rect on screen, in pixels from the pane's top left.
-         * @param rect - The node's rect on the canvas.
-         * @returns It on screen.
-         */
-        const onScreen = (rect: Rect): Rect => ({ x: rect.x * zoom + x, y: rect.y * zoom + y, width: rect.width * zoom, height: rect.height * zoom });
-        const all = rects.flatMap((rect) => (rect ? [onScreen(rect)] : []));
-        const own = rects.flatMap((rect, i) => (rect && nodeIds[i] === panelNodeId ? [onScreen(rect)] : []));
-        /**
-         * A rect on screen, in pixels from the pane's top left.
-         * @param rect - The rect, in the window's pixels.
-         * @returns It from the pane.
-         */
-        const onPane = (rect: DOMRect): Rect => ({ x: rect.left - origin.left, y: rect.top - origin.top, width: rect.width, height: rect.height });
-        if (panel) {
-          all.push(onPane(panel));
-          own.push(onPane(panel));
-        }
         // The project page's menu and toolbar float beside the Space outlets.
         const stage = container.closest('[data-space-outlet]')?.parentElement;
         const chrome = [
           ...(stage?.querySelectorAll<HTMLElement>('[data-canvas-chrome]') ?? []),
           ...container.querySelectorAll<HTMLElement>('.react-flow__minimap'),
-        ].map((el) => onPane(el.getBoundingClientRect()));
-        // Everything placed, else the panel and the node it is open on.
-        const everything = groupRectForMembers(all, 0);
-        const needed = groupRectForMembers(own, 0) ?? everything;
-        const next =
-          everything === null || needed === null ? null : viewportToShow([everything, needed], { width, height }, { x, y, zoom }, chrome);
-        if (next !== null) void setViewport(next, { duration: FRAME_PAN_MS, interpolate: 'linear' });
+        ].map((el) => {
+          const box = el.getBoundingClientRect();
+          return { x: box.left - origin.left, y: box.top - origin.top, width: box.width, height: box.height };
+        });
+        const view = { nodes: [first, ...rest] as [Rect, ...Rect[]], anchor, panel: { width: panel?.width ?? 0, height: panel?.height ?? 0 } };
+        const next = viewportToShowPlaced(view, { width, height }, { x, y, zoom }, chrome, CANVAS_MIN_ZOOM);
+        if (next === null) return;
+        void setViewport(next, { duration: next.zoom === zoom ? duration : PROPOSAL_FRAME_MS, interpolate: 'linear' });
       };
       requestAnimationFrame(step);
     },
@@ -1421,7 +1412,7 @@ function CanvasSpaceInner({
         return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
       });
       const placed = placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
-      showPlaced(placed.nodeIds, anchorId ?? '');
+      showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
     [projectId, spaceId, getInternalNode, placeProposalAt, showPlaced],
@@ -2810,30 +2801,27 @@ function CanvasSpaceInner({
             : undefined;
         });
         const placed = placeProposalAt(intent.proposal, center, occupied);
-        // The camera follows what landed: centred on it, zoomed out only as
-        // far as it takes to show all of it (inner#1443 A4).
-        let framed: Promise<boolean> = Promise.resolve(true);
-        if (placed.bounds) {
-          // A Space opened empty and never framed still has its opening fit
-          // queued for the first nodes to arrive; this framing is that one.
-          rfStoreApi.setState({ fitViewQueued: false });
+        const focus = whatToFocus(intent.proposal, placed);
+        // A Space opened empty and never framed still has its opening fit
+        // queued for the first nodes to arrive; the framing below is that one.
+        if (placed.bounds) rfStoreApi.setState({ fitViewQueued: false });
+        if (focus.panel) {
+          // The panel that opens under one of them is framed with them once
+          // it has landed, in one move.
+          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
+          showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
+        } else if (placed.bounds) {
+          // The camera follows what landed: centred on it, zoomed out only as
+          // far as it takes to show all of it (inner#1443 A4).
           const zoom = rfStoreApi.getState().transform[2];
-          framed = setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
+          void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
             duration: PROPOSAL_FRAME_MS,
             // A straight slide, like the other framings: the default arc zooms
             // out on the way and back in.
             interpolate: 'linear',
           });
         }
-        const focus = whatToFocus(intent.proposal, placed);
         if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-        if (focus.panel) {
-          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
-          // The framing above counts the nodes alone; the panel that opens
-          // under one of them is brought into view once it has landed.
-          const { nodeId } = focus.panel;
-          void framed.then(() => showPlaced(placed.nodeIds, nodeId));
-        }
         reportProposalOutcome('placed');
       } catch {
         // `placeProposalAt` takes back whatever it wrote before it threw, so

@@ -34,3 +34,27 @@ export async function expectPanelInView(page: Page): Promise<void> {
   await expect.poll(() => overlapping(panel, page.getByTestId('viewport-toolbar')), { timeout: 5_000 }).toBe(false);
   await expect.poll(() => overlapping(panel, visibleSpace(page).locator('.react-flow__minimap')), { timeout: 5_000 }).toBe(false);
 }
+
+/**
+ * Wait until every node on the open canvas, with the name row above it, is
+ * inside the canvas pane (inner#1345).
+ * @param page - The page.
+ * @param count - How many nodes, groups aside, the canvas holds.
+ */
+export async function expectNodesInView(page: Page, count: number): Promise<void> {
+  const nodes = visibleSpace(page).locator('.react-flow__node:not(.react-flow__node-group)');
+  await expect(nodes).toHaveCount(count, { timeout: 5_000 });
+  const pane = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+  if (!pane) throw new Error('the canvas pane is not on screen');
+  await expect
+    .poll(async () => {
+      const boxes = await Promise.all(
+        (await nodes.locator('[data-testid="node-header-anchor"]').all()).map((name) => name.boundingBox()),
+      );
+      const cards = await Promise.all((await nodes.all()).map((node) => node.boundingBox()));
+      return [...boxes, ...cards].every(
+        (b) => b !== null && b.x >= pane.x && b.y >= pane.y && b.x + b.width <= pane.x + pane.width && b.y + b.height <= pane.y + pane.height,
+      );
+    }, { timeout: 5_000 })
+    .toBe(true);
+}

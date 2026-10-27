@@ -4693,13 +4693,19 @@ describe('how the camera follows a landed proposal', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const follow = src.slice(
     src.indexOf('const placed = placeProposalAt'),
-    src.indexOf('const focus = whatToFocus'),
+    src.indexOf('reportProposalOutcome(\'placed\')'),
   );
 
   it('slides in a straight line over the proposal framing time', () => {
     expect(follow).toContain('frameProposal(placed.bounds');
     expect(follow).toContain('duration: PROPOSAL_FRAME_MS');
     expect(follow).toContain('interpolate: \'linear\'');
+  });
+
+  // With a panel opening on it, the landing is framed once with the panel
+  // (inner#1345); `viewportToShowPlaced` has its own tests.
+  it('frames a landing whose panel opens together with that panel, in one move', () => {
+    expect(follow).toContain('showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS)');
   });
 });
 

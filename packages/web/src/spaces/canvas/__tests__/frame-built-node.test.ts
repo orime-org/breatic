@@ -19,7 +19,10 @@ import {
   freshNodesBox,
   viewportForBuilt,
   viewportToInspect,
-  viewportToShow,
+  NODE_NAME_REACH_PX,
+  placedScreenBoxes,
+  viewportToShowPlaced,
+  ZOOM_STEP,
 } from '@web/spaces/canvas/frame-built-node';
 import type { Rect } from '@web/spaces/canvas/group-geometry';
 
@@ -233,49 +236,77 @@ describe('freshNodesBox', () => {
   });
 });
 
-describe('viewportToShow (inner#1345)', () => {
+describe('viewportToShowPlaced (inner#1345)', () => {
   const pane = { width: 1000, height: 800 };
-  const now = { x: -200, y: -100, zoom: 1.5 };
   const G = CHROME_GAP_PX;
   // A menu down the left side; a toolbar and a minimap in the bottom right.
   const menu = { x: 16, y: 250, width: 48, height: 300 };
   const toolbar = { x: 700, y: 740, width: 280, height: 44 };
   const minimap = { x: 780, y: 580, width: 200, height: 150 };
   const chrome = [menu, toolbar, minimap];
+  const room = { x: G, y: G, width: pane.width - 2 * G, height: pane.height - 2 * G };
+  const blocks = chrome.map((b) => ({ x: b.x - G, y: b.y - G, width: b.width + 2 * G, height: b.height + 2 * G }));
+  const inside = (r: Rect): boolean => r.x >= room.x && r.y >= room.y && r.x + r.width <= room.x + room.width && r.y + r.height <= room.y + room.height;
+  const clear = (r: Rect): boolean => blocks.every((b) => !(r.x < b.x + b.width && b.x < r.x + r.width && r.y < b.y + b.height && b.y < r.y + r.height));
+  const card = (x: number, y: number, height = 192): Rect => ({ x, y, width: 288, height });
 
-  it('stays put while the box is clear of what floats over the canvas', () => {
-    expect(viewportToShow([{ x: 100, y: 40, width: 600, height: 500 }], pane, now, chrome)).toBeNull();
+  it('stays put while the nodes, their names and the panel are clear of what floats over the canvas', () => {
+    const view = { nodes: [card(100, 100)] as [Rect], anchor: card(100, 100), panel: { width: 300, height: 200 } };
+
+    expect(viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1)).toBeNull();
   });
 
-  it('slides a box under the left menu just clear of it, at the reader zoom', () => {
-    const next = viewportToShow([{ x: 40, y: 100, width: 400, height: 300 }], pane, now, chrome);
+  it('counts the name above a node, so a node right under the top edge moves down', () => {
+    const view = { nodes: [card(300, 30)] as [Rect], anchor: card(300, 30), panel: { width: 300, height: 200 } };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
 
-    expect(next).toEqual({ x: -200 + (menu.x + menu.width + G - 40), y: -100, zoom: 1.5 });
+    expect(next).toEqual({ x: 0, y: G - (30 - NODE_NAME_REACH_PX), zoom: 1 });
   });
 
-  it('slides a box reaching the minimap the shorter way clear of it', () => {
-    // Up 44 clears it; left would take 144.
-    const next = viewportToShow([{ x: 300, y: 300, width: 600, height: 300 }], pane, now, chrome);
+  it('slides at the reader zoom when everything fits there', () => {
+    const view = { nodes: [card(30, 100)] as [Rect], anchor: card(30, 100), panel: { width: 200, height: 200 } };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
 
-    expect(next).toEqual({ x: -200, y: -100 + (minimap.y - G - 600), zoom: 1.5 });
+    expect(next).toEqual({ x: menu.x + menu.width + G - 30, y: 0, zoom: 1 });
   });
 
-  it('shows the next box when the first cannot be placed clear', () => {
-    const everything = { x: 100, y: 100, width: 980, height: 600 };
-    const panelAndNode = { x: 600, y: 300, width: 300, height: 300 };
-    const next = viewportToShow([everything, panelAndNode], pane, now, chrome);
+  it('zooms out only as far as it takes for every node and the panel to fit clear', () => {
+    const view = {
+      nodes: [card(100, 30), card(100, 300, 300), card(450, 100)] as [Rect, Rect, Rect],
+      anchor: card(450, 100),
+      panel: { width: 600, height: 300 },
+    };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
 
-    // Up 44 clears the minimap for the panel and its node.
-    expect(next).toEqual({ x: -200, y: -100 + (minimap.y - G - 600), zoom: 1.5 });
+    expect(next).not.toBeNull();
+    expect(next!.zoom).toBeLessThan(1);
+    expect(next!.zoom).toBeGreaterThan(0.5);
+    const { all } = placedScreenBoxes(view, next!);
+    expect(inside(all)).toBe(true);
+    expect(clear(all)).toBe(true);
+    // One step closer would not have fitted.
+    const closer = placedScreenBoxes(view, { ...next!, zoom: next!.zoom / ZOOM_STEP });
+    expect(inside(closer.all) && clear(closer.all)).toBe(false);
   });
 
-  it('puts the last box top left in the pane when none can be placed clear', () => {
-    const next = viewportToShow([{ x: 300, y: 300, width: 980, height: 700 }], pane, now, chrome);
+  it('never zooms in', () => {
+    const view = { nodes: [card(30, 100)] as [Rect], anchor: card(30, 100), panel: { width: 200, height: 200 } };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 0.5 }, chrome, 0.1);
 
-    expect(next).toEqual({ x: -200 + G - 300, y: -100 + G - 300, zoom: 1.5 });
+    expect(next?.zoom).toBe(0.5);
   });
 
-  it('has the whole pane less the gap when nothing floats over it', () => {
-    expect(viewportToShow([{ x: G, y: G, width: 1000 - 2 * G, height: 800 - 2 * G }], pane, now, [])).toBeNull();
+  it('keeps the panel and its node clear at the reader zoom when the nodes cannot fit at the lowest zoom', () => {
+    const view = {
+      nodes: [card(-20000, 100), card(20000, 100), card(300, 100)] as [Rect, Rect, Rect],
+      anchor: card(300, 100),
+      panel: { width: 300, height: 200 },
+    };
+    const next = viewportToShowPlaced(view, pane, { x: 0, y: 0, zoom: 1 }, chrome, 0.1);
+
+    expect(next?.zoom ?? 1).toBe(1);
+    const { own } = placedScreenBoxes(view, next ?? { x: 0, y: 0, zoom: 1 });
+    expect(inside(own)).toBe(true);
+    expect(clear(own)).toBe(true);
   });
 });

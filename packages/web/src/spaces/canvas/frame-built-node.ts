@@ -14,6 +14,7 @@
 
 import type { Viewport } from '@xyflow/react';
 
+import { NODE_PANEL_GAP_PX } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
 import {
   centerOf,
@@ -225,27 +226,84 @@ function clearSlide(box: Rect, room: Rect, blocks: readonly Rect[]): { dx: numbe
 }
 
 /**
- * Where to slide the camera so a box on screen is in front of the reader
- * (inner#1345): nodes just placed and the generate panel opened on one of
- * them, grown around its prompt. The boxes come widest first, each one the
- * reader can do with less of. The first that can sit inside the pane, a gap
- * in from its edges and from the menu, toolbar and minimap floating over it,
- * is slid there the shortest way at the reader's zoom; when none can, the
- * last is put at the pane's top left. The panel keeps its size on screen, so
- * zooming out would not make it fit.
- * @param boxes - The boxes, widest first, in screen pixels from the pane's top left.
+ * How far a node's name row reaches above its card on screen (measured: one
+ * 20px row with its `pb-1` inside, hung `bottom-full` in `ContentNodeFrame`).
+ * It keeps that size down to `OVERLAY_SCALE_FLOOR_ZOOM` and shrinks below it,
+ * so this is the most it ever takes.
+ */
+export const NODE_NAME_REACH_PX = 20;
+
+/** Each step down the zoom takes while looking for one at which everything fits. */
+export const ZOOM_STEP = 0.98;
+
+/** Nodes just placed and the generate panel open on one of them. */
+export interface PlacedView {
+  /** Every placed node's card, on the canvas. */
+  nodes: readonly [Rect, ...Rect[]];
+  /** The card of the node the panel is open on, on the canvas. */
+  anchor: Rect;
+  /** The panel's size on screen, which no zoom changes. */
+  panel: { width: number; height: number };
+}
+
+/**
+ * Where the placed nodes, their name rows and the panel fall on screen at a
+ * viewport: the panel hangs centred under its node, `NODE_PANEL_GAP_PX` below.
+ * @param view - The placed nodes and the panel.
+ * @param at - The viewport.
+ * @returns Everything's box, and the box of the panel with its node.
+ * @throws {never} Never.
+ */
+export function placedScreenBoxes(view: PlacedView, at: Viewport): { all: Rect; own: Rect } {
+  /**
+   * A card and its name row on screen.
+   * @param r - The card, on the canvas.
+   * @returns It on screen.
+   */
+  const card = (r: Rect): Rect => ({
+    x: r.x * at.zoom + at.x,
+    y: r.y * at.zoom + at.y - NODE_NAME_REACH_PX,
+    width: r.width * at.zoom,
+    height: r.height * at.zoom + NODE_NAME_REACH_PX,
+  });
+  const panel = {
+    x: (view.anchor.x + view.anchor.width / 2) * at.zoom + at.x - view.panel.width / 2,
+    y: (view.anchor.y + view.anchor.height) * at.zoom + at.y + NODE_PANEL_GAP_PX,
+    width: view.panel.width,
+    height: view.panel.height,
+  };
+  const anchor = card(view.anchor);
+  return {
+    all: groupRectForMembers([...view.nodes.map(card), panel], 0) ?? anchor,
+    own: groupRectForMembers([anchor, panel], 0) ?? anchor,
+  };
+}
+
+/**
+ * Where to move the camera once nodes have landed with the generate panel
+ * open on one of them (inner#1345), so all of it is in front of the reader:
+ * inside the pane, a gap in from its edges and from the menu, toolbar and
+ * minimap floating over it. From the reader's zoom down, step by step, the
+ * first zoom at which everything placed fits is taken, slid the shortest way
+ * from where it stands with its middle held still; it never zooms in. When
+ * not even the lowest zoom fits, the panel and its node are slid clear at the
+ * reader's zoom, else put at the pane's top left.
+ * @param view - The placed nodes and the panel.
  * @param pane - The canvas pane's size in screen pixels.
  * @param pane.width - Its width.
  * @param pane.height - Its height.
  * @param now - The viewport the reader is at.
- * @param chrome - What floats over the pane, in the boxes' pixels.
+ * @param chrome - What floats over the pane, in screen pixels from its top left.
+ * @param minZoom - The lowest zoom the canvas allows.
  * @returns The viewport to move to, or null to stay.
+ * @throws {never} Never.
  */
-export function viewportToShow(
-  boxes: readonly [Rect, ...Rect[]],
+export function viewportToShowPlaced(
+  view: PlacedView,
   pane: { width: number; height: number },
   now: Viewport,
   chrome: readonly Rect[],
+  minZoom: number,
 ): Viewport | null {
   const room = { x: CHROME_GAP_PX, y: CHROME_GAP_PX, width: pane.width - 2 * CHROME_GAP_PX, height: pane.height - 2 * CHROME_GAP_PX };
   const blocks = chrome
@@ -256,12 +314,35 @@ export function viewportToShow(
       width: one.width + 2 * CHROME_GAP_PX,
       height: one.height + 2 * CHROME_GAP_PX,
     }));
-  for (const box of boxes) {
-    const slide = clearSlide(box, room, blocks);
-    if (slide === null) continue;
-    if (slide.dx === 0 && slide.dy === 0) return null;
-    return { x: now.x + slide.dx, y: now.y + slide.dy, zoom: now.zoom };
+  // The nodes' middle stays where it is on screen while the zoom changes.
+  const middle = centerOf(groupRectForMembers([...view.nodes], 0) ?? view.anchor);
+  const held = { x: middle.x * now.zoom + now.x, y: middle.y * now.zoom + now.y };
+  /**
+   * The viewport at a zoom with the nodes' middle held still.
+   * @param zoom - The zoom.
+   * @returns The viewport.
+   */
+  const at = (zoom: number): Viewport => ({ x: held.x - middle.x * zoom, y: held.y - middle.y * zoom, zoom });
+  /**
+   * A viewport slid as far as a slide says.
+   * @param from - The viewport.
+   * @param slide - The slide.
+   * @param slide.dx - How far right.
+   * @param slide.dy - How far down.
+   * @returns It, or null when the slide is none.
+   */
+  const moved = (from: Viewport, slide: { dx: number; dy: number }): Viewport | null =>
+    from.zoom === now.zoom && from.x + slide.dx === now.x && from.y + slide.dy === now.y
+      ? null
+      : { x: from.x + slide.dx, y: from.y + slide.dy, zoom: from.zoom };
+  for (let zoom = now.zoom; ; zoom = Math.max(minZoom, zoom * ZOOM_STEP)) {
+    const viewport = at(zoom);
+    const slide = clearSlide(placedScreenBoxes(view, viewport).all, room, blocks);
+    if (slide !== null) return moved(viewport, slide);
+    if (zoom <= minZoom) break;
   }
-  const last = boxes[boxes.length - 1] ?? boxes[0];
-  return { x: now.x + room.x - last.x, y: now.y + room.y - last.y, zoom: now.zoom };
+  const own = placedScreenBoxes(view, now).own;
+  const slide = clearSlide(own, room, blocks);
+  if (slide !== null) return moved(now, slide);
+  return { x: now.x + room.x - own.x, y: now.y + room.y - own.y, zoom: now.zoom };
 }

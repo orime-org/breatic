@@ -322,6 +322,8 @@ export interface PlacedProposal {
   groupId?: string;
   /** Where the batch landed: the group's rect, or the one node's. */
   bounds?: Rect;
+  /** Each node's rect as laid out, in the proposal's own order; a node already on the canvas keeps its own position. */
+  rects: Rect[];
 }
 
 /**
@@ -631,6 +633,7 @@ export function useNodeCreation(
         nodeIds,
         ...(groupId === undefined ? {} : { groupId }),
         ...(bounds === undefined ? {} : { bounds }),
+        rects: proposal.nodes.map((_, i) => spots[i] ?? { x: start.x, y: start.y, ...EMPTY_NODE_SIZE }),
       };
     },
     [projectId, spaceId, createNodeAt, userId, t],

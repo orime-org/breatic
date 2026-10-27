@@ -646,8 +646,8 @@ export function renderProductGuide(): string {
       "with it land as nodes to the left as well, connected and @'d. A template with steps to take after it " +
       "generates (such as splitting the result into a grid) also places a text node listing them. Picking it " +
       "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
-      "reach under the left menu, the toolbar at the bottom right or the minimap, the canvas slides them into " +
-      "view, keeping the zoom. Inside a group, the new nodes join the group. On a " +
+      "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
+      "sight, zooming out only as far as that takes. Inside a group, the new nodes join the group. On a " +
       `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
       `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
       `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
@@ -1093,9 +1093,9 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.proposal.failed"))} if it fails, with nothing placed. A proposal kept from before its shape changed shows ` +
       `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
-      "With one generating node its panel opens by itself, and the view then slides, keeping the zoom, so the " +
-      "nodes and the panel sit clear of the left menu, the toolbar at the bottom right and the minimap (or, " +
-      "when they do not all fit, the panel and its node); with several, the group is selected and the reader " +
+      "With one generating node its panel opens by itself, and the view instead moves once to show the nodes, " +
+      "their names and the panel clear of the left menu, the toolbar at the bottom right and the minimap, " +
+      "zooming out only as far as that takes; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
       "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +

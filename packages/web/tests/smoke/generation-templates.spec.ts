@@ -16,7 +16,7 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
-import { expectPanelInView } from '../helpers/canvas-chrome';
+import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -143,6 +143,7 @@ test('picking a template places the reference it asks for, wired and @\'d, and p
   const menu = await page.getByTestId('left-floating-menu').boundingBox();
   await expect.poll(async () => (await reference.boundingBox())?.x ?? 0, { timeout: 5_000 }).toBeGreaterThanOrEqual((menu?.x ?? 0) + (menu?.width ?? 0));
   await expectPanelInView(page);
+  await expectNodesInView(page, 2);
   await page.screenshot({ path: test.info().outputPath('image-template-applied.png') });
 
   await pickStoryboard();
