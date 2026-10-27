@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { APICallError } from "ai";
 import { candidatesOf, parseProviderConfig, type MediaBinding, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
@@ -696,9 +697,10 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param ticket - The ticket.
    * @param index - The describe step's place; the element step follows it.
    * @param bounds - The deadline and signal.
-   * @returns The send answer for the element step, or failed when the image is refused.
-   * @throws {SendNotAccepted} When the image host or the understand upstream could not be reached.
+   * @returns The send answer for the element step; failed when the image is refused, no understand upstream can ever serve, or one refuses the request.
+   * @throws {SendNotAccepted} When the image host could not be reached, or every understand upstream failed in a passing way.
    * @throws {DeadlinePassed} When the deadline cut the read or the description.
+   * @throws {NoAnswer} When an answer was lost; other unknown errors are thrown as they are.
    */
   const describe = async (ticket: Ticket, index: number, bounds: CallBounds): Promise<MediaAnswer> => {
     const step = ticket.steps[index]!;
@@ -717,6 +719,15 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       });
     } catch (error) {
       if (error instanceof MediaRefused) return failed(ticket, error);
+      // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
+      if (error instanceof NoUpstreamAvailable) {
+        const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.failure === "model_not_found");
+        if (lasting) return failed(ticket, error);
+        throw new SendNotAccepted(ticket.upstream, error);
+      }
+      if (APICallError.isInstance(error) && error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 429) {
+        return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, `The element description was refused: ${error.message}`));
+      }
       // Nothing reached the media upstream: the caller clears its sending mark and retries the ticket.
       if (inChain(error, (e) => e instanceof NotSent)) throw new SendNotAccepted(ticket.upstream, error);
       if (Date.now() >= bounds.deadlineAt && inChain(error, (e) => e instanceof Aborted || e.name === "AbortError" || e.name === "TimeoutError")) {
