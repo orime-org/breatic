@@ -568,6 +568,14 @@ describe("a pinned step on an answer a retry cannot fix (design 5.3, 12.4)", () 
 });
 
 describe("streams cut or left early (design 5.3, 3.5)", () => {
+  it("stops on an answer the vendor's SDK cannot read, without moving on", async () => {
+    fakes.deepseek.answer(() => ({ status: 200, raw: "not json", contentType: "application/json" }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    await expect(generateText({ model: prepared.model, prompt: "hi", ...prepared.options })).rejects.toThrow();
+    expect(posted(fakes.deepseek)).toHaveLength(1);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
   it("moves on from an error body that is not JSON", async () => {
     fakes.deepseek.answer(() => ({ status: 503, raw: "upstream busy", contentType: "text/plain" }));
     const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 0 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
