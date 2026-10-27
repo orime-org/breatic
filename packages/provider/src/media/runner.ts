@@ -217,6 +217,17 @@ function classify(error: unknown): Failure | null {
 }
 
 /**
+ * Whether an abort of a call bounded by these came from its deadline: the deadline has
+ * passed, or the caller's own signal did not fire (a timer may fire a millisecond before
+ * the clock reaches the deadline).
+ * @param bounds - The call's deadline and signal.
+ * @returns True when the deadline cut the call.
+ */
+function cutAtDeadline(bounds: CallBounds): boolean {
+  return Date.now() >= bounds.deadlineAt || bounds.signal?.aborted !== true;
+}
+
+/**
  * Whether an error or anything on its cause chain passes a test.
  * @param error - The error.
  * @param test - The test.
@@ -759,7 +770,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
      * @returns True when the deadline cut the call.
      */
     const cutByDeadline = (error: unknown): boolean =>
-      Date.now() >= bounds.deadlineAt && inChain(error, (e) => e instanceof Aborted || e.name === "AbortError" || e.name === "TimeoutError");
+      cutAtDeadline(bounds) && inChain(error, (e) => e instanceof Aborted || e.name === "AbortError" || e.name === "TimeoutError");
     let media;
     try {
       media = await fetchMedia({ url: sourceOf(ticket, step), maxBytes: options.mediaLimits.maxMediaBytes, deadlineAt: bounds.deadlineAt, ...signal });
@@ -821,7 +832,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       } catch (error) {
         const failure = classify(error);
         if (failure === null || failure.kind === "no_answer") throw error;
-        if (failure.kind === "aborted") throw Date.now() >= bounds.deadlineAt ? new DeadlinePassed(bounds.deadlineAt) : error;
+        if (failure.kind === "aborted") throw cutAtDeadline(bounds) ? new DeadlinePassed(bounds.deadlineAt) : error;
         if (decide(failure, "media_submit", 0, 0) === "stop") {
           return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "")));
         }
@@ -863,7 +874,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent
           || (error instanceof HttpStatus && (error.status === 429 || error.status >= 500));
-        if (error instanceof Aborted && pollOptions.finalAsk !== true && Date.now() >= pollOptions.deadlineAt) throw new DeadlinePassed(pollOptions.deadlineAt);
+        if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
         if (!resendable) throw error;
         return waiting(ticket, { warnings: [{ code: "poll_request_failed", detail: { upstream: ticket.upstream, predictionId: at.step.predictionId, error: String(error) } }] });
       }
