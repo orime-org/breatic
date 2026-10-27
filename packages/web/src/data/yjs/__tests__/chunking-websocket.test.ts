@@ -68,14 +68,8 @@ function msg(n: number): Uint8Array {
  * @returns The joined bytes.
  */
 function joined(frames: unknown[]): Uint8Array {
-  const parts = frames.filter((f): f is Uint8Array => f instanceof Uint8Array);
-  const out = new Uint8Array(parts.reduce((sum, p) => sum + p.byteLength, 0));
-  let offset = 0;
-  for (const p of parts) {
-    out.set(p, offset);
-    offset += p.byteLength;
-  }
-  return out;
+  // jsdom has its own Uint8Array, so the Node Buffer is copied into one.
+  return new Uint8Array(Buffer.concat(frames.filter((f): f is Uint8Array => f instanceof Uint8Array)));
 }
 
 /**

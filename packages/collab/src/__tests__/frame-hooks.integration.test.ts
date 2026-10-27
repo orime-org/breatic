@@ -13,7 +13,7 @@ import type { IncomingMessage } from "node:http";
 import { Server } from "@hocuspocus/server";
 import WebSocket from "ws";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
-import { authFrame, statelessFrame, waitFor } from "./helpers/live-hocuspocus.js";
+import { authFrame, statelessFrameOfSize as statelessOfSize, waitFor } from "./helpers/live-hocuspocus.js";
 
 let running: Server | undefined;
 const clients: WebSocket[] = [];
@@ -62,21 +62,6 @@ async function connect(port: number): Promise<{ ws: WebSocket; closed: Promise<n
     ws.once("error", reject);
   });
   return { ws, closed };
-}
-
-/**
- * A stateless frame whose total length is exactly n bytes.
- * @param doc - Document name.
- * @param n - Total frame length.
- * @returns The frame.
- */
-function statelessOfSize(doc: string, n: number): Uint8Array {
-  let k = Math.max(0, n - 32);
-  for (;;) {
-    const f = statelessFrame(doc, "x".repeat(k));
-    if (f.byteLength === n) return f;
-    k += n - f.byteLength;
-  }
 }
 
 /**

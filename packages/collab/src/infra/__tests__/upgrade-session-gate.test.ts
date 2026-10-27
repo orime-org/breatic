@@ -730,7 +730,5 @@ describe("upgrade session gate — the user of an admitted connection (inner#158
     expect(gate.userOf(peerOf(r1.request))).toBe("user-a");
     expect(gate.userOf(peerOf(r2.request))).toBe("user-a");
     expect(gate.userOf(peerOf(r3.request))).toBe("user-b");
-    // A different peer object carrying the same request resolves the same user.
-    expect(gate.userOf(peerOf(r1.request))).toBe(gate.userOf(peerOf(r1.request)));
   });
 });

@@ -53,15 +53,7 @@ function collect(bytes: Uint8Array): Array<string | Uint8Array> {
  * @returns The joined bytes.
  */
 function joined(frames: Array<string | Uint8Array>): Uint8Array {
-  const parts = frames.filter((f): f is Uint8Array => typeof f !== "string");
-  const total = parts.reduce((sum, p) => sum + p.byteLength, 0);
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const p of parts) {
-    out.set(p, offset);
-    offset += p.byteLength;
-  }
-  return out;
+  return Buffer.concat(frames.filter((f): f is Uint8Array => typeof f !== "string"));
 }
 
 /**

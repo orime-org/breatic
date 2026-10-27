@@ -9,8 +9,7 @@
  * connection with its code and leaves one structured log line.
  */
 
-import { randomUUID } from "node:crypto";
-import crypto from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import http from "node:http";
 import type { Socket } from "node:net";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
@@ -33,7 +32,7 @@ import { COLLAB_FRAME_MAX_BYTES, sendInChunks } from "@breatic/shared";
 import { createFrameAssembler } from "@collab/infra/frame-assembler.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
-import { SYNC, WIRE, authFrame, decodeServerFrame, statelessFrame, syncFrame, waitFor } from "../../__tests__/helpers/live-hocuspocus.js";
+import { SYNC, WIRE, authFrame, decodeServerFrame, statelessFrameOfSize as stf, syncFrame, waitFor } from "../../__tests__/helpers/live-hocuspocus.js";
 
 const F = COLLAB_FRAME_MAX_BYTES;
 const M = 10_551_296;
@@ -208,21 +207,6 @@ function sendChunked(c: Client, bytes: Uint8Array): void {
 }
 
 /**
- * A stateless frame of exactly n bytes.
- * @param doc - Document.
- * @param n - Frame length.
- * @returns The frame.
- */
-function stf(doc: string, n: number): Uint8Array {
-  let k = Math.max(0, n - 32);
-  for (;;) {
-    const f = statelessFrame(doc, "x".repeat(k));
-    if (f.byteLength === n) return f;
-    k += n - f.byteLength;
-  }
-}
-
-/**
  * A sync frame carrying a fresh document's text.
  * @param doc - Document.
  * @param text - Text inserted at 0 in `t`.
@@ -273,8 +257,8 @@ async function watcher(st: Stack, cookie: string, doc: string): Promise<{ ydoc: 
  */
 function clientFrame(payload: Uint8Array | string): Buffer {
   const text = typeof payload === "string";
-  const data = text ? Buffer.from(payload) : Buffer.from(payload);
-  const mask = crypto.randomBytes(4);
+  const data = Buffer.from(payload);
+  const mask = randomBytes(4);
   const masked = Buffer.from(data.map((b, i) => b ^ mask[i % 4]!));
   let head: Buffer;
   if (data.length < 126) head = Buffer.from([text ? 0x81 : 0x82, 0x80 | data.length]);
@@ -305,7 +289,7 @@ function raw(st: Stack, cookie: string): Promise<{ socket: Socket; closeCode: ()
         Upgrade: "websocket",
         Cookie: cookie,
         "Sec-WebSocket-Version": "13",
-        "Sec-WebSocket-Key": crypto.randomBytes(16).toString("base64"),
+        "Sec-WebSocket-Key": randomBytes(16).toString("base64"),
       },
     });
     req.on("upgrade", (_res, socket: Socket) => {
