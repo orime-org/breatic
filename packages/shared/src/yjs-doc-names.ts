@@ -12,8 +12,9 @@
  *                                         channel
  *   project-{projectId}/canvas-{spaceId}  Canvas Space content (nodesMap +
  *                                         edges)
- *   project-{projectId}/document-{spaceId}  Document Space (Tiptap; future)
+ *   project-{projectId}/document-{spaceId}  Document Space body and comments
  *   project-{projectId}/timeline-{spaceId}  Timeline Space (future)
+ *   project-{projectId}/3d-{spaceId}        3D Space scene
  *
  * The doc name is the canonical identifier — appears on the Hocuspocus
  * WebSocket handshake, on the `yjs_documents.name` row in PostgreSQL,
@@ -21,8 +22,10 @@
  * Redis stream. Keep encoding here so nobody drifts.
  */
 
+import type { SpaceType } from "@shared/types/space.js";
+
 /** Recognized doc kinds in the project's Yjs space. */
-export type DocKind = "meta" | "canvas" | "document" | "timeline";
+export type DocKind = "meta" | SpaceType;
 
 /**
  * Result of parsing a project-scoped doc name.
@@ -32,7 +35,7 @@ export type DocKind = "meta" | "canvas" | "document" | "timeline";
  */
 export type ParsedDocName =
   | { projectId: string; kind: "meta"; spaceId?: undefined }
-  | { projectId: string; kind: "canvas" | "document" | "timeline"; spaceId: string };
+  | { projectId: string; kind: SpaceType; spaceId: string };
 
 /**
  * Build the meta doc name for a project.
@@ -54,7 +57,7 @@ export function canvasSpaceDocName(projectId: string, spaceId: string): string {
 }
 
 /**
- * Build the Document Space doc name (future kind).
+ * Build the Document Space doc name.
  * @param projectId - Project UUID
  * @param spaceId - Space UUID
  * @returns `"project-{projectId}/document-{spaceId}"`
@@ -74,6 +77,16 @@ export function timelineSpaceDocName(projectId: string, spaceId: string): string
 }
 
 /**
+ * Build the 3D Space scene document name.
+ * @param projectId - Project UUID.
+ * @param spaceId - Space UUID.
+ * @returns The Space-scoped scene document name.
+ */
+export function threeDSpaceDocName(projectId: string, spaceId: string): string {
+  return `project-${projectId}/3d-${spaceId}`;
+}
+
+/**
  * Build a Space's CONTENT doc name from its type — the single home for
  * "space type → content doc name".
  *
@@ -85,7 +98,7 @@ export function timelineSpaceDocName(projectId: string, spaceId: string): string
  * because the meta doc is project-scoped, not space-scoped.
  * @param projectId - Project UUID
  * @param spaceId - Space UUID
- * @param kind - The Space's type (canvas / document / timeline)
+ * @param kind - The Space's type.
  * @returns `"project-{projectId}/{kind}-{spaceId}"`
  */
 export function spaceContentDocName(
@@ -100,13 +113,15 @@ export function spaceContentDocName(
       return documentSpaceDocName(projectId, spaceId);
     case "timeline":
       return timelineSpaceDocName(projectId, spaceId);
+    case "3d":
+      return threeDSpaceDocName(projectId, spaceId);
   }
 }
 
 /**
  * Parse a doc name into its constituent ids and kind.
  *
- * Recognizes only the four shapes built by the helpers above. Returns
+ * Recognizes only the shapes built by the helpers above. Returns
  * `null` for everything else, including:
  *
  *   - the obsolete single-doc form `project-{pid}` (replaced by
@@ -126,7 +141,7 @@ export function spaceContentDocName(
 export function parseDocName(docName: string): ParsedDocName | null {
   // Anchor on the project- prefix and require exactly one path segment.
   const match = docName.match(
-    /^project-([^/]+)\/(meta|canvas|document|timeline)(?:-([^/]+))?$/,
+    /^project-([^/]+)\/(meta|canvas|document|timeline|3d)(?:-([^/]+))?$/,
   );
   if (!match) return null;
 
@@ -149,7 +164,7 @@ export function parseDocName(docName: string): ParsedDocName | null {
 
 /**
  * A POSIX regular expression matching every Space content doc name of one
- * project — `project-{pid}/{canvas|document|timeline}-{spaceId}`, the shapes
+ * project — `project-{pid}/{canvas|document|timeline|3d}-{spaceId}`, the shapes
  * {@link spaceContentDocName} builds — and nothing else under it: not the meta
  * doc, not the obsolete `project-{pid}/canvas` or `node/{id}` paths.
  *
@@ -161,7 +176,7 @@ export function parseDocName(docName: string): ParsedDocName | null {
  * @returns The pattern.
  */
 export function spaceContentRowPattern(projectId: string): string {
-  return `^project-${projectId}/(canvas|document|timeline)-[^/]+$`;
+  return `^project-${projectId}/(canvas|document|timeline|3d)-[^/]+$`;
 }
 
 /**

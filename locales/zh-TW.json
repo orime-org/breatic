@@ -1489,7 +1489,11 @@
       "title": "有未完成的操作,確定離開?",
       "description": "上傳或編輯還沒同步完,現在離開可能遺失。",
       "stay": "留下",
-      "leave": "仍然離開"
+      "leave": "仍然離開",
+      "unsyncedDescription": "部分修改尚未同步，現在重新整理或離開可能遺失這些修改。",
+      "combinedDescription": "部分修改尚未同步，且仍有上傳或編輯操作正在進行。現在重新整理或離開可能遺失這些工作。",
+      "completeDescription": "修改已同步，操作已完成。",
+      "completeTitle": "可以繼續"
     },
     "header": {
       "renameFailed": "重新命名 Project 失敗"
@@ -1533,6 +1537,11 @@
       "confirm": "退出",
       "done": "已退出「{name}」",
       "failed": "退出失敗"
+    },
+    "refreshGuard": {
+      "title": "仍有未完成的工作，要重新整理嗎？",
+      "refresh": "仍然重新整理",
+      "failed": "重新整理失敗，請重試。"
     }
   },
   "common": {
@@ -1616,6 +1625,9 @@
       }
     },
     "kind": {
+      "developmentBadge": "DEV",
+      "threeD": "3D",
+      "threeDSub": "在三維場景中佈置與協作",
       "canvas": "Canvas",
       "canvasSub": "無限 Canvas + 節點",
       "document": "Document",
@@ -1795,7 +1807,58 @@
         "leftOut": "{count} 個圖片、影片或音訊沒有貼上，可以直接拖入或貼上檔案。"
       }
     },
-    "readOnlyReconnect": "重新連線"
+    "readOnlyReconnect": "重新連線",
+    "threeD": {
+      "loading": "正在載入場景…",
+      "loadFailed": "場景載入失敗。",
+      "reload": "重新載入頁面",
+      "valueFailed": "未能套用這個值。",
+      "figure": "人物",
+      "box": "場景方塊",
+      "move": "移動",
+      "rotate": "旋轉",
+      "scale": "縮放",
+      "focus": "定位選取物件",
+      "duplicate": "建立副本",
+      "delete": "刪除",
+      "undo": "復原",
+      "redo": "重做",
+      "objects": "物件",
+      "properties": "屬性",
+      "addFigure": "新增人物",
+      "addBox": "新增方塊",
+      "position": "位置（公尺）",
+      "rotation": "旋轉（度）",
+      "name": "名稱",
+      "lock": "鎖定",
+      "unlock": "解鎖",
+      "selectedCount": "已選取 {count} 個物件",
+      "multiTransform": "使用場景中的控制柄，圍繞選取集合的中心調整變換。",
+      "mixed": "混合值",
+      "selectObject": "選取物件以編輯屬性。",
+      "refused": "與此場景的連線被拒絕了，變更不會被儲存。",
+      "retry": "重試",
+      "viewFailed": "個人視角未能儲存。",
+      "commandFailed": "未能執行操作，請檢查選取物件、鎖定狀態及編輯權限。",
+      "invalidObject": "無法讀取的物件：{id}",
+      "empty": "新增人物或方塊，開始佈置場景。",
+      "unsupported": "此場景使用目前頁面不支援的格式，請重新載入頁面。",
+      "modelFailed": "模型載入失敗。",
+      "peerSelection": "{name}：選取 {count} 個物件",
+      "add": "新增",
+      "generate": "AI 生成",
+      "annotationsLater": "批註（稍後提供）",
+      "help": "說明",
+      "tasks": "生成任務",
+      "minimap": "場景小地圖",
+      "generationDev": "3D 模型生成正在開發中",
+      "prompt": "描述你想生成的 3D 模型",
+      "reference": "參考圖（選填）",
+      "chooseReference": "選擇參考圖",
+      "submit": "生成",
+      "helpBody": "點擊物件以選取；拖曳空白處旋轉視角；滾輪縮放。選取物件後，使用浮動選單移動、旋轉與縮放。",
+      "closePanel": "關閉"
+    }
   },
   "menu": {
     "createAria": "建立選單",

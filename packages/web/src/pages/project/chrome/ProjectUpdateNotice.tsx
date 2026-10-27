@@ -24,9 +24,9 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /**
  * A new release, offered while this page still works: the dialog opens by
- * itself once per release, and the top-bar notice stays until the page
- * reloads. Connection errors take precedence, and the forced dialog of an
- * out-of-date page replaces it.
+ * itself unless this release was postponed in the tab session. The top-bar
+ * notice stays until the page reloads. Connection errors take precedence,
+ * and the forced dialog of an out-of-date page replaces it.
  * @param props - The notice's inputs.
  * @param props.status - The collaboration connection's state.
  * @returns The notice, or nothing when there is no release to offer.

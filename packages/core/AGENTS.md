@@ -57,11 +57,13 @@ Check: render the fragment with `new PgDialect().sqlToQuery(...)`; any `$1` mean
 
 ### Membership limits
 
-**Every tier ceiling is a non-negative integer in `config/membership.yaml` (loader `config/membership.ts`), checked as `count >= limit`; there is no "unlimited" value, so zero means zero.** To leave something uncapped, write a number nobody reaches.
+**Configured tiers use `config/membership.yaml`; active enterprise membership uses the account's saved negotiated limits.** Count ceilings are non-negative integers checked as `count >= limit`, so zero means zero and large values remain ordinary limits. Effective enterprise storage retains its exemption even when a negotiated storage value is recorded.
 
-**Code gets ceilings only from the lookups exported by `auth/membership.repo.ts`; a call site never joins the tier and indexes the config itself.** A studio's tier is its current admin's tier and `limitsFor` throws for a tier with no configured limits, so a private join answers from the wrong account or the wrong numbers without an error.
+**Read effective tiers, limits, storage and subscription-settlement protection through `auth/membership.repo.ts`, which derives them from one membership snapshot.** Studio entitlement belongs to its current admin; missing legacy enterprise information remains explicit. Read [membership entitlements](../../docs/ARCHITECTURE.md#membership-entitlements) before changing expiry, origin protection, presentation or management writes.
 
-Check: am I about to write a limit number in code? It belongs in that yaml.
+**Enterprise information writes share the account row lock and retain the checked revision and immutable operation result in one transaction.** Quota consumers keep the lock on the entity whose set they count.
+
+Check: does this decision use one complete membership reading and the current admin, with the counted set's existing lock retained?
 
 ### Mutable state reads the current source
 

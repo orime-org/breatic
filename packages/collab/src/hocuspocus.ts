@@ -59,6 +59,7 @@ import * as Y from "yjs";
 import {
   parseDocName,
   SpaceRpcRequestSchema,
+  SyncConfirmRequestSchema,
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
@@ -69,6 +70,7 @@ import {
 } from "@collab/hooks/presence-wiring.js";
 import { createPongHandler } from "@collab/services/socket-liveness.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
+import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
   createPersistenceExtension,
@@ -544,20 +546,31 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       }
     },
 
-    // Stateless RPC dispatcher — Space lifecycle (space:* / messages:*).
-    // Client sends a JSON-encoded `SpaceRpcRequest` on the meta doc; we
-    // parse, route to the handler, and send the response on the requesting
-    // connection, which matches it by request `id`.
-    onStateless: async ({ documentName, payload, connection }) => {
+    // Content receipts share the requesting Connection's update queue.
+    // Meta requests dispatch Space lifecycle commands on their original channel.
+    onStateless: async ({ documentName, document, payload, connection }) => {
       const parsed = parseDocName(documentName);
-      if (!parsed || parsed.kind !== "meta") return;
+      if (!parsed) return;
 
       let json: unknown;
       try {
         json = JSON.parse(payload);
-      } catch {
-        return; // non-JSON stateless message (e.g. frontend cache invalidate)
+      } catch (err) {
+        logger.error({ err, ctx: { documentName } }, "Invalid stateless payload");
+        return;
       }
+
+      if (parsed.kind === "canvas" || parsed.kind === "document") {
+        const request = SyncConfirmRequestSchema.safeParse(json);
+        if (!request.success) return;
+        try {
+          replySyncConfirmation(document, connection, request.data.id);
+        } catch (err) {
+          logger.error({ err, ctx: { documentName, requestId: request.data.id } }, "Sync confirmation failed");
+        }
+        return;
+      }
+      if (parsed.kind !== "meta") return;
 
       const reqResult = SpaceRpcRequestSchema.safeParse(json);
       if (!reqResult.success) return;
@@ -622,7 +635,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // no one number to print. Name its SOURCE instead: an operator reading
     // this banner needs to know where to look, and a stale key name would
     // send them to a file that no longer has it.
-    concurrentEditorsFrom: "config/membership.yaml: tiers.*.concurrent_editors",
+    concurrentEditorsFrom: "current Studio admin membership reading: configured or negotiated concurrent_editors",
     // Belongs in the banner for the same reason: they are ceilings whose only
     // symptom, once crossed, is connections dropping. An operator has to be
     // able to read what this process is enforcing.

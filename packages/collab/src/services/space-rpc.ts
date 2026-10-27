@@ -31,7 +31,7 @@
  *   1. Validate the caller's role, then run every remaining check —
  *      read-only, changing nothing.
  *   2. Move the content rows (the PG rows holding the user's actual
- *      writing) — delete soft-deletes all three kinds, restore un-deletes
+ *      writing) — delete soft-deletes all content kinds, restore un-deletes
  *      the one of its own type, create seeds the new one — BEFORE anything
  *      becomes visible.
  *   3. Publish the meta-doc change through {@link publishMetaChange},
@@ -77,6 +77,7 @@ import {
   type SpaceRpcErrorCode,
   type SpaceRpcRequest,
   type SpaceRpcResponse,
+  type SpaceType,
   ACTIVITY_NEW_SIGNAL,
   type ActivityNewSignal,
 } from "@breatic/shared";
@@ -108,7 +109,7 @@ function ok(
   id: string,
   result?: {
     spaceId: string;
-    type: "canvas" | "document" | "timeline";
+    type: SpaceType;
     name: string;
   },
 ): SpaceRpcResponse {
@@ -227,11 +228,7 @@ function snapshotMap(m: Y.Map<unknown>): Record<string, unknown> {
  * every variant, so no live row is left under a deleted Space's id whatever
  * its kind; restore brings back only the variant of the Space's own type.
  */
-const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
-  "canvas",
-  "document",
-  "timeline",
-];
+const SPACE_CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = SpaceTypeSchema.options;
 
 /** The content-doc kinds a single call actually changed. */
 type TouchedKinds = readonly Exclude<DocKind, "meta">[];
@@ -240,8 +237,8 @@ type TouchedKinds = readonly Exclude<DocKind, "meta">[];
  * What soft-deleting a Space's content rows left behind: the kinds THIS call
  * changed, and the first failure if any kind's write rejected.
  *
- * Both fields survive a partial failure on purpose. The three UPDATEs run
- * concurrently, so when one rejects the other two may already be
+ * Both fields survive a partial failure on purpose. The kind-specific UPDATEs run
+ * concurrently, so when one rejects the remaining writes may already be
  * committed — a report that dies with the failure (what `Promise.all`
  * gives) would leave the caller undoing nothing while rows sit changed.
  */
@@ -719,7 +716,7 @@ async function runCreate(
       // The name the creator gave the Space lives on its tab, in meta — the
       // content document carries no name of its own. What it does carry is
       // whatever that kind's initial content is: one empty paragraph for a
-      // document, nothing for the other two.
+      // Document, versioned scene roots for 3D, or empty content for Canvas/Timeline.
       encodeInitialSpaceContent(type),
     );
   } catch (seedError) {

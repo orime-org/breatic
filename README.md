@@ -21,10 +21,11 @@ Bring your brief, scenes and media into one project. Write in Document Spaces, g
 | **Projects with multiple Spaces** | Keep a brief, scenes and alternative creative directions together, with a separate tab for each Space. |
 | **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
 | **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
+| **3D (DEV)** | Arrange built-in objects in a shared scene and edit their position, rotation and scale. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
-| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases and documents. |
+| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents and 3D scenes. |
 
-Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available now; **Timeline is not yet available**.
+Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D scene editor carries a **DEV** badge in its creation entries. Model generation and annotations within that scene are under development. **Timeline is not yet available**.
 
 ## A creative workflow: a 30-second coffee-shop video
 
@@ -52,7 +53,7 @@ The time ranges are a planning convention: Space names do not set clip duration 
 | Install for personal, private-group or internal organizational use | [Personal and LAN deployment](self-host/LOCAL.md) |
 | Modify the source or contribute | [Development setup](self-host/DEVELOPMENT.md) |
 
-After signing in, finish your personal Studio setup, create a project and add Document or Canvas Spaces with the **+** button. Start with a brief or upload references, then use chat and the canvas tools. The [user guide](docs/USAGE.md) covers registration, your first project, canvas operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
+After signing in, finish your personal Studio setup, create a project and add Document, Canvas or 3D Spaces with the **+** button. Start with a brief, upload references or arrange built-in 3D objects. The [user guide](docs/USAGE.md) covers registration, your first project, Space operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
 
 ### Before self-hosting
 

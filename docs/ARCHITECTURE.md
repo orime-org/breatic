@@ -76,7 +76,39 @@ All eight signed refund writes share one idempotency-key namespace across `credi
 
 Refusal key lookups include soft-deleted refusal rows, so their keys remain owned. The seven lot-targeted writes use `findTarget` and `lockLiveLot` to require a live purchased lot and its payment. A missing lot target or resend operation is rechecked under the key lock before its final refusal is stored. Historical key results are replayed before target availability is checked. The refusal's target kind and identifier preserve the original request identity independently of the target's continued existence.
 
+### Membership entitlements
+
+`auth/membership.repo.ts` in core owns effective membership reads. One SQL statement loads the live account's stored tier, its live `enterprise_memberships` record, non-deleted ordinary subscription facts and `statement_timestamp()`. Studio lookups resolve the current live admin in that statement. `resolveMembershipReading` derives the effective tier, all six limits, storage treatment and subscription-settlement protection from those facts and that instant. Quota checks, account presentation and new collaboration handshakes share this reading. Account, Studio and Project counting operations retain their existing locks on the entity whose set they count.
+
+The four configured tiers obtain their limits from `config/membership.yaml`. Active enterprise membership obtains `team_studios`, `projects_per_studio`, `concurrent_editors`, `studio_members` and `project_members` from the saved agreement. Zero is a real zero and count checks use `count >= limit`. The agreement also records `storage_bytes`; effective enterprise membership retains the storage exemption. Its account panel uses the negotiated-agreement presentation with `limits: null`, while enforcement receives the saved count limits.
+
+Enterprise information contains an exclusive `expiresAt` instant, the input `entryTimezone`, a required trimmed contract number and the six limits. Timestamps are serialized in UTC. The calling editor converts an inclusive end date to the next local day's start in the selected zone before submitting the expiry instant. At that instant the reader resolves ordinary subscription facts, including the ordinary grace period; an account with no ordinary entitlement falls back to `base`. Existing Studios, Projects, members, assets and established collaboration connections remain; subsequent capacity checks and new handshakes use the newly effective limits.
+
+Each saved agreement carries `fallbackTier`. Saving from raw `self_hosted` captures that origin; saving from raw `enterprise` retains the live record's origin, or uses `base` when completing missing legacy information. Other raw tiers capture `base`. A self-hosted origin resolves to `self_hosted` after enterprise expiry and remains protected from ordinary subscription settlement. Active enterprise, missing legacy enterprise information and a raw `self_hosted` tier are also settlement-protected. An expired enterprise-to-`base` transition produces no ordinary PRO/Team ended notice. Ordinary manually assigned `pro` and `team` retain their existing honoured-tier behaviour: recorded lapsed subscription facts trigger ordinary subscription resolution.
+
+A legacy account whose raw tier is `enterprise` and whose agreement information is missing keeps enterprise presentation and the storage exemption. Count-limit lookups report the unresolved account explicitly; collaboration consequently grants read-only access on a new content-document handshake. Completing its information through the management endpoint makes the negotiated limits available to consumers.
+
+### Enterprise information management
+
+Enterprise information is managed on the signed internal listener. The pure schemas in `auth/enterprise-membership-contract.ts` define the request, current profile and stored operation result.
+
+| Method and path | Result |
+|---|---|
+| `GET /internal/v1/accounts/:userId/enterprise-membership` | Current raw `snapshot` and effective `reading` from one membership statement; `404` for an absent live account. |
+| `POST /internal/v1/accounts/:userId/enterprise-membership` | Atomic save with an immutable `applied` or `refused` result, both HTTP `200`. |
+| `GET /internal/v1/enterprise-membership-operations/:key` | The originally committed result, including its original operator and raw before/after snapshots; `404` for an unknown key. |
+
+The save request contains `targetTier: "enterprise"`, `expiresAt`, `entryTimezone`, `contractNumber`, `limits`, `expectedStoredTier` and `expectedRevision`. The expiry is an ISO instant with an offset that parses to a finite time within UTC years 0001 through 9999. Requests that fail schema validation return HTTP `422` with `invalid_body` before the transaction. The accepted request keeps its submitted instant representation for fingerprinting; persisted timestamps are serialized in UTC. Limit keys use snake case. Five count limits are non-negative PostgreSQL integers; storage is a non-negative JavaScript safe integer. The contract number is trimmed, contains 1–128 characters and rejects NUL. `expectedRevision` is null when no live agreement record exists and otherwise matches its positive revision. The signed administrator identity supplies the operator metadata.
+
+A transaction locks the `bo-<UUID>` operation key, replays an existing matching fingerprint, then locks the live account before checking its raw tier and revision. An applied save writes the complete agreement with the next revision, sets the raw tier to enterprise, records any tier change and stores the original result in the same transaction. A missing target or stale expectation stores an immutable `refused` result with `account_not_found` or `revision_conflict`; a differently used key returns HTTP `409`. Matching retries preserve the original operator even when another signed administrator sends them. Key ownership survives soft deletion, and infrastructure failures roll back the transaction. Current entitlement is obtained through the profile GET; historical operation snapshots stay unchanged. Financial settlement belongs to the offline contract process.
+
 ### Canvas collaboration
+
+Canvas and Document providers track local edits awaiting confirmation in `web/src/data/yjs/doc-sync.ts` and `doc-sync-binding.ts`. Each content provider entry owns a local version, a confirmed version, a connection epoch, handshake readiness and at most one pending receipt. A local Yjs update whose origin is not that provider advances the local version; remote and provider-origin updates leave it unchanged. The version difference is the unsynced fact. Closing or reauthenticating the connection invalidates its pending receipt while retaining that difference. Open background Space tabs continue contributing to their Project's aggregate.
+
+The shared `SyncConfirmRequestSchema` and `SyncConfirmedResponseSchema` define the strict `{ type: 'sync:confirm', id }` and `{ type: 'sync:confirmed', id, ok }` messages with UUID identifiers. Requests travel on the content document's own provider after its earlier updates. Collab replies through that same live Connection; `ok: true` confirms application of preceding messages to the server document in memory. PostgreSQL persistence follows its own lifecycle. A successful response advances only the version captured by its matching request in the current connection epoch.
+
+`LeaveProjectGuard` combines the current Project's unsynced Canvas and Document edits with registered browser operations. The connection banner requests an application refresh confirmation; ordinary route changes request a leave confirmation; browser reload and tab close use `beforeunload`, subject to the browser's user-interaction requirements. Cancelling retains the page and its edits. When both risks clear while an application choice is open, the title and description show completion and wait for the user's choice. Explicitly confirming an application refresh grants one native-navigation allowance. Deploy the receipt-capable collab service before the web build that requests receipts.
 
 - 节点 create/delete + position 由**前端独占**;后端只能改 `data` 字段(taskCounts/content 等)
 - 画布走 Yjs,Agent 聊天走 SSE。无锁:每次 mini-tool 操作在源节点下游新建结果节点(edge 连接),不覆盖源节点
@@ -94,10 +126,10 @@ Refusal key lookups include soft-deleted refusal rows, so their keys remain owne
 - **成员资格变了,已打开的协作连接跟着变**:collab 只在握手时读一次 `project_members` 定角色,之后靠通知撤权。`project_members` 上的触发器 `notify_project_member_change`(迁移 `0095`)在每次增、删,以及改 `role` / `deleted_at` / `project_id` / `user_id` 时 `pg_notify('project_member_changed', {projectId, userId})`,主键变化时旧的那一对也发一条;只改 `updated_at` 不发。通知在事务提交时投递、回滚不投递,跟哪段代码写的这一行无关。core 的 `listenProjectMemberChanges`(`infra/member-change-listener.ts`)用业务库 `rawPg.listen` 开的一条专用连接收,payload 按 `CANONICAL_UUID` 校验。collab 的 `services/member-change-sync.ts` 在 `index.ts` 里先于 `server.listen()` 启动(第一次 LISTEN 失败就退出进程):收到一条就以 4403、原因 `permissionChanged` 关掉本实例上这个人在该项目的全部连接;postgres.js 每次开始监听(含断开后重连)调 `onListening`,collab 对本实例每条已登记连接按当前角色复查,不同的关掉,补上断开期间漏收的通知。collab `/healthz` 的 `postgres_member_listen` 在探测频道上发一个随机串、1 秒内收回来才算健康。
 - **API → collab 的项目级控制面通知走 Redis pub/sub**(`packages/core/src/infra/control-events.ts`,连接在 stream 那个库 DB2):频道 `{REDIS_KEY_PREFIX}:project:{pid}:activity:new`(server / worker 写了一行项目活动)、`{REDIS_KEY_PREFIX}:project:{pid}:credits:changed`(server / worker 在这个项目里的一笔扣费提交了)和 `{REDIS_KEY_PREFIX}:project:{pid}:connections:close`(collab 的生命周期消费者处理完复制 / 归档 / 恢复后发,每个实例关掉自己在这个项目上的连接),collab 用 `{REDIS_KEY_PREFIX}:project:*` 一个模式订阅全部。频道构造器在 `@breatic/shared` 的 `redis-events.ts`,前缀只在 core 的 `projectControlChannelPattern` 和各个 publish 函数里注入。只是通知、不重放。collab 侧在 `services/project-control-sync.ts`(`index.ts` 启动时 `startProjectControlSync`):收到 `activity:new` / `credits:changed`,在 meta 文档上 `relayStateless` 一条同名信号;收到 `connections:close`,按原因关掉本实例在这个项目上的全部连接。三条都只作用于本实例的连接:每个实例都订阅了这些频道;发信号用 `relayStateless`,用 `broadcastStateless` 还会经 Redis extension 再转一遍,客户端每多一个实例就多收一份。多路复用的 socket 上,这里和上一条的关闭到了浏览器是一条按文档的 CLOSE 消息,Hocuspocus provider 把它的关闭码写成 1000,**浏览器认的是关闭原因,不是关闭码**:原因落在 `@breatic/shared` 的 `COLLAB_REAUTH_REASONS` 里(成员变更、项目复制后刷新、归档、恢复、会话结束)时,`collab-socket.tsx` 在同一条 socket 上重新发令牌鉴权,`use-socket.ts` 不把它标成 `disconnected`,`use-refresh-on-reauth.ts` 让项目详情重新拉取,于是归档横幅、只读和角色随之变化;其他原因的关闭照常标成 `disconnected`。`authFailed` 只由 `authenticationFailed` 事件进入,之后一次鉴权成功会把它清掉。连接登记之后 collab 还会用 `role-recheck.ts` 再读一次角色,跟握手时读到的不一样就以「权限已变」的原因关闭,补上握手和踢连接之间的空窗。
 - **会话结束了,用它打开的协作连接跟着关**:collab 在原生升级准入和每个文档的 `onAuthenticate` 中读取当前会话(`hooks/auth.ts` 把会话的 token 和它的 SHA-256 id 记进连接上下文)。会话结束只有一个出口:core 的 `revokeSession`(退出登录)和 `revokeAllSessions`(登出其他设备保留当前这一个;两种重置密码全删),删掉 DB0 的会话键,再在 `{REDIS_KEY_PREFIX}:sessions:revoked` 上发这批会话的 id(不发 token);发布失败不影响删除,结果交回路由记 `session_revocation_signal_failed`。collab 的 `services/session-revocation.ts` 先于 `server.listen()` 订阅成功(失败就退出进程),收到一条就以 4401、原因 `sessionEnded` 关掉本实例上用这些会话打开的连接;漏收的由三次复查补上:每次订阅确认后(含断线重连)、每隔 `session_recheck_interval_ms`(也是过期会话被关掉的途径)、以及 `connected` 钩子在连接注册后,会话已不在或换了主人的连接按同一原因关掉。浏览器收到这个原因照常重新发令牌,被拒后进入 `authFailed` 并显示重新登录横幅;「会话已结束」记在 `collab-socket.tsx` 共享 socket 那一层(整个标签页一个 cookie),之后的拒绝和全部文档被拒后 socket 空闲断开都是预期结果,不上报 Sentry,任一文档鉴权成功即清除。
-- **改变 Space 数的三个 RPC(create / restore / delete)是跨实例 read-modify-write**,两道守卫:「项目至少留一个 Space」和「项目最多 `MAX_SPACES_PER_PROJECT`(200)个未删除的 Space」。三者走同一把 `REDIS_COLLAB_URL` 分布式锁(`services/space-count-lock.ts`,fencing 唯一 token + Lua check-and-del,TTL 30s 兜底;拿锁最多等约 5 秒,拿不到答 `BUSY`)串行化 + 锁内读 PG 权威 Space 数(只数 `project-{id}/{canvas|document|timeline}-{id}` 这类 Space 内容文档的未删除行,规则是 shared 的 `spaceContentRowPattern`),满了 create / restore 答 `SPACE_LIMIT`、什么都不写。这个计数要等于 meta 里的 Space 数,所以存盘(`upsertDocData`)不清 `deleted_at`,复制只拷源 meta 列出的那些 Space 的内容行。前端按 meta 里的 Space 数提前把「新建」和「恢复」变暗(`aria-disabled`,仍可获得焦点,悬停和按下都说明已达上限),服务端那道检查才是准的;服务端的 `SPACE_LIMIT` 和 `BUSY` 在界面上是一行 warning toast
+- **改变 Space 数的三个 RPC(create / restore / delete)是跨实例 read-modify-write**,两道守卫:「项目至少留一个 Space」和「项目最多 `MAX_SPACES_PER_PROJECT`(200)个未删除的 Space」。三者走同一把 `REDIS_COLLAB_URL` 分布式锁(`services/space-count-lock.ts`,fencing 唯一 token + Lua check-and-del,TTL 30s 兜底;拿锁最多等约 5 秒,拿不到答 `BUSY`)串行化 + 锁内读 PG 权威 Space 数(只数 `project-{id}/{canvas|document|timeline|3d}-{id}` 这类 Space 内容文档的未删除行,规则是 shared 的 `spaceContentRowPattern`),满了 create / restore 答 `SPACE_LIMIT`、什么都不写。这个计数要等于 meta 里的 Space 数,所以存盘(`upsertDocData`)不清 `deleted_at`,复制只拷源 meta 列出的那些 Space 的内容行。前端按 meta 里的 Space 数提前把「新建」和「恢复」变暗(`aria-disabled`,仍可获得焦点,悬停和按下都说明已达上限),服务端那道检查才是准的;服务端的 `SPACE_LIMIT` 和 `BUSY` 在界面上是一行 warning toast
 - **「这个 Space 现在存不存在」由本进程持有的那份 Space 名单回答** —— 内容文档握手时那道「这个 Space 还在不在 `meta.spaces`、类型对不对」的检查读的是 `services/project-space-list.ts` 的 `readListedContentDocNames`(按 meta 条目的 id 和类型拼出完整文档名,跟复制、修复脚本用同一个 core 函数 `listedContentDocNames`):先看 `onAuthenticate` 载荷里的 `instance.documents` 有没有这个 project 的 meta 文档,**没有就调 `instance.createDocument` 把它载入**,然后只读这一份。**没有第二个来源** —— 判定自己一次库都不读,唯一那次读库发生在框架的载入里(持久化扩展读 `yjs_documents`,随后 `@hocuspocus/extension-redis` 向别的实例要更新的状态)。理由是**判定的依据必须跟广播出去的依据是同一份**:`space:create` 改的是内存里那份 meta 文档、广播的也是它,客户端正是收到这条广播才来连的;而库行要等下一个 `store_interval_ms`(10 秒)的定时轮才更新 —— **不是因为创建路径没触发存盘**:`space-rpc.ts` 每条 RPC 结尾的 `conn.disconnect()` 会立刻跑框架的存盘钩子(`hocuspocus-server.cjs:1170`,debounce 0),是我们自己的闸门把它挡回去了(`services/persistence.ts` 的 `consumeTimedStoreArm`,只有定时轮和卸载闸放行),读它等于我们自己刚说「有」、转头拿另一份数据说「没有」。`space:delete` 是镜像的另一半:id 立刻离开内存,而读库会继续放行到下一个定时轮。**内存那份新不新不进入判定** —— 就算它旧,客户端看到的也是那份旧的;让它保持最新是 `@hocuspocus/extension-redis` 跨实例转发的职责。**一份名单里一个 Space 都没有,是结论不是「没有答案」**,不会因此再去载入或读库。**重连也走这条**:已经同步过的客户端本地握着 meta 文档,socket 一断一连它把 meta 和全部已打开 Space 的内容文档在同一毫秒里一起发,内容文档的握手跑在 meta 载入完成之前 —— 由「没有就载入」覆盖。**载入完读完就调 `instance.unloadDocument` 卸载**(载入和卸载配对;没有连接的文档不会自己卸载,`Server.destroy()` 会一直等文档数归零),该调用不 await —— 卸载要等 Redis 扩展的 `disconnectDelay`(1 秒),那是内部开销、不占握手。**跟 `space-rpc.ts` 里删除时那个「至少留一个」的计数不是一回事** —— 那个数要跟一个跨实例共享的下限比大小,必须取自 PG
 - **collab 给 `@hocuspocus/server` 4.6.0 打了一个补丁**(`patches/@hocuspocus__server@4.6.0.patch`),改两处,esm 和 cjs 两份产物都改。第一处:文档鉴权之前到达的帧,库会先排进队列;不打补丁时排的是 `ws` 给的视图,跟这条 socket 的读缓冲(最多 64 KB)共用内存,一个几十字节的帧就能拖住整块缓冲。补丁在 esm 和 cjs 两份产物里都改成排一份复制(`new Uint8Array(data)`);`socket-ceilings.test.ts` 里「keeps only its own bytes」那条在补丁丢失时会红,`infra/socket-ceilings.ts` 的排队帧数上限按打补丁后的每帧开销推导。第二处:库原本每次调用 `getParameters` 都重新解析一遍升级请求的 URL,其中每个文档的钩子载荷各存一份解析结果(鉴权失败时删掉,鉴权成功就留到这个文档的连接关闭),一条 socket 最多同时挂着 201 个待鉴权文档,客户端放进 URL 或 Host 头的内容就跟着翻 201 倍;补丁用模块级 `WeakMap` 按 request 对象缓存解析结果,同一连接的所有钩子拿到的是同一个 `requestParameters`,所以钩子不得修改它。`socket-ceilings.test.ts` 里「request parameters of one connection」那组用例在补丁丢失时会红
-- 单文档**并发可写**连接数上限(满了**降级只读**非拒绝)取自**拥有这个 project 的 studio 的当前 admin 的档位**(`config/membership.yaml` 的 `concurrent_editors`)。**单位是连接不是人**:一个账号能在多处登录,按人算等于一个账号被任意多人共用只记一个,上限失去意义。**只有可写连接占席位**——只读的那条改不了任何东西,把它算进去会让上限 2 的文档在一个 owner 加一个 viewer 看着时就满,而本该拿到第二个席位的编辑者被推成只读。计数是**跨实例**的:每条可写连接在 `REDIS_COLLAB_URL`(DB3)一个 sorted set(key `{env}:collab:seats:{docName}`,member `{userId}:{connectedAtMs}:{instanceId}:{socketId}`,score = 这条连接最后一次回乓的时刻)登记,`onAuthenticate` 读 cluster-wide `ZCARD`(剪枝过期后)判 `>= cap` → 降级 + 永久日志 `connection_cap_degraded`;本地 `getConnectionsCount()` 只数本实例、多实例部署会到 N×cap 才触发,故不用。取不到档位(project 不存在等)一律按满处理 → 只读 + `connection_limit_unresolved`,因为算不出上限时放行等于没有上限。Redis 抖动 fail-open(计数返回 0 不误锁);**meta 文档豁免**(项目基础设施人人必连,从来不是「几个人能协作」的度量)。**登记绑 `connected` 生命周期钩子**(非 `onAuthenticate`)——`connected` 只在 Hocuspocus 建好 Connection 对象(已挂 `onClose → onDisconnect`)后触发,与 `onDisconnect` 注销对称,避免 auth 通过但文档加载失败的连接漏注销
+- A document's **writable connection capacity** comes from the owning Studio's current admin membership reading: configured or negotiated `concurrent_editors`, with expiry resolved for each new handshake. Each writable connection occupies one seat; read-only connections occupy none. Seats are counted across instances in `REDIS_COLLAB_URL` (DB3), in sorted set `{env}:collab:seats:{docName}` with member `{userId}:{connectedAtMs}:{instanceId}:{socketId}` and the last pong time as its score. Authentication counts the cluster-wide set after pruning expired entries. At `count >= cap`, it attempts to take over this user's existing seat: a successful handover or an unknown handover result allows the new connection to write; a definite absence of such a seat retains read-only access and logs `connection_cap_degraded`. An unresolved membership limit grants read-only access and logs `connection_limit_unresolved`. A Redis count failure returns zero, preserving the existing fail-open behaviour. Meta documents are exempt. Registration runs in Hocuspocus's `connected` hook, after its Connection has an `onClose` handler, and unregistering runs in `onDisconnect`; authentication or document-load failure therefore leaves no registered seat.
 - **席位由连接存活驱动**:一条连接的 score 只在**它自己那条 socket 回乓**时前移。跑 WebSocket 的 crossws 每 30 秒 ping 一次每条连接(实测:连上之后第一个乓在 30007ms 到,第二个在 60007ms 到,两者相隔 30000ms),它在自己的钩子层把乓吞掉,但那个 `return` 只退出 crossws 自己的处理器 —— 挂在同一个 emitter 上的别的监听器照常触发,所以我们不发任何额外帧、也不开自己的定时器就听得到它。**监听器一条 socket 只挂一次**(`services/live-connections.ts`),一条 socket 上二十个文档不会一次 ping 刷二十遍。**过期 = 乓周期的两倍**,这个数来自 crossws 自己的查法:它每个周期扫一遍,同一趟里既终止那些「自上一趟以来没有任何动静」的 socket(当场 `terminate()`、不再补发 ping),又给其余的发 ping(`crossws/dist/_chunks/node.mjs`)。所以一条 socket 最后那个乓,在「给它发 ping 的那一趟」跑的时候可能已经快满一个周期了 —— 从最后一次有动静到被终止,最多两个周期,过期要盖住的就是这个数。`connection_ping_interval_ms` 一个值经 `getConnectionTimings()` 推出席位过期和在场过期两个数。**除了乓,没有任何东西写 score** —— 它的前身有一个无条件刷新全部成员的定时器,那正是已经死了一分钟的 socket 席位一直被续下去的原因;key 自己的 TTL 搭在每一次这样的写入上,所以一个 key 活到它里面最后一个还在回乓的成员为止(真浏览器实测过:断网后席位持续被续期 70 秒,而客户端 37 秒就放弃重连了 —— `@hocuspocus/provider` 的 `messageReconnectTimeout` 是 30 秒,短于服务端的 60 秒,于是重连撞上自己尚未释放的旧席位)。**满员时让位**:握手先看这个人自己在这份文档上有没有席位,有就拿走一个(`ZREM` 的返回数就是认领凭据 —— 只有拿到 1 的那个调用方才算真的拿到了它),再经 DB3 的一条 pub/sub 频道请求持有那条连接的实例把它降级,所以**一个人永远不会被自己的另一条连接挡在外面**。候选排序两层:先取分数已经不动的(那是重连,自己刚才那次闪断留下的席位),都还在答的话取 `connectedAtMs` 最小的那条。**那道界线落在一个 ping 周期和席位过期之间** —— 活着的席位每个周期才被重写一次,所以刚好在下一次刷新之前,一条健康席位正好陈旧一个周期,再加上定时器晚触发、往返耗时和两个实例的时钟差;界线压在这个上限上,挑出来的就是用户正在用的那个标签页
 - **协作身份由连接权威确定** —— 服务端在 `onAuthenticate` 就从凭证解出了这条连接是谁,之后**它写、浏览器不报**。两处落地:**① 在场名单**存 meta 文档的 `users`,只有 `id` / `online` / `lastSeenAt` 三个字段(**没有名字头像** —— 各端自己拿 id 去项目成员名册拉,名字改了不会有陈旧副本)。**② 光标身份**在 `beforeHandleAwareness` **逐条盖章、不判归属**:一个入站帧是一串按 Yjs client id 编键的条目,而那个键是浏览器自己取的数字,所以手工构造的帧能把条目编到别人的键上 —— 服务端**不问「这一条归谁」**,每一条都盖上这条连接在握手时认证出来的那个人。不问是因为那个问题没有可信答案:协作库的连接名单对**重连**的客户端是空的(连接的 client 集合只从 `added` 长,而文档见过的 id 之后一律归 `updated`,远端客户端的 `meta` 永不清),而 y-protocols 自己给这件事留的钩子 `modifyAwarenessUpdate` 只把状态交给回调、**故意不传 client id**。**这道规则从不删条目** —— 把一帧删空会把发送方的光标冻住:一帧什么都没落地就不发 `update` 事件、不转发给任何人,每个人手里那份就停在原地,直到他再动一次。**注意 `update` 不要求状态有变化** —— 客户端会原样重发同一份状态,按内容过滤的是 `change` 事件、不是 `update`。**服务端整个 `user` 字段说了算,只保留客户端的 `focused`**(只有浏览器知道窗口有没有焦点)。**这个模型让「验证」这件事整个消失了**:此前浏览器自报、服务端设了道守卫查它,而守卫在那一层根本做不成 —— 转发和伪造在帧里长得一模一样,它把真实用户踢下线过。
 - **在场状态只被断言、从不被否认** —— **写「在线」只有两处**:连接建立时,以及这条 socket 每次回乓。**socket 关闭时什么都不写** —— 一条 socket 结束不等于它的主人走了(一个人同时握着好几条连接,多实例下有些还在这台机器看不见的地方),所以「不在」从不被宣布,而是由清扫**推断**出来:一条**没有任何人在刷新**的记录才被关掉。**它跨实例正确而不需要任何协调**:记录在共享的 meta 文档里,握着连接的那台机器负责刷时间戳、刷新同步给所有实例,所以「时间戳没人碰过」就等于「全集群没有任何机器握着这个人」。**崩溃重启也不需要特殊处理**:崩溃留下的记录只是不再被刷新,重启后第一个进来的人就带动起清扫。**清扫搭在乓上,不搭在文档载入上** —— 载入那一刻恰恰是记录最新的时候(崩溃后客户端几十秒就自动重连,幽灵看起来全是活的),而只要还有人在,文档就永不卸载、载入钩子再不会触发;搭在乓上,门槛就变成一个延迟而不是一次错过。同理,**乓会把一条已经离线的记录写回在线** —— 清扫持续在跑,可能把还连着的人翻掉(一个实例留下的记录,而握着这条 socket 的是另一个实例),乓是这个人还在的证据,必须能推翻那个推断:错误地复活会被下一轮清扫纠正,错误地离线则是永久的。**刷新挂这条 socket 的 meta 连接,不走席位索引** —— 席位表按定义不含 meta 文档、也不含只读连接,拿它去问「这条 socket 是谁的」,viewer 的在场状态永远刷不上;一条 socket 有且只有一个 meta 连接,所以一次乓写一次、没有任何限流。**它不再挂在浏览器的定时器上**:隐藏超过 5 分钟的标签页,JS 定时器被节流到约每分钟一次,而乓由浏览器网络栈按 RFC 6455 自动回、JS 完全碰不到。门槛同样是乓周期的两倍,守卫见 `connection-timing-config.test.ts`。**meta 文档的 awareness 通道上不传光标**(光标只在 canvas / document 这类空间文档上,谁往 meta 的 awareness 上发光标都是 bug;meta 的 socket 上另跑着 `space:*` 的 stateless RPC,走别的钩子、不碰在场状态)。**定性是二类问题**:我们保障「他离线了一定能确认到」,不保障「精确在什么时刻通知别人」。
@@ -346,10 +378,10 @@ Agent 里没有选模板的控件,它按用户的需求自己调用。**提示�
 | `config/text-tools.yaml` | Text mini-tool 模型 |
 | `config/understand.yaml` | 画布理解与转写共用的素材大小、并发上限,以及各自的输出 token 上限 |
 | `config/worker.yaml` | Worker 并发(按队列:`tasks`、`upload-finish`、`url-ingest`、`media-read` 50,`audio-peaks` 2,其余 5)、重试、问结果的间隔 |
-| `config/collab.yaml` | Hocuspocus debounce、限流、文档大小限制。**单文档并发可写连接数上限不在这里**——它来自档位,见 `config/membership.yaml` 的 `concurrent_editors`;一条 socket 承载多少文档也不在这里,由 `@breatic/shared` 的 `MAX_SPACES_PER_PROJECT` + 1 推出(`packages/collab/src/infra/socket-ceilings.ts`) |
+| `config/collab.yaml` | Hocuspocus debounce, throttling and document size limits. Per-document writable connection capacity comes from the current Studio admin membership reading; socket document capacity comes from `MAX_SPACES_PER_PROJECT` + 1 in `packages/collab/src/infra/socket-ceilings.ts`. |
 | `config/pricing.yaml` | **不随仓库分发**(见本表下方那条),积分**购买包**(5 档一次性购买,不是订阅/会员,test+live Stripe ID)+ `trial_grant.credits`(新账号建成个人 Studio 那一刻发多少体验积分;只在计费打开的部署发,**零是真值零**不是哨兵) |
-| `config/subscription.yaml` | **会员订阅**计划:每个可订阅档位**每个计费周期**(月 / 年)各一个价 + test/live Stripe Price ID + 问 Stripe 现状的超时。只有 server 读它。加载器 `packages/core/src/config/subscription.ts`。跟 `pricing.yaml`(积分包,买断不是订阅)、`membership.yaml`(那一档的上限)是三件事 |
-| `config/membership.yaml` | **每个档位的上限值**(容量 / 协作规模)。每个值都是普通的非负整数、判定一律 `count >= limit`,**没有「无限制」哨兵**,想不设限就填一个够不着的数。另有 `stale_after_days`:订阅过了付费期后还按原档位算几天(默认 14,即 Stripe 重试扣款的周期)。加载器 `packages/core/src/config/membership.ts` |
+| `config/subscription.yaml` | Subscription plans: a price and test/live Stripe Price ID for each subscribable tier and billing period, plus the Stripe inspection timeout. Read by server through `packages/core/src/config/subscription.ts`. Credit packs use `pricing.yaml`; configured membership limits use `membership.yaml`; enterprise agreements use database records. |
+| `config/membership.yaml` | Limits for `base`, `pro`, `team` and `self_hosted`, the registration default tier and `stale_after_days` for ordinary subscription grace. Counts use non-negative integers and `count >= limit`; large values remain ordinary limits. Core membership reads combine configured limits with negotiated enterprise records and subscription facts. Loader: `packages/core/src/config/membership.ts`. |
 | `config/auth.yaml` | 启用邮件时注册验证码的三个旋钮:有效期 `ttl_seconds`、每个码最多比对几次 `max_attempts_per_code`、同一邮箱两次发码的最短间隔 `resend_cooldown_seconds`。加载器 `packages/server/src/config/auth.ts` |
 | `config/legal.yaml` | 当前生效的使用条款版本 `terms_version`。登录和注册两张卡片底部那行条款小字之下建的每个新账号,在 `users` 上记下这个版本和建号时刻(`terms_version` / `terms_accepted_at`;migration 0089 之前建的账号两列为空)。breatic.ai 上的条款改版时改它。加载器 `packages/server/src/config/legal.ts` |
 | `config/rate-limits.yaml` | 各动作的限流次数与窗口(Redis 滑动窗口)。加载器 `packages/server/src/config/rate-limits.ts`,中间件 `rateLimitFor(action, keyBy)` / `rateLimitForAll(specs)`;**key 维度(IP、IP+邮箱、user、user 加一个路由参数(`upload-complete` 按上传 id,每个上传一个桶),还是连接地址)按 action 写死在代码里**,只有次数进 yaml。IP 取法同 collab,是 core 的 `decideClientIdentity`:本机回环不计数,非回环取我们 nginx 写的 `X-Real-IP`(IPv6 归并到 /64),都没有就答 403。一个请求的几道额度一次判定(一段 Lua 脚本),任一道满了就哪道都不写。内部接口的 `internal-api` 按连接地址计,Redis 出错时拒绝(503)|
@@ -357,7 +389,7 @@ Agent 里没有选模板的控件,它按用户的需求自己调用。**提示�
 | `config/stripe-webhook-recording.yaml` | Stripe 每次验签及事件身份检查通过的 webhook 尝试记录：`write_statement_timeout_ms` 默认 2000，分别设在开始与完成记录的短事务内。加载器 `packages/core/src/config/stripe-webhook-recording.ts`。部署元数据 `STRIPE_WEBHOOK_ACCOUNT_ID` / `STRIPE_WEBHOOK_ENDPOINT_ID` 可为空，分别校验 `acct_` / `we_` 标识，须由部署时核对与 webhook secret 的对应关系 |
 | `config/credit-refund.yaml` | 积分包退款处置的时限与次数:调 Stripe 的超时 `stripe_call_timeout_ms`、认领的租约 `lease_seconds`、循环间隔、退避的基数与上限、同一个键建退款的最多次数 `max_attempts`、邮件停在发送中多久转「结果不明」、每日对账往回看的天数 `reconcile_window_days`。每个键都必填,`3 × stripe_call_timeout_ms + 10 秒` 要小于租约。加载器 `packages/server/src/config/credit-refund.ts`,`INTERNAL_API_ENABLED=true` 时启动就读,读不出来就退出 |
 | `config/storage.yaml` | 浏览器上传:上传大小上限、客户端的重试次数与退避基数、分片发送的空闲时限、收尾状态查询的轮询间隔;ingest Worker 的分片大小、票据有效期、转正图的 JPEG 质量。分片大小低于 R2 的 5 MiB 下限时加载就报错。任务链上的等待不在这里设时限,一律取任务自己的截止时刻。加载器 `packages/core/src/config/storage.ts` |
-| `config/limits.yaml` | 分页大小 · 画布参考池上限 · 答复期限等业务旋钮。server 加载器 `packages/server/src/config/limits.ts`(镜像 `pricing.ts`)。**成员容量不在这儿** —— studio 成员数和 project 协作者数都按会员档位查 `config/membership.yaml`,键是该 studio 当前 admin 的档位 |
+| `config/limits.yaml` | Pagination, canvas reference-pool size, response deadlines and other business controls, loaded by `packages/server/src/config/limits.ts`. Studio and Project member capacities come from the current Studio admin membership reading, using configured or negotiated limits. |
 | `config/models/<模态>/models.yaml` · `providers.yaml` · `config/models/modes.yaml` | AI 模型目录(按模态分目录):`models.yaml` 列这个模态的全部模型,每个带 WaveSpeed 定价契约(`base_price` / 公式 / `discount_rate`)、每个参数发往上游时叫什么(`upstream`)、额外的上游调用(`extra_steps`);`providers.yaml` 是上游的地址、key 名与并发;`modes.yaml` 是模式的名字与说明。字段说明写在各文件表头 |
 | `config/voice-samples.json` | 音色样音的固定公开地址 `base_url`(所有部署都从这里播,`sample_key` 是它下面的路径;读取方是 domain 的 `voice-sample-config.ts`)、每种语言念的那句话,以及个别模型要多带的参数。目录新增音色时,维护样音的人用指向这个地址的存储设置跑一次 `pnpm voice-samples`(`packages/worker/src/voice-samples.ts`),把 `config/models/tts/models.yaml` 里 `sample_key` 点名、这个地址还没有的样音生成上去;`config/models/video/models.yaml` 里 `camera_commands` 的 `sample_key` 点名的运镜指令预览片段也由这一步生成,用模型的文生视频端点拍同一个场景,再转码成 640 宽、无音轨、`moov` 在文件头的 mp4 |
 
@@ -453,7 +485,7 @@ pnpm test / typecheck / lint
 | 画布 | @xyflow/react 12 |
 | 富文本编辑器 | **BlockNote**(document space 的正文)+ **TipTap 3**(画布上的文本节点正文和生成 prompt)。两者共底:BlockNote 建在 ProseMirror 上,块不互相嵌套 —— 文档是 `blockGroup > blockContainer > blockContent` 三层,缩进另开一个组。document 正文在这个形状上把引用和标题序号做成了块的属性(库自带的是一个 `quote` 块类型,我们剔掉它、改挂 `quoted`;`numbered` / `number` 同样是我们加的) |
 | 音频 / 视频 | 原生 `<audio>` / `<video>` + 自建统一 `MediaPlayer`(装饰波形,零第三方播放器库);剪切面板的音频波形带子用 wavesurfer.js(BSD-3-Clause)只画不播 |
-| 3D | Three.js + @react-three/fiber |
+| 3D | Three.js r173 with native OrbitControls and TransformControls |
 | 数据请求 | Axios + @microsoft/fetch-event-source(SSE)+ React Query |
 | i18n | `intl-messageformat`(ICU)经 shared 的 `t()` + `useTranslation` hook(en / zh-CN / zh-TW / ja / ko);8 产品名词 + 角色名走「不翻译表」全语言英文,见 [web 的规则](../packages/web/AGENTS.md#product-terms-are-never-translated)。**每条文案必须活在命名空间里**——`locales/*.json` 顶层只许放命名空间对象,不许直接放文案(共用的进 `common`,其余进各功能自己的命名空间);**调用点同样如此**,`t('cancel')` 这种无点 id 一律当场报错。两侧都由 repo-lint 的 `i18n-keys-namespaced` CI 强制。理由是死键守卫 `i18n-no-dead-keys` 靠「在源码里找这个 key 的点分全名」判断有没有人用,**无点的 id 没有形状可找**:放宽成裸词匹配会让 `cancel` / `loading` 这类普通英文词满仓命中(`z.enum(["confirm","cancel"])` / `phase === 'loading'`)、守卫等于作废。**调用点那一半也在**,少了它源码写了无点 id 三个守卫全都不响——catalog 装不下它、死键守卫方向相反碰不到它、缺失文案守卫的形状认不出它,于是用户屏幕上直接显示 `cancel` 这串字。**判在形状上、不绕道查 catalog**:查不到虽然也能得出「错了」,但报错信息会指向 catalog(读的人会去 catalog 里加一条,而那条加不进去),而且那条推导依赖「catalog 里绝不会有无点 id」这个由另一个守卫维持的前提,那个守卫一改这里就静默失效。**「key 长什么样」在 `repo-lint/src/message-keys.ts` 一处定义**:`KEY_SEGMENT` 给段的形状(**允许数字开头** —— `canvas.nodePlaceholder.3d` 五个 catalog 都有却没有任何守卫看得见它),`spelledOutKeys()` 给「怎么在源码里找出一个文案调用、取出括号里的 id」,命名空间守卫和缺失文案守卫共用它、各自套自己的规则。**反方向的守卫是 `i18n-no-missing-keys`**:死键守卫问「catalog 里的文案有没有人读」,它问「源码点名的文案 catalog 答不答得上来」——两个方向都会坏,`t("server.error.notFound")` 这类拼错的 id 由它接住(catalog 里写的是 `not_found`)。它只认「整个参数就是写全的 id」这一种写法,拼接和变量传参一律看不见,边界写在它自己的 docstring 里。**那个边界之外的一类由测试守**:有些函数把文案键当**返回值**交给调用方、自己不调 `t()`(会话列表和活动面板各有一份 `relativeTime`,活动面板还有 `entryMessage`),这种键永远不出现在 `t("字面量")` 里、三个守卫全看不见 —— `chat.relative.isoDate` 就是这么带着「五个 catalog 都没有」发出去的。补法是 `packages/web/src/test-utils/i18n-keys.ts` 的 `expectEveryLocaleRenders`:走遍每条分支,**逐本 catalog 问两个问题** —— 键在不在(直接问 catalog,**不经过 `t()`**,因为 `resolveMessage` 找不到当前语言就回退 en、一本目录缺键会渲染成英文而看不出来),以及带参数的能不能渲染出来(经过 `t()`,因为占位符被改名会从组件渲染里抛出去)。catalog 列表来自 `test-utils/locale-catalogs.ts`,`vitest.setup.ts` 循环它注册 —— 此前那里手写四门语言漏了 `ko`,于是任何在韩文下渲染的测试都拿英文回退、绿得没有意义 |
 | 路由 | React Router 7 |
@@ -493,6 +525,61 @@ tracks that origin and reuses the existing UndoManager cleanup adapter, so undo
 removes local inserts while preserving remote records and stable structure.
 The document host supplies current write permission and owns the history lifetime.
 
+The `3d` Space uses `project-<projectId>/3d-<spaceId>` as its content document
+name. The shared Space enum drives creation validation, name parsing, content
+initialization and the content variants handled by Space RPC. The server reads
+scene-control configuration from `config/scene.yaml`; model resolution checks
+Project membership and resolves only registered GLB assets in that Studio.
+
+`OpenSpace` holds `SceneConnectionLifetime` outside its hidden Activity body.
+It acquires the same named-document provider used by the other Space types.
+`scene-session.ts` caches personal selection, gesture drafts and undo by Y.Doc.
+Hiding cancels the draft and presence while retaining that session; closing the
+Space tab evicts it. Provider release checks document identity so an old cleanup
+cannot release a replacement with the same wire name. Account changes destroy
+the previous transport before another account connects. Editing waits for the
+first synchronization; later disconnects retain the same in-memory Y.Doc and
+use normal Yjs reconnection. Scene content has no local recovery cache or export
+flow. Only the personal camera position and target use account/Project/Space
+scoped browser storage.
+
+Both creation dialogs share `SpaceKindPicker`: Canvas, Document, 3D and the
+unavailable Timeline. Cards show an icon and name, descriptions in tooltips,
+and a DEV badge on 3D. The initial 3D Space is named `3D`. The editor lazily
+loads its Three.js viewport. Its left rail contains creation controls, the
+bottom-center toolbar acts on the selection, and bottom-right controls toggle
+one floating Properties, Objects or Tasks panel and the minimap, alongside undo
+and redo. Selection changes open Properties; repeated trigger presses and the
+panel close action dismiss it. Locking changes the normal header icon without
+adding an active background. AI generation and annotations remain development
+entries; this editor does not submit generation jobs.
+
+`SceneViewportRuntime` owns a native Three.js renderer, camera, OrbitControls,
+TransformControls, model resources and the overview. React owns its visible
+effect lifetime. The native transform helper renders with the world scene.
+`SceneTransformControls173` adapts centre scaling and multiselect handle masks.
+The AI dialog uses a localized project Button for its reference-image field and
+a hidden file input; its prompt, reference picker and submission remain disabled.
+
+Scene name editing follows Canvas node and group renaming: trim and clip a
+nonblank draft, commit on Enter or leaving the field, and cancel on Escape.
+The scene schema supplies its existing length limit. The shared
+`lib/inline-edit-exit.ts` handles composition and held-key exits;
+`lib/blur-left.ts` keeps drafts when the browser loses focus or the Space hides.
+The inspector submits accepted names through the same scene command owner.
+`SceneEditor` owns temporary text, validation and editing state for the name and
+nine transform inputs, keyed by object and field. Activity hiding releases the
+floating panel while retaining that input state; explicit dismissal, another
+panel or overlay, selection changes and editor disposal end the corresponding
+input. The panel portals into its scene allocation so Space-tab activation
+preserves field focus until Activity hides it. The editor's memory owns this
+temporary interface state.
+
+`SceneRightPanel` records permitted outside interactions for each open cycle.
+When dismissal hands focus to an external control or another overlay, that
+control retains focus. Explicit closure and dismissal without an external focus
+target return focus to the connected opener, falling back to the scene canvas.
+
 ### Brand home links
 
 The Studio and Project top-left brand links always navigate to `https://breatic.ai/`,
@@ -531,15 +618,15 @@ uses native state even before React receives the event; switching one node does
 not reset another node, volume, or mute. Browser tests must decode actual audio
 and video, not mock `play()` or synthesize their load events.
 
-### Run (web only)
+### Frontend development commands
 
-全量起服务(api / worker / collab / web,web 跑在 `VITE_DEV_PORT`,默认 :8000)见 [Backend 的 Run](#run);dev server 的 `/api` `/ws` 代理目标由 `PORT` / `COLLAB_PORT` 推导,前后端端口永远同源。只跑 web 用:
+从仓库根目录起服务(api / worker / collab / web,web 跑在 `VITE_DEV_PORT`,默认 :8000)见 [Backend 的 Run](#run)。dev server 的 `/api` `/ws` 代理目标由 `PORT` / `COLLAB_PORT` 推导，浏览器通过web同源入口访问服务。构建与单测经根Turbo准备依赖，Playwright使用web专有脚本：
 
 ```bash
-pnpm -F @breatic/web dev          # 只起 web
-pnpm -F @breatic/web test         # vitest
-pnpm -F @breatic/web test:smoke   # Playwright 端到端
-pnpm -F @breatic/web build        # vite 构建 → dist/breatic/
+pnpm dev                                      # 根目录启动依赖构建及服务监听
+pnpm test                                     # 根Turbo执行单测
+pnpm --filter @breatic/web test:smoke           # Playwright端到端
+pnpm build                                    # 根Turbo构建依赖及web → packages/web/dist/breatic/
 ```
 
 ### Layered architecture
@@ -549,7 +636,7 @@ pnpm -F @breatic/web build        # vite 构建 → dist/breatic/
 ```
 app/        Vite 入口 · 路由 · Provider 编排 · ErrorBoundary
 pages/      路由页 + 页面专属子模块(chrome / chat / members / tweaks)
-spaces/     Canvas / Document / Timeline 内容实现(open enum)
+spaces/     Canvas / Document / 3D / Timeline 内容实现(open enum)
 features/   真·跨页模块(credits / membership / notifications / preferences)+ 跨页共用、绑全局 store 的 hook(active-region / exclusive-overlay)
 stores/     Zustand store(一文件一 store,互不 import)
 data/       I/O 边界(api / yjs / stream / upload)+ 各自的数据类型与转换
@@ -637,7 +724,7 @@ packages/web/
 ├── src/
 │   ├── app/                 # 入口 + provider + error boundary
 │   ├── pages/               # 路由页 + 页面专属子模块
-│   ├── spaces/              # Canvas / Document / Timeline
+│   ├── spaces/              # Canvas / Document / 3D / Timeline
 │   ├── features/            # 跨页 feature
 │   ├── stores/              # Zustand store(一文件一 store)
 │   ├── data/                # api / yjs / stream / upload + 各自的类型与转换

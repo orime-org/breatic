@@ -11,6 +11,17 @@ import {
 } from "../space-rpc.js";
 
 describe("SpaceRpcRequestSchema — discriminated union", () => {
+  it("accepts 3D Space creation without a caller-selected Space id", () => {
+    const request = {
+      id: "create-3d",
+      type: "space:create",
+      payload: { type: "3d", name: "Scene", claimToken: "3f2504e0-4f89-41d3-9a0c-0305e82c3301" },
+    };
+    expect(SpaceRpcRequestSchema.parse(request)).toEqual(request);
+    expect(SpaceRpcRequestSchema.safeParse({
+      ...request, payload: { ...request.payload, spaceId: "caller-chosen" },
+    }).success).toBe(false);
+  });
   // The happy-path space:create case moved to the "server-minted ids and
   // the claim token" block below — the payload changed shape, so asserting
   // the old one here would only re-test what that block already covers.
@@ -83,6 +94,10 @@ describe("SpaceRpcRequestSchema — discriminated union", () => {
 });
 
 describe("SpaceRpcResponseSchema", () => {
+  it("retains the 3D Space type in the creation result", () => {
+    const response = { id: "create-3d", ok: true, result: { spaceId: "scene-1", type: "3d", name: "Scene" } };
+    expect(SpaceRpcResponseSchema.parse(response)).toEqual(response);
+  });
   it("parses success response with result", () => {
     const r = SpaceRpcResponseSchema.parse({
       id: "r1",

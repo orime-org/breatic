@@ -41,6 +41,7 @@ import type {
   RequestFailedReason,
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
+import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
 import type { StripeWebhookResult } from "@breatic/shared";
 
@@ -91,10 +92,8 @@ export const users = pgTable(
     // integration case that stores every tier in `MEMBERSHIP_TIERS` and fails
     // on one the migration does not allow.
     //
-    // Four of the five carry ceilings, and they live in
-    // `config/membership.yaml`, never here. `enterprise` is the fifth: legal
-    // to store, and impossible to price until its negotiated numbers are read
-    // from the database. Asking for its ceilings throws, naming the account.
+    // Configured ceilings live in `config/membership.yaml`. Enterprise
+    // ceilings, validity and agreement identity live in enterprise_memberships.
     // A tier added to the enum without a migration widening the constraint
     // would be storable in TypeScript and rejected by the database.
     //
@@ -103,11 +102,8 @@ export const users = pgTable(
     // answer — the tier of that studio's current admin — so transferring a
     // studio moves it onto the new admin's tier without touching this column.
     //
-    // The old `membership_type` / `membership_expires_at` pair, dropped in
-    // 0010 back when the product carried no tiers at all, is NOT what this
-    // is. There is no expiry column here: an expiry is a billing fact, and
-    // billing is a separate leg — this column is a value that can be read and
-    // enforced, and what makes it change is the Stripe work that comes later.
+    // Enterprise validity is read alongside this raw tier. Ordinary paid
+    // validity is interpreted from subscription facts.
     //
     // Credits are yet another leg and live in `credit_lots`, one row per
     // purchase, never on the
@@ -196,8 +192,8 @@ export const membershipTierChanges = pgTable(
     fromTier: varchar("from_tier", { length: 16 }).notNull(),
     toTier: varchar("to_tier", { length: 16 }).notNull(),
     // What caused the move: `subscription_activated`, `subscription_ended`,
-    // `registration`, or `manual`. The last two have no writer yet — see the
-    // block seven design for why registration does not append a row.
+    // `registration`, or `manual`. Registration is represented by the first
+    // row's from_tier; manual membership changes append through the same writer.
     reason: varchar("reason", { length: 32 }).notNull(),
     referenceId: varchar("reference_id", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -2933,4 +2929,35 @@ export const adsConversionUploads = pgTable(
 export const analyticsMilestones = pgTable("analytics_milestones", {
   key: varchar("key", { length: 255 }).primaryKey(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Negotiated membership facts, keyed by the account that owns the agreement. */
+export const enterpriseMemberships = pgTable("enterprise_memberships", {
+  userId: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "restrict" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  entryTimezone: varchar("entry_timezone", { length: 64 }).notNull(),
+  contractNumber: varchar("contract_number", { length: 128 }).notNull(),
+  teamStudios: integer("team_studios").notNull(),
+  projectsPerStudio: integer("projects_per_studio").notNull(),
+  concurrentEditors: integer("concurrent_editors").notNull(),
+  studioMembers: integer("studio_members").notNull(),
+  projectMembers: integer("project_members").notNull(),
+  storageBytes: bigint("storage_bytes", { mode: "number" }).notNull(),
+  fallbackTier: varchar("fallback_tier", { length: 16 }).notNull(),
+  revision: integer("revision").notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/** Durable results retain their logical target even when that account is absent. */
+export const enterpriseMembershipOperations = pgTable("enterprise_membership_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: varchar("requested_by", { length: 255 }).notNull(),
+  requestBody: jsonb("request_body").$type<EnterpriseMembershipWrite>().notNull(),
+  result: jsonb("result").$type<EnterpriseMembershipResult>().notNull(),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
