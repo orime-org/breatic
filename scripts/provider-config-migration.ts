@@ -278,10 +278,11 @@ it starts with; within a route the configured upstream of lowest weight is
 tried first, and a call moves on before its first content when an upstream
 has no key, cannot be reached, keeps answering 429 or 5xx, lacks the model,
 or says its balance is exhausted.
-understand_routes is the same for reading media. vendor_ids is the id an
-upstream serves one of our models under. openrouter_backends pins the backend
-OpenRouter routes a model to. prices are the direct token prices, in USD per
-million tokens, for upstreams that report no cost of their own.
+understand_routes is the same for reading media, the official API first.
+vendor_ids is the id an upstream serves one of our models under.
+openrouter_backends pins the backend OpenRouter routes a model to. prices are
+the direct token prices, in USD per million tokens, for upstreams that report
+no cost of their own.
 gemini_inline_max_bytes is the request size past which media goes to Gemini
 through its Files API rather than inline; gemini_file_poll_ms is how often an
 uploaded file is asked about until it is ready.
@@ -290,7 +291,7 @@ uploaded file is asked about until it is ready.
     ...direct.map((d) => ({ prefix: d.prefix, upstreams: [{ upstream: d.name, weight: 0 }, { upstream: "openrouter", weight: 1 }] })),
     { prefix: "", upstreams: [{ upstream: "openrouter", weight: 0 }] },
   ],
-  understand_routes: [{ prefix: "google/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "google", weight: 1 }] }],
+  understand_routes: [{ prefix: "google/", upstreams: [{ upstream: "google", weight: 0 }, { upstream: "openrouter", weight: 1 }] }],
   vendor_ids: { [`deepseek/${flash}`]: { deepseek: flashOnDeepseek } },
   openrouter_backends: {
     [describe.model]: { only: [capture("packages/domain/src/understand/types.ts", /backend: "([^"]+)"/)], allow_fallbacks: false },
