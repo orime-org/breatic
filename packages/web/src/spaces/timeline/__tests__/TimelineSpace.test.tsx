@@ -124,6 +124,24 @@ function showTimeline(connection: SocketState = CONNECTED, readOnly = false, act
 }
 
 /**
+ * Merge two independently accepted placements at the same start frame.
+ * @returns The second placement's identity in the manager-owned document.
+ * @throws {Error} When an independent placement cannot be accepted.
+ */
+function seedConflictingClips(): string {
+  const doc = seedContent();
+  const peer = new Y.Doc();
+  const secondId = '30000000-0000-4000-8000-000000000002';
+  try {
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP } })).toBe(true);
+    expect(applyTimelineEdit(peer, { operation: 'add_video', parameters: { source: SOURCE, clip: { ...CLIP, id: secondId } } })).toBe(true);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer), 'provider');
+    return secondId;
+  } finally { peer.destroy(); }
+}
+
+/**
  * Open the material form through the actual track control.
  * @returns Its visible dialog.
  * @throws {Error} When the material entry is unreachable.
@@ -213,6 +231,30 @@ afterEach(() => {
 });
 
 describe('TimelineSpace content and permissions', () => {
+  it('keeps the selected conflicting placement distinct after focus moves to its editor', async () => {
+    const secondId = seedConflictingClips();
+    showTimeline();
+    const first = await screen.findByTestId('timeline-conflict-' + CLIP.id);
+    const second = screen.getByTestId('timeline-conflict-' + secondId);
+    for (const [selected, other] of [[first, second], [second, first]]) {
+      fireEvent.click(selected);
+      expect(selected).toHaveClass('border-active-border', 'bg-status-error-bg');
+      expect(selected).not.toHaveClass('border-status-error-border');
+      expect(other).toHaveClass('border-status-error-border', 'bg-status-error-bg');
+      expect(other).not.toHaveClass('border-active-border');
+      screen.getByTestId('timeline-edit-start').focus();
+      expect(selected).toHaveClass('border-active-border');
+    }
+  });
+  it('shows a short conflict status in selected properties and retains the full instruction above', async () => {
+    seedConflictingClips();
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-conflict-' + CLIP.id));
+    const properties = within(screen.getByTestId('timeline-edit-start').parentElement!);
+    expect(properties.getByText('Conflict', { exact: true })).toBeVisible();
+    expect(properties.queryByText('Clips overlap. Select a clip and change its start frame.')).toBe(null);
+    expect(screen.getAllByText('Clips overlap. Select a clip and change its start frame.').length).toBeGreaterThan(0);
+  });
   it('waits for the first content sync even when a local document object exists', () => {
     seedContent();
     showTimeline({ ...CONNECTED, synced: false, hasEverSynced: false, status: 'connecting', writeAccess: 'unknown' });
