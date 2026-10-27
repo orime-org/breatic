@@ -615,15 +615,15 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * Order a model's upstreams for a run.
    * @param model - The model.
    * @param input - The run.
-   * @param route - The caller's mode.
+   * @param chosen - The caller's mode.
    * @param durations - Known clip lengths, by our param name.
    * @returns The plan.
    * @throws {NoUpstreamAvailable} When no upstream is configured.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
    */
-  const route = async (model: string, input: MediaInput, route: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
+  const route = async (model: string, input: MediaInput, chosen: Route, durations: Record<string, number[]>): Promise<RoutePlan> => {
     let candidates = candidatesOf(config, model, keyOf);
-    if (route.mode === "cheapest") {
+    if (chosen.mode === "cheapest") {
       const estimates = await orderByPrice(provider.pricingRules(model), provider.availability(model), {
         params: input.params,
         prompt: input.prompt,
@@ -633,7 +633,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       });
       candidates = candidates.map((c) => ({ ...c, estimateUsd: estimates.find((e) => e.upstream === c.upstream)?.costUsd }));
     }
-    return planRoute(model, route, candidates);
+    return planRoute(model, chosen, candidates);
   };
 
   /**
