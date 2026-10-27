@@ -31,6 +31,12 @@ export interface BodyIndexedUnit extends BodyInlineUnit {
   readonly native: BodyTreeUnit;
 }
 
+/** The two displayed sides of a native character, inline leaf or permanent cut. */
+export interface BodyNativePoint {
+  readonly before?: number;
+  readonly after?: number;
+}
+
 /** A registered node's outer and inner PM boundaries. */
 export interface BodyNodePosition {
   readonly id: string;
@@ -66,6 +72,7 @@ export interface BodyProjectionIndex extends BodyProjectionOptions {
   readonly doc: PMNode;
   readonly view: BodyTreeView;
   readonly units: readonly BodyIndexedUnit[];
+  readonly nativePoints: ReadonlyMap<string, BodyNativePoint>;
   readonly nodes: ReadonlyMap<string, BodyNodePosition>;
   readonly owners: ReadonlyMap<string, BodyNodePosition>;
   readonly opaque: ReadonlyMap<string, BodyOpaquePayload>;

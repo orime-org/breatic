@@ -18,8 +18,10 @@
  * Either way the writer lands outside the quote they were writing in. This
  * handler takes over only for blocks that are inside a quote, and mirrors what
  * BlockNote would have done for each case, quote included. Everything else —
- * an unquoted block, a hard break, lifting an empty indented block out a level
- * — falls straight through.
+ * a hard break, lifting an empty indented block out a level, or an unquoted
+ * block other than an empty parent carrying children — falls straight through.
+ * The empty-parent move also declares its complete source boundary so the
+ * original children keep their native identities in the records binding.
  */
 
 import {
@@ -39,6 +41,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
+import { bodyInlineOccurrences, recordBodyOperation } from '@web/spaces/document/document-body-provenance';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import {
@@ -65,11 +68,11 @@ const OWN_ENTER_TYPES = [
 ] as const;
 
 /**
- * Enter, for a block that sits inside a quote.
+ * Enter in a quote, or an ordinary empty parent carrying existing children.
  * @param editor - The editor Enter was pressed in.
  * @returns Whether this handler claimed the key.
  */
-function handleQuotedEnter(editor: ListEditor): boolean {
+function handleBodyEnter(editor: ListEditor): boolean {
   return editor.transact((tr) => {
     // Read at `from`, the end of the selection the cut falls on. Asking the
     // selection instead reads its ANCHOR — the end the drag started at — so
@@ -91,9 +94,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
       // split, and a code block takes a newline without splitting at all.
       return false;
     }
-    if (blockContent.node.attrs[QUOTED] !== true) {
-      return false;
-    }
+    const quoted = blockContent.node.attrs[QUOTED] === true;
 
     const atBlockStart = tr.selection.$from.parentOffset === 0;
     // Both of the reads below are about the block the selection OPENS in, and
@@ -105,6 +106,11 @@ function handleQuotedEnter(editor: ListEditor): boolean {
     // table cell is at the top of that cell's own body (inner#1619).
     const $block = tr.doc.resolve(bnBlock.beforePos);
     const indented = $block.depth > 1 && $block.parent.type.name === 'blockGroup';
+    // The library opens these empty parents with a default paragraph and
+    // carries their children to it. Toggle headings reset first; lists and
+    // code have already declined above. Preserve those separate commands.
+    const ordinaryParent = type === 'paragraph' || (type === 'heading' && blockContent.node.attrs['isToggleable'] !== true);
+    if (!quoted && !(ordinaryParent && blockEmpty && childContainer !== undefined && !indented)) return false;
 
     if (blockEmpty) {
       // An empty selection sits in a textblock, so the caret is at offset 0.
@@ -116,7 +122,7 @@ function handleQuotedEnter(editor: ListEditor): boolean {
         // loses no props.
         return false;
       }
-      openBlockAt(tr, bnBlock.afterPos, { [QUOTED]: true }, childContainer);
+      openBlockAt(tr, bnBlock.afterPos, { [QUOTED]: quoted }, childContainer);
       return true;
     }
 
@@ -169,6 +175,8 @@ function splitAfterRange(editor: ListEditor): boolean {
  * @param child.node - The group itself.
  * @param child.beforePos - Where it starts, before the insert.
  * @param child.afterPos - Where it ends, before the insert.
+ * @throws {BodyProvenanceError} If the complete move declaration is invalid.
+ * @throws {RangeError} If ProseMirror rejects a source position or insertion.
  */
 function openBlockAt(
   tr: Transaction,
@@ -181,13 +189,16 @@ function openBlockAt(
   if (!paragraph || !container) {
     return;
   }
+  const source = { transaction: 0, step: tr.steps.length };
+  const carried = child === undefined ? [] : bodyInlineOccurrences(tr.doc).filter((unit) => unit.pos >= child.beforePos && unit.pos < child.afterPos);
+  const content = paragraph.create(attrs);
   tr.insert(
     at,
     container.create(
       null,
       child === undefined
-        ? paragraph.create(attrs)
-        : [paragraph.create(attrs), child.node],
+        ? content
+        : [content, child.node],
     ),
   );
   tr.setSelection(TextSelection.create(tr.doc, at + 2));
@@ -197,6 +208,26 @@ function openBlockAt(
     // in after them — a block's own children sit inside it, which ends where
     // the new block begins.
     tr.delete(child.beforePos, child.afterPos);
+    const target = { transaction: 0, step: tr.steps.length };
+    const childAt = at + 1 + content.nodeSize - (child.afterPos - child.beforePos);
+    // These are the same child nodes, inserted after the new paragraph and
+    // shifted left by removal of their original group. One complete operation
+    // excludes the temporary duplicate tree, including a group of empty blocks.
+    recordBodyOperation(tr, {
+      id: `empty-parent-enter:${source.step}:${target.step}`,
+      name: 'empty parent Enter carries children',
+      source,
+      target,
+      handoffs: carried.map((unit) => {
+        const from = childAt + unit.pos - child.beforePos;
+        return {
+          kind: 'move',
+          source: { boundary: source, from: unit.pos, to: unit.pos + unit.width, block: unit.block },
+          target: { boundary: target, from, to: from + unit.width, block: unit.block },
+        };
+      }),
+      created: [],
+    });
   }
 }
 
@@ -357,7 +388,7 @@ export const documentEnterExtension = createExtension(() => {
         if (selection instanceof NodeSelection && !selection.node.isInline) {
           return handleWholeBlockEnter(editor);
         }
-        return handleQuotedEnter(editor) || (tookRange && splitAfterRange(editor));
+        return handleBodyEnter(editor) || (tookRange && splitAfterRange(editor));
       },
       // A line break belongs inside a line. A whole selected block has none to
       // break, and neither has the end of a selection reaching past the first or

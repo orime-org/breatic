@@ -15,6 +15,7 @@ import type {
   BodyProjectionRead,
 } from '@web/spaces/document/document-body-codec-types';
 import { bodyGeometryCoverage, completeBodyGeometry, repairBodyGeometry } from '@web/spaces/document/document-body-codec-geometry';
+import { bodyNativePoints } from '@web/spaces/document/document-body-codec-points';
 import { bodyInlineOccurrences } from '@web/spaces/document/document-body-provenance';
 import { UNSUPPORTED_BLOCK, UNSUPPORTED_INLINE } from '@web/spaces/document/document-unsupported-blocknote';
 
@@ -285,7 +286,8 @@ export function projectBodyTree(sourceDoc: Y.Doc, schema: Schema, options: BodyP
     for (const [id, record] of derived) if (record.kind === 'owner') owners.delete(id);
   }
   const units = indexedUnits(doc, builder, owners);
-  const index = { ...options, sourceDoc, doc, view, units, nodes, owners, derived, opaque: builder.opaque };
+  const nativePoints = bodyNativePoints(sourceDoc, view, units, owners);
+  const index = { ...options, sourceDoc, doc, view, units, nativePoints, nodes, owners, derived, opaque: builder.opaque };
   const occurrences = units.map(({ pos, width, value, block, token, origin }) => ({ pos, width, value, block, token, origin }));
   return { status: 'ready', projection: { doc, units: occurrences, view, index, epoch: options.epoch, synthetic } };
 }

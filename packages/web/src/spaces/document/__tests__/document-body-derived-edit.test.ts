@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { act } from '@testing-library/react';
-import type { Node as PMNode, Schema } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
-import { TableMap } from '@tiptap/pm/tables';
+import { Fragment, type Node as PMNode, type Schema } from '@tiptap/pm/model';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
+import { CellSelection, TableMap } from '@tiptap/pm/tables';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { type BodyFact, type BodyRecord } from '@breatic/shared';
+import { deriveId, type BodyFact, type BodyRecord } from '@breatic/shared';
 import { documentBodyFragment, documentBodyRecords, documentBodySource, registerDocumentBodyRecords } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
@@ -17,7 +17,9 @@ import type { BodyDerivedRecord, BodyProjection } from '@web/spaces/document/doc
 import { nameBodyPoint, resolveBodyPoint } from '@web/spaces/document/document-body-positions';
 import { createDocumentBodyRuntime } from '@web/spaces/document/document-body-runtime';
 import type { DocumentBodyRuntime } from '@web/spaces/document/document-body-runtime-types';
+import { deleteColumnAt, deleteRowAt, insertColumn, insertRow, mergeSelectedCells, moveLineAt, setCellsAttr, toggleHeaderAt } from '@web/spaces/document/document-table-run';
 import { cleanupCodecFixtures, codecDoc, codecFacts, codecFixture, codecNativeTokens, codecParagraph } from '@web/spaces/document/__tests__/document-body-codec-fixtures';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 interface OpenBody {
   readonly doc: Y.Doc;
@@ -66,6 +68,21 @@ function sparseFixture(): Y.Doc {
   ] });
   documentBodySource(doc, 'S:A').format(1, 1, { 'mark:bold': { factId: 'original-bold' } });
   return doc;
+}
+
+/** Reproduces the approved R15 two-hole geometry using native production records. @throws {Error} If registration is invalid. */
+function twoHoleFixture(): Y.Doc {
+  const containers: BodyRecord[] = [
+    { id: 'table', kind: 'container', type: 'docTable', attrs: { id: 'table' }, parent: 'group', order: 'A' },
+    { id: 'row:0', kind: 'container', type: 'docTableRow', attrs: { id: 'row:0' }, parent: 'table', order: '0' },
+    { id: 'row:1', kind: 'container', type: 'docTableRow', attrs: { id: 'row:1' }, parent: 'table', order: '1' },
+    ...['A', 'B', 'C', 'D'].map((id, index): BodyRecord => ({
+      id: `cell:${id}`, kind: 'container', type: 'docTableCell',
+      attrs: { id: `cell:${id}`, colspan: 1, rowspan: 1, colwidth: null },
+      parent: index < 3 ? 'row:0' : 'row:1', order: String(index % 3),
+    })),
+  ];
+  return codecFixture(['A', 'B', 'C', 'D'].map((id) => ({ id, text: id, parent: `cell:${id}` })), containers);
 }
 
 /** Mounts the actual records editor, runtime and native history without substituting their core behavior. @throws {Error} If factory assembly fails. */
@@ -181,6 +198,321 @@ function expectOriginals(projection: BodyProjection, tokens: readonly string[]):
 }
 
 describe('actual first input into local derived body slots', () => {
+  it('rederives an unsupported empty hole after author undo while retaining the peer-supported first cell', () => {
+    const a = open(twoHoleFixture());
+    const b = open(clone(a.doc));
+    const before = frame(a);
+    const owners = [...before.index.derived.values()].filter((entry) => entry.kind === 'owner');
+    expect(owners).toHaveLength(2);
+    const at = before.index.nodes.get(owners[0].id)!.contentFrom;
+    // The approved identity contract uses current original row coverage.
+    // After the author's births are undone, only D and the peer-supported
+    // first hole contribute original cells. The second hole is a new local
+    // repair slot, rather than a live empty owner from the undone USER.
+    const coverage = JSON.stringify([1, 3, [
+      ['cell:D', 'docTableCell', 1, 1, null],
+      [owners[0].parent, 'docTableCell', 1, 1, null],
+    ], ['cell:D', owners[0].parent, null]]);
+    const cellId = deriveId(JSON.stringify(['document-body-hole', 1, 'table', 'row:1', coverage, 'row:1', [2], 'docTableCell', 0]));
+    const ownerId = deriveId(JSON.stringify(['document-body-hole', 1, 'table', 'row:1', coverage, cellId, [0], 'blockContainer', 0]));
+    const withPeer = EditorState.create({ doc: before.doc }).tr.insertText('R', at).doc;
+    const peerGroup = withPeer.firstChild!;
+    const peerTable = peerGroup.firstChild!;
+    const peerRow = peerTable.child(1);
+    const oldCell = peerRow.child(2);
+    const oldOwner = oldCell.firstChild!;
+    const localCell = oldCell.type.create({ ...oldCell.attrs, id: cellId }, oldOwner.type.create({ ...oldOwner.attrs, id: ownerId }, oldOwner.content));
+    const expectedPeer = withPeer.copy(withPeer.content.replaceChild(0, peerGroup.copy(peerGroup.content.replaceChild(0,
+      peerTable.copy(peerTable.content.replaceChild(1, peerRow.copy(peerRow.content.replaceChild(2, localCell)))),
+    ))));
+    type(a, owners[0].id, 'Q');
+    expect(a.runtime.read().status).toBe('active');
+    exchange(a, b);
+    type(b, owners[0].id, 'R', true);
+    expect(b.runtime.read().status).toBe('active');
+    act(() => { a.history.undo(); });
+    exchange(a, b);
+    expect(a.runtime.read().status).toBe('active');
+    expect(b.runtime.read().status).toBe('active');
+    expect(frame(a).doc.toJSON()).toEqual(expectedPeer.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(expectedPeer.toJSON());
+    expectOriginals(frame(a), before.units.map((unit) => unit.token));
+    const unsupportedBirths = [...frame(a).view.body.facts.values()].filter((fact) => fact.kind === 'birth' && fact.owner === owners[1].id);
+    expect(unsupportedBirths).toHaveLength(1);
+    expect(frame(a).view.body.enabled.has(unsupportedBirths[0].group)).toBe(false);
+    expect(frame(a).view.visible.has(owners[1].id)).toBe(false);
+    expect(documentBodyRecords(a.doc).records.has(owners[1].id)).toBe(true);
+    expect([...frame(a).index.derived.keys()].sort()).toEqual([cellId, ownerId].sort());
+    expect(a.history.undoStack).toHaveLength(0);
+    expect(b.history.undoStack).toHaveLength(1);
+    act(() => { b.history.undo(); });
+    exchange(a, b);
+    expect(frame(a).doc.toJSON()).toEqual(before.doc.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(before.doc.toJSON());
+    act(() => { b.history.redo(); });
+    exchange(a, b);
+    expect(frame(a).doc.toJSON()).toEqual(expectedPeer.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(expectedPeer.toJSON());
+    expect(frame(open(clone(a.doc))).doc.toJSON()).toEqual(expectedPeer.toJSON());
+  });
+
+  it.each(['row', 'column'] as const)('keeps existing holes while inserting a new %s into sparse geometry', (axis) => {
+    const a = open(twoHoleFixture());
+    const b = open(clone(a.doc));
+    const before = frame(a);
+    const group = before.doc.firstChild!;
+    const table = group.firstChild!;
+    const firstCell = before.index.nodes.get('cell:A')!.from;
+    let userUpdates = 0;
+    const registrations: unknown[] = [];
+    a.doc.on('update', (_update, origin) => {
+      if (origin === a.origin) userUpdates += 1;
+      else registrations.push(project(a.doc, a.editor.pmSchema).doc.toJSON());
+    });
+    act(() => {
+      if (axis === 'row') insertRow(a.editor, firstCell, 'above');
+      else insertColumn(a.editor, firstCell, 'left');
+    });
+    expect(a.runtime.read().status).toBe('active');
+    const observedTable = a.editor.prosemirrorState.doc.firstChild!.firstChild!;
+    /** Reads only stochastic new identities; all expected shape and payload are test-owned. @throws {RangeError} If the actual schema rejects an empty cell. */
+    const emptyCell = (observed: PMNode): PMNode => a.editor.pmSchema.node('docTableCell', { id: observed.attrs['id'] },
+      a.editor.pmSchema.node('blockContainer', { id: observed.firstChild!.attrs['id'] }, a.editor.pmSchema.node('paragraph')),
+    );
+    const rows = axis === 'row' ? [
+      a.editor.pmSchema.node('docTableRow', { id: observedTable.child(0).attrs['id'] }, Array.from({ length: 3 }, (_, column) => emptyCell(observedTable.child(0).child(column)))),
+      table.child(0), table.child(1),
+    ] : Array.from({ length: 2 }, (_, row) => table.child(row).copy(Fragment.from([
+      emptyCell(observedTable.child(row).child(0)), ...Array.from({ length: 3 }, (_, column) => table.child(row).child(column)),
+    ])));
+    const expected = before.doc.copy(before.doc.content.replaceChild(0, group.copy(group.content.replaceChild(0, table.copy(Fragment.from(rows))))));
+    expect(a.editor.prosemirrorState.doc.toJSON()).toEqual(expected.toJSON());
+    expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+    expect(project(a.doc, a.editor.pmSchema).doc.toJSON()).toEqual(expected.toJSON());
+    for (const id of before.index.derived.keys()) expect(documentBodyRecords(a.doc).records.has(id)).toBe(true);
+    expectOriginals(frame(a), before.units.map((unit) => unit.token));
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]).toEqual(before.doc.toJSON());
+    expect(userUpdates).toBe(1);
+    expect(a.history.undoStack).toHaveLength(1);
+    exchange(a, b);
+    expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+    act(() => { a.history.undo(); });
+    exchange(a, b);
+    expect(frame(a).doc.toJSON()).toEqual(before.doc.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(before.doc.toJSON());
+    act(() => { a.history.redo(); });
+    exchange(a, b);
+    expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+  });
+
+  it.each(['delete-row', 'delete-column', 'move-row', 'move-column', 'header', 'colwidth', 'merge'] as const)(
+    'preserves surviving displayed holes across actual %s geometry changes', (operation) => {
+      const a = open(twoHoleFixture());
+      const b = open(clone(a.doc));
+      const before = frame(a);
+      const group = before.doc.firstChild!;
+      const table = group.firstChild!;
+      const firstRow = table.child(0);
+      const secondRow = table.child(1);
+      const firstCell = before.index.nodes.get('cell:A')!.from;
+      let rows: PMNode[];
+      if (operation === 'delete-row') rows = [secondRow];
+      else if (operation === 'delete-column') rows = [
+        firstRow.copy(Fragment.from([firstRow.child(1), firstRow.child(2)])),
+        secondRow.copy(Fragment.from([secondRow.child(1), secondRow.child(2)])),
+      ];
+      // The installed row command retains row wrappers at their slots and
+      // moves their cells, including cell/owner identities and payloads.
+      else if (operation === 'move-row') rows = [firstRow.copy(secondRow.content), secondRow.copy(firstRow.content)];
+      else if (operation === 'move-column') rows = [firstRow, secondRow].map((row) => row.copy(Fragment.from([row.child(1), row.child(2), row.child(0)])));
+      else if (operation === 'header') rows = [firstRow.copy(Fragment.from(Array.from({ length: 3 }, (_, index) =>
+        a.editor.pmSchema.node('docTableHeader', firstRow.child(index).attrs, firstRow.child(index).content),
+      ))), secondRow];
+      else if (operation === 'merge') rows = [firstRow.copy(Fragment.from([
+        firstRow.child(0).type.create({ ...firstRow.child(0).attrs, colspan: 2 }, firstRow.child(0).content.append(firstRow.child(1).content)),
+        firstRow.child(2),
+      ])), secondRow];
+      else rows = [firstRow, secondRow].map((row) => row.copy(row.content.replaceChild(0,
+        row.child(0).type.create({ ...row.child(0).attrs, colwidth: [128] }, row.child(0).content),
+      )));
+      const expected = before.doc.copy(before.doc.content.replaceChild(0,
+        group.copy(group.content.replaceChild(0, table.copy(Fragment.from(rows)))),
+      ));
+      let userUpdates = 0;
+      const registrations: unknown[] = [];
+      a.doc.on('update', (_update, origin) => {
+        if (origin === a.origin) userUpdates += 1;
+        else registrations.push(project(a.doc, a.editor.pmSchema).doc.toJSON());
+      });
+      act(() => {
+        if (operation === 'delete-row') deleteRowAt(a.editor, firstCell);
+        else if (operation === 'delete-column') deleteColumnAt(a.editor, firstCell);
+        else if (operation === 'move-row') moveLineAt(a.editor, firstCell, 'row', 1);
+        else if (operation === 'move-column') moveLineAt(a.editor, firstCell, 'column', 2);
+        else if (operation === 'header') toggleHeaderAt(a.editor, firstCell, 'row');
+        else if (operation === 'merge') {
+          const view = a.editor.prosemirrorView;
+          view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, firstCell, before.index.nodes.get('cell:B')!.from)));
+          mergeSelectedCells(a.editor);
+        }
+        else setCellsAttr(a.editor, firstCell, 'column', 'colwidth', [128]);
+      });
+      expect(a.runtime.read().status).toBe('active');
+      expect(a.editor.prosemirrorState.doc.toJSON()).toEqual(expected.toJSON());
+      expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+      expect(project(a.doc, a.editor.pmSchema).doc.toJSON()).toEqual(expected.toJSON());
+      for (const id of before.index.derived.keys()) expect(documentBodyRecords(a.doc).records.has(id)).toBe(true);
+      expect(registrations).toHaveLength(1);
+      for (const registration of registrations) expect(registration).toEqual(before.doc.toJSON());
+      expect(userUpdates).toBe(1);
+      expect(a.history.undoStack).toHaveLength(1);
+      exchange(a, b);
+      expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+      act(() => { a.history.undo(); });
+      exchange(a, b);
+      expect(frame(a).doc.toJSON()).toEqual(before.doc.toJSON());
+      expect(frame(b).doc.toJSON()).toEqual(before.doc.toJSON());
+      act(() => { a.history.redo(); });
+      exchange(a, b);
+      expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+      expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+    },
+  );
+
+  it.each([false, true])('edits both holes from real concurrent row and column insertions with author-first %s', (first) => {
+    const a = open(codecFixture([{ id: 'lead', text: '' }]));
+    act(() => a.editor.replaceBlocks(a.editor.document, [tableBlock({ rows: [{ cells: ['A'] }, { cells: ['B'] }] })] as never));
+    expect(a.runtime.read().status).toBe('active');
+    const b = open(clone(a.doc));
+    a.history.clear();
+    b.history.clear();
+    a.history.stopCapturing();
+    b.history.stopCapturing();
+    /** Finds the current physical cell boundaries without using content as identity. @throws {never} */
+    const cellPositions = (body: OpenBody): number[] => {
+      const positions: number[] = [];
+      body.editor.prosemirrorState.doc.descendants((node, pos) => {
+        if (['cell', 'header_cell'].includes(String(node.type.spec.tableRole))) positions.push(pos);
+      });
+      return positions;
+    };
+    act(() => insertRow(a.editor, cellPositions(a)[1], 'below'));
+    act(() => insertColumn(b.editor, cellPositions(b)[0], 'right'));
+    b.history.stopCapturing();
+    act(() => insertColumn(b.editor, cellPositions(b)[0], 'right'));
+    expect(a.runtime.read().status).toBe('active');
+    expect(b.runtime.read().status).toBe('active');
+    exchange(a, b, first);
+    const sparse = frame(a);
+    expect(frame(b).doc.toJSON()).toEqual(sparse.doc.toJSON());
+    const holes = [...sparse.index.derived.values()].filter((entry) => entry.kind === 'owner');
+    expect(holes).toHaveLength(2);
+    const original = sparse.units.map((unit) => unit.token);
+    a.history.stopCapturing();
+    b.history.stopCapturing();
+    const left = sparse.index.nodes.get(holes[0].id)!.contentFrom;
+    const right = sparse.index.nodes.get(holes[1].id)!.contentFrom;
+    const expected = EditorState.create({ doc: sparse.doc }).tr.insertText('R', right).insertText('Q', left).doc;
+    type(a, holes[0].id, 'Q');
+    type(b, holes[1].id, 'R');
+    expect(a.runtime.read().status).toBe('active');
+    expect(b.runtime.read().status).toBe('active');
+    exchange(a, b, first);
+    expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+    expectOriginals(frame(a), original);
+    expectOriginals(frame(b), original);
+    act(() => { a.history.undo(); });
+    exchange(a, b, !first);
+    const peerOnly = EditorState.create({ doc: sparse.doc }).tr.insertText('R', right).doc;
+    expect(frame(a).doc.toJSON()).toEqual(peerOnly.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(peerOnly.toJSON());
+    act(() => { b.history.undo(); });
+    exchange(a, b, first);
+    expect(frame(a).doc.toJSON()).toEqual(sparse.doc.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(sparse.doc.toJSON());
+    act(() => { a.history.redo(); b.history.redo(); });
+    exchange(a, b, !first);
+    expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+  });
+
+  it.each([false, true])('retains both displayed hole identities when the %s reverse-order hole is first materialized', (reverse) => {
+    const a = open(twoHoleFixture());
+    const b = open(clone(a.doc));
+    const before = frame(a);
+    const owners = [...before.index.derived.values()].filter((record) => record.kind === 'owner');
+    expect(owners).toHaveLength(2);
+    expect(before.index.derived.size).toBe(4);
+    const originalTokens = before.units.map((unit) => unit.token);
+    const bytes = Y.encodeStateAsUpdate(a.doc);
+    expect(project(a.doc, a.editor.pmSchema).doc.toJSON()).toEqual(before.doc.toJSON());
+    expect(Y.encodeStateAsUpdate(a.doc)).toEqual(bytes);
+    const order = reverse ? [...owners].reverse() : owners;
+    const registrations: unknown[] = [];
+    let userUpdates = 0;
+    a.doc.on('update', (_update, origin) => {
+      if (origin === a.origin) userUpdates += 1;
+      else registrations.push(project(a.doc, a.editor.pmSchema).doc.toJSON());
+    });
+    let expected = before.doc;
+    for (const [index, owner] of order.entries()) {
+      a.history.stopCapturing();
+      const current = frame(a);
+      const pos = current.index.nodes.get(owner.id)?.contentFrom;
+      if (pos === undefined) throw new Error('An untouched displayed hole changed identity');
+      expected = EditorState.create({ doc: expected }).tr.insertText(index === 0 ? 'Q' : 'R', pos).doc;
+      const previous = current.doc.toJSON();
+      registrations.splice(0);
+      type(a, owner.id, index === 0 ? 'Q' : 'R');
+      expect(a.runtime.read().status).toBe('active');
+      expect(a.editor.prosemirrorState.doc.toJSON()).toEqual(expected.toJSON());
+      expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+      expect(project(a.doc, a.editor.pmSchema).doc.toJSON()).toEqual(expected.toJSON());
+      expectOriginals(frame(a), originalTokens);
+      expect(userUpdates).toBe(index + 1);
+      expect(a.history.undoStack).toHaveLength(index + 1);
+      expect(registrations).toHaveLength(1);
+      for (const registration of registrations) expect(registration).toEqual(previous);
+      for (const id of before.index.derived.keys()) expect(documentBodyRecords(a.doc).records.has(id)).toBe(true);
+      exchange(a, b, reverse);
+      expect(frame(b).doc.toJSON()).toEqual(expected.toJSON());
+      expect(b.runtime.read().status).toBe('active');
+    }
+    const edited = expected.toJSON();
+    act(() => { a.history.undo(); });
+    exchange(a, b);
+    const firstOnly = frame(a).doc.toJSON();
+    expect(frame(b).doc.toJSON()).toEqual(firstOnly);
+    act(() => { a.history.undo(); });
+    exchange(a, b);
+    expect(frame(a).doc.toJSON()).toEqual(before.doc.toJSON());
+    expect(frame(b).doc.toJSON()).toEqual(before.doc.toJSON());
+    act(() => { a.history.redo(); a.history.redo(); });
+    exchange(a, b);
+    expect(frame(a).doc.toJSON()).toEqual(edited);
+    expect(frame(b).doc.toJSON()).toEqual(edited);
+    const reopened = open(clone(a.doc));
+    expect(frame(reopened).doc.toJSON()).toEqual(edited);
+  });
+
+  it('does not materialize either hole when typing in an existing cell of the same table', () => {
+    const a = open(twoHoleFixture());
+    const before = frame(a);
+    const keys = [...documentBodyRecords(a.doc).records.keys()].sort();
+    const boundary = before.index.nodes.get('D');
+    if (boundary === undefined) throw new Error('Expected the existing second-row owner');
+    const expected = EditorState.create({ doc: before.doc }).tr.insertText('!', boundary.contentTo).doc;
+    type(a, 'D', '!', true);
+    expect(a.runtime.read().status).toBe('active');
+    expect(frame(a).doc.toJSON()).toEqual(expected.toJSON());
+    expect(frame(a).index.derived).toEqual(before.index.derived);
+    expect([...documentBodyRecords(a.doc).records.keys()].sort()).toEqual(keys);
+    expect(a.history.undoStack).toHaveLength(1);
+  });
+
   it('registers only the touched missing cell and owner in one user edit and retains its point through undo redo and snapshot', () => {
     const doc = sparseFixture();
     const peerDoc = clone(doc);

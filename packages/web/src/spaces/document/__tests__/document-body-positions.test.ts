@@ -7,7 +7,7 @@ import { AllSelection, NodeSelection, TextSelection, type Selection } from '@tip
 import type { Schema } from '@tiptap/pm/model';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodySource, DocumentBodyFormatError } from '@breatic/shared/document-body';
+import { documentBodySource, DocumentBodyFormatError, registerBodyCut } from '@breatic/shared/document-body';
 
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';
 import type { BodyProjectionIndex } from '@web/spaces/document/document-body-codec-types';
@@ -54,6 +54,55 @@ function hide(doc: Y.Doc, owner: string): void {
 }
 
 describe('common native body point and selection names', () => {
+  it('keeps a deleted native gap in its current split owner through undo and redo', () => {
+    const schema = codecSchema();
+    const doc = codecFixture([{ id: 'A', text: 'ABCDEF' }, { id: 'B', text: '' }]);
+    registerBodyCut(doc, 'S:A', 'split', 3);
+    codecFacts(doc, 'split-effect', [{ id: 'split-right', kind: 'structure', group: 'split-effect', dependencies: [],
+      edges: [{ child: 'R:split', parent: 'F:B', order: 'z', counter: 1 }] }]);
+    const initial = indexOf(doc, schema);
+    const owner = initial.owners.get('B')!;
+    const names = ([-1, 1] as const).map((assoc) => nameBodyPoint(initial, { kind: 'text', pos: owner.contentFrom, assoc }));
+    const source = documentBodySource(doc, 'S:A');
+    const user = Symbol('delete-right-piece');
+    const history = new Y.UndoManager(source, { trackedOrigins: new Set([user]) });
+    try {
+      doc.transact(() => source.delete(4, 4), user);
+      const deleted = indexOf(doc, schema, 2);
+      expect(deleted.doc.firstChild!.content.content.map((node) => node.firstChild!.textContent)).toEqual(['AB', '']);
+      for (const name of names) expect.soft(resolveBodyPoint(deleted, name)).toEqual({ status: 'resolved', pos: deleted.owners.get('B')!.contentFrom, epoch: 2 });
+      history.undo();
+      const restored = indexOf(doc, schema, 3);
+      expect(restored.doc.firstChild!.content.content.map((node) => node.firstChild!.textContent)).toEqual(['AB', 'CDEF']);
+      for (const name of names) expect.soft(resolveBodyPoint(restored, name)).toEqual({ status: 'resolved', pos: restored.owners.get('B')!.contentFrom, epoch: 3 });
+      history.redo();
+      const redone = indexOf(doc, schema, 4);
+      for (const name of names) expect.soft(resolveBodyPoint(redone, name)).toEqual({ status: 'resolved', pos: redone.owners.get('B')!.contentFrom, epoch: 4 });
+    } finally {
+      history.destroy();
+    }
+  });
+
+  it.each([0, 1, 2, 3, 4, 5, 6])('round-trips both sides of every native gap after splitting at %s', (offset) => {
+    const schema = codecSchema();
+    const doc = codecFixture([{ id: 'A', text: 'ABCDEF' }, { id: 'B', text: '' }, { id: 'C', text: 'peer' }]);
+    registerBodyCut(doc, 'S:A', 'split', offset + 1);
+    codecFacts(doc, 'split-effect', [{ id: 'split-right', kind: 'structure', group: 'split-effect', dependencies: [],
+      edges: [{ child: 'R:split', parent: 'F:B', order: 'z', counter: 1 }] }]);
+    const initial = indexOf(doc, schema);
+    expect(initial.doc.firstChild!.content.content.map((node) => node.firstChild!.textContent)).toEqual(['ABCDEF'.slice(0, offset), 'ABCDEF'.slice(offset), 'peer']);
+    const before = Y.encodeStateAsUpdate(doc);
+    const held = [...initial.owners.values()].flatMap((owner) => Array.from({ length: owner.contentTo - owner.contentFrom + 1 }, (_, delta) => owner.contentFrom + delta))
+      .flatMap((pos) => ([-1, 1] as const).map((assoc) => ({ pos, name: nameBodyPoint(initial, { kind: 'text', pos, assoc }) })));
+    for (const point of held) expect.soft(resolveBodyPoint(initial, point.name)).toEqual({ status: 'resolved', pos: point.pos, epoch: initial.epoch });
+    documentBodySource(doc, 'S:C').insert(5, '!', { ctx: 'base' });
+    const peer = indexOf(doc, schema, 2);
+    for (const point of held.filter((point) => point.pos < initial.owners.get('C')!.contentFrom)) {
+      expect.soft(resolveBodyPoint(peer, point.name)).toEqual({ status: 'resolved', pos: point.pos, epoch: peer.epoch });
+    }
+    expect(Y.encodeStateAsUpdate(doc)).not.toEqual(before);
+  });
+
   it('resolves named text after peer insertion and structural transfer', () => {
     const schema = codecSchema();
     const doc = codecFixture();

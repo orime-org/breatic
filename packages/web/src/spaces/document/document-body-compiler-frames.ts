@@ -109,7 +109,11 @@ function readFrame(
       mapping.map(candidate.before + 1, 1) === before + 1,
     );
     const sameParent = previous === undefined ? undefined : [...previous.nodes.values()].find((candidate) =>
-      !owner && !candidate.owner && candidate.type === node.type.name &&
+      // Anonymous block groups are singleton wrappers. Identified structural
+      // siblings must use their actual mapping or receive a fresh handle;
+      // traversal order cannot distinguish a new row/cell from an old one.
+      node.type.name === 'blockGroup' && explicit === undefined &&
+      !candidate.owner && candidate.type === node.type.name &&
       resolve(aliases, candidate.parent) === resolve(aliases, parent) && !nodes.has(resolve(aliases, candidate.id)),
     );
     const known = previous === undefined ? initialPositions.get(before) : undefined;
