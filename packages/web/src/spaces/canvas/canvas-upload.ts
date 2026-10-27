@@ -73,12 +73,12 @@ export type FileRejection = 'empty' | 'tooLarge' | 'unsupportedType';
  * gate takes but the picker omits is a file the reader cannot select. A family
  * wildcard does the first — `image/*` shows HEIC, GIF and AVIF, none of which a
  * model can be given.
- * @param modality - Which kind of node is being filled.
+ * @param modality - One media kind, or all supported media.
  * @returns A comma-separated `accept` value.
  */
-export function uploadAcceptFor(modality: 'image' | 'video' | 'audio'): string {
+export function uploadAcceptFor(modality: 'image' | 'video' | 'audio' | 'all'): string {
   return uploadableSpellings()
-    .filter((type) => type.startsWith(`${modality}/`))
+    .filter((type) => modality === 'all' || type.startsWith(`${modality}/`))
     .join(',');
 }
 

@@ -416,7 +416,7 @@ export function renderProductGuide(): string {
       "alone. Files dropped on top of a node, or pasted while a node is selected, still make new nodes: to fill " +
       "a node that exists, use double-click or its right-click menu (next section).",
     `- ${quoted(t("menu.item.upload"))} (an arrow pointing up out of a tray) in that menu opens a file picker ` +
-      "that lists pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
+      "that lists supported pictures, videos, sounds and plain text files; PDF, Word and Excel files go in by dropping or " +
       "pasting them. What you pick arrives the same way as dropped files, in the middle of the view.",
     "- Drag from the dot on a node's right edge and let go on empty canvas: a menu lists the types that can take " +
       "that connection, and the one you pick appears there, already connected.",

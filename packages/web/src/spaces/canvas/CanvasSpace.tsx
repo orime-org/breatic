@@ -402,7 +402,7 @@ function isFocusCandidate(node: Node, targetId: string): boolean {
 /**
  * File-picker `accept` per modality for the empty-node double-click /
  * Upload-menu fill. Media modalities pick by MIME; a text node uploads a
- * document (txt / md / pdf / doc / xlsx) whose content is extracted locally
+ * document (txt / md / pdf / docx / xls / xlsx) whose content is extracted locally
  * (`fillNodeFromFile` → `extractText`). Modalities absent here (3d / web) have
  * no picker, so `CanvasSpaceInner`'s activate handler no-ops for them.
  */
@@ -413,7 +413,7 @@ function isFocusCandidate(node: Node, targetId: string): boolean {
 // first-frame extraction is the real codec gate (#1816). Text is not on this
 // list at all: its content is extracted in the browser and nothing is stored.
 const UPLOAD_ACCEPT: Partial<Record<Modality, string>> = {
-  text: '.txt,.md,.pdf,.doc,.docx,.xls,.xlsx,text/*',
+  text: '.txt,.md,.pdf,.docx,.xls,.xlsx,text/*',
   image: uploadAcceptFor('image'),
   video: uploadAcceptFor('video'),
   audio: uploadAcceptFor('audio'),
