@@ -116,17 +116,22 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
      * @param from - The index of the node sent in.
      * @param to - The index of the node it goes into.
      * @param into - Where on that node it goes.
+     * @param edge - Whether the edge from that node is already there, to be changed.
      * @returns The fix.
      */
-    const routeFix = (from: number, to: number, into: string): NodeFix => {
+    const routeFix = (from: number, to: number, into: string, edge: "add" | "change"): NodeFix => {
       const node = proposal.nodes[from];
       const generation = proposal.nodes[to];
       const chosen = generation === undefined ? undefined : chosenModelOf(generation);
       // The registry test passes every template through this check, so its edges go a way their model takes.
       const entry = node === undefined || chosen === undefined ? undefined : entriesFor(chosen, node.type, holdingOf(node)).find((one) => one.way.into === into && one.by === "edge");
       const how = entry === undefined ? `by an edge with into: "${into}"` : entryPhrase(entry);
-      const shot = entry?.ref === true && generation?.shots !== undefined ? ", the ref in a shot" : "";
-      return fixOn(nodeLabel(proposal.nodes, to), `send ${nodeLabel(proposal.nodes, from)} into it ${how}${shot}.`);
+      // With shots the main prompt is not sent, so refs and notes go in a shot.
+      const marks = [...(entry?.ref === true ? ["ref"] : []), ...(entry?.note === true ? ["note"] : [])];
+      const shot = marks.length > 0 && generation?.shots !== undefined ? `, its ${marks.join(" and ")} in a shot` : "";
+      const subject = nodeLabel(proposal.nodes, from);
+      const lead = edge === "add" ? `send ${subject} into it` : `change the edge from ${subject} so it goes into it`;
+      return fixOn(nodeLabel(proposal.nodes, to), `${lead} ${how}${shot}.`);
     };
     for (const [key, found] of match.keys) {
       if (found.kind === "many") {
@@ -142,7 +147,7 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
         return refuse(
           "template-edge-missing",
           `Template "${id}" anchored at ${at} wires its "${key}" node into "${edge.to}" by "${into}", and ${label(only)}, tagged "${key}", has no edge there.`,
-          routeFix(Number(only), to, into),
+          routeFix(Number(only), to, into, "add"),
         );
       }
       const own = place.template.nodes.find((node) => node.key === key);
@@ -162,7 +167,7 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
         return refuse(
           "template-edge-missing",
           `Template "${id}" anchored at ${at} wires its "${unwired.from}" node into "${unwired.to}" by "${into}" as well, and ${nodeLabel(proposal.nodes, from)} has no edge there.`,
-          routeFix(from, to, into),
+          routeFix(from, to, into, "add"),
         );
       }
     }
@@ -175,7 +180,7 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       return refuse(
         "template-edge-into",
         `Template "${id}" anchored at ${at} sends its "${edge.from}" node into "${edge.to}" by "${want}", and the edge from ${nodeLabel(proposal.nodes, from)} says into "${sent.into}".`,
-        routeFix(from, to, want),
+        routeFix(from, to, want, "change"),
       );
     }
     const missing = match.unassigned[0];

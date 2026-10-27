@@ -359,9 +359,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)], [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }]),
     templates: FIXTURES,
   }, {
-    // The node the edge goes into runs multi_shot: the ref goes in a shot.
+    // The node the edge goes into runs multi_shot: the ref and note go in a shot.
     meets: group([STILL, CLIP_ANCHOR]),
-    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "shot"],
+    states: ['node 0 ("Still")', 'node 1 ("Clip")', '"pool"', "its ref and note in a shot"],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }],
@@ -377,7 +377,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)],
       [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "pool" }],
     ),
-    states: ['node 1 ("Sketch")', '"style_images"', '"pool"'],
+    states: ['node 1 ("Sketch")', '"style_images"', '"pool"', 'change the edge from node 1 ("Sketch") so it goes into it'],
     fix: group(
       [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)],
       [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }],
@@ -389,7 +389,8 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
       [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [...(SHEET_NODES[0]?.prompt ?? []), { text: " in the style of " }, { ref: 1 }] }, ...SHEET_NODES.slice(1)],
       [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "pool" }],
     ),
-    states: ['node 1 ("Sketch")', '"style_images"', "a note saying to pick it there and no ref"],
+    states: ['node 1 ("Sketch")', '"style_images"', "a note saying to pick it there and no ref", 'change the edge from node 1 ("Sketch")'],
+    absent: ["send node 1"],
     fix: group(
       [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? []), { text: " in the style of Sketch" }] }, ...SHEET_NODES.slice(1)],
       [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }],
