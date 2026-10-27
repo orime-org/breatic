@@ -675,3 +675,62 @@ describe("upgrade session gate — logs and event invariants", () => {
     ), { seed: 1570, numRuns: 64 });
   });
 });
+
+/**
+ * A crossws peer as the reassembler sees it: the upgrade request under `_internal.nodeReq`.
+ * @param request - The upgrade request.
+ * @returns A minimal peer.
+ */
+function peerOf(request: IncomingMessage): never {
+  return { _internal: { nodeReq: request } } as never;
+}
+
+describe("upgrade session gate — the user of an admitted connection (inner#1585)", () => {
+  it("G01 remembers the session's user for an admitted request", async () => {
+    const gate = createUpgradeSessionGate({ redis: REDIS });
+    const upgrade = payload(socket());
+    await gate.onUpgrade(upgrade);
+    expect(gate.userOf(peerOf(upgrade.request))).toBe("user-a");
+  });
+
+  it.each([
+    ["no cookie", "missing"],
+    ["no session", "absent"],
+    ["a failed lookup", "error"],
+    ["a stopped gate", "stopped"],
+    ["a peer that left", "gone"],
+  ])("G02 remembers no user after %s", async (_label, kind) => {
+    const gate = createUpgradeSessionGate({ redis: REDIS });
+    const stream = socket();
+    const upgrade = payload(stream, kind === "missing" ? undefined : COOKIE_HEADER);
+    if (kind === "missing") delete upgrade.request.headers.cookie;
+    if (kind === "absent") sessionLookup.mockResolvedValue(null);
+    if (kind === "error") sessionLookup.mockRejectedValue(new Error("redis down"));
+    if (kind === "stopped") gate.stop();
+    if (kind === "gone") stream.destroy();
+    await gate.onUpgrade(upgrade).catch(() => undefined);
+    await turn();
+    expect(gate.userOf(peerOf(upgrade.request))).toBeUndefined();
+  });
+
+  it("G02 knows no user for a request that never went through the gate", () => {
+    const gate = createUpgradeSessionGate({ redis: REDIS });
+    expect(gate.userOf(peerOf(payload(socket()).request))).toBeUndefined();
+  });
+
+  it("G03 keys the user by request, so two requests of one session share it and another session differs", async () => {
+    const gate = createUpgradeSessionGate({ redis: REDIS });
+    const r1 = payload(socket());
+    const r2 = payload(socket());
+    await gate.onUpgrade(r1);
+    await gate.onUpgrade(r2);
+    sessionLookup.mockResolvedValue("user-b");
+    const r3 = payload(socket());
+    await gate.onUpgrade(r3);
+    expect(gate.userOf(peerOf(r1.request))).toBe("user-a");
+    expect(gate.userOf(peerOf(r2.request))).toBe("user-a");
+    expect(gate.userOf(peerOf(r3.request))).toBe("user-b");
+    // A different peer object carrying the same request resolves the same user.
+    expect(gate.userOf(peerOf(r1.request))).toBe(gate.userOf(peerOf(r1.request)));
+  });
+});
