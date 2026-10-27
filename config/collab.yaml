@@ -50,10 +50,26 @@ connection_ping_interval_ms: 30000
 session_recheck_interval_ms: 1800000
 
 # ── Document Size Limit ───────────────────────────
-# Max Yjs document size in bytes (0 = unlimited).
-# Rejects new updates that would push the document over this limit.
+# Max Yjs document size in bytes (0 = unlimited). It does two things:
+# - a document that grows past it is only logged (warn); updates are not refused.
+# - it sets the largest single message collab accepts: this value + 64 KiB, and
+#   never below 128 KiB. A larger message closes the connection with 1009.
+#   With 0 the largest message is reassembly_budget_bytes.
 # A typical canvas with 100 nodes ≈ 200KB. Default 10MB covers most use cases.
 max_document_bytes: 10485760     # 10 MB
+
+# ── Chunked Messages ──────────────────────────────
+# A WebSocket frame carries at most 128 KiB. A larger message arrives as a
+# declaration plus chunks and is reassembled in memory before it is applied.
+# What all connections together may hold while reassembling. One user may hold
+# at most one largest message (see max_document_bytes); when max_document_bytes
+# is above 0 this budget must be at least twice that message, so another
+# member's message always fits beside it. With max_document_bytes 0 one user
+# can fill the whole budget. Past the budget a new message closes with 1013.
+reassembly_budget_bytes: 67108864    # 64 MiB
+# Longest wait between two chunks before the message is dropped and the
+# connection closed with 1008.
+reassembly_idle_timeout_ms: 30000
 
 # ── Connection Limits ─────────────────────────────
 # The per-document ceiling on WRITABLE connections is NOT here. It comes from
