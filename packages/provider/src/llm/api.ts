@@ -3,6 +3,7 @@
 
 import type { FinishReason, JSONValue, LanguageModel, LanguageModelUsage, ProviderMetadata, SystemModelMessage } from "ai";
 import type { Cost } from "@provider/cost.js";
+import type { Availability } from "@provider/pricing/estimate.js";
 import type { Route } from "@provider/routing/route.js";
 
 /** What a caller asks of one LLM call (design 3.5). */
@@ -97,4 +98,10 @@ export interface LlmApi {
    * @throws {ProviderConfigError} One problem per model and upstream without a price.
    */
   assertModelsPriced(models: readonly string[]): void;
+  /**
+   * The upstreams a model's calls of one use would try, in effective weight order, each
+   * saying whether its key is configured (design 3.5): `call` by the routes `prepare` uses,
+   * `understand` by the understanding routes, `judge` by the OpenRouter upstream `judge` uses.
+   */
+  availability(modelId: string, use: "call" | "understand" | "judge"): Availability;
 }

@@ -134,7 +134,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @throws {UpstreamRequestRejected} When the mode names an upstream the route does not have.
    */
   const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
-    const candidates: Candidate[] = route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf));
+    const candidates = candidatesOn(route);
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
     // Cheapest by unit price: input first, then output; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
@@ -152,6 +152,32 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       return pa[0] - pb[0] || pa[1] - pb[1] || a.weight - b.weight;
     });
     return { ...plan, order };
+  };
+
+  /**
+   * A route's upstreams as routing candidates, lowest weight first.
+   * @param route - The route.
+   * @returns One candidate per upstream.
+   */
+  const candidatesOn = (route: LlmRoute): Candidate[] =>
+    route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf)).sort((a, b) => a.weight - b.weight);
+
+  /**
+   * The routes an understand call of a model uses: the understanding routes when one matches, else the call routes.
+   * @param modelId - Our model id.
+   * @returns The routes.
+   */
+  const understandRoutes = (modelId: string): readonly LlmRoute[] =>
+    config.llm.understand_routes.some((r) => modelId.startsWith(r.prefix)) ? config.llm.understand_routes : config.llm.routes;
+
+  /**
+   * The OpenRouter-kind upstreams the decisions endpoint can use, the one it uses first.
+   * @returns Their names.
+   */
+  const judgeUpstreams = (): string[] => {
+    const names = Object.keys(config.upstreams).filter((u) => kindOf(u) === "openrouter");
+    const used = names.find((u) => hasKey(options.keyOf, config.upstreams[u]!.key_env)) ?? names[0];
+    return used === undefined ? [] : [used, ...names.filter((u) => u !== used)];
   };
 
   /**
@@ -268,7 +294,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @throws {UpstreamRequestRejected} When the route names an upstream of another kind.
    */
   const openrouter = (chosen: Route): { upstream: string; key: string } => {
-    const names = Object.keys(config.upstreams).filter((u) => kindOf(u) === "openrouter");
+    const names = judgeUpstreams();
     if (chosen.mode === "upstream" && !names.includes(chosen.upstream)) {
       throw new UpstreamRequestRejected(JEV_MODEL, chosen.upstream, `${chosen.upstream} does not serve ${JEV_MODEL}`);
     }
@@ -355,8 +381,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     costOf,
 
     async understand(request, chosen = DEFAULT_ROUTE) {
-      const routes = config.llm.understand_routes.some((r) => request.model.startsWith(r.prefix)) ? config.llm.understand_routes : config.llm.routes;
-      const route = routeOf(routes, request.model);
+      const route = routeOf(understandRoutes(request.model), request.model);
       const plan = planFor(route, request.model, chosen);
       const { signal: abortSignal, dispose } = boundSignal({ deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) });
       const content = [
@@ -464,6 +489,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const reported = response.ok ? usdOf((parsed(text) as { usage?: { cost?: unknown } } | null | undefined)?.usage?.cost) : undefined;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
       return { status: response.status, body: text, cost };
+    },
+
+    availability(modelId, use) {
+      const candidates = use === "judge"
+        ? judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf))
+        : candidatesOn(routeOf(use === "call" ? config.llm.routes : understandRoutes(modelId), modelId));
+      return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 
     assertModelsPriced(models) {
