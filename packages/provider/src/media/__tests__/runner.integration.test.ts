@@ -801,7 +801,7 @@ describe("a run never leaves the upstream that accepted one of its steps (design
           let answer: MediaAnswer = await r.plan("voice-clone-both", speech, route, options());
           let stuckTo: string | undefined;
           for (let turn = 0; turn < 40 && (answer.state === "send" || answer.state === "running"); turn++) {
-            const { ticket } = answer as { ticket: MediaTicket & { upstream: string; accepted?: boolean } };
+            const { ticket } = answer as unknown as { ticket: MediaTicket & { upstream: string; accepted?: boolean } };
             if (stuckTo !== undefined) expect(ticket.upstream).toBe(stuckTo);
             if (ticket.accepted === true) stuckTo = ticket.upstream;
             try {
@@ -810,7 +810,7 @@ describe("a run never leaves the upstream that accepted one of its steps (design
               if (!(error instanceof SendNotAccepted)) throw error;
             }
           }
-          if (stuckTo !== undefined && "ticket" in answer) expect((answer.ticket as { upstream: string }).upstream).toBe(stuckTo);
+          if (stuckTo !== undefined && "ticket" in answer) expect((answer.ticket as unknown as { upstream: string }).upstream).toBe(stuckTo);
         },
       ),
       { numRuns: 40 },

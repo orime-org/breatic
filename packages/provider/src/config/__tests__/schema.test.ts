@@ -251,13 +251,13 @@ describe("deployment overrides of LLM routes (design 4.4)", () => {
   });
 
   it("applies an understand override to the understand routes only", () => {
-    const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 0, openrouter: 1 } } } } } as ProviderConfigInput);
+    const config = parseProviderConfig({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "google/": { weights: { google: 0, openrouter: 1 } } } } });
     expect(order(config.llm.understand_routes)).toEqual(["google", "openrouter"]);
     expect(order(config.llm.routes)).toEqual(["google", "openrouter"]);
   });
 
   it("refuses an understand override naming a prefix no understand route has", () => {
-    const found = problemsOf({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "deepseek/": { weights: { openrouter: 0 } } } } } as ProviderConfigInput);
+    const found = problemsOf({ upstreams: llmUpstreams, media: { models: {} }, llm, routing: { understand: { "deepseek/": { weights: { openrouter: 0 } } } } });
     expect(found).toEqual([expect.stringContaining("deepseek/")]);
   });
 });

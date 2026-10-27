@@ -82,7 +82,7 @@ describe("resending (design 2.2)", () => {
 
   it("replaySafe true resends a 503 and returns the later success", async () => {
     const { url, count } = await serve((_req, res, n) => (n < 3 ? json(res, 503, {}) : json(res, 200, { ok: true })));
-    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).resolves.toEqual({ status: 200, body: { ok: true } });
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).resolves.toEqual({ ok: true });
     expect(count()).toBe(3);
   });
 
@@ -210,7 +210,7 @@ describe("a deadline beyond what a timer can hold (design 2.2)", () => {
     ["endless", (): number => Number.POSITIVE_INFINITY],
   ])("%s runs the request", async (_name, deadline) => {
     const { url } = await serve((_req, res) => setTimeout(() => json(res, 200, { ok: 1 }), 50));
-    const { body } = await fetchJson({ url, method: "GET" }, { replaySafe: false, deadlineAt: deadline(), ...read });
+    const body = await fetchJson({ url, method: "GET" }, { replaySafe: false, deadlineAt: deadline(), ...read });
     expect(body).toEqual({ ok: 1 });
   });
 });
