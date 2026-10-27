@@ -9,7 +9,7 @@ export {
   UpstreamTaskFailed,
   type UnavailableReason,
 } from "@provider/errors.js";
-export type { Cost, CostLookup } from "@provider/cost.js";
+export type { Cost, CostLookup, TokenBuckets } from "@provider/cost.js";
 export { createProvider, type Provider, type ProviderOptions } from "@provider/provider.js";
 export { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 export { decide, type Decision, type Failure, type Phase } from "@provider/routing/decide.js";

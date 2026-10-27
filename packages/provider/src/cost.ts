@@ -17,11 +17,28 @@ export interface CostLookup {
   [key: string]: unknown;
 }
 
+/** The token buckets one model call used; reasoning is part of output. */
+export interface TokenBuckets {
+  input: number;
+  cachedInput: number;
+  output: number;
+  reasoning: number;
+}
+
 /** What one paid call cost (design 3.6). */
 export type Cost =
-  | { state: "known"; usd: number; source: "reported" | "billing" | "price_table" }
+  | { state: "known"; usd: number; tokens?: TokenBuckets; source: "reported" | "billing" | "price_table" }
   | { state: "pending"; lookup: CostLookup }
   | { state: "missing"; reason: string };
+
+/**
+ * A token count off a generation answer.
+ * @param value - The field as OpenRouter sent it.
+ * @returns The count, or 0 when it is absent or not finite.
+ */
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
 
 /**
  * Ask the upstream again for a cost that was pending (design 3.6): OpenRouter
@@ -52,8 +69,16 @@ export async function lookupCost(config: ProviderConfig, options: ProviderOption
       { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
       { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: LOOKUP_IDLE_MS },
     );
-    const cost = (body as { data?: { total_cost?: unknown } } | null)?.data?.total_cost;
-    return typeof cost === "number" && Number.isFinite(cost) ? { state: "known", usd: cost, source: "billing" } : unanswered("the generation carries no cost yet");
+    const data = (body as { data?: Record<string, unknown> } | null)?.data ?? {};
+    const cost = data.total_cost;
+    if (typeof cost !== "number" || !Number.isFinite(cost)) return unanswered("the generation carries no cost yet");
+    const tokens: TokenBuckets = {
+      input: count(data.native_tokens_prompt),
+      cachedInput: count(data.native_tokens_cached),
+      output: count(data.native_tokens_completion),
+      reasoning: count(data.native_tokens_reasoning),
+    };
+    return { state: "known", usd: cost, tokens, source: "billing" };
   } catch (error) {
     return unanswered(error instanceof Error ? error.message : String(error));
   }
