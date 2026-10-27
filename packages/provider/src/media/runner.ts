@@ -834,7 +834,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (failure === null || failure.kind === "no_answer") throw error;
         if (failure.kind === "aborted") throw cutAtDeadline(bounds) ? new DeadlinePassed(bounds.deadlineAt) : error;
         if (decide(failure, "media_submit", 0, 0) === "stop") {
-          return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "")));
+          const refusal = error instanceof HttpStatus ? { status: error.status, cause: error } : { cause: error };
+          const said = (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "");
+          return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, said, [], refusal));
         }
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;

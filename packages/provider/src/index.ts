@@ -7,6 +7,8 @@ export {
   SendNotAccepted,
   UpstreamRequestRejected,
   UpstreamTaskFailed,
+  UnderstandInterrupted,
+  costsOf,
   type UnavailableReason,
 } from "@provider/errors.js";
 export type { Cost, CostLookup, TokenBuckets } from "@provider/cost.js";

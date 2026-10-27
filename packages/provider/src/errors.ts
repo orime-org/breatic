@@ -36,6 +36,8 @@ export class UpstreamRequestRejected extends Error {
   readonly upstream: string;
   /** What the billed answers cost, in order: those moved past, then the refused one (design 3.5, 5.4). */
   readonly costs: Cost[];
+  /** The upstream's status for the refusal (an error carried in an answer gives its code). */
+  readonly status?: number;
 
   /**
    * Record what the error carries.
@@ -43,14 +45,59 @@ export class UpstreamRequestRejected extends Error {
    * @param upstream - The upstream that refused, or the one asked for.
    * @param message - What was refused.
    * @param costs - What the billed answers cost; empty when none was billed.
+   * @param refusal - The upstream's status and its own error, when an upstream refused.
+   * @param refusal.status - The status.
+   * @param refusal.cause - The upstream's error.
    */
-  constructor(model: string, upstream: string, message: string, costs: Cost[] = []) {
-    super(message);
+  constructor(model: string, upstream: string, message: string, costs: Cost[] = [], refusal: { status?: number; cause?: unknown } = {}) {
+    super(message, refusal.cause === undefined ? undefined : { cause: refusal.cause });
     this.name = "UpstreamRequestRejected";
     this.model = model;
     this.upstream = upstream;
     this.costs = costs;
+    if (refusal.status !== undefined) this.status = refusal.status;
   }
+}
+
+/**
+ * An understand call that ended other than by an answer, a refusal or running out of
+ * upstreams (a deadline, an abort, a lost answer, an error form it cannot read); it carries
+ * what the answers before it were billed, and the original error as its cause (design 3.5).
+ */
+export class UnderstandInterrupted extends Error {
+  readonly model: string;
+  /** What the billed answers cost, in order. */
+  readonly costs: Cost[];
+
+  /**
+   * Record what the error carries.
+   * @param model - Our model id.
+   * @param costs - What the billed answers cost.
+   * @param cause - What ended the call.
+   */
+  constructor(model: string, costs: Cost[], cause: unknown) {
+    super(`The understand call of ${model} was interrupted`, { cause });
+    this.name = "UnderstandInterrupted";
+    this.model = model;
+    this.costs = costs;
+  }
+}
+
+/**
+ * Every cost an error and its causes carry, in order from the outermost: the way to account
+ * for a thrown understand call or describe step whatever it ended with (design 3.5).
+ * @param error - What was thrown.
+ * @returns The costs found.
+ */
+export function costsOf(error: unknown): Cost[] {
+  const costs: Cost[] = [];
+  const seen = new Set<unknown>();
+  for (let current = error; typeof current === "object" && current !== null && !seen.has(current); current = (current as { cause?: unknown }).cause) {
+    seen.add(current);
+    const carried = (current as { costs?: unknown }).costs;
+    if (Array.isArray(carried)) costs.push(...(carried as Cost[]));
+  }
+  return costs;
 }
 
 /** A send that the upstream certainly did not accept and that cannot move to another upstream; the caller retries the same ticket. */
@@ -96,9 +143,10 @@ export class DeadlinePassed extends Error {
   /**
    * Record what the error carries.
    * @param deadlineAt - The deadline, in epoch milliseconds.
+   * @param cause - What the deadline cut short, when it cut a call.
    */
-  constructor(deadlineAt: number) {
-    super(`Deadline ${new Date(deadlineAt).toISOString()} has passed`);
+  constructor(deadlineAt: number, cause?: unknown) {
+    super(`Deadline ${new Date(deadlineAt).toISOString()} has passed`, cause === undefined ? undefined : { cause });
     this.name = "DeadlinePassed";
   }
 }
