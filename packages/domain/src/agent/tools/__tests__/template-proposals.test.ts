@@ -113,7 +113,7 @@ describe("templates in proposals", () => {
   it("shows each reference in a template's prompt as the ref of the node wired in with its key", () => {
     const said = makeProposeCanvasAction().description ?? "";
     expect(said).toMatch(/\{"ref": <index of the node wired in[^>]*\breference\b[^>]*>\}/);
-    expect(said).not.toContain("wired in for character or scene reference");
+    expect(said).not.toContain("wired in for Character or scene");
     expect(said).not.toContain('"kind":"asset"');
   });
 });

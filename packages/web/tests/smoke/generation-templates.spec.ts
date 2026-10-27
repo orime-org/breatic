@@ -123,7 +123,7 @@ test('picking a template places the reference it asks for, wired and @\'d, and p
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Nano Banana Pro');
   const nodes = visibleSpace(page).locator('.react-flow__node');
   await expect(nodes).toHaveCount(2, { timeout: 15_000 });
-  const reference = visibleSpace(page).locator('.react-flow__node').filter({ hasText: 'character or scene reference' });
+  const reference = visibleSpace(page).locator('.react-flow__node').filter({ hasText: 'Character or scene' });
   await expect(reference).toHaveCount(1);
   await expect(visibleSpace(page).locator('.react-flow__edge')).toHaveCount(1);
   // The new node stands left of the panel's node.

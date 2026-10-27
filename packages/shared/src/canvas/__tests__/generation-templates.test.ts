@@ -182,8 +182,8 @@ describe('generation templates', () => {
   });
 
   it('names the reference input after the label its mark carried in every language', () => {
-    expect(raw('en', 'canvas.template.storyboard-grid-25.input.reference.name')).toBe('character or scene reference');
-    expect(raw('en', 'canvas.template.costume-sheet.input.reference.name')).toBe('character reference');
+    expect(raw('en', 'canvas.template.storyboard-grid-25.input.reference.name')).toBe('Character or scene');
+    expect(raw('en', 'canvas.template.costume-sheet.input.reference.name')).toBe('Character');
     for (const template of GENERATION_TEMPLATES) {
       for (const locale of LOCALES) {
         setLocale(locale);
