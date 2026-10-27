@@ -736,6 +736,13 @@
       "when": 1792907432959,
       "tag": "0104_credit_refund_refusals",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1792923631252,
+      "tag": "0105_enterprise_memberships",
+      "breakpoints": true
     }
   ]
 }

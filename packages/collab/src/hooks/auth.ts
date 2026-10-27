@@ -128,21 +128,18 @@ export interface CreateAuthHookOptions {
   redis: Redis;
   /**
    * How many writable connections one of this project's documents may hold
-   * at once, read from the membership tier of the studio that owns the
-   * project (#88). It is a per-project lookup rather than a constant
-   * because the answer belongs to that studio's current admin, and
-   * adminship transfers.
+   * at once, resolved from its Studio's current admin membership reading.
+   * Configured or negotiated concurrent_editors and expiry are resolved
+   * together for this handshake; an admin transfer changes the source.
    *
    * ZERO IS A REAL ZERO — not one writable connection. Every ceiling in
    * `config/membership.yaml` reads that way (`base.team_studios: 0` is a
    * genuine zero), and there is no sentinel for "unlimited": a deployment
    * that does not want to cap this writes a number nobody reaches.
    *
-   * THROWING IS EXPECTED and does not refuse the connection: the lookup
-   * raises when our own data is wrong (a tier value outside the enum after
-   * a hand-written UPDATE, a missing account, a studio with no live admin).
-   * What it answers is how many may WRITE, and reading does not depend on
-   * it, so the caller degrades the connection to read-only and logs.
+   * An unresolved limit grants read-only access and logs the cause. Reasons
+   * include an unknown tier, an absent live account or admin, invalid saved
+   * information, and legacy enterprise information awaiting completion.
    */
   resolveConnectionLimit: (projectId: string) => Promise<number>;
   /**
@@ -389,40 +386,12 @@ export function createAuthHook({
           cap = await resolveConnectionLimit(parsed.projectId);
         } catch (err) {
           atCapacity = true;
-          // Carry `err` through verbatim: the structured fields beside it
-          // narrow the search but never name the row, and without the message
-          // the trail says merely "some studio has bad data".
-          //
-          // How much the message narrows it varies, and it is worth knowing
-          // which case you are in before going to look:
-          //
-          //   `Unknown membership tier "X" on account <uid>, the admin of
-          //     studio <sid>`  — the one that names its row outright: that
-          //     `users` row, and the offending value with it.
-          //   `No live admin for studio <sid>`  — narrows to a studio, NOT to
-          //     a table. `readStudioAdmin` joins three of them and any of four
-          //     liveness conditions failing yields this same string, so the bad
-          //     row may be in `studios`, in `studio_members`, or in the admin's
-          //     `users` row. Its own docstring lists all three.
-          //   `No live project <pid>`  — a `projects` row.
-          //   `Cannot resolve ceilings for account <uid>, the admin of studio
-          //     <sid>: it is on the enterprise tier…`  — also names its row,
-          //     and nothing about it is corrupt. Enterprise is a legal tier
-          //     whose ceilings are negotiated per customer and are not in any
-          //     config file, so there is no number to answer with until they
-          //     are stored. Editing `config/membership.yaml` is the one thing
-          //     NOT to do here.
-          //   anything naming no row at all  — the config file.
-          //     `getLimitsForStudio` ends at `getMembershipLimits`, which
-          //     lazily reads and validates `config/membership.yaml` on first
-          //     use. Three different failures surface here and only one of
-          //     them is a ZodError: the file can be unreadable (an fs error),
-          //     unparseable (a YAMLParseError), or valid YAML that the schema
-          //     rejects. Naming no row is what they have in common, and it is
-          //     the useful test — all three are NOT per-studio: they degrade
-          //     every writable connection in the deployment until the file is
-          //     fixed.
-          //   anything else  — unclassified; read the message.
+          // Preserve the error with its Project and Studio context. Membership
+          // reads can identify an unknown stored tier, an absent live admin or
+          // Project, or legacy enterprise information awaiting completion.
+          // Configured tiers also validate membership.yaml lazily. Saved
+          // enterprise records are validated when the snapshot is read, so a
+          // malformed record can also reach this fail-closed path.
           logger.error(
             {
               err,
