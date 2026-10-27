@@ -25,7 +25,7 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
-import { templateServed, templateWrites } from '@web/spaces/canvas/generate/template-writes';
+import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
 import type { ExistingNode } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
@@ -119,7 +119,10 @@ export function useApplyTemplate(
         const tag = n.type === 'text' ? n.data.templateNode : undefined;
         return tag?.template === template.id && tag.key === TEMPLATE_GUIDE_KEY && tag.anchor === nodeId;
       });
-      const expansion = expandTemplate(template, { anchorAt: 0, base: held.length, inputs, wired, reuse, guide: !guided });
+      // A node given for an input that holds nothing yet still gets the note
+      // saying what to put there, as a node placed new does.
+      const emptyNodes = new Set(held.flatMap((id, index) => (index > 0 && standsEmpty(views.get(id)) ? [index] : [])));
+      const expansion = expandTemplate(template, { anchorAt: 0, base: held.length, inputs, wired, reuse, guide: !guided, emptyNodes });
 
       if (expansion.appended.length > 0 && inLockedGroup(own, views)) {
         toast.warning(t('canvas.template.groupLocked'));
@@ -133,11 +136,12 @@ export function useApplyTemplate(
         const fromTemplate = template.nodes.find((node) => node.role === 'generate' && reuse.get(node.key) === index)
           ?? (index === 0 ? template.nodes.find((node) => node.key === template.anchor) : undefined);
         const picked = fromTemplate?.role === 'generate' ? byName.get(fromTemplate.model) : undefined;
-        const writes = fromTemplate?.role === 'generate' && picked ? templateWrites(fromTemplate, asContentView(view.data), picked) : undefined;
+        const paramsByModel =
+          fromTemplate?.role === 'generate' && picked ? templateParams(fromTemplate, asContentView(view.data), picked) : undefined;
         existing.set(index, {
           nodeId: id,
           mention: mentionOf(id, view, rails),
-          ...(writes === undefined ? {} : { paramsByModel: writes.paramsByModel }),
+          ...(paramsByModel === undefined ? {} : { paramsByModel }),
         });
         return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view) };
       });
@@ -173,6 +177,16 @@ function writable(view: CanvasNodeView): boolean {
   if (block === null) return true;
   warnNodeGate(t(block.toastKey));
   return false;
+}
+
+/**
+ * Whether a node holds nothing yet and nothing is fetching or generating into it.
+ * @param view - The node.
+ * @returns Whether it stands empty.
+ */
+function standsEmpty(view: CanvasNodeView | undefined): boolean {
+  if (!view || view.type === 'group' || view.type === 'annotation') return false;
+  return (view.data as { content?: unknown }).content === undefined && (view.data.taskCounts?.running ?? 0) === 0;
 }
 
 /**

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What picking a generation template in a panel writes to each of its
+ * The params picking a generation template in a panel puts on each of its
  * generate nodes (inner#977, inner#1345): the anchor and every upstream
  * generation it reuses.
  *
@@ -16,31 +16,23 @@ import type { GenerationTemplate, ModelEntry, TemplateGenerateNode } from '@brea
 
 import { paramsStoreOf, resolveModelSwitch, type ParamsStoreSource } from '@web/spaces/canvas/generate/model-params';
 
-/** The mode, model and per-model params a template puts on one generate node. */
-export interface TemplateWrites {
-  mode: string;
-  model: string;
-  paramsByModel: Record<string, Record<string, unknown>>;
-}
-
 /**
- * What a template writes to one of its generate nodes.
+ * The params a template puts on one of its generate nodes, by model.
  * @param node - The template's generate node.
  * @param content - The canvas node's per-model params as they are now.
  * @param picked - The catalog entry of the template node's model.
- * @returns The writes.
+ * @returns Every model's params, the template node's model's resolved with the template's.
  */
-export function templateWrites(
+export function templateParams(
   node: TemplateGenerateNode,
   content: ParamsStoreSource | undefined,
   picked: ModelEntry,
-): TemplateWrites {
+): Record<string, Record<string, unknown>> {
   const store = paramsStoreOf(content);
-  const { paramsByModel } = resolveModelSwitch(
+  return resolveModelSwitch(
     { paramsByModel: { ...store, [picked.name]: { ...store[picked.name], ...node.params } } },
     picked,
-  );
-  return { mode: node.mode, model: node.model, paramsByModel };
+  ).paramsByModel;
 }
 
 /**

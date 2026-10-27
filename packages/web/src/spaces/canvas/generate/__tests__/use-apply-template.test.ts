@@ -15,7 +15,7 @@ import { renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  findTemplate,
+  GENERATION_TEMPLATES,
   setLocale,
   setLocaleMessages,
   t,
@@ -132,7 +132,7 @@ const BOTH_FLOW_MODELS = [FINAL_MODEL, SHEET_MODEL];
  * @returns The template.
  */
 function grid(): GenerationTemplate {
-  const template = findTemplate('storyboard-grid-25');
+  const template = GENERATION_TEMPLATES.find((template) => template.id === 'storyboard-grid-25');
   if (!template) throw new Error('grid template missing');
   return template;
 }
@@ -662,6 +662,28 @@ describe('useApplyTemplate', () => {
       expect(toast.warning).not.toHaveBeenCalled();
       const { proposal, existing } = placed(place);
       expect(appendedOf(proposal, existing)).toEqual([]);
+    });
+  });
+
+  describe('round-1 review (inner#1345)', () => {
+    it('notes the input whose wired node is still empty', () => {
+      seed('target', 'image');
+      seed('src', 'image', { name: 'Empty one' });
+      wire('src', 'target');
+      const place = vi.fn();
+      apply(grid(), 'target', [ULTRA], place);
+      const { proposal } = placed(place);
+      expect(proposal.nodes[0]?.prompt).toContainEqual({
+        slot: { kind: 'note', label: t('canvas.template.storyboard-grid-25.input.reference.note') },
+      });
+    });
+
+    it('hands a reused resource node over with its path, so an empty one is fetched again', () => {
+      seedFlowInstance('target');
+      const place = vi.fn();
+      apply(FLOW, 'target', BOTH_FLOW_MODELS, place);
+      const { proposal, existing } = placed(place);
+      expect((proposal.nodes[indexOf(existing, 'target-style')] as TemplateProposalNode).resource).toBe('templates/fixture-flow/style.png');
     });
   });
 

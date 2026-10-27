@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ModelEntry, TemplateGenerateNode } from '@breatic/shared';
 
-import { templateWrites } from '@web/spaces/canvas/generate/template-writes';
+import { templateParams } from '@web/spaces/canvas/generate/template-writes';
 
 /** The storyboard's anchor node, as the migrated template declares it. */
 const grid: TemplateGenerateNode = {
@@ -67,37 +67,28 @@ const ULTRA: ModelEntry = {
   },
 };
 
-describe('templateWrites', () => {
-  it('writes the node’s mode and model and nothing else', () => {
-    const out = templateWrites(grid, undefined, ULTRA);
-    expect(out.mode).toBe('i2i');
-    expect(out.model).toBe('nano-banana-pro-edit-ultra');
-    expect(Object.keys(out).sort()).toEqual(['mode', 'model', 'paramsByModel']);
-  });
-
-  it('writes a non-anchor generation’s own mode, model and params, keeping its other records', () => {
-    const out = templateWrites(upstream, { paramsByModel: { 'nano-banana': { aspect_ratio: '4:3' } } }, SHEET);
-    expect(out.mode).toBe('t2i');
-    expect(out.model).toBe('sheet-model');
-    expect(out.paramsByModel).toEqual({
+describe('templateParams', () => {
+  it('gives a non-anchor generation its own model’s params, keeping its other records', () => {
+    const out = templateParams(upstream, { paramsByModel: { 'nano-banana': { aspect_ratio: '4:3' } } }, SHEET);
+    expect(out).toEqual({
       'nano-banana': { aspect_ratio: '4:3' },
       'sheet-model': { aspect_ratio: '16:9' },
     });
   });
 
   it('keeps what the node remembers for other models', () => {
-    const out = templateWrites(grid, { paramsByModel: { 'gpt-image-2.5-sunburst-edit': { quality: 'high' } } }, ULTRA);
-    expect(out.paramsByModel['gpt-image-2.5-sunburst-edit']).toEqual({ quality: 'high' });
+    const out = templateParams(grid, { paramsByModel: { 'gpt-image-2.5-sunburst-edit': { quality: 'high' } } }, ULTRA);
+    expect(out['gpt-image-2.5-sunburst-edit']).toEqual({ quality: 'high' });
   });
 
   it('lays the template params over the template model’s record, resolved the way a model switch resolves it', () => {
-    const out = templateWrites(
+    const out = templateParams(
       grid,
       { paramsByModel: { 'nano-banana-pro-edit-ultra': { aspect_ratio: '9:16', output_format: 'jpeg', retired: 1 } } },
       ULTRA,
     );
     // Its own pick stays, the template's two win, an undeclared key goes.
-    expect(out.paramsByModel['nano-banana-pro-edit-ultra']).toEqual({
+    expect(out['nano-banana-pro-edit-ultra']).toEqual({
       aspect_ratio: '1:1',
       resolution: '4k',
       output_format: 'jpeg',
@@ -105,8 +96,8 @@ describe('templateWrites', () => {
   });
 
   it('fills the declared defaults on a model the node has never used', () => {
-    const out = templateWrites(grid, undefined, ULTRA);
-    expect(out.paramsByModel['nano-banana-pro-edit-ultra']).toEqual({
+    const out = templateParams(grid, undefined, ULTRA);
+    expect(out['nano-banana-pro-edit-ultra']).toEqual({
       aspect_ratio: '1:1',
       resolution: '4k',
       output_format: 'png',

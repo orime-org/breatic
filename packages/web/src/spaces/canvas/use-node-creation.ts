@@ -228,7 +228,18 @@ function arrangeProposal(
       aimedGroup,
     };
   }
-  const aimed = planFlowLayout(proposal, { x: 0, y: 0 });
+  const graph = readCanvasGraph(projectId, spaceId);
+  const views = new Map(graph.nodes.map((node) => [node.id, node]));
+  // The edges already on the canvas between the nodes the proposal reuses
+  // decide their columns too, so a new node feeding a reused one lands left
+  // of it. Laid out only: the canvas has them already.
+  const indexOf = new Map([...existing].map(([index, node]) => [node.nodeId, index]));
+  const wired = graph.edges.flatMap((edge) => {
+    const fromIndex = indexOf.get(edge.source);
+    const toIndex = indexOf.get(edge.target);
+    return fromIndex === undefined || toIndex === undefined ? [] : [{ fromIndex, toIndex }];
+  });
+  const aimed = planFlowLayout({ ...proposal, edges: [...proposal.edges, ...wired] }, { x: 0, y: 0 });
   const anchorIndex = Math.min(...existing.keys());
   const anchorId = existing.get(anchorIndex)?.nodeId;
   const placements = readNodePlacements(projectId, spaceId);
@@ -246,9 +257,9 @@ function arrangeProposal(
   const mirror = (r: Rect): Rect => ({ ...r, x: -(r.x + r.width) });
   const back = searched ? shiftRightPastOccupied(mirror(searched), occupied.map(mirror), ROW_GAP_PX) : 0;
   const spots = lined.map((spot) => ({ ...spot, x: spot.x - back }));
-  const anchorView = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId);
+  const anchorView = anchorId === undefined ? undefined : views.get(anchorId);
   const group = anchorView?.parentId === undefined ? undefined : placements.find((p) => p.id === anchorView.parentId);
-  const groupView = group === undefined ? undefined : readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === group.id);
+  const groupView = group === undefined ? undefined : views.get(group.id);
   const unlocked = groupView?.type === 'group' && groupView.data.locked !== true;
   return {
     spots,

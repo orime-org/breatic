@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import {
-  findTemplate,
+  GENERATION_TEMPLATES,
   setLocaleMessages,
   templatesFor,
   type GenerationNodeType,
@@ -107,7 +107,7 @@ describe('TemplateMenu', () => {
   });
 
   it('reads every template of the registry the test names', () => {
-    const grid = findTemplate('storyboard-grid-25');
+    const grid = GENERATION_TEMPLATES.find((template) => template.id === 'storyboard-grid-25');
     const anchor = grid?.nodes.find((n) => n.key === grid.anchor);
     expect(anchor?.role === 'generate' ? anchor.model : undefined).toBe(TEMPLATE_MODEL);
   });

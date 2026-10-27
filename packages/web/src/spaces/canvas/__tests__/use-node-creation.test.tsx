@@ -2028,6 +2028,29 @@ describe('useNodeCreation', () => {
         expect(canvasSpace.getPromptFragment('p-lock', 's-lock', anchor, 'i2i')!.toJSON()).toContain(`sourceNodeId="${input}"`);
       });
 
+      it('lines a new node up left of the reused node it feeds, reading the edges already on the canvas', () => {
+        const anchor = seedAnchor('p-chain', 's-chain', { x: 1000, y: 500 });
+        const up = seedAnchor('p-chain', 's-chain', { x: 1000 - LAYER_STEP_PX, y: 500 }, 'My sketch');
+        canvasSpace.addEdge('p-chain', 's-chain', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-chain', 's-chain');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'My sketch'), paramsByModel: { 'tpl-model': {} } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-chain', 's-chain'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE], [{ fromIndex: 2, toIndex: 1, into: 'pool' }]),
+          { x: 0, y: 0 },
+          [{ x: 1000 - LAYER_STEP_PX, y: 500, ...EMPTY_NODE_SIZE }],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-chain', 's-chain', before);
+        const at = absolute('p-chain', 's-chain').get(fresh!.id)!;
+        expect(at.x + EMPTY_NODE_SIZE.width).toBeLessThanOrEqual(1000 - LAYER_STEP_PX);
+      });
+
       it('takes every write back through a temporary undo manager when one fails part way, leaving no undo step', () => {
         const PAD = GROUP_PADDING;
         const name = docName.canvasSpace('p-rb', 's-rb');
