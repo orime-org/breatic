@@ -22,6 +22,8 @@ export interface AlphaRunBody {
   sourceURL: string;
   outputURL: string;
   reportURL: string;
+  ledgerOnly?: boolean;
+  sourceLedgerOutputURL?: string;
   limits: VideoPresentationProcessLimits;
   vcpu: number;
 }
