@@ -355,7 +355,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "template-edge-missing": [{
     // The missing template edge goes into a slot param.
     meets: group(SHEET_NODES, SHEET_EDGES),
-    states: ['node 1 ("Sketch")', 'node 0 ("Sheet")', '"style_images"'],
+    states: ['node 1 ("Sketch")', 'node 0 ("Sheet")', '"style_images"', "a note saying to pick it there"],
     fix: group([{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)], [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }]),
     templates: FIXTURES,
   }, {
@@ -380,6 +380,18 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['node 1 ("Sketch")', '"style_images"', '"pool"'],
     fix: group(
       [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)],
+      [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }],
+    ),
+    templates: FIXTURES,
+  }, {
+    // Sent into the pool and @'d there: the slot takes a note and no ref.
+    meets: group(
+      [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [...(SHEET_NODES[0]?.prompt ?? []), { text: " in the style of " }, { ref: 1 }] }, ...SHEET_NODES.slice(1)],
+      [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "pool" }],
+    ),
+    states: ['node 1 ("Sketch")', '"style_images"', "a note saying to pick it there and no ref"],
+    fix: group(
+      [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? []), { text: " in the style of Sketch" }] }, ...SHEET_NODES.slice(1)],
       [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }],
     ),
     templates: FIXTURES,
@@ -884,15 +896,17 @@ function actsWhereItSays(meets: Sent, fix: Sent, sentence: string): void {
 
 /**
  * Hold the fix of a template edge sent the wrong way (inner#1345) to what it
- * says: the same edges, one of them saying another into, and the nodes left
- * as they were.
+ * says: the same edges, one of them saying another into, and only the node it
+ * goes into changed besides, where its ref or note goes.
  * @param meets - The proposal refused.
  * @param fix - The proposal after the fix.
  */
 function rewiresOneEdge(meets: Sent, fix: Sent): void {
-  expect(fix.nodes, "the fix leaves the nodes alone").toEqual(meets.nodes);
   expect(fix.edges.map((e) => [e.fromIndex, e.toIndex]), "the fix keeps every edge's ends").toEqual(meets.edges.map((e) => [e.fromIndex, e.toIndex]));
-  expect(fix.edges.filter((e, i) => e.into !== meets.edges[i]?.into), "the fix changes one edge's into").toHaveLength(1);
+  const changed = fix.edges.filter((e, i) => e.into !== meets.edges[i]?.into);
+  expect(changed, "the fix changes one edge's into").toHaveLength(1);
+  const into = (changed[0] as Sent["edges"][number]).toIndex;
+  expect(fix.nodes.filter((_, i) => i !== into), "the fix leaves every node but the one wired into alone").toEqual(meets.nodes.filter((_, i) => i !== into));
 }
 
 /**
@@ -934,6 +948,8 @@ describe("every refusal states its fault, its rule and its facts", () => {
         if (entry.fix === undefined) return;
         const after = verdictFor(entry.fix, MATERIALS, entry.templates);
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
+        // A template edge's fix names everything its route asks, so the proposal then stands.
+        if (refusal === "template-edge-missing" || refusal === "template-edge-into") expect(after, `following the fix of "${reason}"`).toEqual({ ok: true });
         // The fix proposal changes only what the sentence names.
         if (refusal === "template-edge-missing") wiresOneEdgeIn(entry.meets, entry.fix);
         else if (refusal === "template-edge-into") rewiresOneEdge(entry.meets, entry.fix);
