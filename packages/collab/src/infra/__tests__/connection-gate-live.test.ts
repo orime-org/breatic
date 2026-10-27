@@ -80,6 +80,7 @@ async function serverRecording(
     // then takes the connection and answers 404.
     address: "127.0.0.1",
     quiet: true,
+    stopOnSignals: false,
     extensions: [
       createConnectionGate({ count: async () => true, isBanned: async () => false }),
       {
@@ -191,6 +192,7 @@ async function serverCounting(
     port: 0,
     address: "0.0.0.0",
     quiet: true,
+    stopOnSignals: false,
     extensions: [gate],
     ...(rejectAuth
       ? {
