@@ -64,6 +64,20 @@ function joined(frames: Array<string | Uint8Array>): Uint8Array {
   return out;
 }
 
+/**
+ * Compare bytes with a memcmp; deep equality on megabyte arrays takes seconds.
+ * @param actual - Bytes produced.
+ * @param expected - Bytes wanted.
+ * @returns Whether they are identical.
+ */
+function same(actual: unknown, expected: Uint8Array): boolean {
+  if (!(actual instanceof Uint8Array)) return false;
+  return Buffer.compare(
+    Buffer.from(actual.buffer, actual.byteOffset, actual.byteLength),
+    Buffer.from(expected.buffer, expected.byteOffset, expected.byteLength),
+  ) === 0;
+}
+
 describe("collab frame chunks", () => {
   it("S01 exports the cap, the header schema and the sender from the package entry", () => {
     expect(COLLAB_FRAME_MAX_BYTES).toBe(131072);
@@ -76,7 +90,7 @@ describe("collab frame chunks", () => {
     const out = collect(m);
     expect(out).toHaveLength(1);
     expect(typeof out[0]).not.toBe("string");
-    expect(out[0]).toEqual(m);
+    expect(same(out[0], m)).toBe(true);
   });
 
   it("S03 splits a message one byte over the cap into a declaration and two chunks", () => {
@@ -87,7 +101,7 @@ describe("collab frame chunks", () => {
     expect(JSON.parse(out[0] as string)).toEqual({ type: "chunked", bytes: 131073 });
     expect((out[1] as Uint8Array).byteLength).toBe(131_072);
     expect((out[2] as Uint8Array).byteLength).toBe(1);
-    expect(joined(out)).toEqual(m);
+    expect(same(joined(out), m)).toBe(true);
   });
 
   it.each([
@@ -103,15 +117,15 @@ describe("collab frame chunks", () => {
     const chunks = out.slice(1) as Uint8Array[];
     expect(chunks.map((c) => c.byteLength)).toEqual(sizes);
     expect(chunks).toHaveLength(Math.ceil(n / F));
-    expect(joined(out)).toEqual(m);
+    expect(same(joined(out), m)).toBe(true);
   });
 
   it("S05 chunks the viewed bytes of an offset view", () => {
     const buf = msg(131_073 + 14);
     const view = new Uint8Array(buf.buffer, 7, 131_073);
     const out = collect(view);
-    expect(joined(out)).toEqual(view);
-    expect(joined(out)).not.toEqual(buf.subarray(0, 131_073));
+    expect(same(joined(out), view)).toBe(true);
+    expect(same(joined(out), buf.subarray(0, 131_073))).toBe(false);
   });
 
   it("S06 sends the declaration first and every chunk before returning", () => {
@@ -172,7 +186,7 @@ describe("collab frame chunks", () => {
           if (n <= F) {
             expect(out).toHaveLength(1);
             expect(typeof out[0]).not.toBe("string");
-            expect(out[0]).toEqual(m);
+            expect(same(out[0], m)).toBe(true);
             return;
           }
           expect(typeof out[0]).toBe("string");
@@ -186,7 +200,7 @@ describe("collab frame chunks", () => {
             expect(len).toBeLessThanOrEqual(F);
             if (i < chunks.length - 1) expect(len).toBe(F);
           });
-          expect(joined(out)).toEqual(m);
+          expect(same(joined(out), m)).toBe(true);
         },
       ),
       { numRuns: 200 },
