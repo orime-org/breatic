@@ -27,7 +27,7 @@ describe("the shipped provider configuration (design 4.1)", () => {
     expect(upstreams.wavespeed?.base_url).toBe("https://api.wavespeed.ai/api/v3");
   });
 
-  it("routes each direct vendor first and OpenRouter after it, and reads understanding through OpenRouter first", () => {
+  it("routes each direct vendor first and OpenRouter after it, and reads understanding through Google first, OpenRouter after it (DD 26)", () => {
     const { llm } = shipped();
     for (const prefix of ["anthropic/", "deepseek/", "google/", "openai/"]) {
       const route = llm?.routes.find((r) => r.prefix === prefix);
@@ -35,7 +35,7 @@ describe("the shipped provider configuration (design 4.1)", () => {
       expect(route?.upstreams.find((u) => u.upstream !== "openrouter")?.weight).toBe(0);
     }
     expect(llm?.routes.at(-1)).toEqual({ prefix: "", upstreams: [{ upstream: "openrouter", weight: 0 }] });
-    expect(llm?.understand_routes?.find((r) => r.prefix === "google/")?.upstreams[0]).toEqual({ upstream: "openrouter", weight: 0 });
+    expect(llm?.understand_routes?.find((r) => r.prefix === "google/")?.upstreams).toEqual([{ upstream: "google", weight: 0 }, { upstream: "openrouter", weight: 1 }]);
   });
 
   it("prices every model a full deployment reaches directly: the agent's and the element descriptions'", () => {
