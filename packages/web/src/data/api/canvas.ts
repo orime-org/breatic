@@ -5,6 +5,7 @@ import type { CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput }
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
+import { bodyOrTransfer } from '@web/data/upload/transfer-body';
 
 export interface CanvasTask {
   id: string;
@@ -278,23 +279,34 @@ export const canvasApi = {
    * @param body.node_id - The node whose words these are.
    * @param body.text - What it says at this moment.
    * @returns The id of the row that now holds them.
-   * @throws {import('@web/data/api/types').ApiException} On 403 / 404 / 429.
+   * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 404 / 413 / 429 / 502, or when the transfer ticket is refused.
+   * @throws {Error} When a text over the request limit could not be moved through storage.
    */
-  snapshotNodeText(body: {
+  async snapshotNodeText(body: {
     project_id: string;
     node_id: string;
     text: string;
   }): Promise<{ id: string }> {
-    return apiPost<{ id: string }>('/canvas/node-history/snapshot', body);
+    // A long text goes through storage when it is over the request limit (inner#1006).
+    return apiPost<{ id: string }>(
+      '/canvas/node-history/snapshot',
+      await bodyOrTransfer(body.project_id, body),
+    );
   },
   /**
    * Register what a paste or duplicate brings into this project's Studio and
    * write each copy's history (inner#1349).
    * @param body - The project, the addresses the copies name, and their history.
    * @returns Old address → address in this Studio; null for a cover that could not be filed.
+   * @throws {import('@web/data/api/types').ApiException} On a refused request (400 / 403 / 404 / 413 / 429 / 502 / 507), or when the transfer ticket is refused.
+   * @throws {Error} When a body over the request limit could not be moved through storage.
    */
-  paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
-    return apiPost<{ map: Record<string, string | null> }>('/canvas/paste', body);
+  async paste(body: CanvasPasteInput): Promise<{ map: Record<string, string | null> }> {
+    // Long text history goes through storage when it is over the request limit (inner#1006).
+    return apiPost<{ map: Record<string, string | null> }>(
+      '/canvas/paste',
+      await bodyOrTransfer(body.project_id, body),
+    );
   },
 
   listTasks(projectId: string, params: { page?: number; limit?: number } = {}) {

@@ -8,6 +8,8 @@
       "upload_too_large": "File exceeds the upload size limit.",
       "insufficient_credits": "Insufficient credits: required {required}, available {available}",
       "rate_limited": "Too many requests, please try again later",
+      "payload_too_large": "This request is larger than {limit}. Shorten the prompt or the text it refers to.",
+      "transfer_invalid": "The uploaded content could not be used. Please try again.",
       "internal": "Internal server error"
     },
     "credit": {
@@ -358,7 +360,8 @@
     },
     "error": {
       "network": "Network error",
-      "turnFailed": "This reply could not be finished. Try sending it again."
+      "turnFailed": "This reply could not be finished. Try sending it again.",
+      "turnTooLong": "This turn had too much to process and could not finish. Try a narrower request."
     },
     "message": {
       "interrupted": "Stopped",
@@ -671,6 +674,7 @@
       "errorCredits": "Not enough credits to generate.",
       "errorUnavailable": "Generation is temporarily unavailable. Please try again.",
       "errorFailed": "Couldn't start generation. Please try again.",
+      "errorTooLargeNoLimit": "This request is too large. Shorten the prompt or the text it refers to.",
       "errorNoSourceImage": "This model needs a source image — type @ in the prompt to pick a connected image.",
       "errorTooManyReferences": "This model accepts at most {limit} reference {kind, select, video {videos} audio {audio clips} other {images}} — remove some to generate.",
       "referenceAddFailed": "Could not add the reference — that node no longer exists.",
@@ -1485,7 +1489,11 @@
       "title": "Leave with work in progress?",
       "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
       "stay": "Stay",
-      "leave": "Leave anyway"
+      "leave": "Leave anyway",
+      "unsyncedDescription": "Some changes have not synced. Refreshing or leaving now may lose them.",
+      "combinedDescription": "Some changes have not synced, and an upload or edit is still in progress. Refreshing or leaving now may lose this work.",
+      "completeDescription": "Changes are synced and operations are complete.",
+      "completeTitle": "Ready to continue"
     },
     "header": {
       "renameFailed": "Couldn't rename the project"
@@ -1529,6 +1537,11 @@
       "confirm": "Leave",
       "done": "You left “{name}”",
       "failed": "Couldn't leave"
+    },
+    "refreshGuard": {
+      "title": "Refresh with work in progress?",
+      "refresh": "Refresh anyway",
+      "failed": "Couldn't refresh. Try again."
     }
   },
   "common": {

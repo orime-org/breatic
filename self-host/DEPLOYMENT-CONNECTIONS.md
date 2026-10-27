@@ -38,9 +38,11 @@ This is a backend runtime setting: update every email-sending service and recrea
 
 For a versioned production build, set the existing `VITE_APP_VERSION` to a unique release identifier (1–128 letters, digits, dots, underscores or hyphens). Publish `/app-version.json` on the **frontend origin**, with `{"version":"<the same identifier>"}`, atomically with that bundle. Serve the manifest with `Cache-Control: no-store`, keep HTML revalidated, and retain previous hashed assets while old tabs remain open. The internal Cloudflare frontend release scripts already assemble this manifest; a standalone web build does not generate it.
 
-Only Project checks it, initially and approximately every 3–3.5 minutes while visible. Foreground checks are throttled to 30 seconds. Development builds and builds without a valid release identifier do not poll. Missing, invalid or unreachable manifests are ignored. A different identifier, including a rollback, offers a neutral top-bar notice without opening its popover or reloading. Later hides that release for the tab session.
+Only Project checks it, initially and approximately every 3–3.5 minutes while visible. Foreground checks are throttled to 30 seconds. Development builds and builds without a valid release identifier do not poll. Missing, invalid or unreachable manifests are ignored. A different identifier, including a rollback, automatically opens the Project update dialog unless that release was postponed in the tab session. Later postpones it for the tab session; the top-bar trigger stays available to reopen it.
 
-The Update button reloads the page using the existing Project `beforeunload` guard: uploads and other registered browser operations show context in the popover and may trigger the native browser leave confirmation. No CRDT save, flush or persistence acknowledgement is added. Refresh never runs automatically, including after an upload finishes. Connection errors take priority over the notice.
+The Update button reloads the page through the Project `beforeunload` guard. That guard checks the current Project's unconfirmed local Canvas and Document edits together with uploads and other registered browser operations. The update dialog shows its existing operation context; the browser controls the native leave confirmation and its user-interaction requirements. Content synchronization receipts confirm application to the collab document in memory; PostgreSQL persistence follows its own lifecycle. Refresh remains a user action, including after pending work finishes. Connection errors take priority over the notice.
+
+Release the collab service with support for `sync:confirm` and `sync:confirmed` before releasing the web build that uses those messages. The receipt schema and Project confirmation lifecycle are described in [Canvas collaboration](../docs/ARCHITECTURE.md#canvas-collaboration).
 
 No environment variables are added or removed. Changing `VITE_APP_VERSION` requires rebuilding the frontend, not restarting the backend.
 
@@ -90,7 +92,31 @@ Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.upd
 | `STRIPE_SECRET_KEY` | Refunds are created (`refunds.create`) and listed (`refunds.list`); the preview and restoring credits also read `paymentIntents.retrieve` with `expand: ["latest_charge"]` for the charge's `disputed`. A restricted key needs write on Refunds and read on PaymentIntents and Charges. |
 | Operators' and support staff's Stripe Dashboard accounts | No refund permission: a read-only role, or a custom role without "Process refunds". A credit pack is refunded in full or not at all, only through the back office; a refund made in the Dashboard is never booked automatically, and the disposition that meets it stops for a person. |
 
-The back office reads the refund records through its own read-only role: the five tables and the two views migration `0094` adds (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`). That role gets SELECT on new tables and views through `ALTER DEFAULT PRIVILEGES` bound to the role that runs the product's migrations (see the back office's deployment notes). If `0094` ran as a different role, grant SELECT on those five tables and two views to the back office role by hand.
+The back office reads refund records through its own read-only role: the five tables and two views created by migration `0094` (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`), plus `credit_refund_refusals` created by migration `0104`. Migration `0104` creates the refusal table and its constraints; access depends on the database's grants.
+
+Before running the migration, configure default privileges for the role that will actually create the table. Default privileges cover future tables created by that role in the named schema. Use the deployment's actual migration and read-only role names in these statements:
+
+```sql
+ALTER DEFAULT PRIVILEGES FOR ROLE migration_role IN SCHEMA public
+  GRANT SELECT ON TABLES TO backoffice_ro;
+```
+
+For an existing refusal table, its owner or a database administrator can grant access directly:
+
+```sql
+GRANT SELECT ON TABLE public.credit_refund_refusals TO backoffice_ro;
+```
+
+If migration `0094` used another creating role, also grant SELECT on its five tables and two views to the read-only role. After migration and grants, connect using the actual back office database account. Verify the query succeeds and the privilege check reports SELECT true and INSERT, UPDATE and DELETE false:
+
+```sql
+SELECT id FROM public.credit_refund_refusals LIMIT 0;
+SELECT
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'SELECT') AS can_select,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'INSERT') AS can_insert,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'UPDATE') AS can_update,
+  has_table_privilege(current_user, 'public.credit_refund_refusals', 'DELETE') AS can_delete;
+```
 
 ## Scope and verification
 

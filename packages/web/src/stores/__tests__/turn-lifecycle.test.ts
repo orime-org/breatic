@@ -24,6 +24,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
+import type * as AssetsApiModule from '@web/data/api/assets';
 import type { StreamConfig } from '@web/data/api/chat';
 
 const BEAT_MS = 5000;
@@ -42,6 +43,29 @@ vi.mock('@web/data/api/chat', async (importOriginal) => ({
     ),
   },
 }));
+
+// Chat sends every body through bodyOrTransfer, which first asks for the
+// upload config. Answer it here with the shipped request-body limit, so the
+// real threshold runs (these bodies are small and go as they are) and no
+// request reaches the network, where fake timers would never settle it.
+vi.mock('@web/data/api/assets', async (importOriginal) => {
+  const actual = await importOriginal<typeof AssetsApiModule>();
+  return {
+    ...actual,
+    assetsApi: {
+      ...actual.assetsApi,
+      fetchUploadConfig: async () => ({
+        maxUploadBytes: 2 * 1024 * 1024 * 1024,
+        clientMaxAttempts: 3,
+        clientRetryBaseDelayMs: 1000,
+        uploadIdleTimeoutMs: 30_000,
+        assetUrlPrefix: 'https://assets.test.invalid/',
+        uploadStatusPollSeconds: 5,
+        maxRequestBodyBytes: 1048576,
+      }),
+    },
+  };
+});
 
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
@@ -452,5 +476,49 @@ describe('这一轮停下来整理记忆', () => {
     await settle();
 
     expect(folding()).toBe(false);
+  });
+});
+
+describe('the thinking figure on a turn that fails', () => {
+  /**
+   * Run one turn that thought and then failed, its frames in the given order.
+   * @param ending - The frames after the thinking, in wire order.
+   * @returns The parts the reply holds once the turn has settled.
+   */
+  async function failedReplyParts(ending: Array<Record<string, unknown>>): Promise<string[]> {
+    const wire = stubChatWire();
+    const chat = aConversation();
+    void sendInSession('c-1', 'find references');
+    await settle();
+    wire.current()?.push(OPENING_BEAT);
+    wire.current()?.push({ type: 'start', messageId: 'm-reply' });
+    wire.current()?.push({ type: 'start-step' });
+    wire.current()?.push({ type: 'reasoning-start', id: 'r1' });
+    wire.current()?.push({ type: 'reasoning-delta', id: 'r1', delta: 'weighing it up' });
+    wire.current()?.push({ type: 'reasoning-end', id: 'r1' });
+    wire.current()?.push({ type: 'finish-step' });
+    for (const chunk of ending) wire.current()?.push(chunk);
+    wire.current()?.close();
+    await settle();
+    return (chat.messages.at(-1)?.parts ?? []).map((part) => part.type);
+  }
+
+  it('keeps the figure live when it comes before the error frame, which is the order the server writes', async () => {
+    const parts = await failedReplyParts([
+      { type: 'data-thinking-time', data: { ms: 3000 } },
+      { type: 'error', errorText: 'The turn could not be run.' },
+    ]);
+
+    expect(parts).toContain('data-thinking-time');
+  });
+
+  it('drops a figure that comes after the error frame: the SDK Chat stops reading there', async () => {
+    const parts = await failedReplyParts([
+      { type: 'error', errorText: 'The turn could not be run.' },
+      { type: 'data-thinking-time', data: { ms: 3000 } },
+    ]);
+
+    expect(parts).toContain('reasoning');
+    expect(parts).not.toContain('data-thinking-time');
   });
 });

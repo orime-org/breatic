@@ -40,11 +40,18 @@ export default defineConfig({
     ],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.
     setupFiles: ["@breatic/integration-tests/env"],
-    // Single fork: one worker process, one container set, no port conflicts.
+    // One file at a time, each in a fresh fork, all against the one container
+    // set globalSetup started. A single fork for every file runs out of heap:
+    // `singleFork` turns off module isolation, every file re-evaluates the
+    // server's source, and the copies stay reachable, so the heap grows by
+    // about 19 MB a file (measured: 162 MB at the first of 193 files, 3880 MB
+    // at the last, against a 4288 MB default limit). A fresh fork per file
+    // peaks at 367 MB; the run takes about twice as long.
     pool: "forks",
+    fileParallelism: false,
     poolOptions: {
       forks: {
-        singleFork: true,
+        singleFork: false,
       },
     },
     // Long timeout: testcontainers + migration + BullMQ job execution

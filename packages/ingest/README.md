@@ -7,7 +7,9 @@ finish request our services send.
 It holds no database and asks us nothing. Everything it is allowed to do comes
 from a ticket our server signed: the storage key, the studio, the part layout
 and the size ceiling all travel inside one HMAC, so every check it performs is
-against values the browser cannot alter.
+against values the browser cannot alter. The ticket never reaches the browser:
+our server opens the upload with it and the shared secret, and the browser
+sends its parts with the session token each answer hands back.
 
 For installation and a deployed Worker, start with [personal/LAN deployment](../../self-host/LOCAL.md).
 For source debugging, use [development setup](../../self-host/DEVELOPMENT.md).
@@ -123,8 +125,8 @@ we do not take. Those are only logged.
 
 One value: `INGEST_SHARED_SECRET`. It must be the same string as
 `INGEST_SHARED_SECRET` in the repo-root `.env` — the server signs upload tickets
-with it and this Worker verifies them, so a mismatch rejects every upload with
-401. Generate one with `openssl rand -hex 32`.
+with it and sends it to open each upload, and this Worker checks both, so a
+mismatch rejects every upload with 401. Generate one with `openssl rand -hex 32`.
 
 The deployed Worker gets the same value through
 `wrangler secret put INGEST_SHARED_SECRET --env production`, which stores it on
@@ -163,8 +165,8 @@ stores resolves to a 404 at its public URL — which fails anything that reads a
 asset back — a node's image or video, and the focus crop that reads one.
 
 The Worker itself still runs on this machine, because that is the address it
-has to answer on: the browser sends its parts there, and our own server
-finishes the upload there. It reaches nobody in return — what it measured over
+has to answer on: our own server opens and finishes the upload there, and the
+browser sends its parts there. It reaches nobody in return — what it measured over
 the stored object is the answer to the finish, not a call it places — so it
 holds no address of ours at all.
 

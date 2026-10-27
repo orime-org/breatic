@@ -35,6 +35,7 @@ import worker, { type Env } from "@ingest/index.js";
 import { NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 import { head, type Sample } from "./helpers/encoder-heads.js";
 import { containerAnswering } from "./helpers/stand-in-container.js";
+import { openForTest } from "./helpers/open-upload.js";
 
 const PART_SIZE = 5 * 1024 * 1024;
 const FINAL_PART_SIZE = 1024;
@@ -97,17 +98,8 @@ async function uploadedThrough(
     },
     env.INGEST_SHARED_SECRET,
   );
-  let ctx = createExecutionContext();
-  const opened = await worker.fetch(
-    new Request("https://ingest.example.com/uploads", {
-      method: "POST",
-      headers: { "x-upload-ticket": ticket },
-    }),
-    env,
-    ctx,
-  );
-  await waitOnExecutionContext(ctx);
-  const session = await opened.json<{ uploadId: string; token: string }>();
+  const session = await openForTest(ticket);
+  let ctx: ExecutionContext;
 
   let token = session.token;
   const parts: HeldPart[] = [];

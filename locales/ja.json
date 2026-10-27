@@ -8,6 +8,8 @@
       "upload_too_large": "ファイルがアップロードサイズの上限を超えています。",
       "insufficient_credits": "クレジット不足：必要 {required}、残高 {available}",
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
+      "payload_too_large": "リクエストの内容が {limit} を超えています。プロンプトか参照しているテキストを短くしてください。",
+      "transfer_invalid": "アップロードした内容を使用できませんでした。もう一度お試しください。",
       "internal": "内部サーバーエラー"
     },
     "credit": {
@@ -358,7 +360,8 @@
     },
     "error": {
       "network": "ネットワークエラー",
-      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。"
+      "turnFailed": "この返信は完了できませんでした。もう一度送信してみてください。",
+      "turnTooLong": "今回処理する内容が多すぎて完了できませんでした。範囲を絞ってもう一度お試しください。"
     },
     "message": {
       "interrupted": "停止しました",
@@ -658,6 +661,7 @@
       "errorCredits": "クレジットが不足しているため生成できません。",
       "errorUnavailable": "生成サービスは一時的に利用できません。もう一度お試しください。",
       "errorFailed": "生成を開始できませんでした。もう一度お試しください。",
+      "errorTooLargeNoLimit": "リクエストの内容が大きすぎます。プロンプトか参照しているテキストを短くしてください。",
       "errorNoSourceImage": "このモデルには元画像が必要です —— プロンプトで @ を入力して接続済みの画像を選んでください。",
       "errorTooManyReferences": "このモデルは参考{kind, select, video {動画を最大 {limit} 本} audio {音声を最大 {limit} 本} other {画像を最大 {limit} 枚}}まで受け付けます —— いくつか削除してから生成してください。",
       "referenceAddFailed": "参照を追加できませんでした——そのノードは存在しません。",
@@ -1485,7 +1489,11 @@
       "title": "作業中ですが移動しますか?",
       "description": "アップロードまたは編集がまだ同期されていません。今移動すると失われる可能性があります。",
       "stay": "とどまる",
-      "leave": "移動する"
+      "leave": "移動する",
+      "unsyncedDescription": "一部の変更が未同期です。今すぐ再読み込みするか離れると、変更が失われる可能性があります。",
+      "combinedDescription": "一部の変更が未同期で、アップロードまたは編集が進行中です。今すぐ再読み込みするか離れると、作業が失われる可能性があります。",
+      "completeDescription": "変更の同期と操作が完了しました。",
+      "completeTitle": "続行できます"
     },
     "header": {
       "renameFailed": "Project 名を変更できませんでした"
@@ -1529,6 +1537,11 @@
       "confirm": "退出",
       "done": "「{name}」から退出しました",
       "failed": "退出できませんでした"
+    },
+    "refreshGuard": {
+      "title": "未完了の作業があります。再読み込みしますか？",
+      "refresh": "再読み込みする",
+      "failed": "再読み込みできませんでした。もう一度お試しください。"
     }
   },
   "common": {

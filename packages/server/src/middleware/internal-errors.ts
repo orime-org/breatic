@@ -13,7 +13,7 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { HTTPException } from "hono/http-exception";
 import { AppError, ValidationError, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
+import { RefundRefusal, refusalBodyOf } from "@server/modules/credit-refund/refusal.js";
 
 /** The code each domain `AppError` status answers with. */
 const APP_ERROR_CODES: Partial<Record<number, string>> = {
@@ -30,14 +30,7 @@ const APP_ERROR_CODES: Partial<Record<number, string>> = {
  */
 export const internalErrorHandler: ErrorHandler = (err, c) => {
   if (err instanceof RefundRefusal) {
-    return c.json(
-      {
-        code: err.code,
-        ...(err.detailKey !== undefined && { detail: t(`server.internal.${err.detailKey}`) }),
-        ...(err.reason !== undefined && { reason: err.reason }),
-      },
-      err.status,
-    );
+    return c.json(refusalBodyOf(err), err.status);
   }
   // Thrown by validate(), whose message is the public app's sentence.
   if (err instanceof ValidationError) {

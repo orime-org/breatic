@@ -8,6 +8,8 @@
       "upload_too_large": "文件超过上传大小限制。",
       "insufficient_credits": "积分不足：需要 {required}，可用 {available}",
       "rate_limited": "请求过于频繁，请稍后再试",
+      "payload_too_large": "请求内容超过 {limit}，请缩短提示词或减少引用的文字。",
+      "transfer_invalid": "上传的内容无法使用，请重试。",
       "internal": "服务器内部错误"
     },
     "credit": {
@@ -358,7 +360,8 @@
     },
     "error": {
       "network": "网络错误",
-      "turnFailed": "这条回复没能完成，可以再发一次。"
+      "turnFailed": "这条回复没能完成，可以再发一次。",
+      "turnTooLong": "这次要处理的内容太多，没能完成。可以缩小范围再试。"
     },
     "message": {
       "interrupted": "已停止",
@@ -658,6 +661,7 @@
       "errorCredits": "积分不足，无法生成。",
       "errorUnavailable": "生成服务暂时不可用，请稍后重试。",
       "errorFailed": "生成启动失败，请重试。",
+      "errorTooLargeNoLimit": "请求内容过大，请缩短提示词或减少引用的文字。",
       "errorNoSourceImage": "该模型需要源图 —— 在提示词里输入 @ 选择一张已连线的图。",
       "errorTooManyReferences": "该模型最多接受 {limit} {kind, select, video {段参考视频} audio {段参考音频} other {张参考图}} —— 移除一些再生成。",
       "referenceAddFailed": "无法添加参考——该节点已不存在。",
@@ -1485,7 +1489,11 @@
       "title": "有未完成的操作,确定离开?",
       "description": "上传或编辑还没同步完,现在离开可能丢失。",
       "stay": "留下",
-      "leave": "仍然离开"
+      "leave": "仍然离开",
+      "unsyncedDescription": "部分修改尚未同步，现在刷新或离开可能丢失这些修改。",
+      "combinedDescription": "部分修改尚未同步，且仍有上传或编辑操作正在进行。现在刷新或离开可能丢失这些工作。",
+      "completeDescription": "修改已同步，操作已完成。",
+      "completeTitle": "可以继续"
     },
     "header": {
       "renameFailed": "重命名 Project 失败"
@@ -1529,6 +1537,11 @@
       "confirm": "退出",
       "done": "已退出「{name}」",
       "failed": "退出失败"
+    },
+    "refreshGuard": {
+      "title": "仍有未完成的工作，要刷新吗？",
+      "refresh": "仍然刷新",
+      "failed": "刷新失败，请重试。"
     }
   },
   "common": {

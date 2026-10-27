@@ -36,6 +36,7 @@ import {
   type SessionTokenPayload,
   type PreviewOutcome,
   type UploadTicketPayload,
+  TRANSFER_MEDIA_TYPE,
 } from "@breatic/shared";
 import * as Sentry from "@sentry/cloudflare";
 import { fromOurBackend } from "@ingest/backend-secret.js";
@@ -108,10 +109,13 @@ const PART_PATH = /^\/uploads\/([^/]+)\/parts\/(\d+)$/;
  * What a part sends beyond a simple request. The browser preflights on account
  * of these, and will not send the bytes if the answer does not list them.
  */
-const ALLOWED_HEADERS = "content-type, x-upload-ticket, x-upload-token";
+const ALLOWED_HEADERS = "content-type, x-upload-token";
 
-/** The methods the three endpoints use. */
-const ALLOWED_METHODS = "POST, PUT, OPTIONS";
+/**
+ * The methods a page uses: it only sends parts. Opening and finishing an
+ * upload are called by our services, which no preflight governs (inner#1595).
+ */
+const ALLOWED_METHODS = "PUT, OPTIONS";
 
 /** `/uploads/{uploadId}/complete`. */
 const COMPLETE_PATH = /^\/uploads\/([^/]+)\/complete$/;
@@ -196,30 +200,60 @@ async function issueToken(
   );
 }
 
+/** The label a valid ticket arriving without our secret is reported under. */
+const OPEN_WITHOUT_SECRET = "ingest_open_without_secret";
+
 /**
  * Open an upload: verify the ticket, ask R2 for a multipart upload, and hand
- * back what the browser has to hold on to.
+ * back what the uploader has to hold on to.
+ *
+ * Only our services call this, and the shared secret is the permission to
+ * open: our server opens each ticket's upload once and hands the browser the
+ * upload id and first token, never the ticket (inner#1595). A ticket that
+ * verifies but arrives without the secret can only have leaked from our side,
+ * so it is reported with the key, user and studio it names.
  *
  * Nothing is recorded on this side. What one upload needs remembered is its
  * upload id and the parts that landed, and the browser carries both back with
  * every request — which is how Cloudflare's own multipart example works:
  * "the state of the multipart upload is tracked in the client application
  * which sends requests to the Worker".
- * @param request - The browser's request, carrying the ticket in a header.
+ * @param request - Our service's request, carrying the ticket and the secret
+ *   in headers.
  * @param env - The Worker's bindings.
- * @returns The upload id and the first token, or 401 when the ticket does not
- *   verify.
+ * @returns The upload id and the first token, or 401 without the secret or
+ *   when the ticket does not verify.
  */
 async function startUpload(request: Request, env: Env): Promise<Response> {
   const ticket = request.headers.get("x-upload-ticket");
-  if (ticket === null) return new Response("Unauthorized", { status: 401 });
+  const verified =
+    ticket === null
+      ? null
+      : await verifyUploadTicket(ticket, env.INGEST_SHARED_SECRET, Date.now());
 
-  const verified = await verifyUploadTicket(
-    ticket,
-    env.INGEST_SHARED_SECRET,
-    Date.now(),
-  );
-  if (!verified.ok) return new Response("Unauthorized", { status: 401 });
+  if (!fromOurBackend(request, env)) {
+    if (verified?.ok === true) {
+      const { storageKey, userId, studioId } = verified.payload;
+      // Each refusal is its own record, one request apart: Cloudflare's ray id
+      // ties it to the request log, and local workerd sends none.
+      const requestId = request.headers.get("cf-ray") ?? crypto.randomUUID();
+      noteFailure(
+        OPEN_WITHOUT_SECRET,
+        { storageKey, userId, studioId, requestId },
+        undefined,
+        {
+          perOccurrence: {
+            message: `${OPEN_WITHOUT_SECRET} ${storageKey} ${requestId}`,
+            fingerprint: [OPEN_WITHOUT_SECRET],
+          },
+        },
+      );
+    }
+    return new Response("Unauthorized", { status: 401 });
+  }
+  if (verified === null || !verified.ok) {
+    return new Response("Unauthorized", { status: 401 });
+  }
 
   const created = await env.BUCKET.createMultipartUpload(
     verified.payload.storageKey,
@@ -385,7 +419,8 @@ function refused(
  * The permission is taken before R2 is touched, because what it stops is a
  * write: a replayed ticket opening a second multipart upload over a key the
  * ledger already describes.
- * @param request - The browser's request, carrying the token and the parts.
+ * @param request - Our service's request, carrying the shared secret, the
+ *   token and the parts.
  * @param env - The Worker's bindings.
  * @param uploadId - The upload from the path.
  * @returns The outcome, or why it was refused.
@@ -537,6 +572,19 @@ async function finishUpload(
     return refused(
       "unsupported_type",
       "The stored bytes are not a kind we take",
+      415,
+    );
+  }
+  // The other direction (inner#1006): a transfer ticket takes only our own
+  // transfer file, so bytes that are anything else never reach the upright
+  // turn or a media read below.
+  if (contentType === TRANSFER_MEDIA_TYPE && storedType !== TRANSFER_MEDIA_TYPE) {
+    noteFailure("ingest_stored_type_refused", { storageKey, storedType }, undefined, {
+      userInput: true,
+    });
+    return refused(
+      "unsupported_type",
+      "The stored bytes are not a transfer file",
       415,
     );
   }
@@ -955,10 +1003,9 @@ function storedTypeFor(
  * Cloudflare's network, where the wait costs no CPU time and the egress is
  * free. Waiting is nearly all this does.
  *
- * It takes the shared secret as well as a ticket. A ticket alone authorises
- * the key being written to, which is all the other endpoints need — but this
- * one also makes the Worker fetch whatever address the body names, and every
- * browser holds a ticket. The secret is what only our own backend has.
+ * It takes the shared secret as well as a ticket: it makes the Worker fetch
+ * whatever address the body names, and like opening an upload it is ours
+ * alone to ask for. The secret is what only our own backend has.
  * @param request - The backend's request, carrying the ticket and the URL.
  * @param env - The Worker's bindings.
  * @returns What the server registered, or why the transfer did not finish.

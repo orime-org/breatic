@@ -381,6 +381,12 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
+export {
+  SyncConfirmRequestSchema,
+  SyncConfirmedResponseSchema,
+} from "@shared/sync-receipt.js";
+export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
+
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
 
 export {
@@ -794,6 +800,7 @@ export {
 // itself -- one implementation, so "every asset reaches R2 through the ingest
 // Worker" is not a rule each caller is trusted to follow.
 export {
+  openUploadAtIngest,
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
@@ -802,6 +809,7 @@ export {
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
+  type OpenedIngestTarget,
   type MediaLimits,
   type HeldUpload,
   type PartReceipt,
@@ -878,6 +886,17 @@ export {
   sniffMimeTypeOfStream,
   SNIFF_WINDOW,
 } from "@shared/upload/sniff-mime.js";
+// A request body too large for the API, carried through storage instead
+// (inner#1006): web writes it, the ingest Worker names it, the server reads it.
+export {
+  TRANSFER_KEY_DIR,
+  TRANSFER_MEDIA_TYPE,
+  TRANSFER_SIGNATURE,
+  TransferDecodeError,
+  decodeTransferBody,
+  encodeTransferBody,
+  type TransferDecodeReason,
+} from "@shared/upload/transfer-format.js";
 // Why the Worker refused, named on the answer. Four separate failures share
 // one status, and a caller that has to tell them apart cannot do it from the
 // status alone.
@@ -961,3 +980,7 @@ export {
   type Attribution,
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
+
+export { SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, SCENE_EDITABLE_FIELDS } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField } from "@shared/scene.js";
+export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";

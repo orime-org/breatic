@@ -118,3 +118,48 @@ describe("storageConfigSchema — the idle window", () => {
     ).toThrow(/upload_idle_timeout_seconds/);
   });
 });
+
+/**
+ * T15 (inner#1006 §4.1): the transfer section. Each route's cap is counted
+ * over the whole transfer file, signature included; a finished transfer can be
+ * referenced for an hour; one user's read holds its lock for a minute, and a
+ * second read of the same user waits for it, trying again every 100 ms for up
+ * to ten seconds.
+ */
+describe("storageConfigSchema — the transfer section", () => {
+  const TRANSFER_DEFAULTS = {
+    route_max_bytes: {
+      chat_message: 4194304,
+      canvas_paste: 25165824,
+      node_history_snapshot: 25165824,
+    },
+    reference_ttl_seconds: 3600,
+    read_lock_seconds: 60,
+    read_lock_wait_seconds: 10,
+    read_lock_retry_ms: 100,
+  };
+
+  it("(a) defaults the whole section when the yaml has none", () => {
+    const parsed = storageConfigSchema.parse({}) as unknown as { transfer?: unknown };
+    expect(parsed.transfer).toEqual(TRANSFER_DEFAULTS);
+  });
+
+  it("(b) defaults every key the yaml leaves out", () => {
+    const parsed = storageConfigSchema.parse({
+      transfer: { reference_ttl_seconds: 10 },
+    }) as unknown as { transfer?: unknown };
+    expect(parsed.transfer).toEqual({ ...TRANSFER_DEFAULTS, reference_ttl_seconds: 10 });
+  });
+
+  it("(c) loads the same figures from config/storage.yaml", () => {
+    const loaded = getStorageConfig() as unknown as { transfer?: unknown };
+    expect(loaded.transfer).toEqual(TRANSFER_DEFAULTS);
+  });
+
+  it("(d) gives transfer-ticket its own rate limit in config/rate-limits.yaml", () => {
+    const limits = parse(
+      readFileSync(resolve(import.meta.dirname, "../../../../../config/rate-limits.yaml"), "utf8"),
+    ) as Record<string, unknown>;
+    expect(limits["transfer-ticket"]).toEqual({ max: 10, window_seconds: 60 });
+  });
+});

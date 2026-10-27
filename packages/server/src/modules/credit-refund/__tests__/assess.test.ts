@@ -727,4 +727,28 @@ describe("§9: the preview and the endpoints agree when the operator confirms wh
       { numRuns: 500 },
     );
   });
+
+  it("the preview includes all four one-shot verdicts using the current succeeded sum and unresolved ids", () => {
+    fc.assert(
+      fc.property(inputArb, (g) => {
+        const base = facts(g);
+        const expected = Object.fromEntries(
+          (["reject", "settle", "send_back", "resolve_outside"] as const).map((kind) => [kind, assessOneShot({
+            kind,
+            lot: base.lot,
+            paidCents: base.payment?.paidCents ?? 0,
+            ops: base.ops,
+            refunds: base.refunds,
+            unresolvedFailedRefunds: base.unresolvedFailedRefunds,
+            disputed: base.disputed,
+            confirmedSucceededCents: base.refunds.reduce((sum, row) => sum + (row.status === "succeeded" ? row.amountCents : 0), 0),
+            failedRefundIds: base.unresolvedFailedRefunds.map((row) => row.stripeRefundId),
+          })]),
+        );
+        expect(assessRefundPreview(base)).toHaveProperty("oneShot", expected);
+      }),
+      { numRuns: 500 },
+    );
+  });
+
 });

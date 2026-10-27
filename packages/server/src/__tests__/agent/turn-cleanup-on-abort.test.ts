@@ -34,7 +34,7 @@ import { mocks } from "@server/__tests__/helpers/mock-core.js";
 const addMessage = vi.fn(
   async (_id: string, _msg: Record<string, unknown>) => 1,
 );
-const foldIfOverBudget = vi.fn(async () => false);
+const foldIfTooLong = vi.fn(async () => "none");
 const chargeOnceForGeneration = vi.fn(async (..._args: unknown[]) => ({
   billed: true,
   charged: 5,
@@ -123,8 +123,8 @@ vi.mock("@server/modules/conversation/conversation-message.repo.js", () => ({
   setUserForModel: vi.fn(async () => undefined),
   addReaderMessage: async (id: string, msg: Record<string, unknown>) => ({ turnIndex: await addMessage(id, msg), closedAsks: [] }), getMessages }));
 
-vi.mock("@server/agent/turn-budget.js", () => ({
-  foldIfOverBudget,
+vi.mock("@server/agent/turn-fold.js", () => ({
+  foldIfTooLong,
 }));
 
 // What the prompt says is not what this test is about.
@@ -133,7 +133,7 @@ vi.mock("@server/agent/context.js", () => ({
 }));
 
 beforeEach(() => {
-  [addMessage, foldIfOverBudget, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
+  [addMessage, foldIfTooLong, chargeOnceForGeneration, usageRead].forEach((m) => m.mockClear());
 });
 
 // The turn asks the conversation what it is called, so it can say so in the

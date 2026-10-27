@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as LimitsModule from "@server/config/limits.js";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
@@ -36,6 +37,16 @@ vi.mock("@server/modules", async (importOriginal) => {
 // not intercept it — mock the module itself to assert the feed row.
 vi.mock("@server/modules/activity/projectActivity.service.js", () => ({
   recordProjectActivity: vi.fn(),
+}));
+
+// The request-body limit the upload config reports. It differs from the
+// shipped `request_body_max_bytes` so the test proves the endpoint reads the
+// accessor, and it is large enough that the app-level body limit, which reads
+// the same accessor, refuses nothing this file sends.
+const REQUEST_BODY_MAX_BYTES = 3 * 1024 * 1024;
+vi.mock("@server/config/limits.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof LimitsModule>()),
+  getRequestBodyMaxBytes: () => REQUEST_BODY_MAX_BYTES,
 }));
 
 import { createApp } from "../../app.js";
@@ -75,6 +86,7 @@ describe("Assets routes", () => {
           uploadIdleTimeoutMs: number;
           uploadStatusPollSeconds: number;
           assetUrlPrefix: string;
+          maxRequestBodyBytes: number;
         };
       };
       expect(body.data).toEqual({
@@ -86,6 +98,9 @@ describe("Assets routes", () => {
         // What every stored object's public URL starts with: the document
         // body tells its own media from outside links by it (inner#1127 A18).
         assetUrlPrefix: "https://cdn.example/",
+        // The largest body any API route reads directly; above it the browser
+        // sends paste, snapshot and chat bodies as a transfer (inner#1006).
+        maxRequestBodyBytes: REQUEST_BODY_MAX_BYTES,
       });
     });
   });

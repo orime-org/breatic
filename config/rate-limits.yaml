@@ -52,6 +52,10 @@ studio-update:  { max: 30,  window_seconds: 3600 }
 # how fast one account can put work in front of the Worker and rows in the
 # ledger.
 upload-ticket:  { max: 30,  window_seconds: 60 }
+# Transfer tickets (inner#1006): a request body too large for the API goes
+# through storage first. Kept apart from upload-ticket so moving a big paste
+# never eats the media-upload allowance.
+transfer-ticket: { max: 10, window_seconds: 60 }
 # The node-delete report route (/assets/deleted) — fires once per delete;
 # 120/60s covers clearing out a whole selection while capping a flood loop
 # against the append-only feed table.
@@ -61,11 +65,10 @@ asset-report:   { max: 120, window_seconds: 60 }
 # does not arrive (up to three deliveries), so ten a minute leaves room for
 # that and stops one upload being finished over and over.
 upload-complete: { max: 10, window_seconds: 60 }
-# The same finishes counted per person. One ticket opens any number of uploads
-# at the Worker and each can be sent here under its own id, so this caps how
-# many finishes one person sends us: the most the ticket limit can sign in a
-# minute, 30 requests of up to 64 files each. Uploads opened at the Worker are
-# not counted here.
+# The same finishes counted per person. The per-upload count above resets for
+# every new upload id, so this caps how many finishes one person sends us in
+# all: the most the ticket limit can open in a minute, 30 requests of up to 64
+# files each, one upload per file.
 upload-complete-user: { max: 1920, window_seconds: 60 }
 # Asking how uploads ended (/assets/upload-status, inner#1367). One request
 # covers every upload the page is waiting on, and the page asks once per

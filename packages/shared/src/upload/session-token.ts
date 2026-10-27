@@ -61,6 +61,7 @@ export interface SessionTokenPayload extends PartLayout {
 import {
   signPayload,
   readSignedPayload,
+  isFilled,
 } from "@shared/upload/signed-payload.js";
 
 /**
@@ -92,6 +93,21 @@ export async function verifySessionToken(
 ): Promise<SessionTokenPayload | null> {
   const read = await readSignedPayload<SessionTokenPayload>(token, secret);
   if (!read.ok) return null;
+  if (!isSessionShaped(read.payload)) return null;
   if (now > read.payload.expiresAt) return null;
   return read.payload;
+}
+
+/**
+ * Whether a signed payload is a session token rather than a ticket.
+ *
+ * Both are signed with the same secret; only a session token names the upload
+ * it writes into (RFC 8725 §3.12, inner#1595).
+ * @param payload - The payload a valid signature covered.
+ * @returns True when it names an upload and a key.
+ */
+function isSessionShaped(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  return isFilled(p.uploadId) && isFilled(p.storageKey);
 }

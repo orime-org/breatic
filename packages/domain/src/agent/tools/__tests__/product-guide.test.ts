@@ -787,7 +787,10 @@ describe("what the guide says about each surface", () => {
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the reader's own included/);
-    expect(wrong).toMatch(/Closing or reloading the browser tab, including by the reload buttons above, shows the browser's own prompt/);
+    expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
+    expect(wrong).toMatch(/background Space tabs of the current Project/);
+    expect(wrong).toMatch(/connection banner's refresh button asks/);
+    expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
     expect(wrong).toMatch(/With a document open, "[^"]+" also shows for a moment; nothing typed after it is saved/);
     expect(wrong).toMatch(/until they upgrade/);
     expect(wrong).toMatch(/press Cmd\/Ctrl\+A twice, then Cmd\/Ctrl\+C, to copy it out before signing in again or reloading/);

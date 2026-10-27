@@ -219,7 +219,16 @@ export type MessagePart =
    * three ways a turn ends without finishing, and a reader has to tell them apart — one is something
    * the user did, the other is something that went wrong.
    */
-  | { type: "failed" }
+  | {
+    type: "failed";
+    /**
+     * Why, when it is not an ordinary failure: `too_long` is a turn whose
+     * request could not be made to fit the model's context window however
+     * much earlier history was folded into memory (inner#1567). The reader is
+     * told to narrow the request rather than to send it again.
+     */
+    reason?: "too_long";
+  }
   /**
    * The turn reached the ceiling on one call's output and stopped mid-sentence.
    *

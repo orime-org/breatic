@@ -391,6 +391,7 @@ export function toChatMessage(
   let interrupted = false;
   let truncated = false;
   let failed = false;
+  let tooLong = false;
   let blocked = false;
   let thinkingMs: number | undefined;
   let thinkingNow = false;
@@ -505,7 +506,11 @@ export function toChatMessage(
       thinkingNow = (part as { state?: unknown }).state === 'streaming';
     }
     else if (part.type === INTERRUPTED) interrupted = true;
-    else if (part.type === FAILED) failed = true;
+    else if (part.type === FAILED) {
+      failed = true;
+      // A turn whose request could not be made to fit (inner#1567).
+      if ((part as { data?: { reason?: unknown } | null }).data?.reason === 'too_long') tooLong = true;
+    }
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;
     else if (part.type === THINKING_TIME) {
@@ -551,6 +556,7 @@ export function toChatMessage(
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
+    ...(tooLong ? { failedReason: 'too_long' as const } : {}),
     ...(truncated ? { truncated: true as const } : {}),
     ...(blocked ? { blocked: true as const } : {}),
     ...(sources.length > 0 ? { sources, citations } : {}),

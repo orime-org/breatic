@@ -5,9 +5,12 @@
  * Sending bytes to the ingest Worker (#173 design §4.2, #181 lane ②, #206
  * design §3.5).
  *
- * Two steps here: open the upload for a session token, then PUT each part and
- * take the fresh token it answers with. Since the token rotates per part, what
- * has to be shown is that part n carries the token part n-1 handed back.
+ * Two steps here, taken by different hands (inner#1595): our server opens the
+ * upload with the ticket and the shared secret (`openUploadAtIngest`), and
+ * whoever holds the bytes PUTs each part from the token that open answered
+ * with (`sendBytesToIngest`), never holding the ticket. Since the token
+ * rotates per part, what has to be shown is that part n carries the token part
+ * n-1 handed back.
  *
  * Finishing is a third step, and it belongs to whoever drives it. The browser
  * hands what it holds to our server, which finishes on its behalf; our own
@@ -24,13 +27,17 @@ import { DeadlinePassed } from '@shared/http/deadline.js';
 import { INGEST_FAILURE_HEADER } from '@shared/upload/ingest-failure.js';
 import {
   sendBytesToIngest,
+  openUploadAtIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
   readStoredMediaAtIngest,
   IngestAnswerError,
+  UploadHttpError,
   type IngestTarget,
   type UploadClientConfig,
 } from '@shared/upload/ingest-client.js';
+import * as sharedEntry from '@shared/index.js';
+import type { OpenedIngestTarget } from '@shared/index.js';
 
 vi.mock('@shared/http/request.js', () => ({ httpRequest: vi.fn() }));
 
@@ -48,13 +55,31 @@ const cfg: UploadClientConfig = {
   uploadIdleTimeoutMs: 60_000,
 };
 
-/** A ticket for a file of `totalParts` parts. */
+/**
+ * A ticket for a file of `totalParts` parts: what opening an upload and lane ③
+ * still take.
+ */
 function ticketFor(totalParts: number): IngestTarget {
   return {
     ticket: 'signed-ticket',
     uploadUrl: WORKER_URL,
     partSize: PART_SIZE,
     totalParts,
+  };
+}
+
+/**
+ * An upload our server already opened (inner#1595 test spec 0.4): the layout
+ * and the first token, and no ticket.
+ */
+function opened(over: Partial<OpenedIngestTarget> = {}): OpenedIngestTarget {
+  return {
+    uploadUrl: WORKER_URL,
+    uploadId: 'upload-1',
+    token: 'token-1',
+    partSize: PART_SIZE,
+    totalParts: 1,
+    ...over,
   };
 }
 
@@ -103,14 +128,14 @@ beforeEach(() => {
   mockedRequest.mockReset();
 });
 
-/** Answer an open and `parts` part PUTs. */
-function wireOpenAndParts(parts: number): void {
-  mockedRequest.mockResolvedValueOnce(
-    answers(200, { uploadId: 'upload-1', token: 'token-0' }),
-  );
+/**
+ * Answer `parts` part PUTs. Part n answers token n+1, so the first part
+ * carries the token the open answered with (`opened().token`, token-1).
+ */
+function wireParts(parts: number): void {
   for (let n = 1; n <= parts; n += 1) {
     mockedRequest.mockResolvedValueOnce(
-      answers(200, { token: `token-${n}`, partNumber: n, etag: `etag-${n}` }),
+      answers(200, { token: `token-${n + 1}`, partNumber: n, etag: `etag-${n}` }),
     );
   }
 }
@@ -128,21 +153,126 @@ const DEADLINE_AT = 1_800_000_000_000;
 /** What the Worker turns a tagged picture upright under (inner#1367). */
 const LIMITS = { uprightJpegQuality: 90, uprightMaxBytes: 2 * 1024 * 1024 * 1024 };
 
+// inner#1595: our server opens the upload with the ticket and the shared
+// secret, once per ticket. Opening carries no upload id: it mints one, and the
+// Worker opens a fresh multipart upload on every delivery, so a replay after a
+// 5xx or no answer would leave one abandoned, holding parts R2 charges for.
+describe('opening an upload at the ingest Worker', () => {
+  const TICKET_TARGET = { ticket: 'signed-ticket', uploadUrl: WORKER_URL, partSize: PART_SIZE, totalParts: 2 };
+
+  it('T20: posts the ticket and the secret once, unsafe to replay, bounded by the caller', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(200, { uploadId: 'u-1', token: 't-1' }));
+    const bound = { timeoutMs: 1234 };
+
+    const answer = await openUploadAtIngest(TICKET_TARGET, SECRET, bound);
+
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+    expect(urlOf(0)).toBe(`${WORKER_URL}/uploads`);
+    expect(mockedRequest.mock.calls[0]?.[1]?.method).toBe('POST');
+    expect(headersOf(0)).toEqual({ 'x-upload-ticket': 'signed-ticket', 'x-ingest-secret': SECRET });
+    expect(optionsOf(0).replaySafe).toBe(false);
+    // inner#1595 R1: a timeout alone, so nothing outlives the open.
+    expect(optionsOf(0)).not.toHaveProperty('signal');
+    expect(optionsOf(0).timeoutMs).toBe(1234);
+    expect(answer).toEqual({ uploadId: 'u-1', token: 't-1' });
+  });
+
+  // Moved here from `sendBytesToIngest`: a refused open is where no bytes are
+  // sent, and the code the Worker named travels with the status.
+  it('T21: rejects a refusal as UploadHttpError carrying the status and the named code', async () => {
+    mockedRequest.mockResolvedValueOnce(answers(401, {}));
+    const unnamed = openUploadAtIngest(TICKET_TARGET, SECRET, { timeoutMs: 1234 });
+    await expect(unnamed).rejects.toBeInstanceOf(UploadHttpError);
+    await expect(unnamed).rejects.toMatchObject({ status: 401, code: null });
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+
+    mockedRequest.mockReset();
+    mockedRequest.mockResolvedValueOnce(answers(502, {}, 'store_failed'));
+    const named = openUploadAtIngest(TICKET_TARGET, SECRET, { timeoutMs: 1234 });
+    await expect(named).rejects.toBeInstanceOf(UploadHttpError);
+    await expect(named).rejects.toMatchObject({ status: 502, code: 'store_failed' });
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('T22: hands the transport failure back as the same object when nothing answered', async () => {
+    const NET = new TypeError('fetch failed');
+    mockedRequest.mockRejectedValueOnce(NET);
+
+    await expect(openUploadAtIngest(TICKET_TARGET, SECRET, { timeoutMs: 1234 })).rejects.toBe(NET);
+  });
+});
+
+describe('T27: the main entry', () => {
+  // The main entry is a hand-written export list: a symbol missing from it
+  // typechecks inside this package and is undefined to every consumer.
+  it('exports openUploadAtIngest and the OpenedIngestTarget type', () => {
+    expect(typeof sharedEntry.openUploadAtIngest).toBe('function');
+    const typed: OpenedIngestTarget = opened();
+    expect(typed.uploadId).toBe('upload-1');
+  });
+});
+
 describe('sending bytes to the ingest Worker', () => {
-  it('opens the upload with the ticket our server signed', async () => {
-    wireOpenAndParts(1);
+  // T24 replaces "opens the upload with the ticket our server signed": the
+  // upload is already open, so the first request is part 1 on the given token.
+  it('T24: starts at part 1 from the given token and never opens an upload', async () => {
+    wireParts(3);
 
-    await sendBytesToIngest(fileOf(1024), ticketFor(1), cfg);
+    const held = await sendBytesToIngest(fileOf(PART_SIZE * 2 + 10), opened({ totalParts: 3 }), cfg);
 
-    expect(urlOf(0)).toBe('https://ingest.example.com/uploads');
-    expect(headersOf(0)['x-upload-ticket']).toBe('signed-ticket');
+    expect(mockedRequest).toHaveBeenCalledTimes(3);
+    for (const call of mockedRequest.mock.calls) {
+      expect(call[1]?.method).toBe('PUT');
+      expect(String(call[0]).endsWith('/uploads')).toBe(false);
+    }
+    expect(urlOf(0)).toBe(`${WORKER_URL}/uploads/upload-1/parts/1`);
+    expect(headersOf(0)['x-upload-token']).toBe('token-1');
+    expect(headersOf(1)['x-upload-token']).toBe('token-2');
+    expect(headersOf(2)['x-upload-token']).toBe('token-3');
+    expect(held).toEqual({
+      uploadId: 'upload-1',
+      token: 'token-4',
+      parts: [
+        { partNumber: 1, etag: 'etag-1' },
+        { partNumber: 2, etag: 'etag-2' },
+        { partNumber: 3, etag: 'etag-3' },
+      ],
+    });
+  });
+
+  it('T25: sends no ticket on any request, even when the caller passes one along', async () => {
+    wireParts(3);
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 10), opened({ totalParts: 3 }), cfg);
+    // A caller that spreads a ticket-bearing object in by mistake.
+    wireParts(3);
+    const leaky = Object.assign(opened({ totalParts: 3 }), { ticket: 'leak' });
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 10), leaky, cfg);
+
+    expect(mockedRequest).toHaveBeenCalledTimes(6);
+    for (let nth = 0; nth < 6; nth += 1) {
+      expect(headersOf(nth)).not.toHaveProperty('x-upload-ticket');
+    }
+  });
+
+  it('T26: sends nothing once the deadline has come, or once the caller has stopped', async () => {
+    await expect(
+      sendBytesToIngest(fileOf(1024), opened(), cfg, undefined, Date.now() - 1),
+    ).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(mockedRequest).not.toHaveBeenCalled();
+
+    const stop = new AbortController();
+    stop.abort();
+    await expect(
+      sendBytesToIngest(fileOf(1024), opened(), cfg, undefined, undefined, stop.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mockedRequest).not.toHaveBeenCalled();
   });
 
   it('reports the bytes landed after each part, so a page can show progress', async () => {
-    wireOpenAndParts(3);
+    wireParts(3);
     const landed: number[] = [];
 
-    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg, (bytes) => {
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), opened({ totalParts: 3 }), cfg, (bytes) => {
       landed.push(bytes);
     });
 
@@ -150,11 +280,11 @@ describe('sending bytes to the ingest Worker', () => {
   });
 
   it('cuts at the signed part size, and only the last part may be short', async () => {
-    wireOpenAndParts(3);
+    wireParts(3);
 
-    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), ticketFor(3), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE * 2 + 700), opened({ totalParts: 3 }), cfg);
 
-    const sizes = [1, 2, 3].map((n) => {
+    const sizes = [0, 1, 2].map((n) => {
       const init = mockedRequest.mock.calls[n]?.[1];
       return (init?.body as Blob).size;
     });
@@ -162,23 +292,23 @@ describe('sending bytes to the ingest Worker', () => {
   });
 
   it('sends each part to the address for its own part number', async () => {
-    wireOpenAndParts(2);
+    wireParts(2);
 
-    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), opened({ totalParts: 2 }), cfg);
 
-    expect(urlOf(1)).toBe('https://ingest.example.com/uploads/upload-1/parts/1');
-    expect(urlOf(2)).toBe('https://ingest.example.com/uploads/upload-1/parts/2');
+    expect(urlOf(0)).toBe('https://ingest.example.com/uploads/upload-1/parts/1');
+    expect(urlOf(1)).toBe('https://ingest.example.com/uploads/upload-1/parts/2');
   });
 
   // The token rotates per part, so a leaked one can only write the next part
   // of this one upload.
   it('carries the token the previous part handed back', async () => {
-    wireOpenAndParts(2);
+    wireParts(2);
 
-    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), opened({ totalParts: 2 }), cfg);
 
-    expect(headersOf(1)['x-upload-token']).toBe('token-0');
-    expect(headersOf(2)['x-upload-token']).toBe('token-1');
+    expect(headersOf(0)['x-upload-token']).toBe('token-1');
+    expect(headersOf(1)['x-upload-token']).toBe('token-2');
   });
 
   // Nothing on the Worker's side remembers which parts landed, so what
@@ -186,17 +316,17 @@ describe('sending bytes to the ingest Worker', () => {
   // it back rather than using it here is what lets our server finish for the
   // browser, which cannot hold the secret the Worker asks for.
   it('hands back what finishing this upload will need', async () => {
-    wireOpenAndParts(3);
+    wireParts(3);
 
     const held = await sendBytesToIngest(
       fileOf(PART_SIZE * 2 + 700),
-      ticketFor(3),
+      opened({ totalParts: 3 }),
       cfg,
     );
 
     expect(held).toEqual({
       uploadId: 'upload-1',
-      token: 'token-3',
+      token: 'token-4',
       parts: [
         { partNumber: 1, etag: 'etag-1' },
         { partNumber: 2, etag: 'etag-2' },
@@ -206,13 +336,13 @@ describe('sending bytes to the ingest Worker', () => {
   });
 
   it('stops once the last part has landed', async () => {
-    wireOpenAndParts(2);
+    wireParts(2);
 
-    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), opened({ totalParts: 2 }), cfg);
 
-    // One open and two parts. A third delivery here would be a finish this
-    // caller may not be able to authorise.
-    expect(mockedRequest).toHaveBeenCalledTimes(3);
+    // Two parts. A third delivery here would be a finish this caller may not
+    // be able to authorise.
+    expect(mockedRequest).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -432,17 +562,15 @@ describe('finishing an upload', () => {
 describe('what the shared transport is told', () => {
   // The test is whether a request names the upload it writes into. A part and
   // a completion do, so a repeat writes the same part under its own number or
-  // is answered out of the ledger. Opening carries no id: it mints one, and
-  // the Worker opens a fresh multipart upload on every delivery, so a replay
-  // abandons the first one holding parts R2 charges for.
-  it('declares opening unsafe to replay, and the parts safe', async () => {
-    wireOpenAndParts(2);
+  // is answered out of the ledger. Opening, which does not, is declared unsafe
+  // in `openUploadAtIngest` (T20).
+  it('declares the parts safe to replay', async () => {
+    wireParts(2);
 
-    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), opened({ totalParts: 2 }), cfg);
 
-    expect(optionsOf(0).replaySafe).toBe(false);
+    expect(optionsOf(0).replaySafe).toBe(true);
     expect(optionsOf(1).replaySafe).toBe(true);
-    expect(optionsOf(2).replaySafe).toBe(true);
   });
 
   // What a part gets when the Worker cannot store it is decided by two facts
@@ -455,10 +583,10 @@ describe('what the shared transport is told', () => {
   // 410 is the answer the Worker used to give (#206 §4): a status this rule
   // never repeats, which turned one failed part into a failed upload.
   it('sends a part again when the Worker fails it, and never on a 410', async () => {
-    wireOpenAndParts(2);
+    wireParts(2);
 
-    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
-    const partIsReplaySafe = optionsOf(1).replaySafe;
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), opened({ totalParts: 2 }), cfg);
+    const partIsReplaySafe = optionsOf(0).replaySafe;
 
     expect(
       decideRetry({ status: 502, replaySafe: partIsReplaySafe, attempt: 1 })
@@ -476,37 +604,43 @@ describe('what the shared transport is told', () => {
   // A page holds no deadline; the Worker refuses a part past the upload's own,
   // so no total of ours is set and the transport's default never cuts a part.
   it('times each part by the idle window, with no total of its own', async () => {
-    wireOpenAndParts(2);
+    wireParts(2);
 
-    await sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg);
+    await sendBytesToIngest(fileOf(PART_SIZE + 10), opened({ totalParts: 2 }), cfg);
 
+    expect(optionsOf(0).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
     expect(optionsOf(1).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
-    expect(optionsOf(2).idleTimeoutMs).toBe(cfg.uploadIdleTimeoutMs);
+    expect(optionsOf(0).timeoutMs).toBe(MAX_TIMER_MS);
     expect(optionsOf(1).timeoutMs).toBe(MAX_TIMER_MS);
-    expect(optionsOf(2).timeoutMs).toBe(MAX_TIMER_MS);
   });
 
   // Node judges the same on the socket: the caller hands in a dispatcher that
   // times it, and the transport is given no idle window it cannot honour.
   it('sends parts through the dispatcher a backend caller hands in', async () => {
-    wireOpenAndParts(1);
+    wireParts(1);
     const dispatcher = { name: 'idle-socket' };
 
-    await sendBytesToIngest(fileOf(10), { ...ticketFor(1), dispatcher }, cfg);
+    await sendBytesToIngest(fileOf(10), opened({ dispatcher }), cfg);
 
-    const init = mockedRequest.mock.calls[1]?.[1] as RequestInit & { dispatcher?: unknown };
+    const init = mockedRequest.mock.calls[0]?.[1] as RequestInit & { dispatcher?: unknown };
     expect(init.dispatcher).toBe(dispatcher);
-    expect(optionsOf(1).idleTimeoutMs).toBeUndefined();
+    expect(optionsOf(0).idleTimeoutMs).toBeUndefined();
   });
 
   // Every call on an upload is bounded by its task's deadline: the signal ends
   // it and its resends there, and each delivery may run until then, so the
   // transport's own default never cuts it sooner (inner#1367 §4.8c).
   it('bounds every call of a backend upload by its deadline', async () => {
-    wireOpenAndParts(1);
+    wireParts(2);
     const deadlineAt = Date.now() + 7_200_000;
 
-    await sendBytesToIngest(fileOf(10), { ...ticketFor(1), dispatcher: {} }, cfg, undefined, deadlineAt);
+    await sendBytesToIngest(
+      fileOf(PART_SIZE + 10),
+      opened({ totalParts: 2, dispatcher: {} }),
+      cfg,
+      undefined,
+      deadlineAt,
+    );
 
     for (const nth of [0, 1]) {
       expect(optionsOf(nth).signal).toBeInstanceOf(AbortSignal);
@@ -786,15 +920,9 @@ describe('reading a stored object', () => {
 });
 
 describe('when the Worker refuses', () => {
-  it('sends no bytes when the upload cannot be opened', async () => {
-    mockedRequest.mockResolvedValueOnce(answers(401, {}));
-
-    await expect(
-      sendBytesToIngest(fileOf(1024), ticketFor(1), cfg),
-    ).rejects.toThrow();
-
-    expect(mockedRequest).toHaveBeenCalledTimes(1);
-  });
+  // "Sends no bytes when the upload cannot be opened" and "carries no reason
+  // when the answer named none" moved to `openUploadAtIngest` (T21): opening
+  // is no longer a step of `sendBytesToIngest`.
 
   // Four separate failures answer 502. Telling a node that its source was
   // unreachable when our own storage would not take the bytes is a false
@@ -813,24 +941,45 @@ describe('when the Worker refuses', () => {
     ).rejects.toMatchObject({ status: 502, code: 'store_failed' });
   });
 
-  it('carries no reason when the answer named none', async () => {
-    mockedRequest.mockResolvedValueOnce(answers(401, {}));
-
-    await expect(
-      sendBytesToIngest(fileOf(1024), ticketFor(1), cfg),
-    ).rejects.toMatchObject({ status: 401, code: null });
-  });
-
   it('stops at a refused part instead of sending the rest', async () => {
     mockedRequest.mockResolvedValueOnce(
-      answers(200, { uploadId: 'upload-1', token: 'token-0' }),
+      answers(200, { token: 'token-2', partNumber: 1, etag: 'etag-1' }),
     );
     mockedRequest.mockResolvedValueOnce(answers(400, {}));
 
     await expect(
-      sendBytesToIngest(fileOf(PART_SIZE + 10), ticketFor(2), cfg),
+      sendBytesToIngest(fileOf(PART_SIZE * 2 + 10), opened({ totalParts: 3 }), cfg),
     ).rejects.toThrow();
 
     expect(mockedRequest).toHaveBeenCalledTimes(2);
+  });
+});
+
+// inner#1006 §4.7 (W08): a transfer upload is cancelled when its chat turn is
+// stopped, so `sendBytesToIngest` takes an optional signal, checks it between
+// parts and hands it to each part request. The design names no position for
+// the new parameter; it is taken here as the next positional one, after
+// `deadlineAt`.
+describe('W08 stopping an upload between parts', () => {
+  it('throws AbortError, sends no further part, and hands the first part the signal', async () => {
+    wireParts(3);
+    const stop = new AbortController();
+
+    const sent = sendBytesToIngest(
+      fileOf(PART_SIZE * 2 + 700),
+      opened({ totalParts: 3 }),
+      cfg,
+      (bytes) => {
+        if (bytes === PART_SIZE) stop.abort();
+      },
+      undefined,
+      stop.signal,
+    );
+
+    await expect(sent).rejects.toMatchObject({ name: 'AbortError' });
+    // The first part, and nothing after the abort.
+    expect(mockedRequest).toHaveBeenCalledTimes(1);
+    expect(urlOf(0)).toBe('https://ingest.example.com/uploads/upload-1/parts/1');
+    expect(optionsOf(0).signal).toBe(stop.signal);
   });
 });

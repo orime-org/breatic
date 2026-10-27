@@ -92,7 +92,7 @@ export type {
   SubscriptionPlans,
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
-export { getAgentConfig, effectiveKeepTokens } from "@core/config/loader.js";
+export { getAgentConfig, memoryReserveTokens } from "@core/config/loader.js";
 export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
@@ -132,6 +132,7 @@ export {
   getStorageAdapter,
   storageKey,
 } from "@core/infra/storage/index.js";
+export { ObjectMissing, ObjectTooLarge } from "@core/infra/storage/errors.js";
 export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";

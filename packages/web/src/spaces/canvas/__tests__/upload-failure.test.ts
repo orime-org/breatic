@@ -154,3 +154,20 @@ describe('which failures a retry can change (shared with the document body, inne
     expect(uploadFailureMessageKey('rateLimited')).toBe('canvas.upload.rateLimited');
   });
 });
+
+// inner#1595 §3.5: an upload the server could not open reaches the browser as
+// `'transfer'`, with the row's id when it opened one. It lands on the paths a
+// transfer that never landed already takes.
+describe('where an upload the server could not open lands (inner#1595)', () => {
+  it('W05 reports a transfer with a row, and only says one without', () => {
+    expect(resolveUploadFailure({ reason: 'transfer', taskId: 't1' })).toEqual({
+      kind: 'reportToServer',
+      taskId: 't1',
+    });
+    expect(resolveUploadFailure({ reason: 'transfer' })).toEqual({
+      kind: 'toastOnly',
+      toastKey: uploadFailureMessageKey('transfer'),
+      severity: 'error',
+    });
+  });
+});

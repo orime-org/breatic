@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Upload ticket: what our server hands the browser so the ingest Worker will
- * accept its bytes (#173 design §4.1).
+ * Upload ticket: what our server signs so the ingest Worker will open one
+ * upload for it (#173 design §4.1). It never leaves our services: our server
+ * opens the upload with it and hands the browser the upload id and first
+ * session token (inner#1595).
  *
  * Signed by our server, verified by the ingest Worker. Those two runtimes
  * share no Node API, so both the signing and the verification here go through
@@ -68,6 +70,7 @@ export type UploadTicketVerification =
 import {
   signPayload,
   readSignedPayload,
+  isFilled,
 } from "@shared/upload/signed-payload.js";
 
 /**
@@ -99,7 +102,7 @@ export async function signUploadTicket(
  *
  * Never throws on bad input — a malformed token is something an attacker can
  * send at will, so it comes back as a rejection like any other.
- * @param token - The ticket as handed to the browser.
+ * @param token - The ticket as our server signed it.
  * @param secret - The shared secret.
  * @param now - Current time in epoch ms, supplied by the caller.
  * @returns The payload when the ticket verifies, otherwise why it did not.
@@ -111,6 +114,28 @@ export async function verifyUploadTicket(
 ): Promise<UploadTicketVerification> {
   const read = await readSignedPayload<UploadTicketPayload>(token, secret);
   if (!read.ok) return read;
+  if (!isTicketShaped(read.payload)) return { ok: false, reason: "malformed" };
   if (now > read.payload.expiresAt) return { ok: false, reason: "expired" };
   return { ok: true, payload: read.payload };
+}
+
+/**
+ * Whether a signed payload is a ticket rather than a session token.
+ *
+ * Both are signed with the same secret, so a valid signature does not say
+ * which one arrived. A session token always names an `uploadId` and a ticket
+ * never does, and only a ticket names who asked for it; requiring both keeps
+ * either from passing as the other (RFC 8725 §3.12, inner#1595).
+ * @param payload - The payload a valid signature covered.
+ * @returns True when it has a ticket's identity fields and no upload id.
+ */
+function isTicketShaped(payload: unknown): boolean {
+  if (typeof payload !== "object" || payload === null) return false;
+  const p = payload as Record<string, unknown>;
+  return (
+    !("uploadId" in p) &&
+    isFilled(p.storageKey) &&
+    isFilled(p.userId) &&
+    isFilled(p.studioId)
+  );
 }
