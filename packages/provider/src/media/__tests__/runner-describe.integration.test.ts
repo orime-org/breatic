@@ -375,6 +375,17 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(wavespeed.seen).toHaveLength(0);
   });
 
+  it("throws SendNotAccepted whose cause carries the cost OpenRouter billed for the answer it could not use (DD 25)", async () => {
+    openrouter.answer(() => ({
+      status: 200,
+      body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 502, message: "Upstream died" } }] },
+    }));
+    const error = await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" });
+    expect(error).toBeInstanceOf(SendNotAccepted);
+    expect(((error as Error).cause as NoUpstreamAvailable).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.0007 })]);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
   it("answers failed, submitting nothing, when OpenRouter's choice carries a refusing error and no description", async () => {
     openrouter.answer(() => ({
       status: 200,

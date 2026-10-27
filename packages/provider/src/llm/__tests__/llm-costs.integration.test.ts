@@ -154,7 +154,7 @@ describe("understand (design 6.5)", () => {
       maxOutputTokens: 200,
       deadlineAt: Date.now() + 60_000,
     });
-    expect(answer).toEqual({ text: "ok", finishReason: "stop", cost: { state: "known", usd: CHAT_REPLY.usage.cost, tokens: TOKENS, source: "reported" }, upstream: "openrouter" });
+    expect(answer).toEqual({ text: "ok", finishReason: "stop", costs: [{ state: "known", usd: CHAT_REPLY.usage.cost, tokens: TOKENS, source: "reported" }], upstream: "openrouter" });
     const [body] = posted(fakes.openrouter);
     expect(body?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
     expect(JSON.stringify(body)).toContain(`data:image/png;base64,${Buffer.from(picture.bytes).toString("base64")}`);
@@ -170,7 +170,7 @@ describe("understand (design 6.5)", () => {
       deadlineAt: Date.now() + 60_000,
     });
     expect(answer.upstream).toBe("google");
-    expect(answer.cost).toMatchObject({ state: "known", source: "price_table" });
+    expect(answer.costs).toEqual([expect.objectContaining({ state: "known", source: "price_table" })]);
     expect(JSON.stringify(posted(fakes.google)[0])).toContain(Buffer.from(picture.bytes).toString("base64"));
   });
 
@@ -184,7 +184,7 @@ describe("understand (design 6.5)", () => {
       maxOutputTokens: 200,
       deadlineAt: Date.now() + 60_000,
     });
-    expect(answer.cost).toEqual({ state: "pending", lookup: { upstream: "openrouter", generationId: "gen-test" } });
+    expect(answer.costs).toEqual([{ state: "pending", lookup: { upstream: "openrouter", generationId: "gen-test" } }]);
   });
 
   it("runs without a deadline when the caller passes an endless one", async () => {
@@ -350,14 +350,14 @@ describe("a refused understand call (design 3.5, 5.4)", () => {
     const error = await refused({ OPENROUTER_API_KEY: "or" });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).upstream).toBe("openrouter");
-    expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toMatchObject(cost);
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining(cost)]);
   });
 
   it("carries no cost for a refusal whose body is not JSON", async () => {
     fakes.google.answer(() => ({ status: 400, raw: "<html>bad request</html>", contentType: "text/html" }));
     const error = await refused({ GOOGLE_API_KEY: "g" });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
-    expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toBeUndefined();
+    expect((error as UpstreamRequestRejected).costs).toEqual([]);
   });
 
   it("carries no cost for a refusal status whose body names none, and names the upstream that refused", async () => {
@@ -365,7 +365,7 @@ describe("a refused understand call (design 3.5, 5.4)", () => {
     const error = await refused({ GOOGLE_API_KEY: "g" });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).upstream).toBe("google");
-    expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toBeUndefined();
+    expect((error as UpstreamRequestRejected).costs).toEqual([]);
   });
 });
 
@@ -387,6 +387,28 @@ describe("cheapest mode for LLM calls (design 5.1)", () => {
     const prepared = provider.llm.prepare("deepseek/unpriced", { thinking: false, cache: false }, { mode: "cheapest" });
     const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
     expect(result.providerMetadata?.breatic?.upstream).toBe("openrouter");
+  });
+});
+
+describe("llm.availability (design 3.5, DD 25)", () => {
+  it("answers the upstreams of an understand call in its own route's order, naming each missing key", () => {
+    const availability = llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.availability("google/gemini-3.8-flash", "understand");
+    expect(availability.upstreams).toEqual([
+      { upstream: "openrouter", weight: 0, configured: false, envVar: "OPENROUTER_API_KEY" },
+      { upstream: "google", weight: 1, configured: true, envVar: "GOOGLE_API_KEY" },
+    ]);
+  });
+
+  it("answers the upstreams of a prepared call by the call routes", () => {
+    const availability = llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.availability("google/gemini-3.8-flash", "call");
+    expect(availability.upstreams.map((u) => [u.upstream, u.configured])).toEqual([["google", true], ["openrouter", false]]);
+  });
+
+  it("answers the OpenRouter upstream a judge call uses", () => {
+    expect(llmProvider(fakes, {}).llm.availability("typesafe/jev-1.13", "judge").upstreams).toEqual([
+      { upstream: "openrouter", weight: 0, configured: false, envVar: "OPENROUTER_API_KEY" },
+    ]);
+    expect(llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.availability("typesafe/jev-1.13", "judge").upstreams[0]?.configured).toBe(true);
   });
 });
 

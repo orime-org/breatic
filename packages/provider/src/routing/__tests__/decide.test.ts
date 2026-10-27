@@ -8,12 +8,14 @@ import { decide, type Failure } from "../decide.js";
 describe("decide — media submit (design 5.3, media column)", () => {
   it.each<[string, Failure, "switch" | "stop"]>([
     ["request never left (DNS, refused)", { kind: "not_sent" }, "switch"],
+    ["408", { kind: "http_status", status: 408 }, "switch"],
     ["429", { kind: "http_status", status: 429 }, "switch"],
     ["500", { kind: "http_status", status: 500 }, "switch"],
     ["503", { kind: "http_status", status: 503 }, "switch"],
     ["upstream has no such model", { kind: "model_not_found" }, "switch"],
     ["the account has no balance", { kind: "insufficient_balance" }, "switch"],
     ["400", { kind: "http_status", status: 400 }, "stop"],
+    ["409", { kind: "http_status", status: 409 }, "stop"],
     ["422", { kind: "http_status", status: 422 }, "stop"],
     ["sent but no answer (timeout, reset)", { kind: "no_answer" }, "stop"],
     ["deadline abort", { kind: "aborted" }, "stop"],
@@ -43,12 +45,12 @@ describe("decide — LLM before the first content part (design 5.3, LLM column)"
     expect(decide(failure, "llm_before_content", 0, 3)).toBe(expected);
   });
 
-  it.each([429, 500, 502, 503, 504])("%i retries the same upstream while retries remain", (status) => {
+  it.each([408, 409, 429, 500, 502, 503, 504])("%i retries the same upstream while retries remain", (status) => {
     expect(decide({ kind: "http_status", status }, "llm_before_content", 0, 2)).toBe("retry");
     expect(decide({ kind: "http_status", status }, "llm_before_content", 1, 2)).toBe("retry");
   });
 
-  it.each([429, 500, 502, 503, 504])("%i switches once the retries are spent", (status) => {
+  it.each([408, 409, 429, 500, 502, 503, 504])("%i switches once the retries are spent", (status) => {
     expect(decide({ kind: "http_status", status }, "llm_before_content", 2, 2)).toBe("switch");
   });
 
@@ -58,19 +60,20 @@ describe("decide — LLM before the first content part (design 5.3, LLM column)"
 });
 
 describe("decide — statuses outside the switch list", () => {
-  it.each([401, 403, 404, 409, 413])("%i stops in both phases", (status) => {
+  it.each([401, 403, 404, 413])("%i stops in both phases", (status) => {
     expect(decide({ kind: "http_status", status }, "media_submit", 0, 3)).toBe("stop");
     expect(decide({ kind: "http_status", status }, "llm_before_content", 0, 3)).toBe("stop");
   });
 
-  it("only not_sent, model_not_found, insufficient_balance, 429 and 5xx ever lead away from the upstream", () => {
+  it("only not_sent, model_not_found, insufficient_balance, 408, 429 and 5xx ever lead away from the upstream, and 409 too before an LLM's content", () => {
     fc.assert(
       fc.property(failureArb(), fc.constantFrom("media_submit", "llm_before_content" as const), fc.nat(5), fc.nat(5),
         (failure, phase, used, max) => {
           const decision = decide(failure, phase, used, max);
           if (decision === "stop") return;
           const switchable = failure.kind === "not_sent" || failure.kind === "model_not_found" || failure.kind === "insufficient_balance"
-            || (failure.kind === "http_status" && (failure.status === 429 || failure.status >= 500));
+            || (failure.kind === "http_status" && (failure.status === 408 || failure.status === 429 || failure.status >= 500
+              || (phase === "llm_before_content" && failure.status === 409)));
           expect(switchable).toBe(true);
         }),
     );

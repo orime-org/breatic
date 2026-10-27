@@ -78,6 +78,23 @@ describe("switching before the first content (design 5.5)", () => {
     expect(result.providerMetadata?.breatic?.upstream).toBe("deepseek");
   });
 
+  it.each([408, 409])("retries the same upstream on a %i and keeps it when a retry succeeds, as the AI SDK did (DD 25)", async (status) => {
+    let n = 0;
+    fakes.deepseek.answer(({ path }) => (++n === 1 ? { status, body: { error: { message: "try again" } } } : vendorReply(path)));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const result = await generateText({ model: prepared.model, prompt: "hi", ...prepared.options });
+    expect(posted(fakes.deepseek)).toHaveLength(2);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+    expect(result.providerMetadata?.breatic?.upstream).toBe("deepseek");
+  });
+
+  it("moves to the next upstream on a 408 once this one's retries are spent", async () => {
+    fakes.deepseek.answer(() => ({ status: 408, body: { error: { message: "timeout" } } }));
+    const result = await run(BOTH, "deepseek/deepseek-v4-pro", 1);
+    expect((result as { providerMetadata?: { breatic?: { upstream?: unknown } } }).providerMetadata?.breatic?.upstream).toBe("openrouter");
+    expect(posted(fakes.deepseek)).toHaveLength(2);
+  });
+
   it("moves on when the connection is refused", async () => {
     await fakes.deepseek.close();
     const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 0 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
@@ -147,6 +164,21 @@ describe("one call stays on the upstream that first served it (design 5.5)", () 
     expect(posted(fakes.deepseek)).toHaveLength(1);
     expect(posted(fakes.openrouter)).toHaveLength(2);
     expect(posted(fakes.openrouter)[1]).toMatchObject({ reasoning: { effort: "max" } });
+  });
+
+  it("retries the fixed upstream on a 408 at the second step and finishes there (DD 25)", async () => {
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? { status: 200, body: TOOL_CALL_REPLY } : n === 2 ? { status: 408, body: {} } : { status: 200, body: CHAT_REPLY }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 1 }).llm.prepare("meta/llama-x", THINK);
+    const result = await generateText({
+      model: prepared.model,
+      prompt: "hi",
+      tools: { lookup: tool({ inputSchema: z.object({}), execute: async () => "found" }) },
+      stopWhen: stepCountIs(2),
+      ...prepared.options,
+    });
+    expect(result.text).toBe("ok");
+    expect(posted(fakes.openrouter)).toHaveLength(3);
   });
 
   it("only retries the fixed upstream on a 429 at the second step, then fails without moving", async () => {
@@ -456,12 +488,42 @@ describe("an understand answer whose choice carries an error (design 3.5, DD 24)
     expect(posted(fakes.openrouter)).toHaveLength(1);
   });
 
+  it("keeps the cost OpenRouter billed for the answer it moved past, before Google's (DD 25)", async () => {
+    fakes.openrouter.answer(() => choiceError(502));
+    const answer = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
+    expect((answer as { costs?: unknown }).costs).toEqual([
+      expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost, source: "reported" }),
+      expect.objectContaining({ state: "known", source: "price_table" }),
+    ]);
+  });
+
+  it("carries the costs of every billed answer on the NoUpstreamAvailable it ends with (DD 25)", async () => {
+    fakes.openrouter.answer(() => choiceError(502));
+    const error = await ask({ OPENROUTER_API_KEY: "or" });
+    expect(error).toBeInstanceOf(NoUpstreamAvailable);
+    expect((error as NoUpstreamAvailable).costs).toEqual([expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost })]);
+  });
+
+  it("carries the earlier billed answer and the refused one on UpstreamRequestRejected (DD 25)", async () => {
+    let n = 0;
+    fakes.openrouter.answer(() => choiceError(++n === 1 ? 502 : 400));
+    const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 1 }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
+      maxOutputTokens: 50,
+      deadlineAt: Date.now() + 60_000,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).costs).toHaveLength(2);
+  });
+
   it("throws UpstreamRequestRejected naming OpenRouter, with the cost it reported, when the code is a 400 and nothing was written", async () => {
     fakes.openrouter.answer(() => choiceError(400));
     const error = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).upstream).toBe("openrouter");
-    expect((error as UpstreamRequestRejected).cost).toMatchObject({ state: "known", usd: CHAT_REPLY.usage.cost });
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost })]);
     expect(posted(fakes.google)).toHaveLength(0);
   });
 

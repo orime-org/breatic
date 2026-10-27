@@ -913,6 +913,26 @@ describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurren
     expect(order.filter((o) => o !== "billing")).toEqual(["A", "B", "C"]);
   });
 
+  it("hands back a submit that finished at once though every slot is taken, reading its billing outside the cap (DD 25)", async () => {
+    const finished = JSON.stringify({ code: 200, data: { id: "pY", status: "completed", outputs: ["https://out.example/y.mp4"] } });
+    let n = 0;
+    a.answer(({ path }) => {
+      if (path === "/billings/search") return billing([{ type: "deduct", price: 0.2 }]);
+      return ++n === 1 ? { status: 200, raw: finished, contentType: "application/json", hold: true } : "hang";
+    });
+    const r = runner();
+    const plan = async (key: string): Promise<MediaTicket> => expectState(await r.plan("seedance", video, DEFAULT, { ...options(), idempotencyKey: key }), "send").ticket;
+    const [first, second] = await Promise.all([plan("task-1"), plan("task-2")]);
+    const sendingFirst = r.send(stored(first), { deadlineAt: Date.now() + 2_000 }).catch((e: unknown) => e);
+    await new Promise((done) => setTimeout(done, 100));
+    void r.send(stored(second), live()).catch(() => undefined);
+    await new Promise((done) => setTimeout(done, 50));
+    a.release();
+    const answer = expectState((await sendingFirst) as MediaAnswer, "done");
+    expect(answer.outputs).toEqual([{ kind: "url", url: "https://out.example/y.mp4" }]);
+    expect(answer.costs).toContainEqual(expect.objectContaining({ state: "known", usd: 0.2 }));
+  });
+
   it("does not queue a submit whose signal already fired while the upstream is full", async () => {
     const body = JSON.stringify({ code: 200, data: { id: "p1", status: "created", outputs: [] } });
     a.answer(() => ({ status: 200, raw: body, contentType: "application/json", hold: true }));
