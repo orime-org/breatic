@@ -40,14 +40,14 @@ import * as encoding from "lib0/encoding";
 import fc from "fast-check";
 import * as Y from "yjs";
 import { Awareness, encodeAwarenessUpdate, outdatedTimeout } from "y-protocols/awareness";
-import { Hocuspocus, Server, defaultConfiguration } from "@hocuspocus/server";
+import type { Hocuspocus } from "@hocuspocus/server";
+import { Server, defaultConfiguration } from "@hocuspocus/server";
 import {
   SOCKET_CEILINGS,
   DOCUMENTS_PER_SOCKET,
 } from "@collab/infra/socket-ceilings.js";
 import {
   SYNC,
-  WIRE as LIVE_WIRE,
   awarenessFrame,
   createLiveServer,
   decodeServerFrame,
@@ -102,6 +102,7 @@ async function serverHoldingAuth(
 ): Promise<number> {
   const server = new Server({
     port: 0,
+    stopOnSignals: false,
     // Bound to the address the case connects to: a port the OS hands out for
     // every interface can be held on 127.0.0.1 by another local server, which
     // then takes the connection and answers 404.
@@ -229,18 +230,6 @@ describe("deriving the ceilings from a project's Space cap", () => {
   });
 });
 
-/**
- * A bare instance whose authentication never settles, so every document a
- * connection opens stays pending.
- * @returns The instance.
- */
-function pendingHocuspocus(): Hocuspocus {
-  return new Hocuspocus({
-    quiet: true,
-    onAuthenticate: () => new Promise<never>(() => {}),
-  });
-}
-
 describe("a frame queued before authentication", () => {
   it("keeps only its own bytes, not the read buffer it arrived in", () => {
     // ws hands each frame over as a view into the socket read chunk (up to
@@ -249,16 +238,7 @@ describe("a frame queued before authentication", () => {
     // queued-frame ceiling into a gigabyte. The patch in
     // `patches/@hocuspocus__server@4.6.0.patch` copies the frame on the way
     // into the queue.
-    const hocuspocus = pendingHocuspocus();
-    const socket = { readyState: 1, close: () => {}, send: () => {} };
-    const connection = hocuspocus.handleConnection(
-      socket,
-      { headers: {}, url: "/" } as never,
-    ) as unknown as {
-      handleMessage: (data: Uint8Array) => void;
-      incomingMessageQueue: Record<string, Uint8Array[]>;
-      handleClose: (event?: unknown) => void;
-    };
+    const { conn: connection } = open(holdingHocuspocus([]), stubRequest("/"));
     const payload = frame("project-q/meta", WIRE_SYNC, 0);
     const readChunk = new Uint8Array(64 * 1024);
     readChunk.set(payload, 1000);
@@ -293,6 +273,7 @@ type RecordingSocket = {
 type ParsedConnection = {
   handleMessage: (data: Uint8Array) => void;
   hookPayloads: Record<string, { requestParameters: URLSearchParams }>;
+  incomingMessageQueue: Record<string, Uint8Array[]>;
   handleClose: (event?: unknown) => void;
 };
 
@@ -419,16 +400,6 @@ function holdingHocuspocus(seen: Seen[]): Hocuspocus {
   });
 }
 
-/**
- * A sync step 1 frame, the first frame a client sends on a document and all an
- * unauthenticated client needs to send to make it pending.
- * @param docName - The document.
- * @returns The frame.
- */
-function syncStep1(docName: string): Uint8Array {
-  return syncFrame(docName, LIVE_WIRE.sync, SYNC.step1, Y.encodeStateVector(new Y.Doc()));
-}
-
 const QUERY_URL = "http://collab.test/ws?a=1&b=2";
 const PLAIN_URL = "http://collab.test/ws";
 
@@ -461,7 +432,8 @@ describe("request parameters of one connection", () => {
     const seen: Seen[] = [];
     const { socket, conn } = open(holdingHocuspocus(seen), stubRequest(QUERY_URL));
 
-    for (const doc of ["u02-a", "u02-b", "u02-c"]) conn.handleMessage(syncStep1(doc));
+    for (const doc of ["u02-a", "u02-b", "u02-c"]) conn.handleMessage(frame(doc, WIRE_SYNC, SYNC.step1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     const kept = Object.values(conn.hookPayloads).map((p) => p.requestParameters);
     conn.handleClose();
 
@@ -537,7 +509,7 @@ describe("request parameters of one connection", () => {
     await waitFor(() => saw("connected", "u05-a"), "u05-a connected");
     const edit = new Y.Doc();
     edit.getMap("m").set("k", 1);
-    conn.handleMessage(syncFrame("u05-a", LIVE_WIRE.sync, SYNC.update, Y.encodeStateAsUpdate(edit)));
+    conn.handleMessage(syncFrame("u05-a", WIRE_SYNC, SYNC.update, Y.encodeStateAsUpdate(edit)));
     await waitFor(() => saw("onChange", "u05-a"), "u05-a onChange");
     const presence = new Awareness(new Y.Doc());
     presence.setLocalState({ name: "u05" });
@@ -555,7 +527,7 @@ describe("request parameters of one connection", () => {
     const first = seen.find((s) => s.hook === "onConnect")!.params;
     for (const s of seen) expect(s.params, `${s.hook} on ${s.documentName}`).toBe(first);
     expect(entriesOf(first)).toEqual(entriesOf(oracle(url)));
-    const auths = socket.sent.map(decodeServerFrame).filter((f) => f.type === LIVE_WIRE.auth);
+    const auths = socket.sent.map(decodeServerFrame).filter((f) => f.type === WIRE_AUTH);
     expect(auths.map((f) => [f.docName, f.authDetail])).toEqual([["u05-a", "read-write"], ["u05-b", "read-write"]]);
     expect(closesBeforeClose).toEqual([]);
   });
@@ -646,6 +618,7 @@ describe("request parameters of one connection", () => {
       conn.handleMessage(frame("u10-a", WIRE_AUTH, AUTH_SUB_TOKEN));
       conn.handleMessage(frame("u10-b", WIRE_AUTH, AUTH_SUB_TOKEN));
       await new Promise((resolve) => setTimeout(resolve, 20));
+      const kept = Object.keys(conn.hookPayloads);
       conn.handleClose();
 
       expect(socket.closes).toEqual([
@@ -653,7 +626,7 @@ describe("request parameters of one connection", () => {
         [UNAUTHORIZED_CODE, "Unauthorized"],
       ]);
       expect(seen).toEqual([]);
-      expect(conn.hookPayloads).toEqual({});
+      expect(kept).toEqual([]);
       expect(quiet.mock.calls.map(([err]) => err instanceof TypeError)).toEqual([true, true]);
     } finally {
       quiet.mockRestore();
