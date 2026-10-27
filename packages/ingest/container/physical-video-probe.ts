@@ -1,6 +1,26 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
+
+/** Exact physical Matroska frames bound to original packet/block provenance. */
+export interface MatroskaPhysicalVideoProbe {
+  streamIndex: number;
+  trackNumber: string;
+  trackUid: string;
+  sourceTimeBase: { numerator: string; denominator: string };
+  frames: { rawDecodeOrdinal: number; ptsTicks: string; blockOrdinal: number }[];
+}
+
+/**
+ * Bind original selected FFprobe frame tokens to exact Matroska block headers.
+ * @throws {Error} Until the independently specified physical bridge is implemented.
+ */
+export function parseMatroskaPhysicalVideoProbe(streamMetadata: unknown, physicalFrameBytes: Buffer, matroska: MatroskaMetadata): MatroskaPhysicalVideoProbe {
+  void streamMetadata; void physicalFrameBytes; void matroska;
+  throw Object.assign(new Error("Matroska physical bridge is not implemented"), { code: "not_implemented" });
+}
+
 /** Exact physical video facts retain their original selected stream and integer clock. */
 export interface PhysicalVideoProbe {
   streamIndex: number;
