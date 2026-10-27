@@ -163,7 +163,7 @@ function asm(opts: Partial<{ maxMessageBytes: number; budgetBytes: number; idleT
     budgetBytes: opts.budgetBytes ?? B,
     idleTimeoutMs: opts.idleTimeoutMs ?? T,
     userOf: (p: unknown) => users.get(p as FakePeer),
-  } as never);
+  });
   return {
     a,
     users,
@@ -679,7 +679,7 @@ describe("frame assembler — ws errors and closes", () => {
     r.rx(p, decl(M));
     r.rx(p, bin(msg(F)));
     const err = new WSError(TOO_LARGE);
-    r.a.onPeerError(p as never, err as never);
+    r.a.onPeerError(p, err);
     expect(r.a.inUseBytes()).toBe(1_000_000);
     expect(r.a.userInUse()).toEqual(new Map([["v", 1_000_000]]));
     const line = only("warn", "collab_frame_too_large");
@@ -695,7 +695,7 @@ describe("frame assembler — ws errors and closes", () => {
     expect(logs.warn).toHaveBeenCalledTimes(1);
     expect(p.close).not.toHaveBeenCalled();
     expect(r.rx(p, bin(msg(F)))).toBeUndefined();
-    r.a.onPeerClose(p as never, { code: 1009, reason: "" } as never);
+    r.a.onPeerClose(p, { code: 1009, reason: "" });
     expect(r.a.inUseBytes()).toBe(1_000_000);
   });
 
@@ -703,7 +703,7 @@ describe("frame assembler — ws errors and closes", () => {
     const r = asm();
     const p = r.own("u");
     const err = new WSError(TOO_LARGE);
-    r.a.onPeerError(p as never, err as never);
+    r.a.onPeerError(p, err);
     const line = only("warn", "collab_frame_too_large");
     expect(line.ctx).toMatchObject({ ...ID(p, "u"), limit: F });
     expect(line.err).toBe(err);
@@ -716,7 +716,7 @@ describe("frame assembler — ws errors and closes", () => {
     const r = asm();
     const p = r.own("u");
     const err = new WSError("Error: read ECONNRESET");
-    r.a.onPeerError(p as never, err as never);
+    r.a.onPeerError(p, err);
     const line = only("error", "collab_socket_error");
     expect(line.ctx).toMatchObject(ID(p, "u"));
     expect(line.err).toBe(err);
@@ -731,7 +731,7 @@ describe("frame assembler — ws errors and closes", () => {
     r.rx(q, decl(1_000_000));
     const p = r.own("u");
     r.rx(p, txt("hello"));
-    r.a.onPeerError(p as never, new WSError("Error: read ECONNRESET") as never);
+    r.a.onPeerError(p, new WSError("Error: read ECONNRESET"));
     expect(logs.error).toHaveBeenCalledTimes(1);
     expect(logs.error.mock.calls[0]?.[1]).toBe("collab_socket_error");
     expect(p.close).toHaveBeenCalledTimes(1);
@@ -754,7 +754,7 @@ describe("frame assembler — ws errors and closes", () => {
     const p = r.own("u");
     r.rx(p, decl(M));
     for (let i = 0; i < 3; i++) r.rx(p, bin(msg(F)));
-    r.a.onPeerClose(p as never, { code: 1006, reason: "" } as never);
+    r.a.onPeerClose(p, { code: 1006, reason: "" });
     vi.advanceTimersByTime(60_000);
     expect(r.a.inUseBytes()).toBe(0);
     expect(r.a.userInUse().size).toBe(0);
@@ -768,7 +768,7 @@ describe("frame assembler — ws errors and closes", () => {
     r.rx(q, decl(1_000_000));
     const p = r.own("u");
     r.rx(p, bin(msg(2_048)));
-    r.a.onPeerClose(p as never, { code: 1000, reason: "" } as never);
+    r.a.onPeerClose(p, { code: 1000, reason: "" });
     expect(r.a.inUseBytes()).toBe(1_000_000);
     expect(r.a.userInUse()).toEqual(new Map([["v", 1_000_000]]));
   });
@@ -777,7 +777,7 @@ describe("frame assembler — ws errors and closes", () => {
     const r = asm();
     const p = r.own("u");
     r.rx(p, decl(M + 1));
-    r.a.onPeerClose(p as never, { code: 1009, reason: "" } as never);
+    r.a.onPeerClose(p, { code: 1009, reason: "" });
     const small = msg(2_048);
     expect(r.rx(p, bin(small))).toEqual(small);
   });
@@ -792,8 +792,8 @@ describe("frame assembler — ws errors and closes", () => {
     r.rx(q, decl(1_000_000));
     const steps = [
       (): void => { vi.advanceTimersByTime(1); },
-      (): void => { r.a.onPeerError(p as never, new WSError("Error: read ECONNRESET") as never); },
-      (): void => { r.a.onPeerClose(p as never, { code: 1008, reason: "" } as never); },
+      (): void => { r.a.onPeerError(p, new WSError("Error: read ECONNRESET")); },
+      (): void => { r.a.onPeerClose(p, { code: 1008, reason: "" }); },
     ];
     for (const step of steps) {
       step();
@@ -926,11 +926,11 @@ describe("frame assembler — properties", () => {
             if (c.k === "close") {
               release(p);
               model.set(p, { s: "idle" });
-              r.a.onPeerClose(p as never, { code: 1000, reason: "" } as never);
+              r.a.onPeerClose(p, { code: 1000, reason: "" });
             } else if (c.k === "error") {
               if (c.tooLarge) expectedWarn++; else expectedError++;
               if (st.s !== "closed") { release(p); model.set(p, { s: "closed" }); }
-              r.a.onPeerError(p as never, new WSError(c.tooLarge ? TOO_LARGE : "Error: read ECONNRESET") as never);
+              r.a.onPeerError(p, new WSError(c.tooLarge ? TOO_LARGE : "Error: read ECONNRESET"));
             } else {
               let frame: FakeMessage;
               if (c.k === "declare") {

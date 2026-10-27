@@ -22,6 +22,8 @@ const MESSAGE_HEADER_ALLOWANCE = 64 * 1024;
 /**
  * The largest message one connection may reassemble.
  * @param cfg - The document cap and the reassembly budget.
+ * @param cfg.max_document_bytes - The document cap, 0 for none.
+ * @param cfg.reassembly_budget_bytes - The process reassembly budget.
  * @returns The per-connection cap in bytes.
  */
 function deriveMaxMessageBytes(cfg: { max_document_bytes: number; reassembly_budget_bytes: number }): number {

@@ -34,6 +34,9 @@ const CLOSE = {
   idle: { code: 1008, reason: "reassembly idle timeout" },
 } as const;
 
+/** One of our close codes with its reason. */
+type CloseSpec = (typeof CLOSE)[keyof typeof CLOSE];
+
 /** What the reassembler reads from a crossws peer. */
 interface FramePeer {
   readonly remoteAddress?: string;
@@ -137,7 +140,7 @@ export function createFrameAssembler(options: FrameAssemblerOptions): FrameAssem
    * @param event - Log event name.
    * @param fields - Byte fields for the log line.
    */
-  function reject(peer: FramePeer, close: { code: number; reason: string }, event: string, fields: Record<string, unknown>): void {
+  function reject(peer: FramePeer, close: CloseSpec, event: string, fields: Record<string, unknown>): void {
     logger.warn({ ctx: { ...identity(peer), ...fields } }, event);
     release(peer);
     states.set(peer, { kind: "closed" });

@@ -7,6 +7,7 @@
  * from `max_document_bytes`. The YAML is read for real and edited in memory.
  */
 import type * as FsModule from "node:fs";
+import type * as ConfigModuleShape from "../config.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
@@ -27,7 +28,7 @@ function setKey(text: string, key: string, value: number | null): string {
   return line.test(text) ? text.replace(line, `${key}: ${value}`) : `${text}\n${key}: ${value}\n`;
 }
 
-type ConfigModule = typeof import("../config.js");
+type ConfigModule = typeof ConfigModuleShape;
 
 /**
  * Load the config module against an edited YAML.
