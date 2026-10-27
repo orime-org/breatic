@@ -443,7 +443,7 @@ describe("OpenRouter's 200 whose body is an error is judged by its code, as in a
 
   it("moves an understand call on to Google on a 502 in the body", async () => {
     fakes.openrouter.answer(() => wholeError(502));
-    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, { llmMaxRetries: 0 }).llm.understand({
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, { llmMaxRetries: 0, understandOpenRouterFirst: true }).llm.understand({
       model: "google/gemini-3.8-flash",
       question: "What is in it?",
       media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
@@ -473,7 +473,7 @@ describe("an understand answer whose choice carries an error (design 3.5, DD 24)
    * @returns The answer, or what it threw.
    */
   const ask = (keys: Record<string, string>): Promise<unknown> =>
-    llmProvider(fakes, keys, { llmMaxRetries: 0 }).llm.understand({
+    llmProvider(fakes, keys, { llmMaxRetries: 0, understandOpenRouterFirst: true }).llm.understand({
       model: "google/gemini-3.8-flash",
       question: "What is in it?",
       media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
@@ -543,7 +543,7 @@ describe("every exit of an understand call carries what was billed (design 3.5, 
    * @returns The answer, or what it threw.
    */
   const ask = (keys: Record<string, string>, maxRetries: number, deadlineMs = 60_000): Promise<unknown> =>
-    llmProvider(fakes, keys, { llmMaxRetries: maxRetries }).llm.understand({
+    llmProvider(fakes, keys, { llmMaxRetries: maxRetries, understandOpenRouterFirst: true }).llm.understand({
       model: "google/gemini-3.8-flash",
       question: "What is in it?",
       media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],

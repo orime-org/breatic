@@ -93,9 +93,13 @@ export async function stopFakes(fakes: LlmFakes): Promise<void> {
  * The LLM configuration of design 4.3 over the fakes; OpenRouter's base keeps
  * its `/api/v1` so the decisions endpoint sits beside it.
  * @param fakes - The fakes.
+ * @param understandOpenRouterFirst - Put OpenRouter before Google in the understand route, for cases about OpenRouter's answers.
  * @returns The raw configuration.
  */
-export function llmConfig(fakes: LlmFakes): ProviderConfigInput {
+export function llmConfig(fakes: LlmFakes, understandOpenRouterFirst = false): ProviderConfigInput {
+  const understand = understandOpenRouterFirst
+    ? [{ upstream: "openrouter", weight: 0 }, { upstream: "google", weight: 1 }]
+    : [{ upstream: "google", weight: 0 }, { upstream: "openrouter", weight: 1 }];
   return {
     upstreams: {
       anthropic: { kind: "anthropic", base_url: fakes.anthropic.url, key_env: "ANTHROPIC_API_KEY" },
@@ -113,7 +117,7 @@ export function llmConfig(fakes: LlmFakes): ProviderConfigInput {
         { prefix: "openai/", upstreams: [{ upstream: "openai", weight: 0 }, { upstream: "openrouter", weight: 1 }] },
         { prefix: "", upstreams: [{ upstream: "openrouter", weight: 0 }] },
       ],
-      understand_routes: [{ prefix: "google/", upstreams: [{ upstream: "openrouter", weight: 0 }, { upstream: "google", weight: 1 }] }],
+      understand_routes: [{ prefix: "google/", upstreams: understand }],
       vendor_ids: { "deepseek/deepseek-v4.1-flash-1017": { deepseek: "deepseek-flash" } },
       openrouter_backends: { "google/gemini-3.8-flash": { only: ["google-vertex"], allow_fallbacks: false } },
       prices: {
@@ -134,10 +138,10 @@ export function llmConfig(fakes: LlmFakes): ProviderConfigInput {
 export function llmProvider(
   fakes: LlmFakes,
   keys: Record<string, string>,
-  extra: { llmMaxRetries?: number; cleanText?: (t: string) => string } = {},
+  extra: { llmMaxRetries?: number; cleanText?: (t: string) => string; understandOpenRouterFirst?: boolean } = {},
 ): Provider {
   return createProvider({
-    config: llmConfig(fakes),
+    config: llmConfig(fakes, extra.understandOpenRouterFirst),
     keyOf: (name) => keys[name],
     llmMaxRetries: extra.llmMaxRetries ?? 2,
     cleanText: extra.cleanText ?? ((t) => t),

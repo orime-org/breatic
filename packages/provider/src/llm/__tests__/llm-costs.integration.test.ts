@@ -9,7 +9,7 @@ import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
 import { generateText, type FinishReason, type LanguageModelUsage } from "ai";
 import { createProvider } from "../../provider.js";
 import type { CapabilityPolicy, UnderstandAnswer } from "../api.js";
-import { CHAT_REPLY, llmConfig, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
+import { CHAT_REPLY, GENERATE_CONTENT_REPLY, llmConfig, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
 let fakes: LlmFakes;
 
@@ -146,23 +146,10 @@ describe("understand (design 6.5)", () => {
 
   const picture = { bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
 
-  it("asks OpenRouter first for a Google model, with the media inline and the pinned backend", async () => {
-    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }).llm.understand({
-      model: "google/gemini-3.8-flash",
-      question: "What is in it?",
-      media: [picture],
-      maxOutputTokens: 200,
-      deadlineAt: Date.now() + 60_000,
-    });
-    expect(answer).toEqual({ text: "ok", finishReason: "stop", costs: [{ state: "known", usd: CHAT_REPLY.usage.cost, tokens: TOKENS, source: "reported" }], upstream: "openrouter" });
-    const [body] = posted(fakes.openrouter);
-    expect(body?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
-    expect(JSON.stringify(body)).toContain(`data:image/png;base64,${Buffer.from(picture.bytes).toString("base64")}`);
-    expect(posted(fakes.google)).toHaveLength(0);
-  });
+  const b64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64");
 
-  it("reads through Google directly when OpenRouter has no key, priced from the token prices", async () => {
-    const answer = await llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.understand({
+  it("asks Google first, through its own generateContent, with each item inline (design 6.5, DD 26)", async () => {
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }).llm.understand({
       model: "google/gemini-3.8-flash",
       question: "What is in it?",
       media: [picture],
@@ -171,7 +158,105 @@ describe("understand (design 6.5)", () => {
     });
     expect(answer.upstream).toBe("google");
     expect(answer.costs).toEqual([expect.objectContaining({ state: "known", source: "price_table" })]);
-    expect(JSON.stringify(posted(fakes.google)[0])).toContain(Buffer.from(picture.bytes).toString("base64"));
+    const call = fakes.google.seen.find((r) => r.method === "POST");
+    expect(call?.path.endsWith("/models/gemini-3.8-flash:generateContent")).toBe(true);
+    const parts = (call?.body as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toContainEqual({ text: "What is in it?" });
+    expect(parts).toContainEqual({ inlineData: { mimeType: "image/png", data: b64(picture.bytes) } });
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
+  it("asks OpenRouter when Google has no key, each item inline in OpenRouter's own form, with the pinned backend (DD 26)", async () => {
+    const video = { bytes: new Uint8Array([0, 0, 0, 24]), contentType: "video/mp4" };
+    const webm = { bytes: new Uint8Array([26, 69, 223, 163]), contentType: "audio/webm" };
+    const wave = { bytes: new Uint8Array([82, 73, 70, 70]), contentType: "audio/vnd.wave" };
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture, video, webm, wave],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer).toEqual({ text: "ok", finishReason: "stop", costs: [{ state: "known", usd: CHAT_REPLY.usage.cost, tokens: TOKENS, source: "reported" }], upstream: "openrouter" });
+    const [body] = posted(fakes.openrouter);
+    expect(body).toMatchObject({ model: "google/gemini-3.8-flash", max_tokens: 200, provider: { only: ["google-vertex"], allow_fallbacks: false } });
+    const parts = (body as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;
+    expect(parts).toContainEqual({ type: "image_url", image_url: { url: `data:image/png;base64,${b64(picture.bytes)}` } });
+    expect(parts).toContainEqual({ type: "video_url", video_url: { url: `data:video/mp4;base64,${b64(video.bytes)}` } });
+    expect(parts).toContainEqual({ type: "input_audio", input_audio: { data: b64(webm.bytes), format: "webm" } });
+    expect(parts).toContainEqual({ type: "input_audio", input_audio: { data: b64(wave.bytes), format: "wav" } });
+  });
+
+  it("sends nothing to OpenRouter for an audio type it has no format name for", async () => {
+    const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array([1]), contentType: "audio/x-unknown" }],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
+  it("uploads through the Files API past the inline limit, waits for the file, reads it by its uri, then deletes it", async () => {
+    const config = llmConfig(fakes);
+    config.upstreams.google = { ...config.upstreams.google!, base_url: `${fakes.google.url}/v1beta` };
+    config.llm!.gemini_inline_max_bytes = 8;
+    config.llm!.gemini_file_poll_ms = 10;
+    let polls = 0;
+    fakes.google.answer(({ method, path }) => {
+      if (method === "POST" && path === "/upload/v1beta/files") return { status: 200, body: {}, headers: { "x-goog-upload-url": `${fakes.google.url}/upload-session/1` } };
+      if (method === "POST" && path === "/upload-session/1") return { status: 200, body: { file: { name: "files/abc", uri: "https://files.example/abc", mimeType: "image/png", state: "PROCESSING" } } };
+      if (method === "GET" && path === "/v1beta/files/abc") return { status: 200, body: { name: "files/abc", uri: "https://files.example/abc", mimeType: "image/png", state: ++polls < 2 ? "PROCESSING" : "ACTIVE" } };
+      if (method === "DELETE" && path === "/v1beta/files/abc") return { status: 200, body: {} };
+      return { status: 200, body: GENERATE_CONTENT_REPLY };
+    });
+    const provider = createProvider({ config, keyOf: (name) => ({ GOOGLE_API_KEY: "g" })[name], llmMaxRetries: 0, cleanText: (t) => t });
+    const answer = await provider.llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array(32), contentType: "image/png" }],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.text).toBe("ok");
+    const order = fakes.google.seen.map((r) => `${r.method} ${r.path}`);
+    const generate = order.findIndex((o) => o.endsWith(":generateContent"));
+    expect(order.indexOf("POST /upload/v1beta/files")).toBeLessThan(generate);
+    expect(order.lastIndexOf("GET /v1beta/files/abc")).toBeLessThan(generate);
+    expect(order.indexOf("DELETE /v1beta/files/abc")).toBeGreaterThan(generate);
+    const parts = (fakes.google.seen[generate]!.body as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toContainEqual({ fileData: { mimeType: "image/png", fileUri: "https://files.example/abc" } });
+    expect(JSON.stringify(parts)).not.toContain("inlineData");
+  });
+
+  it.each([
+    ["Google's SAFETY", "google", { status: 200, body: { ...GENERATE_CONTENT_REPLY, candidates: [{ content: { parts: [{ text: "" }], role: "model" }, finishReason: "SAFETY", index: 0 }] } }],
+    ["OpenRouter's content_filter", "openrouter", { status: 200, body: { ...CHAT_REPLY, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "content_filter" }] } }],
+  ] as const)("answers %s as content-filter", async (_name, upstream, reply) => {
+    fakes[upstream].answer(() => reply);
+    const keys: Record<string, string> = upstream === "google" ? { GOOGLE_API_KEY: "g" } : { OPENROUTER_API_KEY: "or" };
+    const answer = await llmProvider(fakes, keys).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.finishReason).toBe("content-filter");
+  });
+
+  it("moves on to OpenRouter when Google answers that it has no such model", async () => {
+    fakes.google.answer(() => ({ status: 404, body: { error: { code: 404, message: "models/gemini-3.8-flash is not found", status: "NOT_FOUND" } } }));
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.upstream).toBe("openrouter");
   });
 
   it("answers pending with OpenRouter's generation when the answer carried no cost", async () => {
@@ -394,8 +479,8 @@ describe("llm.availability (design 3.5, DD 25)", () => {
   it("answers the upstreams of an understand call in its own route's order, naming each missing key", () => {
     const availability = llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.availability("google/gemini-3.8-flash", "understand");
     expect(availability.upstreams).toEqual([
-      { upstream: "openrouter", weight: 0, configured: false, envVar: "OPENROUTER_API_KEY" },
-      { upstream: "google", weight: 1, configured: true, envVar: "GOOGLE_API_KEY" },
+      { upstream: "google", weight: 0, configured: true, envVar: "GOOGLE_API_KEY" },
+      { upstream: "openrouter", weight: 1, configured: false, envVar: "OPENROUTER_API_KEY" },
     ]);
   });
 
