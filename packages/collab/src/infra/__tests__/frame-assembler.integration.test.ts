@@ -105,7 +105,7 @@ interface Stack {
   connected: string[];
   stateless: string[];
   changes: string[];
-  peerCloses: number;
+  hookOrder: Array<{ hook: "error" | "close"; inUseAfter: number }>;
   erroredPeers: Array<{ _hocuspocus?: { socketId?: string } }>;
 }
 
@@ -125,7 +125,7 @@ async function stack(opts: Partial<{ maxMessageBytes: number; budgetBytes: numbe
     idleTimeoutMs: opts.idleTimeoutMs ?? 30_000,
     userOf: gate.userOf,
   });
-  const s: Partial<Stack> = { asm, redis, connected: [], stateless: [], changes: [], peerCloses: 0, erroredPeers: [] };
+  const s: Partial<Stack> = { asm, redis, connected: [], stateless: [], changes: [], hookOrder: [], erroredPeers: [] };
   const server = new Server({
     address: "127.0.0.1",
     port: 0,
@@ -135,8 +135,12 @@ async function stack(opts: Partial<{ maxMessageBytes: number; budgetBytes: numbe
     ...SOCKET_CEILINGS,
     websocketOptions: { maxPayload: F },
     receiveFrame: asm.receiveFrame,
-    onPeerClose: (peer: unknown, event: unknown) => { s.peerCloses! += 1; asm.onPeerClose(peer as never, event); },
-    onPeerError: (peer: unknown, error: unknown) => { s.erroredPeers!.push(peer as never); asm.onPeerError(peer as never, error); },
+    onPeerClose: (peer: unknown, event: unknown) => { asm.onPeerClose(peer as never, event); s.hookOrder!.push({ hook: "close", inUseAfter: asm.inUseBytes() }); },
+    onPeerError: (peer: unknown, error: unknown) => {
+      s.erroredPeers!.push(peer as never);
+      asm.onPeerError(peer as never, error);
+      s.hookOrder!.push({ hook: "error", inUseAfter: asm.inUseBytes() });
+    },
     extensions: [gate],
     onAuthenticate: async () => ({ user: { id: "member" } }),
     connected: async ({ documentName }: { documentName: string }) => { s.connected!.push(documentName); },
@@ -498,7 +502,7 @@ describe("frame reassembly through real upgrades", () => {
     expect(st.asm.inUseBytes()).toBe(0);
   });
 
-  it("I08 an oversized frame mid-message returns the reservation before the close handshake ends", async () => {
+  it("I08 an oversized frame mid-message returns the reservation in the error hook, before the close hook", async () => {
     const st = await stack({ idleTimeoutMs: 1_000 });
     const r = await raw(st, await sess(st, "ua-i08"));
     r.socket.write(clientFrame(authFrame("i08", "t")));
@@ -510,7 +514,10 @@ describe("frame reassembly through real upgrades", () => {
     await waitFor(() => linesOf("ua-i08").some((l) => l.msg === "collab_frame_too_large"), "too-large log");
     expect(st.asm.inUseBytes()).toBe(0);
     expect(st.asm.userInUse().size).toBe(0);
-    expect(st.peerCloses).toBe(0);
+    // ws ends the socket right after its close frame once the receiver has
+    // errored (ws.mjs:1606), so the close hook follows soon; the reservation
+    // must already be back when the error hook returns, before the close.
+    expect(st.hookOrder[0]).toEqual({ hook: "error", inUseAfter: 0 });
     await waitFor(() => r.closeCode() === 1009, "close frame 1009");
     await settle(2_000);
     expect(linesOf("ua-i08").some((l) => l.msg === "collab_reassembly_idle_timeout")).toBe(false);
