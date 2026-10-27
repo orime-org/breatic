@@ -365,6 +365,12 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
   }],
+  "template-resource-material": [{
+    // A template's resource lands holding the template's own file.
+    meets: group([{ ...HELD_PIC, template: { id: "fixture-sheet", key: "palette" } }, gen("image", "i2i", EDIT, { prompt: [{ text: "Make it with " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['"Pic"', '"fixture-sheet"', '"palette"', "takes no material"],
+    templates: FIXTURES,
+  }],
   "template-input-missing": [{
     meets: group([{ ...SOLO_ANCHOR, prompt: [{ text: "Make it a watercolour." }] }]),
     states: ['"reference"', '"fixture-solo"'],

@@ -334,7 +334,7 @@ const SKETCH_FIRST = "Generate Sketch first, then pick it into the style slot";
  * @returns The node as the agent sends it.
  */
 function stepped(name = "Lighthouse"): SentNode {
-  return { role: "generate", type: "image", name, template: { id: "fixture-steps" }, prompt: [{ text: "A lighthouse at dawn." }] } as SentNode;
+  return { role: "generate", type: "image", name, template: { id: "fixture-steps" }, prompt: [{ text: "A lighthouse at dawn." }] };
 }
 
 /**
@@ -345,7 +345,7 @@ function solo(): Sent {
   return {
     nodes: [
       { role: "source", type: "image", name: "Reference" },
-      { role: "generate", type: "image", name: "Watercolour", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Put the reference in Reference first" } }, { text: "Redraw " }, { ref: 0 }] } as SentNode,
+      { role: "generate", type: "image", name: "Watercolour", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Put the reference in Reference first" } }, { text: "Redraw " }, { ref: 0 }] },
     ],
     edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
     rationale: "A watercolour of the reference.",
@@ -467,7 +467,7 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
 
   it("leaves no templateNode on a tagged node no instance matches, filling its defaults all the same", () => {
     const sent: Sent = {
-      nodes: [{ role: "generate", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" }, prompt: [{ text: "A sketch." }] } as SentNode],
+      nodes: [{ role: "generate", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" }, prompt: [{ text: "A sketch." }] }],
       edges: [],
       rationale: "A sketch.",
     };
@@ -483,7 +483,7 @@ describe("templateNode on the nodes of a matched instance (design 6.7 step 3)", 
       ...first,
       nodes: [
         ...first.nodes,
-        { role: "generate", type: "image", name: "Second", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Generate Watercolour first" } }, { text: "Redraw " }, { ref: 1 }] } as SentNode,
+        { role: "generate", type: "image", name: "Second", template: { id: "fixture-solo" }, prompt: [{ slot: { kind: "note", label: "Generate Watercolour first" } }, { text: "Redraw " }, { ref: 1 }] },
       ],
       edges: [...first.edges, { fromIndex: 1, toIndex: 2, into: "pool" }],
     };
@@ -538,38 +538,38 @@ describe("template tags are checked before the defaults are filled (design 6.7 s
   }
 
   it("refuses a template id the registry does not have", () => {
-    const verdict = verdictFor(soloWith(1, { ...(solo().nodes[1] as SentNode), template: { id: "no-such" } } as SentNode), undefined, FIXTURES);
+    const verdict = verdictFor(soloWith(1, { ...(solo().nodes[1] as SentNode), template: { id: "no-such" } }), undefined, FIXTURES);
     expect(verdict).toEqual({ ok: false, refusal: "template-unknown", reason: 'No template "no-such". Templates: fixture-sheet, fixture-solo, fixture-steps, fixture-shots.' });
   });
 
   it("refuses a key the template does not have", () => {
-    expect(refusalOf(soloWith(1, { ...(solo().nodes[1] as SentNode), template: { id: "fixture-solo", key: "nope" } } as SentNode))).toBe("template-key-unknown");
+    expect(refusalOf(soloWith(1, { ...(solo().nodes[1] as SentNode), template: { id: "fixture-solo", key: "nope" } }))).toBe("template-key-unknown");
   });
 
   it("refuses an input the template does not have", () => {
-    expect(refusalOf(soloWith(0, { role: "source", type: "image", name: "Reference", template: { id: "fixture-solo", input: "nope" } } as SentNode))).toBe("template-key-unknown");
+    expect(refusalOf(soloWith(0, { role: "source", type: "image", name: "Reference", template: { id: "fixture-solo", input: "nope" } }))).toBe("template-key-unknown");
   });
 
   it("refuses an input tag on a node of another type than the input", () => {
-    expect(refusalOf(soloWith(0, { role: "source", type: "video", name: "Reference", template: { id: "fixture-solo", input: "reference" } } as SentNode))).toBe("template-key-kind");
+    expect(refusalOf(soloWith(0, { role: "source", type: "video", name: "Reference", template: { id: "fixture-solo", input: "reference" } }))).toBe("template-key-kind");
   });
 
   it("refuses a key on a node of another role than the template's", () => {
     const shape = agentShape(SHEET);
     const at = shape.at.get("node:sketch") ?? -1;
-    const nodes = shape.sent.nodes.map((node, i) => (i === at ? ({ role: "source", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" } } as SentNode) : node));
+    const nodes = shape.sent.nodes.map((node, i) => (i === at ? ({ role: "source", type: "image", name: "Sketch", template: { id: "fixture-sheet", key: "sketch" } }) : node));
     expect(refusalOf({ ...shape.sent, nodes })).toBe("template-key-kind");
   });
 
   it("refuses a key on a node of another type than the template's", () => {
     const shape = agentShape(SHEET);
     const at = shape.at.get("node:sketch") ?? -1;
-    const nodes = shape.sent.nodes.map((node, i) => (i === at ? ({ ...node, type: "video" }) : node));
+    const nodes = shape.sent.nodes.map((node, i) => (i === at ? ({ ...node, type: "video" as const }) : node));
     expect(refusalOf({ ...shape.sent, nodes })).toBe("template-key-kind");
   });
 
   it("accepts the input tag on the node given for that input", () => {
-    expect(refusalOf(soloWith(0, { role: "source", type: "image", name: "Reference", template: { id: "fixture-solo", input: "reference" } } as SentNode))).toBe("ok");
+    expect(refusalOf(soloWith(0, { role: "source", type: "image", name: "Reference", template: { id: "fixture-solo", input: "reference" } }))).toBe("ok");
   });
 
   it("refuses a resource node that carries material of its own", () => {
@@ -600,7 +600,7 @@ describe("template tags are checked before the defaults are filled (design 6.7 s
   it("refuses a loose resource with no edge as unused material", () => {
     const sent: Sent = {
       nodes: [
-        { role: "source", type: "image", name: "Palette", template: { id: "fixture-sheet", key: "palette" } } as SentNode,
+        { role: "source", type: "image", name: "Palette", template: { id: "fixture-sheet", key: "palette" } },
         { role: "generate", type: "image", name: "Gen", mode: "i2i", model: "nano-banana-pro-edit-ultra", prompt: [{ text: "Make it." }] },
       ],
       edges: [],

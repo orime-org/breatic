@@ -232,7 +232,7 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
     names.set(`node:${key}`, name);
     at.set(`node:${key}`, nodes.length);
     const tag = anchor && options.anchorKey !== true ? { id: template.id } : { id: template.id, key };
-    nodes.push({ role: node.role, type: node.type, name, template: tag } as SentNode);
+    nodes.push({ role: node.role, type: node.type, name, template: tag });
   }
   for (const input of skeleton.inputs) {
     const name = t(`${base}.input.${input.key}.name`);
@@ -243,7 +243,7 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
       type: input.type,
       name,
       ...(options.tagInputs === true ? { template: { id: template.id, input: input.key } } : {}),
-    } as SentNode);
+    });
   }
   const index = (identity: string): number => at.get(identity) as number;
   const edges: Sent["edges"] = [
@@ -305,7 +305,7 @@ function renumbered(
   renumber: (index: number) => number | undefined,
   dropNote?: string,
 ): NonNullable<SentNode["prompt"]> {
-  return segments.flatMap((segment) => {
+  return segments.flatMap((segment): NonNullable<SentNode["prompt"]> => {
     if ("ref" in segment) {
       const to = renumber(segment.ref);
       return to === undefined ? [] : [{ ref: to }];

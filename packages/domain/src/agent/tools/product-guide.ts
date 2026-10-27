@@ -640,9 +640,16 @@ export function renderProductGuide(): string {
       `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first, and " +
-      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its 📎 marks ask the reader to @ ` +
-      "the pictures it needs by hand (see below), and they can change anything after.",
+      "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
+      "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it. Files the template brings " +
+      "with it land as nodes to the left as well, connected and @'d. A template with steps to take after it " +
+      "generates (such as splitting the result into a grid) also places a text node listing them. Picking it " +
+      "again on the same node reuses what it placed before. Inside a group, the new nodes join the group. On a " +
+      `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
+      `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
+      `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
+      `${quoted(t("canvas.generatePanel.editProposalMarks"))} appears. They can change anything after.`,
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
