@@ -130,6 +130,17 @@ function frames(m: Uint8Array): FakeMessage[] {
   return out;
 }
 
+/**
+ * Compare bytes with a memcmp; deep equality on megabyte arrays takes seconds.
+ * @param actual - Bytes produced.
+ * @param expected - Bytes wanted.
+ * @returns Whether they are identical.
+ */
+function same(actual: unknown, expected: Uint8Array): boolean {
+  if (!(actual instanceof Uint8Array)) return false;
+  return Buffer.compare(Buffer.from(actual.buffer, actual.byteOffset, actual.byteLength), Buffer.from(expected.buffer, expected.byteOffset, expected.byteLength)) === 0;
+}
+
 /** The reassembler under test plus the user table its `userOf` reads. */
 interface Rig {
   a: ReturnType<typeof createFrameAssembler>;
@@ -277,7 +288,7 @@ describe("frame assembler — idle and complete messages", () => {
     const m = msg(n);
     const out = feed(r, p, frames(m));
     expect(out.slice(0, -1).every((x) => x === undefined)).toBe(true);
-    expect(out.at(-1)).toEqual(m);
+    expect(same(out.at(-1), m)).toBe(true);
     expect(r.a.inUseBytes()).toBe(0);
   });
 });
@@ -385,7 +396,7 @@ describe("frame assembler — limits", () => {
     expect(d.close).not.toHaveBeenCalled();
 
     const out = feed(r, holders[0]!, u1Frames.slice(1));
-    expect(out.at(-1)).toEqual(m1);
+    expect(same(out.at(-1), m1)).toBe(true);
     expect(r.a.inUseBytes()).toBe(B - M);
     expect(r.a.userInUse().has("u1")).toBe(false);
     for (const h of holders) expect(h.close).not.toHaveBeenCalled();
@@ -675,7 +686,12 @@ describe("frame assembler — ws errors and closes", () => {
     expect(line.ctx).toMatchObject({ ...ID(p, "u"), limit: F });
     expect(line.err).toBe(err);
     expect(p.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(60_000);
+    // q keeps sending so only p's timer could fire.
+    vi.advanceTimersByTime(T - 1);
+    r.rx(q, bin(msg(F)));
+    vi.advanceTimersByTime(T - 1);
+    r.rx(q, bin(msg(F)));
+    vi.advanceTimersByTime(2);
     expect(logs.warn).toHaveBeenCalledTimes(1);
     expect(p.close).not.toHaveBeenCalled();
     expect(r.rx(p, bin(msg(F)))).toBeUndefined();
@@ -768,13 +784,14 @@ describe("frame assembler — ws errors and closes", () => {
 
   it("A25 three clean-ups of one connection return its reservation once", () => {
     const r = asm();
-    const q = r.own("v");
-    r.rx(q, decl(1_000_000));
     const p = r.own("u");
     r.rx(p, decl(M));
     r.rx(p, bin(msg(F)));
+    vi.advanceTimersByTime(T - 1);
+    const q = r.own("v");
+    r.rx(q, decl(1_000_000));
     const steps = [
-      (): void => { vi.advanceTimersByTime(T); },
+      (): void => { vi.advanceTimersByTime(1); },
       (): void => { r.a.onPeerError(p as never, new WSError("Error: read ECONNRESET") as never); },
       (): void => { r.a.onPeerClose(p as never, { code: 1008, reason: "" } as never); },
     ];
@@ -923,7 +940,7 @@ describe("frame assembler — properties", () => {
               } else if (c.k === "text") {
                 frame = txt(c.s);
               } else if (c.k === "small") {
-                frame = bin(msg(c.n, seed++));
+                frame = bin(new Uint8Array(c.n).fill(seed++ % 251 + 1));
               } else {
                 const rem = st.s === "assembling" ? st.bytes - st.received : F;
                 const received = st.s === "assembling" ? st.received : 0;
@@ -936,7 +953,7 @@ describe("frame assembler — properties", () => {
                   overflowPastM: Math.max(0, Math.min(F, lim.M - received + 1)),
                   empty: 0,
                 }[c.kind];
-                frame = bin(msg(len, seed++));
+                frame = bin(new Uint8Array(len).fill(seed++ % 251 + 1));
               }
 
               if (st.s === "closed") {
@@ -993,7 +1010,7 @@ describe("frame assembler — properties", () => {
               }
               const got = r.rx(p, frame);
               if (expectedReturn === undefined) expect(got).toBeUndefined();
-              else expect(got).toEqual(expectedReturn);
+              else expect(same(got, expectedReturn)).toBe(true);
             }
           }
 
@@ -1028,7 +1045,7 @@ describe("frame assembler — properties", () => {
         const out = n <= F ? [r.rx(p, bin(m))] : feed(r, p, frames(m));
         const produced = out.filter((x) => x !== undefined);
         expect(produced).toHaveLength(1);
-        expect(out.at(-1)).toEqual(m);
+        expect(same(out.at(-1), m)).toBe(true);
         expect(r.a.inUseBytes()).toBe(0);
         expect(r.a.userInUse().size).toBe(0);
         expect(p.close).not.toHaveBeenCalled();
