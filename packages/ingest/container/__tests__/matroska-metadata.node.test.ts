@@ -80,7 +80,7 @@ describe("bounded Matroska source metadata, without decoding or a presentation p
     ["3fb999999999999a", "3602879701896397", "36028797018963968"],
     ["3fc00000", "3", "2"],
   ])("keeps exact IEEE track-scale rational from %s", async (hex, numerator, denominator) => {
-    const bytes = document([info(), element("1654ae6b", trackEntry(3n, 4n, [element("23314f", Buffer.from(hex!, "hex"))])), cluster(0n, [block(0)])], false, 3);
+    const bytes = document([info(), element("1654ae6b", trackEntry(3n, 4n, [element("23314f", Buffer.from(hex, "hex"))])), cluster(0n, [block(0)])], false, 3);
     expect((await inspectMatroskaMetadata(byteSource(bytes), LIMITS)).tracks).toEqual([{ ...TRACK, trackTimestampScale: { numerator, denominator } }]);
   });
 
