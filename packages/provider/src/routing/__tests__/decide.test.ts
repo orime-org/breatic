@@ -63,13 +63,13 @@ describe("decide — statuses outside the switch list", () => {
     expect(decide({ kind: "http_status", status }, "llm_before_content", 0, 3)).toBe("stop");
   });
 
-  it("only not_sent, model_not_found, 429 and 5xx ever lead away from the upstream", () => {
+  it("only not_sent, model_not_found, insufficient_balance, 429 and 5xx ever lead away from the upstream", () => {
     fc.assert(
       fc.property(failureArb(), fc.constantFrom("media_submit", "llm_before_content" as const), fc.nat(5), fc.nat(5),
         (failure, phase, used, max) => {
           const decision = decide(failure, phase, used, max);
           if (decision === "stop") return;
-          const switchable = failure.kind === "not_sent" || failure.kind === "model_not_found"
+          const switchable = failure.kind === "not_sent" || failure.kind === "model_not_found" || failure.kind === "insufficient_balance"
             || (failure.kind === "http_status" && (failure.status === 429 || failure.status >= 500));
           expect(switchable).toBe(true);
         }),
