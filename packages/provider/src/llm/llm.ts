@@ -13,7 +13,7 @@ import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { aiSdkFetch, boundSignal, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, costRefOf, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
+import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import { decide } from "@provider/routing/decide.js";
@@ -228,19 +228,23 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @returns UpstreamRequestRejected for an answered refusal; the error itself otherwise.
    */
   const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined): unknown => {
-    if (upstream === undefined || !APICallError.isInstance(error) || error.statusCode === undefined) return error;
+    // The status the answer came with: an error on a 200's choice came with a 200.
+    const status = APICallError.isInstance(error) ? error.statusCode : error instanceof InBandError ? 200 : undefined;
+    if (upstream === undefined || status === undefined) return error;
     const failure = classifyLlm(error, vendorOf(kindOf(upstream)));
     if (failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") return error;
-    const body = parsed(error.responseBody ?? answerBody) as { id?: unknown; usage?: { cost?: unknown } } | null | undefined;
+    const text = APICallError.isInstance(error) ? (error.responseBody ?? answerBody) : answerBody;
+    const body = parsed(text) as { id?: unknown; usage?: { cost?: unknown } } | null | undefined;
     const reported = usdOf(body?.usage?.cost);
     const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body?.id, undefined);
-    const ok = error.statusCode >= 200 && error.statusCode < 300;
+    const ok = status >= 200 && status < 300;
     const cost: Cost | undefined = reported !== undefined
       ? { state: "known", usd: reported, source: "reported" }
       : ref !== undefined
         ? { state: "pending", lookup: ref }
         : ok ? { state: "missing", reason: `${upstream} refused with no cost and no generation id` } : undefined;
-    return new UpstreamRequestRejected(model, upstream, error.message, cost);
+    const said = error instanceof InBandError ? (error.error as { message?: unknown } | null)?.message : undefined;
+    return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, cost);
   };
 
   /**
@@ -369,11 +373,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         maxRetries: options.llmMaxRetries,
         classify: (error, c) => classifyLlm(error, vendorOf(kindOf(c.upstream))),
         pause: (error, retry) => pauseBeforeRetry(error, retry, abortSignal),
-        attempt: (c) => {
+        attempt: async (c) => {
           answering = c.upstream;
           lastBody = undefined;
           const vendor = vendorOf(kindOf(c.upstream));
-          return generateText({
+          const result = await generateText({
             model: modelOn(route, c.upstream, request.model, keepingBody),
             messages: [{ role: "user", content }],
             maxOutputTokens: request.maxOutputTokens,
@@ -381,6 +385,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             abortSignal,
             ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
           });
+          // A gateway answers 200 with an error on the choice when the model failed while
+          // producing output. With nothing written it is judged by its code like any status;
+          // with words already written it is a stop, answered as it is.
+          const choiceError = vendor.gateway && result.text === ""
+            ? (parsed(lastBody) as { choices?: { error?: unknown }[] } | null | undefined)?.choices?.[0]?.error
+            : undefined;
+          if (choiceError !== undefined && choiceError !== null) throw new InBandError(choiceError);
+          return result;
         },
       }).catch((error: unknown) => {
         throw refusedCall(request.model, answering, error, lastBody);

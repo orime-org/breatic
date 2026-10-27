@@ -44,8 +44,9 @@ export interface SwitchingSetup {
 const CONTENT = new Set(["text-delta", "reasoning-delta", "tool-input-start", "tool-input-delta", "tool-call", "file", "source"]);
 
 /**
- * An error part a stream sent before its first content, as the vendor wrote it
- * (often a plain `{ code, message }` object).
+ * An error an answer carried before any content, as the vendor wrote it (often a plain
+ * `{ code, message }` object): an error part of a stream, or the error on a gateway's
+ * choice that wrote nothing.
  */
 export class InBandError extends Error {
   /** The vendor's own error value. */
@@ -56,7 +57,7 @@ export class InBandError extends Error {
    * @param error - What the error part carried.
    */
   constructor(error: unknown) {
-    super(`The stream sent an error before its content: ${JSON.stringify(error) ?? String(error)}`, { cause: error });
+    super(`The answer carried an error before its content: ${JSON.stringify(error) ?? String(error)}`, { cause: error });
     this.name = "InBandError";
     this.error = error;
   }
