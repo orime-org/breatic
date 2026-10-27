@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Generation templates (inner#977): a fixed mode, model, params and prompt a
- * reader picks in a generate panel, and the agent may start a proposed node
- * from. The prompt is interface text, so it lives in the locale files under
- * `canvas.template.<id>.prompt`, with the places the reader acts on written as
- * the proposal marks: `[📎 …]` for material to @, `{✏️ …}` for words to fill
- * in, `(💡 …)` for a note on operating the panel.
+ * Generation templates (inner#977, inner#1345): nodes, wiring, inputs and
+ * follow-up steps anchored on one generate node, which a reader picks in a
+ * generate panel and the agent may propose. Each generate node fixes its own
+ * mode, model and params. Its prompt is interface text in the locale files,
+ * `canvas.template.<id>.prompt` for the anchor and
+ * `canvas.template.<id>.node.<key>.prompt` for the others, with the places the
+ * reader acts on written as the proposal marks: `[📎 …]` for material to @,
+ * `{✏️ …}` for words to fill in. What to put in an input is its
+ * `canvas.template.<id>.input.<key>.note`.
  *
  * The mode, model, ratio and wording of the two image templates come from real
  * runs on Nano Banana Pro Ultra: a fixed ratio keeps the reference's own frame

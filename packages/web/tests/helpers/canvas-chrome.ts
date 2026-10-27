@@ -19,7 +19,8 @@ export async function overlapping(a: Locator, b: Locator): Promise<boolean> {
 
 /**
  * Wait until the open canvas panel is clear of the viewport toolbar and the
- * minimap floating over the canvas, and inside the canvas pane (inner#1345).
+ * minimap floating over the canvas, with its bottom edge inside the canvas
+ * pane (inner#1345).
  * @param page - The page.
  */
 export async function expectPanelInView(page: Page): Promise<void> {

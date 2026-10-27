@@ -322,7 +322,7 @@ export interface PlacedProposal {
   groupId?: string;
   /** Where the batch landed: the group's rect, or the one node's. */
   bounds?: Rect;
-  /** Each node's rect as laid out, in the proposal's own order; a node already on the canvas keeps its own position. */
+  /** Each node's rect as laid out, in the proposal's own order; a node already on the canvas is not moved, and its entry is where the layout would put it. */
   rects: Rect[];
 }
 
@@ -505,7 +505,8 @@ export function useNodeCreation(
             // the canvas says so. Built from the arrangement's own rects: the
             // nodes were written a moment ago and the render buffer has not
             // seen them yet. A template landing around nodes already there
-            // makes no group of its own; it joins the anchor's.
+            // makes no group of its own: its new nodes join the anchor's
+            // group when that one is unlocked, and land ungrouped otherwise.
             const rect = aimedGroup && bounds;
             if (rect) {
               const id = newId();

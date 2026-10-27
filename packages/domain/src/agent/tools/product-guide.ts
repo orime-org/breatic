@@ -642,9 +642,9 @@ export function renderProductGuide(): string {
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
-      "connected and @'d, and a note at the top of the prompt says what to put in it. Files the template brings " +
-      "with it land as nodes to the left as well, connected and @'d. A template with steps to take after it " +
-      "generates (such as splitting the result into a grid) also places a text node listing them. Picking it " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it. A template that brings " +
+      "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
+      "after it generates also places a text node listing them; the two listed here do neither. Picking it " +
       "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
       "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
       "sight, zooming out only as far as that takes. Inside a group, the new nodes join the group. On a " +

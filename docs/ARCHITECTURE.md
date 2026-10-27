@@ -273,9 +273,9 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 | 入口 | 做什么 |
 |---|---|
 | 生成面板右上角、关闭按钮左边的模板按钮(`TemplateMenu`) | 列出这种节点的模板,任何一个生成节点的模型不在本部署目录里就灰掉。点一个 → `useApplyTemplate`:用 `matchTemplateInstance` 匹配画布上已有的实例,复用匹配到的节点和已接的参考,用 `expandTemplate` 补齐缺的(缺的参考放一个空节点,提示词顶部加上它的 `note`),再由 `CanvasSpace` 的 `placeTemplate` 走 `placeProposalAt` 落地:新节点在当前节点左边,anchor 和复用的生成节点按模板重写设置和提示词,@ 用引用栏那一行的名字。整批写在一个撤销批次里,写入失败时整批撤回,弹 `canvas.template.applyFailed`。当前节点或复用的节点上了锁时弹 `canvas.gate.locked`;编组上了锁、又要新建节点时弹 `canvas.template.groupLocked`。还有空节点或 `{✏️ …}` 时弹 `canvas.generatePanel.editProposalMarks` |
-| Agent 的 `propose_canvas_action` | 节点可以带 `template: { id, key? }`,不写 key 的是 anchor。工具说明(`templateGuide`)按骨架列出每个模板的节点、连线、输入、资源和步骤。按节点填默认值后,一致性检查用同一个 `matchTemplateInstance` 判断每个实例是否完整,不完整时拒收,原因用 `template-*` 系列 id:缺 key、key 重复、缺模板连线、连线的 `into` 不对、输入没给节点等。修法唯一时(缺一条连线、改一条连线的 `into`)写出路由要的 ref 和 note。通过后,`answerFor` 给匹配到的节点写 `templateNode`、资源节点写 `resource`,模板有步骤时追加说明文本节点。之后照常过 `checkProposal` |
+| Agent 的 `propose_canvas_action` | 节点可以带 `template`:`{ id }` 是 anchor,`{ id, key }` 是模板的其他节点,`{ id, input }` 标出给某个输入的节点(可选)。工具说明(`templateGuide`)按骨架列出每个模板的节点、连线、输入、资源和步骤。按节点填默认值时(资源节点的 `resource` 也在这时写上),一致性检查在 `checkResolved` 里,排在连线和编组的检查之后、生成节点的检查之前,用同一个 `matchTemplateInstance` 判断每个实例是否完整,不完整时拒收,原因用 `template-*` 系列 id:缺 key、key 重复、缺模板连线、连线的 `into` 不对、输入没给节点等。修法唯一时(缺一条连线、改一条连线的 `into`)写出路由要的 ref 和 note。通过后,`answerFor` 给匹配到的节点写 `templateNode`,模板有步骤时追加说明文本节点 |
 
-落地后,两个入口都会拉取资源节点的文件:`POST /canvas/ingest-url` 带 `template_resource`,只收模板声明过的路径,其余答 422。说明文本节点画在 anchor 左边,两者之间的距离是 `GUIDE_STEP_PX`,生成面板打开后不会压住它。提议卡片和画布读同一组排版连线(`layoutFeedsOf`),卡片上说明文字排在待办之后。落地后打开生成面板时(面板入口总会打开;Agent 入口在只有一个生成节点时打开),镜头等面板排好再移动一次(`viewportToShowPlaced`):把全部节点、它们的名字行和面板放进画布,避开左侧菜单、右下工具栏和小地图,必要时缩小,不放大。
+落地后,两个入口都会拉取资源节点的文件:`POST /canvas/ingest-url` 带 `template_resource`,只收模板声明过的路径,其余答 422。说明文本节点画在 anchor 左边,两者之间的距离是 `GUIDE_STEP_PX`,100% 缩放时生成面板打开后不会压住它(缩小后面板在画布上伸得更远)。提议卡片和画布读同一组排版连线(`layoutFeedsOf`),卡片上说明文字排在待办之后。落地后打开生成面板时(面板入口总会打开;Agent 入口在只有一个生成节点时打开),镜头等面板排好再移动一次(`viewportToShowPlaced`):把全部节点、它们的名字行和面板放进画布,避开左侧菜单、右下工具栏和小地图,必要时缩小,不放大。
 
 Agent 里没有选模板的控件,它按用户的需求自己调用。**提示词里留着的标记不检查、不拦生成**:用户不改也照常发出去。
 
