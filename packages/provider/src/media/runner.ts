@@ -270,7 +270,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const inFlight = new Map<string, { count: number; waiting: (() => void)[] }>();
 
   /**
-   * Wait for a free slot of an upstream, leaving the queue when the request's bounds end.
+   * Wait for a slot of an upstream to be handed over, leaving the queue when the request's bounds end.
    * @param upstream - The upstream.
    * @param slot - Its slot state.
    * @param slot.waiting - The queue of requests waiting for a slot.
@@ -321,13 +321,16 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     if (cap === undefined) return work();
     const slot = inFlight.get(upstream) ?? { count: 0, waiting: [] };
     inFlight.set(upstream, slot);
-    while (slot.count >= cap) await waitForSlot(upstream, slot, bounds);
-    slot.count++;
+    // First in, first out: a released slot is handed to the head of the queue, so a
+    // request that frees one and asks again at once cannot take it back.
+    if (slot.count < cap) slot.count++;
+    else await waitForSlot(upstream, slot, bounds);
     try {
       return await work();
     } finally {
-      slot.count--;
-      slot.waiting.shift()?.();
+      const next = slot.waiting.shift();
+      if (next) next();
+      else slot.count--;
     }
   };
 
