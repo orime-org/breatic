@@ -114,7 +114,7 @@ interface Stack {
  * @param opts - Reassembler limits.
  * @returns The stack.
  */
-async function stack(opts: Partial<{ maxMessageBytes: number; budgetBytes: number; idleTimeoutMs: number }> = {}): Promise<Stack> {
+async function stack(opts: Partial<{ maxMessageBytes: number; budgetBytes: number; idleTimeoutMs: number; serverTimeoutMs: number }> = {}): Promise<Stack> {
   const redis = createRedisClient(inject("REDIS_URL"), { name: "frame-assembler-integration", keyPrefix: `fa-${randomUUID()}:` });
   redisClients.push(redis);
   await redis.ping();
@@ -131,7 +131,7 @@ async function stack(opts: Partial<{ maxMessageBytes: number; budgetBytes: numbe
     port: 0,
     quiet: true,
     stopOnSignals: false,
-    timeout: 60_000,
+    timeout: opts.serverTimeoutMs ?? 60_000,
     ...SOCKET_CEILINGS,
     websocketOptions: { maxPayload: F },
     receiveFrame: asm.receiveFrame,
@@ -525,6 +525,22 @@ describe("frame reassembly through real upgrades", () => {
     a.ws.terminate();
     await waitFor(() => st.asm.inUseBytes() === 0, "released", 5_000);
     expect(st.asm.userInUse().size).toBe(0);
+  });
+
+  it("I11 a slow chunked message outlasting Hocuspocus's connection timeout still arrives", async () => {
+    // Every chunk shows the peer is alive; only the reassembly idle timer bounds a stall.
+    const st = await stack({ serverTimeoutMs: 1_000 });
+    const a = await client(st, await sess(st, "ua-i11"));
+    await auth(st, a, "i11");
+    const frame = upd("i11", "x".repeat(2_000_000), SYNC.update);
+    a.ws.send(decl(frame.byteLength));
+    for (let o = 0; o < frame.byteLength; o += F) {
+      await settle(400);
+      a.ws.send(frame.subarray(o, Math.min(o + F, frame.byteLength)));
+    }
+    expect(a.isOpen()).toBe(true);
+    await waitFor(() => (st.server.hocuspocus.documents.get("i11")?.getText("t").length ?? 0) === 2_000_000, "slow message applied", 15_000);
+    expect(st.asm.inUseBytes()).toBe(0);
   });
 
   it("I10 a stalled message times out with 1008 over a real connection", async () => {
