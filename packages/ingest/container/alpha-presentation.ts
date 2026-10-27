@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { mkdtemp, rm, stat } from 'node:fs/promises';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ALPHA_RUN_PATH, type AlphaPresentationReport, type AlphaProbeEvidence, type AlphaRunBody, type AlphaRunResult } from '@ingest/alpha-run-contract.js';
@@ -13,6 +13,11 @@ import { audioOut } from '@ingest/jobs/op-args.js';
 import { cpuUsec, download, put } from '@ingest/container/mini-tool-run.js';
 import { runPlanCommand } from '@ingest/container/plan-command.js';
 import { verifyAlphaPackedClock, type AlphaPresentationClock } from '@ingest/container/alpha-clock.js';
+import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
+import { inspectMatroskaFile } from '@ingest/container/matroska-metadata.js';
+import { parsePhysicalVideoProbe, parseMatroskaPhysicalVideoProbe } from '@ingest/container/physical-video-probe.js';
+import { assembleVideoSourceLedger } from '@ingest/container/assemble-video-source-ledger.js';
+import type { VideoSourceLedgerCompanion } from '@shared/upload/video-source-ledger-types.js';
 
 /** A stable failure code, with raw diagnostics remaining in container logs. */
 class AlphaFailure extends Error {
@@ -64,6 +69,84 @@ function selectedVideo(raw: Record<string, unknown>): Record<string, unknown> {
 }
 
 /**
+ * Stop before starting another physical operation outside the original lifetime.
+ * @param job - The original admitted deadline.
+ * @param signal - Its shared IO cancellation.
+ * @returns Nothing while the original lifetime remains active.
+ * @throws {AlphaFailure} When the original deadline has passed.
+ * @throws {DOMException} When the original IO signal is cancelled.
+ */
+function beforeStage(job: AlphaRunBody, signal: AbortSignal): void {
+  if (job.deadlineAt <= Date.now()) throw new AlphaFailure('expired');
+  signal.throwIfAborted();
+}
+
+/**
+ * Read complete metadata under one explicitly selected demuxer view and bound.
+ * @param input - The already downloaded immutable source.
+ * @param job - Original lifetime and stderr bound.
+ * @param signal - Shared IO cancellation.
+ * @param stdoutBytes - This capability's frozen complete-output ceiling.
+ * @param ignoreEdits - Whether physical ISO metadata must ignore edit lists.
+ * @returns Complete stream and format metadata, never normalized frame tokens.
+ * @throws {Error} When the command or complete JSON metadata fails.
+ */
+async function sourceMetadata(input: string, job: AlphaRunBody, signal: AbortSignal, stdoutBytes: number, ignoreEdits = false): Promise<Record<string, unknown>> {
+  beforeStage(job, signal);
+  return record(JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file',
+    ...(ignoreEdits ? ['-ignore_editlist', '1'] : []), '-show_streams', '-show_format', '-of', 'json', input],
+  { signal, stdoutBytes, stderrTailBytes: job.limits.stderrTailBytes })).toString('utf8')));
+}
+
+/**
+ * Assemble and upload the original source's independent complete frame companion.
+ * @param input - The same immutable downloaded source used by presentation.
+ * @param directory - This original execution's temporary directory.
+ * @param raw - Complete default-view metadata, retained separately from physical ISO.
+ * @param job - Original identity and granted ledger-specific capabilities.
+ * @param signal - The original IO lifetime.
+ * @returns Nothing after the dedicated writer acknowledges the complete file.
+ * @throws {Error} When exact source selection, metadata, planning or publication fails.
+ */
+async function produceSourceLedger(input: string, directory: string, raw: Record<string, unknown>, job: AlphaRunBody, signal: AbortSignal): Promise<void> {
+  const limits = job.limits.sourceLedger!;
+  const video = selectedVideo(raw);
+  const first = (raw.streams as unknown[]).map(record).find(stream => stream.codec_type === 'video');
+  if (first !== video || typeof video.index !== 'number' || !Number.isSafeInteger(video.index) || video.index < 0) throw new AlphaFailure('source_ledger_selection_unknown');
+  const names = String(record(raw.format).format_name).split(',');
+  const iso = names.some(name => ['mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2'].includes(name));
+  if (!iso && !names.some(name => name === 'matroska' || name === 'webm')) throw new AlphaFailure('source_ledger_format_unknown');
+  const physicalMetadata = iso ? await sourceMetadata(input, job, signal, limits.probeStdoutBytes, true) : raw;
+  const physicalVideo = selectedVideo(physicalMetadata);
+  if (physicalVideo.index !== video.index || physicalVideo.time_base !== video.time_base || iso && physicalVideo.id !== video.id) throw new AlphaFailure('source_ledger_selection_unknown');
+  beforeStage(job, signal);
+  const frames = await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', ...(iso ? ['-ignore_editlist', '1'] : []),
+    '-select_streams', integer(video.index), '-show_frames', '-show_entries', 'frame=media_type,stream_index,pts,pkt_pos', '-of', 'json', input],
+  { signal, stdoutBytes: limits.probeStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes });
+  const base = { sourceFingerprint: job.sourceFingerprint, attempt: { jobId: job.jobId, deadlineAt: job.deadlineAt },
+    limits: { maxPhysicalFrames: limits.maxPhysicalFrames, maxOccurrences: limits.maxOccurrences } };
+  beforeStage(job, signal);
+  let companion: VideoSourceLedgerCompanion;
+  if (iso) {
+    const metadata = await inspectIsoBmffFile(input, { metadataBytes: limits.metadataBytes, boxCount: limits.isoBoxCount });
+    companion = assembleVideoSourceLedger({ ...base, kind: 'iso_bmff', metadata, physical: parsePhysicalVideoProbe(physicalMetadata, frames) });
+  } else {
+    const metadata = await inspectMatroskaFile(input, { metadataBytes: limits.metadataBytes, elementCount: limits.matroskaElementCount, maxBlocks: limits.matroskaMaxBlocks });
+    companion = assembleVideoSourceLedger({ ...base, kind: 'matroska', metadata, physical: parseMatroskaPhysicalVideoProbe(physicalMetadata, frames, metadata) });
+  }
+  const bytes = Buffer.from(JSON.stringify(companion), 'utf8');
+  if (bytes.length > limits.maxBytes) throw new AlphaFailure('source_ledger_over_cap');
+  beforeStage(job, signal);
+  const output = join(directory, 'source-ledger.json');
+  await writeFile(output, bytes);
+  const destination = new URL(job.sourceLedgerOutputURL!);
+  for (const [key, value] of Object.entries({ producerVersion: companion.producerVersion, strategy: companion.strategy,
+    physicalFrameCount: companion.physical.frames.length, occurrenceCount: companion.presentation.frames.length })) destination.searchParams.set(key, String(value));
+  beforeStage(job, signal);
+  await put(destination.toString(), output, signal);
+}
+
+/**
  * Ask this exact binary for measured JSON within the original lifetime.
  * @param input - Immutable local source or newly encoded packed object.
  * @param job - Frozen process limits and deadline.
@@ -74,12 +157,14 @@ function selectedVideo(raw: Record<string, unknown>): Record<string, unknown> {
  */
 async function probe(input: string, job: AlphaRunBody, signal: AbortSignal, frames: boolean): Promise<Record<string, unknown>> {
   const options = { signal, stdoutBytes: job.limits.probeStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes };
-  const raw = record(JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-show_format', '-of', 'json', input], options)).toString('utf8')));
+  const raw = await sourceMetadata(input, job, signal, job.limits.probeStdoutBytes);
   if (!frames) return raw;
   const video = selectedVideo(raw);
+  beforeStage(job, signal);
   const inventory = record(JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-select_streams', integer(video.index), '-show_frames', '-of', 'json', input], options)).toString('utf8')));
   raw.frames = inventory.frames;
   if (Array.isArray(raw.streams) && raw.streams.map(record).some(stream => stream.codec_type === 'audio' && stream.duration_ts === undefined)) {
+    beforeStage(job, signal);
     const packets = record(JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-select_streams', 'a', '-show_packets', '-show_entries', 'packet=stream_index,pts,duration', '-of', 'json', input], options)).toString('utf8')));
     raw.audioPackets = packets.packets;
   }
@@ -141,6 +226,22 @@ async function report(job: AlphaRunBody, fact: AlphaPresentationReport, signal: 
 }
 
 /**
+ * Report an observed ledger failure without skipping original final accounting.
+ * @param job - The original private report identity.
+ * @param error - Stable failure of this capability alone.
+ * @returns Nothing after acknowledgement or logged transport failure.
+ * @throws {never} The original execution still delivers its final usage fact.
+ */
+async function reportLedgerFailure(job: AlphaRunBody, error: string): Promise<void> {
+  try {
+    await report(job, { jobId: job.jobId, sourceFingerprint: job.sourceFingerprint, deadlineAt: job.deadlineAt, token: job.token,
+      kind: 'source_ledger_failed', error }, new AbortController().signal);
+  } catch (err) {
+    console.error('source_ledger_report_failed', { err, jobId: job.jobId, sourceFingerprint: job.sourceFingerprint });
+  }
+}
+
+/**
  * Execute and verify one platform-funded source preparation in the container.
  * @param job - Fixed source, deadline, limits and private outbound capabilities.
  * @returns Acknowledgement after storage reports and local cleanup.
@@ -153,62 +254,90 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
   const identity = { jobId: job.jobId, sourceFingerprint: job.sourceFingerprint, deadlineAt: job.deadlineAt, token: job.token };
   let directory: string | undefined;
   let error: string | undefined;
+  let ledgerError: string | undefined;
+  let ledgerFinished = false;
+  const requestedLedger = job.limits.sourceLedger !== undefined || job.sourceLedgerOutputURL !== undefined || job.ledgerOnly === true;
   try {
-    if (job.deadlineAt <= Date.now()) throw new AlphaFailure('expired');
+    beforeStage(job, signal);
+    if (requestedLedger && (job.limits.sourceLedger === undefined || job.sourceLedgerOutputURL === undefined ||
+      Object.values(job.limits.sourceLedger).some(value => !Number.isSafeInteger(value) || value <= 0))) throw new AlphaFailure('admission_invalid');
     directory = await mkdtemp(join(tmpdir(), 'alpha-presentation-'));
     const input = join(directory, 'source');
     await download(job.sourceURL, input, signal);
     if ((await stat(input)).size > job.limits.maxSourceBytes) throw new AlphaFailure('source_over_cap');
-    const raw = await probe(input, job, signal, false);
-    if (pixelFormats === undefined) pixelFormats = JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-show_pixel_formats', '-of', 'json'], {
-      signal, stdoutBytes: job.limits.probeStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes,
-    })).toString('utf8'));
-    const classification = classifyVideoAlpha(raw, pixelFormats);
-    if (classification === 'unknown') throw new AlphaFailure('classification_unknown');
-    const source = readProbeOutput(JSON.stringify(raw));
-    const metadata = pickMediaMetadata(source);
-    if (metadata.width === null || metadata.height === null || metadata.durationSeconds === null || metadata.durationSeconds <= 0) throw new AlphaFailure('metadata_unknown');
-    const video = selectedVideo(raw);
-    const format = record(raw.format);
-    const formats = record(pixelFormats).pixel_formats as unknown[];
-    const pixel = formats.map(record).find(value => value.name === video.pix_fmt)!;
-    const tags = typeof video.tags === 'object' && video.tags !== null ? record(video.tags) : {};
-    const alphaMode = Object.entries(tags).find(([name]) => name.toLowerCase() === 'alpha_mode')?.[1];
-    const evidence: AlphaProbeEvidence = { codecName: String(video.codec_name), pixelFormat: String(video.pix_fmt),
-      pixelAlpha: record(pixel.flags).alpha as 0 | 1, alphaMode: typeof alphaMode === 'string' ? alphaMode : null,
-      formatName: String(format.format_name), videoStreamIndex: Number(video.index) };
-    await report(job, { ...identity, kind: 'probe', classification, original: { width: metadata.width, height: metadata.height, duration: metadata.durationSeconds }, evidence }, signal);
-    if (classification === 'confirmed_alpha') {
-      const full = await probe(input, job, signal, true);
-      const originalClock = clockOf(full);
-      const width = metadata.width;
-      const height = metadata.height;
-      const planeWidth = Math.ceil(width / 2) * 2;
-      const packedHeight = Math.ceil(height / 2) * 2;
-      const packedWidth = planeWidth * 2;
-      const decoder = video.codec_name === 'vp9' ? ['-c:v', 'libvpx-vp9'] : video.codec_name === 'vp8' ? ['-c:v', 'libvpx'] : [];
-      const output = join(directory, 'packed.mp4');
-      const filter = `[0:${integer(video.index)}]split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
-      const last = originalClock.frames[originalClock.frames.length - 1]!;
-      const timescale = originalClock.videoTimeBase.split('/')[1]!;
-      const threads = String(Math.max(1, Math.floor(job.vcpu)));
-      await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-copyts', '-protocol_whitelist', 'file', ...decoder, '-i', input,
-        '-filter_complex_threads', threads, '-filter_complex', filter, '-map', '[v]', '-map', '0:a?', '-c:v', 'libx264', '-threads:v', threads, '-preset', job.limits.preset, '-crf', String(job.limits.crf),
-        '-fps_mode:v', 'passthrough', '-enc_time_base:v', originalClock.videoTimeBase, '-video_track_timescale', timescale, '-bf', '0',
-        '-bsf:v', `setts=duration=if(eq(N\\,${originalClock.frames.length - 1})\\,${last.duration}\\,DURATION)`,
-        ...audioOut(source), '-avoid_negative_ts', 'disabled', '-fs', String(job.limits.maxPackedBytes + 1), '-movflags', '+faststart', output],
-      { signal, stdoutBytes: job.limits.analysisStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes });
-      const size = (await stat(output)).size;
-      if (size <= 0 || size > job.limits.maxPackedBytes) throw new AlphaFailure('packed_over_cap');
-      const packed = await probe(output, job, signal, true);
-      const packedVideo = selectedVideo(packed);
-      if (packedVideo.codec_name !== 'h264' || packedVideo.width !== packedWidth || packedVideo.height !== packedHeight || !verifyAlphaPackedClock(originalClock, clockOf(packed))) throw new AlphaFailure('packed_clock_mismatch');
-      await report(job, { ...identity, kind: 'encoded', packedWidth, packedHeight,
-        colorRect: { x: 0, y: 0, width, height }, alphaRect: { x: planeWidth, y: 0, width, height } }, signal);
-      await put(job.outputURL, output, signal);
+    let defaultMetadata: Record<string, unknown> | undefined;
+    if (requestedLedger) {
+      try {
+        defaultMetadata = await sourceMetadata(input, job, signal, job.limits.sourceLedger!.probeStdoutBytes);
+        await produceSourceLedger(input, directory, defaultMetadata, job, signal);
+      } catch (cause) {
+        ledgerError = signal.aborted || job.deadlineAt <= Date.now() ? 'expired' : cause instanceof AlphaFailure ? cause.code : 'source_ledger_failed';
+        console.error('source_ledger_failed', { err: cause, jobId: job.jobId, sourceFingerprint: job.sourceFingerprint });
+        await reportLedgerFailure(job, ledgerError);
+      }
+      ledgerFinished = true;
+    }
+    if (job.ledgerOnly !== true) {
+      beforeStage(job, signal);
+      const raw = defaultMetadata ?? await probe(input, job, signal, false);
+      beforeStage(job, signal);
+      if (pixelFormats === undefined) pixelFormats = JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-show_pixel_formats', '-of', 'json'], {
+        signal, stdoutBytes: job.limits.probeStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes,
+      })).toString('utf8'));
+      const classification = classifyVideoAlpha(raw, pixelFormats);
+      if (classification === 'unknown') throw new AlphaFailure('classification_unknown');
+      const source = readProbeOutput(JSON.stringify(raw));
+      const metadata = pickMediaMetadata(source);
+      if (metadata.width === null || metadata.height === null || metadata.durationSeconds === null || metadata.durationSeconds <= 0) throw new AlphaFailure('metadata_unknown');
+      const video = selectedVideo(raw);
+      const format = record(raw.format);
+      const formats = record(pixelFormats).pixel_formats as unknown[];
+      const pixel = formats.map(record).find(value => value.name === video.pix_fmt)!;
+      const tags = typeof video.tags === 'object' && video.tags !== null ? record(video.tags) : {};
+      const alphaMode = Object.entries(tags).find(([name]) => name.toLowerCase() === 'alpha_mode')?.[1];
+      const evidence: AlphaProbeEvidence = { codecName: String(video.codec_name), pixelFormat: String(video.pix_fmt),
+        pixelAlpha: record(pixel.flags).alpha as 0 | 1, alphaMode: typeof alphaMode === 'string' ? alphaMode : null,
+        formatName: String(format.format_name), videoStreamIndex: Number(video.index) };
+      await report(job, { ...identity, kind: 'probe', classification, original: { width: metadata.width, height: metadata.height, duration: metadata.durationSeconds }, evidence }, signal);
+      if (classification === 'confirmed_alpha') {
+        const full = await probe(input, job, signal, true);
+        const originalClock = clockOf(full);
+        const width = metadata.width;
+        const height = metadata.height;
+        const planeWidth = Math.ceil(width / 2) * 2;
+        const packedHeight = Math.ceil(height / 2) * 2;
+        const packedWidth = planeWidth * 2;
+        const decoder = video.codec_name === 'vp9' ? ['-c:v', 'libvpx-vp9'] : video.codec_name === 'vp8' ? ['-c:v', 'libvpx'] : [];
+        const output = join(directory, 'packed.mp4');
+        const filter = `[0:${integer(video.index)}]split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
+        const last = originalClock.frames[originalClock.frames.length - 1]!;
+        const timescale = originalClock.videoTimeBase.split('/')[1]!;
+        const threads = String(Math.max(1, Math.floor(job.vcpu)));
+        beforeStage(job, signal);
+        await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-copyts', '-protocol_whitelist', 'file', ...decoder, '-i', input,
+          '-filter_complex_threads', threads, '-filter_complex', filter, '-map', '[v]', '-map', '0:a?', '-c:v', 'libx264', '-threads:v', threads, '-preset', job.limits.preset, '-crf', String(job.limits.crf),
+          '-fps_mode:v', 'passthrough', '-enc_time_base:v', originalClock.videoTimeBase, '-video_track_timescale', timescale, '-bf', '0',
+          '-bsf:v', `setts=duration=if(eq(N\\,${originalClock.frames.length - 1})\\,${last.duration}\\,DURATION)`,
+          ...audioOut(source), '-avoid_negative_ts', 'disabled', '-fs', String(job.limits.maxPackedBytes + 1), '-movflags', '+faststart', output],
+        { signal, stdoutBytes: job.limits.analysisStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes });
+        const size = (await stat(output)).size;
+        if (size <= 0 || size > job.limits.maxPackedBytes) throw new AlphaFailure('packed_over_cap');
+        const packed = await probe(output, job, signal, true);
+        const packedVideo = selectedVideo(packed);
+        if (packedVideo.codec_name !== 'h264' || packedVideo.width !== packedWidth || packedVideo.height !== packedHeight || !verifyAlphaPackedClock(originalClock, clockOf(packed))) throw new AlphaFailure('packed_clock_mismatch');
+        await report(job, { ...identity, kind: 'encoded', packedWidth, packedHeight,
+          colorRect: { x: 0, y: 0, width, height }, alphaRect: { x: planeWidth, y: 0, width, height } }, signal);
+        beforeStage(job, signal);
+        await put(job.outputURL, output, signal);
+      }
     }
   } catch (cause) {
-    error = signal.aborted ? 'expired' : cause instanceof AlphaFailure ? cause.code : 'presentation_failed';
+    const observed = signal.aborted || job.deadlineAt <= Date.now() ? 'expired' : cause instanceof AlphaFailure ? cause.code : 'presentation_failed';
+    if (job.ledgerOnly !== true) error = observed;
+    if (requestedLedger && !ledgerFinished) {
+      ledgerError = observed;
+      await reportLedgerFailure(job, ledgerError);
+    }
     console.error('alpha_presentation_failed', { err: cause, jobId: job.jobId, sourceFingerprint: job.sourceFingerprint });
   } finally {
     if (directory !== undefined) await rm(directory, { recursive: true, force: true }).catch((err: unknown) => {
@@ -221,7 +350,8 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
   // Reporting a completed measurement is not another media subprocess and may
   // arrive after the original deadline; the owner still fences its attempt.
   await report(job, { ...identity, kind: 'finished', usage, ...(error === undefined ? {} : { error }) }, new AbortController().signal);
-  return error === undefined ? { ok: true } : { ok: false, error };
+  const outcome = error ?? ledgerError;
+  return outcome === undefined ? { ok: true } : { ok: false, error: outcome };
 }
 
 /**
