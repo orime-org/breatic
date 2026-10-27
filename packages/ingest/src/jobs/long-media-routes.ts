@@ -486,7 +486,7 @@ async function storeAuthorizedLongMediaSegment(
   permit: LongMediaSegmentWritePermit,
   jobId: string,
 ): Promise<Response> {
-  const contentType = permit.mediaKind === "audio" ? "audio/mp4" : "video/mp4";
+  const contentType = permit.mediaKind === "audio" ? "audio/mpeg" : "video/mp4";
   try {
     const stored = await writeStreamedObject(bucket, permit.storageKey, request.body!, {
       contentType,

@@ -418,6 +418,8 @@ describe("POST /long-media/jobs", () => {
       version: 2,
       measured: { sizeBytes: head("mp3").byteLength, contentType: "audio/mpeg" },
     }]);
+    const storedSegment = await env.BUCKET.get("understand/root-0.mp3");
+    expect(storedSegment?.httpMetadata?.contentType).toBe("audio/mpeg");
     await expect(stub.segmentWritePermit("understand/root-0.mp3")).resolves.toBeNull();
     const registeredPath = `/long-media/jobs/${encodeURIComponent(rootPayload.jobId)}/segments/${encodeURIComponent(segmentId)}/registered`;
     const unauthorizedRegistration = await call(registeredPath, {
