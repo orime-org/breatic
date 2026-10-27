@@ -129,6 +129,34 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual(before);
   });
 
+  it('L3/R3 invalidates a previously ready receipt when identical bytes now have a foreign claim owner', async () => {
+    const value = await fixture();
+    expect(await value.owner.report({ ...value.identity, kind: 'probe', classification: 'confirmed_opaque', original: ORIGINAL,
+      evidence: { codecName: 'vp9', pixelFormat: 'yuv420p', pixelAlpha: 0, alphaMode: null, formatName: 'webm', videoStreamIndex: 0 } })).toBe(true);
+    const claim = await value.owner.claimSourceLedger(value.identity, value.declaration);
+    expect(claim).not.toBeNull();
+    const measured = await putClaim(value, claim!);
+    expect(await value.owner.completeSourceLedger(value.identity, claim!.owner, measured)).toBe(true);
+    expect(await value.owner.report({ ...value.identity, kind: 'finished', usage: { wallMs: 319, cpuUsec: 73 } })).toBe(true);
+    await value.owner.acknowledgeUsage(value.identity);
+    const before = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
+    expect(before.sourceLedger).toEqual({ state: 'ready', receipt: receipt(value, measured) });
+    expect(before.presentation?.state).toBe('native');
+    expect(before.attempt?.status).toBe('completed');
+    const foreignOwner = `foreign-${claim!.owner}`;
+    const overwritten = await env.BUCKET.put(claim!.key, value.bytes, { httpMetadata: { contentType: 'application/json' },
+      customMetadata: { sourceLedgerJobId: value.identity.jobId, sourceLedgerClaimOwner: foreignOwner } });
+    expect(overwritten).not.toBeNull();
+    const actual = await env.BUCKET.get(claim!.key);
+    expect(actual).toMatchObject({ etag: overwritten.etag, size: value.bytes.length, httpMetadata: { contentType: 'application/json' },
+      customMetadata: { sourceLedgerJobId: value.identity.jobId, sourceLedgerClaimOwner: foreignOwner } });
+    expect(new Uint8Array(await actual!.arrayBuffer())).toEqual(value.bytes);
+    const after = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
+    expect(after).toEqual({ ...before, sourceLedger: { state: 'failed', schemaVersion: 1,
+      sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 1,
+      attempt: { jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt }, errorCode: expect.any(String) } });
+  });
+
   it('H08 rejects same-size changed bytes when actual digest disagrees with original A receipt', async () => {
     const value = await race();
     const measured = await putClaim(value.a, value.claimA);
