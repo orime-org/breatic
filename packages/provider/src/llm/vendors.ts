@@ -17,6 +17,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { JSONValue, LanguageModel } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
+import { aiSdkFetch } from "@provider/http/request.js";
 import type { CallWants } from "@provider/llm/api.js";
 
 /** A language model of the specification the AI SDK providers implement. */
@@ -60,8 +61,8 @@ function messageOf(body: unknown): string {
 export interface Vendor {
   /** The key its AI SDK provider reads `providerOptions` and message options by. */
   sdkName: string;
-  /** Builds its model factory; `fetch` is provider's own unless the caller wraps it. */
-  build: (decl: UpstreamDecl, apiKey: string, fetch: typeof globalThis.fetch) => (modelId: string) => ModelV4;
+  /** Builds its model factory, its SDK sending through provider's own fetch. */
+  build: (decl: UpstreamDecl, apiKey: string) => (modelId: string) => ModelV4;
   /** The id it serves a model under, from what follows the route prefix (or the whole id for a gateway). */
   vendorId: (modelId: string) => string;
   /** Whether it takes our whole model id rather than what follows the route prefix. */
@@ -153,7 +154,7 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
       const type = (error as { type?: unknown } | null)?.type;
       return typeof type === "string" ? ANTHROPIC_STATUS[type] : undefined;
     },
-    build: (decl, apiKey, fetch) => createAnthropic({ baseURL: decl.base_url, apiKey, fetch }),
+    build: (decl, apiKey) => createAnthropic({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch }),
     // Ids are written the way OpenRouter names Claude (`claude-opus-5.5`); Anthropic serves `claude-opus-5-5`.
     vendorId: (modelId) => modelId.replace(/(\d)\.(\d)/g, "$1-$2"),
     gateway: false,
@@ -167,7 +168,7 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
   },
   google: {
     sdkName: "google",
-    build: (decl, apiKey, fetch) => createGoogleGenerativeAI({ baseURL: decl.base_url, apiKey, fetch }),
+    build: (decl, apiKey) => createGoogleGenerativeAI({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch }),
     vendorId: asWritten,
     gateway: false,
     reasoning: { on: () => ({ thinkingConfig: { thinkingBudget: -1, includeThoughts: true } }), off: { thinkingConfig: { thinkingBudget: 0 } } },
@@ -177,7 +178,7 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
   },
   openai: {
     sdkName: "openai",
-    build: (decl, apiKey, fetch) => createOpenAI({ baseURL: decl.base_url, apiKey, fetch }),
+    build: (decl, apiKey) => createOpenAI({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch }),
     vendorId: asWritten,
     gateway: false,
     reasoning: { on: () => ({ reasoningEffort: "high" }), off: { reasoningEffort: "none" } },
@@ -190,7 +191,7 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
   },
   deepseek: {
     sdkName: "deepseek",
-    build: (decl, apiKey, fetch) => createDeepSeek({ baseURL: decl.base_url, apiKey, fetch }),
+    build: (decl, apiKey) => createDeepSeek({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch }),
     vendorId: asWritten,
     gateway: false,
     // DeepSeek's deepest level; inner#1650 measured Flash 1017 at it.
@@ -208,7 +209,7 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
       const code = (error as { code?: unknown } | null)?.code;
       return typeof code === "number" && Number.isInteger(code) ? code : undefined;
     },
-    build: (decl, apiKey, fetch) => createOpenRouter({ baseURL: decl.base_url, apiKey, fetch }),
+    build: (decl, apiKey) => createOpenRouter({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch }),
     vendorId: asWritten,
     gateway: true,
     // OpenRouter lists max for DeepSeek and turns `xhigh` into `high`; `none` turns reasoning off.

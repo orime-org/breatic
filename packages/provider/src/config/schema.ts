@@ -83,6 +83,11 @@ const llmPriceSchema = z.object({
   output_per_mtok: z.number().min(0),
 });
 
+/** Gemini's inline request limit by default: the video-understanding page's 20 MB, the stricter of its two docs. */
+const GEMINI_INLINE_MAX_BYTES = 20_000_000;
+/** How often an uploaded Gemini file is asked about by default, in ms. */
+const GEMINI_FILE_POLL_MS = 5_000;
+
 const llmSchema = z.object({
   routes: z.array(llmRouteSchema),
   understand_routes: z.array(llmRouteSchema).optional(),
@@ -90,6 +95,10 @@ const llmSchema = z.object({
   openrouter_backends: z.record(z.string(), z.object({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
   /** Direct token prices in USD per million tokens, by our model id. */
   prices: z.record(z.string(), llmPriceSchema).optional(),
+  /** The request size past which Gemini takes media through its Files API, in bytes (design 6.5). */
+  gemini_inline_max_bytes: z.number().int().positive().default(GEMINI_INLINE_MAX_BYTES),
+  /** How often an uploaded Gemini file's state is asked about, in ms. */
+  gemini_file_poll_ms: z.number().int().positive().default(GEMINI_FILE_POLL_MS),
 });
 
 const routingSchema = z.object({
@@ -134,7 +143,7 @@ export type LlmPrice = z.infer<typeof llmPriceSchema>;
 export interface ProviderConfig {
   upstreams: Record<string, UpstreamDecl>;
   models: Record<string, MediaBinding[]>;
-  llm: Required<Pick<LlmConfigInput, "routes" | "understand_routes" | "vendor_ids" | "openrouter_backends" | "prices">>;
+  llm: Required<Pick<LlmConfigInput, "routes" | "understand_routes" | "vendor_ids" | "openrouter_backends" | "prices" | "gemini_inline_max_bytes" | "gemini_file_poll_ms">>;
 }
 
 /** The catalog facts a binding is checked against: each model's params and the values each offers. */
@@ -251,6 +260,8 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     vendor_ids: raw.llm?.vendor_ids ?? {},
     openrouter_backends: raw.llm?.openrouter_backends ?? {},
     prices: raw.llm?.prices ?? {},
+    gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
+    gemini_file_poll_ms: raw.llm?.gemini_file_poll_ms ?? GEMINI_FILE_POLL_MS,
   };
   for (const prefix of Object.keys(raw.routing?.llm ?? {})) {
     if (!llm.routes.some((r) => r.prefix === prefix)) problems.push(`LLM route "${prefix}": the override names a prefix no route has`);

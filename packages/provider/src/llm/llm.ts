@@ -7,13 +7,15 @@
  * reading media, the decisions endpoint and the picture capability.
  */
 
-import { APICallError, generateText, type JSONValue, type SystemModelMessage } from "ai";
+import type { JSONValue, SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
-import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
-import { aiSdkFetch, boundSignal, readBody, send } from "@provider/http/request.js";
+import { NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
+import { HttpStatus } from "@provider/http/errors.js";
+import { boundSignal, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
+import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import { decide } from "@provider/routing/decide.js";
@@ -90,25 +92,32 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const kindOf = (upstream: string): string => config.upstreams[upstream]!.kind;
 
   /**
+   * The id an upstream serves our model id under.
+   * @param route - The route that matched.
+   * @param upstream - The upstream.
+   * @param modelId - Our model id.
+   * @returns The upstream's id.
+   */
+  const vendorModelId = (route: LlmRoute, upstream: string, modelId: string): string => {
+    const vendor = vendorOf(kindOf(upstream));
+    return config.llm.vendor_ids[modelId]?.[upstream] ?? (vendor.gateway ? modelId : vendor.vendorId(modelId.slice(route.prefix.length)));
+  };
+
+  /**
    * The model an upstream serves our model id as.
    * @param route - The route that matched.
    * @param upstream - The upstream.
    * @param modelId - Our model id.
-   * @param fetch - A fetch for this call only; the upstream's shared factory is used without one.
    * @returns Its model.
    */
-  const modelOn = (route: LlmRoute, upstream: string, modelId: string, fetch?: typeof globalThis.fetch): ModelV4 => {
+  const modelOn = (route: LlmRoute, upstream: string, modelId: string): ModelV4 => {
     const decl = config.upstreams[upstream]!;
-    const vendor = vendorOf(decl.kind);
-    const key = options.keyOf(decl.key_env) ?? "";
-    let factory = fetch === undefined ? factories.get(upstream) : vendor.build(decl, key, fetch);
+    let factory = factories.get(upstream);
     if (factory === undefined) {
-      factory = vendor.build(decl, key, aiSdkFetch);
+      factory = vendorOf(decl.kind).build(decl, options.keyOf(decl.key_env) ?? "");
       factories.set(upstream, factory);
     }
-    const pinnedId = config.llm.vendor_ids[modelId]?.[upstream];
-    const id = pinnedId ?? (vendor.gateway ? modelId : vendor.vendorId(modelId.slice(route.prefix.length)));
-    return factory(id);
+    return factory(vendorModelId(route, upstream, modelId));
   };
 
   /**
@@ -245,29 +254,34 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   };
 
   /**
-   * An understand call the route stopped on, as the refusal it is, carrying what the
-   * refused answer cost: the upstream may bill it, so it is read before the refusal is
-   * judged, as domain's understand did.
+   * How an understand call ended, when it did not answer (design 3.5): a refusal the route
+   * stopped on becomes UpstreamRequestRejected with the upstream's status, running out of
+   * upstreams NoUpstreamAvailable, anything else UnderstandInterrupted; each carries what the
+   * answers before it were billed.
    * @param model - Our model id.
    * @param upstream - The upstream that answered last.
    * @param error - What the call threw.
-   * @param answerBody - The text of the last answer, when the SDK error kept no body.
-   * @param billed - The billed answers the call moved past.
-   * @returns UpstreamRequestRejected for an answered refusal, NoUpstreamAvailable carrying the billed answers, or the error itself.
+   * @param answerBody - The text of the last answer.
+   * @param billed - What the answers before it were billed, in order.
+   * @returns The error to throw.
    */
-  const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined, billed: Cost[]): unknown => {
+  const understandEnding = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined, billed: Cost[]): Error => {
     if (error instanceof NoUpstreamAvailable) return new NoUpstreamAvailable(error.model, error.reasons, billed);
-    // The status the answer came with: an error on a 200's choice came with a 200.
-    const status = APICallError.isInstance(error) ? error.statusCode : error instanceof InBandError ? 200 : undefined;
-    if (upstream === undefined || status === undefined) return error;
-    const failure = classifyLlm(error, vendorOf(kindOf(upstream)));
-    if (failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") return error;
-    const said = error instanceof InBandError ? (error.error as { message?: unknown } | null)?.message : undefined;
-    const message = typeof said === "string" ? said : (error as Error).message;
-    // A choice error's answer was costed where it was read; an answer refused by its status is costed here.
-    if (error instanceof InBandError) return new UpstreamRequestRejected(model, upstream, message, billed);
-    const cost = answerCost(upstream, status, APICallError.isInstance(error) ? (error.responseBody ?? answerBody) : answerBody);
-    return new UpstreamRequestRejected(model, upstream, message, cost === undefined ? billed : [...billed, cost]);
+    const failure = upstream === undefined ? null : classifyLlm(error, vendorOf(kindOf(upstream)));
+    if (upstream === undefined || failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") {
+      return new UnderstandInterrupted(model, billed, error);
+    }
+    if (error instanceof InBandError) {
+      // An error carried in a 2xx answer: that answer was costed where it was read.
+      const said = (error.error as { message?: unknown } | null)?.message;
+      return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status: failure.status, cause: error });
+    }
+    const said = (parsed(answerBody) as { error?: { message?: unknown } } | null | undefined)?.error?.message;
+    const cost = answerCost(upstream, failure.status, answerBody);
+    return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, cost === undefined ? billed : [...billed, cost], {
+      status: failure.status,
+      cause: error,
+    });
   };
 
   /**
@@ -384,96 +398,58 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     async understand(request, chosen = DEFAULT_ROUTE) {
       const route = routeOf(understandRoutes(request.model), request.model);
       const plan = planFor(route, request.model, chosen);
-      const { signal: abortSignal, dispose } = boundSignal({ deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) });
-      const content = [
-        { type: "text" as const, text: options.cleanText(request.question) },
-        ...request.media.flatMap((media, index) => [
-          { type: "text" as const, text: `Item ${index + 1}` },
-          { type: "file" as const, data: media.bytes, mediaType: media.contentType },
-        ]),
-      ];
+      const { signal, dispose } = boundSignal({ deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) });
+      const question = options.cleanText(request.question);
       let answering: string | undefined;
-      // Answers an upstream billed that the call moved past.
+      // What each 2xx answer before the final one was billed, in order.
       const billed: Cost[] = [];
-      // The body of the last answer: a refused call may be billed, and its SDK error keeps only part of it.
+      // The text of the last answer, for a refusal's cost and message.
       let lastBody: string | undefined;
-      /**
-       * provider's fetch, keeping the text of each answer for a refusal's cost.
-       * @param input - The request.
-       * @param init - Its options.
-       * @returns The response, its body still readable.
-       * @throws {NotSent | NoAnswer} As provider's fetch throws.
-       */
-      const keepingBody = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const response = await aiSdkFetch(input, init);
-        lastBody = await response.clone().text().catch(() => undefined);
-        return response;
-      };
-      const served = await tryInOrder(plan, {
-        phase: "llm_before_content",
-        maxRetries: options.llmMaxRetries,
-        classify: (error, c) => classifyLlm(error, vendorOf(kindOf(c.upstream))),
-        pause: (error, retry) => pauseBeforeRetry(error, retry, abortSignal),
-        attempt: async (c) => {
-          answering = c.upstream;
-          lastBody = undefined;
-          const vendor = vendorOf(kindOf(c.upstream));
-          // A gateway answers 200 with an error on the choice when the model failed while
-          // producing output. With nothing written it is judged by its code like any status,
-          // whether or not its SDK could read the rest of the answer; with words already
-          // written it is a stop, answered as it is.
-          /**
-           * The error on the kept answer's first choice, when that choice wrote nothing.
-           * @returns The error, or undefined.
-           */
-          const choiceError = (): unknown => {
-            if (!vendor.gateway) return undefined;
-            const choice = (parsed(lastBody) as { choices?: { error?: unknown; message?: { content?: unknown } }[] } | null | undefined)?.choices?.[0];
-            const written = choice?.message?.content;
-            return typeof written === "string" && written !== "" ? undefined : (choice?.error ?? undefined);
-          };
-          /**
-           * Cost the answer and throw its choice error, to be judged by its code.
-           * @param error - The choice's error.
-           * @throws {InBandError} Always.
-           */
-          const throwChoiceError = (error: unknown): never => {
-            const cost = answerCost(c.upstream, 200, lastBody);
-            if (cost !== undefined) billed.push(cost);
-            throw new InBandError(error);
-          };
-          let result;
-          try {
-            result = await generateText({
-              model: modelOn(route, c.upstream, request.model, keepingBody),
-              messages: [{ role: "user", content }],
+      try {
+        const served = await tryInOrder(plan, {
+          phase: "llm_before_content",
+          maxRetries: options.llmMaxRetries,
+          classify: (error, c) => classifyLlm(error, vendorOf(kindOf(c.upstream))),
+          pause: (error, retry) => pauseBeforeRetry(error, retry, signal),
+          attempt: async (c) => {
+            answering = c.upstream;
+            lastBody = undefined;
+            const decl = config.upstreams[c.upstream]!;
+            const adapter = understandAdapterOf(decl.kind);
+            const pin = config.llm.openrouter_backends[request.model];
+            const answered = await adapter.ask({
+              decl,
+              key: options.keyOf(decl.key_env) ?? "",
+              modelId: vendorModelId(route, c.upstream, request.model),
+              question,
+              media: request.media,
               maxOutputTokens: request.maxOutputTokens,
-              maxRetries: 0,
-              abortSignal,
-              ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
+              ...(vendorOf(decl.kind).gateway && pin !== undefined ? { backend: pin } : {}),
+              deadlineAt: request.deadlineAt,
+              signal,
+              inlineMaxBytes: config.llm.gemini_inline_max_bytes,
+              filePollMs: config.llm.gemini_file_poll_ms,
             });
-          } catch (error) {
-            const carried = choiceError();
-            if (carried !== undefined && carried !== null) throwChoiceError(carried);
-            throw error;
-          }
-          const carried = result.text === "" ? choiceError() : undefined;
-          if (carried !== undefined && carried !== null) throwChoiceError(carried);
-          return result;
-        },
-      }).catch((error: unknown) => {
-        throw refusedCall(request.model, answering, error, lastBody, billed);
-      }).finally(dispose);
-      const result = served.value;
-      const generationId = result.response.id;
-      const ref = costRefOf(served.servedBy, kindOf(served.servedBy) === "openrouter", generationId, result.providerMetadata);
-      const costRef = ref === undefined ? {} : { costRef: ref };
-      const cost = costOf({
-        model: request.model,
-        usage: result.usage,
-        providerMetadata: { ...result.providerMetadata, breatic: { upstream: served.servedBy, ...costRef } },
-      });
-      return { text: result.text, finishReason: result.finishReason, costs: [...billed, cost], upstream: served.servedBy };
+            lastBody = answered.text;
+            if (answered.status < 200 || answered.status >= 300) throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, 500));
+            // Every 2xx answer is costed here, whether it answered or carried an error.
+            const { usage, providerMetadata, generationId } = adapter.billing(answered.body);
+            const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
+            const cost = costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } });
+            const reading = adapter.read(answered.body);
+            if ("error" in reading) {
+              billed.push(cost);
+              throw new InBandError(reading.error);
+            }
+            return { ...reading, cost };
+          },
+        });
+        return { text: served.value.text, finishReason: served.value.finishReason, costs: [...billed, served.value.cost], upstream: served.servedBy };
+      } catch (error) {
+        throw understandEnding(request.model, answering, error, lastBody, billed);
+      } finally {
+        dispose();
+      }
     },
 
     async judge(request, chosen = DEFAULT_ROUTE) {

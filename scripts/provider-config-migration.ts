@@ -282,6 +282,9 @@ understand_routes is the same for reading media. vendor_ids is the id an
 upstream serves one of our models under. openrouter_backends pins the backend
 OpenRouter routes a model to. prices are the direct token prices, in USD per
 million tokens, for upstreams that report no cost of their own.
+gemini_inline_max_bytes is the request size past which media goes to Gemini
+through its Files API rather than inline; gemini_file_poll_ms is how often an
+uploaded file is asked about until it is ready.
 `, {
   routes: [
     ...direct.map((d) => ({ prefix: d.prefix, upstreams: [{ upstream: d.name, weight: 0 }, { upstream: "openrouter", weight: 1 }] })),
@@ -293,6 +296,8 @@ million tokens, for upstreams that report no cost of their own.
     [describe.model]: { only: [capture("packages/domain/src/understand/types.ts", /backend: "([^"]+)"/)], allow_fallbacks: false },
   },
   prices: { ...usagePricing.models, ...DIRECT_PRICES },
+  gemini_inline_max_bytes: 20_000_000,
+  gemini_file_poll_ms: 5_000,
 });
 
 write("routing.yaml.template", `

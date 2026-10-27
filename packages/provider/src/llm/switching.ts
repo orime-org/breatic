@@ -11,7 +11,7 @@
 
 import { APICallError } from "ai";
 import type { Cost } from "@provider/cost.js";
-import { Aborted, NoAnswer, NotSent } from "@provider/http/errors.js";
+import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
 import { passingStatus, type Failure } from "@provider/routing/decide.js";
@@ -123,6 +123,7 @@ export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
     return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
   }
   if (error instanceof InBandError) return valueFailure(error.error, vendor) ?? null;
+  if (error instanceof HttpStatus) return statusFailure(error.status, parsed(error.bodySnippet), vendor);
   return null;
 }
 

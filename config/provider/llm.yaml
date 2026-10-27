@@ -7,6 +7,9 @@
 # upstream serves one of our models under. openrouter_backends pins the backend
 # OpenRouter routes a model to. prices are the direct token prices, in USD per
 # million tokens, for upstreams that report no cost of their own.
+# gemini_inline_max_bytes is the request size past which media goes to Gemini
+# through its Files API rather than inline; gemini_file_poll_ms is how often an
+# uploaded file is asked about until it is ready.
 
 routes:
   - prefix: anthropic/
@@ -75,3 +78,5 @@ prices:
     input_cache_hit_per_mtok: 0.075
     input_cache_miss_per_mtok: 0.75
     output_per_mtok: 3.75
+gemini_inline_max_bytes: 20000000
+gemini_file_poll_ms: 5000

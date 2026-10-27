@@ -757,7 +757,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns The send answer for the element step; failed when the image is refused, no understand upstream can ever serve, or one refuses the request (its cost kept).
    * @throws {SendNotAccepted} When the image host could not be reached or dropped the read, or every understand upstream failed in a passing way.
    * @throws {DeadlinePassed} When the deadline cut the read or the description.
-   * @throws {NoAnswer} When the understand call's answer was lost, which may have been billed; other unknown errors are thrown as they are.
+   * @throws {UnderstandInterrupted} When the understand call ended otherwise (a lost answer, an error it cannot read), carrying what was billed; other unknown errors are thrown as they are.
    */
   const describe = async (ticket: Ticket, index: number, bounds: CallBounds): Promise<MediaAnswer> => {
     const step = ticket.steps[index]!;
@@ -802,7 +802,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (error instanceof UpstreamRequestRejected) {
         return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
       }
-      if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt);
+      if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt, error);
+      // UnderstandInterrupted and anything else go as they are: costsOf reads what they carry.
       throw error;
     }
     const description = answer.text.trim().slice(0, ELEMENT_DESCRIPTION_MAX);
