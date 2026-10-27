@@ -25,6 +25,7 @@
     "./analysis-frame-reader.ts",
     "./alpha-clock.ts",
     "./iso-bmff-metadata.ts",
+    "./matroska-metadata.ts",
     "./iso-bmff-presentation.ts",
     "./unedited-iso-video-presentation.ts",
     "./alpha-presentation.ts",
