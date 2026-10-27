@@ -26,6 +26,7 @@
     "./alpha-clock.ts",
     "./iso-bmff-metadata.ts",
     "./iso-bmff-presentation.ts",
+    "./unedited-iso-video-presentation.ts",
     "./alpha-presentation.ts",
     "./plan-command.ts",
     "./plan-recipes.ts",

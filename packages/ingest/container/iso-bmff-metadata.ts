@@ -16,6 +16,26 @@ export interface IsoBmffEdit {
   mediaTimeTrackTicks: string;
   mediaRateFixed16_16: string;
 }
+/** Compressed decode timing preserves its actual unsigned sample count and delta. */
+export interface IsoBmffDecodeRun { sampleCount: number; deltaTicks: string }
+/** Composition offsets preserve their versioned integer signedness. */
+export interface IsoBmffCompositionRun { sampleCount: number; offsetTicks: string }
+/** Original signed cslg fields, without applying a display-window policy. */
+export interface IsoBmffCompositionShift {
+  version: 0 | 1;
+  compositionToDtsShift: string;
+  leastDecodeToDisplayDelta: string;
+  greatestDecodeToDisplayDelta: string;
+  compositionStartTime: string;
+  compositionEndTime: string;
+}
+/** Selected-track sample facts, present only when an actual stts table was read. */
+export interface IsoBmffSampleTiming {
+  decodeRuns: IsoBmffDecodeRun[];
+  cttsVersion: 0 | 1 | null;
+  compositionRuns: IsoBmffCompositionRun[] | null;
+  compositionShift: IsoBmffCompositionShift | null;
+}
 /** One explicitly identified track, without inferring its codec or legal display extent. */
 export interface IsoBmffTrackMetadata {
   trackId: number;
@@ -24,6 +44,7 @@ export interface IsoBmffTrackMetadata {
   mediaTimescale: string;
   mediaDurationTicks: string;
   edits: IsoBmffEdit[] | null;
+  sampleTiming?: IsoBmffSampleTiming;
 }
 /** Integer container facts only; decoder and native playback observations remain separate. */
 export interface IsoBmffMetadata {
