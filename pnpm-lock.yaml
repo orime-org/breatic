@@ -214,7 +214,7 @@ patchedDependencies:
     hash: ioromi5suxmb624cadqatggywu
     path: patches/@blocknote__core@0.54.0.patch
   '@hocuspocus/server@4.6.0':
-    hash: 6v4nuzcpiuyocqohfgmqsza5qa
+    hash: mvbz57lg6wk6wpbwaex2fbfcae
     path: patches/@hocuspocus__server@4.6.0.patch
   '@radix-ui/react-dialog@1.1.23':
     hash: pd5rmgcphmcp5andnn44jkg4jy
@@ -328,7 +328,7 @@ importers:
         version: 4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@hocuspocus/server':
         specifier: 'catalog:'
-        version: 4.6.0(patch_hash=6v4nuzcpiuyocqohfgmqsza5qa)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
+        version: 4.6.0(patch_hash=mvbz57lg6wk6wpbwaex2fbfcae)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@sentry/node':
         specifier: 'catalog:'
         version: 11.4.0(@babel/core@7.29.7)(rollup@4.62.4)
@@ -584,7 +584,7 @@ importers:
         version: link:../shared
       '@hocuspocus/server':
         specifier: 'catalog:'
-        version: 4.6.0(patch_hash=6v4nuzcpiuyocqohfgmqsza5qa)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
+        version: 4.6.0(patch_hash=mvbz57lg6wk6wpbwaex2fbfcae)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@testcontainers/postgresql':
         specifier: 'catalog:'
         version: 11.14.0
@@ -12908,7 +12908,7 @@ snapshots:
   '@hocuspocus/extension-redis@4.6.0(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       '@hocuspocus/common': 4.6.0
-      '@hocuspocus/server': 4.6.0(patch_hash=6v4nuzcpiuyocqohfgmqsza5qa)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
+      '@hocuspocus/server': 4.6.0(patch_hash=mvbz57lg6wk6wpbwaex2fbfcae)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)
       '@sesamecare-oss/redlock': 1.4.0(ioredis@5.11.1)
       ioredis: 5.11.1
       kleur: 4.1.5
@@ -12926,7 +12926,7 @@ snapshots:
       y-protocols: 1.0.7(yjs@13.6.32)
       yjs: 13.6.32
 
-  '@hocuspocus/server@4.6.0(patch_hash=6v4nuzcpiuyocqohfgmqsza5qa)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
+  '@hocuspocus/server@4.6.0(patch_hash=mvbz57lg6wk6wpbwaex2fbfcae)(y-protocols@1.0.7(yjs@13.6.32))(yjs@13.6.32)':
     dependencies:
       '@hocuspocus/common': 4.6.0
       async-mutex: 0.5.0

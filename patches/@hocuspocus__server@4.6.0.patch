@@ -1,8 +1,28 @@
 diff --git a/dist/hocuspocus-server.cjs b/dist/hocuspocus-server.cjs
-index 39719e3862b1ff097c49f2673dafc445f90bd218..d53476af1edee235ac8a948e6d2f0ede5260f35d 100644
+index 39719e3862b1ff097c49f2673dafc445f90bd218..0aa00097d0844f8de1ad78b5b0ee2347a8a34da6 100644
 --- a/dist/hocuspocus-server.cjs
 +++ b/dist/hocuspocus-server.cjs
-@@ -925,7 +925,7 @@ var ClientConnection = class {
+@@ -810,10 +810,18 @@ var version = "4.6.0";
+ /**
+ * Get parameters by the given request
+ */
++// One parse per request: every pending document of a socket keeps its own
++// hook payload, so a parse per call let a client multiply its URL by that
++// count (inner#1589). Hooks share the result and must not mutate it.
++const parametersByRequest = new WeakMap();
+ function getParameters(request) {
+ 	const url = request?.url;
+ 	if (!url) return new URLSearchParams();
+-	return url.includes("://") ? new URL(url).searchParams : new URLSearchParams(url.split("?")[1] || "");
++	const cached = parametersByRequest.get(request);
++	if (cached) return cached;
++	const parameters = url.includes("://") ? new URL(url).searchParams : new URLSearchParams(url.split("?")[1] || "");
++	parametersByRequest.set(request, parameters);
++	return parameters;
+ }
+ 
+ //#endregion
+@@ -925,7 +933,7 @@ var ClientConnection = class {
  						this.terminate(_hocuspocus_common.ResetConnection);
  						return;
  					}
@@ -12,10 +32,30 @@ index 39719e3862b1ff097c49f2673dafc445f90bd218..d53476af1edee235ac8a948e6d2f0ede
  					return;
  				}
 diff --git a/dist/hocuspocus-server.esm.js b/dist/hocuspocus-server.esm.js
-index 0fce8e277d9cb44197070c7e52c43586b65b306d..16ea49ce82b288898cc9241f3767856586ebb3b8 100644
+index 0fce8e277d9cb44197070c7e52c43586b65b306d..cf4c1fc048a3ce70b334868bb98e12af2b9ed7e9 100644
 --- a/dist/hocuspocus-server.esm.js
 +++ b/dist/hocuspocus-server.esm.js
-@@ -895,7 +895,7 @@ var ClientConnection = class {
+@@ -780,10 +780,18 @@ var version = "4.6.0";
+ /**
+ * Get parameters by the given request
+ */
++// One parse per request: every pending document of a socket keeps its own
++// hook payload, so a parse per call let a client multiply its URL by that
++// count (inner#1589). Hooks share the result and must not mutate it.
++const parametersByRequest = new WeakMap();
+ function getParameters(request) {
+ 	const url = request?.url;
+ 	if (!url) return new URLSearchParams();
+-	return url.includes("://") ? new URL(url).searchParams : new URLSearchParams(url.split("?")[1] || "");
++	const cached = parametersByRequest.get(request);
++	if (cached) return cached;
++	const parameters = url.includes("://") ? new URL(url).searchParams : new URLSearchParams(url.split("?")[1] || "");
++	parametersByRequest.set(request, parameters);
++	return parameters;
+ }
+ 
+ //#endregion
+@@ -895,7 +903,7 @@ var ClientConnection = class {
  						this.terminate(ResetConnection);
  						return;
  					}
