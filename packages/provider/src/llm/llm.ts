@@ -11,7 +11,7 @@ import { APICallError, generateText, type JSONValue, type SystemModelMessage } f
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
-import { aiSdkFetch, MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
+import { aiSdkFetch, boundSignal, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
@@ -25,20 +25,6 @@ const JEV_MODEL = "typesafe/jev-1.13";
 /** The decisions endpoint, beside the OpenRouter API base. */
 const JEV_PATH = "../alpha/decisions";
 const DEFAULT_ROUTE: Route = { mode: "default" };
-
-/**
- * The deadline signal of a call, joined with the caller's.
- * @param deadlineAt - Epoch ms.
- * @param signal - The caller's signal.
- * @returns The signal, or none when neither bounds the call.
- */
-function untilDeadline(deadlineAt: number, signal?: AbortSignal): AbortSignal | undefined {
-  const left = deadlineAt - Date.now();
-  // A deadline beyond what a timer holds is no deadline: AbortSignal.timeout refuses it.
-  const deadline = left > MAX_TIMER_MS ? undefined : AbortSignal.timeout(Math.max(0, Math.trunc(left)));
-  const signals = [signal, deadline].filter((s): s is AbortSignal => s !== undefined);
-  return signals.length < 2 ? signals[0] : AbortSignal.any(signals);
-}
 
 /**
  * Wait for the shared refresh while letting just this caller leave
@@ -355,7 +341,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const routes = config.llm.understand_routes.some((r) => request.model.startsWith(r.prefix)) ? config.llm.understand_routes : config.llm.routes;
       const route = routeOf(routes, request.model);
       const plan = planFor(route, request.model, chosen);
-      const abortSignal = untilDeadline(request.deadlineAt, request.signal);
+      const { signal: abortSignal, dispose } = boundSignal({ deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) });
       const content = [
         { type: "text" as const, text: options.cleanText(request.question) },
         ...request.media.flatMap((media, index) => [
@@ -392,13 +378,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             messages: [{ role: "user", content }],
             maxOutputTokens: request.maxOutputTokens,
             maxRetries: 0,
-            ...(abortSignal === undefined ? {} : { abortSignal }),
+            abortSignal,
             ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
           });
         },
       }).catch((error: unknown) => {
         throw refusedCall(request.model, answering, error, lastBody);
-      });
+      }).finally(dispose);
       const result = served.value;
       const generationId = result.response.id;
       const ref = costRefOf(served.servedBy, kindOf(served.servedBy) === "openrouter", generationId, result.providerMetadata);
