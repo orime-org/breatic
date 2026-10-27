@@ -1,14 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
 import fc from "fast-check";
 import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
-import { generateText, type LanguageModelUsage } from "ai";
+import { generateText, type FinishReason, type LanguageModelUsage } from "ai";
 import { createProvider } from "../../provider.js";
-import type { CapabilityPolicy } from "../api.js";
+import type { CapabilityPolicy, UnderstandAnswer } from "../api.js";
 import { CHAT_REPLY, llmConfig, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
 let fakes: LlmFakes;
@@ -140,6 +140,10 @@ describe("cost.lookup on its last attempt (design 13.1, critical path)", () => {
 });
 
 describe("understand (design 6.5)", () => {
+  it("answers its finish reason in AI SDK's unified words, the same for every upstream (DD 24)", () => {
+    expectTypeOf<UnderstandAnswer["finishReason"]>().toEqualTypeOf<FinishReason>();
+  });
+
   const picture = { bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" };
 
   it("asks OpenRouter first for a Google model, with the media inline and the pinned backend", async () => {

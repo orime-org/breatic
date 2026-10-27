@@ -4,7 +4,7 @@
 import { generateText, stepCountIs, streamText, tool } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { NoUpstreamAvailable } from "../../errors.js";
+import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
 import { createProvider } from "../../provider.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, llmConfig, llmProvider, posted, postedAt, startFakes, stopFakes, vendorReply, type LlmFakes } from "./llm-harness.js";
@@ -420,6 +420,68 @@ describe("OpenRouter's 200 whose body is an error is judged by its code, as in a
     });
     expect(answer.upstream).toBe("google");
     expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+});
+
+/**
+ * OpenRouter's 200 whose only choice carries an error, the form it uses when a model fails once it is producing output.
+ * @param code - The error's code.
+ * @param content - What the model wrote before it failed.
+ * @returns The reply.
+ */
+const choiceError = (code: number, content = ""): Reply => ({
+  status: 200,
+  body: { ...CHAT_REPLY, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "error", error: { code, message: "Upstream died" } }] },
+});
+
+describe("an understand answer whose choice carries an error (design 3.5, DD 24)", () => {
+  /**
+   * Ask the understand model through the harness.
+   * @param keys - The environment keys.
+   * @returns The answer, or what it threw.
+   */
+  const ask = (keys: Record<string, string>): Promise<unknown> =>
+    llmProvider(fakes, keys, { llmMaxRetries: 0 }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
+      maxOutputTokens: 50,
+      deadlineAt: Date.now() + 60_000,
+    }).catch((e: unknown) => e);
+
+  it("moves on to Google when the code is a 502 and nothing was written", async () => {
+    fakes.openrouter.answer(() => choiceError(502));
+    const answer = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
+    expect((answer as { upstream?: unknown }).upstream).toBe("google");
+    expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("throws UpstreamRequestRejected naming OpenRouter, with the cost it reported, when the code is a 400 and nothing was written", async () => {
+    fakes.openrouter.answer(() => choiceError(400));
+    const error = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).upstream).toBe("openrouter");
+    expect((error as UpstreamRequestRejected).cost).toMatchObject({ state: "known", usd: CHAT_REPLY.usage.cost });
+    expect(posted(fakes.google)).toHaveLength(0);
+  });
+
+  it("answers what was written before the error, as a stop", async () => {
+    fakes.openrouter.answer(() => choiceError(502, "a fox"));
+    const answer = await ask({ OPENROUTER_API_KEY: "or" });
+    expect(answer).toMatchObject({ text: "a fox", upstream: "openrouter" });
+  });
+});
+
+describe("the reasons of a call no upstream served (design 5.4, DD 24)", () => {
+  it("names the status of each upstream's last failure", async () => {
+    fakes.deepseek.answer(() => ({ status: 503, body: {} }));
+    fakes.openrouter.answer(() => ({ status: 429, body: {} }));
+    const outcome = await run(BOTH, "deepseek/deepseek-v4-pro", 0);
+    expect(outcome).toBeInstanceOf(NoUpstreamAvailable);
+    expect((outcome as NoUpstreamAvailable).reasons).toEqual([
+      { upstream: "deepseek", kind: "failed", failure: "http_status", status: 503 },
+      { upstream: "openrouter", kind: "failed", failure: "http_status", status: 429 },
+    ]);
   });
 });
 

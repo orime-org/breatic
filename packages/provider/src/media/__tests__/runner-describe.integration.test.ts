@@ -375,6 +375,16 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(wavespeed.seen).toHaveLength(0);
   });
 
+  it("answers failed, submitting nothing, when OpenRouter's choice carries a refusing error and no description", async () => {
+    openrouter.answer(() => ({
+      status: 200,
+      body: { id: "gen-1", choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 400, message: "image unreadable" } }] },
+    }));
+    const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })) as MediaAnswer, "failed");
+    expect(answer.reason).toBeInstanceOf(UpstreamRequestRejected);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
   it("answers failed with UpstreamRequestRejected when the understand upstream refuses the request", async () => {
     openrouter.answer(() => ({ status: 400, body: { error: { message: "image unreadable", code: 400 } } }));
     const answer = expectState((await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })) as MediaAnswer, "failed");

@@ -262,6 +262,19 @@ describe("send", () => {
     expect((failed.reason as NoUpstreamAvailable).reasons).toContainEqual({ upstream: "ws_a", kind: "failed", failure: "model_not_found" });
   });
 
+  it("names the status of an earlier upstream's failure among the reasons", async () => {
+    a.answer(() => ({ status: 503, body: {} }));
+    b.answer(() => MODEL_NOT_FOUND);
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const moved = expectState(await r.send(stored(planned.ticket), live()), "send");
+    const failed = expectState(await r.send(stored(moved.ticket), live()), "failed");
+    expect((failed.reason as NoUpstreamAvailable).reasons).toEqual([
+      { upstream: "ws_a", kind: "failed", failure: "http_status", status: 503 },
+      { upstream: "ws_b", kind: "failed", failure: "model_not_found" },
+    ]);
+  });
+
   it("keeps a parameter 400 as a refusal of the request, not a missing model", async () => {
     a.answer(() => ({ status: 400, body: { code: 400, message: 'Invalid request body: field "prompt" is required; please provide a value' } }));
     const r = runner();
@@ -875,6 +888,29 @@ describe("the per-upstream concurrency cap (design 6.2, upstreams.yaml concurren
     a.answer(() => accepted("p4"));
     expectState(await r.send(stored(next), live()), "running");
     expect(submits(a.seen)).toHaveLength(2);
+  });
+
+  it("serves held requests in the order they arrived, though the run that frees a slot asks again at once", async () => {
+    const finished = JSON.stringify({ code: 200, data: { id: "pA", status: "completed", outputs: ["https://out.example/a.mp4"] } });
+    let n = 0;
+    a.answer(({ path }) => {
+      if (path === "/billings/search") return billing([]);
+      return ++n === 1 ? { status: 200, raw: finished, contentType: "application/json", hold: true } : accepted(`p${n}`);
+    });
+    const r = runner();
+    const plan = async (prompt: string, key: string): Promise<MediaTicket> =>
+      expectState(await r.plan("seedance", { ...video, prompt }, DEFAULT, { ...options(), idempotencyKey: key }), "send").ticket;
+    const [first, second, third] = await Promise.all([plan("A", "task-1"), plan("B", "task-2"), plan("C", "task-3")]);
+    const sending = [r.send(stored(first), live())];
+    await new Promise((done) => setTimeout(done, 100));
+    sending.push(r.send(stored(second), live()));
+    await new Promise((done) => setTimeout(done, 50));
+    sending.push(r.send(stored(third), live()));
+    await new Promise((done) => setTimeout(done, 50));
+    a.release();
+    await Promise.all(sending);
+    const order = a.seen.filter((s) => s.method === "POST").map((s) => (s.path === "/billings/search" ? "billing" : (s.body as { prompt?: string }).prompt));
+    expect(order.filter((o) => o !== "billing")).toEqual(["A", "B", "C"]);
   });
 
   it("does not queue a submit whose signal already fired while the upstream is full", async () => {

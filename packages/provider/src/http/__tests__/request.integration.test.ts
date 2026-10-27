@@ -98,6 +98,26 @@ describe("resending (design 2.2)", () => {
     expect(count()).toBe(2);
   });
 
+  it.each([408, 429])("replaySafe false still resends a %i, which says the server did not process it", async (status) => {
+    const { url, count } = await serve((_req, res, n) => (n === 1 ? json(res, status, {}) : json(res, 200, { ok: true })));
+    await expect(fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read })).resolves.toEqual({ ok: true });
+    expect(count()).toBe(2);
+  });
+
+  it("replaySafe false waits the Retry-After of a 429 before resending", async () => {
+    const { url, count } = await serve((_req, res, n) => (n === 1 ? json(res, 429, {}, { "retry-after": "1" }) : json(res, 200, {})));
+    const started = Date.now();
+    await fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(950);
+    expect(count()).toBe(2);
+  });
+
+  it("replaySafe false sends a 429 at most three times in all", async () => {
+    const { url, count } = await serve((_req, res) => json(res, 429, {}));
+    await expect(fetchJson({ url, method: "POST", body: "{}" }, { replaySafe: false, ...read })).rejects.toBeInstanceOf(HttpStatus);
+    expect(count()).toBe(3);
+  });
+
   it("replaySafe true does not resend a 400", async () => {
     const { url, count } = await serve((_req, res) => json(res, 400, { error: "bad" }));
     await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).rejects.toBeInstanceOf(HttpStatus);
