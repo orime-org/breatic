@@ -12,7 +12,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 // Controllable blocker + captured condition — no real router needed.
 const blocker = vi.hoisted(() => ({
-  state: 'unblocked' as 'unblocked' | 'blocked' | 'proceeding',
+  state: 'unblocked',
   proceed: vi.fn(),
   reset: vi.fn(),
 }));
@@ -26,6 +26,7 @@ let capturedCondition:
 
 vi.mock('react-router-dom', () => ({
   NavigationType: { Pop: 'POP', Push: 'PUSH', Replace: 'REPLACE' },
+  useParams: () => ({ projectId: 'p' }),
   useBlocker: (fn: typeof capturedCondition) => {
     capturedCondition = fn;
     return blocker;
@@ -101,6 +102,7 @@ describe('LeaveProjectGuard (#1787)', () => {
   });
 
   it('shows the confirm dialog while blocked; Leave proceeds, Stay resets', () => {
+    useSpaceOperationsStore.getState().register('space-1', 'op-1');
     blocker.state = 'blocked';
     render(<LeaveProjectGuard />);
     expect(screen.getByText('project.leaveGuard.title')).toBeInTheDocument();

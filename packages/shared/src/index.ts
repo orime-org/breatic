@@ -382,6 +382,12 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
+export {
+  SyncConfirmRequestSchema,
+  SyncConfirmedResponseSchema,
+} from "@shared/sync-receipt.js";
+export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
+
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
 
 export {

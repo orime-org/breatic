@@ -8,9 +8,10 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { COLLAB_REAUTH_REASONS, isReauthCloseReason } from '@breatic/shared';
+import { COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
+import { bindDocSync, type DocSyncBinding } from '@web/data/yjs/doc-sync-binding';
 
 /**
  * Placeholder token the Hocuspocus client must send purely to trip the
@@ -113,13 +114,66 @@ interface DocEntry {
   refcount: number;
   pendingRelease: ReturnType<typeof setTimeout> | null;
   facts: Omit<DocFacts, 'sessionEnded'>;
+  sync: DocSyncBinding | null;
 }
 
 let sharedSocket: HocuspocusProviderWebsocket | null = null;
 const docEntries = new Map<string, DocEntry>();
 const providerObservers = new Map<string, Set<() => void>>();
+const projectSyncObservers = new Map<string, Set<() => void>>();
 let sessionEnded = false;
 let boundAccount: string | undefined;
+
+/**
+ * Reads unsynced edits across the Project's open Canvas and Document entries.
+ * @param projectId - Canonical Project identifier.
+ * @returns Whether a registered content document has unconfirmed edits.
+ * @throws {never} Never.
+ */
+export function hasProjectUnsyncedEdits(projectId: string): boolean {
+  for (const [name, entry] of docEntries) {
+    if (parseDocName(name)?.projectId === projectId && entry.sync?.hasUnsyncedEdits()) return true;
+  }
+  return false;
+}
+
+/**
+ * Observes the Project's derived risk without acquiring document references.
+ * @param projectId - Canonical Project identifier.
+ * @param listener - Called when a contributing entry's risk changes.
+ * @returns The subscription cleanup.
+ * @throws {never} Never.
+ */
+export function subscribeProjectSync(projectId: string, listener: () => void): () => void {
+  const listeners = projectSyncObservers.get(projectId) ?? new Set<() => void>();
+  listeners.add(listener);
+  projectSyncObservers.set(projectId, listeners);
+  return (): void => {
+    listeners.delete(listener);
+    if (listeners.size === 0) projectSyncObservers.delete(projectId);
+  };
+}
+
+/**
+ * Publishes a changed document contribution to its Project observers.
+ * @param projectId - Canonical Project identifier.
+ * @throws {never} Never.
+ */
+function notifyProjectSync(projectId: string): void {
+  projectSyncObservers.get(projectId)?.forEach((listener) => listener());
+}
+
+/**
+ * Renders from the same version facts read by event-time leave checks.
+ * @param projectId - Canonical Project identifier.
+ * @returns Whether local content edits await confirmation.
+ * @throws {never} Never.
+ */
+export function useProjectUnsyncedEdits(projectId: string): boolean {
+  const subscribe = React.useCallback((listener: () => void): (() => void) => subscribeProjectSync(projectId, listener), [projectId]);
+  const read = React.useCallback((): boolean => hasProjectUnsyncedEdits(projectId), [projectId]);
+  return React.useSyncExternalStore(subscribe, read);
+}
 
 /**
  * Read the existing connection without retaining it.
@@ -182,8 +236,11 @@ export function useDocProvider(name: string | null): HocuspocusProvider | null {
 function destroyDocEntry(name: string, entry: DocEntry): void {
   if (entry.pendingRelease !== null) clearTimeout(entry.pendingRelease);
   if (docEntries.get(name) === entry) docEntries.delete(name);
+  entry.sync?.dispose();
   entry.provider.destroy();
   destroyDoc(name, entry.doc);
+  const projectId = parseDocName(name)?.projectId;
+  if (projectId) notifyProjectSync(projectId);
   notifyDocProvider(name);
 }
 
@@ -340,7 +397,12 @@ export function acquireDocProvider(
     refcount: 1,
     pendingRelease: null,
     facts: { hasEverSynced: false, authFailure: null },
+    sync: null,
   };
+  const parsed = parseDocName(name);
+  if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
+    entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
+  }
   docEntries.set(name, entry);
   // The registry watches for these itself rather than letting a consumer report
   // them: consumers come and go, and the one that happens to be mounted when
