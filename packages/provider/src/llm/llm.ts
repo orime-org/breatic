@@ -9,7 +9,7 @@
 
 import { generateText, type JSONValue, type SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
-import type { Cost } from "@provider/cost.js";
+import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { MAX_TIMER_MS, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
@@ -197,28 +197,34 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    */
   const costOf = (finished: FinishedCall): Cost => {
     const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown } | undefined;
+    const { usage } = finished;
+    // Split as domain's usage-cost bucketsOf splits it; reasoning is part of output.
+    const tokens: TokenBuckets = {
+      input: usage.inputTokens ?? 0,
+      cachedInput: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+      output: usage.outputTokens ?? 0,
+      reasoning: usage.outputTokenDetails?.reasoningTokens ?? 0,
+    };
     const upstream = typeof breatic?.upstream === "string" ? breatic.upstream : undefined;
-    if (upstream === undefined || config.upstreams[upstream] === undefined) return { state: "missing", reason: "the call names no upstream" };
+    if (upstream === undefined || config.upstreams[upstream] === undefined) return { state: "missing", reason: "the call names no upstream", tokens };
     if (kindOf(upstream) === "openrouter") {
       const reported = reportedCost(finished.providerMetadata);
-      if (reported !== undefined) return { state: "known", usd: reported, source: "reported" };
+      if (reported !== undefined) return { state: "known", usd: reported, tokens, source: "reported" };
       const ref = breatic?.costRef as { upstream?: unknown; generationId?: unknown } | undefined;
       return typeof ref?.generationId === "string"
         ? { state: "pending", lookup: { upstream: String(ref.upstream ?? upstream), generationId: ref.generationId } }
-        : { state: "missing", reason: `${upstream} reported no cost and no generation id` };
+        : { state: "missing", reason: `${upstream} reported no cost and no generation id`, tokens };
     }
     const price = config.llm.prices[finished.model];
-    if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}` };
-    const { usage } = finished;
-    const input = usage.inputTokens ?? 0;
-    const cachedInput = usage.inputTokenDetails?.cacheReadTokens ?? 0;
+    if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
+    const { input, cachedInput } = tokens;
     const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
     const writePrice = (breatic?.cacheTtl === "1h" ? price.input_cache_write_1h_per_mtok : price.input_cache_write_5m_per_mtok) ?? price.input_cache_miss_per_mtok;
     const usd = ((input - cachedInput - written) * price.input_cache_miss_per_mtok
       + cachedInput * (price.input_cache_hit_per_mtok ?? price.input_cache_miss_per_mtok)
       + written * writePrice
       + (usage.outputTokens ?? 0) * price.output_per_mtok) / 1_000_000;
-    return { state: "known", usd, source: "price_table" };
+    return { state: "known", usd, tokens, source: "price_table" };
   };
 
   /**

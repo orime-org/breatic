@@ -29,7 +29,7 @@ export interface TokenBuckets {
 export type Cost =
   | { state: "known"; usd: number; tokens?: TokenBuckets; source: "reported" | "billing" | "price_table" }
   | { state: "pending"; lookup: CostLookup }
-  | { state: "missing"; reason: string };
+  | { state: "missing"; reason: string; tokens?: TokenBuckets };
 
 /**
  * A token count off a generation answer.
