@@ -12,18 +12,30 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   GENERATION_TEMPLATES,
-  findTemplate,
-  templatePrompt,
   templatesFor,
   type GenerationTemplate,
   type TemplateGenerateNode,
 } from '@shared/canvas/generation-templates.js';
-import { TEMPLATE_GUIDE_KEY, templateSkeleton } from '@shared/canvas/template-expansion.js';
-import { setLocale, setLocaleMessages } from '@shared/i18n/index.js';
+import { TEMPLATE_GUIDE_KEY, templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
+import { setLocale, setLocaleMessages, t } from '@shared/i18n/index.js';
 import { MAX_NODE_NAME_LEN } from '@shared/types/canvas-node.js';
 import { markedSegments } from '@shared/types/canvas-proposal.js';
 
 const LOCALES = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'];
+
+/**
+ * A registered template by id.
+ * @param id - The id.
+ * @returns The template, or undefined.
+ */
+const byId = (id: string): GenerationTemplate | undefined => GENERATION_TEMPLATES.find((template) => template.id === id);
+
+/**
+ * A template anchor's prompt in the current language.
+ * @param template - The template.
+ * @returns Its segments.
+ */
+const promptOf = (template: GenerationTemplate): ReturnType<typeof markedSegments> => markedSegments(t(`canvas.template.${template.id}.prompt`));
 
 /** Each locale file as read, so a check sees what one language holds without the English fallback. */
 const MESSAGES = new Map<string, Record<string, unknown>>();
@@ -82,8 +94,8 @@ describe('generation templates', () => {
   });
 
   it('fixes the mode, model and the params the real runs settled on', () => {
-    const grid = findTemplate('storyboard-grid-25');
-    const costume = findTemplate('costume-sheet');
+    const grid = byId('storyboard-grid-25');
+    const costume = byId('costume-sheet');
     if (!grid || !costume) throw new Error('template missing');
     expect(anchorOf(grid)).toMatchObject({
       role: 'generate',
@@ -101,15 +113,12 @@ describe('generation templates', () => {
     });
   });
 
-  it('answers undefined for an id it does not have', () => {
-    expect(findTemplate('no-such-template')).toBeUndefined();
-  });
 
   it('carries a prompt in every interface language with as many reference marks as it declares', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const locale of LOCALES) {
         setLocale(locale);
-        const slots = templatePrompt(template).flatMap((s) => (s.slot ? [s.slot.kind] : []));
+        const slots = promptOf(template).flatMap((s) => (s.slot ? [s.slot.kind] : []));
         const fedInputs = template.inputs.filter((input) => feedsOf(template, input).includes(template.anchor));
         expect(slots.filter((kind) => kind === 'asset'), `${template.id} ${locale}`).toHaveLength(fedInputs.length);
         expect(slots, `${template.id} ${locale}`).toEqual(['asset', 'tweak']);
@@ -118,11 +127,11 @@ describe('generation templates', () => {
   });
 
   it('writes the prompt in the reader’s language', () => {
-    const grid = findTemplate('storyboard-grid-25');
+    const grid = byId('storyboard-grid-25');
     if (!grid) throw new Error('grid template missing');
     const text = (locale: string): string => {
       setLocale(locale);
-      return templatePrompt(grid)
+      return promptOf(grid)
         .map((s) => s.text ?? '')
         .join('');
     };
@@ -146,7 +155,7 @@ describe('generation templates', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const locale of LOCALES) {
         setLocale(locale);
-        const labels = templatePrompt(template).flatMap((s) => (s.slot?.kind === 'asset' ? [s.slot.label] : []));
+        const labels = promptOf(template).flatMap((s) => (s.slot?.kind === 'asset' ? [s.slot.label] : []));
         expect(labels, `${template.id} ${locale}`).toEqual([raw(locale, textKey(template, 'input.reference.name'))]);
       }
     }
@@ -157,6 +166,7 @@ describe('generation template registry checks', () => {
   it('keeps template ids, node keys and input keys unique, and no node takes the guide key', () => {
     const ids = GENERATION_TEMPLATES.map((template) => template.id);
     expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
     for (const template of GENERATION_TEMPLATES) {
       const nodeKeys = template.nodes.map((node) => node.key);
       const inputKeys = template.inputs.map((input) => input.key);
@@ -195,21 +205,19 @@ describe('generation template registry checks', () => {
   it('binds every reference mark to exactly one target of its node by name, the targets named apart, in every language', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const locale of LOCALES) {
+        setLocale(locale);
         for (const node of generateNodes(template)) {
-          const targets = [
-            ...template.inputs
-              .filter((input) => feedsOf(template, input).includes(node.key))
-              .map((input) => raw(locale, textKey(template, `input.${input.key}.name`))),
-            ...template.edges
-              .filter((edge) => edge.to === node.key && edge.into === 'pool')
-              .map((edge) => raw(locale, textKey(template, `node.${edge.from}.name`))),
-          ];
+          // The same reading the panel and the agent bind marks with.
+          const targets = templateMarkTargets(template, node.key);
+          const contributors =
+            template.inputs.filter((input) => feedsOf(template, input).includes(node.key)).length +
+            template.edges.filter((edge) => edge.to === node.key && (edge.into ?? 'pool') === 'pool').length;
           const where = `${template.id} ${locale} ${node.key}`;
-          expect(new Set(targets).size, where).toBe(targets.length);
+          expect(targets.size, `${where}: targets named apart`).toBe(contributors);
           const labels = markedSegments(raw(locale, promptKeyOf(template, node.key)) ?? '').flatMap((s) =>
             s.slot?.kind === 'asset' ? [s.slot.label] : [],
           );
-          for (const label of labels) expect(targets.filter((name) => name === label), `${where} ${label}`).toHaveLength(1);
+          for (const label of labels) expect(targets.has(label), `${where} ${label}`).toBe(true);
         }
       }
     }
@@ -219,7 +227,9 @@ describe('generation template registry checks', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const node of template.nodes) {
         if (node.role !== 'source') continue;
-        expect(node.resource, `${template.id} ${node.key}`).toMatch(new RegExp(`^templates/${template.id}/[^/]+$`));
+        expect(node.resource, `${template.id} ${node.key}`).toMatch(
+          new RegExp(`^templates/${template.id}/[A-Za-z0-9][A-Za-z0-9._-]*\\.(png|jpe?g|webp|gif|mp4|webm|mov|mp3|wav|m4a)$`),
+        );
       }
     }
   });

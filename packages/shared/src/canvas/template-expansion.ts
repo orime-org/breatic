@@ -63,6 +63,8 @@ export interface TemplateInstanceMatch {
   keys: ReadonlyMap<TemplateNodeKey, TemplateKeyMatch>;
   /** The template edges the walk crossed. */
   walked: readonly { from: TemplateNodeKey; to: TemplateNodeKey; into?: string }[];
+  /** Template edges whose two keys both matched a node, with no edge between those nodes. */
+  unwired: readonly { from: TemplateNodeKey; to: TemplateNodeKey; into?: string }[];
   /** Input key to fed key to the node assigned there. */
   inputs: ReadonlyMap<string, ReadonlyMap<TemplateNodeKey, string>>;
   /** Inputs left without a node on a matched fed node. */
@@ -85,6 +87,8 @@ export interface TemplateExpansionInput {
   reuse: ReadonlyMap<TemplateNodeKey, number>;
   /** Whether to append the guide text node. */
   guide: boolean;
+  /** The caller's indices that stand empty: an input given one of them still gets its note. */
+  emptyNodes?: ReadonlySet<number>;
 }
 
 /** The panel's expansion: nodes rewritten at the caller's indices, nodes appended from `base`, new edges. */
@@ -179,6 +183,7 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   const keys = new Map<TemplateNodeKey, TemplateKeyMatch>();
   const at = new Map<TemplateNodeKey, string>([[skeleton.anchor, anchor]]);
   const walked: { from: TemplateNodeKey; to: TemplateNodeKey; into?: string }[] = [];
+  const unwired: { from: TemplateNodeKey; to: TemplateNodeKey; into?: string }[] = [];
   /**
    * Whether the node settled for a key keeps the template's settings.
    * @param key - The key.
@@ -196,13 +201,26 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   for (let i = 0; i < queue.length; i += 1) {
     const to = queue[i] as TemplateNodeKey;
     for (const edge of skeleton.edges) {
-      if (edge.to !== to || keys.has(edge.from)) continue;
+      if (edge.to !== to) continue;
+      const crossed = edge.into === undefined ? { from: edge.from, to: edge.to } : { from: edge.from, to: edge.to, into: edge.into };
+      const settled = keys.get(edge.from);
+      // A key two template edges leave is matched through the first; the
+      // second only asks that its node is wired there too.
+      if (settled?.kind === "one" || settled?.kind === "many") {
+        if (blocked.has(to)) continue;
+        walked.push(crossed);
+        const id = at.get(edge.from);
+        if (!incoming(at.get(to) as string).some((wire) => wire.from === id)) unwired.push(crossed);
+        continue;
+      }
       const status = blocked.get(to);
       if (status) {
-        keys.set(edge.from, { kind: status });
-        blocked.set(edge.from, status);
+        if (settled === undefined) {
+          keys.set(edge.from, { kind: status });
+          blocked.set(edge.from, status);
+        }
       } else {
-        walked.push(edge.into === undefined ? { from: edge.from, to: edge.to } : { from: edge.from, to: edge.to, into: edge.into });
+        walked.push(crossed);
         const found = incoming(at.get(to) as string)
           .map((wire) => wire.from)
           .filter((id) => isTagged(id, edge.from));
@@ -213,6 +231,7 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
         } else {
           keys.set(edge.from, found.length === 1 ? { kind: "one", node: first } : { kind: "many", nodes: found });
           at.set(edge.from, first);
+          blocked.delete(edge.from);
           if (!keepsAt(edge.from)) blocked.set(edge.from, "unreached");
         }
       }
@@ -254,17 +273,36 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
       if (own) give(input.key, fed, own.from);
     }
   }
+  /**
+   * Whether a node may be given to an input: of its type, not one of this
+   * template's own nodes, not tagged for another of its inputs, not taken.
+   * @param from - The node id.
+   * @param input - The input.
+   * @returns Whether it may.
+   */
+  const free = (from: string, input: TemplateSkeleton["inputs"][number]): boolean => {
+    const node = graph.nodes.get(from);
+    if (!node || node.type !== input.type || node.tag?.template === skeleton.id || taken.has(from)) return false;
+    return node.inputTag?.template !== skeleton.id;
+  };
+  // An input fed into several nodes is one piece of material: it is given
+  // the node wired into all of them first, before inputs fed into one node
+  // can take that node for themselves.
+  for (const input of skeleton.inputs) {
+    const fed = fedNodes(input).filter(([key]) => !inputs.get(input.key)?.has(key));
+    if (fed.length < 2) continue;
+    const [first, ...rest] = fed as [[TemplateNodeKey, string], ...Array<[TemplateNodeKey, string]>];
+    const common = incoming(first[1])
+      .map((wire) => wire.from)
+      .find((from) => free(from, input) && rest.every(([, id]) => incoming(id).some((wire) => wire.from === from)));
+    if (common !== undefined) for (const [key] of fed) give(input.key, key, common);
+  }
   for (const input of skeleton.inputs) {
     for (const [fed, id] of fedNodes(input)) {
       if (inputs.get(input.key)?.has(fed)) continue;
       const wired = incoming(id).map((wire) => wire.from);
       const shared = [...(inputs.get(input.key)?.values() ?? [])].find((node) => wired.includes(node));
-      const free = wired.find((from) => {
-        const node = graph.nodes.get(from);
-        if (!node || node.type !== input.type || node.tag?.template === skeleton.id || taken.has(from)) return false;
-        return node.inputTag?.template !== skeleton.id;
-      });
-      const chosen = shared ?? free;
+      const chosen = shared ?? wired.find((from) => free(from, input));
       if (chosen !== undefined) give(input.key, fed, chosen);
     }
   }
@@ -302,7 +340,37 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
     candidates.set(key, [...graph.nodes.keys()].filter((id) => isTagged(id, key) && !claimed(id, key)));
   }
 
-  return { keys, walked, inputs, unassigned, candidates };
+  return { keys, walked, unwired, inputs, unassigned, candidates };
+}
+
+/** What a reference mark in a generate node's prompt can name: one of its inputs, or a template node wired into its pool. */
+export type TemplateMarkTarget = { input: string } | { node: TemplateNodeKey };
+
+/**
+ * Every name a reference mark in one generate node's prompt binds to, in the
+ * reader's language: each input feeding the node, and each template node
+ * wired into its pool (an edge naming no into goes into the pool, as a
+ * proposal edge without one does).
+ * @param template - The template.
+ * @param key - The generate node's key.
+ * @returns Name to the target it stands for.
+ * @throws {never} Never.
+ */
+export function templateMarkTargets(template: GenerationTemplate, key: TemplateNodeKey): Map<string, TemplateMarkTarget> {
+  /**
+   * One of the template's strings in the reader's language.
+   * @param rest - The key under the template's locale entry.
+   * @returns The string.
+   */
+  const text = (rest: string): string => t(`canvas.template.${template.id}.${rest}`);
+  const targets = new Map<string, TemplateMarkTarget>();
+  for (const input of template.inputs) {
+    if ((input.feeds ?? [template.anchor]).includes(key)) targets.set(text(`input.${input.key}.name`), { input: input.key });
+  }
+  for (const edge of template.edges) {
+    if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(`node.${edge.from}.name`), { node: edge.from });
+  }
+  return targets;
 }
 
 /**
@@ -354,12 +422,15 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
 
   const indexOf = new Map<TemplateNodeKey, number>([[template.anchor, input.anchorAt]]);
   const pending: Array<{ index: number; key: TemplateNodeKey }> = [];
+  const reusedSources = new Map<number, ProposalNode>();
   for (const node of template.nodes) {
     if (node.key === template.anchor) continue;
     const reused = input.reuse.get(node.key);
     if (reused !== undefined) {
       indexOf.set(node.key, reused);
       if (node.role === "generate") pending.push({ index: reused, key: node.key });
+      // Carries its path, so a reused one still empty is fetched again.
+      else reusedSources.set(reused, templateNodeDefaults(template, node.key, { role: "source", type: node.type, name: text(`node.${node.key}.name`) }));
       continue;
     }
     const base: ProposalNode = { role: node.role, type: node.type, name: text(`node.${node.key}.name`) };
@@ -407,26 +478,24 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
    * @returns The prompt.
    */
   const promptOf = (key: TemplateNodeKey): PromptSegment[] => {
-    const targets = new Map<string, number>();
-    for (const one of skeleton.inputs) {
-      const index = inputAt.get(one.key)?.get(key);
-      if (index !== undefined) targets.set(text(`input.${one.key}.name`), index);
-    }
-    for (const edge of skeleton.edges) {
-      if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(`node.${edge.from}.name`), indexOf.get(edge.from) as number);
-    }
+    const targets = templateMarkTargets(template, key);
     const notes = skeleton.inputs
-      .filter((one) => fresh.has(one.key) && one.feeds.includes(key))
+      .filter((one) => {
+        if (!one.feeds.includes(key)) return false;
+        const given = inputAt.get(one.key)?.get(key);
+        return fresh.has(one.key) || (given !== undefined && input.emptyNodes?.has(given) === true);
+      })
       .map((one): PromptSegment => ({ slot: { kind: "note", label: text(`input.${one.key}.note`) } }));
     const words = markedSegments(text(key === template.anchor ? "prompt" : `node.${key}.prompt`)).map((segment): PromptSegment => {
       const target = segment.slot?.kind === "asset" ? targets.get(segment.slot.label) : undefined;
-      return target === undefined ? segment : { ref: target };
+      const index = target === undefined ? undefined : "input" in target ? inputAt.get(target.input)?.get(key) : indexOf.get(target.node);
+      return index === undefined ? segment : { ref: index };
     });
     return [...notes, ...words];
   };
 
   const anchorNode = templateAnchor(template);
-  const rewritten = new Map<number, ProposalNode>();
+  const rewritten = new Map<number, ProposalNode>(reusedSources);
   const anchorBase: ProposalNode = { role: "generate", type: anchorNode.type, name: text("name") };
   rewritten.set(input.anchorAt, { ...templateNodeDefaults(template, undefined, anchorBase), prompt: promptOf(template.anchor) });
   for (const { index, key } of pending) {

@@ -18,6 +18,7 @@ import {
   matchTemplateInstance,
   templateGuideNode,
   templateNodeDefaults,
+  templateMarkTargets,
   templateSkeleton,
   type TemplateExpansionInput,
   type TemplateExpansionResult,
@@ -416,6 +417,75 @@ describe('matchTemplateInstance', () => {
   });
 });
 
+describe('matchTemplateInstance, round-1 review (inner#1345)', () => {
+  it('gives an input fed into two nodes the node wired into both, ahead of inputs fed into one', () => {
+    // The palette node sits first among the anchor's references, where the
+    // hero input would take it if inputs were served in declaration order alone.
+    const edges: GraphEdge[] = [
+      ['R', 'S', 'pool'],
+      ['P', 'S', 'pool'],
+      ['C', 'S', 'pool'],
+      ['S', 'A', 'reference_image'],
+      ['C', 'A', 'pool'],
+      ['H', 'A', 'pool'],
+      ['L', 'A', 'pool'],
+    ];
+    const match = matchTemplateInstance(SKELETON, graphOf(FULL.nodes, edges), 'A');
+    expect(match.inputs.get('palette')).toEqual(new Map([['sheet', 'C'], ['final', 'C']]));
+    expect(match.inputs.get('hero')).toEqual(new Map([['final', 'H']]));
+    expect(match.inputs.get('place')).toEqual(new Map([['final', 'L']]));
+    expect(match.unassigned).toEqual([]);
+  });
+
+  it('walks every template edge out of a node that feeds two, and lists the one not wired', () => {
+    const fan: TemplateSkeleton = {
+      id: 'fan',
+      anchor: 'a',
+      nodes: new Map([
+        ['a', { role: 'generate', type: 'image' }],
+        ['u', { role: 'generate', type: 'image' }],
+        ['x', { role: 'source', type: 'image', resource: 'templates/fan/x.png' }],
+      ]),
+      edges: [
+        { from: 'x', to: 'u', into: 'pool' },
+        { from: 'x', to: 'a', into: 'pool' },
+        { from: 'u', to: 'a', into: 'pool' },
+      ],
+      inputs: [],
+      steps: [],
+    };
+    const nodes: TemplateGraphNode[] = [plain('A'), tagged('U', 'u', 'image', 'fan'), tagged('X', 'x', 'image', 'fan')];
+    const match = matchTemplateInstance(fan, graphOf(nodes, [['X', 'A', 'pool'], ['U', 'A', 'pool']]), 'A');
+    expect(match.keys.get('x')).toEqual({ kind: 'one', node: 'X' });
+    expect(byFrom(match.walked)).toEqual([
+      { from: 'u', to: 'a', into: 'pool' },
+      { from: 'x', to: 'a', into: 'pool' },
+      { from: 'x', to: 'u', into: 'pool' },
+    ]);
+    expect(match.unwired).toEqual([{ from: 'x', to: 'u', into: 'pool' }]);
+  });
+});
+
+describe('templateMarkTargets', () => {
+  it('names the inputs a node is fed and the template nodes wired into its pool, an edge with no into among them', () => {
+    const noInto: GenerationTemplate = { ...FIXTURE, edges: [{ from: 'style', to: 'sheet' }, { from: 'sheet', to: 'final', into: 'reference_image' }] };
+    expect(templateMarkTargets(noInto, 'sheet')).toEqual(
+      new Map([
+        ['pose', { input: 'pose' }],
+        ['palette', { input: 'palette' }],
+        ['house style', { node: 'style' }],
+      ]),
+    );
+    expect(templateMarkTargets(FIXTURE, 'final')).toEqual(
+      new Map([
+        ['hero', { input: 'hero' }],
+        ['place', { input: 'place' }],
+        ['palette', { input: 'palette' }],
+      ]),
+    );
+  });
+});
+
 // ── templateGuideNode ────────────────────────────────────────────────────
 
 describe('templateGuideNode', () => {
@@ -666,6 +736,33 @@ describe('expandTemplate', () => {
     expect(promptBy(result.rewritten.get(0), who).filter((segment) => JSON.stringify(segment).includes('palette'))).toEqual([
       { ref: 'palette' },
     ]);
+  });
+});
+
+describe('expandTemplate, round-1 review (inner#1345)', () => {
+  it('notes an input whose node is already there but empty', () => {
+    const result = expandTemplate(FIXTURE, {
+      anchorAt: 0,
+      base: 2,
+      inputs: new Map([['hero', new Map([['final', 1]])]]),
+      wired: [{ fromIndex: 1, toIndex: 0 }],
+      reuse: new Map(),
+      guide: false,
+      emptyNodes: new Set([1]),
+    });
+    expect(result.rewritten.get(0)?.prompt).toContainEqual(note('Drop the hero first'));
+  });
+
+  it('rewrites a reused resource node with its storage path, so an empty one is fetched again', () => {
+    const result = expandTemplate(FIXTURE, {
+      anchorAt: 0,
+      base: 3,
+      inputs: new Map(),
+      wired: [{ fromIndex: 2, toIndex: 1 }, { fromIndex: 1, toIndex: 0 }],
+      reuse: new Map([['sheet', 1], ['style', 2]]),
+      guide: false,
+    });
+    expect(result.rewritten.get(2)).toEqual({ role: 'source', type: 'image', name: 'house style', resource: `templates/${ID}/style.png` });
   });
 });
 

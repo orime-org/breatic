@@ -746,9 +746,7 @@ export {
 } from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
-  findTemplate,
   templateAnchor,
-  templatePrompt,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
@@ -762,6 +760,7 @@ export {
   expandTemplate,
   matchTemplateInstance,
   templateGuideNode,
+  templateMarkTargets,
   templateNodeDefaults,
   templateSkeleton,
   type TemplateExpansionInput,
@@ -770,6 +769,7 @@ export {
   type TemplateGraphNode,
   type TemplateInstanceMatch,
   type TemplateKeyMatch,
+  type TemplateMarkTarget,
   type TemplateSkeleton,
 } from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at

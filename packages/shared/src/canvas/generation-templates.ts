@@ -13,10 +13,13 @@
  * runs on Nano Banana Pro Ultra: a fixed ratio keeps the reference's own frame
  * and background out of the result, and the costume sheet needs the
  * photographic style and the hairstyle named or it drifts.
+ *
+ * Each template is defined in a file of its own under `canvas/templates/`;
+ * this module holds the shape and the registry they are collected into.
  */
 
-import { t } from "@shared/i18n/index.js";
-import { markedSegments, type PromptSegment } from "@shared/types/canvas-proposal.js";
+import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
+import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** A template node's key: names its locale strings and lets marks point at it. */
@@ -74,46 +77,6 @@ export interface GenerationTemplate {
   agentNote: string;
 }
 
-const STORYBOARD_GRID_25: GenerationTemplate = {
-  id: "storyboard-grid-25",
-  anchor: "result",
-  nodes: [
-    {
-      key: "result",
-      role: "generate",
-      type: "image",
-      mode: "i2i",
-      model: "nano-banana-pro-edit-ultra",
-      params: { aspect_ratio: "1:1", resolution: "4k" },
-    },
-  ],
-  edges: [],
-  inputs: [{ key: "reference", type: "image" }],
-  steps: [],
-  agentNote:
-    "one 5x5 storyboard picture of a continuous story, the same characters and place in every panel; made to be turned into a video afterwards",
-};
-
-const COSTUME_SHEET: GenerationTemplate = {
-  id: "costume-sheet",
-  anchor: "result",
-  nodes: [
-    {
-      key: "result",
-      role: "generate",
-      type: "image",
-      mode: "i2i",
-      model: "nano-banana-pro-edit-ultra",
-      params: { aspect_ratio: "16:9", resolution: "4k" },
-    },
-  ],
-  edges: [],
-  inputs: [{ key: "reference", type: "image" }],
-  steps: [],
-  agentNote:
-    "a character costume sheet: front, side and back full-body views plus close-ups of the hands or another body part, for keeping a character consistent",
-};
-
 /** Every template, in the order the panels list them. */
 export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [STORYBOARD_GRID_25, COSTUME_SHEET];
 
@@ -137,22 +100,4 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
  */
 export function templatesFor(nodeType: GenerationNodeType): readonly GenerationTemplate[] {
   return GENERATION_TEMPLATES.filter((template) => templateAnchor(template).type === nodeType);
-}
-
-/**
- * A template by id.
- * @param id - The template id.
- * @returns The template, or undefined for an id the registry does not have.
- */
-export function findTemplate(id: string): GenerationTemplate | undefined {
-  return GENERATION_TEMPLATES.find((template) => template.id === id);
-}
-
-/**
- * A template's prompt in the reader's language.
- * @param template - The template.
- * @returns The prompt segments.
- */
-export function templatePrompt(template: GenerationTemplate): PromptSegment[] {
-  return markedSegments(t(`canvas.template.${template.id}.prompt`));
 }
