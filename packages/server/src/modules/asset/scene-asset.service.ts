@@ -3,7 +3,7 @@
 
 import { NotFoundError } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
-import { t } from "@breatic/shared";
+import { isSceneModelMediaType, t } from "@breatic/shared";
 
 import * as projectService from "@server/modules/project/project.service.js";
 
@@ -11,6 +11,7 @@ import * as projectService from "@server/modules/project/project.service.js";
 export interface SceneAssetDescriptor {
   url: string;
   mimeType: string;
+  sizeBytes: number;
 }
 
 /**
@@ -18,9 +19,8 @@ export interface SceneAssetDescriptor {
  *
  * Project access is checked before the asset lookup. The repository restricts
  * the lookup to live rows in that Studio; all other ids and unsupported media
- * receive the same not-found result. The current scene loader supports GLB;
- * glTF bundles and external dependencies belong to the import follow-up.
- * The URL comes from the registered row.
+ * receive the same not-found result. The registered container holds the GLB
+ * or the complete versioned model package. Its URL and size come from the row.
  * @param projectId - Project whose scene references the asset.
  * @param userId - Caller who must be able to view that Project.
  * @param assetId - Registered asset id stored in the scene model reference.
@@ -34,8 +34,8 @@ export async function resolveSceneAsset(
 ): Promise<SceneAssetDescriptor> {
   const project = await projectService.get(projectId, userId);
   const asset = await assetRepo.findLiveInStudio(project.studioId, assetId);
-  if (asset === null || asset.mimeType !== "model/gltf-binary") {
+  if (asset === null || !isSceneModelMediaType(asset.mimeType)) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  return { url: asset.fileUrl, mimeType: asset.mimeType };
+  return { url: asset.fileUrl, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes };
 }

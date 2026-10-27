@@ -48,3 +48,13 @@ export type SceneObject = z.infer<typeof SceneObjectSchema>;
 /** The existing arrays created together with every stable object record. */
 export const SCENE_EDITABLE_FIELDS = ['name', 'position', 'rotation', 'scale', 'locked', 'exists'] as const;
 export type SceneEditableField = typeof SCENE_EDITABLE_FIELDS[number];
+
+/**
+ * Identify the registered containers that carry a complete scene model.
+ * @param value - A reduced MIME essence from an upload or the asset ledger.
+ * @returns Whether the container is a GLB or a versioned model ZIP.
+ * @throws {never} Never.
+ */
+export function isSceneModelMediaType(value: string): boolean {
+  return value === 'model/gltf-binary' || value === 'application/zip';
+}

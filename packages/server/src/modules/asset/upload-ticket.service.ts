@@ -40,7 +40,7 @@ export interface TicketItem {
   source?: "mini_tool" | undefined;
   tool_name?: string | undefined;
   derived?: boolean | undefined;
-  purpose?: "project_cover" | "studio_avatar" | undefined;
+  purpose?: "project_cover" | "studio_avatar" | "scene_model" | undefined;
 }
 
 /** The file name every transfer grant records. */
@@ -311,11 +311,10 @@ async function prepareUpload(
         spaceId: item.space_id ?? null,
         source: item.source ?? null,
         toolName: item.tool_name ?? null,
-        // A cover is a byproduct: in the ledger, and not announced on the
-        // project feed as something uploaded to the canvas.
-        derived: item.purpose === "project_cover" ? true : (item.derived ?? null),
+        // Node-free models and covers stay off the canvas upload feed.
+        derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
         filename: item.filename,
-        assetSource: item.purpose ?? null,
+        assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),
       },
     },
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },
