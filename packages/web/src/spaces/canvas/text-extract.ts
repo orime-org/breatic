@@ -31,6 +31,8 @@ const TEXT_LIKE_APPLICATION = new Set<string>([
   'application/yaml',
 ]);
 
+/** PDF document MIME (.pdf). */
+const PDF_MIME = 'application/pdf';
 /** Office Open XML Word document MIME (.docx). */
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -41,6 +43,18 @@ const XLSX_MIME =
 const XLS_MIME = 'application/vnd.ms-excel';
 
 /**
+ * Offer the file types handled by the existing document extractors.
+ * @returns A comma-separated file picker accept value.
+ */
+export function textExtractAccept(): string {
+  return [
+    'text/*', ...TEXT_LIKE_APPLICATION,
+    PDF_MIME, DOCX_MIME, XLSX_MIME, XLS_MIME,
+    '.pdf', '.docx', '.xlsx', '.xls', '.txt',
+  ].join(',');
+}
+
+/**
  * Map a file's MIME type to the extractor it needs, or `null` when no
  * extractor handles it (arbitrary binary / media — media is classified by
  * `fileToNodeSpec` and never reaches here).
@@ -49,7 +63,7 @@ const XLS_MIME = 'application/vnd.ms-excel';
  */
 export function pickExtractor(mime: string): ExtractorKind | null {
   if (mime.startsWith('text/') || TEXT_LIKE_APPLICATION.has(mime)) return 'text';
-  if (mime === 'application/pdf') return 'pdf';
+  if (mime === PDF_MIME) return 'pdf';
   if (mime === DOCX_MIME) return 'docx';
   if (mime === XLSX_MIME || mime === XLS_MIME) return 'xlsx';
   return null;

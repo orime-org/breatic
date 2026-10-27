@@ -87,17 +87,19 @@ beforeEach(() => {
 
 describe('attachment picker formats', () => {
   it.each([
-    'text/plain', 'text/markdown', 'text/csv',
-    'application/json', 'application/xml', 'application/javascript',
-    'application/ecmascript', 'application/x-yaml', 'application/yaml',
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-excel',
-  ])('offers the existing extractor capability for %s', (mime) => {
+    ['notes.txt', 'text/plain'], ['notes.md', 'text/markdown'], ['rows.csv', 'text/csv'],
+    ['data.json', 'application/json'], ['data.xml', 'application/xml'],
+    ['code.js', 'application/javascript'], ['code.es', 'application/ecmascript'],
+    ['data.yaml', 'application/x-yaml'], ['data.yml', 'application/yaml'],
+    ['document.pdf', 'application/pdf'],
+    ['document.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    ['sheet.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    ['sheet.xls', 'application/vnd.ms-excel'],
+  ])('offers the existing extractor capability for %s', (name, mime) => {
     expect(pickExtractor(mime)).not.toBeNull();
     const tokens = attachAccept().split(',');
-    expect(tokens.includes(mime) || (mime.startsWith('text/') && tokens.includes('text/*'))).toBe(true);
+    const extension = name.slice(name.lastIndexOf('.'));
+    expect(tokens.includes(extension) || tokens.includes(mime) || (mime.startsWith('text/') && tokens.includes('text/*'))).toBe(true);
   });
 
   it('retains supported media aliases and document extensions', () => {

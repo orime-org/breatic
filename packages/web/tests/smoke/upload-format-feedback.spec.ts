@@ -109,6 +109,28 @@ for (const entry of ['pick', 'paste'] as const) {
   });
 }
 
+for (const theme of ['light', 'dark'] as const) {
+  test(`the Agent picker offers existing text formats and attaches them in ${theme}`, async ({ page }) => {
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    const choosing = page.waitForEvent('filechooser');
+    await page.getByTestId('chat-composer-attach').focus();
+    await page.keyboard.press('Enter');
+    const chooser = await choosing;
+    const accept = (await chooser.element().getAttribute('accept'))?.split(',') ?? [];
+    expect(accept).toEqual(expect.arrayContaining(['text/*', 'application/json', 'application/yaml']));
+    await chooser.setFiles([
+      { name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Readable notes') },
+      { name: 'rows.csv', mimeType: 'text/csv', buffer: Buffer.from('name,value\nexample,1') },
+      { name: 'data.json', mimeType: 'application/json', buffer: Buffer.from('{"value":1}') },
+    ]);
+    const ready = page.getByTestId('chat-composer-chips').locator('[data-status="ready"]');
+    await expect(ready).toHaveCount(3);
+    for (const name of ['notes.md', 'rows.csv', 'data.json']) await expect(ready.filter({ hasText: name })).toHaveCount(1);
+    await page.getByTestId('chat-composer-box').fill('Use these documents');
+    await expect(page.getByTestId('chat-composer-send')).toBeEnabled();
+  });
+}
+
 test('the Agent explains a real upload format refusal and can recover after removal @needs-ingest @needs-storage', async ({ page }) => {
   await roomForUploads(1);
   const filename = `mislabeled-${Date.now()}.png`;

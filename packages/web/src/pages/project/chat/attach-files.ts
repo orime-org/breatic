@@ -11,7 +11,7 @@ import {
   refusedFormatParams,
   type UploadNodeSpec,
 } from '@web/spaces/canvas/canvas-upload';
-import { pickExtractor } from '@web/spaces/canvas/text-extract';
+import { pickExtractor, textExtractAccept } from '@web/spaces/canvas/text-extract';
 import type { Tray } from '@web/stores/attach-to-chat';
 import {
   chatAttachments,
@@ -41,17 +41,6 @@ export interface AttachDeps {
  */
 const MAX_BYTES_PER_CHAR = 3;
 
-/** The document types the picker offers, beside the media it offers. */
-const DOCUMENT_ACCEPT = [
-  '.pdf',
-  '.docx',
-  '.xlsx',
-  '.xls',
-  '.txt',
-  'text/plain',
-  'application/pdf',
-];
-
 /**
  * What the attach button's file picker offers.
  * @returns A comma-separated `accept` value.
@@ -61,7 +50,7 @@ export function attachAccept(): string {
     uploadAcceptFor('image'),
     uploadAcceptFor('video'),
     uploadAcceptFor('audio'),
-    ...DOCUMENT_ACCEPT,
+    textExtractAccept(),
   ].join(',');
 }
 
