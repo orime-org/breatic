@@ -153,8 +153,24 @@ export function templateNodeDefaults(template: GenerationTemplate, key: Template
  * @throws {never} Never.
  */
 export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: TemplateGraph, anchor: string): TemplateInstanceMatch {
+  /**
+   * A node's incoming edges, in order.
+   * @param id - The node id.
+   * @returns Its incoming edges.
+   */
   const incoming = (id: string): readonly { from: string; into?: string }[] => graph.incoming.get(id) ?? [];
+  /**
+   * A key's node type in the template.
+   * @param key - The key.
+   * @returns Its type.
+   */
   const typeOf = (key: TemplateNodeKey): ProposalNodeType | undefined => skeleton.nodes.get(key)?.type;
+  /**
+   * Whether a node carries this template's tag for a key, with the key's type.
+   * @param id - The node id.
+   * @param key - The key.
+   * @returns Whether it does.
+   */
   const isTagged = (id: string, key: TemplateNodeKey): boolean => {
     const node = graph.nodes.get(id);
     return node?.tag?.template === skeleton.id && node.tag.key === key && node.type === typeOf(key);
@@ -163,6 +179,11 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   const keys = new Map<TemplateNodeKey, TemplateKeyMatch>();
   const at = new Map<TemplateNodeKey, string>([[skeleton.anchor, anchor]]);
   const walked: { from: TemplateNodeKey; to: TemplateNodeKey; into?: string }[] = [];
+  /**
+   * Whether the node settled for a key keeps the template's settings.
+   * @param key - The key.
+   * @returns Whether it does.
+   */
   const keepsAt = (key: TemplateNodeKey): boolean => {
     const id = at.get(key);
     return id !== undefined && graph.nodes.get(id)?.keeps === true;
@@ -205,10 +226,21 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   // Inputs go to nodes wired into each fed node that keeps the template:
   // first a node the agent tagged for that input, then, in declaration order,
   // the first wired node of the input's type no other input has taken.
+  /**
+   * The fed nodes of an input that the walk settled and that keep the template.
+   * @param input - The input.
+   * @returns Each fed key with its node id.
+   */
   const fedNodes = (input: TemplateSkeleton["inputs"][number]): Array<[TemplateNodeKey, string]> =>
     input.feeds.flatMap((fed) => (keepsAt(fed) && !blocked.has(fed) ? [[fed, at.get(fed) as string] as [TemplateNodeKey, string]] : []));
   const inputs = new Map<string, Map<TemplateNodeKey, string>>();
   const taken = new Map<string, string>();
+  /**
+   * Assigns a node to an input on one fed node.
+   * @param input - The input key.
+   * @param fed - The fed key.
+   * @param id - The node id.
+   */
   const give = (input: string, fed: TemplateNodeKey, id: string): void => {
     inputs.set(input, (inputs.get(input) ?? new Map<TemplateNodeKey, string>()).set(fed, id));
     taken.set(id, input);
@@ -247,6 +279,12 @@ export function matchTemplateInstance(skeleton: TemplateSkeleton, graph: Templat
   for (const [to, wires] of graph.incoming) {
     for (const wire of wires) outgoing.set(wire.from, [...(outgoing.get(wire.from) ?? []), to]);
   }
+  /**
+   * Whether a tagged node is wired into a place its key is wired.
+   * @param id - The node id.
+   * @param key - The key it is tagged with.
+   * @returns Whether some instance claims it.
+   */
   const claimed = (id: string, key: TemplateNodeKey): boolean =>
     skeleton.edges.some(
       (edge) =>
@@ -300,8 +338,18 @@ export function templateGuideNode(template: GenerationTemplate, anchorIndex: num
  */
 export function expandTemplate(template: GenerationTemplate, input: TemplateExpansionInput): TemplateExpansionResult {
   const skeleton = templateSkeleton(template);
+  /**
+   * One of the template's strings in the reader's language.
+   * @param rest - The key under the template's locale entry.
+   * @returns The string.
+   */
   const text = (rest: string): string => t(`canvas.template.${template.id}.${rest}`);
   const appended: ProposalNode[] = [];
+  /**
+   * Appends a node.
+   * @param node - The node.
+   * @returns Its index in the proposal.
+   */
   const append = (node: ProposalNode): number => appended.push(node) - 1 + input.base;
 
   const indexOf = new Map<TemplateNodeKey, number>([[template.anchor, input.anchorAt]]);
@@ -334,6 +382,12 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
 
   const edges: CanvasProposal["edges"] = [];
   const seen = new Set(input.wired.map((edge) => `${String(edge.fromIndex)}>${String(edge.toIndex)}`));
+  /**
+   * Adds an edge the caller does not have yet.
+   * @param fromIndex - Where it starts.
+   * @param toIndex - Where it ends.
+   * @param into - Where on the target it goes.
+   */
   const wire = (fromIndex: number, toIndex: number, into: string | undefined): void => {
     const pair = `${String(fromIndex)}>${String(toIndex)}`;
     if (fromIndex === toIndex || seen.has(pair)) return;
@@ -347,6 +401,11 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
 
   // A mark names its target in the reader's language: an input feeding the
   // node, or a template node wired into its pool.
+  /**
+   * A generate node's prompt, each reference mark bound by name and the notes of its new inputs on top.
+   * @param key - The node's key.
+   * @returns The prompt.
+   */
   const promptOf = (key: TemplateNodeKey): PromptSegment[] => {
     const targets = new Map<string, number>();
     for (const one of skeleton.inputs) {
