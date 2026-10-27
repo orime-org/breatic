@@ -550,7 +550,7 @@ describe('matchTemplateInstance, whatever order the template lists its edges (in
       [['u', 'a'], ['x', 'a'], ['x', 'u']],
       [['u', 'a'], ['x', 'u'], ['x', 'a']],
     ] as const) {
-      // Listed in the graph's node order, wherever each was found.
+      // Each ranked by its earliest place: X1 first in U's references, X2 second in A's.
       expect(matchTemplateInstance(chain(['u', 'x'], order), graph, 'A').keys.get('x')).toEqual({ kind: 'many', nodes: ['X1', 'X2'] });
     }
   });
