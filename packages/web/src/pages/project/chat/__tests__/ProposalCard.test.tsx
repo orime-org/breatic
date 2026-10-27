@@ -504,6 +504,22 @@ describe('a proposal made from a template (inner#1345)', () => {
     expect(words.indexOf('Split the grid into panels')).toBeLessThan(words.indexOf('Turn the panels into a video'));
   });
 
+  it('draws the guide after what is left to do first, so the card reads in the order the reader acts', () => {
+    setLocaleMessages('en', EN_WITH_FIXTURE as Record<string, unknown>);
+    listModels.mockResolvedValue(CATALOG);
+    const guide = templateGuideNode(STEPPED, 1);
+    if (!guide) throw new Error('a template with steps has a guide');
+    const copy: ProposalNode = { role: 'written', type: 'text', name: 'Your copy', prompt: [{ text: 'Buy it now' }] };
+    renderCard(true, { ...PAIR, nodes: [...PAIR.nodes, copy, guide], groupName: 'Stepped' });
+
+    const todo = screen.getAllByTestId('proposal-todo-group').at(-1)!;
+    const [copyWords, guideWords] = screen.getAllByTestId('proposal-words');
+    // Other written words keep their place ahead of the to-dos.
+    expect(copyWords!.compareDocumentPosition(todo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(todo.compareDocumentPosition(guideWords!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(guideWords!.textContent).toContain('Split the grid into panels');
+  });
+
   it('draws a resource node’s chip as filled, not as a node the reader fills in', () => {
     listModels.mockResolvedValue(CATALOG);
     const resource = {
