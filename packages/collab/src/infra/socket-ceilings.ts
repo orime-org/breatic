@@ -30,7 +30,10 @@
  * memory. With both in force one unauthenticated socket's queue peaks at
  * frames of about 320 bytes, where the two ceilings meet: about 15–18 MB
  * resident per socket, measured (RSS varies with the machine's state). A client back from being offline replays
- * one frame per edit and can meet either ceiling first.
+ * one frame per edit and can meet either ceiling first. Each pending document
+ * also holds a hook payload outside both ceilings; the same patch parses the
+ * request URL once per connection, so that payload stays small whatever URL or
+ * Host the client sends (inner#1589).
  *
  *   pending documents    default 100    set to a full project's documents
  *   queued frame count   default 1000   byte ceiling / (shortest frame + its overhead)
