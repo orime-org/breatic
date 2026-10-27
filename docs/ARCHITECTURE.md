@@ -544,9 +544,9 @@ use normal Yjs reconnection. Scene content has no local recovery cache or export
 flow. Only the personal camera position and target use account/Project/Space
 scoped browser storage.
 
-Both creation dialogs share `SpaceKindPicker`: Canvas, Document, 3D and the
-unavailable Timeline. Cards show an icon and name, descriptions in tooltips,
-and a DEV badge on 3D. The initial 3D Space is named `3D`. The editor lazily
+Both creation dialogs share `SpaceKindPicker`: Canvas, Document, 3D and
+Timeline. Cards show an icon and name, descriptions in tooltips,
+and DEV badges on 3D and Timeline. The initial 3D Space is named `3D`. The editor lazily
 loads its Three.js viewport. Its left rail contains creation controls, the
 bottom-center toolbar acts on the selection, and bottom-right controls toggle
 one floating Properties, Objects or Tasks panel and the minimap, alongside undo

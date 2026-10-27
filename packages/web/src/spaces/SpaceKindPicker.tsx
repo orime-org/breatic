@@ -130,7 +130,7 @@ export function SpaceKindPicker({
             <Tooltip key={card.type}>
               <div className='relative min-w-0'>
                 <TooltipTrigger asChild>{option}</TooltipTrigger>
-                {card.type === '3d' ? (
+                {card.type === '3d' || card.type === 'timeline' ? (
                   <Badge variant='secondary' className='pointer-events-none absolute right-1 top-1 px-1 py-0 text-2xs font-medium'>
                     {t('spaces.kind.developmentBadge')}
                   </Badge>

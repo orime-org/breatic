@@ -53,15 +53,19 @@ describe('SpaceKindPicker', () => {
     expect(within(screen.getByTestId('space-kind-3d')).getByText('3D', { exact: true })).toBeInTheDocument();
   });
 
-  it.each(LOCALE_CATALOGS)('shows one visible DEV marker while keeping type names in %s', (locale) => {
+  it.each(LOCALE_CATALOGS)('shows DEV on 3D and Timeline while keeping type names in %s', (locale) => {
     setLocale(locale);
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
     const markers = within(screen.getByRole('radiogroup')).getAllByText('DEV', { exact: true });
-    expect(markers).toHaveLength(1);
-    expect(markers[0]).toBeVisible();
-    expect(within(screen.getByTestId('space-kind-3d')).getByText('3D', { exact: true })).toBeVisible();
-    for (const type of ['canvas', 'document', 'timeline']) {
-      expect(within(screen.getByTestId(`space-kind-${type}`)).queryByText('DEV', { exact: true })).not.toBeInTheDocument();
+    expect(markers).toHaveLength(2);
+    for (const [type, name] of [['3d', '3D'], ['timeline', 'Timeline']]) {
+      const card = screen.getByTestId(`space-kind-${type}`);
+      expect(within(card).getByText(name, { exact: true })).toBeVisible();
+      expect(within(card.parentElement!).getByText('DEV', { exact: true })).toBeVisible();
+    }
+    for (const type of ['canvas', 'document']) {
+      const card = screen.getByTestId(`space-kind-${type}`);
+      expect(within(card.parentElement!).queryByText('DEV', { exact: true })).not.toBeInTheDocument();
     }
   });
 

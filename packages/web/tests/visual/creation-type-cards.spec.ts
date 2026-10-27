@@ -44,30 +44,32 @@ async function checkCards(page: Page, dialog: Locator, prefix: string, catalog: 
     expect(card.left).toBeGreaterThanOrEqual(layout.left - 1);
     expect(card.right).toBeLessThanOrEqual(layout.right + 1);
   }
-  const marker = group.getByText('DEV', { exact: true });
-  await expect(marker).toHaveCount(1);
-  await expect(marker).toBeVisible();
-  const threeD = dialog.getByTestId(`${prefix}-3d`);
-  const markerBox = await marker.boundingBox();
-  const threeDBox = await threeD.boundingBox();
-  const iconBox = await threeD.locator('svg').boundingBox();
-  const titleBox = await threeD.getByText('3D', { exact: true }).boundingBox();
-  if (!markerBox || !threeDBox || !iconBox || !titleBox) throw new Error('The 3D development marker and card content must have visible bounds');
-  expect(markerBox.x).toBeGreaterThanOrEqual(threeDBox.x);
-  expect(markerBox.y).toBeGreaterThanOrEqual(threeDBox.y);
-  expect(markerBox.x + markerBox.width).toBeLessThanOrEqual(threeDBox.x + threeDBox.width);
-  expect(markerBox.y + markerBox.height).toBeLessThanOrEqual(threeDBox.y + threeDBox.height);
-  expect(markerBox.x + markerBox.width / 2).toBeGreaterThan(threeDBox.x + threeDBox.width / 2);
-  expect(markerBox.y + markerBox.height / 2).toBeLessThan(threeDBox.y + threeDBox.height / 2);
-  for (const content of [iconBox, titleBox]) {
-    const overlapWidth = Math.max(0, Math.min(markerBox.x + markerBox.width, content.x + content.width) - Math.max(markerBox.x, content.x));
-    const overlapHeight = Math.max(0, Math.min(markerBox.y + markerBox.height, content.y + content.height) - Math.max(markerBox.y, content.y));
-    expect(overlapWidth * overlapHeight).toBe(0);
+  await expect(group.getByText('DEV', { exact: true })).toHaveCount(2);
+  for (const [type, title] of [['3d', '3D'], ['timeline', 'Timeline']]) {
+    const card = dialog.getByTestId(`${prefix}-${type}`);
+    const marker = card.locator('..').getByText('DEV', { exact: true });
+    await expect(marker).toBeVisible();
+    const markerBox = await marker.boundingBox();
+    const cardBox = await card.boundingBox();
+    const iconBox = await card.locator('svg').boundingBox();
+    const titleBox = await card.getByText(title, { exact: true }).boundingBox();
+    if (!markerBox || !cardBox || !iconBox || !titleBox) throw new Error('The development marker and card content must have visible bounds');
+    expect(markerBox.x).toBeGreaterThanOrEqual(cardBox.x);
+    expect(markerBox.y).toBeGreaterThanOrEqual(cardBox.y);
+    expect(markerBox.x + markerBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+    expect(markerBox.y + markerBox.height).toBeLessThanOrEqual(cardBox.y + cardBox.height);
+    expect(markerBox.x + markerBox.width / 2).toBeGreaterThan(cardBox.x + cardBox.width / 2);
+    expect(markerBox.y + markerBox.height / 2).toBeLessThan(cardBox.y + cardBox.height / 2);
+    for (const content of [iconBox, titleBox]) {
+      const overlapWidth = Math.max(0, Math.min(markerBox.x + markerBox.width, content.x + content.width) - Math.max(markerBox.x, content.x));
+      const overlapHeight = Math.max(0, Math.min(markerBox.y + markerBox.height, content.y + content.height) - Math.max(markerBox.y, content.y));
+      expect(overlapWidth * overlapHeight).toBe(0);
+    }
+    await test.info().attach(`${sample}-${type}-dev-marker-layout`, {
+      body: JSON.stringify({ marker: markerBox, card: cardBox, icon: iconBox, title: titleBox }),
+      contentType: 'application/json',
+    });
   }
-  await test.info().attach(`${sample}-dev-marker-layout`, {
-    body: JSON.stringify({ marker: markerBox, card: threeDBox, icon: iconBox, title: titleBox }),
-    contentType: 'application/json',
-  });
   await test.info().attach(`${sample}-layout`, { body: JSON.stringify(layout), contentType: 'application/json' });
   const screenshot = test.info().outputPath(`${sample}.png`);
   await page.screenshot({ path: screenshot });
