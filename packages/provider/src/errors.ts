@@ -84,7 +84,10 @@ export class UpstreamTaskFailed extends Error {
   }
 }
 
-/** The caller's deadline had passed before a request that needs it could start. */
+/**
+ * The caller's deadline passed, either before a request started (nothing was sent)
+ * or while it was in flight; in the second case whether the upstream accepted it is unknown.
+ */
 export class DeadlinePassed extends Error {
   /**
    * Record what the error carries.
