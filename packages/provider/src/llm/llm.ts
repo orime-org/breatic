@@ -8,12 +8,12 @@
  */
 
 import { generateText, type JSONValue, type SystemModelMessage } from "ai";
-import { hasKey, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, hasKey, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
+import { classifyLlm, isGenerationId, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
@@ -24,16 +24,21 @@ const JEV_MODEL = "typesafe/jev-1.13";
 /** The decisions endpoint, beside the OpenRouter API base. */
 const JEV_PATH = "../alpha/decisions";
 const DEFAULT_ROUTE: Route = { mode: "default" };
+/** The longest delay a timer holds. */
+const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * The deadline signal of a call, joined with the caller's.
  * @param deadlineAt - Epoch ms.
  * @param signal - The caller's signal.
- * @returns The signal.
+ * @returns The signal, or none when neither bounds the call.
  */
-function untilDeadline(deadlineAt: number, signal?: AbortSignal): AbortSignal {
-  const deadline = AbortSignal.timeout(Math.max(0, Math.trunc(deadlineAt - Date.now())));
-  return signal === undefined ? deadline : AbortSignal.any([signal, deadline]);
+function untilDeadline(deadlineAt: number, signal?: AbortSignal): AbortSignal | undefined {
+  const left = deadlineAt - Date.now();
+  // A deadline beyond what a timer holds is no deadline: AbortSignal.timeout refuses it.
+  const deadline = left > MAX_TIMER_MS ? undefined : AbortSignal.timeout(Math.max(0, Math.trunc(left)));
+  const signals = [signal, deadline].filter((s): s is AbortSignal => s !== undefined);
+  return signals.length < 2 ? signals[0] : AbortSignal.any(signals);
 }
 
 /**
@@ -115,10 +120,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @throws {UpstreamRequestRejected} When the mode names an upstream the route does not have.
    */
   const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
-    const candidates: Candidate[] = route.upstreams.map(({ upstream, weight }) => {
-      const envVar = config.upstreams[upstream]!.key_env;
-      return { upstream, weight, configured: hasKey(options.keyOf, envVar), envVar };
-    });
+    const candidates: Candidate[] = route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf));
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
     // Cheapest by unit price: input first, then output; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
@@ -225,7 +227,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const name = Object.keys(config.upstreams).find((u) => kindOf(u) === "openrouter");
       if (name === undefined) throw new Error("No OpenRouter upstream to read the model list from");
       const url = `${config.upstreams[name]!.base_url}/models`;
-      const bounds = { replaySafe: false, deadlineAt: Date.now() + policy.timeoutMs };
+      const bounds = { replaySafe: true, deadlineAt: Date.now() + policy.timeoutMs };
       const response = await send({ url, method: "GET", headers: { accept: "application/json" } }, bounds);
       if (!response.ok) {
         await response.body?.cancel();
@@ -310,16 +312,20 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             messages: [{ role: "user", content }],
             maxOutputTokens: request.maxOutputTokens,
             maxRetries: 0,
-            abortSignal,
+            ...(abortSignal === undefined ? {} : { abortSignal }),
             ...(vendor.gateway ? { providerOptions: { [vendor.sdkName]: backendPin(request.model) } } : {}),
           });
         },
       });
       const result = served.value;
+      const generationId = result.response.id;
+      const costRef = kindOf(served.servedBy) === "openrouter" && isGenerationId(generationId) && reportedCost(result.providerMetadata) === undefined
+        ? { costRef: { upstream: served.servedBy, generationId } }
+        : {};
       const cost = costOf({
         model: request.model,
         usage: result.usage,
-        providerMetadata: { ...result.providerMetadata, breatic: { upstream: served.servedBy } },
+        providerMetadata: { ...result.providerMetadata, breatic: { upstream: served.servedBy, ...costRef } },
       });
       return { text: result.text, finishReason: result.finishReason, cost, upstream: served.servedBy };
     },

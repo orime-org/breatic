@@ -65,7 +65,7 @@ export function classifyLlm(error: unknown): Failure | null {
  * @param id - The value.
  * @returns True for a `gen-` id.
  */
-function isGenerationId(id: unknown): id is string {
+export function isGenerationId(id: unknown): id is string {
   return typeof id === "string" && id.startsWith("gen-");
 }
 
