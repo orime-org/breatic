@@ -8,7 +8,7 @@
  */
 
 import { generateText, type JSONValue, type SystemModelMessage } from "ai";
-import { candidateOf, hasKey, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { NoUpstreamAvailable, UpstreamRequestRejected } from "@provider/errors.js";
 import { readBody, send } from "@provider/http/request.js";
@@ -352,6 +352,19 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       }
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
       return { status: response.status, body: text, cost };
+    },
+
+    assertModelsPriced(models) {
+      const problems = new Set<string>();
+      for (const model of models) {
+        const routes = [config.llm.routes, config.llm.understand_routes].flatMap((list) => list.find((r) => model.startsWith(r.prefix)) ?? []);
+        for (const { upstream } of routes.flatMap((r) => r.upstreams)) {
+          const decl = config.upstreams[upstream]!;
+          if (vendorOf(decl.kind).gateway || !hasKey(options.keyOf, decl.key_env) || config.llm.prices[model] !== undefined) continue;
+          problems.add(`${model}: reached directly on ${upstream} with no token price in llm.yaml`);
+        }
+      }
+      if (problems.size > 0) throw new ProviderConfigError([...problems]);
     },
 
     async capabilities(modelId, policy, signal) {

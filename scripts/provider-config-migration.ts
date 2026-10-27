@@ -260,6 +260,16 @@ key variable is empty is skipped, and the call says which variable is missing.
 });
 
 const usagePricing = yaml<{ models: Record<string, Record<string, number>> }>("config/usage-pricing.yaml");
+
+/**
+ * Direct prices of models that usage-pricing.yaml does not list because today
+ * they are reached through OpenRouter only. Gemini 3.8 Flash reads media for
+ * the element step; Google's paid-tier price through 2026-12-31 (it doubles
+ * on 2027-01-01): https://ai.google.dev/gemini-api/docs/pricing
+ */
+const DIRECT_PRICES: Readonly<Record<string, Record<string, number>>> = {
+  "google/gemini-3.8-flash": { input_cache_hit_per_mtok: 0.075, input_cache_miss_per_mtok: 0.75, output_per_mtok: 3.75 },
+};
 const flash = capture(llmSource, /modelId === "([^"]+)" \? "[^"]+"/);
 const flashOnDeepseek = capture(llmSource, /modelId === "[^"]+" \? "([^"]+)"/);
 write("llm.yaml", `
@@ -281,7 +291,7 @@ million tokens, for upstreams that report no cost of their own.
   openrouter_backends: {
     [describe.model]: { only: [capture("packages/domain/src/understand/types.ts", /backend: "([^"]+)"/)], allow_fallbacks: false },
   },
-  prices: usagePricing.models,
+  prices: { ...usagePricing.models, ...DIRECT_PRICES },
 });
 
 write("routing.yaml.template", `

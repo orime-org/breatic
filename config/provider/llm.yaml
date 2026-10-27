@@ -70,3 +70,7 @@ prices:
     input_cache_hit_per_mtok: 0.03
     input_cache_miss_per_mtok: 0.3
     output_per_mtok: 2.5
+  google/gemini-3.8-flash:
+    input_cache_hit_per_mtok: 0.075
+    input_cache_miss_per_mtok: 0.75
+    output_per_mtok: 3.75
