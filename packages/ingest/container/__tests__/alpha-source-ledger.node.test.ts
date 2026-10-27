@@ -232,7 +232,7 @@ describe('source ledger capability in the actual alpha producer (controlled IO, 
 
   it.each(['duration', 'geometry'])('P07 does not gate exact ledger facts on unavailable %s', async (missing) => {
     if (missing === 'duration') delete raw.format.duration; else { delete raw.streams[1]!.width; delete raw.streams[1]!.height; }
-    await runAlphaPresentation(job()); ledger(); expect(reports.at(-1)).toMatchObject({ kind: 'finished', error: 'metadata_unknown' });
+    await runAlphaPresentation(job()); ledger(); expect(reports.at(-1)).toMatchObject({ kind: 'finished', error: missing === 'geometry' ? 'classification_unknown' : 'metadata_unknown' });
   });
 
   it.each(['multiple-real', 'cover-first'])('P08 isolates actual %s selection mismatch without changing alpha selection rules', async (kind) => {
