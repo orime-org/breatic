@@ -96,6 +96,9 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 
 Upload and generation paths only insert objects, never delete them (dedup losers are queued for offline reclaim); every URL a consumer stores comes from the registered record (`publicUrl(record.storage_key)`), never from a freshly written key; a failed registration is a failed upload; hash, size and content type come from the Worker's report on the stored bytes, never from client claims. Mechanism, thumbnails, covers and avatars: the storage paragraph of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Canvas collaboration".
 
+### Cloudflare Worker environments
+**Breatic has three separate Worker environments: the local development Worker belongs to the current worktree, the Cloudflare remote development Worker is shared by developers, and the production Worker serves users.** After a Worker PR merges, its code owner deploys the merged code to the remote development Worker during cleanup and verifies it; developers using that shared service do not need to run a local Worker. Production deployments belong to the deploy Agent, and every handoff must explicitly name the production Worker as its target.
+
 ## Server production standards
 
 ### Application-layer error logging
