@@ -4,7 +4,7 @@
 import { generateText, stepCountIs, streamText, tool } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
+import { costsOf, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "../../errors.js";
 import { createProvider } from "../../provider.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, llmConfig, llmProvider, posted, postedAt, startFakes, stopFakes, vendorReply, type LlmFakes } from "./llm-harness.js";
@@ -531,6 +531,70 @@ describe("an understand answer whose choice carries an error (design 3.5, DD 24)
     fakes.openrouter.answer(() => choiceError(502, "a fox"));
     const answer = await ask({ OPENROUTER_API_KEY: "or" });
     expect(answer).toMatchObject({ text: "a fox", upstream: "openrouter" });
+  });
+});
+
+describe("every exit of an understand call carries what was billed (design 3.5, DD 26)", () => {
+  /**
+   * Ask the understand model through the harness.
+   * @param keys - The environment keys.
+   * @param maxRetries - Retries on one upstream.
+   * @param deadlineMs - Time the call has.
+   * @returns The answer, or what it threw.
+   */
+  const ask = (keys: Record<string, string>, maxRetries: number, deadlineMs = 60_000): Promise<unknown> =>
+    llmProvider(fakes, keys, { llmMaxRetries: maxRetries }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
+      maxOutputTokens: 50,
+      deadlineAt: Date.now() + deadlineMs,
+    }).catch((e: unknown) => e);
+  const billedChoiceError = (code: unknown): Reply => ({
+    status: 200,
+    body: { ...CHAT_REPLY, usage: { ...CHAT_REPLY.usage, cost: 0.5 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code, message: "Upstream died" } }] },
+  });
+
+  it("keeps the cost of a 200 whose error sits at the top of the body, before the retried answer", async () => {
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? { status: 200, body: { id: "gen-a", error: { message: "busy", code: 502 }, usage: { cost: 0.5 } } } : { status: 200, body: CHAT_REPLY }));
+    const answer = await ask({ OPENROUTER_API_KEY: "or" }, 1);
+    expect((answer as { costs?: unknown }).costs).toEqual([
+      expect.objectContaining({ state: "known", usd: 0.5 }),
+      expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost }),
+    ]);
+  });
+
+  it("throws UnderstandInterrupted carrying the billed answer when the deadline cuts the retry", async () => {
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? billedChoiceError(502) : "hang"));
+    const error = await ask({ OPENROUTER_API_KEY: "or" }, 1, 1_500);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.5 })]);
+    expect((error as Error).cause).toBeInstanceOf(Error);
+    expect(costsOf(error)).toEqual((error as UnderstandInterrupted).costs);
+  });
+
+  it("throws UnderstandInterrupted carrying the cost of an answer whose error form it cannot read, without moving on", async () => {
+    fakes.openrouter.answer(() => billedChoiceError("upstream_error"));
+    const error = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, 0);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.5 })]);
+    expect(posted(fakes.google)).toHaveLength(0);
+  });
+
+  it.each([413, 401, 400])("names the status %i on UpstreamRequestRejected, with the upstream's error as its cause", async (status) => {
+    fakes.openrouter.answer(() => ({ status, body: { error: { code: status, message: "refused by the service" } } }));
+    const error = await ask({ OPENROUTER_API_KEY: "or" }, 0);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBe(status);
+    expect((error as Error).cause).toBeDefined();
+  });
+
+  it("names the code of a refusing choice error as the status", async () => {
+    fakes.openrouter.answer(() => billedChoiceError(400));
+    const error = await ask({ OPENROUTER_API_KEY: "or" }, 0);
+    expect((error as UpstreamRequestRejected).status).toBe(400);
   });
 });
 

@@ -275,6 +275,16 @@ describe("send", () => {
     ]);
   });
 
+  it("names the status of a refused submit on UpstreamRequestRejected (DD 26)", async () => {
+    a.answer(() => ({ status: 422, body: { code: 422, message: "Invalid duration" } }));
+    const r = runner({ WS_A_KEY: "key-a" });
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const failed = expectState(await r.send(stored(planned.ticket), live()), "failed");
+    expect(failed.reason).toBeInstanceOf(UpstreamRequestRejected);
+    expect((failed.reason as UpstreamRequestRejected).status).toBe(422);
+    expect(failed.reason.cause).toBeDefined();
+  });
+
   it("keeps a parameter 400 as a refusal of the request, not a missing model", async () => {
     a.answer(() => ({ status: 400, body: { code: 400, message: 'Invalid request body: field "prompt" is required; please provide a value' } }));
     const r = runner();

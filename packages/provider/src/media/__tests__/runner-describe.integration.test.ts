@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfigInput } from "../../config/schema.js";
 import { MediaRefused } from "../../http/fetch-media.js";
 import { createProvider } from "../../provider.js";
-import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
+import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billing, fakeUpstream, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
@@ -384,6 +384,34 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
     expect(error).toBeInstanceOf(SendNotAccepted);
     expect(((error as Error).cause as NoUpstreamAvailable).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.0007 })]);
     expect(wavespeed.seen).toHaveLength(0);
+  });
+
+  it("throws DeadlinePassed from whose cause chain costsOf reads the billed answer the deadline cut short (DD 26)", async () => {
+    let n = 0;
+    openrouter.answer(() =>
+      ++n === 1
+        ? { status: 200, body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 502, message: "Upstream died" } }] } }
+        : "hang");
+    const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
+    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+      "send",
+    );
+    const error = await r.send(stored(planned.ticket), { deadlineAt: Date.now() + 1_500 }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(DeadlinePassed);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "known", usd: 0.0007 })]);
+    expect(wavespeed.seen).toHaveLength(0);
+  });
+
+  it("lets costsOf read the cost on the cause of SendNotAccepted", async () => {
+    openrouter.answer(() => ({
+      status: 200,
+      body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 502, message: "Upstream died" } }] },
+    }));
+    const error = await describeWith({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" });
+    expect(error).toBeInstanceOf(SendNotAccepted);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "known", usd: 0.0007 })]);
   });
 
   it("answers failed, submitting nothing, when OpenRouter's choice carries a refusing error and no description", async () => {
