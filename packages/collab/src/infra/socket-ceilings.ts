@@ -33,7 +33,8 @@
  * one frame per edit and can meet either ceiling first. Each pending document
  * also holds a hook payload outside both ceilings; the same patch parses the
  * request URL once per connection, so that payload stays small whatever URL or
- * Host the client sends (inner#1589).
+ * Host the client sends, and every hook shares that one parse and must not
+ * mutate it (inner#1589).
  *
  *   pending documents    default 100    set to a full project's documents
  *   queued frame count   default 1000   byte ceiling / (shortest frame + its overhead)

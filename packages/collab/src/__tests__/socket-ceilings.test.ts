@@ -286,8 +286,9 @@ function connect(hocuspocus: Hocuspocus, url: string | undefined): ParsedConnect
 
 describe("request parameters of one connection", () => {
   // Every document a socket opens gets a hook payload that holds the parsed
-  // request URL until it authenticates, up to 201 per socket. Parsed once per
-  // document, a client-chosen URL is multiplied by that count; the patch in
+  // request URL until its authentication fails or its connection closes, with
+  // up to 201 pending per socket. Parsed once per document, a client-chosen
+  // URL is multiplied by that count; the patch in
   // `patches/@hocuspocus__server@4.6.0.patch` parses it once per request
   // (inner#1589).
 
