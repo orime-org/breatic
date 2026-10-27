@@ -622,7 +622,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     const warnings = [...(extra.warnings ?? [])];
     const up = reach(ticket.upstream);
     for (const prediction of done.predictions) {
-      const read = await capped(ticket.upstream, bounds, () => billed(up, prediction, bounds, false));
+      // Outside the cap, as the worker read it: a run that finished must not queue behind new submits.
+      const read = await billed(up, prediction, bounds, false);
       costs.push(read.cost);
       warnings.push(...read.warnings);
     }
