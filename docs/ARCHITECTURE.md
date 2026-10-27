@@ -266,14 +266,18 @@ Text 工具(10 个):polish / expand / summarize / translate / rewrite / continue
 
 ### 生成模板
 
-**模板 = 一组定死的模式、模型、参数和提示词**(inner#977),写在代码里:注册表是 `packages/shared/src/canvas/generation-templates.ts`(web 和后端共用)。**提示词是界面文字,放在 `locales/*.json` 的 `canvas.template.<id>.prompt`**,用户要动手的地方写成三种标记 —— `[📎 …]` 是用户要 @ 的素材(落进框里时由 `writtenMark` 套上 `canvas.promptMark.reference` 那句「请用 @ 选择」),`{✏️ …}` 是要改写的词,`(💡 …)` 是操作面板的注意事项(落进框里是橙色底的一块、开头显示「注意事项：」(`canvas.generatePanel.notePrefix`,只画在屏幕上)、排在最前、不发给模型),跟提议卡片是同一套标记,由 `markedSegments`(`canvas-proposal.ts`)读回片段 —— 它是 `writtenMark` 的逆,从框里复制出来的素材标记读回去也去掉「请用 @ 选择」。给 Agent 看的模板提示词是这些片段本身(`templateGuide`),跟它发回来的形状一致。取的是当前生效的语言,服务端即这次请求的语言。每个模板声明 `references`(提示词要几张参考图),注册表测试逐个语言核对标记数跟它一致。
+**模板是一段定死的工作流**(inner#977、inner#1345):一个 anchor 生成节点,加上它上游的生成节点、资源节点和模板连线,声明读者要放的输入,以及生成之后读者自己做的步骤。每个模板一个文件,放在 `packages/shared/src/canvas/templates/`,注册表是 `packages/shared/src/canvas/generation-templates.ts`(web 和后端共用)。生成节点写死模式、模型和参数;资源节点是我们托管的文件(`templates/<id>/<文件>`),由 `pnpm template-resources <目录>`(`packages/worker/src/template-resources.ts`)上传到公共地址。**文字都是界面文字,放在 `locales/*.json` 的 `canvas.template.<id>.*`**:名字和说明、anchor 的 `prompt`、其他节点的 `node.<key>.name` 和 `node.<key>.prompt`、输入的 `input.<key>.name` 和 `note`、步骤的 `step.<key>`。提示词里用户要动手的地方写成三种标记:`[📎 …]` 是要 @ 的节点,按名字绑定到输入或模板节点(`templateMarkTargets`);`{✏️ …}` 是要改写的词;`(💡 …)` 是操作面板的注意事项(落进框里是橙色底的一块,开头显示「注意事项:」,排在最前,不发给模型)。这三种标记和提议卡片用的是同一套,由 `markedSegments`(`canvas-proposal.ts`)读回成片段。文字取当前生效的语言,服务端取这次请求的语言。注册表测试逐个语言核对标记、名字和结构。
+
+**两个入口共用 shared 的一份展开**(`packages/shared/src/canvas/template-expansion.ts`):`templateSkeleton` 给出按 key 的结构,`templateNodeDefaults` 给一个节点填模板默认值(写了的优先,模式和模型都没改时才带上模板参数),`matchTemplateInstance` 只看图,判断哪些节点属于以某个 anchor 为起点的实例。它从 anchor 沿模板连线往回走;每个 key 在它连进的全部下游 key 定下之后才决定,合并每条连线上带本模板 tag 的节点,多于一个算多个候选,按在入边里最靠前的位置排序;环上的 key 算没走到。`templateGuideNode` 给出写着模板名和编号步骤的说明文本节点,`expandTemplate` 是面板专用的展开。提议节点多两个字段:`resource` 和 `templateNode`(`{ template, key, anchor? }`)。落到画布后,`templateNode` 存进节点的 Yjs 键 `data.templateNode`,随节点复制;面板再次应用时靠它认出已有的模板节点。
 
 | 入口 | 做什么 |
 |---|---|
-| 生成面板右上角、关闭按钮左边的模板按钮(`TemplateMenu`) | 列出这种节点的模板,模型不在本部署目录里的那一项灰掉。点一个 → `useApplyTemplate`:写模板的模式、模型和那个模型的参数(节点上其他模型记住的参数不动),这个模式的提示词换成模板的,不替用户 @ 任何东西,弹一条 `canvas.generatePanel.editMarks` |
-| Agent 的 `propose_canvas_action` | 生成节点可以带 `template`。`expandTemplate` 以模板为起点填模式、模型、参数和提示词,Agent 自己写了的保留;模式和模型都还是模板的,模板参数才带上。之后照常过 `checkProposal` |
+| 生成面板右上角、关闭按钮左边的模板按钮(`TemplateMenu`) | 列出这种节点的模板,任何一个生成节点的模型不在本部署目录里就灰掉。点一个 → `useApplyTemplate`:用 `matchTemplateInstance` 匹配画布上已有的实例,复用匹配到的节点和已接的参考,用 `expandTemplate` 补齐缺的(缺的参考放一个空节点,提示词顶部加上它的 `note`),再由 `CanvasSpace` 的 `placeTemplate` 走 `placeProposalAt` 落地:新节点在当前节点左边,anchor 和复用的生成节点按模板重写设置和提示词,@ 用引用栏那一行的名字。整批写在一个撤销批次里,写入失败时整批撤回,弹 `canvas.template.applyFailed`。当前节点或复用的节点上了锁时弹 `canvas.gate.locked`;编组上了锁、又要新建节点时弹 `canvas.template.groupLocked`。还有空节点或 `{✏️ …}` 时弹 `canvas.generatePanel.editProposalMarks` |
+| Agent 的 `propose_canvas_action` | 节点可以带 `template`:`{ id }` 是 anchor,`{ id, key }` 是模板的其他节点,`{ id, input }` 标出给某个输入的节点(可选)。工具说明(`templateGuide`)按骨架列出每个模板的节点、连线、输入、资源和步骤。按节点填默认值时(资源节点的 `resource` 也在这时写上),一致性检查在 `checkResolved` 里,排在连线和编组的检查之后、生成节点的检查之前,用同一个 `matchTemplateInstance` 判断每个实例是否完整,不完整时拒收,原因用 `template-*` 系列 id:缺 key、key 重复、缺模板连线、连线的 `into` 不对、输入没给节点等。修法唯一时(缺一条连线、改一条连线的 `into`)写出路由要的 ref 和 note。通过后,`answerFor` 给匹配到的节点写 `templateNode`,模板有步骤时追加说明文本节点 |
 
-Agent 里没有选模板的控件,它按用户的需求自己调用。**提示词里留着的标记不检查、不拦生成**:点模板时弹一条提醒,提议落到画布时只要有画提示词框的节点带标记也弹同一条(`canvas.generatePanel.editMarks`),用户不改也照常发出去。
+落地后,两个入口都会拉取资源节点的文件:`POST /canvas/ingest-url` 带 `template_resource`,只收模板声明过的路径,其余答 422。说明文本节点画在 anchor 左边,两者之间的距离是 `GUIDE_STEP_PX`,100% 缩放时生成面板打开后不会压住它(缩小后面板在画布上伸得更远)。提议卡片和画布读同一组排版连线(`layoutFeedsOf`),卡片上说明文字排在待办之后。落地后打开生成面板时(面板入口总会打开;Agent 入口在只有一个生成节点时打开),镜头等面板排好再移动一次(`viewportToShowPlaced`):把全部节点、它们的名字行和面板放进画布,避开左侧菜单、右下工具栏和小地图,必要时缩小,不放大。
+
+Agent 里没有选模板的控件,它按用户的需求自己调用。**提示词里留着的标记不检查、不拦生成**:用户不改也照常发出去。
 
 ### Agent tools (15)
 

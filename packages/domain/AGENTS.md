@@ -36,7 +36,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Tools and generation templates
 
-**The agent works with two things: tools (one external action each, in `agent/tools/`) and generation templates (a fixed mode, model, parameters and prompt, registered in `packages/shared/src/canvas/generation-templates.ts`).** The agent helps the user work in their Spaces: it calls tools and proposes nodes, optionally starting from a template, and a proposal lands on the canvas only when the user clicks Use.
+**The agent works with two things: tools (one external action each, in `agent/tools/`) and generation templates (a fixed workflow of generate nodes, the files it brings and the inputs the reader supplies, one file each under `packages/shared/src/canvas/templates/`, registered in `generation-templates.ts`).** The agent helps the user work in their Spaces: it calls tools and proposes nodes, optionally starting from a template, and a proposal lands on the canvas only when the user clicks Use.
 
 Check: is this one external action (a tool) or a fixed way of generating (a template)?
 

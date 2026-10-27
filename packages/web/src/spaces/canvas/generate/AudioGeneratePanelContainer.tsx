@@ -73,7 +73,7 @@ import {
   resolveAvailableMode,
   resolveModeSwitch,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
@@ -86,7 +86,7 @@ import {
 } from '@web/spaces/canvas/generate/submit-generation';
 import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
-import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
+import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
@@ -107,6 +107,8 @@ interface AudioGeneratePanelContainerProps {
   spaceId: string;
   /** Reads who made the newest document write, for the message a mode switch shows. */
   getLastWriteWasLocal: () => boolean;
+  /** Places a picked template around the node (inner#1345), as `CanvasSpace` places a proposal. */
+  placeTemplate: PlaceTemplate;
 }
 
 /**
@@ -118,6 +120,7 @@ interface AudioGeneratePanelContainerProps {
  * @param root0.projectId - Project the canvas space belongs to.
  * @param root0.spaceId - Canvas space id.
  * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
+ * @param root0.placeTemplate - Places a picked template around the node.
  * @returns The wired audio panel.
  */
 function AudioGeneratePanelBody({
@@ -127,6 +130,7 @@ function AudioGeneratePanelBody({
   projectId,
   spaceId,
   getLastWriteWasLocal,
+  placeTemplate,
 }: AudioGeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
@@ -167,6 +171,8 @@ function AudioGeneratePanelBody({
 
   const queryClient = useQueryClient();
   const { data: catalog } = useQuery(modelCatalogQuery());
+  // A template's nodes can run in other node types than the panel's.
+  const templateModels = React.useMemo(() => allGenerationModels(catalog), [catalog]);
   const models = React.useMemo(() => modelsForModality(catalog, 'audio'), [catalog]);
   const availableModes = React.useMemo(
     () => filterAvailableModes(AUDIO_MODE_OPTIONS, models),
@@ -316,7 +322,7 @@ function AudioGeneratePanelBody({
   // Every write re-derives from live Yjs at click time: the render closure goes
   // stale the moment a collaborator edits the node, and writing off it would
   // clobber their edit.
-  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, templateModels, placeTemplate);
   const freshContent = React.useCallback(() => {
     const graph = readCanvasGraph(projectId, spaceId);
     return asContentView(graph.nodes.find((n) => n.id === nodeId)?.data);
@@ -651,7 +657,7 @@ function AudioGeneratePanelBody({
   return (
     <AudioGeneratePanel
       models={modeModels}
-      catalogModels={models}
+      catalogModels={templateModels}
       onPickTemplate={onPickTemplate}
       model={vm.model}
       currentModel={vm.modelEntry}

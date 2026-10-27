@@ -185,6 +185,7 @@ export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provid
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
 export { getVoiceSampleConfig, voiceSampleUrl } from "@domain/model-catalog/voice-sample-config.js";
+export { typeFromAddress } from "@domain/understand/fetch-media.js";
 export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 

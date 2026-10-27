@@ -110,7 +110,7 @@ function declaredType(headers: Headers | undefined): string | undefined {
  * @param url - The address.
  * @returns The implied type, or undefined when the extension says nothing.
  */
-function typeFromAddress(url: string): string | undefined {
+export function typeFromAddress(url: string): string | undefined {
   let path: string;
   try {
     path = new URL(url).pathname;

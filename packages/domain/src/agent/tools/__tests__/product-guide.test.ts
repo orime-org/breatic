@@ -230,7 +230,7 @@ describe("what the guide says", () => {
     // A paperclip asks the reader to @ a node, a pencil is words they write,
     // and an orange note says how to operate the panel and is never sent.
     const proposals = section("Proposal cards");
-    expect(proposals).toMatch(/A 📎 mark in square brackets asks the reader to @ a node/);
+    expect(proposals).toMatch(/A 📎 mark in square brackets, where a prompt carries one, asks the reader to @ a node/);
     expect(proposals).toMatch(/A ✏️ mark in braces is words only the reader can write/);
     expect(proposals).toMatch(/orange note[^.]*it is never sent to the model/);
   });
@@ -568,6 +568,12 @@ describe("what the guide says", () => {
     expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops only where nothing else in that source holds a node and the model runs only when one does\./);
     const pool = cards.split("Into the reference list")[1] ?? "";
     expect(pool).toMatch(/by the proposal for every node it wires in[^.]*\. A node wired in that is not @'d is not used/);
+  });
+
+  it("says a template from the panel and a proposal @ the nodes they wire into the reference list, and nothing in a slot", () => {
+    const cards = section("Proposal cards");
+    expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: their prompt or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d\./);
+    expect(cards).not.toMatch(/a 📎 mark is left only where/);
   });
 
   it("says how to indent and outdent in a document", () => {

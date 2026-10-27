@@ -151,7 +151,7 @@ describe("a node in the pool is @'d by a ref", () => {
 
 describe("a template-started node", () => {
   it("refuses a node naming a template without its own prompt, giving the template's words with a ref placeholder for each reference", () => {
-    const node = { role: "generate" as const, type: "image" as const, name: "Board", template: "storyboard-grid-25" };
+    const node = { role: "generate" as const, type: "image" as const, name: "Board", template: { id: "storyboard-grid-25" } };
     const answer = answerFor({ nodes: [{ role: "source", type: "image", name: "Reference" }, node], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "r", groupName: "Group" });
 
     const reason = answer.placed ? "" : answer.reason;

@@ -227,6 +227,26 @@ export function createCanvasUndoManager(doc: Y.Doc): Y.UndoManager {
 }
 
 /**
+ * An undo manager that records one batch of canvas writes so the batch can be
+ * taken back whole when it fails part way: new nodes and edges, and every
+ * change to nodes and groups already there. Its own undo runs under an origin
+ * the canvas undo manager does not track, so the reader's history keeps no
+ * trace of it. Destroy it once the batch has settled.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space the batch writes.
+ * @returns The manager, tracking the canvas's own writes from now on.
+ */
+export function createCanvasRollback(projectId: string, spaceId: string): Y.UndoManager {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
+  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
+  return withDestroyListenerCleanup(
+    doc,
+    () => new Y.UndoManager([nodesMap, edgesMap], { trackedOrigins: new Set([CANVAS_UNDO]), captureTimeout: 0 }),
+  );
+}
+
+/**
  * Process-wide cache of canvas undo managers, keyed by canvas-space document
  * name — so a stack outlives any remount of `useCanvasSpace` while its tab is
  * open.
@@ -807,6 +827,29 @@ export function setNodeName(
   const data = node.get('data');
   if (!(data instanceof Y.Map)) return;
   doc.transact(() => data.set('name', name), CANVAS_UNDO);
+}
+
+/**
+ * Marks a node as the generation template node it was placed as
+ * (inner#1345). A plain value under `data`: written once, when the template
+ * lands, inside that landing's undo step.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The node.
+ * @param templateNode - The template, its key, and on a guide node the anchor's id.
+ */
+export function setNodeTemplateNode(
+  projectId: string,
+  spaceId: string,
+  nodeId: string,
+  templateNode: NonNullable<CanvasNodeFields['data']['templateNode']>,
+): void {
+  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
+  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
+  if (!node) return;
+  const data = node.get('data');
+  if (!(data instanceof Y.Map)) return;
+  doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
 }
 
 /**
