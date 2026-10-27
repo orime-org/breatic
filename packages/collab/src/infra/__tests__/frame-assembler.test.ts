@@ -861,17 +861,19 @@ type ModelPeer =
 describe("frame assembler — properties", () => {
   it("AP01 matches a reference model over any multi-user event sequence", () => {
     const params = fc.constantFrom(
+      { M: F + 7, B: 2 * (F + 7), T: 1_000 },
       { M: 3 * F + 7, B: 2 * (3 * F + 7), T: 1_000 },
       { M: 524_288, B: 524_288, T: 1_000 },
     );
+    const kinds = ["full", "full", "full", "exactLast", "lastMinus1", "short", "overflowWithinM", "overflowPastM", "empty"] as const;
     const command = fc.oneof(
-      fc.record({ k: fc.constant("declare" as const), p: fc.nat(5), pick: fc.nat(8), r: fc.nat() }),
-      fc.record({ k: fc.constant("chunk" as const), p: fc.nat(5), kind: fc.constantFrom("full", "exactLast", "lastMinus1", "short", "overflowWithinM", "overflowPastM", "empty") }),
-      fc.record({ k: fc.constant("small" as const), p: fc.nat(5), n: fc.integer({ min: 0, max: F }) }),
-      fc.record({ k: fc.constant("text" as const), p: fc.nat(5), s: fc.string({ maxLength: 40 }) }),
-      fc.record({ k: fc.constant("advance" as const), pick: fc.nat(2), r: fc.nat(2_000) }),
-      fc.record({ k: fc.constant("close" as const), p: fc.nat(5) }),
-      fc.record({ k: fc.constant("error" as const), p: fc.nat(5), tooLarge: fc.boolean() }),
+      { weight: 3, arbitrary: fc.record({ k: fc.constant("declare" as const), p: fc.nat(5), pick: fc.nat(8), r: fc.nat() }) },
+      { weight: 6, arbitrary: fc.record({ k: fc.constant("chunk" as const), p: fc.nat(5), kind: fc.constantFrom(...kinds) }) },
+      { weight: 1, arbitrary: fc.record({ k: fc.constant("small" as const), p: fc.nat(5), n: fc.integer({ min: 0, max: F }) }) },
+      { weight: 1, arbitrary: fc.record({ k: fc.constant("text" as const), p: fc.nat(5), s: fc.string({ maxLength: 40 }) }) },
+      { weight: 3, arbitrary: fc.record({ k: fc.constant("advance" as const), pick: fc.nat(3), r: fc.nat(2_000) }) },
+      { weight: 1, arbitrary: fc.record({ k: fc.constant("close" as const), p: fc.nat(5) }) },
+      { weight: 1, arbitrary: fc.record({ k: fc.constant("error" as const), p: fc.nat(5), tooLarge: fc.boolean() }) },
     );
     fc.assert(
       fc.property(params, fc.array(fc.constantFrom("a", "b", "c", undefined), { minLength: 2, maxLength: 6 }), fc.array(command, { maxLength: 60 }), (lim, owners, cmds) => {
@@ -911,7 +913,8 @@ describe("frame assembler — properties", () => {
           let expectedError = 0;
 
           if (c.k === "advance") {
-            const ms = [lim.T - 1, lim.T, c.r][c.pick]!;
+            // T - 1 and a part of T let a chunk land inside a window that a missing timer reset would close.
+            const ms = [lim.T - 1, lim.T, Math.floor(lim.T / 2), c.r % lim.T][c.pick]!;
             now += ms;
             for (const p of peers) {
               const st = model.get(p)!;
@@ -938,7 +941,7 @@ describe("frame assembler — properties", () => {
             } else {
               let frame: FakeMessage;
               if (c.k === "declare") {
-                const bothShort = Math.max(lim.M - (userIn.get(keyOf(p)) ?? 0), lim.B - inUse) + 1;
+                const bothShort = Math.max(lim.M - (userIn.get(keyOf(p)) ?? 0), lim.B - inUse, F) + 1;
                 const choices = [F, F + 1, lim.M - 1, lim.M, lim.M + 1, lim.B - inUse, lim.B - inUse + 1, bothShort, F + 1 + (c.r % (lim.M - F + 1))];
                 const bytes = choices[c.pick % choices.length]!;
                 frame = decl(bytes);
