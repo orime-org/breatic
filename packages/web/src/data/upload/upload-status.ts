@@ -23,7 +23,9 @@ import { assetsApi } from '@web/data/api/assets';
 export type UploadEnding = Exclude<UploadStatus, { state: 'finishing' }>;
 
 /** Hands one waiter its upload's ending. */
-type Resolve = (ending: UploadEnding) => void;
+interface UploadObserver {
+  settle: (ending: UploadEnding) => void;
+}
 
 /** What the list needs from the network and the clock. */
 export interface UploadStatusListDeps {
@@ -45,7 +47,7 @@ export interface UploadStatusList {
    * @param storageKey - The key its finish was queued under.
    * @returns Its ending, once the server has one.
    */
-  waitFor: (storageKey: string) => Promise<UploadEnding>;
+  waitFor: (storageKey: string, signal?: AbortSignal) => Promise<UploadEnding>;
 }
 
 /**
@@ -67,7 +69,7 @@ function batchesOf(keys: readonly string[]): string[][] {
  * @returns The list.
  */
 export function createUploadStatusList(deps: UploadStatusListDeps): UploadStatusList {
-  const waiting = new Map<string, Resolve[]>();
+  const waiting = new Map<string, Set<UploadObserver>>();
   let scheduled = false;
   let retryAfterSeconds: number | null = null;
 
@@ -89,7 +91,7 @@ export function createUploadStatusList(deps: UploadStatusListDeps): UploadStatus
         const resolvers = waiting.get(status.key);
         if (status.state === 'finishing' || resolvers === undefined) continue;
         waiting.delete(status.key);
-        for (const resolve of resolvers) resolve(status);
+        for (const observer of resolvers) observer.settle(status);
       }
     }
     scheduled = false;
@@ -118,10 +120,38 @@ export function createUploadStatusList(deps: UploadStatusListDeps): UploadStatus
   };
 
   return {
-    waitFor: (storageKey) =>
-      new Promise<UploadEnding>((resolve) => {
-        const resolvers = waiting.get(storageKey) ?? [];
-        waiting.set(storageKey, [...resolvers, resolve]);
+    waitFor: (storageKey, signal) =>
+      new Promise<UploadEnding>((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(new DOMException('Upload observation cancelled', 'AbortError'));
+          return;
+        }
+        let settled = false;
+        /**
+         * End only this observer when its document releases it.
+         * @throws {never} Never directly.
+         */
+        const abort = (): void => {
+          if (settled) return;
+          settled = true;
+          const observers = waiting.get(storageKey);
+          observers?.delete(observer);
+          if (observers?.size === 0) waiting.delete(storageKey);
+          signal?.removeEventListener('abort', abort);
+          reject(new DOMException('Upload observation cancelled', 'AbortError'));
+        };
+        const observer: UploadObserver = {
+          settle: (ending) => {
+            if (settled) return;
+            settled = true;
+            signal?.removeEventListener('abort', abort);
+            resolve(ending);
+          },
+        };
+        const observers = waiting.get(storageKey) ?? new Set<UploadObserver>();
+        observers.add(observer);
+        waiting.set(storageKey, observers);
+        signal?.addEventListener('abort', abort, { once: true });
         schedule();
       }),
   };
@@ -139,8 +169,10 @@ const pageList = createUploadStatusList({
 /**
  * Wait for the ending of an upload whose finish was queued.
  * @param storageKey - The key its finish was queued under.
+ * @param signal - Ends this observer when its owning document closes.
  * @returns Its ending, once the server has one.
+ * @throws {DOMException} When the observer is cancelled.
  */
-export function waitForUploadEnding(storageKey: string): Promise<UploadEnding> {
-  return pageList.waitFor(storageKey);
+export function waitForUploadEnding(storageKey: string, signal?: AbortSignal): Promise<UploadEnding> {
+  return pageList.waitFor(storageKey, signal);
 }
