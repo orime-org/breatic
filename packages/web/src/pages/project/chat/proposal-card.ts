@@ -110,7 +110,8 @@ export function shapeOf(proposal: CanvasProposal): ShapeGroup[] {
   const run = runsOf(proposal);
   const groups = new Map<number, Map<number, ShapeChip[]>>();
   proposal.nodes.forEach((node, at) => {
-    const chip = { label: node.name, empty: node.role === 'source' && node.material === undefined };
+    // A template's resource lands holding the template's file: we fill it, not the reader.
+    const chip = { label: node.name, empty: node.role === 'source' && node.material === undefined && node.resource === undefined };
     const depth = layer[at] ?? 0;
     const home = groups.get(run[at] ?? at) ?? new Map<number, ShapeChip[]>();
     home.set(depth, [...(home.get(depth) ?? []), chip]);

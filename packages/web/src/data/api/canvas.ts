@@ -242,19 +242,21 @@ export const canvasApi = {
    * The answer only says the fetch is queued. The node's task row carries how
    * it ends, and on success the server writes the stored address onto the node.
    * @param body - Where the address is and where it lands.
-   * @param body.url - The address, https only.
+   * @param body.url - The address, https only; or, instead,
+   * @param body.template_resource - the path of a file a generation template brings (inner#1345).
    * @param body.project_id - The project the node lives in.
    * @param body.space_id - The space the node lives on.
    * @param body.node_id - The node the result goes to, which already exists.
    * @returns The queued task's id.
    * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
-  ingestUrl(body: {
-    url: string;
-    project_id: string;
-    space_id: string;
-    node_id: string;
-  }): Promise<{ task_id: string }> {
+  ingestUrl(
+    body: ({ url: string } | { template_resource: string }) & {
+      project_id: string;
+      space_id: string;
+      node_id: string;
+    },
+  ): Promise<{ task_id: string }> {
     return apiPost<{ task_id: string }>('/canvas/ingest-url', body);
   },
   /**

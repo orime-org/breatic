@@ -65,6 +65,7 @@ import { toast } from 'sonner';
 import en from '@locales/en.json';
 
 import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePanelContainer';
+import type { PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
 import { useSocket } from '@web/data/yjs/use-socket';
 import {
@@ -125,7 +126,7 @@ function containerTree(
     edges?: ContainerProps['edges'];
   },
   mode: 'visible' | 'hidden' = 'visible',
-  placeTemplate: (...args: never[]) => unknown = NO_PLACE,
+  placeTemplate: PlaceTemplate = NO_PLACE,
 ): React.JSX.Element {
   const canvas: CanvasContextValue = {
     projectId: 'p',
@@ -190,7 +191,7 @@ function mountContainer(
     nodes?: ContainerProps['nodes'];
     edges?: ContainerProps['edges'];
   },
-  placeTemplate?: (...args: never[]) => unknown,
+  placeTemplate?: PlaceTemplate,
 ): ReturnType<typeof render> {
   return render(
     containerTree(
@@ -303,6 +304,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
             nodes={[{ id: 'target', type: 'image', data: { handling: false, mode } }]}
             edges={[]}
             getLastWriteWasLocal={author}
+            placeTemplate={() => undefined}
           />
         </ReactFlow>
       </CanvasContext.Provider>
@@ -489,6 +491,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               nodes={[{ id: 'target', type: 'image', data: { handling: false, mode: 't2i', model } }]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -545,6 +548,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               ]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </ReactFlow>
         </CanvasContext.Provider>

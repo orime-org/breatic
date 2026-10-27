@@ -881,7 +881,6 @@
         "reset": "Reset",
         "loadFailed": "The 3D view could not load. Refresh the page to use it."
       },
-      "editMarks": "Replace the text in square brackets and braces. Orange notes are not sent to the model.",
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: "
     },

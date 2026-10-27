@@ -40,6 +40,7 @@ import { useKeyboardNudge } from '@web/spaces/canvas/use-keyboard-nudge';
 import {
   canGenerate,
   newId,
+  type CanvasProposal,
 } from '@breatic/shared';
 import {
   defaultParamsOf,
@@ -326,7 +327,7 @@ import {
   type CreatableNodeType,
 } from '@web/spaces/canvas/node-factory';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
-import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';
 import { isProposalIntent, useCanvasStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -1339,6 +1340,24 @@ function CanvasSpaceInner({
     stepPaste,
     placeProposalAt,
   } = useNodeCreation(projectId, spaceId);
+
+  // A template picked in a generate panel lands around that panel's node
+  // (inner#1345 6.5): every other node is in the way, and so is every group
+  // but the one the node sits in, which grows around what joins it. The
+  // viewport stays where the reader is working.
+  const placeTemplate = React.useCallback(
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>): PlacedProposal => {
+      const anchorId = existing.get(0)?.nodeId;
+      const parentId = readCanvasGraph(projectId, spaceId).nodes.find((n) => n.id === anchorId)?.parentId;
+      const around = readNodePlacements(projectId, spaceId).filter((p) => p.id !== anchorId && p.id !== parentId);
+      const occupied = occupiedRects(around, (id) => {
+        const measured = getInternalNode(id)?.measured;
+        return measured?.width && measured.height ? { width: measured.width, height: measured.height } : undefined;
+      });
+      return placeProposalAt(proposal, TEMPLATE_AIM, occupied, existing);
+    },
+    [projectId, spaceId, getInternalNode, placeProposalAt],
+  );
 
   // Mirror the Yjs-observed nodes into ReactFlow's render buffer. ReactFlow
   // needs a local node array for smooth drag; Yjs stays the source of truth
@@ -4800,6 +4819,7 @@ function CanvasSpaceInner({
               projectId={projectId}
               spaceId={spaceId}
               getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
             />
             {/* Video Generate panel: its own panel kind, so only one of the two
               is ever open on a node — a video node opens this one. */}
@@ -4809,6 +4829,7 @@ function CanvasSpaceInner({
               projectId={projectId}
               spaceId={spaceId}
               getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
             />
             {/* Audio Generate panel: its own panel kind, opened by an audio
               node. It takes `getLastWriteWasLocal` for the same reason the
@@ -4821,6 +4842,7 @@ function CanvasSpaceInner({
               projectId={projectId}
               spaceId={spaceId}
               getLastWriteWasLocal={getLastWriteWasLocal}
+              placeTemplate={placeTemplate}
             />
             {/* A mini-tool's parameter panel: the same slot under the node,
               so it and the Generate panels never show together. */}
@@ -5109,6 +5131,12 @@ function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number 
     .getState()
     .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
 }
+
+/**
+ * Where a template picked in a panel is aimed. Unused while the panel's node
+ * is on the canvas: the template lines up on that node.
+ */
+const TEMPLATE_AIM = { x: 0, y: 0 };
 
 /**
  * Canvas space body. Wraps `CanvasSpaceInner` in a
