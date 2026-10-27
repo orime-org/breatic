@@ -813,10 +813,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (at === undefined) throw new Error("The ticket has no step to send");
       if (at.step.kind === "describe") return describe(ticket, at.index, bounds);
       const body = bodyOf(ticket, at.step);
-      const requestBounds = { deadlineAt: bounds.deadlineAt, ...(bounds.signal ? { signal: bounds.signal } : {}) };
       let answer;
       try {
-        answer = await capped(ticket.upstream, requestBounds, () => submit(reach(ticket.upstream), at.step.endpoint, body, requestBounds));
+        answer = await capped(ticket.upstream, bounds, () => submit(reach(ticket.upstream), at.step.endpoint, body, bounds));
       } catch (error) {
         const failure = classify(error);
         if (failure === null || failure.kind === "no_answer") throw error;
@@ -841,7 +840,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         } catch (error) {
           return failed(ticket, error as Error);
         }
-        return completed({ ...ticket, accepted: true }, at.index, output, requestBounds, []);
+        return completed({ ...ticket, accepted: true }, at.index, output, bounds, []);
       }
       const steps = ticket.steps.map((s, i) => (i === at.index ? { ...s, status: "submitted" as const, predictionId: answer.predictionId! } : s));
       return waiting(next(ticket, { steps, accepted: true }));
