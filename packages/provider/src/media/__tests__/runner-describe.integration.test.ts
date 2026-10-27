@@ -411,6 +411,28 @@ describe("a describe step and the understand model's answer (design 3.5, 5.4)", 
     }
   });
 
+  it("throws the caller's stop while the image is read as it is, before the deadline", async () => {
+    const silent = createServer(() => undefined);
+    await new Promise<void>((done) => silent.listen(0, "127.0.0.1", () => done()));
+    try {
+      const { port } = silent.address() as AddressInfo;
+      const r = runner();
+      const planned = expectState(
+        await r.plan("kling-elements", { prompt: "go", params: { elements: [`http://127.0.0.1:${port}/fox.png`] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
+        "send",
+      );
+      const stop = new AbortController();
+      setTimeout(() => stop.abort(), 100);
+      const error = await r.send(stored(planned.ticket), { deadlineAt: Date.now() + 60_000, signal: stop.signal }).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(SendNotAccepted);
+      expect(error).not.toBeInstanceOf(DeadlinePassed);
+    } finally {
+      silent.closeAllConnections();
+      await new Promise<void>((done) => silent.close(() => done()));
+    }
+  });
+
   it("throws the lost answer of the understand call as it is, since that call may have been billed", async () => {
     openrouter.answer(() => "reset");
     const error = await describeImage();

@@ -556,6 +556,11 @@ describe("a pinned step on an answer a retry cannot fix (design 5.3, 12.4)", () 
     expect(posted(fakes.openrouter)).toHaveLength(2);
   });
 
+  it("does not wait out a pinned 503's Retry-After longer than a minute", async () => {
+    expect(await secondStep({ status: 503, body: {}, headers: { "retry-after": "3600" } })).toBeInstanceOf(Error);
+    expect(posted(fakes.openrouter)).toHaveLength(2);
+  });
+
   it("does not wait out a Retry-After longer than a minute", async () => {
     expect(await secondStep({ status: 429, body: {}, headers: { "retry-after": "3600" } })).toBeInstanceOf(Error);
     expect(posted(fakes.openrouter)).toHaveLength(2);
@@ -570,14 +575,25 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
     expect(result.providerMetadata?.breatic?.upstream).toBe("openrouter");
   });
 
-  it("fails without moving on when the connection is cut before the first content", async () => {
-    const opening = event({ id: "gen-c", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] });
-    fakes.openrouter.answer(() => ({ status: 200, raw: opening, contentType: "text/event-stream", hold: true }));
-    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("meta/llama-x", THINK);
+  it("fails without moving on when a stream breaks before its first content", async () => {
+    const opening = event({ id: "c", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] });
+    fakes.deepseek.answer(() => ({ status: 200, raw: opening, contentType: "text/event-stream", hold: true }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
     const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
-    setTimeout(() => void fakes.openrouter.close(), 100);
+    setTimeout(() => void fakes.deepseek.close(), 100);
     expect(await stream.text.then(() => "done", () => "failed")).toBe("failed");
-    expect(posted(fakes.openrouter)).toHaveLength(1);
+    expect(posted(fakes.deepseek)).toHaveLength(1);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+
+  it("fails a stream that breaks after its content", async () => {
+    const content = event({ id: "c", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", content: "he" }, finish_reason: null }] });
+    fakes.deepseek.answer(() => ({ status: 200, raw: content, contentType: "text/event-stream", hold: true }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
+    setTimeout(() => void fakes.deepseek.close(), 100);
+    expect(await stream.text.then(() => "done", () => "failed")).toBe("failed");
+    expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 
   it("hands the generation of a stream whose connection is cut after content over exactly once", async () => {
@@ -596,13 +612,26 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
     expect(handed.filter((id) => id === "gen-1")).toHaveLength(1);
   });
 
-  it("keeps the lookup of a stream its reader leaves early", async () => {
+  it("keeps the lookup of a model stream its reader cancels, and closes the upstream stream", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: sse(false), contentType: "text/event-stream", hold: true }));
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("meta/llama-x", THINK);
-    const stream = streamText({ model: prepared.model, prompt: "hi", ...prepared.options });
-    const reader = stream.textStream.getReader();
-    await reader.read();
-    await reader.cancel();
+    const model = prepared.model as unknown as { doStream: (o: unknown) => Promise<{ stream: ReadableStream<{ type: string }> }> };
+    const { stream } = await model.doStream({ prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }], providerOptions: prepared.options.providerOptions });
+    const reader = stream.getReader();
+    for (let part = await reader.read(); !part.done && part.value.type !== "text-delta"; part = await reader.read());
+    await reader.cancel("left");
     expect(prepared.pendingCosts()).toEqual([{ state: "pending", lookup: expect.objectContaining({ generationId: "gen-1" }) }]);
+  });
+
+  it("stops at once on an in-band error whose form the vendor does not know", async () => {
+    const opening = anthropicEvent("message_start", { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model: "claude", content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 1 } } })
+      + anthropicEvent("ping", { type: "ping" })
+      + anthropicEvent("error", { type: "error", error: { type: "mystery_error", message: "?" } });
+    fakes.anthropic.answer(() => ({ status: 200, raw: opening, contentType: "text/event-stream" }));
+    const prepared = llmProvider(fakes, { ANTHROPIC_API_KEY: "a", OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("anthropic/claude-opus-5.5", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
+    expect(await stream.text.then(() => "done", () => "failed")).toBe("failed");
+    expect(posted(fakes.anthropic)).toHaveLength(1);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 });

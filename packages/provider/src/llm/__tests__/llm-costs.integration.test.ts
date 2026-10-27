@@ -349,6 +349,13 @@ describe("a refused understand call (design 3.5, 5.4)", () => {
     expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toMatchObject(cost);
   });
 
+  it("carries no cost for a refusal whose body is not JSON", async () => {
+    fakes.google.answer(() => ({ status: 400, raw: "<html>bad request</html>", contentType: "text/html" }));
+    const error = await refused({ GOOGLE_API_KEY: "g" });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected & { cost?: unknown }).cost).toBeUndefined();
+  });
+
   it("carries no cost for a refusal status whose body names none, and names the upstream that refused", async () => {
     fakes.google.answer(() => ({ status: 400, body: { error: { code: 400, message: "bad image", status: "INVALID_ARGUMENT" } } }));
     const error = await refused({ GOOGLE_API_KEY: "g" });
