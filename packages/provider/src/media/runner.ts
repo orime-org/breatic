@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { APICallError } from "ai";
 import { candidatesOf, parseProviderConfig, type MediaBinding, type ProviderConfig } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
@@ -697,42 +696,54 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param ticket - The ticket.
    * @param index - The describe step's place; the element step follows it.
    * @param bounds - The deadline and signal.
-   * @returns The send answer for the element step; failed when the image is refused, no understand upstream can ever serve, or one refuses the request.
-   * @throws {SendNotAccepted} When the image host could not be reached, or every understand upstream failed in a passing way.
+   * @returns The send answer for the element step; failed when the image is refused, no understand upstream can ever serve, or one refuses the request (its cost kept).
+   * @throws {SendNotAccepted} When the image host could not be reached or dropped the read, or every understand upstream failed in a passing way.
    * @throws {DeadlinePassed} When the deadline cut the read or the description.
-   * @throws {NoAnswer} When an answer was lost; other unknown errors are thrown as they are.
+   * @throws {NoAnswer} When the understand call's answer was lost, which may have been billed; other unknown errors are thrown as they are.
    */
   const describe = async (ticket: Ticket, index: number, bounds: CallBounds): Promise<MediaAnswer> => {
     const step = ticket.steps[index]!;
     const spec = bindingOf(ticket).extra_steps?.find((s) => s.kind === "element")?.describe;
     if (spec === undefined) throw new Error(`${ticket.model} has no description step on ${ticket.upstream}`);
+    const signal = bounds.signal ? { signal: bounds.signal } : {};
+    /**
+     * Whether an error is an abort that came after the deadline.
+     * @param error - The error.
+     * @returns True when the deadline cut the call.
+     */
+    const cutByDeadline = (error: unknown): boolean =>
+      Date.now() >= bounds.deadlineAt && inChain(error, (e) => e instanceof Aborted || e.name === "AbortError" || e.name === "TimeoutError");
+    let media;
+    try {
+      media = await fetchMedia({ url: sourceOf(ticket, step), maxBytes: options.mediaLimits.maxMediaBytes, deadlineAt: bounds.deadlineAt, ...signal });
+    } catch (error) {
+      if (error instanceof MediaRefused) return failed(ticket, error);
+      // Nothing paid has been sent yet: the caller clears its sending mark and retries the ticket.
+      if (error instanceof NotSent || error instanceof NoAnswer) throw new SendNotAccepted(ticket.upstream, error);
+      if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt);
+      throw error;
+    }
     let answer;
     try {
-      const media = await fetchMedia({ url: sourceOf(ticket, step), maxBytes: options.mediaLimits.maxMediaBytes, deadlineAt: bounds.deadlineAt, ...(bounds.signal ? { signal: bounds.signal } : {}) });
       answer = await provider.llm.understand({
         model: spec.model,
         question: spec.question,
         media: [media],
         maxOutputTokens: spec.max_output_tokens,
         deadlineAt: bounds.deadlineAt,
-        ...(bounds.signal ? { signal: bounds.signal } : {}),
+        ...signal,
       });
     } catch (error) {
-      if (error instanceof MediaRefused) return failed(ticket, error);
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
         const lasting = error.reasons.every((r) => r.kind === "missing_key" || r.failure === "model_not_found");
         if (lasting) return failed(ticket, error);
         throw new SendNotAccepted(ticket.upstream, error);
       }
-      if (APICallError.isInstance(error) && error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 429) {
-        return failed(ticket, new UpstreamRequestRejected(ticket.model, ticket.upstream, `The element description was refused: ${error.message}`));
+      if (error instanceof UpstreamRequestRejected) {
+        return failed(error.cost === undefined ? ticket : { ...ticket, costs: [...ticket.costs, error.cost] }, error);
       }
-      // Nothing reached the media upstream: the caller clears its sending mark and retries the ticket.
-      if (inChain(error, (e) => e instanceof NotSent)) throw new SendNotAccepted(ticket.upstream, error);
-      if (Date.now() >= bounds.deadlineAt && inChain(error, (e) => e instanceof Aborted || e.name === "AbortError" || e.name === "TimeoutError")) {
-        throw new DeadlinePassed(bounds.deadlineAt);
-      }
+      if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt);
       throw error;
     }
     const description = answer.text.trim().slice(0, ELEMENT_DESCRIPTION_MAX);
