@@ -14,7 +14,7 @@ import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manag
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { LAYER_STEP_PX, ROW_GAP_PX, occupiedRects, planFlowLayout, textFootprintHeight } from '@web/spaces/canvas/lib/place-flow';
+import { GUIDE_STEP_PX, LAYER_STEP_PX, ROW_GAP_PX, occupiedRects, planFlowLayout, textFootprintHeight } from '@web/spaces/canvas/lib/place-flow';
 import { EMPTY_NODE_SIZE, GROUP_PADDING, groupRectForMembers, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
 import { createEmptyNode, createGroupNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
@@ -1682,7 +1682,7 @@ describe('useNodeCreation', () => {
         expect(at.x + EMPTY_NODE_SIZE.width).toBeLessThanOrEqual(inputRect.x);
       });
 
-      it('puts the guide one column left of a 9:16 anchor that already has its reference, clear of the anchor', () => {
+      it('puts the guide one guide step left of a 9:16 anchor that already has its reference, clear of the anchor', () => {
         const anchor = seed('p-ex7', 's-ex7', 'image', { x: 1000, y: 500 }, {
           name: 'My shot',
           content: 'https://ours.example/image/tall.png',
@@ -1708,7 +1708,7 @@ describe('useNodeCreation', () => {
         const added = addedSince('p-ex7', 's-ex7', before);
         expect(added).toHaveLength(1);
         const at = absolute('p-ex7', 's-ex7').get(added[0]!.id)!;
-        expect(at.x).toBe(1000 - LAYER_STEP_PX);
+        expect(at.x).toBe(1000 - GUIDE_STEP_PX);
         const anchorRect = { x: 1000, y: 500, width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(1080, 1920) };
         expect(overlaps({ ...at, width: EMPTY_NODE_SIZE.width, height: textFootprintHeight(GUIDE_TEXT) }, anchorRect)).toBe(false);
       });
