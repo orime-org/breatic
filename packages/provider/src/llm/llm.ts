@@ -16,6 +16,7 @@ import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, S
 import { classifyLlm, costRefOf, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
+import { decide } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
 
@@ -242,9 +243,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    */
   const refusedCall = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined): unknown => {
     if (upstream === undefined || !APICallError.isInstance(error) || error.statusCode === undefined) return error;
-    // Only an answer the route stopped on is a refusal: a passing status moved on or was retried.
     const failure = classifyLlm(error, vendorOf(kindOf(upstream)));
-    if (failure?.kind !== "http_status" || failure.status === 429 || failure.status >= 500) return error;
+    if (failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") return error;
     let body: { id?: unknown; usage?: { cost?: unknown } } | undefined;
     try {
       body = JSON.parse(error.responseBody ?? answerBody ?? "") as typeof body;
