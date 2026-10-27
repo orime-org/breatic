@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { findTemplate, templatePrompt, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
+import { markedSegments, t, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -141,7 +141,7 @@ const CLIP_HELD: Sent["nodes"][number] = { role: "source", type: "video", name: 
  * @returns The segments.
  */
 function storyboardSegments(): NonNullable<Sent["nodes"][number]["prompt"]> {
-  return templatePrompt(findTemplate("storyboard-grid-25") as NonNullable<ReturnType<typeof findTemplate>>).map((segment) => {
+  return markedSegments(t("canvas.template.storyboard-grid-25.prompt")).map((segment) => {
     if (segment.slot === undefined) return { text: segment.text ?? "" };
     return segment.slot.kind === "asset" ? { ref: 0 } : segment.slot.kind === "tweak" ? { slot: { kind: "tweak", label: segment.slot.label, note: segment.slot.note } } : { slot: { kind: "note", label: segment.slot.label } };
   });
@@ -369,6 +369,19 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     // A template's resource lands holding the template's own file.
     meets: group([{ ...HELD_PIC, template: { id: "fixture-sheet", key: "palette" } }, gen("image", "i2i", EDIT, { prompt: [{ text: "Make it with " }, { ref: 0 }] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Pic"', '"fixture-sheet"', '"palette"', "takes no material"],
+    templates: FIXTURES,
+  }],
+  "template-edge-into": [{
+    // The sketch goes into the sheet's style slot, and the edge says the pool.
+    meets: group(
+      [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)],
+      [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "pool" }],
+    ),
+    states: ['node 1 ("Sketch")', '"style_images"', '"pool"'],
+    fix: group(
+      [{ ...(SHEET_NODES[0] as Sent["nodes"][number]), prompt: [SKETCH_FIRST, ...(SHEET_NODES[0]?.prompt ?? [])] }, ...SHEET_NODES.slice(1)],
+      [...SHEET_EDGES, { fromIndex: 1, toIndex: 0, into: "style_images" }],
+    ),
     templates: FIXTURES,
   }],
   "template-input-missing": [{
@@ -870,6 +883,19 @@ function actsWhereItSays(meets: Sent, fix: Sent, sentence: string): void {
 }
 
 /**
+ * Hold the fix of a template edge sent the wrong way (inner#1345) to what it
+ * says: the same edges, one of them saying another into, and the nodes left
+ * as they were.
+ * @param meets - The proposal refused.
+ * @param fix - The proposal after the fix.
+ */
+function rewiresOneEdge(meets: Sent, fix: Sent): void {
+  expect(fix.nodes, "the fix leaves the nodes alone").toEqual(meets.nodes);
+  expect(fix.edges.map((e) => [e.fromIndex, e.toIndex]), "the fix keeps every edge's ends").toEqual(meets.edges.map((e) => [e.fromIndex, e.toIndex]));
+  expect(fix.edges.filter((e, i) => e.into !== meets.edges[i]?.into), "the fix changes one edge's into").toHaveLength(1);
+}
+
+/**
  * Hold the fix of a missing template edge (design 6.7 step 3) to what it
  * says: one edge added into node j, and only node j changed besides, where
  * the ref (or, into a slot, the note) goes. Every other edge stays.
@@ -910,6 +936,7 @@ describe("every refusal states its fault, its rule and its facts", () => {
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
         // The fix proposal changes only what the sentence names.
         if (refusal === "template-edge-missing") wiresOneEdgeIn(entry.meets, entry.fix);
+        else if (refusal === "template-edge-into") rewiresOneEdge(entry.meets, entry.fix);
         else actsWhereItSays(entry.meets, entry.fix, lastSentence(reason));
       });
     }

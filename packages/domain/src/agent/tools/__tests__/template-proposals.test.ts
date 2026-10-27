@@ -15,7 +15,7 @@ vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
 }));
 
 import { loadLocales, runWithLocale } from "@breatic/core";
-import { canvasProposalSchema, GENERATION_TEMPLATES, setLocale, templateGuideNode, type ProposalAnswer } from "@breatic/shared";
+import { canvasProposalSchema, GENERATION_TEMPLATES, setLocale, templateGuideNode, type GenerationTemplate, type ProposalAnswer } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -639,5 +639,81 @@ describe("the consistency check (design 6.7 step 3)", () => {
   it("is asked before the generate node checks", () => {
     const anchor = { role: "generate", type: "image", name: "Watercolour", template: { id: "fixture-solo" }, prompt: [{ text: "Redraw " }, { ref: 3 }] } as SentNode;
     expect(verdictFor({ nodes: [anchor], edges: [], rationale: "r" }, undefined, FIXTURES)).toMatchObject({ ok: false, refusal: "template-input-missing" });
+  });
+});
+
+describe("the consistency check, round-1 review (inner#1345)", () => {
+  /**
+   * The verdict over the fixtures.
+   * @param sent - The proposal.
+   * @returns Its refusal id, or "ok".
+   */
+  function refusalOf(sent: Sent, templates = FIXTURES): string {
+    const verdict = verdictFor(sent, undefined, templates);
+    return verdict.ok ? "ok" : verdict.refusal;
+  }
+
+  it("gives an input fed into two nodes its node before the inputs fed into one take it", () => {
+    const shape = agentShape(SHEET);
+    const character = shape.at.get("input:character") ?? -1;
+    const sheet = shape.at.get("node:sheet") ?? -1;
+    const edges = [...shape.sent.edges];
+    const at = edges.findIndex((edge) => edge.fromIndex === character && edge.toIndex === sheet);
+    const [moved] = edges.splice(at, 1);
+    expect(refusalOf({ ...shape.sent, edges: [moved as Sent["edges"][number], ...edges] })).toBe("ok");
+  });
+
+  it("refuses a template edge sent into another place than the template's", () => {
+    const shape = agentShape(SHEET);
+    const sketch = shape.at.get("node:sketch") ?? -1;
+    const sheet = shape.at.get("node:sheet") ?? -1;
+    const edges = shape.sent.edges.map((edge) => (edge.fromIndex === sketch && edge.toIndex === sheet ? { ...edge, into: "pool" } : edge));
+    const verdict = verdictFor({ ...shape.sent, edges }, undefined, FIXTURES);
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-edge-into", reason: expect.stringContaining('"style_images"') });
+  });
+
+  it("refuses a node two template edges leave when one of them is not wired", () => {
+    const fan: GenerationTemplate = {
+      id: "fixture-fan",
+      anchor: "final",
+      nodes: [
+        { key: "final", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: {} },
+        { key: "first", role: "generate", type: "image", mode: "i2i", model: "nano-banana-pro-edit-ultra", params: {} },
+        { key: "look", role: "source", type: "image", resource: "templates/fixture-fan/look.png" },
+      ],
+      edges: [
+        { from: "look", to: "first", into: "pool" },
+        { from: "look", to: "final", into: "pool" },
+        { from: "first", to: "final", into: "pool" },
+      ],
+      inputs: [],
+      steps: [],
+      agentNote: "a fixture with one resource feeding two generations",
+    };
+    const note = { slot: { kind: "note" as const, label: "Generate First first" } };
+    const sent: Sent = {
+      nodes: [
+        { role: "generate", type: "image", name: "Final", template: { id: "fixture-fan" }, prompt: [note, { text: "Final of " }, { ref: 1 }, { text: " in " }, { ref: 2 }] },
+        { role: "generate", type: "image", name: "First", template: { id: "fixture-fan", key: "first" }, prompt: [{ text: "A first take." }] },
+        { role: "source", type: "image", name: "Look", template: { id: "fixture-fan", key: "look" } },
+      ],
+      edges: [
+        { fromIndex: 1, toIndex: 0, into: "pool" },
+        { fromIndex: 2, toIndex: 0, into: "pool" },
+      ],
+      rationale: "r",
+      groupName: "Fan",
+    };
+    const verdict = verdictFor(sent, undefined, [...FIXTURES, fan]);
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-edge-missing", reason: expect.stringContaining('node 2 ("Look")') });
+  });
+
+  it("says where a missing key goes: its role, type, the node it is wired into and how", () => {
+    const shape = withoutNode(agentShape(SHEET), "node:sketch", SKETCH_FIRST);
+    const verdict = verdictFor(withoutNode(shape, "node:palette").sent, undefined, FIXTURES);
+    expect(verdict).toMatchObject({ ok: false, refusal: "template-key-missing" });
+    const reason = verdict.ok ? "" : verdict.reason;
+    expect(reason).toContain('a generate image "sketch" node');
+    expect(reason).toContain('"style_images"');
   });
 });

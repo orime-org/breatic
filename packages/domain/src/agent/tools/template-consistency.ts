@@ -23,7 +23,7 @@ import {
 } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { fixOn, nodeLabel, refuse } from "@domain/agent/tools/proposal-refusals.js";
+import { fixOn, nodeLabel, refuse, type NodeFix } from "@domain/agent/tools/proposal-refusals.js";
 import type { TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 
 /** One anchor of the proposal and what the match found for it. */
@@ -99,6 +99,28 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
      * @returns The label.
      */
     const label = (node: string): string => nodeLabel(proposal.nodes, Number(node));
+    /**
+     * The index of the node a key stands on: the anchor's, or the node matched to it.
+     * @param key - The key.
+     * @returns The index, or undefined when no node stands there.
+     */
+    const indexAt = (key: TemplateNodeKey): number | undefined => {
+      if (key === place.template.anchor) return anchor;
+      const node = nodeIdOf(match, key);
+      return node === "" ? undefined : Number(node);
+    };
+    /**
+     * The fix that wires one node into another the way a template edge does.
+     * @param from - The index of the node to wire in.
+     * @param to - The index of the node it goes into.
+     * @param into - Where on that node it goes.
+     * @returns The fix.
+     */
+    const wireFix = (from: number, to: number, into: string): NodeFix => {
+      const where = proposal.nodes[to]?.shots !== undefined ? "a shot" : "the prompt";
+      const mention = into === "pool" ? `, and @ ${nodeLabel(proposal.nodes, from)} with a ref in ${where}` : "";
+      return fixOn(nodeLabel(proposal.nodes, to), `take an edge from ${nodeLabel(proposal.nodes, from)} into "${into}"${mention}.`);
+    };
     for (const [key, found] of match.keys) {
       if (found.kind === "many") {
         return refuse("template-key-repeated", `Template "${id}" anchored at ${at} takes one "${key}" node, and ${found.nodes.map(label).join(", ")} are each wired in where it goes.`);
@@ -107,20 +129,47 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       const candidates = match.candidates.get(key) ?? [];
       const edge = match.walked.find((one) => one.from === key);
       const only = candidates[0];
-      if (candidates.length === 1 && only !== undefined && edge !== undefined) {
-        const to = edge.to === place.template.anchor ? anchor : Number(nodeIdOf(match, edge.to));
-        const into = edge.into ?? "pool";
-        const target = proposal.nodes[to];
-        const where = target?.shots !== undefined ? "a shot" : "the prompt";
-        const mention = into === "pool" ? `, and @ ${label(only)} with a ref in ${where}` : "";
+      const into = edge?.into ?? "pool";
+      const to = edge === undefined ? undefined : indexAt(edge.to);
+      if (candidates.length === 1 && only !== undefined && edge !== undefined && to !== undefined) {
         return refuse(
           "template-edge-missing",
           `Template "${id}" anchored at ${at} wires its "${key}" node into "${edge.to}" by "${into}", and ${label(only)}, tagged "${key}", has no edge there.`,
-          fixOn(nodeLabel(proposal.nodes, to), `take an edge from ${label(only)} into "${into}"${mention}.`),
+          wireFix(Number(only), to, into),
         );
       }
+      const own = place.template.nodes.find((node) => node.key === key);
+      const where = to === undefined ? `its "${edge?.to ?? ""}" node` : nodeLabel(proposal.nodes, to);
       const listed = candidates.length === 0 ? "" : ` Nodes tagged "${key}" that are wired nowhere it goes: ${candidates.map(label).join(", ")}.`;
-      return refuse("template-key-missing", `Template "${id}" anchored at ${at} has no "${key}" node wired in where the template wires it.${listed}`);
+      return refuse(
+        "template-key-missing",
+        `Template "${id}" anchored at ${at} wires a ${own?.role ?? ""} ${own?.type ?? ""} "${key}" node into ${where} by "${into}", and none is wired in there.${listed}`,
+      );
+    }
+    const unwired = match.unwired[0];
+    if (unwired !== undefined) {
+      const from = indexAt(unwired.from);
+      const to = indexAt(unwired.to);
+      if (from !== undefined && to !== undefined) {
+        const into = unwired.into ?? "pool";
+        return refuse(
+          "template-edge-missing",
+          `Template "${id}" anchored at ${at} wires its "${unwired.from}" node into "${unwired.to}" by "${into}" as well, and ${nodeLabel(proposal.nodes, from)} has no edge there.`,
+          wireFix(from, to, into),
+        );
+      }
+    }
+    for (const edge of match.walked) {
+      const from = indexAt(edge.from);
+      const to = indexAt(edge.to);
+      const sent = proposal.edges.find((one) => one.fromIndex === from && one.toIndex === to);
+      const want = edge.into ?? "pool";
+      if (sent?.into === undefined || sent.into === want || from === undefined || to === undefined) continue;
+      return refuse(
+        "template-edge-into",
+        `Template "${id}" anchored at ${at} sends its "${edge.from}" node into "${edge.to}" by "${want}", and the edge from ${nodeLabel(proposal.nodes, from)} says into "${sent.into}".`,
+        fixOn(nodeLabel(proposal.nodes, to), `send the edge from ${nodeLabel(proposal.nodes, from)} into "${want}".`),
+      );
     }
     const missing = match.unassigned[0];
     if (missing !== undefined) {

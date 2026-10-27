@@ -59,7 +59,7 @@ import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/to
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
 import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
-import { expandTemplate, templatePlace, templateSegmentsText, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
+import { expandAt, templatePlace, templateSegmentsText, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
 import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 
@@ -278,7 +278,7 @@ function resolveSent(sent: z.infer<typeof inputSchema>, templates: readonly Gene
     }
     const place = templatePlace(tag, plain, templates);
     if ("ok" in place) return place;
-    const expanded = expandTemplate({ ...plain, template: tag }, nodeLabel(sent.nodes, index), templates);
+    const expanded = expandAt(place, plain, nodeLabel(sent.nodes, index));
     if (!expanded.ok) return expanded;
     nodes.push(expanded.node);
     places.push(place);
@@ -337,13 +337,13 @@ function markTemplateNodes(nodes: readonly ProposalNode[], instances: readonly A
  */
 function orderInputEdges(edges: CanvasProposal["edges"], instances: readonly AnchoredInstance[]): CanvasProposal["edges"] {
   const out = [...edges];
-  for (const { place, match } of instances) {
+  for (const { anchor, place, match } of instances) {
     const fedTo = new Map<number, Map<number, number>>();
     place.template.inputs.forEach((input, declared) => {
       for (const [fed, node] of match.inputs.get(input.key) ?? []) {
         const to = fed === place.template.anchor ? undefined : match.keys.get(fed);
         const target = to === undefined ? undefined : to.kind === "one" ? Number(to.node) : undefined;
-        const at = fed === place.template.anchor ? Number(anchorOf(instances, place)) : target;
+        const at = fed === place.template.anchor ? anchor : target;
         if (at === undefined) continue;
         fedTo.set(at, (fedTo.get(at) ?? new Map<number, number>()).set(Number(node), declared));
       }
@@ -357,17 +357,6 @@ function orderInputEdges(edges: CanvasProposal["edges"], instances: readonly Anc
     }
   }
   return out;
-}
-
-/**
- * The index of the anchor an instance was matched at.
- * @param instances - Each anchor and its match.
- * @param place - The instance's place.
- * @returns The anchor's index.
- * @throws {never} Never.
- */
-function anchorOf(instances: readonly AnchoredInstance[], place: AnchoredInstance["place"]): number {
-  return instances.find((one) => one.place === place)?.anchor ?? -1;
 }
 
 /**

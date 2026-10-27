@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markedSegments, markText, t, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -588,7 +588,7 @@ describe("the templates as the agent is shown them", () => {
   it("lists each prompt as the segments to send, each reference as a ref, labels without the words the canvas adds", () => {
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
-      for (const segment of templatePrompt(template)) {
+      for (const segment of markedSegments(t(`canvas.template.${template.id}.prompt`))) {
         if (segment.slot?.kind === "asset") expect(said).toContain('{"ref": <index of the node wired in for input "reference">}');
         else if (segment.slot) expect(said).toContain(JSON.stringify({ slot: segment.slot }));
       }

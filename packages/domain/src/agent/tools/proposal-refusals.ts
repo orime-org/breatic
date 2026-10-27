@@ -35,6 +35,7 @@ export const REFUSALS = {
   "template-key-missing": false,
   "template-key-repeated": false,
   "template-edge-missing": "node",
+  "template-edge-into": "node",
   "template-input-missing": false,
   "template-no-prompt": "node",
   "sources-no-taker": false,

@@ -18,8 +18,8 @@ import {
   GENERATION_TEMPLATES,
   markedSegments,
   t,
+  templateMarkTargets,
   templateNodeDefaults,
-  templateSkeleton,
   type GenerationTemplate,
   type ProposalNode,
   type TemplateNodeKey,
@@ -60,24 +60,13 @@ function quoted(names: readonly string[]): string {
  * @throws {never} Never.
  */
 export function templateSegmentsText(template: GenerationTemplate, key: TemplateNodeKey = template.anchor): string {
-  const skeleton = templateSkeleton(template);
-  /**
-   * One of the template's strings in the reader's language.
-   * @param rest - The key under the template's locale entry.
-   * @returns The string.
-   */
-  const text = (rest: string): string => t(`canvas.template.${template.id}.${rest}`);
-  const targets = new Map<string, string>();
-  for (const input of skeleton.inputs) {
-    if (input.feeds.includes(key)) targets.set(text(`input.${input.key}.name`), `input "${input.key}"`);
-  }
-  for (const edge of skeleton.edges) {
-    if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(`node.${edge.from}.name`), `node "${edge.from}"`);
-  }
-  const words = text(key === template.anchor ? "prompt" : `node.${key}.prompt`);
-  const parts = markedSegments(words).map((segment) => {
+  const text = t(`canvas.template.${template.id}.${key === template.anchor ? "prompt" : `node.${key}.prompt`}`);
+  const targets = templateMarkTargets(template, key);
+  const parts = markedSegments(text).map((segment) => {
     if (segment.slot?.kind === "asset") {
-      return `{"ref": <index of the node wired in for ${targets.get(segment.slot.label) ?? `"${segment.slot.label}"`}>}`;
+      const target = targets.get(segment.slot.label);
+      const named = target === undefined ? `"${segment.slot.label}"` : "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
+      return `{"ref": <index of the node wired in for ${named}>}`;
     }
     return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
   });
@@ -133,7 +122,18 @@ export function expandTemplate(
 ): TemplateExpansion {
   const { template: tag, ...rest } = node;
   const place = templatePlace(tag, rest, templates);
-  if ("ok" in place) return place;
+  return "ok" in place ? place : expandAt(place, rest, at);
+}
+
+/**
+ * Fills a node from the template its tag has been read into.
+ * @param place - Where the node stands in its template.
+ * @param rest - The node, without its tag.
+ * @param at - The node, as a fix names it.
+ * @returns The expanded node, or a reason the agent can act on.
+ * @throws {never} Never.
+ */
+export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel): TemplateExpansion {
   if ("input" in place) return { ok: true, node: rest };
   const { template, key, anchor } = place;
   if (rest.role === "source") {
