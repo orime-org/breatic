@@ -188,6 +188,14 @@ import * as Y from "yjs";
 import { createCollabServer } from "../hocuspocus.js";
 import { getConnectionTimings } from "../config.js";
 import { readPresence } from "../hooks/presence.js";
+import {
+  connectLiveClient,
+  createLiveServer,
+  statelessFrame,
+  syncFrame,
+  waitFor as waitForLive,
+  WIRE,
+} from "./helpers/live-hocuspocus.js";
 import { SOCKET_CEILINGS } from "../infra/socket-ceilings.js";
 
 /**
@@ -770,6 +778,130 @@ describe("createCollabServer — a connection re-reads its role once registered"
     });
     expect(loadProjectRoleStub).toHaveBeenCalledWith("u-1", "11111111-1111-4111-8111-111111111111");
     expect(close).toHaveBeenCalledWith({ code: 4403, reason: "Permission changed, please reconnect" });
+  });
+});
+
+describe("createCollabServer — content sync receipts (inner#1641)", () => {
+  const PID = "11111111-1111-4111-8111-111111111111";
+  const SID = "22222222-2222-4222-9222-222222222222";
+  const ID = "33333333-3333-4333-8333-333333333333";
+  type StatelessHook = (payload: unknown) => Promise<void>;
+
+  /**
+   * Reads the dispatcher actually installed by the production server factory.
+   * @returns The configured stateless hook.
+   * @throws {AssertionError} When the factory omits the dispatcher.
+   */
+  async function dispatcher(): Promise<StatelessHook> {
+    serverSpy.mockClear();
+    await createCollabServer({
+      collabRedisUrl: "redis://localhost:6379/3", port: 1234,
+      redisKeyPrefix: "test", shutdownDeadline: () => undefined,
+    });
+    const config = serverSpy.mock.calls[0]?.[0] as { onStateless: StatelessHook };
+    expect(typeof config.onStateless).toBe("function");
+    return config.onStateless;
+  }
+
+  it.each(["canvas", "document"])("confirms only the requesting live writable %s connection", async (kind) => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    const broadcastStateless = vi.fn();
+    await hook({
+      documentName: `project-${PID}/${kind}-${SID}`,
+      document: { hasConnection: (candidate: unknown): boolean => candidate === connection, broadcastStateless },
+      connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }),
+    });
+    expect(connection.sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: "sync:confirmed", id: ID, ok: true }));
+    expect(broadcastStateless).toHaveBeenCalledTimes(0);
+  });
+
+  it("rejects a receipt from an attached readonly connection", async () => {
+    const hook = await dispatcher();
+    const connection = { readOnly: true, context: {}, sendStateless: vi.fn() };
+    await hook({
+      documentName: `project-${PID}/canvas-${SID}`,
+      document: { hasConnection: (): boolean => true },
+      connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }),
+    });
+    expect(connection.sendStateless).toHaveBeenCalledExactlyOnceWith(JSON.stringify({ type: "sync:confirmed", id: ID, ok: false }));
+  });
+
+  it.each([`project-${PID}/meta`, `project-${PID}/timeline-${SID}`, "invalid"])("does not confirm the non-content document %s", async (documentName) => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    await hook({ documentName, document: { hasConnection: (): boolean => true }, connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }) });
+    expect(connection.sendStateless).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not confirm a connection already detached from the document", async () => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    await hook({ documentName: `project-${PID}/canvas-${SID}`, document: { hasConnection: (): boolean => false }, connection, payload: JSON.stringify({ type: "sync:confirm", id: ID }) });
+    const successes = connection.sendStateless.mock.calls.map(([body]) => JSON.parse(String(body))).filter((body) => body.ok === true);
+    expect(successes).toEqual([]);
+  });
+
+  it.each(["{", "null", JSON.stringify({ type: "sync:confirm", id: "bad" }), JSON.stringify({ type: "sync:confirm", id: ID, extra: 1 }), JSON.stringify({ type: "sync:confirmed", id: ID, ok: true })])("ignores invalid content receipt input %s", async (payload) => {
+    const hook = await dispatcher();
+    const connection = { readOnly: false, context: {}, sendStateless: vi.fn() };
+    await hook({ documentName: `project-${PID}/canvas-${SID}`, document: { hasConnection: (): boolean => true }, connection, payload });
+    expect(connection.sendStateless).toHaveBeenCalledTimes(0);
+  });
+
+  it.each(["applied", "rejected"] as const)("settles the preceding real Connection update as %s before handling its receipt", async (outcome) => {
+    const hook = await dispatcher();
+    const documentName = `project-${PID}/document-${SID}`;
+    let releaseUpdate: (() => void) | undefined;
+    let rejectUpdate: ((reason: Error) => void) | undefined;
+    let updateEntered = false;
+    const heldUpdate = new Promise<void>((resolve, reject) => { releaseUpdate = resolve; rejectUpdate = reject; });
+    const failure = new Error("Injected preceding-update failure");
+    const appliedAtReply: string[] = [];
+    const server = createLiveServer({
+      onAuthenticate: async (): Promise<Record<string, never>> => ({}),
+      beforeHandleMessage: async (): Promise<void> => {
+        updateEntered = true;
+        await heldUpdate;
+      },
+      onStateless: async (payload: { document: Y.Doc }): Promise<void> => {
+        appliedAtReply.push(payload.document.getText('body').toString());
+        await hook(payload);
+      },
+    });
+    const client = await connectLiveClient(server, documentName);
+    const document = server.documents.get(documentName)!;
+    const local = new Y.Doc();
+    const errors = vi.spyOn(console, "error");
+    try {
+      local.getText('body').insert(0, 'pending content');
+      client.send(syncFrame(documentName, 0, 2, Y.encodeStateAsUpdate(local)));
+      client.send(statelessFrame(documentName, JSON.stringify({ type: 'sync:confirm', id: ID })));
+      await waitForLive(() => updateEntered, 'the preceding update entered the real queue');
+      expect(appliedAtReply).toEqual([]);
+      expect(client.frames().filter((frame) => frame.stateless !== undefined)).toEqual([]);
+      if (outcome === "rejected") {
+        rejectUpdate?.(failure);
+        await waitForLive(() => client.frames().some((frame) => frame.type === WIRE.close || frame.stateless !== undefined), 'the failed update reached a close or receipt outcome');
+        expect(client.frames().filter((frame) => frame.stateless !== undefined)).toEqual([]);
+        expect(client.frames().filter((frame) => frame.type === WIRE.close).map((frame) => frame.docName)).toEqual([documentName]);
+        expect(document.getText('body').toString()).toBe('');
+        expect(document.getConnectionsCount()).toBe(0);
+        expect(appliedAtReply).toEqual([]);
+        expect(errors).toHaveBeenCalledWith(expect.stringContaining('closing connection'), failure);
+        return;
+      }
+      releaseUpdate?.();
+      await waitForLive(() => appliedAtReply.length === 1, 'the confirmation entered the real dispatcher');
+      expect(appliedAtReply).toEqual(['pending content']);
+      await waitForLive(() => client.frames().some((frame) => frame.stateless !== undefined), 'the production sync confirmation reply');
+      expect(client.frames().filter((frame) => frame.stateless !== undefined).map((frame) => JSON.parse(frame.stateless!))).toEqual([{ type: 'sync:confirmed', id: ID, ok: true }]);
+    } finally {
+      releaseUpdate?.();
+      client.close();
+      local.destroy();
+      errors.mockRestore();
+    }
   });
 });
 

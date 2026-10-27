@@ -99,11 +99,11 @@ try {
   await exitProcess(1);
 }
 
-// And config/agent.yaml, which now rejects a keep line that sits at or above
-// the budget it is supposed to fall back to — a pair in that order would fold
-// every turn and never shorten anything. Lazy like the rest, so without this
-// the first person to say something is the one who finds out, mid-request,
-// with a 500 and a healthy-looking process behind it.
+// And config/agent.yaml, which rejects a memory reserve at or above
+// memory_keep_tokens — a fold would have no line to run down to. Lazy like
+// the rest, so without this the first person to say something is the one
+// who finds out, mid-request, with a 500 and a healthy-looking process
+// behind it.
 try {
   getAgentConfig();
 } catch (err) {

@@ -8,8 +8,10 @@
  * What the unit suite cannot reach: Fabric drawing on a real canvas inside a
  * real node, the pointer reaching it through the canvas's transform, and a
  * press on Run that builds the nodes downstream and fills them through the
- * real upload — sixty-four of them at once for an 8×8 grid. The expand runs
- * the pinned model for real and is tagged out of the default run.
+ * real upload — sixty-four of them at once for an 8×8 grid. Every case
+ * uploads through the ingest Worker into R2, and the cases share one page, so
+ * all of them carry those tags; the expand also runs the pinned model for
+ * real.
  *
  * Needs a running dev stack (`pnpm dev`):
  *
@@ -23,6 +25,7 @@ import { test } from '../helpers/slot';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { openTool, seedNode } from '../helpers/mini-tool';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { expectOnlyPartsTo, expectOpenedUpload, PART_PATH, recordRequests } from '../helpers/upload';
 
 /**
  * A public JPEG served with CORS, 400×300, so the browser can draw it onto a
@@ -204,7 +207,7 @@ test.afterEach(async () => {
   spaceId = '';
 });
 
-test('the picture adjust previews on the node, resets, and Run fills a picture of the source size @needs-internet', async () => {
+test('the picture adjust previews on the node, resets, and Run fills a picture of the source size @needs-ingest @needs-internet @needs-storage', async () => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   const zoom = (): Promise<number> =>
@@ -267,7 +270,7 @@ test('the picture adjust previews on the node, resets, and Run fills a picture o
   expect(await resultSizes()).toEqual([{ width: 400, height: 300 }]);
 });
 
-test('markup draws, goes back to select, keeps Escape for itself, and Run fills a picture of the source size @needs-internet', async () => {
+test('markup draws, goes back to select, keeps Escape for itself, and Run fills a picture of the source size @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.mark');
   const layer = nodeOf(imageNode).getByTestId('mini-tool-mark-layer');
   await expect(layer).toBeVisible({ timeout: 15_000 });
@@ -341,7 +344,7 @@ test('markup draws, goes back to select, keeps Escape for itself, and Run fills 
   expect(Math.max(...drawn.slice(0, 3).map((value, i) => Math.abs(value - plain[i]!)))).toBeGreaterThan(40);
 });
 
-test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', async () => {
+test('a 2×2 grid cuts four tiles of the source into a group @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   await expect(nodeOf(imageNode).getByTestId('mini-tool-grid-layer')).toBeVisible({ timeout: 15_000 });
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
@@ -379,7 +382,7 @@ test('a 2×2 grid cuts four tiles of the source into a group @needs-internet', a
 
 // A13: the group and its tiles are on the canvas at the press, and the
 // uploader sees each tile wait until the server answers.
-test('a grid shows its group and waiting tiles before the tickets come back @needs-internet', async () => {
+test('a grid shows its group and waiting tiles before the tickets come back @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowLeft', 1);
@@ -398,20 +401,27 @@ test('a grid shows its group and waiting tiles before the tickets come back @nee
   await storedResults(4);
 });
 
-test('a grid tile whose upload failed uploads again on Retry @needs-internet', async () => {
+test('a grid tile whose upload failed uploads again on Retry @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 1);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowLeft', 1);
   // Every transfer to the ingest Worker is cut, so each tile fails as an
   // upload that stopped before it finished.
   let cut = 0;
+  const cutRequests: { method: string; url: string }[] = [];
   await page.route('**/uploads**', (route) => {
     cut += 1;
+    cutRequests.push({ method: route.request().method(), url: route.request().url() });
     return route.abort('connectionfailed');
   });
   await page.getByTestId('mini-tool-run').click();
   await expect(results()).toHaveCount(4, { timeout: 20_000 });
   await expect.poll(() => cut, { timeout: 60_000 }).toBeGreaterThan(0);
+  // What was cut is a part: the server opens every tile's upload (inner#1595).
+  for (const request of cutRequests) {
+    expect(request.method).toBe('PUT');
+    expect(new URL(request.url).pathname).toMatch(PART_PATH);
+  }
   const tile = results().first();
   const failed = tile.getByTestId('task-count-failed');
   await expect(failed).toBeVisible({ timeout: 60_000 });
@@ -422,7 +432,7 @@ test('a grid tile whose upload failed uploads again on Retry @needs-internet', a
   await expect(tile.getByTestId('image-node-img')).toHaveAttribute('src', /^https?:\/\//, { timeout: 60_000 });
 });
 
-test('a 1×1 grid cannot be run @needs-internet', async () => {
+test('a 1×1 grid cannot be run @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowLeft', 2);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowLeft', 2);
@@ -430,7 +440,7 @@ test('a 1×1 grid cannot be run @needs-internet', async () => {
 });
 
 // A15: the reader picks which tiles to cut on the node itself.
-test('a grid cuts only the tiles picked on the node, each at its own place @needs-internet', async () => {
+test('a grid cuts only the tiles picked on the node, each at its own place @needs-ingest @needs-internet @needs-storage', async () => {
   await openTool(page, imageNode, 'image.grid');
   const layer = nodeOf(imageNode).getByTestId('mini-tool-grid-layer');
   await expect(layer).toBeVisible({ timeout: 15_000 });
@@ -480,8 +490,13 @@ test('a grid cuts only the tiles picked on the node, each at its own place @need
   await expect(visibleSpace(page).getByTestId('group-node')).toHaveCount(1);
 });
 
-test('an 8×8 grid uploads all sixty-four tiles @needs-internet', async () => {
+test('an 8×8 grid uploads all sixty-four tiles @needs-ingest @needs-internet @needs-storage', async () => {
   test.setTimeout(300_000);
+  // inner#1595: the server opens all sixty-four uploads; the page only sends parts.
+  const sent = recordRequests(page);
+  const batchAnswer = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && /\/assets\/upload-ticket$/.test(new URL(r.url()).pathname),
+  );
   await openTool(page, imageNode, 'image.grid');
   await stepSlider('mini-tool-param-rows-slider', 'ArrowRight', 5);
   await stepSlider('mini-tool-param-cols-slider', 'ArrowRight', 5);
@@ -499,9 +514,13 @@ test('an 8×8 grid uploads all sixty-four tiles @needs-internet', async () => {
     .toBe(true);
   const urls = await storedResults(64);
   expect(new Set(urls).size).toBe(64);
+  const { data } = (await (await batchAnswer).json()) as { data: { items: Record<string, unknown>[] } };
+  const opened = data.items.filter((item) => !('alreadyExists' in item));
+  for (const item of opened) expectOpenedUpload(item);
+  if (opened[0] !== undefined) expect(expectOnlyPartsTo(sent, String(opened[0].uploadUrl))).toBeGreaterThan(0);
 });
 
-test('the expand grows past the picture and runs the model to a larger picture @needs-internet @needs-model', async () => {
+test('the expand grows past the picture and runs the model to a larger picture @needs-ingest @needs-internet @needs-model @needs-storage', async () => {
   test.setTimeout(20 * 60_000);
   await openTool(page, imageNode, 'image.expand');
   // The frame is drawn in the canvas's viewport, outside the node (§6.3).

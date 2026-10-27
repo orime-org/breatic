@@ -360,7 +360,8 @@
     },
     "error": {
       "network": "網路錯誤",
-      "turnFailed": "這則回覆沒能完成，可以再發一次。"
+      "turnFailed": "這則回覆沒能完成，可以再發一次。",
+      "turnTooLong": "這次要處理的內容太多，沒能完成。可以縮小範圍再試。"
     },
     "message": {
       "interrupted": "已停止",
@@ -1488,7 +1489,11 @@
       "title": "有未完成的操作,確定離開?",
       "description": "上傳或編輯還沒同步完,現在離開可能遺失。",
       "stay": "留下",
-      "leave": "仍然離開"
+      "leave": "仍然離開",
+      "unsyncedDescription": "部分修改尚未同步，現在重新整理或離開可能遺失這些修改。",
+      "combinedDescription": "部分修改尚未同步，且仍有上傳或編輯操作正在進行。現在重新整理或離開可能遺失這些工作。",
+      "completeDescription": "修改已同步，操作已完成。",
+      "completeTitle": "可以繼續"
     },
     "header": {
       "renameFailed": "重新命名 Project 失敗"
@@ -1532,6 +1537,11 @@
       "confirm": "退出",
       "done": "已退出「{name}」",
       "failed": "退出失敗"
+    },
+    "refreshGuard": {
+      "title": "仍有未完成的工作，要重新整理嗎？",
+      "refresh": "仍然重新整理",
+      "failed": "重新整理失敗，請重試。"
     }
   },
   "common": {

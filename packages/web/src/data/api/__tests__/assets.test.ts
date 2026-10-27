@@ -25,7 +25,8 @@ afterEach(() => {
 describe('assetsApi.requestUploadTicket', () => {
   it('sends what the server signs a ticket from', async () => {
     vi.mocked(apiPost).mockResolvedValue({
-      ticket: 'signed',
+      uploadId: 'upload-1',
+      token: 'token-1',
       storageKey: 'image/2026-08-31/x.png',
       uploadUrl: 'https://ingest.example.com',
       kind: 'image',
@@ -51,7 +52,7 @@ describe('assetsApi.requestUploadTicket', () => {
       client_hash: 'a'.repeat(64),
       node_id: 'n1',
       space_id: 's1',
-    });
+    }, expect.objectContaining({ timeout: 0 }));
   });
 
   // A focus crop has no node. Sending the keys as undefined would fail the
@@ -95,7 +96,7 @@ describe('assetsApi.requestUploadTicket', () => {
       size: 10,
       client_hash: 'c'.repeat(64),
       purpose: 'studio_avatar',
-    });
+    }, expect.objectContaining({ timeout: 0 }));
   });
 
   it('hands back a dedup hit as it came', async () => {
@@ -249,8 +250,64 @@ describe('assetsApi.requestUploadTicketBatch', () => {
       source: 'mini_tool',
       tool_name: 'image.grid',
       items: [{ filename: 'GRID.png', content_type: 'image/png', size: 9, client_hash: 'c'.repeat(64), node_id: 'n1' }],
-    });
+    }, expect.objectContaining({ timeout: 0 }));
     expect(answers).toEqual([{ refused: { reason: 'storage' } }]);
   });
 });
 
+
+// inner#1595 §3.5: the server opens the upload at the ingest Worker before it
+// answers, bounded by the task budget, so the page waits for that answer rather
+// than giving up at the client's 30 seconds and asking again.
+describe('ticket requests carry no client timeout (inner#1595)', () => {
+  it('W07 asks for a single ticket with timeout 0, the body as before', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ alreadyExists: true, assetId: 'a1', fileUrl: 'u', kind: 'image' });
+
+    await assetsApi.requestUploadTicket({
+      filename: 'photo.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 1234,
+      hash: 'a'.repeat(64),
+      nodeId: 'n1',
+      spaceId: 's1',
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledOnce();
+    const [url, body, config] = vi.mocked(apiPost).mock.calls[0]!;
+    expect(url).toBe('/assets/upload-ticket');
+    expect(body).toEqual({
+      filename: 'photo.png',
+      content_type: 'image/png',
+      project_id: 'p1',
+      size: 1234,
+      client_hash: 'a'.repeat(64),
+      node_id: 'n1',
+      space_id: 's1',
+    });
+    expect(config?.timeout).toBe(0);
+  });
+
+  it('W08 asks for a batch of tickets with timeout 0, the body as before', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ items: [] });
+
+    await assetsApi.requestUploadTicketBatch({
+      projectId: 'p1',
+      spaceId: 's1',
+      source: 'mini_tool',
+      toolName: 'image.grid',
+      items: [{ filename: 'GRID.png', contentType: 'image/png', size: 9, hash: 'c'.repeat(64), nodeId: 'n1' }],
+    });
+
+    expect(vi.mocked(apiPost)).toHaveBeenCalledOnce();
+    const [, body, config] = vi.mocked(apiPost).mock.calls[0]!;
+    expect(body).toEqual({
+      project_id: 'p1',
+      space_id: 's1',
+      source: 'mini_tool',
+      tool_name: 'image.grid',
+      items: [{ filename: 'GRID.png', content_type: 'image/png', size: 9, client_hash: 'c'.repeat(64), node_id: 'n1' }],
+    });
+    expect(config?.timeout).toBe(0);
+  });
+});

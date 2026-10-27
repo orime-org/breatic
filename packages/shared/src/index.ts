@@ -381,6 +381,12 @@ export type { DocKind, ParsedDocName } from "@shared/yjs-doc-names.js";
 
 export { COLLAB_REAUTH_REASONS, isReauthCloseReason } from "@shared/collab-close-reasons.js";
 
+export {
+  SyncConfirmRequestSchema,
+  SyncConfirmedResponseSchema,
+} from "@shared/sync-receipt.js";
+export type { SyncConfirmRequest, SyncConfirmedResponse } from "@shared/sync-receipt.js";
+
 export { REQUEST_SHAPE_PARAMS, REQUEST_SHAPE_REASON } from "@shared/api/error-reason.js";
 
 export {
@@ -759,6 +765,7 @@ export {
 // itself -- one implementation, so "every asset reaches R2 through the ingest
 // Worker" is not a rule each caller is trusted to follow.
 export {
+  openUploadAtIngest,
   sendBytesToIngest,
   finishUploadAtIngest,
   fetchUrlToIngest,
@@ -767,6 +774,7 @@ export {
   UploadHttpError,
   type UploadClientConfig,
   type IngestTarget,
+  type OpenedIngestTarget,
   type MediaLimits,
   type HeldUpload,
   type PartReceipt,

@@ -131,7 +131,10 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     if (part.type === "text") stored.push({ type: "text", text: part.text });
     else if (part.type === "reasoning") stored.push({ type: "reasoning", text: part.text });
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
-    else if (part.type === FAILED) stored.push({ type: "failed" });
+    else if (part.type === FAILED) {
+      const reason = (part as { data?: { reason?: unknown } }).data?.reason;
+      stored.push(reason === "too_long" ? { type: "failed", reason } : { type: "failed" });
+    }
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
     else if (part.type === THINKING_TIME) {
       const ms = (part as { data?: { ms?: unknown } }).data?.ms;
@@ -175,7 +178,7 @@ function toUiPart(part: MessagePart): UiPart {
   if (part.type === "text") return { type: "text", text: part.text };
   if (part.type === "reasoning") return { type: "reasoning", text: part.text };
   if (part.type === "interrupted") return { type: INTERRUPTED, data: {} };
-  if (part.type === "failed") return { type: FAILED, data: {} };
+  if (part.type === "failed") return { type: FAILED, data: part.reason === undefined ? {} : { reason: part.reason } };
   if (part.type === "truncated") return { type: TRUNCATED, data: {} };
   if (part.type === "blocked") return { type: BLOCKED, data: {} };
   if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
