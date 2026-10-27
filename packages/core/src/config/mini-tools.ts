@@ -42,6 +42,27 @@ const analysisConfigSchema = z.strictObject({
   precheck_seconds: z.number().positive(),
 });
 
+const sourceLedgerDefaults = {
+  max_bytes: 16_777_216,
+  probe_stdout_bytes: 67_108_864,
+  metadata_bytes: 16_777_216,
+  max_physical_frames: 100_000,
+  max_occurrences: 100_000,
+  iso_box_count: 100_000,
+  matroska_element_count: 1_000_000,
+  matroska_max_blocks: 250_000,
+};
+const sourceLedgerConfigSchema = z.strictObject({
+  max_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_bytes),
+  probe_stdout_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.probe_stdout_bytes),
+  metadata_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.metadata_bytes),
+  max_physical_frames: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_physical_frames),
+  max_occurrences: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.max_occurrences),
+  iso_box_count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.iso_box_count),
+  matroska_element_count: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.matroska_element_count),
+  matroska_max_blocks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(sourceLedgerDefaults.matroska_max_blocks),
+});
+
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
@@ -54,7 +75,8 @@ export const miniToolsConfigSchema = z
       max_packed_bytes: z.number().int().positive().default(1_073_741_824),
       crf: z.number().int().min(0).max(51).default(18),
       preset: z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]).default("medium"),
-    }).default({ container_class: "MediaContainer", max_source_bytes: 1_073_741_824, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium" }),
+      source_ledger: sourceLedgerConfigSchema.default(sourceLedgerDefaults),
+    }).default({ container_class: "MediaContainer", max_source_bytes: 1_073_741_824, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults }),
     plan_limits: miniToolPlanLimitsSchema.extend({
       probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),

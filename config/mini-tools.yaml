@@ -26,6 +26,16 @@ presentation:
   max_packed_bytes: 1073741824
   crf: 18
   preset: "medium"
+  # Complete source metadata and table budgets; these do not change the task deadline.
+  source_ledger:
+    max_bytes: 16777216
+    probe_stdout_bytes: 67108864
+    metadata_bytes: 16777216
+    max_physical_frames: 100000
+    max_occurrences: 100000
+    iso_box_count: 100000
+    matroska_element_count: 1000000
+    matroska_max_blocks: 250000
 
 # Canonical results remain discoverable until their delivery is acknowledged.
 delivery:
