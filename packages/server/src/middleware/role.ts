@@ -12,7 +12,7 @@
  *
  * Both "no such project" and "user has no membership" collapse to
  * `403 Forbidden`. Distinguishing them with `404` would leak project
- * existence to outsiders who guess UUIDs (BUG-048 class).
+ * existence to outsiders who guess UUIDs.
  *
  * The middleware reads `:pid` from the route param. Routes that use
  * a different param name (e.g. `:id` on the legacy `projects.ts`

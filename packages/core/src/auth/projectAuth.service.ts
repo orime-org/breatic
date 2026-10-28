@@ -19,7 +19,7 @@
  * soft-deleted), or the user is not an active member. Both collapse
  * to `null` so a caller surfaces one generic `403 Forbidden` and
  * never leaks project existence to a non-member by distinguishing
- * 404 vs 403 (the BUG-048 cross-tenant-probe class). The
+ * 404 vs 403. The
  * project-active guard lives inside `projectMembersRepo.getRole`'s
  * inner-join, so this layer holds no raw `db` access.
  */
