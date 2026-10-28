@@ -230,7 +230,7 @@ describe('a column edge dragged on a table with a missing cell (A12, A17)', () =
     const handle = cellOf(editor, 'c1');
     view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setHandle: handle }));
     view.dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 300 }));
+    document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 300 }));
 
     expect(columnResizingPluginKey.getState(view.state)?.dragging).toBeFalsy();
     expect(view.state.doc.nodeAt(cellOf(editor, 'c1'))!.attrs['colwidth']).not.toBeNull();
@@ -247,7 +247,7 @@ describe('a column edge dragged on a table with a missing cell (A12, A17)', () =
     view.dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
 
     expect(view.state.doc.nodeAt(cellOf(editor, 'c2'))!.attrs['colwidth']).toEqual([100]);
-    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 100 }));
+    document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 100 }));
   });
 
   it('draws the resize handle only in cells', () => {
