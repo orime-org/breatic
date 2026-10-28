@@ -377,12 +377,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   React.useLayoutEffect(() => {
     if (!editingCaption) return;
     closedOnKey.current = false;
+    // Only the caption button's handoff takes focus; a draft shown again (its
+    // block restored, the view remounted) leaves focus where the user is.
     const intent = documentBarsOf(editor).media.intent;
-    if (intent?.host === host) {
-      if (floating) return;
-      captionField.current?.focus();
-      mediaEvent(editor, { type: 'complete-caption', host, epoch: intent.epoch });
-    } else captionField.current?.focus();
+    if (intent?.host !== host || floating) return;
+    captionField.current?.focus();
+    mediaEvent(editor, { type: 'complete-caption', host, epoch: intent.epoch });
   }, [editingCaption, floating, editor, host]);
   React.useEffect(() => {
     if (type !== 'video') return undefined;

@@ -135,6 +135,18 @@ describe('document media control integration', () => {
     expect(screen.queryByTestId('doc-media-caption-retained')).toBeNull();
   });
 
+  it('shows a restored draft without taking focus from where the user is typing', () => {
+    const { editor, id } = open();
+    const block = editor.getBlock(id);
+    fireEvent.click(screen.getByTestId('doc-media-caption-button'));
+    fireEvent.change(screen.getByTestId('doc-media-caption-input'), { target: { value: 'Draft to keep' } });
+    act(() => editor.removeBlocks([id]));
+    act(() => editor.prosemirrorView!.dom.focus());
+    act(() => editor.replaceBlocks(editor.document, [block] as never));
+    expect(screen.getByTestId('doc-media-caption-input')).toHaveValue('Draft to keep');
+    expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
+  });
+
   it('hands focused editing actions to the video entry when permission becomes read-only', async () => {
     const { editor, rendered } = open('video');
     const trigger = screen.getByTestId('doc-media-video-trigger');
