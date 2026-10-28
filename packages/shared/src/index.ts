@@ -1,25 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-export {
-  bodyTreeDependencies,
-  bodyTreeRecordProperties,
-  bodyTreeSourcePoint,
-  planBodyJoin,
-  planBodyRangeMove,
-  planBodyReparent,
-  planBodySplit,
-  readBodyTree,
-} from "@shared/document-body-tree.js";
-export type {
-  BodyTreeNode,
-  BodyTreeOwner,
-  BodyTreePiece,
-  BodyTreeRead,
-  BodyTreeSourcePoint,
-  BodyTreeUnit,
-  BodyTreeView,
-} from "@shared/document-body-tree.js";
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
@@ -424,52 +405,6 @@ export {
   documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
-
-export {
-  assertBodySourceBoundary,
-  bodyCutId,
-  BODY_CONTEXT_ATTRIBUTE,
-  BODY_MARK_ATTRIBUTE_PREFIX,
-  BODY_REGISTRATION_ORIGIN,
-  documentBodyRecords,
-  documentBodySource,
-  DocumentBodyFormatError,
-  DOCUMENT_BODY_FORMAT,
-  DOCUMENT_BODY_FORMAT_VERSION,
-  readDocumentBodyRecords,
-  registerBodyCut,
-  registerDocumentBodyRecords,
-  seedDocumentBodyRecords,
-} from "@shared/document-body-records.js";
-
-export type {
-  BodyAttributeFact,
-  BodyBirthFact,
-  BodyContainerRecord,
-  BodyContext,
-  BodyDeleteFact,
-  BodyFact,
-  BodyFactBase,
-  BodyFacetRecord,
-  BodyGroup,
-  BodyJsonObject,
-  BodyJsonValue,
-  BodyMarkFact,
-  BodyMarkPayload,
-  BodyMetadata,
-  BodyNodeKindFact,
-  BodyOwnerRecord,
-  BodyParentEdge,
-  BodyRecord,
-  BodyRecordPlacement,
-  BodyRecordRoots,
-  BodyRecordsRead,
-  BodyRecordsSnapshot,
-  BodyRegistration,
-  BodyRootRecord,
-  BodySource,
-  BodyStructureFact,
-} from "@shared/document-body-records-types.js";
 
 export {
   DOCUMENT_SCHEMA,

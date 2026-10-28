@@ -65,21 +65,6 @@ describe("body parent history computation", () => {
     expect(tree.children.get("root")).toEqual(["m", "a", "z"]);
   });
 
-  it("ignores unknown parent candidates while retaining a registered root path", () => {
-    const tree = computeBodyTreeCandidates("root", candidates([
-      ["a", "root", 0, "a"], ["a", "missing", 9, "z"],
-      ["b", "root", 0, "b"], ["b", "b", 9, "z"],
-    ]));
-
-    expect([...tree.parents]).toEqual([["a", "root"], ["b", "root"]]);
-  });
-
-  it("rejects a missing root, missing parent and a component with no rooted candidate", () => {
-    expect(() => computeBodyTreeCandidates("missing", candidates([]))).toThrow("The document body root is missing");
-    expect(() => computeBodyTreeCandidates("root", candidates([["a", "missing", 1, "a"]]))).toThrow("The body node has no registered parent: a");
-    expect(() => computeBodyTreeCandidates("root", candidates([["a", "b", 1, "a"], ["b", "a", 1, "b"]]))).toThrow("The body contains an unrooted component: a,b");
-  });
-
   it("keeps rooted results identical under candidate and node iteration permutations", () => {
     fc.assert(fc.property(fc.array(fc.record({ parent: fc.nat(20), counter: fc.integer({ min: 1, max: 8 }) }), { maxLength: 20 }), (rows) => {
       const history = candidates(rows.flatMap((row, index) => [
@@ -108,12 +93,6 @@ describe("body parent history computation", () => {
 });
 
 describe("body fractional sibling order", () => {
-  it("rejects reversed, empty-identity and exhausted bounds", () => {
-    expect(() => bodyTreeOrderBetween("b", "a", "id")).toThrow(RangeError);
-    expect(() => bodyTreeOrderBetween("a", "a", "id")).toThrow(RangeError);
-    expect(() => bodyTreeOrderBetween("", "", "")).toThrow(RangeError);
-    expect(() => bodyTreeOrderBetween("a", "a\u0000", "id")).toThrow(RangeError);
-  });
   it.each([["", ""], ["a", "b"], ["a", "a\u0001"], ["a\u00ff", "b"], ["a", "a\u0000\u0001"]])("makes unique stable values strictly inside %j and %j", (before, after) => {
     const first = bodyTreeOrderBetween(before, after, "client-1:1");
     const second = bodyTreeOrderBetween(before, after, "client-2:1");

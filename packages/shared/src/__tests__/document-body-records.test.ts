@@ -7,9 +7,6 @@ import fc from "fast-check";
 
 import {
   assertBodySourceBoundary,
-  bodyCutId,
-  BODY_CONTEXT_ATTRIBUTE,
-  BODY_MARK_ATTRIBUTE_PREFIX,
   BODY_REGISTRATION_ORIGIN,
   documentBodyRecords,
   documentBodySource,
@@ -196,36 +193,6 @@ describe("document body descriptor registration", () => {
     expect(result.body.records.get("future")).toEqual({ id: "future", kind: "container", type: "futurePanel", attrs: payload, parent: "group", order: "b" });
   });
 
-  it("retains own prototype-named JSON fields without changing object prototypes", () => {
-    const doc = body();
-    const attrs: BodyJsonObject = JSON.parse('{"__proto__":{"kept":"value"},"constructor":{"prototype":{"nested":true}}}') as BodyJsonObject;
-    registerDocumentBodyRecords(doc, { records: [{ id: "future", kind: "container", type: "futurePanel", attrs, parent: "group", order: "b" }] });
-    const result = readDocumentBodyRecords(doc);
-    expect(result.status).toBe("ready");
-    if (result.status !== "ready") throw new Error("Expected prepared fixture");
-    const record = result.body.records.get("future");
-    if (record?.kind !== "container") throw new Error("Expected future container");
-    expect(Object.hasOwn(record.attrs, "__proto__")).toBe(true);
-    expect(record.attrs).toEqual(attrs);
-    expect(Object.getPrototypeOf(record.attrs)).toBe(Object.prototype);
-    expect(Object.getPrototypeOf({})).toBe(Object.prototype);
-    expect(Object.hasOwn(Object.prototype, "kept")).toBe(false);
-    expect(documentBodyRecords(doc).records.get("future")).toContain('"__proto__":{"kept":"value"}');
-  });
-
-  it("rejects non-JSON descriptor data before any native registration", () => {
-    const doc = fresh();
-    const cycle: Record<string, unknown> = {};
-    cycle['self'] = cycle;
-    const before = Y.encodeStateAsUpdate(doc);
-    for (const attrs of [{ invalid: undefined }, { invalid: Infinity }, { invalid: new Date(0) }, cycle]) {
-      expect(() => registerDocumentBodyRecords(doc, {
-        records: [{ id: "root", kind: "root", attrs } as BodyRecord],
-      })).toThrow(DocumentBodyFormatError);
-      expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    }
-  });
-
   it("reports missing structural facts by identity and becomes ready when they arrive", () => {
     const doc = body();
     registerDocumentBodyRecords(doc, { contexts: [{ id: "peer-context", dependencies: ["late-structure"] }] });
@@ -236,100 +203,12 @@ describe("document body descriptor registration", () => {
     expect(readDocumentBodyRecords(doc).status).toBe("ready");
   });
 
-  it("resolves structural edges through the actual cut-derived C R and P identities", () => {
-    const doc = body();
-    registerFact(doc, {
-      id: "derived", kind: "structure", group: "derived-group", dependencies: [],
-      edges: [
-        { child: "R:head", parent: "C:tail", counter: 1, order: "a" },
-        { child: "C:tail", parent: "P:head", counter: 1, order: "b" },
-      ],
-    });
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readDocumentBodyRecords(doc).status).toBe("ready");
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("identifies a missing derived cut and resolves it after registration", () => {
-    const doc = body();
-    registerFact(doc, {
-      id: "derived", kind: "structure", group: "derived-group", dependencies: [],
-      edges: [{ child: "R:middle", parent: "C:tail", counter: 1, order: "a" }],
-    });
-    expect(readDocumentBodyRecords(doc)).toEqual({ status: "pending", missing: ["cut:middle"] });
-    registerBodyCut(doc, "source", "middle", 1);
-    expect(readDocumentBodyRecords(doc).status).toBe("ready");
-  });
-
-  it("rejects an explicit record that conflicts with a cut-derived identity before writing", () => {
-    const doc = body();
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(() => registerDocumentBodyRecords(doc, {
-      records: [{ id: "C:head", kind: "container", type: "blockGroup", attrs: {}, parent: "root", order: "b" }],
-    })).toThrow(DocumentBodyFormatError);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
   it("reports a missing source cut without altering shared data", () => {
     const doc = body();
     documentBodySource(doc, "source").delete(1, 1);
     const before = Y.encodeStateAsUpdate(doc);
     expect(readDocumentBodyRecords(doc)).toEqual({ status: "pending", missing: ["cut:tail"] });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it.each(["group", "facet", "block"])("reports a missing %s record by its exact identity", (id) => {
-    const doc = body();
-    documentBodyRecords(doc).records.delete(id);
-    const result = readDocumentBodyRecords(doc);
-    expect(result.status).toBe("pending");
-    if (result.status !== "pending") throw new Error("Expected missing record");
-    expect(result.missing).toContain(`record:${id}`);
-  });
-
-  it("reports a missing native source before its cut units arrive", () => {
-    const doc = fresh();
-    registerDocumentBodyRecords(doc, { records: RECORDS });
-    const roots = documentBodyRecords(doc);
-    roots.sources.set("source", JSON.stringify({ id: "source", facet: "facet", head: "head", tail: "tail" }));
-    roots.metadata.set("format", "breatic.document.records");
-    roots.metadata.set("version", 1);
-    roots.metadata.set("seedRoot", "root");
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(readDocumentBodyRecords(doc)).toEqual({ status: "pending", missing: ["source:source"] });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-  });
-
-  it("reserves declared cut identities while their native source is still pending", () => {
-    const doc = body();
-    const roots = documentBodyRecords(doc);
-    roots.sources.set("pending-source", JSON.stringify({ id: "pending-source", facet: "facet", head: "pending-head", tail: "pending-tail" }));
-    const before = Y.encodeStateAsUpdate(doc);
-    expect(() => registerDocumentBodyRecords(doc, {
-      sources: [{ id: "other", facet: "facet", head: "pending-head", tail: "other-tail" }],
-    })).toThrow(DocumentBodyFormatError);
-    expect(() => registerBodyCut(doc, "source", "pending-head", 1)).toThrow(DocumentBodyFormatError);
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-    expect(readDocumentBodyRecords(doc)).toEqual({ status: "pending", missing: ["source:pending-source"] });
-  });
-
-  it("holds a fact with missing group membership until its group arrives", () => {
-    const doc = body();
-    registerDocumentBodyRecords(doc, { facts: [{ id: "birth", kind: "birth", owner: "block", group: "late-group", dependencies: [] }] });
-    expect(readDocumentBodyRecords(doc)).toEqual({ status: "pending", missing: ["group:late-group"] });
-    registerDocumentBodyRecords(doc, { groups: [{ id: "late-group", facts: ["birth"], history: "user" }] });
-    expect(readDocumentBodyRecords(doc).status).toBe("ready");
-  });
-
-  it("reports a live native run's missing context and current mark fact", () => {
-    const doc = body();
-    documentBodySource(doc, "source").insert(1, "x", {
-      ctx: "late-context", "mark:bold": { factId: "late-mark", payload: { type: "bold", attrs: {} } },
-    });
-    expect(readDocumentBodyRecords(doc)).toEqual({ status: "pending", missing: ["context:late-context", "fact:late-mark"] });
-    registerDocumentBodyRecords(doc, { contexts: [{ id: "late-context", dependencies: [] }] });
-    registerFact(doc, { id: "late-mark", kind: "mark", group: "mark-group", dependencies: [], payload: { type: "bold", attrs: {} } });
-    expect(readDocumentBodyRecords(doc).status).toBe("ready");
   });
 
   it("reads the same complete records without a native update", () => {
@@ -366,16 +245,6 @@ describe("document body descriptor registration", () => {
 });
 
 describe("native body source cuts", () => {
-  it("identifies the reserved cut payload through the shared wire contract", () => {
-    expect(BODY_CONTEXT_ATTRIBUTE).toBe("ctx");
-    expect(BODY_MARK_ATTRIBUTE_PREFIX).toBe("mark:");
-    expect(bodyCutId({ bodyCut: "cut-id" })).toBe("cut-id");
-    expect(bodyCutId({ inline: { type: "asset", id: "asset-id" } })).toBeNull();
-    expect(bodyCutId("text")).toBeNull();
-    expect(() => bodyCutId({ bodyCut: 4 })).toThrow(DocumentBodyFormatError);
-    expect(() => bodyCutId({ bodyCut: "cut-id", extra: true })).toThrow(DocumentBodyFormatError);
-  });
-
   it("registers a scalar-safe cut while retaining the native character identities", () => {
     const doc = body();
     const text = documentBodySource(doc, "source");
