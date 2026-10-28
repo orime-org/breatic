@@ -25,14 +25,15 @@ function pronunciationPair(entry: unknown): string | undefined {
  * One param's value as the upstream takes it.
  * @param bound - The param's binding.
  * @param value - Our value.
+ * @param sendEmpty - Whether "" and [] are sent, only null and absent left out.
  * @returns The value to send, or undefined to send nothing.
  */
-function written(bound: ParamBinding, value: unknown): unknown {
+function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unknown {
   if (bound.transform === "pronunciation_pairs") {
     const pairs = (Array.isArray(value) ? value : []).map(pronunciationPair).filter((p): p is string => p !== undefined);
     return pairs.length > 0 ? pairs : undefined;
   }
-  if (!isPresent(value) || value === bound.absent_value) return undefined;
+  if (value === null || value === undefined || (!sendEmpty && !isPresent(value)) || value === bound.absent_value) return undefined;
   const isChoice = typeof value === "string" || typeof value === "number" || typeof value === "boolean";
   const spelled = isChoice ? (bound.values?.[String(value)] ?? value) : value;
   return bound.item_key !== undefined && Array.isArray(spelled) ? spelled.map((item: unknown) => ({ [bound.item_key!]: item })) : spelled;
@@ -55,7 +56,7 @@ export function mentionsWritten(binding: MediaBinding, prompt: string): string {
  * The body of a model's own call on WaveSpeed: each of our params under the
  * binding's field, its value spelled the upstream's way, an absent value and
  * an unbound param left out, and the prompt under `prompt_field` when there is one
- * (an empty prompt only when the binding sets `send_empty_prompt`).
+ * (empty values and an empty prompt only when the binding sets `send_empty`).
  * @param binding - The model's WaveSpeed binding.
  * @param input - Our prepared params and prompt.
  * @returns The body.
@@ -65,9 +66,9 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
   for (const [param, value] of Object.entries(input.params)) {
     const bound = binding.params?.[param];
     if (bound === undefined) continue;
-    const out = written(bound, value);
+    const out = written(bound, value, binding.send_empty === true);
     if (out !== undefined) body[bound.field] = out;
   }
-  if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty_prompt === true)) body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
+  if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
   return body;
 }
