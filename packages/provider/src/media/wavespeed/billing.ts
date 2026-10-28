@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { usdOf } from "@provider/cost.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 
 /** One line of a billing search answer. */
@@ -33,8 +34,8 @@ export function readBilling(body: unknown): BillingRead {
   for (const line of lines) {
     const sign = SIGN[line?.billing_type ?? ""];
     if (sign === undefined) continue;
-    const price = line.order?.price;
-    if (typeof price !== "number" || !Number.isFinite(price)) {
+    const price = usdOf(line.order?.price);
+    if (price === undefined) {
       warnings.push({ code: "billing_line_without_price", detail: { billingType: line.billing_type } });
       continue;
     }

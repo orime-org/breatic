@@ -10,12 +10,12 @@
 
 import type { FinishReason } from "ai";
 import { z } from "zod";
+import { count } from "@provider/cost.js";
 import { deliver, SIDE_REQUEST_MS, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
   AnswerUnread,
   assertSucceeded,
   base64Of,
-  count,
   exchange,
   UnreadableAnswer,
   usageOf,

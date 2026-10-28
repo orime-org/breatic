@@ -30,12 +30,21 @@ export type Cost =
   | { state: "missing"; reason: string; tokens?: TokenBuckets };
 
 /**
- * A token count off a generation answer.
- * @param value - The field as OpenRouter sent it.
+ * A token count off an answer.
+ * @param value - The field as the upstream sent it.
  * @returns The count, or 0 when it is absent or not finite.
  */
-function count(value: unknown): number {
+export function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * A reported amount in USD.
+ * @param value - The field as the upstream sent it.
+ * @returns The amount when it is a finite number, else undefined.
+ */
+export function usdOf(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /**
@@ -74,8 +83,8 @@ export async function lookupCost(config: ProviderConfig, options: ProviderOption
       output: count(data.native_tokens_completion),
       reasoning: count(data.native_tokens_reasoning),
     };
-    const cost = data.total_cost;
-    if (typeof cost !== "number" || !Number.isFinite(cost)) {
+    const cost = usdOf(data.total_cost);
+    if (cost === undefined) {
       const reason = "the generation carries no cost yet";
       return lastAttempt ? { state: "missing", reason, tokens } : { state: "pending", lookup };
     }

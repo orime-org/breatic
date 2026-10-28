@@ -10,7 +10,7 @@
  */
 
 import { APICallError } from "ai";
-import type { Cost } from "@provider/cost.js";
+import { usdOf, type Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
@@ -143,15 +143,6 @@ export function isGenerationId(id: unknown): id is string {
  */
 export function reportedCost(metadata: unknown): number | undefined {
   return usdOf((metadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined)?.openrouter?.usage?.cost);
-}
-
-/**
- * A reported amount in USD.
- * @param value - The field as the upstream sent it.
- * @returns The amount when it is a finite number, else undefined.
- */
-export function usdOf(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /**

@@ -9,12 +9,12 @@
 
 import type { JSONValue, SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
-import type { Cost, TokenBuckets } from "@provider/cost.js";
+import { usdOf, type Cost, type TokenBuckets } from "@provider/cost.js";
 import { NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus } from "@provider/http/errors.js";
 import { boundSignal, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
+import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";

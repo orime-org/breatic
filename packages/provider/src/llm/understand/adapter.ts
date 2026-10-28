@@ -198,12 +198,3 @@ export function usageOf(input: number, cached: number, output: number, reasoning
     totalTokens: input + output,
   };
 }
-
-/**
- * A token count off an answer.
- * @param value - The field.
- * @returns The count, or 0 when it is absent or not finite.
- */
-export function count(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}

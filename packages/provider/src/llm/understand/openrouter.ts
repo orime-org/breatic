@@ -8,7 +8,8 @@
  */
 
 import type { FinishReason, ProviderMetadata } from "ai";
-import { base64Of, count, exchange, usageOf, wireTypeOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
+import { count } from "@provider/cost.js";
+import { base64Of, exchange, usageOf, wireTypeOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
 
 /** OpenRouter's name for each audio type it takes; the values of shared's AUDIO_FORMATS. */
 const AUDIO_FORMATS: Readonly<Record<string, string>> = {
