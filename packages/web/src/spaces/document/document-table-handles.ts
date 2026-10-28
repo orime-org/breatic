@@ -139,7 +139,9 @@ class TableHoverView {
       this.view.dom.contains(target) ||
       target.closest('[data-row-id]') !== null ||
       target.closest(SCROLL_VIEWPORT)?.contains(this.view.dom) === true;
-    const cell = inBody && !onControl ? target.closest('td, th') : null;
+    // A missing cell drawn at the end of a short row is no cell: the pointer
+    // there is on the table, as in its gutter.
+    const cell = inBody && !onControl ? target.closest('td:not([data-doc-table-missing]), th:not([data-doc-table-missing])') : null;
     const frame = cell === null ? (inBody ? this.tableAt(event) : null) : cell.closest(FRAME);
     const id = frame?.getAttribute('data-id');
     if (frame === null || frame === undefined || id === null || id === undefined || !this.editor.isEditable) {

@@ -193,6 +193,21 @@ describe('the cell the pointer is over', () => {
     expect(hovered(editor)).toMatchObject({ show: true, block: { id: tableId(editor) }, rowIndex: undefined, colIndex: undefined });
   });
 
+  it('names the table, and no row or column, with the pointer on a missing cell drawn at the end of a short row', () => {
+    const editor = open();
+    editor.replaceBlocks(editor.document, [
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2'] }] }),
+    ] as never);
+    const view = editor.prosemirrorView;
+    view.dom.querySelector('tbody')!.getBoundingClientRect = () => new DOMRect(200, 100, 240, 80);
+    view.dom.querySelector('[data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(200, 96, 600, 88);
+
+    view.dom.querySelector('[data-doc-table-missing]')!.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 380, clientY: 160 }));
+
+    expect(hovered(editor)).toMatchObject({ show: true, block: { id: tableId(editor) }, rowIndex: undefined, colIndex: undefined });
+  });
+
   it('names a table nested two levels deep with the pointer where its strip stands', () => {
     const editor = buildDocumentEditor({
       fragment: documentBodyFragment(new Y.Doc()),
