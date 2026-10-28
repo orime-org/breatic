@@ -253,6 +253,17 @@ describe("send", () => {
     expect(b.seen).toHaveLength(0);
   });
 
+  it("moves on for a model-not-found answer longer than a log snippet (DD 32)", async () => {
+    const trace = Array.from({ length: 12 }, (_, i) => `upstream trace line ${i} for request ws-req-0000000000`);
+    a.answer(() => ({ status: 400, body: { ...MODEL_NOT_FOUND.body, data: { trace } } }));
+    b.answer(() => accepted("p1"));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const moved = expectState(await r.send(stored(planned.ticket), live()), "send");
+    expect(JSON.stringify({ ...MODEL_NOT_FOUND.body, data: { trace } }).length).toBeGreaterThan(500);
+    expect(moved.warnings.map((w) => w.code)).toContain("upstream_switched");
+  });
+
   it("answers failed with NoUpstreamAvailable naming model_not_found when no upstream has the model", async () => {
     a.answer(() => MODEL_NOT_FOUND);
     const r = runner({ WS_A_KEY: "key-a" });

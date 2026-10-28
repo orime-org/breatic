@@ -291,6 +291,21 @@ describe("understand (design 6.5)", () => {
     expect(answer.upstream).toBe("openrouter");
   });
 
+  it("moves on to OpenRouter for a not-found answer longer than a log snippet (DD 32)", async () => {
+    const details = Array.from({ length: 6 }, (_, i) => ({ "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: `MODEL_NOT_FOUND_${i}`, domain: "generativelanguage.googleapis.com" }));
+    const body = { error: { code: 404, message: "models/gemini-3.8-flash is not found for API version v1beta", status: "NOT_FOUND", details } };
+    expect(JSON.stringify(body).length).toBeGreaterThan(500);
+    fakes.google.answer(() => ({ status: 404, body }));
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.upstream).toBe("openrouter");
+  });
+
   it("answers pending with OpenRouter's generation when the answer carried no cost", async () => {
     const { cost: _cost, ...withoutCost } = CHAT_REPLY.usage;
     fakes.openrouter.answer(() => ({ status: 200, body: { ...CHAT_REPLY, usage: withoutCost } }));
