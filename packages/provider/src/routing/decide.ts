@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { isServerError } from "@provider/http/request.js";
+
 /** How one attempt at an upstream failed. */
 export type Failure =
   | { kind: "not_sent" }
@@ -24,7 +26,7 @@ export type Decision = "switch" | "retry" | "stop";
  * @returns True for a passing status.
  */
 export function passingStatus(status: number, phase: Phase): boolean {
-  return status === 408 || status === 429 || status >= 500 || (phase === "llm_before_content" && status === 409);
+  return status === 408 || status === 429 || isServerError(status) || (phase === "llm_before_content" && status === 409);
 }
 
 /**

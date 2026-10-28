@@ -35,7 +35,7 @@ export interface ReadOptions extends SendOptions {
   idleMs: number;
 }
 
-/** Deliveries a request gets in all: any request on a 408 or 429, a replay-safe one also on NotSent and 5xx. */
+/** Deliveries a request gets in all: any request on a 408 or 429, a replay-safe one also on NotSent, NoAnswer and 5xx. */
 const MAX_DELIVERIES = 3;
 /** Base of the full-jitter exponential backoff between deliveries. */
 const BASE_DELAY_MS = 1_000;
@@ -126,17 +126,41 @@ function ended(options: SendOptions): boolean {
   return options.signal?.aborted === true || (options.deadlineAt !== undefined && Date.now() >= options.deadlineAt);
 }
 
+/** Delay-seconds, the first form RFC 9110 10.2.3 allows. */
+const DELAY_SECONDS = String.raw`\d+`;
+/** IMF-fixdate, the second form, as `toUTCString` writes it. */
+const IMF_FIXDATE = String.raw`[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT`;
+/** One legal value, possibly sent more than once with the same content (Headers.get joins repeats with commas). */
+const ONE_VALUE_POSSIBLY_REPEATED = new RegExp(`^(${DELAY_SECONDS}|${IMF_FIXDATE})(?:,\\s*\\1)*$`);
+/** The seconds form on its own. */
+const IS_DELAY_SECONDS = new RegExp(`^${DELAY_SECONDS}$`);
+
 /**
- * A Retry-After header in milliseconds.
+ * A Retry-After header in milliseconds, read as shared's parseRetryAfter reads it: delay-seconds
+ * or an IMF-fixdate that writes itself back unchanged (Date.parse rolls impossible days, ignores
+ * the weekday and truncates seconds), identical repeats allowed, a date already past naming none.
  * @param raw - The header.
- * @returns The delay, or undefined when absent or unreadable.
+ * @returns The delay, or undefined when absent, malformed or past.
  */
 export function retryAfterOf(raw: string | null): number | undefined {
   if (raw === null) return undefined;
-  const value = raw.trim();
-  if (/^\d+$/.test(value)) return Number(value) * 1_000;
+  const matched = ONE_VALUE_POSSIBLY_REPEATED.exec(raw.trim());
+  if (matched === null) return undefined;
+  const value = matched[1]!;
+  if (IS_DELAY_SECONDS.test(value)) return Number(value) * 1_000;
   const at = Date.parse(value);
-  return Number.isNaN(at) ? undefined : Math.max(0, at - Date.now());
+  if (new Date(at).toUTCString() !== value) return undefined;
+  const wait = at - Date.now();
+  return wait > 0 ? wait : undefined;
+}
+
+/**
+ * Whether a status says the server's own side failed: 500 to 599, no class above it.
+ * @param status - The status.
+ * @returns True for 5xx.
+ */
+export function isServerError(status: number): boolean {
+  return status >= 500 && status < 600;
 }
 
 /**
@@ -147,7 +171,7 @@ export function retryAfterOf(raw: string | null): number | undefined {
  * @returns True when the request may go again.
  */
 function resendable(status: number, replaySafe: boolean): boolean {
-  return status === 408 || status === 429 || (replaySafe && status >= 500);
+  return status === 408 || status === 429 || (replaySafe && isServerError(status));
 }
 
 /**
@@ -236,7 +260,12 @@ function withRelease(response: Response, release: () => void): Response {
       return reader.cancel(reason);
     },
   });
-  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  // A Response cannot be built with a status past 599, which a server may still send; it is
+  // built at 599 and given the status that came.
+  const inRange = response.status >= 200 && response.status <= 599;
+  const wrapped = new Response(body, { status: inRange ? response.status : 599, statusText: response.statusText, headers: response.headers });
+  if (!inRange) Object.defineProperty(wrapped, "status", { value: response.status });
+  return wrapped;
 }
 
 /**
@@ -255,7 +284,8 @@ export async function send(request: OutgoingRequest, options: SendOptions): Prom
     try {
       response = await deliver(request, options);
     } catch (error) {
-      if (last || !options.replaySafe || !(error instanceof NotSent)) throw error;
+      // A replay-safe request is sent again whether it never left or got no answer (RFC 9110 9.2.2).
+      if (last || !options.replaySafe || !(error instanceof NotSent || error instanceof NoAnswer)) throw error;
       await wait(backoff(delivery), options, request.url);
       continue;
     }

@@ -22,15 +22,13 @@ function allowed(address: ipaddr.IPv4 | ipaddr.IPv6): boolean {
  * public unicast. A name that does not resolve is let through, so the request
  * reports why it failed.
  * @param url - The address.
- * @returns False for a malformed url or any private, loopback, link-local or reserved address.
+ * @returns False for a malformed url, a scheme other than http or https, or any private, loopback, link-local or reserved address.
  */
 export async function reachable(url: string): Promise<boolean> {
-  let host: string;
-  try {
-    host = new URL(url).hostname;
-  } catch {
-    return false;
-  }
+  if (!URL.canParse(url)) return false;
+  const parsed = new URL(url);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const host = parsed.hostname;
   const bare = host.startsWith("[") && host.endsWith("]") ? host.slice(1, -1) : host;
   if (ipaddr.isValid(bare)) return allowed(ipaddr.parse(bare));
   let records: { address: string; family: number }[];

@@ -18,7 +18,7 @@ const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
 const MAX_HOPS = 10;
 
 /** Why a media address was not read. */
-export type MediaRefusal = "unreachable" | "too_large" | "unavailable" | "unsupported_type";
+export type MediaRefusal = "unreachable" | "too_large" | "unavailable" | "unsupported_type" | "empty";
 
 /** A media address that was refused or could not be read. */
 export class MediaRefused extends Error {
@@ -75,7 +75,7 @@ function settledType(headers: Headers, url: string): string {
  * Read the bytes at a public address, judging every redirect hop before following it.
  * @param request - What to read and its limits.
  * @returns The bytes and the type they settle to.
- * @throws {MediaRefused} When an address is not public, the body is over the limit, or the address answers non-2xx.
+ * @throws {MediaRefused} When an address is not public, the body is empty or over the limit, or the address answers non-2xx.
  * @throws {Aborted} When the deadline or the signal ends the read.
  * @throws {NotSent} When the address could not be reached.
  * @throws {NoAnswer} When the address stopped answering.
@@ -94,6 +94,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<FetchedMed
       }
       try {
         const bytes = await readBody(target, response, request.maxBytes, Math.max(0, request.deadlineAt - Date.now()), bounds);
+        if (bytes.byteLength === 0) throw new MediaRefused("empty");
         return { bytes, contentType: settledType(response.headers, request.url) };
       } catch (error) {
         if (error instanceof BodyTooLarge) throw new MediaRefused("too_large");

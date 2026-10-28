@@ -1,6 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+/**
+ * An address as error messages name it: origin and path, the query and fragment marked as
+ * dropped, as shared's redactUrl writes it; they can carry keys and upload sessions.
+ * @param url - The address.
+ * @returns The address to name.
+ */
+function named(url: string): string {
+  if (!URL.canParse(url)) return "an address that does not parse";
+  const parsed = new URL(url);
+  return `${parsed.origin}${parsed.pathname}${parsed.search !== "" ? "?<redacted>" : ""}${parsed.hash !== "" ? "#<redacted>" : ""}`;
+}
+
 /** The request never left this machine: DNS failed or the connection was refused. */
 export class NotSent extends Error {
   /**
@@ -9,7 +21,7 @@ export class NotSent extends Error {
    * @param cause - The platform error.
    */
   constructor(url: string, cause: unknown) {
-    super(`Request to ${url} was not sent`, { cause });
+    super(`Request to ${named(url)} was not sent`, { cause });
     this.name = "NotSent";
   }
 }
@@ -22,7 +34,7 @@ export class NoAnswer extends Error {
    * @param cause - The platform error.
    */
   constructor(url: string, cause: unknown) {
-    super(`Request to ${url} got no answer`, { cause });
+    super(`Request to ${named(url)} got no answer`, { cause });
     this.name = "NoAnswer";
   }
 }
@@ -48,7 +60,7 @@ export class HttpStatus extends Error {
    * @param headers - The response headers.
    */
   constructor(url: string, status: number, body: string, headers?: Headers) {
-    super(`Request to ${url} answered ${status}`);
+    super(`Request to ${named(url)} answered ${status}`);
     this.name = "HttpStatus";
     this.status = status;
     this.body = body;
@@ -65,7 +77,7 @@ export class BodyTooLarge extends Error {
    * @param limit - The allowed bytes.
    */
   constructor(url: string, limit: number) {
-    super(`Response from ${url} is larger than ${limit} bytes`);
+    super(`Response from ${named(url)} is larger than ${limit} bytes`);
     this.name = "BodyTooLarge";
   }
 }
@@ -77,7 +89,7 @@ export class Aborted extends Error {
    * @param url - Where it was going.
    */
   constructor(url: string) {
-    super(`Request to ${url} was aborted`);
+    super(`Request to ${named(url)} was aborted`);
     this.name = "Aborted";
   }
 }

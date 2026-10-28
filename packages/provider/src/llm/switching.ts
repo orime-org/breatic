@@ -165,8 +165,8 @@ export async function pauseBeforeRetry(error: unknown, retry: number, signal: Ab
     if (APICallError.isInstance(error)) return error.responseHeaders?.[name] ?? null;
     return error instanceof HttpStatus ? (error.headers?.get(name) ?? null) : null;
   };
-  const ms = Number(header("retry-after-ms") ?? Number.NaN);
-  const asked = Number.isFinite(ms) && ms >= 0 ? ms : retryAfterOf(header("retry-after"));
+  const ms = header("retry-after-ms")?.trim();
+  const asked = ms !== undefined && /^\d+$/.test(ms) ? Number(ms) : retryAfterOf(header("retry-after"));
   if (asked !== undefined && asked > MAX_RETRY_AFTER_MS) return "switch";
   await wait(asked ?? backoff(retry), { replaySafe: false, ...(signal ? { signal } : {}) }, "the model call");
   return "retry";

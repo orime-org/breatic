@@ -6,7 +6,7 @@ import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
-import { boundSignal } from "@provider/http/request.js";
+import { boundSignal, isServerError } from "@provider/http/request.js";
 import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBounds } from "@provider/media/wavespeed/adapter.js";
 import { buildBody } from "@provider/media/wavespeed/body.js";
 import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
@@ -880,7 +880,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         asked = await capped(ticket.upstream, bounds, () => ask(reach(ticket.upstream), at.step.predictionId!, bounds));
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent
-          || (error instanceof HttpStatus && (error.status === 429 || error.status >= 500));
+          || (error instanceof HttpStatus && (error.status === 429 || isServerError(error.status)));
         if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
         if (!resendable) throw error;
         return waiting(ticket, { warnings: [{ code: "poll_request_failed", detail: { upstream: ticket.upstream, predictionId: at.step.predictionId, error: String(error) } }] });
