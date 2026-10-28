@@ -246,17 +246,26 @@ describe("what a call reports about its cost (design 3.5, S4)", () => {
     expect(result.providerMetadata?.breatic?.costRef).toMatchObject({ upstream: "openrouter", generationId: "gen-test" });
   });
 
-  it("hands the lookup of a stream stopped before its end to pendingCosts", async () => {
+  it("hands the generation of a stream stopped before its end over exactly once, on the call end or in pendingCosts (DD 33)", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: sse(false), contentType: "text/event-stream", hold: true }));
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
     const stop = new AbortController();
-    const stream = streamText({ model: prepared.model, prompt: "hi", abortSignal: stop.signal, ...prepared.options });
+    const ends: unknown[] = [];
+    const stream = streamText({
+      model: prepared.model,
+      prompt: "hi",
+      abortSignal: stop.signal,
+      ...prepared.options,
+      onLanguageModelCallEnd: (e) => void ends.push(e.providerMetadata?.breatic),
+    });
     for await (const text of stream.textStream) {
       if (text !== "") break;
     }
     stop.abort();
     await Promise.resolve(stream.consumeStream()).catch(() => undefined);
-    expect(prepared.pendingCosts()).toEqual([{ state: "pending", lookup: expect.objectContaining({ upstream: "openrouter", generationId: "gen-1" }) }]);
+    const handedOver = ends.filter((e) => (e as { costRef?: { generationId?: string } } | undefined)?.costRef?.generationId === "gen-1").length;
+    const stillPending = prepared.pendingCosts().filter((c) => c.state === "pending" && c.lookup.generationId === "gen-1").length;
+    expect(handedOver + stillPending).toBe(1);
   });
 
   it("forgets the lookup once the stream finished", async () => {

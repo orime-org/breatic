@@ -659,7 +659,7 @@ describe("judge routing (JEV)", () => {
   it("answers a missing cost for a body that is not JSON", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: "not json", contentType: "text/plain" }));
     const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request);
-    expect(answer.cost.state).toBe("missing");
+    expect(answer.cost?.state).toBe("missing");
   });
 });
 
