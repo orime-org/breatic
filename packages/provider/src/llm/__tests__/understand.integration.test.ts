@@ -135,6 +135,18 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
     expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining(cost)]);
   });
 
+  it.each([
+    ["parts are not a list", { content: { parts: {} }, finishReason: "STOP" }],
+    ["parts hold a null", { content: { parts: [null] }, finishReason: "STOP" }],
+    ["candidate is null", null],
+  ])("rejects a Google answer whose %s, costing it", async (_name, candidate) => {
+    fakes.google.answer(() => ({ status: 200, body: { candidates: [candidate], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } } }));
+    const error = await llmProvider(fakes, keys).llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).upstream).toBe("google");
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
   it("costs a 2xx answer whose body never finishes as missing", async () => {
     fakes.openrouter.answer(() => ({ status: 200, raw: "{\"id\":\"gen-9\",\"choices\":[", contentType: "application/json", hold: true }));
     const error = await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand(question(1_000)).catch((e: unknown) => e);
@@ -223,6 +235,25 @@ describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () =
     expect(seenOn("POST", "/upload-session/1")).toBe(1);
   });
 
+  it("polls an uploaded file again on a retry, uploading it once", async () => {
+    let polls = 0;
+    const provider = throughFiles(filesRoute((r) =>
+      r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } }
+      : r.method === "GET" ? (++polls === 1 ? { status: 503, body: {} } : { status: 200, body: { name: "files/abc", uri: "https://files.example/abc", state: "ACTIVE" } })
+      : undefined), 1);
+    const answer = await provider.llm.understand(question(), { mode: "upstream", upstream: "google" });
+    expect(answer.upstream).toBe("google");
+    expect(seenOn("POST", "/upload/v1beta/files")).toBe(1);
+  });
+
+  it("names Google's own reason when an upload step is refused", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload/v1beta/files" ? { status: 400, body: { error: { code: 400, message: "Unsupported MIME type", status: "INVALID_ARGUMENT" } } } : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).message).toBe("Unsupported MIME type");
+    expect((error as UpstreamRequestRejected).status).toBe(400);
+  });
+
   it("ends as interrupted, with no cost, when an upload answer's body never finishes", async () => {
     const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 200, raw: "{\"file\":", contentType: "application/json", hold: true } : undefined)));
     const error = await provider.llm.understand(question(1_000)).catch((e: unknown) => e);
@@ -241,6 +272,22 @@ describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () =
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).status).toBeUndefined();
     expect((error as UpstreamRequestRejected).costs).toEqual([]);
+  });
+});
+
+describe("understand video types (design 6.5, DD 29)", () => {
+  const mov = { bytes: new Uint8Array([0, 0, 0, 20]), contentType: "video/quicktime" };
+
+  it("sends a QuickTime video to Google as video/mov", async () => {
+    await llmProvider(fakes, keys).llm.understand({ ...question(), media: [mov] });
+    const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toContainEqual({ inlineData: { mimeType: "video/mov", data: Buffer.from(mov.bytes).toString("base64") } });
+  });
+
+  it("sends a QuickTime video to OpenRouter as video/mov", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), media: [mov] });
+    const parts = (posted(fakes.openrouter)[0] as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;
+    expect(parts).toContainEqual({ type: "video_url", video_url: { url: `data:video/mov;base64,${Buffer.from(mov.bytes).toString("base64")}` } });
   });
 });
 

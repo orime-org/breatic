@@ -31,6 +31,8 @@ import { estimateCredits } from "../packages/shared/dist/pricing/index.js";
 import { upstreamBody } from "../packages/worker/src/providers/upstream-body.js";
 import minimaxSpeech from "../packages/worker/src/providers/families/minimax-speech.js";
 import nanoBananaRelight from "../packages/worker/src/providers/families/nano-banana-relight.js";
+import hunyuan3d from "../packages/worker/src/providers/three-d/models/hunyuan3d.js";
+import meshy from "../packages/worker/src/providers/three-d/models/meshy.js";
 
 interface RawPricing { base_price: number; formula: string; discount_rate: number }
 interface RawParam {
@@ -309,17 +311,39 @@ for (const modality of MODALITIES) {
     }
   }
 }
-for (const family of ["meshy", "hunyuan3d"]) {
-  const file = parse(readFileSync(resolve(ROOT, `config/models/three_d/${family}.yaml`), "utf8")) as { models: RawModel[] };
+/**
+ * The body today's 3D path sends: the family's buildRequest, then the prompt set on the
+ * params (three-d/index.ts:104), then every non-null entry and the prompt when it is not
+ * empty (three-d/transports/wavespeed.ts:68-74), so an empty prompt is sent as "".
+ * @param family - The model's family.
+ * @param model - The model's name.
+ * @param params - The params.
+ * @param prompt - The prompt.
+ * @returns The body.
+ */
+async function today3dBody(family: typeof meshy, model: string, params: Record<string, unknown>, prompt: string): Promise<Record<string, unknown>> {
+  const [formatted, apiParams] = await family.buildRequest(prompt, model, params);
+  apiParams.prompt = formatted;
+  const body: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(apiParams)) {
+    if (v != null) body[k] = v;
+  }
+  if (formatted) body.prompt = formatted;
+  return body;
+}
+
+for (const [name, family] of [["meshy", meshy], ["hunyuan3d", hunyuan3d]] as const) {
+  const file = parse(readFileSync(resolve(ROOT, `config/models/three_d/${name}.yaml`), "utf8")) as { models: RawModel[] };
   for (const model of file.models) {
     const seen = new Set<string>();
     for (const given of bodySamples(model)) {
-      const key = JSON.stringify(given);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const params = Object.fromEntries(Object.entries(given).filter(([, v]) => v != null));
-      const prompt = model.takes_prompt === false ? "" : PROMPTS[1]!;
-      bodyCases.push({ model: model.name, kind: "three_d", params, prompt, body: { ...params, ...(prompt ? { prompt } : {}) } });
+      for (const prompt of model.takes_prompt === false ? [""] : ["", PROMPTS[1]!]) {
+        const key = JSON.stringify([given, prompt]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const params = Object.fromEntries(Object.entries(given).filter(([, v]) => v != null));
+        bodyCases.push({ model: model.name, kind: "three_d", params, prompt, body: await today3dBody(family, model.name, given, prompt) });
+      }
     }
   }
 }
