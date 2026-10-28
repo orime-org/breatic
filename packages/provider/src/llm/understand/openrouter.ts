@@ -87,10 +87,12 @@ export const openRouterUnderstand: UnderstandAdapter = {
   },
 
   read(body) {
-    const completion = (body ?? {}) as Completion;
+    if (typeof body !== "object" || body === null) return { unreadable: "OpenRouter's answer is not JSON" };
+    const completion = body as Completion;
     // An error may sit at the top of the body or on the choice; words written before it are a stop.
     if (completion.error !== undefined && completion.error !== null) return { error: completion.error };
     const choice = completion.choices?.[0];
+    if (choice === undefined) return { unreadable: "OpenRouter's answer has no choice" };
     const text = typeof choice?.message?.content === "string" ? choice.message.content : "";
     if (text === "" && choice?.error !== undefined && choice.error !== null) return { error: choice.error };
     const reason = typeof choice?.finish_reason === "string" ? choice.finish_reason : "";

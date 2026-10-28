@@ -11,7 +11,7 @@
 import type { FinishReason } from "ai";
 import { HttpStatus } from "@provider/http/errors.js";
 import { fetchJson, send, wait } from "@provider/http/request.js";
-import { base64Of, count, exchange, usageOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
+import { base64Of, count, exchange, UnreadableAnswer, usageOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
 
 /** Gemini's finish reasons that mean the answer was blocked. */
 const BLOCKED = new Set(["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"]);
@@ -60,7 +60,8 @@ function headers(call: UnderstandCall): Record<string, string> {
  * @param index - Its place, for its display name.
  * @param uploaded - Where the name of each file is kept for deleting, as soon as it exists.
  * @returns The file's uri.
- * @throws {HttpStatus} When the upload answers no session or the file ends FAILED.
+ * @throws {HttpStatus} When an upload step answers a failing status.
+ * @throws {UnreadableAnswer} When the upload names no session or file, the file ends FAILED, or it has no uri.
  * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure.
  */
 async function upload(call: UnderstandCall, media: UnderstandCall["media"][number], index: number, uploaded: string[]): Promise<string> {
@@ -84,7 +85,8 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
   );
   await started.body?.cancel();
   const session = started.headers.get("x-goog-upload-url");
-  if (started.status < 200 || started.status >= 300 || session === null) throw new HttpStatus(startUrl, started.status, "no upload session");
+  if (started.status < 200 || started.status >= 300) throw new HttpStatus(startUrl, started.status, "", started.headers);
+  if (session === null) throw new UnreadableAnswer("Google's upload start named no session");
   const limits = { maxBodyBytes: MAX_FILE_JSON_BYTES, idleMs: Math.max(1, call.deadlineAt - Date.now()) };
   const finished = await fetchJson(
     {
@@ -96,15 +98,15 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
     { ...bounds, ...limits },
   );
   let file = (finished as { file?: GeminiFile } | null)?.file ?? {};
-  if (typeof file.name !== "string") throw new HttpStatus(session, 200, "the upload answered no file");
+  if (typeof file.name !== "string") throw new UnreadableAnswer("Google's upload answered no file");
   uploaded.push(file.name);
   const fileUrl = `${call.decl.base_url}/${file.name}`;
   while (file.state !== "ACTIVE") {
-    if (file.state === "FAILED") throw new HttpStatus(fileUrl, 200, `file ${String(file.name)} failed to process`);
+    if (file.state === "FAILED") throw new UnreadableAnswer(`Google could not process ${String(file.name)}`);
     await wait(call.filePollMs, bounds, fileUrl);
     file = (await fetchJson({ url: fileUrl, method: "GET", headers: { "x-goog-api-key": call.key } }, { ...bounds, replaySafe: true, ...limits })) as GeminiFile;
   }
-  if (typeof file.uri !== "string") throw new HttpStatus(fileUrl, 200, "the file has no uri");
+  if (typeof file.uri !== "string") throw new UnreadableAnswer(`Google's ${String(file.name)} has no uri`);
   return file.uri;
 }
 
@@ -141,7 +143,8 @@ export const googleUnderstand: UnderstandAdapter = {
   },
 
   read(body) {
-    const generated = (body ?? {}) as Generated;
+    if (typeof body !== "object" || body === null) return { unreadable: "Google's answer is not JSON" };
+    const generated = body as Generated;
     const candidate = generated.candidates?.[0];
     if (candidate === undefined) return { text: "", finishReason: generated.promptFeedback?.blockReason === undefined ? "other" : "content-filter" };
     const text = (candidate.content?.parts ?? [])

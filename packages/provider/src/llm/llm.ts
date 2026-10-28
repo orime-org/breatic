@@ -15,6 +15,7 @@ import { HttpStatus } from "@provider/http/errors.js";
 import { boundSignal, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
+import { AnswerUnread, UnreadableAnswer } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -267,6 +268,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    */
   const understandEnding = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined, billed: Cost[]): Error => {
     if (error instanceof NoUpstreamAvailable) return new NoUpstreamAvailable(error.model, error.reasons, billed);
+    if (error instanceof UnreadableAnswer && upstream !== undefined) {
+      return new UpstreamRequestRejected(model, upstream, error.message, error.cost === undefined ? billed : [...billed, error.cost], { cause: error });
+    }
     const failure = upstream === undefined ? null : classifyLlm(error, vendorOf(kindOf(upstream)));
     if (upstream === undefined || failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") {
       return new UnderstandInterrupted(model, billed, error);
@@ -417,19 +421,28 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const decl = config.upstreams[c.upstream]!;
             const adapter = understandAdapterOf(decl.kind);
             const pin = config.llm.openrouter_backends[request.model];
-            const answered = await adapter.ask({
-              decl,
-              key: options.keyOf(decl.key_env) ?? "",
-              modelId: vendorModelId(route, c.upstream, request.model),
-              question,
-              media: request.media,
-              maxOutputTokens: request.maxOutputTokens,
-              ...(vendorOf(decl.kind).gateway && pin !== undefined ? { backend: pin } : {}),
-              deadlineAt: request.deadlineAt,
-              signal,
-              inlineMaxBytes: config.llm.gemini_inline_max_bytes,
-              filePollMs: config.llm.gemini_file_poll_ms,
-            });
+            let answered;
+            try {
+              answered = await adapter.ask({
+                decl,
+                key: options.keyOf(decl.key_env) ?? "",
+                modelId: vendorModelId(route, c.upstream, request.model),
+                question,
+                media: request.media,
+                maxOutputTokens: request.maxOutputTokens,
+                ...(vendorOf(decl.kind).gateway && pin !== undefined ? { backend: pin } : {}),
+                deadlineAt: request.deadlineAt,
+                signal,
+                inlineMaxBytes: config.llm.gemini_inline_max_bytes,
+                filePollMs: config.llm.gemini_file_poll_ms,
+              });
+            } catch (error) {
+              // A 2xx whose body was lost was still billed, for an amount nobody can now read.
+              if (error instanceof AnswerUnread && error.status >= 200 && error.status < 300) {
+                billed.push({ state: "missing", reason: `${c.upstream} answered ${error.status} and its body could not be read` });
+              }
+              throw error;
+            }
             lastBody = answered.text;
             if (answered.status < 200 || answered.status >= 300) throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, 500), answered.headers);
             // Every 2xx answer is costed here, whether it answered or carried an error.
@@ -437,6 +450,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
             const cost = costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } });
             const reading = adapter.read(answered.body);
+            if ("unreadable" in reading) {
+              // Billed though unusable: what the body reports, never a price-table guess.
+              const reported = usdOf((answered.body as { usage?: { cost?: unknown } } | null | undefined)?.usage?.cost);
+              throw new UnreadableAnswer(reading.unreadable, reported === undefined
+                ? { state: "missing", reason: `${c.upstream} answered something unreadable` }
+                : { state: "known", usd: reported, source: "reported" });
+            }
             if ("error" in reading) {
               billed.push(cost);
               throw new InBandError(reading.error);

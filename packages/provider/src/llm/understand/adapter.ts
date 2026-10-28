@@ -9,6 +9,7 @@
 
 import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
+import type { Cost } from "@provider/cost.js";
 import { deliver, readBody, type OutgoingRequest } from "@provider/http/request.js";
 import { parsed } from "@provider/llm/switching.js";
 
@@ -42,7 +43,27 @@ export interface Answered {
 }
 
 /** What a 2xx answer says: the text, or an error it carries with nothing written. */
-export type Reading = { text: string; finishReason: FinishReason } | { error: unknown };
+export type Reading = { text: string; finishReason: FinishReason } | { error: unknown } | { unreadable: string };
+
+/**
+ * The upstream answered something provider cannot use (design 3.5): a Files API step
+ * that ended without what it promised, or a 2xx model answer that cannot be read. The
+ * call stops there; `cost` is what that answer was billed, when it was a model answer.
+ */
+export class UnreadableAnswer extends Error {
+  readonly cost?: Cost;
+
+  /**
+   * Record what the error carries.
+   * @param reason - What was unusable.
+   * @param cost - What the answer was billed, for a model answer.
+   */
+  constructor(reason: string, cost?: Cost) {
+    super(reason);
+    this.name = "UnreadableAnswer";
+    if (cost !== undefined) this.cost = cost;
+  }
+}
 
 /** How a 2xx answer is costed: its usage in the AI SDK's buckets and the metadata a cost reads. */
 export interface Billing {
