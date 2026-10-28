@@ -192,7 +192,7 @@ function overridden<T extends { upstream: string; weight: number }>(
 }
 
 /**
- * Report weights used twice and upstreams upstreams.yaml does not declare.
+ * Report weights used twice, an upstream bound twice and upstreams upstreams.yaml does not declare.
  * @param owner - What the list belongs to.
  * @param list - The upstreams with effective weights.
  * @param declared - The declared upstreams.
@@ -203,6 +203,11 @@ function checkList(owner: string, list: { upstream: string; weight: number }[], 
   for (const { weight } of list) {
     if (seen.has(weight)) problems.push(`${owner}: weight ${weight} is used by more than one upstream`);
     seen.add(weight);
+  }
+  const bound = new Set<string>();
+  for (const { upstream } of list) {
+    if (bound.has(upstream)) problems.push(`${owner}: upstream "${upstream}" is bound more than once`);
+    bound.add(upstream);
   }
   for (const { upstream } of list) {
     if (declared[upstream] === undefined) problems.push(`${owner}: upstream "${upstream}" is not declared in upstreams.yaml`);
