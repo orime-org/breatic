@@ -141,8 +141,21 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
     ["parts hold a null", { content: { parts: [null] }, finishReason: "STOP" }],
     ["candidate is null", null],
     ["content is not an object", { content: "oops", finishReason: "STOP" }],
+    ["content is a list", { content: [], finishReason: "STOP" }],
   ])("rejects a Google answer whose %s, costing it", async (_name, candidate) => {
     fakes.google.answer(() => ({ status: 200, body: { candidates: [candidate], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } } }));
+    const error = await llmProvider(fakes, keys).llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).upstream).toBe("google");
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
+  it.each([
+    ["an object", {}],
+    ["a number", 5],
+    ["a boolean", true],
+  ])("rejects a Google answer whose candidates are %s, costing it", async (_name, candidates) => {
+    fakes.google.answer(() => ({ status: 200, body: { candidates, usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } } }));
     const error = await llmProvider(fakes, keys).llm.understand(question()).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).upstream).toBe("google");

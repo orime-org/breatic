@@ -120,6 +120,19 @@ describe("cost.lookup (design 3.6)", () => {
     expect((await provider.cost.lookup(lookup, { lastAttempt: false })).state).toBe("pending");
     expect((await provider.cost.lookup(lookup, { lastAttempt: true })).state).toBe("missing");
   });
+
+  it("answers missing with the token counts when the generation on the last attempt carries tokens but no cost", async () => {
+    const data = { id: "gen-9", native_tokens_prompt: 11, native_tokens_cached: 2, native_tokens_completion: 3, native_tokens_reasoning: 1 };
+    fakes.openrouter.answer(({ path }) => (path === "/api/v1/generation" ? { status: 200, body: { data } } : undefined));
+    const provider = llmProvider(fakes, { OPENROUTER_API_KEY: "or" });
+    const lookup = { upstream: "openrouter", generationId: "gen-9" };
+    expect(await provider.cost.lookup(lookup, { lastAttempt: false })).toEqual({ state: "pending", lookup });
+    expect(await provider.cost.lookup(lookup, { lastAttempt: true })).toEqual({
+      state: "missing",
+      reason: expect.any(String),
+      tokens: { input: 11, cachedInput: 2, output: 3, reasoning: 1 },
+    });
+  });
 });
 
 describe("cost.lookup on its last attempt (design 13.1, critical path)", () => {
