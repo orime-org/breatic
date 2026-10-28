@@ -223,6 +223,14 @@ describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () =
     expect(seenOn("POST", "/upload-session/1")).toBe(1);
   });
 
+  it("ends as interrupted, with no cost, when an upload answer's body never finishes", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 200, raw: "{\"file\":", contentType: "application/json", hold: true } : undefined)));
+    const error = await provider.llm.understand(question(1_000)).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+  });
+
   it.each([
     ["the upload answers a body that is not JSON", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, raw: "<html>proxy</html>", contentType: "text/html" } : undefined],
