@@ -9,7 +9,9 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import * as Y from 'yjs';
+import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import { COLLAB_CHUNK_ACK } from '@breatic/shared';
 
 /** A stand-in for the browser WebSocket that records what is handed to `send`. */
 class FakeBase extends EventTarget {
@@ -190,6 +192,33 @@ describe('ChunkingWebSocket', () => {
       expect(same(joined(run), m)).toBe(true);
       expect(socket.sent.some((f) => f instanceof Uint8Array && f.byteLength === 300_000)).toBe(false);
     } finally {
+      provider.destroy();
+    }
+  });
+
+  it('WU11 takes the chunk acknowledgement as a sign of life and hands it to no document', async () => {
+    // collab answers each accepted declaration and chunk with this frame; the
+    // real provider must count it and do nothing else with it.
+    const Chunking = await load();
+    const provider = new HocuspocusProviderWebsocket({ url: 'ws://x/', WebSocketPolyfill: Chunking });
+    const doc = new HocuspocusProvider({ websocketProvider: provider, name: 'project-p1/canvas-s1', document: new Y.Doc() });
+    try {
+      doc.attach();
+      await vi.waitFor(() => expect(FakeBase.instances).toHaveLength(1));
+      const socket = FakeBase.instances[0]!;
+      socket.readyState = 1;
+      socket.dispatchEvent(new Event('open'));
+      await vi.waitFor(() => expect(socket.sent.length).toBeGreaterThan(0));
+      const onDocMessage = vi.fn();
+      doc.on('message', onDocMessage);
+      const sentBefore = socket.sent.length;
+      provider.lastMessageReceived = 0;
+      socket.dispatchEvent(new MessageEvent('message', { data: COLLAB_CHUNK_ACK.buffer }));
+      expect(provider.lastMessageReceived).toBeGreaterThan(0);
+      expect(onDocMessage).not.toHaveBeenCalled();
+      expect(socket.sent.length).toBe(sentBefore);
+    } finally {
+      doc.destroy();
       provider.destroy();
     }
   });
