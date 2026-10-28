@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * What a document Space's editor is able to represent and its stored body
- * format, plus the check for whether this build still matches the server's.
+ * What a document Space's editor is able to represent, as plain data, plus the
+ * check for whether this build's copy still matches the server's.
  *
  * ## One constant, both ends import it
  *
@@ -21,10 +21,13 @@
  *
  * ## Why both ends need it at all
  *
- * A document Space stores a body format and a vocabulary of node, mark and
- * content rules. Both contracts ship inside the browser bundle. A tab left
- * open across a release must identify a changed representation before its
- * editor starts working with that shared content.
+ * A document Space stores its content as a Yjs XML fragment whose element names
+ * ARE the editor's node names — the storage format and the editor's vocabulary
+ * are one and the same thing, and that vocabulary ships inside the browser
+ * bundle. A tab left open across a release is running yesterday's vocabulary
+ * against today's content: it cannot represent what it has not heard of, and
+ * y-tiptap's answer to something it cannot represent is to delete it from the
+ * shared document.
  *
  * So a client has to be able to ask "is my copy still the one the server is
  * publishing" before it offers to edit. The server answers by writing this
@@ -38,7 +41,7 @@
  * a client that is somehow ahead of the server has no business writing content
  * the rest cannot read either.
  *
- * ## `version` is computed from the contracts, never written by hand
+ * ## `version` is computed from the lists, never written by hand
  *
  * A hand-kept number has to be remembered alongside every list change, and the
  * one check that goes red when a list changes — the web-side test that builds
@@ -55,20 +58,11 @@
  * raising — so nothing but the version can catch it.
  */
 
-import {
-  DOCUMENT_BODY_FORMAT,
-  DOCUMENT_BODY_FORMAT_VERSION,
-} from "@shared/document-body-records-schema.js";
-
 /** The top-level key the server writes this under in a project's meta document. */
 export const DOCUMENT_SCHEMA_META_KEY = "documentSchema";
 
 /** A document Space's editor vocabulary, as both ends hold it. */
 export interface DocumentSchema {
-  /** The body's stored format name, when declared by the vocabulary. */
-  bodyFormat?: string;
-  /** The declared body's grammar version. */
-  bodyFormatVersion?: number;
   /**
    * When this vocabulary went out, as UTC. The panel says "the new version went
    * out {when}", and only a person knows when that was — it cannot be derived
@@ -101,19 +95,14 @@ export interface DocumentSchema {
  * builds the real ProseMirror schema from that editor and fails when it
  * disagrees with these two lists, down to attribute names.
  *
- * Move {@link DocumentSchema.publishedAt} forward whenever a contract changes,
+ * Move {@link DocumentSchema.publishedAt} forward whenever any list changes,
  * and pin the pair in `document-schema.test.ts`. It decides whether a collab
  * instance writes its version over the published one: an instance never
  * writes over a version published under a later time, so a release whose
  * date did not move would be refused wherever an older one is published.
  */
-export const DOCUMENT_SCHEMA: DocumentSchema & {
-  bodyFormat: string;
-  bodyFormatVersion: number;
-} = {
-  bodyFormat: DOCUMENT_BODY_FORMAT,
-  bodyFormatVersion: DOCUMENT_BODY_FORMAT_VERSION,
-  publishedAt: "2026-10-26T10:35:52Z",
+export const DOCUMENT_SCHEMA: DocumentSchema = {
+  publishedAt: "2026-10-18T09:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -278,9 +267,8 @@ const SIXTY_FOUR_BITS = 0xffffffffffffffffn;
  * JSON does the escaping, so a type named `a:b` cannot be confused with a pair
  * named `a` and `b`, and the two halves are separate arrays, so a node and a
  * mark sharing a name stay distinct; the content rules are a third. Type names
- * and attribute names are sorted here rather than assumed to arrive sorted.
- * The stored body format and its grammar version are a separate pair, so a
- * representation change also produces a different digest.
+ * and attribute names are sorted here rather than assumed to arrive sorted, so
+ * the answer depends on nothing but the vocabulary itself.
  *
  * `publishedAt` is deliberately not in here. The version decides who gets shut
  * out of editing, and correcting a date is not a reason to shut anyone out.
@@ -291,12 +279,7 @@ function canonicalForm(schema: DocumentSchema): string {
   const rules = Object.keys(schema.content)
     .sort()
     .map((name) => [name, schema.content[name] ?? ""]);
-  return JSON.stringify([
-    orderedPairs(schema.nodes),
-    orderedPairs(schema.marks),
-    rules,
-    [schema.bodyFormat ?? null, schema.bodyFormatVersion ?? null],
-  ]);
+  return JSON.stringify([orderedPairs(schema.nodes), orderedPairs(schema.marks), rules]);
 }
 
 /**

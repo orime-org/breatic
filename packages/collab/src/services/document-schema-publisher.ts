@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Publishing this build's document-editor contracts into a project's meta doc.
+ * Publishing this build's document-editor vocabulary into a project's meta doc.
  *
- * A document Space's stored body format and editor vocabulary ship inside the
- * browser bundle. A tab left open across a release compares their digest with
- * this server publication before it offers to edit shared content.
+ * A document Space stores its content as a Yjs fragment whose element names ARE
+ * the editor's node names, and that vocabulary ships inside the browser bundle.
+ * A tab left open across a release is running an older one, and an older
+ * vocabulary cannot represent what a newer one writes — so it has to be able to
+ * find out, before it offers to edit, whether it still matches what the server
+ * publishes.
  *
  * This is the publishing half. The values are `DOCUMENT_SCHEMA` in
  * `@breatic/shared`, the same constant the browser imports and compares
@@ -95,8 +98,6 @@ export function publishDocumentSchema(metaDoc: Y.Doc, options: PublishOptions = 
     published.set("nodes", DOCUMENT_SCHEMA.nodes);
     published.set("marks", DOCUMENT_SCHEMA.marks);
     published.set("content", DOCUMENT_SCHEMA.content);
-    published.set("bodyFormat", DOCUMENT_SCHEMA.bodyFormat);
-    published.set("bodyFormatVersion", DOCUMENT_SCHEMA.bodyFormatVersion);
     // The vocabulary's own release date, in UTC. Not `new Date()` — that would
     // be the moment this process first loaded THIS project's meta, which for a
     // project nobody has opened since the release is days late and reads on
