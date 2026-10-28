@@ -539,10 +539,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     drafts.event(blockId, { type: 'input', session: captionSession.current, value });
     drafts.event(blockId, { type: 'commit', session: captionSession.current, caption: props.caption,
       readOnly: readOnly || actions.canEdit?.() === false, exists: current.exists,
-      write: (caption) => {
-        actions.setProps({ caption });
-        return actions.canEdit?.() !== false;
-      },
+      write: (caption) => actions.setProps({ caption }),
     });
   };
 

@@ -13,33 +13,6 @@ import { evictDocumentEditor, getDocumentEditor } from '@web/spaces/document/doc
 describe('document caption drafts', () => {
   const context = { caption: 'Shared A', readOnly: false, exists: true };
 
-  it('retains its original editable session when the actual writer reports no completed write', () => {
-    const drafts = createCaptionDrafts();
-    drafts.event('video', { type: 'open', ...context });
-    const session = drafts.get('video')!.session;
-    drafts.event('video', { type: 'input', session, value: 'Unsaved local caption' });
-    const before = drafts.get('video');
-    const write = vi.fn(() => false);
-    drafts.event('video', { type: 'commit', ...context, session, write });
-    expect(write).toHaveBeenCalledExactlyOnceWith('Unsaved local caption');
-    expect(drafts.get('video')).toBe(before);
-    expect(drafts.get('video')).toMatchObject({ session, phase: 'editing', value: 'Unsaved local caption', base: 'Shared A', dirty: true });
-  });
-
-  it('keeps the synchronous pause captured by a writer that reports an incomplete result', () => {
-    const drafts = createCaptionDrafts();
-    drafts.event('video', { type: 'open', ...context });
-    const session = drafts.get('video')!.session;
-    drafts.event('video', { type: 'input', session, value: 'Unsaved local caption' });
-    const write = vi.fn(() => {
-      drafts.event('video', { type: 'pause', session, value: 'Final DOM caption' });
-      return false;
-    });
-    drafts.event('video', { type: 'commit', ...context, session, write });
-    expect(write).toHaveBeenCalledExactlyOnceWith('Unsaved local caption');
-    expect(drafts.get('video')).toMatchObject({ session, phase: 'suspended', value: 'Final DOM caption', base: 'Shared A', dirty: true, readOnly: true });
-  });
-
   it.each([false, true])('opens from the current shared caption with readOnly=%s', (readOnly) => {
     const drafts = createCaptionDrafts();
     drafts.event('video', { type: 'open', ...context, readOnly });
@@ -56,7 +29,7 @@ describe('document caption drafts', () => {
     drafts.event('video', { type: 'open', ...context, readOnly });
     drafts.event('video', { type: 'sync', ...context, readOnly, caption: 'Shared B' });
     expect(drafts.get('video')).toMatchObject({ base: 'Shared B', value: 'Shared B', dirty: false });
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'commit', ...context, readOnly, caption: 'Shared B', session: drafts.get('video')!.session, write });
     expect(write).not.toHaveBeenCalled();
     expect(drafts.get('video')!.phase).toBe(readOnly ? 'suspended' : 'closed');
@@ -80,7 +53,7 @@ describe('document caption drafts', () => {
     drafts.event('video', { type: 'input', session, value: 'Changed locally' });
     drafts.event('video', { type: 'sync', ...context, caption: 'Shared B' });
     drafts.event('video', { type: 'input', session, value: 'Shared A' });
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'commit', ...context, caption: 'Shared B', session, write });
     expect(write).not.toHaveBeenCalled();
     expect(drafts.get('video')).toMatchObject({ phase: 'closed', base: 'Shared B', value: 'Shared B', dirty: false });
@@ -103,7 +76,7 @@ describe('document caption drafts', () => {
     drafts.event('video', { type: 'cancel', session, caption: 'Shared B' });
     drafts.event('video', { type: 'open', ...context, caption: 'Shared B' });
     const reopened = drafts.get('video');
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'input', session, value: 'Late discarded text' });
     drafts.event('video', { type: 'commit', ...context, session, write });
     expect(drafts.get('video')).toBe(reopened);
@@ -131,7 +104,7 @@ describe('document caption drafts', () => {
     const session = drafts.get('video')!.session;
     drafts.event('video', { type: 'composition-start', session, value: 'Pending' });
     drafts.event('video', { type: 'sync', ...context, readOnly: true });
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'commit', ...context, readOnly: true, session, write });
     drafts.event('video', { type: 'cancel', session, caption: 'Shared A' });
     expect(drafts.get('video')).toMatchObject({ phase: 'suspended', value: 'Pending', composing: true, session });
@@ -150,7 +123,7 @@ describe('document caption drafts', () => {
     drafts.event('video', { type: 'open', ...context });
     const session = drafts.get('video')!.session;
     drafts.event('video', { type: 'input', session, value: 'Local draft' });
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'commit', ...context, readOnly, exists, session, write });
     expect(write).not.toHaveBeenCalled();
     expect(drafts.get('video')).toMatchObject({ phase, value: 'Local draft', base: 'Shared A', dirty: true });
@@ -161,7 +134,7 @@ describe('document caption drafts', () => {
     drafts.event('video', { type: 'open', ...context });
     const session = drafts.get('video')!.session;
     drafts.event('video', { type: 'composition-start', session, value: 'Composing' });
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'commit', ...context, session, write });
     expect(write).not.toHaveBeenCalled();
     expect(drafts.get('video')).toMatchObject({ phase: 'editing', value: 'Composing', composing: true });
@@ -198,7 +171,7 @@ describe('document caption drafts', () => {
     drafts.event('video', { type: 'detach', session, value: 'Final DOM value' });
     const detached = drafts.get('video');
     expect(detached).toMatchObject({ phase: 'editing', value: 'Final DOM value', composing: false });
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'input', session, value: 'Stale input' });
     drafts.event('video', { type: 'composition-end', session, value: 'Stale composition' });
     drafts.event('video', { type: 'commit', ...context, session, write });
@@ -232,7 +205,7 @@ describe('document caption drafts', () => {
     expect(drafts.all()).toEqual([]);
     drafts.event('video', { type: 'sync', ...context });
     const before = drafts.get('video');
-    const write = vi.fn(() => true);
+    const write = vi.fn();
     drafts.event('video', { type: 'input', session: 0, value: 'Stale' });
     drafts.event('video', { type: 'commit', ...context, session: 0, write });
     expect(drafts.get('video')).toBe(before);

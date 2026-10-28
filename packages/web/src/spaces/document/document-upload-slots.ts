@@ -598,13 +598,14 @@ export function removeUploadSlot(view: EditorView, slotId: string): void {
 /**
  * Inserts the block a slot became, where its placeholder is drawn.
  *
- * The source insert has its own undo capture. Its slot is consumed after the
- * published document contains that block, while selection follows the insert.
+ * One transaction, kept apart from the reader's typing on either side so that
+ * one undo takes exactly the block back. The selection is mapped through the
+ * insert and nothing else: the reader may be typing anywhere.
  * @param view - The editor view.
  * @param slotId - Which slot.
  * @param block - The block, as BlockNote takes it.
  * @param undo - The undo manager whose capture is closed around the insert.
- * @returns The published block id, or null when its slot or actual write is unavailable.
+ * @returns The new block's id, or null when the slot is no longer waiting.
  */
 export function insertSlotBlock(
   view: EditorView,
@@ -621,14 +622,13 @@ export function insertSlotBlock(
     const props = { ...block.props, [QUOTED]: quoted };
     const node = blockToNode({ ...block, props, id: blockId } as never, view.state.schema);
     undo?.stopCapturing();
-    try {
-      view.dispatch(view.state.tr.insert(at, node));
-      if (view.isDestroyed || bodyBindingOf(view.state)?.canWrite() === false || rowById(view.state.doc, blockId) === undefined) return null;
-      view.dispatch(view.state.tr.setMeta(documentUploadsKey, { kind: 'inserted', slotId, blockId }));
-      return blockId;
-    } finally {
-      undo?.stopCapturing();
-    }
+    view.dispatch(
+      view.state.tr
+        .insert(at, node)
+        .setMeta(documentUploadsKey, { kind: 'inserted', slotId, blockId }),
+    );
+    undo?.stopCapturing();
+    return blockId;
   }
   return null;
 }
