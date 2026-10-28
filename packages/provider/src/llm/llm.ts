@@ -174,14 +174,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf));
 
   /**
-   * The routes an understand call of a model uses: the understanding routes when one matches, else the call routes.
-   * @param modelId - Our model id.
-   * @returns The routes.
-   */
-  const understandRoutes = (modelId: string): readonly LlmRoute[] =>
-    config.llm.understand_routes.some((r) => modelId.startsWith(r.prefix)) ? config.llm.understand_routes : config.llm.routes;
-
-  /**
    * The OpenRouter-kind upstreams the decisions endpoint can use, the one it uses first.
    * @returns Their names.
    */
@@ -400,7 +392,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     costOf,
 
     async understand(request, chosen = DEFAULT_ROUTE) {
-      const route = routeOf(understandRoutes(request.model), request.model);
+      const route = routeOf(config.llm.understand_routes, request.model);
       const plan = planFor(route, request.model, chosen);
       const { signal, dispose } = boundSignal({ deadlineAt: request.deadlineAt, ...(request.signal ? { signal: request.signal } : {}) });
       const question = options.cleanText(request.question);
@@ -494,7 +486,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     availability(modelId, use) {
       const candidates = use === "judge"
         ? judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf))
-        : candidatesOn(routeOf(use === "call" ? config.llm.routes : understandRoutes(modelId), modelId));
+        : candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId));
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 

@@ -8,6 +8,15 @@ import { openRouterUnderstand } from "@provider/llm/understand/openrouter.js";
 const ADAPTERS: Readonly<Record<string, UnderstandAdapter>> = { google: googleUnderstand, openrouter: openRouterUnderstand };
 
 /**
+ * Whether provider reads media through upstreams of a kind.
+ * @param kind - The upstream's kind.
+ * @returns True when an understand adapter speaks to it.
+ */
+export function hasUnderstandAdapter(kind: string): boolean {
+  return ADAPTERS[kind] !== undefined;
+}
+
+/**
  * The understand adapter of an upstream kind.
  * @param kind - The upstream's kind.
  * @returns Its adapter.

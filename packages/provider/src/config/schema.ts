@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
+import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { isPricingRule } from "@provider/pricing/estimate.js";
 import type { Candidate } from "@provider/routing/route.js";
 
@@ -265,6 +266,14 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   };
   for (const prefix of Object.keys(raw.routing?.llm ?? {})) {
     if (!llm.routes.some((r) => r.prefix === prefix)) problems.push(`LLM route "${prefix}": the override names a prefix no route has`);
+  }
+  for (const route of llm.understand_routes) {
+    for (const { upstream } of route.upstreams) {
+      const kind = raw.upstreams[upstream]?.kind;
+      if (kind !== undefined && !hasUnderstandAdapter(kind)) {
+        problems.push(`LLM understand route "${route.prefix}": upstream "${upstream}" is of kind "${kind}", which no understand adapter speaks to`);
+      }
+    }
   }
   for (const prefix of Object.keys(raw.routing?.understand ?? {})) {
     if (!llm.understand_routes.some((r) => r.prefix === prefix)) problems.push(`LLM understand route "${prefix}": the override names a prefix no understand route has`);
