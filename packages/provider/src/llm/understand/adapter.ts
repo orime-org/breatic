@@ -85,8 +85,11 @@ export interface Billing {
 /** One upstream kind's understand API. */
 export interface UnderstandAdapter {
   /**
-   * Ask the question.
-   * @throws {NotSent | NoAnswer | Aborted | HttpStatus} As provider's HTTP module classifies the failure.
+   * Ask the question, once.
+   * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure to send.
+   * @throws {AnswerUnread} When the model answer's status arrived and its body could not be read.
+   * @throws {HttpStatus | UnreadableAnswer} When a preparatory upload step failed or answered something unusable.
+   * @throws {Error} For an item whose type the upstream cannot take.
    */
   ask(call: UnderstandCall): Promise<Answered>;
   /** Read a 2xx answer. */
@@ -147,7 +150,7 @@ export function base64Of(bytes: Uint8Array): string {
 }
 
 /**
- * An empty usage to fill.
+ * A call's usage filled in the AI SDK's buckets.
  * @param input - Prompt tokens.
  * @param cached - Prompt tokens read from cache.
  * @param output - Output tokens, reasoning included.

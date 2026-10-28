@@ -439,13 +439,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             }
             lastBody = answered.text;
             if (answered.status < 200 || answered.status >= 300) throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, 500), answered.headers);
-            // Every 2xx answer is costed here, whether it answered or carried an error.
-            const { usage, providerMetadata, generationId } = adapter.billing(answered.body);
-            const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
-            const cost = costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } });
             const reading = adapter.read(answered.body);
             // Billed though unusable, and costed like a refused 2xx: never a price-table guess.
             if ("unreadable" in reading) throw new UnreadableAnswer(reading.unreadable, answerCost(c.upstream, answered.status, answered.text));
+            // A readable 2xx is costed here, whether it answered or carried an error.
+            const { usage, providerMetadata, generationId } = adapter.billing(answered.body);
+            const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
+            const cost = costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } });
             if ("error" in reading) {
               billed.push(cost);
               throw new InBandError(reading.error);
