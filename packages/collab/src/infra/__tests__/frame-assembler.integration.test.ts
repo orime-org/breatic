@@ -534,6 +534,27 @@ describe("frame reassembly through real upgrades", () => {
     expect(st.asm.inUseBytes()).toBe(0);
   });
 
+  it("I12 the uploader hears back after the declaration and every chunk but the last", async () => {
+    // A busy uplink holds back the browser's pongs and awareness, so these
+    // acknowledgements are all it receives while the message is in flight.
+    const st = await stack();
+    const a = await client(st, await sess(st, "ua-i12"));
+    await auth(st, a, "i12");
+    let acks = 0;
+    a.ws.on("message", (data: Buffer) => { if (data.byteLength === 1 && data[0] === 0) acks++; });
+    const frame = upd("i12", "y".repeat(300_000), SYNC.update);
+    const frames: Array<string | Uint8Array> = [];
+    sendInChunks(frame, (f) => frames.push(f));
+    expect(frames).toHaveLength(4);
+    for (const [i, f] of frames.entries()) {
+      a.ws.send(f);
+      if (i < frames.length - 1) await waitFor(() => acks === i + 1, `ack ${i + 1}`);
+    }
+    await waitFor(() => (st.server.hocuspocus.documents.get("i12")?.getText("t").length ?? 0) === 300_000, "message applied");
+    await settle();
+    expect(acks).toBe(3);
+  });
+
   it("I10 a stalled message times out with 1008 over a real connection", async () => {
     const st = await stack({ idleTimeoutMs: 1_000 });
     const a = await client(st, await sess(st, "ua-i10"));

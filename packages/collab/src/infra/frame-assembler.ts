@@ -11,14 +11,16 @@
  * per-connection cap, a share per user of the same size, and a process
  * budget, all reserved when the declaration is accepted; a stall between two
  * chunks is bounded by an idle timer. Every refusal closes the connection and
- * leaves one log line.
+ * leaves one log line. The declaration and every chunk but the last are
+ * acknowledged, the sender's only sign of life from us while its uplink is
+ * full.
  *
  * ws keeps delivering frames after we close a connection until the close
  * handshake ends, and the rest of a refused message is already on its way,
  * so a closed connection drops everything until crossws reports the close.
  */
 
-import { COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema } from "@breatic/shared";
+import { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema } from "@breatic/shared";
 import { createLogger } from "@breatic/core";
 
 const logger = createLogger("frame-assembler");
@@ -42,6 +44,7 @@ export interface FramePeer {
   readonly remoteAddress?: string;
   _hocuspocus?: { socketId?: string };
   close(code?: number, reason?: string): void;
+  send(data: Uint8Array): void;
 }
 
 /** What the reassembler reads from a crossws message; text frames carry a string. */
@@ -197,6 +200,7 @@ export function createFrameAssembler(options: FrameAssemblerOptions): FrameAssem
     const state: Assembling = { kind: "assembling", key, bytes, received: 0, chunks: [], timer: undefined };
     states.set(peer, state);
     arm(peer, state);
+    peer.send(COLLAB_CHUNK_ACK);
   }
 
   /**
@@ -228,6 +232,7 @@ export function createFrameAssembler(options: FrameAssemblerOptions): FrameAssem
     state.received = after;
     if (after < state.bytes) {
       arm(peer, state);
+      peer.send(COLLAB_CHUNK_ACK);
       return undefined;
     }
     const whole = Buffer.concat(state.chunks, after);

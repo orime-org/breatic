@@ -42,6 +42,7 @@ interface FakePeer {
   _hocuspocus?: { socketId: string };
   _internal: { nodeReq: object };
   close: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
 }
 
 /** A crossws message as the reassembler sees it. */
@@ -71,6 +72,7 @@ function peer(socketId = true): FakePeer {
     ...(socketId ? { _hocuspocus: { socketId: `s-${n}` } } : {}),
     _internal: { nodeReq: {} },
     close: vi.fn(),
+    send: vi.fn(),
   };
 }
 
@@ -361,6 +363,33 @@ describe("frame assembler — limits", () => {
     expect(only("warn", "collab_reassembly_budget_exhausted").ctx).toMatchObject({
       ...ID(p2, "u"), scope: "user", bytes: 4_352_385, userInUseBytes: 10_000_000, inUseBytes: 62_756_480, budgetBytes: B,
     });
+  });
+
+  it("A35 acknowledges the declaration and every chunk short of the last with one [0] frame", () => {
+    const r = asm();
+    const p = r.own("u");
+    const m = msg(2 * F + 1, 5);
+    const fs = frames(m);
+    expect(fs).toHaveLength(4);
+    const sent: number[] = [];
+    fs.forEach((f, i) => {
+      r.rx(p, f);
+      sent.push(p.send.mock.calls.length);
+      if (i < 3) expect(p.send).toHaveBeenLastCalledWith(new Uint8Array([0]));
+    });
+    expect(sent).toEqual([1, 2, 3, 3]);
+  });
+
+  it("A36 acknowledges nothing for an idle frame or a refused one", () => {
+    const r = asm();
+    const p = r.own("u");
+    r.rx(p, bin(msg(2_048)));
+    r.rx(p, decl(M + 1));
+    const q = r.own("v");
+    r.rx(q, decl(F + 1));
+    r.rx(q, bin(msg(F + 2)));
+    expect(p.send).not.toHaveBeenCalled();
+    expect(q.send).toHaveBeenCalledTimes(1);
   });
 
   it("A34 a user keeps the rest of their share when one of two messages completes", () => {

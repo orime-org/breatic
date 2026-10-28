@@ -988,7 +988,7 @@ describe("createCollabServer — frame reassembly wiring (inner#1585)", () => {
    */
   function fakePeer(nodeReq: object = {}): { close: ReturnType<typeof vi.fn> } {
     const n = ++nextPeer;
-    return { id: `w${n}`, remoteAddress: `10.1.0.${n}`, _hocuspocus: { socketId: `ws-${n}` }, _internal: { nodeReq }, close: vi.fn() } as never;
+    return { id: `w${n}`, remoteAddress: `10.1.0.${n}`, _hocuspocus: { socketId: `ws-${n}` }, _internal: { nodeReq }, close: vi.fn(), send: vi.fn() } as never;
   }
 
   /**

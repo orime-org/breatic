@@ -8,14 +8,25 @@
  * binary message goes out on the same socket as a text declaration
  * `{"type":"chunked","bytes":N}` followed by binary chunks of exactly the cap,
  * the last one shorter, all written in one synchronous call so nothing else
- * can land between them. collab reassembles them into the original bytes.
- * Both ends read this module: the cap and the declaration are the contract.
+ * can land between them. collab reassembles them into the original bytes and
+ * answers the declaration and every chunk but the last with
+ * {@link COLLAB_CHUNK_ACK}. Both ends read this module: the cap, the
+ * declaration and the acknowledgement are the contract.
  */
 
 import { z } from "zod";
 
 /** The largest single WebSocket frame collab accepts, in bytes. */
 export const COLLAB_FRAME_MAX_BYTES = 128 * 1024;
+
+/**
+ * What collab sends back for an accepted declaration or chunk. While the
+ * chunks fill the browser's uplink, its pongs and awareness renewals wait
+ * behind them, so these are the only messages it receives; the provider counts
+ * any message as a sign of life, and this one names no document, so no
+ * document provider receives it.
+ */
+export const COLLAB_CHUNK_ACK = Uint8Array.of(0);
 
 /** The declaration that precedes the chunks of one message. */
 export const collabChunkHeaderSchema = z.object({
