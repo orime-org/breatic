@@ -6,12 +6,16 @@ import {
   candidatesOf,
   parseProviderConfig,
   type CatalogShape,
+  type ProviderConfig,
   type MediaBinding,
   type ProviderConfigInput,
 } from "@provider/config/schema.js";
-import { lookupCost, type Cost, type CostLookup } from "@provider/cost.js";
+import { z } from "zod";
+import { numberLeaf, type Cost, type CostLookup, type TokenBuckets } from "@provider/cost.js";
+import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
+import { billed } from "@provider/media/wavespeed/adapter.js";
 import {
   estimateCost,
   type Availability,
@@ -107,4 +111,67 @@ function pricingOf(binding: MediaBinding): UpstreamPricing {
     })),
     ...(binding.reused_by === undefined ? {} : { reused_by: binding.reused_by }),
   };
+}
+
+/** OpenRouter's generation answer, as far as it is read. */
+const generationSchema = z.looseObject({
+  data: z.looseObject({
+    total_cost: numberLeaf,
+    native_tokens_prompt: numberLeaf,
+    native_tokens_cached: numberLeaf,
+    native_tokens_completion: numberLeaf,
+    native_tokens_reasoning: numberLeaf,
+  }),
+});
+
+/** The largest generation answer read. */
+const MAX_LOOKUP_BYTES = 1024 * 1024;
+
+/**
+ * Ask the upstream again for a cost that was pending (design 3.6): OpenRouter
+ * by generation id, WaveSpeed by its billing search. Until the last attempt an
+ * unanswered lookup stays pending; on it, it is missing.
+ * @param config - The validated configuration.
+ * @param options - The caller's options.
+ * @param lookup - The handle.
+ * @param lastAttempt - Whether no later lookup follows.
+ * @returns The cost.
+ */
+async function lookupCost(config: ProviderConfig, options: ProviderOptions, lookup: CostLookup, lastAttempt: boolean): Promise<Cost> {
+  /**
+   * The answer when the upstream did not say: pending, or missing on the last attempt.
+   * @param reason - Why.
+   * @returns The cost.
+   */
+  const unanswered = (reason: string): Cost => (lastAttempt ? { state: "missing", reason } : { state: "pending", lookup });
+  const decl = config.upstreams[lookup.upstream];
+  if (decl === undefined) return { state: "missing", reason: `unknown upstream ${lookup.upstream}` };
+  const key = options.keyOf(decl.key_env) ?? "";
+  if (decl.kind === "wavespeed" && typeof lookup.predictionId === "string") {
+    return (await billed({ name: lookup.upstream, decl, key }, lookup.predictionId, {}, lastAttempt)).cost;
+  }
+  if (decl.kind !== "openrouter" || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
+  try {
+    const body = await fetchJson(
+      { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
+      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS },
+    );
+    const parsed = generationSchema.safeParse(body);
+    if (!parsed.success) return unanswered("the generation answer is not shaped as a generation");
+    const data = parsed.data.data;
+    const tokens: TokenBuckets = {
+      input: data.native_tokens_prompt ?? 0,
+      cachedInput: data.native_tokens_cached ?? 0,
+      output: data.native_tokens_completion ?? 0,
+      reasoning: data.native_tokens_reasoning ?? 0,
+    };
+    const cost = data.total_cost;
+    if (cost === undefined) {
+      const reason = "the generation carries no cost yet";
+      return lastAttempt ? { state: "missing", reason, tokens } : { state: "pending", lookup };
+    }
+    return { state: "known", usd: cost, tokens, source: "billing" };
+  } catch (error) {
+    return unanswered(error instanceof Error ? error.message : String(error));
+  }
 }

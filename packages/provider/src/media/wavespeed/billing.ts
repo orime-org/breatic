@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import { usdOf } from "@provider/cost.js";
+import { numberLeaf } from "@provider/cost.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 
 /** A billing search answer, as far as it is read. */
 const billingSchema = z.looseObject({
   data: z.looseObject({
-    items: z.array(z.looseObject({ billing_type: z.string().optional(), order: z.looseObject({ price: z.unknown().optional() }).nullish() })),
+    items: z.array(z.looseObject({ billing_type: z.string().optional(), order: z.looseObject({ price: numberLeaf }).nullish() })),
   }),
 });
 
@@ -36,7 +36,7 @@ export function readBilling(body: unknown): BillingRead {
   for (const line of lines) {
     const type = sign.safeParse(line.billing_type);
     if (!type.success) continue;
-    const price = usdOf(line.order?.price);
+    const price = line.order?.price;
     if (price === undefined) {
       warnings.push({ code: "billing_line_without_price", detail: { billingType: line.billing_type } });
       continue;

@@ -864,7 +864,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         }
         const reasons: UnavailableReason[] = [...(ticket.reasons ?? []), failedReason(ticket.upstream, failure)];
         const [to, ...rest] = ticket.next;
-        if (ticket.accepted || ticket.route.mode === "upstream" || to === undefined) {
+        if (ticket.accepted || to === undefined) {
           // The upstream lacking the model is a lasting answer: retrying the same ticket would get it again.
           if (failure.kind === "model_not_found") return failed(ticket, new NoUpstreamAvailable(ticket.model, reasons));
           throw new SendNotAccepted(ticket.upstream, error);

@@ -10,7 +10,6 @@
 
 import type { FinishReason } from "ai";
 import { z } from "zod";
-import { count } from "@provider/cost.js";
 import { deliver, SIDE_REQUEST_MS, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
   AnswerUnread,
@@ -250,9 +249,9 @@ export const googleUnderstand: UnderstandAdapter = {
   billing(body) {
     const usage = usageSchema.safeParse((body as { usageMetadata?: unknown } | null | undefined)?.usageMetadata);
     if (!usage.success) return { usage: usageOf(0, 0, 0, 0), providerMetadata: {}, missing: "Google's answer carried no usage it could read" };
-    const thoughts = count(usage.data.thoughtsTokenCount);
+    const thoughts = usage.data.thoughtsTokenCount ?? 0;
     return {
-      usage: usageOf(count(usage.data.promptTokenCount), count(usage.data.cachedContentTokenCount), count(usage.data.candidatesTokenCount) + thoughts, thoughts),
+      usage: usageOf(usage.data.promptTokenCount ?? 0, usage.data.cachedContentTokenCount ?? 0, (usage.data.candidatesTokenCount ?? 0) + thoughts, thoughts),
       providerMetadata: {},
     };
   },

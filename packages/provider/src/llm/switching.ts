@@ -10,7 +10,8 @@
  */
 
 import { APICallError } from "ai";
-import { usdOf, type Cost } from "@provider/cost.js";
+import { z } from "zod";
+import { numberLeaf, type Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
@@ -140,13 +141,19 @@ export function isGenerationId(id: unknown): id is string {
   return typeof id === "string" && id.startsWith("gen-");
 }
 
+/** Provider metadata as far as OpenRouter's reported cost is read; a level it cannot read reads as absent. */
+const reportedSchema = z.looseObject({
+  openrouter: z.looseObject({ usage: z.looseObject({ cost: numberLeaf }).optional().catch(undefined) }).optional().catch(undefined),
+});
+
 /**
  * The cost OpenRouter put on a response.
  * @param metadata - The provider metadata.
  * @returns The cost in USD, or undefined.
  */
 export function reportedCost(metadata: unknown): number | undefined {
-  return usdOf((metadata as { openrouter?: { usage?: { cost?: unknown } } } | undefined)?.openrouter?.usage?.cost);
+  const parsed = reportedSchema.safeParse(metadata);
+  return parsed.success ? parsed.data.openrouter?.usage?.cost : undefined;
 }
 
 /**
