@@ -29,39 +29,45 @@ import {
 /** Gemini's finish reasons that mean the answer was blocked. */
 const BLOCKED = new Set(["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"]);
 
-/** An uploaded file, as the Files API describes it. */
-interface GeminiFile {
-  name?: unknown;
-  uri?: unknown;
-  state?: unknown;
-}
+/** An uploaded file, as the Files API describes it: its name is `files/{id}`, which the file's address is built from. */
+const fileSchema = z.looseObject({
+  name: z.string().regex(/^files\/[^/?#]+$/),
+  state: z.string().optional(),
+  uri: z.string().optional(),
+});
+
+/** An uploaded file, as read. */
+type GeminiFile = z.infer<typeof fileSchema>;
 
 /**
- * The shape of the answer's fields that are read; other fields are let through. A blocked
- * candidate comes with no content, and so no parts.
+ * The shape of the answer's fields that are read, their leaves typed; other fields are let
+ * through. A blocked candidate comes with no content, and so no parts; a null block reason is no block.
  */
 const generatedSchema = z.looseObject({
   candidates: z.array(z.looseObject({
-    content: z.looseObject({ parts: z.array(z.looseObject({ text: z.unknown().optional(), thought: z.unknown().optional() })).optional() }).nullish(),
-    finishReason: z.unknown().optional(),
+    content: z.looseObject({ parts: z.array(z.looseObject({ text: z.string().optional(), thought: z.boolean().optional() })).optional() }).nullish(),
+    finishReason: z.string().optional(),
   })).optional(),
-  promptFeedback: z.unknown().optional(),
+  promptFeedback: z.looseObject({ blockReason: z.string().nullish() }).nullish(),
 });
 
-/** The answer's usage, as far as it is read. */
-interface Generated {
-  usageMetadata?: { promptTokenCount?: unknown; cachedContentTokenCount?: unknown; candidatesTokenCount?: unknown; thoughtsTokenCount?: unknown };
-}
+/** The answer's usage; an answer without one it can read is costed as missing. */
+const usageSchema = z.looseObject({
+  promptTokenCount: z.number().optional(),
+  cachedContentTokenCount: z.number().optional(),
+  candidatesTokenCount: z.number().optional(),
+  thoughtsTokenCount: z.number().optional(),
+});
 
 /**
  * Gemini's finish reason in the AI SDK's words.
  * @param reason - Gemini's reason.
  * @returns The unified word.
  */
-function finishOf(reason: unknown): FinishReason {
+function finishOf(reason: string | undefined): FinishReason {
   if (reason === "STOP") return "stop";
   if (reason === "MAX_TOKENS") return "length";
-  return typeof reason === "string" && BLOCKED.has(reason) ? "content-filter" : "other";
+  return reason !== undefined && BLOCKED.has(reason) ? "content-filter" : "other";
 }
 
 /**
@@ -74,13 +80,13 @@ function headers(call: UnderstandCall): Record<string, string> {
 }
 
 /**
- * One Files API step, sent once like the model request: a failing status throws HttpStatus
+ * One Files API step, sent once like the model request: a failing status throws StepRefused
  * with its headers, so the route reads its Retry-After; the caller checks what the answer
  * promised.
  * @param call - The call, for its bounds.
  * @param request - The step's request.
  * @returns The answer, 2xx.
- * @throws {HttpStatus} When the step answers a failing status.
+ * @throws {StepRefused} When the step answers a failing status.
  * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies a failure; a step is not billed, so a lost body is its read's own failure.
  */
 async function step(call: UnderstandCall, request: OutgoingRequest): Promise<Answered> {
@@ -90,7 +96,7 @@ async function step(call: UnderstandCall, request: OutgoingRequest): Promise<Ans
   } catch (error) {
     throw error instanceof AnswerUnread ? error.cause : error;
   }
-  assertSucceeded(answered);
+  assertSucceeded(answered, true);
   return answered;
 }
 
@@ -99,13 +105,26 @@ async function step(call: UnderstandCall, request: OutgoingRequest): Promise<Ans
  * @param answered - The step's answer.
  * @param wrapped - Whether the file sits under `file`.
  * @returns The file.
- * @throws {UnreadableAnswer} When the answer is not a JSON object.
+ * @throws {UnreadableAnswer} When the answer names no file in the `files/{id}` form.
  */
 function fileOf(answered: Answered, wrapped: boolean): GeminiFile {
   const body = answered.body;
-  if (typeof body !== "object" || body === null) throw new UnreadableAnswer(`Google's ${answered.url} answered something that is not JSON`);
-  const file = wrapped ? (body as { file?: unknown }).file : body;
-  return typeof file === "object" && file !== null ? file : {};
+  const file = wrapped ? (typeof body === "object" && body !== null ? (body as { file?: unknown }).file : undefined) : body;
+  const parsed = fileSchema.safeParse(file);
+  if (!parsed.success) throw new UnreadableAnswer(`Google's Files API answered no file it can read: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  return parsed.data;
+}
+
+/**
+ * The upload session an upload start names: an http or https address.
+ * @param session - The `x-goog-upload-url` header.
+ * @returns The address.
+ * @throws {UnreadableAnswer} When the header is missing or not such an address.
+ */
+function sessionOf(session: string | null): string {
+  const usable = session !== null && URL.canParse(session) && ["http:", "https:"].includes(new URL(session).protocol);
+  if (!usable) throw new UnreadableAnswer("Google's upload start named no session address");
+  return session;
 }
 
 /**
@@ -116,8 +135,8 @@ function fileOf(answered: Answered, wrapped: boolean): GeminiFile {
  * @param index - Its place, for its display name.
  * @param files - The session's files on this upstream, the new one appended.
  * @returns The registered file and its state as the upload answered it.
- * @throws {HttpStatus} When an upload step answers a failing status.
- * @throws {UnreadableAnswer} When a step answers no JSON, the start names no session or the upload no file.
+ * @throws {StepRefused} When an upload step answers a failing status.
+ * @throws {UnreadableAnswer} When the start names no session address or the upload no file.
  * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies a failure.
  */
 async function upload(call: UnderstandCall, media: UnderstandCall["media"][number], index: number, files: UploadedFile[]): Promise<{ entry: UploadedFile; file: GeminiFile }> {
@@ -136,15 +155,12 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
     },
     body: JSON.stringify({ file: { display_name: `item-${index + 1}` } }),
   });
-  const session = started.headers.get("x-goog-upload-url");
-  if (session === null) throw new UnreadableAnswer("Google's upload start named no session");
   const file = fileOf(await step(call, {
-    url: session,
+    url: sessionOf(started.headers.get("x-goog-upload-url")),
     method: "POST",
     headers: { "x-goog-api-key": call.key, "x-goog-upload-command": "upload, finalize", "x-goog-upload-offset": "0", "content-type": type },
     body: media.bytes,
   }), true);
-  if (typeof file.name !== "string") throw new UnreadableAnswer("Google's upload answered no file");
   const entry: UploadedFile = { url: `${call.decl.base_url}/${file.name}` };
   files.push(entry);
   // Deleted once the whole call ends; each delete is sent once in its own window, apart from the
@@ -163,7 +179,7 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
  * @param call - The call, for its key, bounds and poll interval.
  * @param entry - The registered file.
  * @param known - Its state as the upload answered it, when this attempt uploaded it.
- * @throws {HttpStatus} When a poll answers a failing status.
+ * @throws {StepRefused} When a poll answers a failing status.
  * @throws {UnreadableAnswer} When a poll answers no JSON, or the file ends FAILED or has no state or uri.
  * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies a failure.
  */
@@ -171,17 +187,17 @@ async function activate(call: UnderstandCall, entry: UploadedFile, known?: Gemin
   /**
    * The file's state, asked once.
    * @returns The file.
-   * @throws {HttpStatus | UnreadableAnswer | NotSent | NoAnswer | Aborted | BodyTooLarge} As the step and its reading fail.
+   * @throws {StepRefused | UnreadableAnswer | NotSent | NoAnswer | Aborted | BodyTooLarge} As the step and its reading fail.
    */
   const poll = async (): Promise<GeminiFile> => fileOf(await step(call, { url: entry.url, method: "GET", headers: { "x-goog-api-key": call.key } }), false);
   let file = known ?? await poll();
   while (file.state !== "ACTIVE") {
     if (file.state === "FAILED") throw new UnreadableAnswer(`Google could not process ${entry.url}`);
-    if (typeof file.state !== "string") throw new UnreadableAnswer(`Google's ${entry.url} has no state`);
+    if (file.state === undefined) throw new UnreadableAnswer(`Google's ${entry.url} has no state`);
     await wait(call.filePollMs, { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal }, entry.url);
     file = await poll();
   }
-  if (typeof file.uri !== "string") throw new UnreadableAnswer(`Google's ${entry.url} has no uri`);
+  if (file.uri === undefined) throw new UnreadableAnswer(`Google's ${entry.url} has no uri`);
   entry.uri = file.uri;
 }
 
@@ -221,21 +237,22 @@ export const googleUnderstand: UnderstandAdapter = {
     if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${generated.error.issues[0]?.message ?? "unknown"}` };
     const candidate = generated.data.candidates?.[0];
     if (candidate === undefined) {
-      const blockReason = (generated.data.promptFeedback as { blockReason?: unknown } | null | undefined)?.blockReason;
-      return { text: "", finishReason: blockReason === undefined ? "other" : "content-filter" };
+      const blockReason = generated.data.promptFeedback?.blockReason;
+      return { text: "", finishReason: blockReason === undefined || blockReason === null ? "other" : "content-filter" };
     }
     const text = (candidate.content?.parts ?? [])
-      .filter((p) => p.thought !== true && typeof p.text === "string")
-      .map((p) => p.text as string)
+      .filter((p) => p.thought !== true)
+      .map((p) => p.text ?? "")
       .join("");
     return { text, finishReason: finishOf(candidate.finishReason) };
   },
 
   billing(body) {
-    const usage = ((body ?? {}) as Generated).usageMetadata;
-    const thoughts = count(usage?.thoughtsTokenCount);
+    const usage = usageSchema.safeParse((body as { usageMetadata?: unknown } | null | undefined)?.usageMetadata);
+    if (!usage.success) return { usage: usageOf(0, 0, 0, 0), providerMetadata: {}, missing: "Google's answer carried no usage it could read" };
+    const thoughts = count(usage.data.thoughtsTokenCount);
     return {
-      usage: usageOf(count(usage?.promptTokenCount), count(usage?.cachedContentTokenCount), count(usage?.candidatesTokenCount) + thoughts, thoughts),
+      usage: usageOf(count(usage.data.promptTokenCount), count(usage.data.cachedContentTokenCount), count(usage.data.candidatesTokenCount) + thoughts, thoughts),
       providerMetadata: {},
     };
   },

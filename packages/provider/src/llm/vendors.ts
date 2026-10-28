@@ -152,7 +152,7 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
     sdkName: "anthropic",
     inBandStatus: (error) => {
       const type = (error as { type?: unknown } | null)?.type;
-      return typeof type === "string" ? ANTHROPIC_STATUS[type] : undefined;
+      return typeof type === "string" && Object.hasOwn(ANTHROPIC_STATUS, type) ? ANTHROPIC_STATUS[type] : undefined;
     },
     build: (decl, apiKey) => createAnthropic({ baseURL: decl.base_url, apiKey, fetch: aiSdkFetch }),
     // Ids are written the way OpenRouter names Claude (`claude-opus-5.5`); Anthropic serves `claude-opus-5-5`.

@@ -68,7 +68,7 @@ function settledType(headers: Headers, url: string): string {
   const declared = headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (declared !== undefined && declared !== "" && declared !== "application/octet-stream") return declared;
   const extension = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
-  return TYPE_BY_EXTENSION[extension] ?? "application/octet-stream";
+  return Object.hasOwn(TYPE_BY_EXTENSION, extension) ? TYPE_BY_EXTENSION[extension]! : "application/octet-stream";
 }
 
 /**

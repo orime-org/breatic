@@ -1,10 +1,25 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+import { z } from "zod";
 import type { ProviderConfig } from "@provider/config/schema.js";
 import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import { billed } from "@provider/media/wavespeed/adapter.js";
 import type { ProviderOptions } from "@provider/provider.js";
+
+/** A number leaf of an answer: a value that is not a finite number reads as absent. */
+const numberLeaf = z.number().optional().catch(undefined);
+
+/** OpenRouter's generation answer, as far as it is read. */
+const generationSchema = z.looseObject({
+  data: z.looseObject({
+    total_cost: numberLeaf,
+    native_tokens_prompt: numberLeaf,
+    native_tokens_cached: numberLeaf,
+    native_tokens_completion: numberLeaf,
+    native_tokens_reasoning: numberLeaf,
+  }),
+});
 
 /** The largest generation answer read. */
 const MAX_LOOKUP_BYTES = 1024 * 1024;
@@ -76,7 +91,9 @@ export async function lookupCost(config: ProviderConfig, options: ProviderOption
       { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
       { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS },
     );
-    const data = (body as { data?: Record<string, unknown> } | null)?.data ?? {};
+    const parsed = generationSchema.safeParse(body);
+    if (!parsed.success) return unanswered("the generation answer is not shaped as a generation");
+    const data = parsed.data.data;
     const tokens: TokenBuckets = {
       input: count(data.native_tokens_prompt),
       cachedInput: count(data.native_tokens_cached),

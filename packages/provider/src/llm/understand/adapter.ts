@@ -87,6 +87,26 @@ export interface Billing {
   providerMetadata: ProviderMetadata;
   /** The id to look the cost up by later, for an upstream that has one. */
   generationId?: unknown;
+  /** Why the answer cannot be costed from what it carried, when it cannot: its cost is then missing. */
+  missing?: string;
+}
+
+/**
+ * A preparatory step's refusal (a Files API upload or poll): a refusal of that step, never a
+ * model answer, so no vendor's model-not-found or balance reading applies to it.
+ */
+export class StepRefused extends HttpStatus {
+  /**
+   * Record what the error carries.
+   * @param url - Where it went.
+   * @param status - The response status.
+   * @param body - The whole body.
+   * @param headers - The response headers.
+   */
+  constructor(url: string, status: number, body: string, headers?: Headers) {
+    super(url, status, body, headers);
+    this.name = "StepRefused";
+  }
 }
 
 /** One upstream kind's understand API. */
@@ -96,7 +116,7 @@ export interface UnderstandAdapter {
    * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure to send.
    * @throws {BodyTooLarge} When a preparatory upload step's answer was larger than provider reads.
    * @throws {AnswerUnread} When the model answer's status arrived and its body could not be read.
-   * @throws {HttpStatus | UnreadableAnswer} When a preparatory upload step failed or answered something unusable.
+   * @throws {StepRefused | UnreadableAnswer} When a preparatory upload step failed or answered something unusable.
    * @throws {Error} For an item whose type the upstream cannot take.
    */
   ask(call: UnderstandCall): Promise<Answered>;
@@ -152,12 +172,14 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
  * Throw an answer whose status is not 2xx as HttpStatus, its headers kept for the route's
  * Retry-After and its whole text for the upstream's words.
  * @param answered - The answer.
- * @throws {HttpStatus} When its status is not 2xx.
+ * @param preparatory - Whether it answered a preparatory step rather than the model.
+ * @throws {HttpStatus} When a model answer's status is not 2xx.
+ * @throws {StepRefused} When a preparatory step's status is not 2xx.
  */
-export function assertSucceeded(answered: Answered): void {
-  if (answered.status < 200 || answered.status >= 300) {
-    throw new HttpStatus(answered.url, answered.status, answered.text, answered.headers);
-  }
+export function assertSucceeded(answered: Answered, preparatory = false): void {
+  if (answered.status >= 200 && answered.status < 300) return;
+  if (preparatory) throw new StepRefused(answered.url, answered.status, answered.text, answered.headers);
+  throw new HttpStatus(answered.url, answered.status, answered.text, answered.headers);
 }
 
 /** The type an upstream is told for a media type it knows by another name; shared's VIDEO_FORMATS. */
@@ -169,7 +191,7 @@ const WIRE_TYPES: Readonly<Record<string, string>> = { "video/quicktime": "video
  * @returns The upstream's name for it.
  */
 export function wireTypeOf(contentType: string): string {
-  return WIRE_TYPES[contentType] ?? contentType;
+  return Object.hasOwn(WIRE_TYPES, contentType) ? WIRE_TYPES[contentType]! : contentType;
 }
 
 /**
