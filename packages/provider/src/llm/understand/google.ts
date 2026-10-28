@@ -9,6 +9,7 @@
  */
 
 import type { FinishReason } from "ai";
+import { z } from "zod";
 import { deliver, SIDE_REQUEST_MS, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
   AnswerUnread,
@@ -35,22 +36,20 @@ interface GeminiFile {
   state?: unknown;
 }
 
-/** One part of a candidate's content. */
-interface Part {
-  text?: unknown;
-  thought?: unknown;
-}
+/**
+ * The shape of the answer's fields that are read; other fields are let through. A blocked
+ * candidate comes with no content, and so no parts.
+ */
+const generatedSchema = z.looseObject({
+  candidates: z.array(z.looseObject({
+    content: z.looseObject({ parts: z.array(z.looseObject({ text: z.unknown().optional(), thought: z.unknown().optional() })).optional() }).nullish(),
+    finishReason: z.unknown().optional(),
+  })).optional(),
+  promptFeedback: z.unknown().optional(),
+});
 
-/** One candidate, as far as it is read. */
-interface Candidate {
-  content?: unknown;
-  finishReason?: unknown;
-}
-
-/** The answer's body, as far as it is read. */
+/** The answer's usage, as far as it is read. */
 interface Generated {
-  candidates?: unknown[];
-  promptFeedback?: { blockReason?: unknown };
   usageMetadata?: { promptTokenCount?: unknown; cachedContentTokenCount?: unknown; candidatesTokenCount?: unknown; thoughtsTokenCount?: unknown };
 }
 
@@ -218,22 +217,18 @@ export const googleUnderstand: UnderstandAdapter = {
   },
 
   read(body) {
-    if (typeof body !== "object" || body === null) return { unreadable: "Google's answer is not JSON" };
-    const generated = body as Generated;
-    const candidate: unknown = generated.candidates?.[0];
-    if (candidate === undefined) return { text: "", finishReason: generated.promptFeedback?.blockReason === undefined ? "other" : "content-filter" };
-    if (typeof candidate !== "object" || candidate === null) return { unreadable: "Google's answer has a candidate that is not an object" };
-    const { content, finishReason } = candidate as Candidate;
-    // A blocked candidate comes with no content, and so no parts.
-    if (content !== undefined && content !== null && typeof content !== "object") return { unreadable: "Google's answer has content that is not an object" };
-    const parts: unknown = (content as { parts?: unknown } | null | undefined)?.parts ?? [];
-    if (!Array.isArray(parts)) return { unreadable: "Google's answer has parts that are not a list" };
-    if (parts.some((p) => typeof p !== "object" || p === null)) return { unreadable: "Google's answer has a part that is not an object" };
-    const text = (parts as Part[])
+    const generated = generatedSchema.safeParse(body);
+    if (!generated.success) return { unreadable: `Google's answer has an unexpected shape: ${generated.error.issues[0]?.message ?? "unknown"}` };
+    const candidate = generated.data.candidates?.[0];
+    if (candidate === undefined) {
+      const blockReason = (generated.data.promptFeedback as { blockReason?: unknown } | null | undefined)?.blockReason;
+      return { text: "", finishReason: blockReason === undefined ? "other" : "content-filter" };
+    }
+    const text = (candidate.content?.parts ?? [])
       .filter((p) => p.thought !== true && typeof p.text === "string")
       .map((p) => p.text as string)
       .join("");
-    return { text, finishReason: finishOf(finishReason) };
+    return { text, finishReason: finishOf(candidate.finishReason) };
   },
 
   billing(body) {
