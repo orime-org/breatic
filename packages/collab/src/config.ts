@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { COLLAB_FRAME_MAX_BYTES, MAX_TIMER_MS } from "@breatic/shared";
+import { COLLAB_FRAME_MAX_BYTES, COLLAB_PING_INTERVAL_MS, MAX_TIMER_MS } from "@breatic/shared";
 
 /**
  * Room above the document cap for a message's own header (document name,
@@ -46,7 +46,7 @@ const collabConfigSchema = z.object({
   // an integration test
   // measures the real interval. Both liveness expiries are derived from it —
   // see `getConnectionTimings`.
-  connection_ping_interval_ms: z.number().int().positive().default(30_000),
+  connection_ping_interval_ms: z.number().int().positive().default(COLLAB_PING_INTERVAL_MS),
 
   // How often every connection's session is read again (inner#1548). Ended
   // sessions are announced and closed at once; this round catches what the

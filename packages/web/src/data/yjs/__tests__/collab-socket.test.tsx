@@ -137,6 +137,16 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     expect(wsInstances[0]!.config.url).toBe(`ws://${window.location.host}/ws`);
   });
 
+  it('WU10 waits two ping periods of server silence before dropping the shared socket', async () => {
+    // While a long chunked upload fills the uplink, the browser's own awareness
+    // renewals queue behind the chunks, so the only server message left is the
+    // presence write each pong triggers, once per ping period (inner#1585).
+    const { COLLAB_PING_INTERVAL_MS } = await import('@breatic/shared');
+    acquireDocProvider(META, getDoc(META), '/ws');
+    expect(wsInstances[0]!.config.messageReconnectTimeout).toBe(2 * COLLAB_PING_INTERVAL_MS);
+    expect(COLLAB_PING_INTERVAL_MS).toBe(30_000);
+  });
+
   it('creates ONE shared socket + attaches the provider on first acquire', () => {
     const doc = new Y.Doc();
     acquireDocProvider(META, doc);
