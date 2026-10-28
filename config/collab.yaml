@@ -201,8 +201,3 @@ store_alert_timeout_ms: 3000
 document_schema:
   force_publish: false
 
-# How long one instance holds the per-document lock under which it converts
-# stored tables into tables whose cells hold blocks (inner#1619). The lock is
-# never released, only expires; it has to outlast store_interval_ms by far.
-doc_table_migrate_lock_ms: 300000
-

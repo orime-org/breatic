@@ -86,8 +86,6 @@ import {
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
-import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
-import { fetchDocData } from "@collab/services/yjs-documents.repo.js";
 import {
   handleSpaceRpc,
 } from "@collab/services/space-rpc.js";
@@ -391,28 +389,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           );
         }
         return;
-      }
-
-      // Stored tables become tables whose cells hold blocks (inner#1619),
-      // before any client syncs: the hook runs after the Redis extension's
-      // own, and clients are answered only once it returns. A failure keeps
-      // the load going with the tables as stored, which the editor still
-      // shows; the next load tries again once the lock has expired.
-      if (parsed?.kind === "document") {
-        try {
-          const converted = await convertStoredTablesOnLoad({
-            documentName,
-            document,
-            takeLock: async (key) =>
-              (await getCollabRedis().set(key, instanceId, "PX", getCollabConfig().doc_table_migrate_lock_ms, "NX")) === "OK",
-            readStored: () => fetchDocData(documentName),
-          });
-          if (converted > 0) {
-            logger.info({ documentName, converted, reason: "doc_table_migrated" }, "doc_table_migrated");
-          }
-        } catch (err) {
-          logger.error({ err, documentName, reason: "doc_table_migrate_failed" }, "doc_table_migrate_failed");
-        }
       }
     },
 

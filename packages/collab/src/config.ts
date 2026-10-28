@@ -91,10 +91,6 @@ const collabConfigSchema = z.object({
   document_schema: z
     .object({ force_publish: z.boolean().default(false) })
     .default({ force_publish: false }),
-  // How long one instance holds the lock under which it converts a
-  // document's stored tables (inner#1619 design 5.8). It is never released,
-  // only expires, and has to outlast the store interval by far.
-  doc_table_migrate_lock_ms: z.number().int().positive().default(300_000),
 });
 
 /** Validated collab configuration type. */
