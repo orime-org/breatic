@@ -9,10 +9,11 @@
  * looked up (recovery `none`).
  */
 
+import { z } from "zod";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import { HttpStatus } from "@provider/http/errors.js";
-import { fetchJson } from "@provider/http/request.js";
+import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
+import { fetchJson, readBody, send } from "@provider/http/request.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 
@@ -75,35 +76,78 @@ function headers(reach: Reach): Record<string, string> {
   return { authorization: `Bearer ${reach.key}`, "content-type": "application/json" };
 }
 
+/** A submit answer, as far as it is read. */
+const submittedSchema = z.looseObject({
+  data: z.looseObject({ id: z.string().optional(), outputs: z.array(z.unknown()).nullish() }),
+});
+
+/** A prediction's result answer, as far as it is read. */
+const resultSchema = z.looseObject({
+  data: z.looseObject({ status: z.string().optional(), outputs: z.array(z.unknown()).nullish(), error: z.unknown().optional() }),
+});
+
 /**
- * The `data` object of an answer.
- * @param body - The parsed answer.
- * @returns Its data, or an empty object.
+ * A 2xx submit answer that could not be read: the upstream may have accepted, and billed, the
+ * prediction. It rides as the cause of NoAnswer, carrying that unknown cost for costsOf.
  */
-function dataOf(body: unknown): Record<string, unknown> {
-  const data = (body as { data?: unknown } | null)?.data;
-  return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
+export class SubmitUnread extends Error {
+  readonly costs: Cost[];
+
+  /**
+   * Record what the error carries.
+   * @param reason - What could not be read.
+   * @param cause - The read's own failure, when there was one.
+   */
+  constructor(reason: string, cause?: unknown) {
+    super(reason, cause === undefined ? undefined : { cause });
+    this.name = "SubmitUnread";
+    this.costs = [{ state: "missing", reason }];
+  }
+}
+
+/**
+ * JSON text parsed, or undefined when it is not JSON.
+ * @param text - The text.
+ * @returns The value.
+ */
+function jsonOf(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
  * Submit one prediction; resent only on a 408 or 429, which the upstream did not process.
+ * A 2xx whose answer cannot be read (cut, not JSON, no id and no outputs) is NoAnswer: sent,
+ * outcome unknown (design 3.4).
  * @param reach - The upstream.
  * @param endpoint - The model path.
  * @param body - The request body.
  * @param bounds - The deadline and signal.
  * @returns The prediction id, and the outputs when it finished at once.
- * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
- * @throws {Error} When the answer carries neither an id nor outputs.
+ * @throws {NotSent | NoAnswer | HttpStatus | Aborted | BodyTooLarge} As the HTTP module classifies the failure.
+ * @throws {NoAnswer} With a SubmitUnread cause carrying one missing cost, when a 2xx answer cannot be read.
  */
 export async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
-  const answer = await fetchJson(
-    { url: `${reach.decl.base_url}/${endpoint}`, method: "POST", headers: headers(reach), body: JSON.stringify(body) },
-    { replaySafe: false, ...bounds, ...limits(bounds) },
-  );
-  const data = dataOf(answer);
-  const id = typeof data.id === "string" && data.id !== "" ? data.id : undefined;
-  const outputs = Array.isArray(data.outputs) && data.outputs.length > 0 ? (data.outputs as unknown[]) : undefined;
-  if (id === undefined && outputs === undefined) throw new Error(`${reach.name} answered no prediction id and no outputs`);
+  const url = `${reach.decl.base_url}/${endpoint}`;
+  const options = { replaySafe: false, ...bounds };
+  const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify(body) }, options);
+  const ok = response.status >= 200 && response.status < 300;
+  const { maxBodyBytes, idleMs } = limits(bounds);
+  let text: string;
+  try {
+    text = new TextDecoder().decode(await readBody(url, response, maxBodyBytes, idleMs, options));
+  } catch (error) {
+    if (!ok) throw error;
+    throw new NoAnswer(url, new SubmitUnread(`${reach.name} accepted the submit and its answer could not be read`, error));
+  }
+  if (!ok) throw new HttpStatus(url, response.status, text);
+  const parsed = submittedSchema.safeParse(jsonOf(text));
+  const id = parsed.success && parsed.data.data.id !== "" ? parsed.data.data.id : undefined;
+  const outputs = parsed.success && (parsed.data.data.outputs ?? []).length > 0 ? parsed.data.data.outputs! : undefined;
+  if (id === undefined && outputs === undefined) throw new NoAnswer(url, new SubmitUnread(`${reach.name} answered no prediction id and no outputs it could read`));
   return { predictionId: id, outputs };
 }
 
@@ -115,15 +159,19 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
  * @returns Whether it is running, done with its outputs, or failed with the upstream's words.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {SyntaxError} When a 2xx answer is not JSON.
+ * @throws {Error} When a 2xx answer is not shaped as a result.
  */
 export async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): Promise<Asked> {
   const answer = await fetchJson(
     { url: `${reach.decl.base_url}/predictions/${encodeURIComponent(predictionId)}/result`, method: "GET", headers: headers(reach) },
     { replaySafe: true, ...bounds, ...limits(bounds) },
   );
-  const data = dataOf(answer);
-  if (data.status === "completed") return { state: "done", outputs: Array.isArray(data.outputs) ? (data.outputs as unknown[]) : [] };
-  if (data.status === "failed") return { state: "failed", error: typeof data.error === "string" ? data.error : "unknown" };
+  const parsed = resultSchema.safeParse(answer);
+  if (!parsed.success) throw new Error(`${reach.name} answered a result it cannot read: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  const data = parsed.data.data;
+  if (data.status === "completed") return { state: "done", outputs: data.outputs ?? [] };
+  // As today's poll: the upstream's error as text whatever its type, "unknown" when it gave none.
+  if (data.status === "failed") return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error) };
   return { state: "running" };
 }
 

@@ -11,7 +11,7 @@ import { ask, billed, gone, modelNotFound, submit, type Reach, type RequestBound
 import { buildBody } from "@provider/media/wavespeed/body.js";
 import { isPresent, orderByPrice } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
-import { decide, type Failure } from "@provider/routing/decide.js";
+import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { failedReason } from "@provider/routing/try-in-order.js";
 
@@ -123,13 +123,18 @@ export interface MediaRunner {
   poll(ticket: MediaTicket, options: PollOptions): Promise<MediaAnswer>;
   recover(ticket: MediaTicket, bounds: CallBounds): Promise<MediaAnswer>;
   ticketFromLegacy(model: string, input: MediaInput, route: Route, options: PlanOptions, legacy: LegacyRows): Promise<MediaAnswer>;
+  /**
+   * What a ticket cost when its task ends on a throw: the costs it holds and a billing lookup
+   * for every prediction an upstream accepted. Sends nothing; called once, by the caller.
+   */
+  abandon(ticket: MediaTicket): { costs: Cost[] };
 }
 
 /** Limits on the media provider reads itself. */
 export interface MediaRunnerOptions {
   mediaLimits: { maxMediaBytes: number };
   /** How long after a running answer to ask again; 0 when the caller paces polls itself. */
-  pollIntervalMs?: number;
+  pollIntervalMs: number;
 }
 
 /** What one step answered, for the steps after it and for billing. */
@@ -598,13 +603,26 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   const waiting = (ticket: Ticket, extra: Partial<AnswerCommon> = {}): MediaAnswer => {
     const at = current(ticket);
     if (at === undefined || at.step.status === "submitted") {
-      return { state: "running", ticket: { ...ticket, phase: "running" } as unknown as MediaTicket, askAgainAt: Date.now() + (options.pollIntervalMs ?? 0), ...common(extra) };
+      return { state: "running", ticket: { ...ticket, phase: "running" } as unknown as MediaTicket, askAgainAt: Date.now() + options.pollIntervalMs, ...common(extra) };
     }
     return { state: "send", ticket: { ...ticket, phase: "send" } as unknown as MediaTicket, step: { kind: at.step.kind }, ...common(extra) };
   };
 
   /**
-   * A failed answer, retiring the cached clones the upstream said are gone.
+   * A billing lookup for every prediction an upstream accepted on the ticket: the done steps'
+   * and the one sent and not yet done. A lookup reads the net of deductions and refunds.
+   * @param ticket - The ticket.
+   * @returns One pending cost per prediction.
+   */
+  const acceptedLookups = (ticket: Ticket): Cost[] =>
+    ticket.steps.flatMap((step) => {
+      const prediction = step.status === "done" ? step.output?.prediction : step.predictionId;
+      return typeof prediction === "string" && prediction !== "" ? [{ state: "pending" as const, lookup: { upstream: ticket.upstream, predictionId: prediction } }] : [];
+    });
+
+  /**
+   * A failed answer, with what the ticket cost and a lookup per accepted prediction, retiring
+   * the cached clones the upstream said are gone.
    * @param ticket - The ticket.
    * @param reason - Why.
    * @param warnings - Anything to log.
@@ -618,7 +636,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       })
       : [];
     const notes = retired.map((c) => ({ code: "upstream_clone_retired", detail: { upstream: c.upstream, kind: c.kind, upstreamId: c.upstreamId } }));
-    return { state: "failed", reason, costs: ticket.costs, ...common({ retiredClones: retired, warnings: [...warnings, ...notes] }) };
+    return { state: "failed", reason, costs: [...ticket.costs, ...acceptedLookups(ticket)], ...common({ retiredClones: retired, warnings: [...warnings, ...notes] }) };
   };
 
   /**
@@ -777,9 +795,11 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     try {
       media = await fetchMedia({ url: sourceOf(ticket, step), maxBytes: options.mediaLimits.maxMediaBytes, deadlineAt: bounds.deadlineAt, ...signal });
     } catch (error) {
+      // Nothing paid has been sent yet: a host that may answer later has the caller clear its
+      // sending mark and retry the ticket; any other refusal fails the run.
+      const passing = error instanceof MediaRefused && error.kind === "unavailable" && error.status !== undefined && passingStatus(error.status, "media_submit");
+      if (passing || error instanceof NotSent || error instanceof NoAnswer) throw new SendNotAccepted(ticket.upstream, error);
       if (error instanceof MediaRefused) return failed(ticket, error);
-      // Nothing paid has been sent yet: the caller clears its sending mark and retries the ticket.
-      if (error instanceof NotSent || error instanceof NoAnswer) throw new SendNotAccepted(ticket.upstream, error);
       if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt);
       throw error;
     }
@@ -826,7 +846,6 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
 
     async send(raw, bounds) {
       const ticket = read(raw, "send");
-      if (Date.now() >= bounds.deadlineAt) throw new DeadlinePassed(bounds.deadlineAt);
       const at = current(ticket);
       if (at === undefined) throw new Error("The ticket has no step to send");
       if (at.step.kind === "describe") return describe(ticket, at.index, bounds);
@@ -854,13 +873,17 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         return waiting(moved, { warnings: [{ code: "upstream_switched", detail: { model: ticket.model, from: ticket.upstream, to, failure: failure.kind } }] });
       }
       if (answer.outputs !== undefined) {
+        // Accepted and billed: an answer without a prediction id leaves nothing to look its cost up by.
+        const accepted: Ticket = answer.predictionId === undefined
+          ? { ...ticket, accepted: true, costs: [...ticket.costs, { state: "missing", reason: `${ticket.upstream} finished the ${at.step.kind} step at once with no prediction id to bill` }] }
+          : { ...ticket, accepted: true, steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: answer.predictionId! } : s)) };
         let output: StepOutput;
         try {
           output = outputOf(ticket, at.step, answer.outputs, answer.predictionId);
         } catch (error) {
-          return failed(ticket, error as Error);
+          return failed(accepted, error as Error);
         }
-        return completed({ ...ticket, accepted: true }, at.index, output, bounds, []);
+        return completed(accepted, at.index, output, bounds, []);
       }
       const steps = ticket.steps.map((s, i) => (i === at.index ? { ...s, status: "submitted" as const, predictionId: answer.predictionId! } : s));
       return waiting(next(ticket, { steps, accepted: true }));
@@ -894,6 +917,11 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         return failed(ticket, error as Error);
       }
       return completed(ticket, at.index, output, bounds, []);
+    },
+
+    abandon(raw) {
+      const ticket = raw as unknown as Ticket;
+      return { costs: [...ticket.costs, ...acceptedLookups(ticket)] };
     },
 
     async recover(raw) {
