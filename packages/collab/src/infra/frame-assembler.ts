@@ -266,7 +266,6 @@ export function createFrameAssembler(options: FrameAssemblerOptions): FrameAssem
       } else {
         logger.error({ err: error, ctx: identity(peer) }, "collab_socket_error");
       }
-      if (states.get(peer)?.kind === "closed") return;
       release(peer);
       states.set(peer, { kind: "closed" });
     },
