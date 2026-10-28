@@ -74,7 +74,7 @@ export type BodyPointResolution = BodyPositionUnavailable | {
 
 /** Selection names retain their original semantic selection kind. */
 export type BodySelectionName = BodyNameIdentity & (
-  | { readonly kind: 'text' | 'cell' | 'bodyEdge' | 'inlineNode'; readonly anchor: BodyPointName; readonly head: BodyPointName }
+  | { readonly kind: 'text' | 'cell' | 'bodyEdge'; readonly anchor: BodyPointName; readonly head: BodyPointName }
   | { readonly kind: 'node'; readonly node: string; readonly part?: 'content' }
   | { readonly kind: 'all' }
 );

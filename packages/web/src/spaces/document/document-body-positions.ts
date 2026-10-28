@@ -361,13 +361,7 @@ function selectionPoint(index: BodyProjectionIndex, position: number, assoc: Bod
 export function nameBodySelection(index: BodyProjectionIndex, selection: Selection): BodySelectionName {
   const identity = { version: 1, document: index.document } as const;
   if (selection instanceof AllSelection) return { ...identity, kind: 'all' };
-  if (selection instanceof NodeSelection) {
-    if (selection.node.isInline) return { ...identity, kind: 'inlineNode',
-      anchor: nameBodyPoint(index, { kind: 'text', pos: selection.from, assoc: 1 }),
-      head: nameBodyPoint(index, { kind: 'text', pos: selection.to, assoc: -1 }),
-    };
-    return nameNodeSelection(index, selection);
-  }
+  if (selection instanceof NodeSelection) return nameNodeSelection(index, selection);
   if (selection instanceof CellSelection) return { ...identity, kind: 'cell', anchor: nameBodyPoint(index, { kind: 'node', node: nodeAt(index, selection.$anchorCell.pos), side: 'before' }), head: nameBodyPoint(index, { kind: 'node', node: nodeAt(index, selection.$headCell.pos), side: 'before' }) };
   const edge = selection.toJSON().type === 'bodyEdge';
   const forward = selection.anchor <= selection.head;
@@ -413,12 +407,7 @@ export function resolveBodySelection(index: BodyProjectionIndex, name: BodySelec
     const head = resolveBodyPoint(index, name.head, options);
     for (const endpoint of [anchor, head]) if (endpoint.status !== 'resolved' && endpoint.status !== 'hidden' && endpoint.status !== 'gone') return endpoint;
     if (anchor.status !== 'resolved' || head.status !== 'resolved') selection = nearSelection(index, anchor.status === 'resolved' ? anchor.pos : head.status === 'resolved' ? head.pos : 0);
-    else if (name.kind === 'inlineNode') {
-      const node = index.doc.nodeAt(anchor.pos);
-      selection = node?.isInline === true && NodeSelection.isSelectable(node) && anchor.pos + node.nodeSize === head.pos
-        ? NodeSelection.create(index.doc, anchor.pos)
-        : nearSelection(index, anchor.pos);
-    } else if (name.kind === 'cell') {
+    else if (name.kind === 'cell') {
       const a = index.doc.nodeAt(anchor.pos);
       const h = index.doc.nodeAt(head.pos);
       const aCell = a?.type.spec.tableRole === 'cell' || a?.type.spec.tableRole === 'header_cell';

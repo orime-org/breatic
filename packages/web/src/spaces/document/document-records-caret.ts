@@ -66,7 +66,7 @@ function remoteSelection(value: unknown, document: string): BodySelectionName | 
     if (selection['part'] !== undefined && selection['part'] !== 'content') return null;
     return selection as unknown as BodySelectionName;
   }
-  if ((selection['kind'] !== 'text' && selection['kind'] !== 'cell' && selection['kind'] !== 'bodyEdge' && selection['kind'] !== 'inlineNode') || !finalPoint(selection['anchor'], document) || !finalPoint(selection['head'], document)) return null;
+  if ((selection['kind'] !== 'text' && selection['kind'] !== 'cell' && selection['kind'] !== 'bodyEdge') || !finalPoint(selection['anchor'], document) || !finalPoint(selection['head'], document)) return null;
   return selection as unknown as BodySelectionName;
 }
 

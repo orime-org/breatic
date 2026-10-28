@@ -6,15 +6,20 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 import type { DocumentBodyBindingAccess } from '@web/spaces/document/document-body-binding-types';
-import { nameBodySelection, resolveBodySelection } from '@web/spaces/document/document-body-positions';
-import type { BodySelectionName } from '@web/spaces/document/document-body-positions-types';
+import { nameBodyPoint, nameBodySelection, resolveBodyPoint, resolveBodySelection } from '@web/spaces/document/document-body-positions';
+import type { BodyPointName, BodySelectionName } from '@web/spaces/document/document-body-positions-types';
 import { BODY_OPERATION_META, BodyOriginMirror, BodyProvenanceError, bodyInlineOccurrences, recordBodyOperation } from '@web/spaces/document/document-body-provenance';
 import { bodyDropSlice } from '@web/spaces/document/document-table-nodes';
+
+/** Native names outlive Safari's temporary selection and intervening peer edits. */
+type DragName =
+  | { readonly kind: 'selection'; readonly selection: BodySelectionName }
+  | { readonly kind: 'inline'; readonly from: BodyPointName; readonly to: BodyPointName };
 
 /** One drag is bound to the editor that actually captured its source. */
 interface DragSource {
   readonly binding: DocumentBodyBindingAccess;
-  readonly name: BodySelectionName;
+  readonly name: DragName;
 }
 
 /**
@@ -27,7 +32,11 @@ interface DragSource {
 function capture(view: EditorView, selection: Selection): DragSource | null {
   const binding = bodyBindingOf(view.state);
   if (binding === null || selection.empty) return null;
-  return { binding, name: nameBodySelection(binding.read(view.state).index, selection) };
+  const index = binding.read().index;
+  const name: DragName = selection instanceof NodeSelection && selection.node.isInline
+    ? { kind: 'inline', from: nameBodyPoint(index, { kind: 'text', pos: selection.from, assoc: 1 }), to: nameBodyPoint(index, { kind: 'text', pos: selection.to, assoc: -1 }) }
+    : { kind: 'selection', selection: nameBodySelection(index, selection) };
+  return { binding, name };
 }
 
 /**
@@ -39,8 +48,17 @@ function capture(view: EditorView, selection: Selection): DragSource | null {
  */
 function resolve(source: DragSource): Selection | null {
   const index = source.binding.read().index;
-  const result = resolveBodySelection(index, source.name, { runtime: source.binding.runtime.read().status });
-  return result.status === 'resolved' ? result.selection : null;
+  if (source.name.kind === 'selection') {
+    const result = resolveBodySelection(index, source.name.selection, { runtime: source.binding.runtime.read().status });
+    return result.status === 'resolved' ? result.selection : null;
+  }
+  const from = resolveBodyPoint(index, source.name.from);
+  const to = resolveBodyPoint(index, source.name.to);
+  if (from.status !== 'resolved' || to.status !== 'resolved') return null;
+  const node = index.doc.nodeAt(from.pos);
+  return node?.isInline === true && NodeSelection.isSelectable(node) && from.pos + node.nodeSize === to.pos
+    ? NodeSelection.create(index.doc, from.pos)
+    : null;
 }
 
 /**
