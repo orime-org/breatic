@@ -66,6 +66,7 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
   private schema: Schema | null = null;
   private lastGood: BodyProjection | null = null;
   private currentPhase: BodyBindingPhase = 'idle';
+  private activeRoot: Transaction | null = null;
   private sequence = 0;
   private requestedSelection: BodySelectionName | null = null;
   private releaseRuntime: (() => void) | null = null;
@@ -107,12 +108,7 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
    * @throws {never}
    */
   phase(): BodyBindingPhase {
-    if (this.currentPhase !== 'idle') return this.currentPhase;
-    // Collecting lives in the live state alone: ProseMirror also applies
-    // transactions to states it never dispatches (input rules apply their
-    // inserted text speculatively), and those must leave this handle idle.
-    const live = this.editor === null ? undefined : documentBodyBindingKey.getState(this.editor.prosemirrorState);
-    return (live?.batch ?? null) === null ? 'idle' : 'collecting';
+    return this.currentPhase;
   }
 
   /**
@@ -121,7 +117,7 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
    * @throws {never}
    */
   canWrite(): boolean {
-    return this.phase() === 'idle' && this.runtime.canWrite(this.editor?.isEditable ?? true, this.runtime.incarnation);
+    return this.currentPhase === 'idle' && this.runtime.canWrite(this.editor?.isEditable ?? true, this.runtime.incarnation);
   }
 
   /**
@@ -197,9 +193,8 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
     if (projection?.owner === this || !transaction.docChanged) return true;
     // ProseMirror stamps appendedTransaction only after running this filter.
     // Its passed state already carries the accepted root; a reentrant dispatch
-    // from the live view is filtered against the live state itself.
-    const extending = (documentBodyBindingKey.getState(state)?.batch ?? null) !== null && state !== this.editor?.prosemirrorState;
-    if (extending && this.currentPhase === 'idle' && transaction.before.eq(state.doc)) return this.runtime.read().status === 'active';
+    // from the live view still carries the earlier, unextended state.
+    if (this.currentPhase === 'collecting' && documentBodyBindingKey.getState(state)?.batch?.root === this.activeRoot && transaction.before.eq(state.doc)) return this.runtime.read().status === 'active';
     return this.canWrite();
   }
 
@@ -233,6 +228,9 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
           : nameBodySelection(before.index, oldState.selection);
         const journal = new BodyJournal(transaction.before, before.units, { batchId: id });
         batch = { id, root: transaction, revision: this.runtime.revision(), before, preSelection, source, journal, accepted: journal.read() };
+        this.currentPhase = 'collecting';
+        this.activeRoot = transaction;
+        this.writeState = { started: false, returned: false };
         transaction.setMeta(BODY_TRANSACTION_SOURCE, source);
       }
       const accepted = batch.journal.accept(transaction);
@@ -286,7 +284,6 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
     if (batch === null || batch === undefined) return;
     try {
       this.currentPhase = 'preflighting';
-      this.writeState = { started: false, returned: false };
       if (this.runtime.revision() !== batch.revision) throw new Error('The source revision changed while collecting the accepted batch');
       const plan = compileBodyBatch({ doc: this.doc, projection: batch.before, journal: batch.accepted, batchId: batch.id });
       const epoch = batch.before.epoch + 1;
@@ -309,6 +306,7 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
       const applied = { id: batch.id, source: batch.source, preSelection: batch.preSelection, postSelection: this.editor.prosemirrorState.selection, projection: published };
       this.currentPhase = 'projecting';
       for (const listener of this.appliedListeners) listener(applied);
+      this.activeRoot = null;
       this.currentPhase = 'idle';
     } catch (error) {
       this.fail(error, undefined, batch);
