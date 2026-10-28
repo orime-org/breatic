@@ -102,3 +102,66 @@ describe('registered video presentation response (inner#1306)', () => {
     }));
   });
 });
+
+// inner#1306 consumer oracle §6: the small response carries the source ledger
+// state and the current read limits, never the arrays.
+describe('source ledger state and read limits on the presentation response (G01–G07)', () => {
+  const identity = {
+    schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1,
+    attempt: { jobId: 'ledger-attempt-a', deadlineAt: 1000 },
+  };
+  const receipt = {
+    ...identity, strategy: 'matroska_rate_one', url: 'https://assets.example.test/canonical.webm.video-source-ledger.v1.json',
+    etag: '"Opaque-R2-ETag"', size: 2048, sha256: 'b'.repeat(64), contentType: 'application/json', physicalFrameCount: 3, occurrenceCount: 3,
+  };
+  const limits = { maxBytes: 16777216, maxPhysicalFrames: 262144, maxOccurrences: 262144 };
+  const work = {
+    preparation: { status: 'failed', attempt: { jobId: 'presentation-work-b', deadlineAt: 1900000000000 }, error: 'probe_failed' },
+    pollAfterMs: null,
+  };
+
+  it('keeps ready receipt A unchanged beside another current work B (G01, G07)', () => {
+    const response = { sourceBinding: binding, presentation: null, ...work, sourceLedger: { state: 'ready', receipt }, sourceLedgerReadLimits: limits };
+    expect(videoPresentationResponseSchema.parse(response)).toEqual(response);
+  });
+
+  it.each([
+    ['ready', { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } }],
+    ['pending', { state: 'pending', ...identity, sourceFingerprint: 'c'.repeat(64) }],
+    ['failed', { state: 'failed', ...identity, sourceFingerprint: 'c'.repeat(64), errorCode: 'ledger_invalid' }],
+  ])('rejects a %s ledger naming another source (G02)', (_state, sourceLedger) => {
+    expect(videoPresentationResponseSchema.safeParse({ sourceBinding: binding, presentation: null, ...idle, sourceLedger, sourceLedgerReadLimits: limits }).success).toBe(false);
+  });
+
+  it('accepts a legacy response with neither field (G03)', () => {
+    const response = { sourceBinding: binding, presentation: null, ...idle };
+    const parsed = videoPresentationResponseSchema.parse(response);
+    expect(parsed).toEqual(response);
+    expect('sourceLedger' in parsed).toBe(false);
+    expect('sourceLedgerReadLimits' in parsed).toBe(false);
+  });
+
+  it('keeps a ready receipt without read limits as it arrived (G04)', () => {
+    const response = { sourceBinding: binding, presentation: null, ...idle, sourceLedger: { state: 'ready', receipt } };
+    expect(videoPresentationResponseSchema.parse(response)).toEqual(response);
+  });
+
+  it.each([
+    ['a missing field', { maxBytes: 1, maxPhysicalFrames: 1 }],
+    ['zero', { ...limits, maxBytes: 0 }],
+    ['a fraction', { ...limits, maxOccurrences: 1.5 }],
+    ['an unsafe value', { ...limits, maxPhysicalFrames: Number.MAX_SAFE_INTEGER + 1 }],
+    ['an extra key', { ...limits, retries: 3 }],
+  ])('rejects read limits with %s (G05)', (_name, sourceLedgerReadLimits) => {
+    expect(videoPresentationResponseSchema.safeParse({ sourceBinding: binding, presentation: null, ...idle, sourceLedger: null, sourceLedgerReadLimits }).success).toBe(false);
+  });
+
+  it.each([
+    ['null', null],
+    ['pending', { state: 'pending', ...identity }],
+    ['failed', { state: 'failed', ...identity, errorCode: 'ledger_invalid' }],
+  ])('parses a %s ledger with complete limits (G06)', (_state, sourceLedger) => {
+    const response = { sourceBinding: binding, presentation: null, ...idle, sourceLedger, sourceLedgerReadLimits: limits };
+    expect(videoPresentationResponseSchema.parse(response)).toEqual(response);
+  });
+});
