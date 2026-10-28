@@ -373,16 +373,17 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     if (leaveTimer.current !== null) clearTimeout(leaveTimer.current);
     mediaEvent(editor, { type: 'release', host });
   }, [editor, host]);
+  const captionIntent = bars.media.intent;
   React.useLayoutEffect(() => {
     if (!editingCaption) return;
     closedOnKey.current = false;
-    // Only the caption button's handoff takes focus; a draft shown again (its
-    // block restored, the view remounted) leaves focus where the user is.
-    const intent = documentBarsOf(editor).media.intent;
-    if (intent?.host !== host || floating) return;
+    // Only the caption button's handoff takes focus, also into a field that
+    // is already open; a draft shown again (its block restored, the view
+    // remounted) leaves focus where the user is.
+    if (captionIntent?.host !== host || floating) return;
     captionField.current?.focus();
-    mediaEvent(editor, { type: 'complete-caption', host, epoch: intent.epoch });
-  }, [editingCaption, floating, editor, host]);
+    mediaEvent(editor, { type: 'complete-caption', host, epoch: captionIntent.epoch });
+  }, [editingCaption, floating, captionIntent, editor, host]);
   React.useEffect(() => {
     if (type !== 'video') return undefined;
     /**
@@ -773,7 +774,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             </PopoverContent>
           </Popover>
         ) : mediaFrame}
-        <MediaControlsPortal destination={floating && panelShown && !readOnly ? floatingActions : inlineActions} migrating={migratingActions}>{toolbar}</MediaControlsPortal>
+        <MediaControlsPortal destination={floating && panelShown && !readOnly ? floatingActions : inlineActions} migrating={migratingActions} preserveFocus={bars.media.activity?.host === host}>{toolbar}</MediaControlsPortal>
         {editingCaption ? (
           <input
             data-media-chrome={readOnly ? undefined : ''}

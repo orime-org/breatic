@@ -8,6 +8,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentMediaViews } from '@web/spaces/document/DocumentMediaViews';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { documentBarsOf } from '@web/spaces/document/document-bars';
 
 const editors: ReturnType<typeof buildDocumentEditor>[] = [];
 afterEach(() => { cleanup(); for (const editor of editors.splice(0)) editor.unmount(); document.body.innerHTML = ''; vi.restoreAllMocks(); });
@@ -145,6 +146,37 @@ describe('document media control integration', () => {
     act(() => editor.replaceBlocks(editor.document, [block] as never));
     expect(screen.getByTestId('doc-media-caption-input')).toHaveValue('Draft to keep');
     expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
+  });
+
+  it('takes the caption button\'s press into a restored draft that left focus where it was', () => {
+    const { editor, id } = open();
+    const block = editor.getBlock(id);
+    fireEvent.click(screen.getByTestId('doc-media-caption-button'));
+    fireEvent.change(screen.getByTestId('doc-media-caption-input'), { target: { value: 'Draft to keep' } });
+    act(() => editor.removeBlocks([id]));
+    act(() => editor.prosemirrorView!.dom.focus());
+    act(() => editor.replaceBlocks(editor.document, [block] as never));
+    fireEvent.pointerEnter(screen.getByTestId('doc-media-frame'));
+    fireEvent.click(screen.getByTestId('doc-media-caption-button'));
+
+    expect(screen.getByTestId('doc-media-caption-input')).toHaveFocus();
+    expect(documentBarsOf(editor).media.intent).toBeNull();
+  });
+
+  it('gives a narrow video\'s panel button its focus back when the panel returns from another block\'s hover', async () => {
+    const { editor } = open('video');
+    act(() => editor.insertBlocks([{ type: 'image', props: { url: '/b.png', caption: 'B', mediaWidth: 240, mediaHeight: 160 } }] as never, editor.document[0]!, 'after'));
+    const frames = (): HTMLElement[] => screen.getAllByTestId('doc-media-frame');
+    fireEvent.pointerEnter(frames()[0]!);
+    const panel = await screen.findByTestId('doc-media-video-panel');
+    const button = panel.querySelector<HTMLElement>('[data-testid="doc-media-download"]')!;
+    act(() => button.focus());
+    fireEvent.pointerLeave(frames()[0]!);
+    fireEvent.pointerEnter(frames()[1]!);
+    await waitFor(() => expect(screen.queryByTestId('doc-media-video-panel')).toBeNull());
+    fireEvent.pointerLeave(frames()[1]!);
+
+    await waitFor(() => expect(screen.getByTestId('doc-media-video-panel').querySelector('[data-testid="doc-media-download"]')).toHaveFocus());
   });
 
   it('hands focused editing actions to the video entry when permission becomes read-only', async () => {
