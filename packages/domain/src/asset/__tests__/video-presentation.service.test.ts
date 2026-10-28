@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StudioAssetEntity } from '@breatic/shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DeadlinePassed, VideoSourceLedgerReadRefused, type StudioAssetEntity, type VideoSourceLedgerCompanion } from '@breatic/shared';
+import { NotFoundError, ValidationError } from '@breatic/core';
 import type * as coreModule from '@breatic/core';
-import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation } from '../video-presentation.service.js';
+import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation, readSourceLedger } from '../video-presentation.service.js';
 
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
@@ -207,5 +208,131 @@ describe('registered presentation source authorization (inner#1306 §6.20)', () 
     expect(videoPresentationAtIngest).toHaveBeenCalledWith('https://ingest.example.test', 'secret', expect.objectContaining({
       action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: asset.contentHash,
     }));
+  });
+});
+
+// inner#1306 consumer oracle N01–N04: the presentation owner reads the stored
+// source ledger for an authorized member, binding the receipt to the actual
+// registered row before any external GET. The companion delivery itself is a
+// controlled `fetch`; the shared reader, digest and strict parser are real.
+describe('validated source ledger read (inner#1306 N01–N04)', () => {
+  const companion: VideoSourceLedgerCompanion = JSON.parse('{"schemaVersion":1,"sourceFingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","producerVersion":1,"attempt":{"jobId":"accepted-source-attempt","deadlineAt":7201000},"strategy":"iso_unedited_rate_one","physical":{"streamIndex":1,"trackId":7,"sourceTimeBase":{"numerator":"1","denominator":"1000"},"frames":[{"rawDecodeOrdinal":0,"ptsTicks":"0"},{"rawDecodeOrdinal":1,"ptsTicks":"40"},{"rawDecodeOrdinal":2,"ptsTicks":"80"}]},"container":{"kind":"iso_bmff","movieTimescale":"1000","movieDurationTicks":"4000","track":{"trackId":7,"trackFlags":1,"durationMovieTicks":"4000","mediaTimescale":"1000","mediaDurationTicks":"1000000000","edits":null,"sampleTiming":{"decodeRuns":[{"sampleCount":1,"deltaTicks":"40"},{"sampleCount":1,"deltaTicks":"40"},{"sampleCount":1,"deltaTicks":"40"}],"cttsVersion":null,"compositionRuns":null,"compositionShift":null}}},"presentation":{"edits":[],"frames":[{"presentationOrdinal":0,"editOccurrence":0,"rawDecodeOrdinal":0,"sourcePtsTicks":"0","mappedPts":{"numerator":"0","denominator":"1"},"displayStart":{"numerator":"0","denominator":"1"},"displayEnd":{"numerator":"1","denominator":"25"}},{"presentationOrdinal":1,"editOccurrence":0,"rawDecodeOrdinal":1,"sourcePtsTicks":"40","mappedPts":{"numerator":"1","denominator":"25"},"displayStart":{"numerator":"1","denominator":"25"},"displayEnd":{"numerator":"2","denominator":"25"}},{"presentationOrdinal":2,"editOccurrence":0,"rawDecodeOrdinal":2,"sourcePtsTicks":"80","mappedPts":{"numerator":"2","denominator":"25"},"displayStart":{"numerator":"2","denominator":"25"},"displayEnd":{"numerator":"3","denominator":"25"}}]}}') as VideoSourceLedgerCompanion;
+  const bytes = new TextEncoder().encode(JSON.stringify(companion));
+  const ledgerURL = `https://assets.example.test/${asset.storageKey}.video-source-ledger.v1.json`;
+  const fetchMock = vi.fn<(url: string, init: RequestInit) => Promise<Response>>();
+  let receipt: Record<string, unknown>;
+
+  /**
+   * The ingest read answering with this ledger state.
+   * @param sourceLedger - The state.
+   */
+  function stored(sourceLedger: unknown): void {
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: null, sourceLedger });
+  }
+
+  /** Serve the stored bytes once. */
+  function serve(body: Uint8Array = bytes): void {
+    fetchMock.mockResolvedValueOnce(new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }));
+  }
+
+  beforeEach(async () => {
+    publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
+    loadProjectRole.mockResolvedValue('viewer');
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    receipt = {
+      schemaVersion: 1, sourceFingerprint: asset.contentHash, producerVersion: 1, strategy: companion.strategy, attempt: companion.attempt,
+      url: ledgerURL, etag: '"opaque"', size: bytes.byteLength, sha256: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join(''),
+      contentType: 'application/json', physicalFrameCount: 3, occurrenceCount: 3,
+    };
+    fetchMock.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses a non-member before reading any source or companion (N01)', async () => {
+    loadProjectRole.mockResolvedValue(null);
+    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(NotFoundError);
+    expect(findLiveByStorageKey).not.toHaveBeenCalled();
+    expect(videoPresentationAtIngest).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('gives a viewer the registered binding and the whole validated ledger with unknown measurements (N02)', async () => {
+    stored({ state: 'ready', receipt });
+    serve();
+    const got = await readSourceLedger(input, Date.now() + 60_000);
+    expect(got.sourceBinding).toEqual(expect.objectContaining({ assetId: asset.id, contentHash: asset.contentHash, canonicalURL,
+      mediaInfo: { width: null, height: null, duration: null, mimeType: asset.mimeType } }));
+    expect(got.ledger).toEqual(companion);
+    expect(fetchMock.mock.calls[0]![0]).toBe(ledgerURL);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      action: 'read', storageKey: asset.storageKey, sourceFingerprint: asset.contentHash,
+    });
+  });
+
+  it.each([
+    ['a deleted row', { ...asset, deletedAt: new Date() }],
+    ['a non-video row', { ...asset, kind: 'image' }],
+  ])('refuses %s before any companion GET (N03)', async (_name, row) => {
+    findLiveByStorageKey.mockResolvedValue(row);
+    stored({ state: 'ready', receipt });
+    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(ValidationError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['another source hash', { sourceFingerprint: 'c'.repeat(64) }],
+    ['a URL not derived from the registered key', { url: 'https://assets.example.test/other.video-source-ledger.v1.json' }],
+  ])('refuses a receipt carrying %s before any companion GET (N03)', async (_name, foreign) => {
+    stored({ state: 'ready', receipt: { ...receipt, ...foreign } });
+    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(VideoSourceLedgerReadRefused);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no ledger state', undefined],
+    ['a null ledger', null],
+    ['a pending ledger', { state: 'pending', schemaVersion: 1, sourceFingerprint: asset.contentHash, producerVersion: 1, attempt: companion.attempt }],
+  ])('refuses %s without a GET or new work (N03, N04)', async (_name, sourceLedger) => {
+    stored(sourceLedger);
+    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(VideoSourceLedgerReadRefused);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('returns no ledger for a ready receipt whose body is malformed, and admits no work (N04)', async () => {
+    stored({ state: 'ready', receipt });
+    const damaged = bytes.slice();
+    damaged[damaged.length - 1] = 0x20;
+    serve(damaged);
+    await expect(readSourceLedger(input, Date.now() + 60_000)).rejects.toBeInstanceOf(VideoSourceLedgerReadRefused);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(queueAdd).not.toHaveBeenCalled();
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+  });
+
+  it("reads under the caller's own deadline and does not GET once it has passed (C13)", async () => {
+    stored({ state: 'ready', receipt });
+    await expect(readSourceLedger(input, Date.now() - 1)).rejects.toBeInstanceOf(DeadlinePassed);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('projects the ledger state and the current read policy on the presentation response', async () => {
+    stored({ state: 'ready', receipt });
+    const got = await resolveVideoPresentation(input);
+    expect(got.sourceLedger).toEqual({ state: 'ready', receipt });
+    expect(got.sourceLedgerReadLimits).toEqual({ maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps an older ingest answer without ledger state unknown on the response', async () => {
+    stored(undefined);
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'a', deadlineAt: 1900000000000, status: 'running', usage: null } });
+    const got = await resolveVideoPresentation(input);
+    expect('sourceLedger' in got).toBe(false);
   });
 });
