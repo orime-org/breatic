@@ -444,13 +444,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
             const cost = costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, ...(costRef ? { costRef } : {}) } } });
             const reading = adapter.read(answered.body);
-            if ("unreadable" in reading) {
-              // Billed though unusable: what the body reports, never a price-table guess.
-              const reported = usdOf((answered.body as { usage?: { cost?: unknown } } | null | undefined)?.usage?.cost);
-              throw new UnreadableAnswer(reading.unreadable, reported === undefined
-                ? { state: "missing", reason: `${c.upstream} answered something unreadable` }
-                : { state: "known", usd: reported, source: "reported" });
-            }
+            // Billed though unusable, and costed like a refused 2xx: never a price-table guess.
+            if ("unreadable" in reading) throw new UnreadableAnswer(reading.unreadable, answerCost(c.upstream, answered.status, answered.text));
             if ("error" in reading) {
               billed.push(cost);
               throw new InBandError(reading.error);
