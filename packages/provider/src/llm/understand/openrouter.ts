@@ -9,7 +9,7 @@
  */
 
 import type { FinishReason, ProviderMetadata } from "ai";
-import { base64Of, count, exchange, usageOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
+import { base64Of, count, exchange, usageOf, wireTypeOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
 
 /** OpenRouter's name for each audio type it takes; the values of shared's AUDIO_FORMATS. */
 const AUDIO_FORMATS: Readonly<Record<string, string>> = {
@@ -40,7 +40,7 @@ const FINISH: Readonly<Record<string, FinishReason>> = {
  */
 function partOf(media: UnderstandCall["media"][number]): Record<string, unknown> {
   const data = base64Of(media.bytes);
-  if (media.contentType.startsWith("video/")) return { type: "video_url", video_url: { url: `data:${media.contentType};base64,${data}` } };
+  if (media.contentType.startsWith("video/")) return { type: "video_url", video_url: { url: `data:${wireTypeOf(media.contentType)};base64,${data}` } };
   if (media.contentType.startsWith("audio/")) {
     const format = AUDIO_FORMATS[media.contentType];
     if (format === undefined) throw new Error(`OpenRouter takes no audio of type ${media.contentType}`);
@@ -93,9 +93,10 @@ export const openRouterUnderstand: UnderstandAdapter = {
     if (completion.error !== undefined && completion.error !== null) return { error: completion.error };
     const choice = completion.choices?.[0];
     if (choice === undefined) return { unreadable: "OpenRouter's answer has no choice" };
-    const text = typeof choice?.message?.content === "string" ? choice.message.content : "";
-    if (text === "" && choice?.error !== undefined && choice.error !== null) return { error: choice.error };
-    const reason = typeof choice?.finish_reason === "string" ? choice.finish_reason : "";
+    if (typeof choice !== "object" || choice === null) return { unreadable: "OpenRouter's answer has a choice that is not an object" };
+    const text = typeof choice.message?.content === "string" ? choice.message.content : "";
+    if (text === "" && choice.error !== undefined && choice.error !== null) return { error: choice.error };
+    const reason = typeof choice.finish_reason === "string" ? choice.finish_reason : "";
     return { text, finishReason: FINISH[reason] ?? "other" };
   },
 
