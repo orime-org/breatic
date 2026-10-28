@@ -189,6 +189,10 @@ export function setBubbleBarUp(editor: object, up: boolean): void {
 
 /**
  * Whether a media block's toolbar is the bar on screen.
+ *
+ * One host owns the bar, in this order: a seek in progress, a keyboard
+ * request, the pointer, controls holding focus, a pointer request. With none
+ * of them, the node-selected block shows its bar.
  * @param bars - The state.
  * @param host - The block's container.
  * @param selected - Whether the block is node-selected.
@@ -198,9 +202,9 @@ export function mediaBarShown(bars: DocumentBars, host: HTMLElement, selected: b
   const activity = bars.media.activity;
   const owner = activity?.kind === 'seeking' ? activity.host
     : bars.media.request?.origin === 'keyboard' ? bars.media.request.host
-      : activity?.host ?? bars.hoveredMedia ?? bars.media.request?.host;
+      : bars.hoveredMedia ?? activity?.host ?? bars.media.request?.host;
   if (owner !== null && owner !== undefined) return owner === host;
-  return bars.hoveredMedia === null ? selected && !bars.linkToolbarUp : bars.hoveredMedia === host;
+  return selected && !bars.linkToolbarUp;
 }
 
 /**

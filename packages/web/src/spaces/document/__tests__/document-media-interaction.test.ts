@@ -73,4 +73,25 @@ describe('document media interaction ownership', () => {
     expect(documentBarsOf(editor).media.activity).toEqual({ host: next, kind: 'focused' });
   });
 
+  it('gives the bar to the hovered host over a host whose controls only keep focus after a seek', () => {
+    const editor = {};
+    const first = document.createElement('div');
+    const next = document.createElement('div');
+    mediaEvent(editor, { type: 'hover', host: first, on: true });
+    mediaEvent(editor, { type: 'seek-start', host: first, release: vi.fn() });
+    mediaEvent(editor, { type: 'seek-end', host: first, focused: true });
+    mediaEvent(editor, { type: 'hover', host: first, on: false });
+    mediaEvent(editor, { type: 'hover', host: next, on: true });
+    expect(mediaBarShown(documentBarsOf(editor), next, false)).toBe(true);
+    expect(mediaBarShown(documentBarsOf(editor), first, false)).toBe(false);
+    mediaEvent(editor, { type: 'hover', host: next, on: false });
+    expect(mediaBarShown(documentBarsOf(editor), first, false)).toBe(true);
+  });
+
+  it('shows the selected block only when no host is hovered, requested or active', () => {
+    const editor = {};
+    const host = document.createElement('div');
+    expect(mediaBarShown(documentBarsOf(editor), host, true)).toBe(true);
+    expect(mediaBarShown(documentBarsOf(editor), host, false)).toBe(false);
+  });
 });
