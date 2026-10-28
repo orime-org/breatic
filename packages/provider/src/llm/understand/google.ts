@@ -43,7 +43,7 @@ interface Part {
 
 /** One candidate, as far as it is read. */
 interface Candidate {
-  content?: { parts?: unknown } | null;
+  content?: unknown;
   finishReason?: unknown;
 }
 
@@ -225,7 +225,8 @@ export const googleUnderstand: UnderstandAdapter = {
     if (typeof candidate !== "object" || candidate === null) return { unreadable: "Google's answer has a candidate that is not an object" };
     const { content, finishReason } = candidate as Candidate;
     // A blocked candidate comes with no content, and so no parts.
-    const parts: unknown = content?.parts ?? [];
+    if (content !== undefined && content !== null && typeof content !== "object") return { unreadable: "Google's answer has content that is not an object" };
+    const parts: unknown = (content as { parts?: unknown } | null | undefined)?.parts ?? [];
     if (!Array.isArray(parts)) return { unreadable: "Google's answer has parts that are not a list" };
     if (parts.some((p) => typeof p !== "object" || p === null)) return { unreadable: "Google's answer has a part that is not an object" };
     const text = (parts as Part[])
