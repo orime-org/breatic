@@ -906,6 +906,24 @@ describe('the frame around a media block', () => {
     expect(box.getAttribute('data-hovered')).toBeNull();
   });
 
+  it('stays while the pointer crosses from the gap above the media onto the toolbar itself', () => {
+    const editor = open('video');
+    const box = within(element(editor)).getByTestId('doc-media-box');
+    const frame = within(element(editor)).getByTestId('doc-media-frame');
+    const bar = toolbar(editor);
+    const layer = bar.parentElement!.closest<HTMLElement>('[data-media-chrome]')!;
+
+    fireEvent.pointerEnter(frame);
+    fireEvent.pointerOut(frame, { relatedTarget: layer });
+    fireEvent.pointerOver(layer, { relatedTarget: frame });
+    fireEvent.pointerOut(layer, { relatedTarget: bar });
+    fireEvent.pointerOver(bar, { relatedTarget: layer });
+    expect(box.getAttribute('data-hovered')).toBe('true');
+
+    fireEvent.pointerOut(bar, { relatedTarget: document.body });
+    expect(box.getAttribute('data-hovered')).toBeNull();
+  });
+
   it('is not drawn while the pointer is on the caption', () => {
     const editor = open('audio', { caption: 'A note' });
     const box = within(element(editor)).getByTestId('doc-media-box');

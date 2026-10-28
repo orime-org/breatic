@@ -566,6 +566,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       ref={holdToolbar}
       data-testid='doc-media-toolbar'
       inert={readOnly}
+      // Rendered through a portal, so React counts entering it as leaving the
+      // layer it sits in; it holds the hover itself.
+      onPointerEnter={pointerOn}
+      onPointerLeave={pointerOff}
       onFocusCapture={() => {
         if (!migratingActions.current) { actionFocused.current = true; onControlFocus(true, null); }
       }}
