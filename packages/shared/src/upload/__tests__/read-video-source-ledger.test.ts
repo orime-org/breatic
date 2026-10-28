@@ -60,7 +60,7 @@ function serve(chunks: Uint8Array[], end: 'close' | 'hang' = 'close'): Served {
     {
       pull(controller) {
         if (at < chunks.length) {
-          controller.enqueue(chunks[at++]!);
+          controller.enqueue(chunks[at++]);
           return undefined;
         }
         if (end === 'close') {
@@ -310,7 +310,13 @@ describe('C07–C10 the stored bytes decide', () => {
   });
 
   it.each([
-    ['malformed UTF-8', (b: Uint8Array) => { const c = b.slice(); c[c.indexOf(0x61)] = 0xff; return c; }],
+    // codecId takes any non-empty string, so only a fatal decode refuses it.
+    ['malformed UTF-8', (b: Uint8Array) => {
+      const c = b.slice();
+      const at = new TextDecoder().decode(c).indexOf('"codecId":"') + '"codecId":"'.length;
+      c[at] = 0xff;
+      return c;
+    }],
     ['trailing garbage', (b: Uint8Array) => new Uint8Array([...b, 0x78])],
   ])('refuses %s even when its size and digest match', async (_name, damage) => {
     const value = ledgerFixture('K05');
