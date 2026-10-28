@@ -8,7 +8,7 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
   valid: [
     // The shape every client-facing throw should have.
-    { code: 'throw new NotFoundError(t("server.skill.not_found"));' },
+    { code: 'throw new NotFoundError(t("server.conversation.not_found"));' },
     { code: 'throw new ConflictError(t("server.studio.already_member"));' },
     // AppError puts the status first, so the message is the second argument.
     { code: 'throw new AppError(402, t("server.error.insufficient_credits", { required, available }));' },
@@ -31,7 +31,7 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
   ],
   invalid: [
     {
-      code: 'throw new NotFoundError("Skill not found");',
+      code: 'throw new NotFoundError("Conversation not found");',
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
     {
@@ -51,7 +51,7 @@ ruleTester.run("no-untranslated-error-message", noUntranslatedErrorMessage, {
     },
     // Concatenation is the same literal with extra steps.
     {
-      code: 'throw new ValidationError("Skill " + name + " not found");',
+      code: 'throw new ValidationError("Conversation " + name + " not found");',
       errors: [{ messageId: "untranslatedMessage", line: 1 }],
     },
     // A subclass hardcoding its own message. `ConflictLockedError` shipped
