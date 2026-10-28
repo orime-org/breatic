@@ -2,7 +2,7 @@
 --
 -- Generation templates replaced skills, and nothing has read or written these
 -- two tables or the two `tasks` columns since: they are no longer declared in
--- `schema.ts`, and no package source names them.
+-- `schema.ts`, and no production code names them.
 --
 -- `skill_installs` holds the only foreign key into `custom_skills`, so it is
 -- dropped first. `IF EXISTS` lets the migration run on databases where these
