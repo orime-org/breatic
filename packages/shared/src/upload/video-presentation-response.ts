@@ -4,6 +4,9 @@
 import { z } from 'zod';
 import { alphaManifestMatchesPresentation, alphaManifestSchema, videoPresentationSchema, type AlphaManifest, type VideoPresentation } from '@shared/upload/video-presentation.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
+import { videoSourceLedgerReadLimitsSchema, type VideoSourceLedgerReadLimits } from '@shared/upload/read-video-source-ledger.js';
+import { videoSourceLedgerStateSchema } from '@shared/upload/video-source-ledger.js';
+import type { VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
 
 /** Registry identity remains available before trusted media measurement. */
 export interface VideoPresentationSourceBinding {
@@ -21,6 +24,10 @@ export interface VideoPresentationResponse {
   manifest?: AlphaManifest;
   preparation: VideoPresentationPreparation | null;
   pollAfterMs: number | null;
+  /** The source frame table's own capability state; absent from a server that predates it. */
+  sourceLedger?: VideoSourceLedgerState;
+  /** The current policy a reader holds the stored table to; absent means the table is not read. */
+  sourceLedgerReadLimits?: VideoSourceLedgerReadLimits;
 }
 
 /** Accepted independently funded metadata work, unchanged on replay. */
@@ -57,7 +64,13 @@ export const videoPresentationResponseSchema: z.ZodType<VideoPresentationRespons
   sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationSchema.nullable(),
   manifest: alphaManifestSchema.optional(), preparation: preparation.nullable(),
   pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
+  sourceLedger: videoSourceLedgerStateSchema.optional(), sourceLedgerReadLimits: videoSourceLedgerReadLimitsSchema.optional(),
 }).superRefine((value, ctx) => {
+  const ledger = value.sourceLedger;
+  if (ledger !== undefined && ledger !== null &&
+    (ledger.state === 'ready' ? ledger.receipt.sourceFingerprint : ledger.sourceFingerprint) !== value.sourceBinding.contentHash) {
+    ctx.addIssue({ code: 'custom', path: ['sourceLedger'], message: 'Source ledger differs from registered source' });
+  }
   const descriptor = value.presentation;
   if (descriptor !== null) {
     if (descriptor.sourceFingerprint !== value.sourceBinding.contentHash) {

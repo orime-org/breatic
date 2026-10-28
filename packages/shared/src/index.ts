@@ -642,7 +642,7 @@ export { reasonOf } from "@shared/http/reason.js";
 // can still read the complaint, rather than at the moment someone uploads.
 // This is not one more thing the transport does — it is the bound the second
 // parameter already had, said out loud.
-export { MAX_TIMER_MS } from "@shared/http/constants.js";
+export { DEFAULT_TIMEOUT_MS, MAX_TIMER_MS } from "@shared/http/constants.js";
 
 // The one backoff function with a consumer outside this package.
 // `packages/core/src/infra/retry.ts` held a byte-identical copy of the backoff
@@ -953,6 +953,12 @@ export {
   parseVideoSourceLedger,
   videoSourceLedgerKeyFor,
 } from "@shared/upload/video-source-ledger.js";
+export {
+  readVideoSourceLedger,
+  VideoSourceLedgerReadRefused,
+  videoSourceLedgerReadLimitsSchema,
+  type VideoSourceLedgerReadLimits,
+} from "@shared/upload/read-video-source-ledger.js";
 export type {
   VideoSourceLedgerAttempt,
   VideoSourceLedgerStrategy,
