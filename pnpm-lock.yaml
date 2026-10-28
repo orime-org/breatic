@@ -238,7 +238,7 @@ patchedDependencies:
     hash: 7jpc67tegm3zk4u27ibpbo34nu
     path: patches/@xyflow__react@12.11.2.patch
   prosemirror-tables@1.8.5:
-    hash: ublg5vedlwag57kzmulpbffld4
+    hash: romndgeojnzxxa6r2thvj4upvy
     path: patches/prosemirror-tables@1.8.5.patch
   prosemirror-view@1.42.6:
     hash: b5ej5jmfcxeucg3jh365cdjlaa
@@ -11908,7 +11908,7 @@ snapshots:
       prosemirror-highlight: 0.15.3(@shikijs/types@4.4.3)(@types/hast@3.0.5)(highlight.js@11.11.2)(lowlight@3.3.0)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.2)(prosemirror-view@1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa))
       prosemirror-model: 1.25.12
       prosemirror-state: 1.4.4
-      prosemirror-tables: 1.8.5(patch_hash=ublg5vedlwag57kzmulpbffld4)
+      prosemirror-tables: 1.8.5(patch_hash=romndgeojnzxxa6r2thvj4upvy)
       prosemirror-transform: 1.12.2
       prosemirror-view: 1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa)
     optionalDependencies:
@@ -14830,7 +14830,7 @@ snapshots:
       prosemirror-model: 1.25.12
       prosemirror-schema-list: 1.5.1
       prosemirror-state: 1.4.4
-      prosemirror-tables: 1.8.5(patch_hash=ublg5vedlwag57kzmulpbffld4)
+      prosemirror-tables: 1.8.5(patch_hash=romndgeojnzxxa6r2thvj4upvy)
       prosemirror-transform: 1.12.2
       prosemirror-view: 1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa)
 
@@ -20362,7 +20362,7 @@ snapshots:
       prosemirror-transform: 1.12.2
       prosemirror-view: 1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa)
 
-  prosemirror-tables@1.8.5(patch_hash=ublg5vedlwag57kzmulpbffld4):
+  prosemirror-tables@1.8.5(patch_hash=romndgeojnzxxa6r2thvj4upvy):
     dependencies:
       prosemirror-keymap: 1.2.3
       prosemirror-model: 1.25.12
