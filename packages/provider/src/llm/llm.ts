@@ -9,7 +9,7 @@
 
 import type { JSONValue, SystemModelMessage } from "ai";
 import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
-import { usdOf, type Cost, type TokenBuckets } from "@provider/cost.js";
+import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
@@ -18,6 +18,7 @@ import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, S
 import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
+import { costedOf } from "@provider/llm/understand/openrouter.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import type { Failure } from "@provider/routing/decide.js";
@@ -304,10 +305,10 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @returns The cost, or undefined for a refusal status whose body names none.
    */
   const answerCost = (upstream: string, status: number, text: string | undefined): Cost | undefined => {
-    const body = parsed(text) as { id?: unknown; usage?: { cost?: unknown } } | null | undefined;
-    const reported = usdOf(body?.usage?.cost);
+    const body = costedOf(parsed(text));
+    const reported = body.usage?.cost;
     if (reported !== undefined) return { state: "known", usd: reported, source: "reported" };
-    const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body?.id, undefined);
+    const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body.id, undefined);
     if (ref !== undefined) return { state: "pending", lookup: ref };
     return status >= 200 && status < 300 ? { state: "missing", reason: `${upstream} answered with no cost and no generation id` } : undefined;
   };
@@ -504,7 +505,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error));
       }
       if (!response.ok) return { status: response.status, body: text };
-      const reported = usdOf((parsed(text) as { usage?: { cost?: unknown } } | null | undefined)?.usage?.cost);
+      const reported = costedOf(parsed(text)).usage?.cost;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
       return { status: response.status, body: text, cost };
     },

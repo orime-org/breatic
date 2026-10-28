@@ -9,7 +9,6 @@
 
 import type { FinishReason, ProviderMetadata } from "ai";
 import { z } from "zod";
-import { count } from "@provider/cost.js";
 import { base64Of, exchange, usageOf, wireTypeOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
 
 /** OpenRouter's name for each audio type it takes: shared's AUDIO_FORMATS, with every alias of shared's CANONICAL. */
@@ -53,26 +52,46 @@ function partOf(media: UnderstandCall["media"][number]): Record<string, unknown>
   return { type: "image_url", image_url: { url: `data:${media.contentType};base64,${data}` } };
 }
 
-/** The answer's fields that are read to answer, their leaves typed; other fields are let through. */
+/** A number leaf of a cost: a value that is not a finite number reads as absent. */
+const numberLeaf = z.number().optional().catch(undefined);
+
+/**
+ * OpenRouter's chat completion answer, as far as it is read, its leaves typed; other fields
+ * are let through. The choices must be readable to answer; the id and usage, which only cost
+ * an answer, read a leaf of the wrong type as absent.
+ */
 const completionSchema = z.looseObject({
+  id: z.string().optional().catch(undefined),
   error: z.unknown().optional(),
   choices: z.array(z.looseObject({
     message: z.looseObject({ content: z.string().nullish() }).nullish(),
     finish_reason: z.string().nullish(),
     error: z.unknown().optional(),
   })).optional(),
+  usage: z.looseObject({
+    prompt_tokens: numberLeaf,
+    completion_tokens: numberLeaf,
+    cost: numberLeaf,
+    prompt_tokens_details: z.looseObject({ cached_tokens: numberLeaf }).optional().catch(undefined),
+    completion_tokens_details: z.looseObject({ reasoning_tokens: numberLeaf }).optional().catch(undefined),
+  }).optional().catch(undefined),
 });
 
-/** The answer's usage and id, as far as a cost reads them. */
-interface Completion {
-  id?: unknown;
-  usage?: {
-    prompt_tokens?: unknown;
-    completion_tokens?: unknown;
-    cost?: unknown;
-    prompt_tokens_details?: { cached_tokens?: unknown };
-    completion_tokens_details?: { reasoning_tokens?: unknown };
-  };
+/** The part of the answer a cost reads, whatever its choices hold. */
+const costedSchema = completionSchema.pick({ id: true, usage: true });
+
+/** What an OpenRouter answer says about its cost. */
+export type CostedAnswer = z.infer<typeof costedSchema>;
+
+/**
+ * The id and usage of an OpenRouter answer (a chat completion, or the decisions endpoint's
+ * answer, which reports its cost the same way).
+ * @param body - The parsed body.
+ * @returns Its id and usage, each absent when it cannot be read.
+ */
+export function costedOf(body: unknown): CostedAnswer {
+  const parsed = costedSchema.safeParse(body);
+  return parsed.success ? parsed.data : {};
 }
 
 export const openRouterUnderstand: UnderstandAdapter = {
@@ -113,15 +132,15 @@ export const openRouterUnderstand: UnderstandAdapter = {
   },
 
   billing(body) {
-    const completion = (body ?? {}) as Completion;
+    const completion = costedOf(body);
     const usage = completion.usage;
-    const providerMetadata: ProviderMetadata = typeof usage?.cost === "number" ? { openrouter: { usage: { cost: usage.cost } } } : {};
+    const providerMetadata: ProviderMetadata = usage?.cost === undefined ? {} : { openrouter: { usage: { cost: usage.cost } } };
     return {
       usage: usageOf(
-        count(usage?.prompt_tokens),
-        count(usage?.prompt_tokens_details?.cached_tokens),
-        count(usage?.completion_tokens),
-        count(usage?.completion_tokens_details?.reasoning_tokens),
+        usage?.prompt_tokens ?? 0,
+        usage?.prompt_tokens_details?.cached_tokens ?? 0,
+        usage?.completion_tokens ?? 0,
+        usage?.completion_tokens_details?.reasoning_tokens ?? 0,
       ),
       providerMetadata,
       generationId: completion.id,
