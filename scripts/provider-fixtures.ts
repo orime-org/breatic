@@ -28,6 +28,7 @@ import { parse } from "yaml";
 import { upstreamPriceUsd } from "../packages/shared/src/pricing/upstream-price.js";
 import { completeEntries, isPresent, joinSlotFiles } from "../packages/shared/dist/index.js";
 import { estimateCredits } from "../packages/shared/dist/pricing/index.js";
+import { MINI_TOOLS, toolFilledParams } from "../packages/shared/dist/mini-tools/index.js";
 import { upstreamBody } from "../packages/worker/src/providers/upstream-body.js";
 import minimaxSpeech from "../packages/worker/src/providers/families/minimax-speech.js";
 import nanoBananaRelight from "../packages/worker/src/providers/families/nano-banana-relight.js";
@@ -301,13 +302,15 @@ for (const modality of MODALITIES) {
     const seen = new Set<string>();
     for (const sample of bodySamples(model)) {
       const given = sample;
-      // A clone's own call takes no prompt; the speech after it does.
-      const written = model.takes_prompt === false || model.reused_by !== undefined ? "" : PROMPTS[1]!;
-      const key = JSON.stringify(given);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const prepared = await prepare(model, given, written);
-      bodyCases.push({ model: model.name, kind: "catalog", ...prepared, body: await todayBody(model, given, written) });
+      // A clone's own call takes no prompt; the speech after it does. A model that takes one is
+      // also run with it empty, which today's upstreamBody leaves out (upstream-body.ts:62).
+      for (const written of model.takes_prompt === false || model.reused_by !== undefined ? [""] : ["", PROMPTS[1]!]) {
+        const key = JSON.stringify([given, written]);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const prepared = await prepare(model, given, written);
+        bodyCases.push({ model: model.name, kind: "catalog", ...prepared, body: await todayBody(model, given, written) });
+      }
     }
   }
 }
@@ -381,15 +384,16 @@ const UNPICKED = "unpicked";
  * @param raw - The reader's params, prompt and known clip lengths.
  * @returns The prepared input.
  */
-function estimateInput(model: RawModel, raw: { params: Record<string, unknown>; prompt: string; durations: Record<string, number[]> }): EstimateCase["input"] {
+function estimateInput(model: RawModel, raw: { params: Record<string, unknown>; prompt: string; durations: Record<string, number[]>; sources?: string[] }): EstimateCase["input"] {
   const priced = Object.entries(model.params ?? {}).filter(([, spec]) => spec.joins === undefined);
   const valueOf = (record: Record<string, unknown>, name: string, spec: RawParam): unknown =>
     record[name] ?? spec.default ?? (spec.type === "list" ? [] : undefined);
-  const isSource = (spec: RawParam): boolean => spec.fill === "canvas" || spec.fill === "pool";
+  // As estimate.ts:148-149: a canvas or pool param, or one the caller names (a mini-tool's).
+  const isSource = (name: string, spec: RawParam): boolean => spec.fill === "canvas" || spec.fill === "pool" || (raw.sources?.includes(name) ?? false);
   const own: Record<string, unknown> = { ...raw.params };
   const placeholders: string[] = [];
   for (const [name, spec] of priced) {
-    if (isSource(spec) && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {
+    if (isSource(name, spec) && !isPresent(valueOf(own, name, spec)) && spec.optional !== true) {
       own[name] = spec.type === "list" ? [UNPICKED] : UNPICKED;
       placeholders.push(name);
     }
@@ -401,7 +405,7 @@ function estimateInput(model: RawModel, raw: { params: Record<string, unknown>; 
   for (const [name, spec] of priced) {
     const value = valueOf(joined.params, name, spec);
     params[name] = value ?? null;
-    if (isSource(spec) && isPresent(value)) {
+    if (isSource(name, spec) && isPresent(value)) {
       const known = raw.durations[name] ?? [];
       if (known.length >= (Array.isArray(value) ? value.length : 1)) durations[name] = known;
       else durationsMissing.push(name);
@@ -434,11 +438,22 @@ for (const modality of MODALITIES) {
     const priced = { ...model, takes_prompt: model.takes_prompt === true, params: model.params ?? {}, pricing } as unknown as Parameters<typeof estimateCredits>[0];
     const samples = bodySamples(model);
     const filledAll = samples[1] ?? {};
-    const raws = [
+    // A mini-tool estimates its pinned model with the params it fills named as sources
+    // (mini-tools/derive.ts:266): unpicked, picked with no length known, and picked with lengths.
+    const toolRaws = MINI_TOOLS.filter((tool) => tool.run.kind === "model" && tool.run.model === model.name).flatMap((tool) => {
+      const sources = toolFilledParams(tool);
+      return [
+        { params: {}, prompt: PROMPTS[1]!, durations: {}, sources },
+        { params: filledAll, prompt: PROMPTS[1]!, durations: {}, sources },
+        { params: filledAll, prompt: PROMPTS[1]!, durations: clipLengths(model, filledAll), sources },
+      ];
+    });
+    const raws: { params: Record<string, unknown>; prompt: string; durations: Record<string, number[]>; sources?: string[] }[] = [
       { params: {}, prompt: "", durations: {} },
       { params: {}, prompt: PROMPTS[1]!, durations: {} },
       { params: filledAll, prompt: PROMPTS[1]!, durations: {} },
       ...samples.slice(1).map((params) => ({ params, prompt: PROMPTS[1]!, durations: clipLengths(model, params) })),
+      ...toolRaws,
     ];
     const seen = new Set<string>();
     for (const raw of raws) {
