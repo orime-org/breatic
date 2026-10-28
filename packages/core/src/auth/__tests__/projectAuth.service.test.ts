@@ -10,7 +10,7 @@
  * and the membership lookup into one inner-join query and collapses
  * both "project missing/deleted" and "user not a member" to `null` —
  * so the caller surfaces one generic 403 and never leaks project
- * existence (the BUG-048 cross-tenant-probe class). `loadProjectRole`
+ * existence. `loadProjectRole`
  * caps an archived project at viewer; `loadProjectAccess` does not.
  *
  * These tests pin the delegation, the argument order and the cap. The JOIN-level
