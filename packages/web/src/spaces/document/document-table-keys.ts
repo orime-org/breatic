@@ -91,8 +91,10 @@ function tabForward(editor: KeysEditor): boolean {
     editor.nestBlock();
     return true;
   }
+  if (goToNextCell(1)(view.state, view.dispatch)) return true;
+  // A short row's missing cell, once evened, is the next cell.
+  squareSelectedTable(view);
   if (!goToNextCell(1)(view.state, view.dispatch)) {
-    squareSelectedTable(view);
     addRowAfter(view.state, view.dispatch);
     goToNextCell(1)(view.state, view.dispatch);
   }

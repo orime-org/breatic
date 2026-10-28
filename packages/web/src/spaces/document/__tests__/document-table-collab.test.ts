@@ -278,7 +278,7 @@ describe('two people on one table (A17)', () => {
     expect(grids(p.ours).map((table) => table.map((row) => row.length))).toEqual([[4, 4, 4, 4, 4], [3, 3, 2]]);
   });
 
-  it('evens a short table before Tab in its last cell adds a row', () => {
+  it('evens a short table on Tab in the cell before its missing one, and moves into it', () => {
     const p = pair();
     insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
     insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
@@ -297,7 +297,8 @@ describe('two people on one table (A17)', () => {
 
     converged(p);
     expect(rectangular(p.ours)).toBe(true);
-    expect(rowLengths(p.ours)).toEqual([4, 4, 4, 4, 4]);
+    expect(rowLengths(p.ours)).toEqual([4, 4, 4, 4]);
+    expect(view.state.selection.$head.pos).toBeGreaterThan(lastCell + view.state.doc.nodeAt(lastCell)!.nodeSize);
   });
 
   it('evens a short table before merging cells of it', () => {

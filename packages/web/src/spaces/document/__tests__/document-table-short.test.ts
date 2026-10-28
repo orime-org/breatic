@@ -335,3 +335,22 @@ describe('a short table evened by a command (A17)', () => {
     expect(tableOf(editor).node.child(1).child(1).attrs['colwidth']).toEqual([140]);
   });
 });
+
+describe('Tab at the end of a short row (A17)', () => {
+  it('moves into the missing cell, evened, and adds no row', () => {
+    const editor = open([{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2'] }]);
+    caretIn(editor, 'b2');
+    press(editor, 'Tab');
+
+    expect(grid(editor)).toEqual([
+      ['a1', 'b1', 'c1'],
+      ['a2', 'b2', ''],
+    ]);
+    const { node, pos } = tableOf(editor);
+    const map = TableMap.get(node);
+    const missing = pos + 1 + map.map[map.width + 2]!;
+    const { $head } = editor.prosemirrorState.selection;
+    expect($head.pos).toBeGreaterThan(missing);
+    expect($head.pos).toBeLessThan(missing + node.nodeAt(map.map[map.width + 2]!)!.nodeSize);
+  });
+});
