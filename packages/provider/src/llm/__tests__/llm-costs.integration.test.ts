@@ -179,6 +179,23 @@ describe("understand (design 6.5)", () => {
     expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 
+  it.each([
+    ["content-filter when Google blocked the prompt", { promptFeedback: { blockReason: "SAFETY" } }, "content-filter"],
+    ["other when Google gave no candidate and no block reason", {}, "other"],
+  ] as const)("answers an empty text and %s", async (_name, body, finishReason) => {
+    fakes.google.answer(() => ({ status: 200, body: { ...body, usageMetadata: { promptTokenCount: 10 } } }));
+    const answer = await llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.understand({
+      model: "google/gemini-3.8-flash",
+      question: "What is in it?",
+      media: [picture],
+      maxOutputTokens: 200,
+      deadlineAt: Date.now() + 60_000,
+    });
+    expect(answer.upstream).toBe("google");
+    expect(answer.text).toBe("");
+    expect(answer.finishReason).toBe(finishReason);
+  });
+
   it("asks OpenRouter when Google has no key, each item inline in OpenRouter's own form, with the pinned backend (DD 26)", async () => {
     const video = { bytes: new Uint8Array([0, 0, 0, 24]), contentType: "video/mp4" };
     const webm = { bytes: new Uint8Array([26, 69, 223, 163]), contentType: "audio/webm" };
