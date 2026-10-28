@@ -7,8 +7,8 @@ import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import { billed } from "@provider/media/wavespeed/adapter.js";
 import type { ProviderOptions } from "@provider/provider.js";
 
-/** A number leaf of an answer: a value that is not a finite number reads as absent. */
-const numberLeaf = z.number().optional().catch(undefined);
+/** A number leaf of an upstream answer: a value that is not a finite number reads as absent. */
+export const numberLeaf = z.number().optional().catch(undefined);
 
 /** OpenRouter's generation answer, as far as it is read. */
 const generationSchema = z.looseObject({

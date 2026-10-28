@@ -9,6 +9,7 @@
 
 import type { FinishReason, ProviderMetadata } from "ai";
 import { z } from "zod";
+import { numberLeaf } from "@provider/cost.js";
 import { base64Of, exchange, usageOf, wireTypeOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
 
 /** OpenRouter's name for each audio type it takes: shared's AUDIO_FORMATS, with every alias of shared's CANONICAL. */
@@ -51,9 +52,6 @@ function partOf(media: UnderstandCall["media"][number]): Record<string, unknown>
   }
   return { type: "image_url", image_url: { url: `data:${media.contentType};base64,${data}` } };
 }
-
-/** A number leaf of a cost: a value that is not a finite number reads as absent. */
-const numberLeaf = z.number().optional().catch(undefined);
 
 /**
  * OpenRouter's chat completion answer, as far as it is read, its leaves typed; other fields
