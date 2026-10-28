@@ -10,7 +10,7 @@
 
 import type { FinishReason } from "ai";
 import { HttpStatus } from "@provider/http/errors.js";
-import { fetchJson, send, wait } from "@provider/http/request.js";
+import { deliver, fetchJson, send, SIDE_REQUEST_MS, wait } from "@provider/http/request.js";
 import { base64Of, count, exchange, UnreadableAnswer, usageOf, type UnderstandAdapter, type UnderstandCall } from "@provider/llm/understand/adapter.js";
 
 /** Gemini's finish reasons that mean the answer was blocked. */
@@ -54,17 +54,17 @@ function headers(call: UnderstandCall): Record<string, string> {
 }
 
 /**
- * Upload one item through the resumable protocol and wait until it is ACTIVE.
+ * Upload one item through the resumable protocol and wait until it is ACTIVE; its delete is
+ * queued on the call's session as soon as the file exists.
  * @param call - The call, for its key, bounds and poll interval.
  * @param media - The item.
  * @param index - Its place, for its display name.
- * @param uploaded - Where the name of each file is kept for deleting, as soon as it exists.
  * @returns The file's uri.
  * @throws {HttpStatus} When an upload step answers a failing status.
  * @throws {UnreadableAnswer} When the upload names no session or file, the file ends FAILED, or it has no uri.
  * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure.
  */
-async function upload(call: UnderstandCall, media: UnderstandCall["media"][number], index: number, uploaded: string[]): Promise<string> {
+async function upload(call: UnderstandCall, media: UnderstandCall["media"][number], index: number): Promise<string> {
   const base = new URL(call.decl.base_url);
   const startUrl = `${base.origin}/upload${base.pathname.replace(/\/$/, "")}/files`;
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
@@ -99,7 +99,14 @@ async function upload(call: UnderstandCall, media: UnderstandCall["media"][numbe
   );
   let file = (finished as { file?: GeminiFile } | null)?.file ?? {};
   if (typeof file.name !== "string") throw new UnreadableAnswer("Google's upload answered no file");
-  uploaded.push(file.name);
+  const name = file.name;
+  // Deleted once the whole call ends; each delete is sent once in its own window, apart from the
+  // call's deadline and signal, and a file left behind expires on Google's side.
+  call.session.cleanups.push(() => {
+    deliver({ url: `${call.decl.base_url}/${name}`, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: false, deadlineAt: Date.now() + SIDE_REQUEST_MS })
+      .then((r) => r.body?.cancel())
+      .catch(() => undefined);
+  });
   const fileUrl = `${call.decl.base_url}/${file.name}`;
   while (file.state !== "ACTIVE") {
     if (file.state === "FAILED") throw new UnreadableAnswer(`Google could not process ${String(file.name)}`);
@@ -123,23 +130,19 @@ export const googleUnderstand: UnderstandAdapter = {
       generationConfig: { maxOutputTokens: call.maxOutputTokens },
     });
     const inline = request(call.media.map((m) => ({ inlineData: { mimeType: m.contentType, data: base64Of(m.bytes) } })));
-    const uploaded: string[] = [];
-    try {
-      let body = inline;
-      if (Buffer.byteLength(inline) > call.inlineMaxBytes) {
-        const uris: string[] = [];
-        for (const [index, media] of call.media.entries()) uris.push(await upload(call, media, index, uploaded));
-        body = request(call.media.map((m, i) => ({ fileData: { mimeType: m.contentType, fileUri: uris[i]! } })));
+    let body = inline;
+    if (Buffer.byteLength(inline) > call.inlineMaxBytes) {
+      // Uploaded once per call: a later attempt on this upstream sends the same files.
+      let uris = call.session.uploads.get(call.decl.base_url);
+      if (uris === undefined) {
+        uris = [];
+        for (const [index, media] of call.media.entries()) uris.push(await upload(call, media, index));
+        call.session.uploads.set(call.decl.base_url, uris);
       }
-      return await exchange({ url, method: "POST", headers: headers(call), body }, call);
-    } finally {
-      // Deletes are best effort: a file left behind expires on Google's side.
-      for (const name of uploaded) {
-        await send({ url: `${call.decl.base_url}/${name}`, method: "DELETE", headers: { "x-goog-api-key": call.key } }, { replaySafe: true, deadlineAt: call.deadlineAt })
-          .then((r) => r.body?.cancel())
-          .catch(() => undefined);
-      }
+      const ready = uris;
+      body = request(call.media.map((m, i) => ({ fileData: { mimeType: m.contentType, fileUri: ready[i]! } })));
     }
+    return exchange({ url, method: "POST", headers: headers(call), body }, call);
   },
 
   read(body) {

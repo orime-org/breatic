@@ -43,6 +43,8 @@ const BASE_DELAY_MS = 1_000;
 export const MAX_RETRY_AFTER_MS = 60_000;
 /** The longest delay a timer holds; a longer one fires at once, so a deadline beyond it sets no timer. */
 export const MAX_TIMER_MS = 2 ** 31 - 1;
+/** How long a request beside a call may take: a cost lookup, a file delete. */
+export const SIDE_REQUEST_MS = 30_000;
 /** How much of a failed body an HttpStatus keeps. */
 const SNIPPET_CHARS = 500;
 /** Error codes that mean the request never left this machine. */

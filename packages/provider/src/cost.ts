@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { ProviderConfig } from "@provider/config/schema.js";
-import { fetchJson } from "@provider/http/request.js";
+import { fetchJson, SIDE_REQUEST_MS } from "@provider/http/request.js";
 import { billed } from "@provider/media/wavespeed/adapter.js";
 import type { ProviderOptions } from "@provider/provider.js";
 
 /** The largest generation answer read. */
 const MAX_LOOKUP_BYTES = 1024 * 1024;
-/** How long a lookup answer may stall. */
-const LOOKUP_IDLE_MS = 30_000;
 
 /** A serializable handle to look a cost up later; its content belongs to the upstream that issued it. */
 export interface CostLookup {
@@ -67,7 +65,7 @@ export async function lookupCost(config: ProviderConfig, options: ProviderOption
   try {
     const body = await fetchJson(
       { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
-      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: LOOKUP_IDLE_MS },
+      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS },
     );
     const data = (body as { data?: Record<string, unknown> } | null)?.data ?? {};
     const cost = data.total_cost;

@@ -13,6 +13,14 @@ import type { Cost } from "@provider/cost.js";
 import { deliver, readBody, type OutgoingRequest } from "@provider/http/request.js";
 import { parsed } from "@provider/llm/switching.js";
 
+/** What one understand call keeps across its attempts (design 6.5). */
+export interface UnderstandSession {
+  /** Uris of the media uploaded to an upstream, by its base url, for later attempts to reuse. */
+  uploads: Map<string, string[]>;
+  /** Clean-ups to start once the call ends, answered or not; none is waited for. */
+  cleanups: (() => void)[];
+}
+
 /** One understand request on one upstream. */
 export interface UnderstandCall {
   decl: UpstreamDecl;
@@ -31,6 +39,7 @@ export interface UnderstandCall {
   inlineMaxBytes: number;
   /** How often an uploaded file's state is asked about, in ms. */
   filePollMs: number;
+  session: UnderstandSession;
 }
 
 /** The upstream's answer as it came: its status, parsed body and text. */
