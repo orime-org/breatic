@@ -23,9 +23,19 @@
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { columnResizing, fixTablesKey, TableMap, tableEditing } from '@tiptap/pm/tables';
-import { ReplaceStep } from '@tiptap/pm/transform';
+import { EditorState, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
+import {
+  __pastedCells as pastedCells,
+  cellAround,
+  CellSelection,
+  columnIsHeader,
+  columnResizing,
+  fixTables,
+  fixTablesKey,
+  TableMap,
+  tableEditing,
+} from '@tiptap/pm/tables';
+import { ReplaceStep, type Step } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { createRoot, type Root } from 'react-dom/client';
@@ -144,19 +154,28 @@ interface FrameContext {
 }
 
 /**
- * Draws one `<col>` per column of the first row and sizes the table, the way
- * prosemirror-tables' `updateColumnsOnResize` does.
+ * Draws one `<col>` per column of the grid and sizes the table, the way
+ * prosemirror-tables' `updateColumnsOnResize` does. Each column takes its width
+ * from the first cell that stands in it, so the columns a short first row
+ * lacks are drawn too.
  * @param colgroup - The table's `<colgroup>`.
  * @param table - The `<table>`.
  * @param block - The table block.
  */
 function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBlockLike): void {
   const widths: (number | null)[] = [];
-  for (const cell of block.children[0]?.children ?? []) {
-    const span = cell.props.colspan ?? 1;
-    for (let column = 0; column < span; column++) {
-      widths.push(cell.props.colwidth?.[column] ?? null);
+  // How many more rows a span from above holds each column for.
+  let held: number[] = [];
+  for (const row of block.children) {
+    let column = 0;
+    for (const cell of row.children) {
+      while ((held[column] ?? 0) > 0) column += 1;
+      for (let k = 0; k < (cell.props.colspan ?? 1); k += 1, column += 1) {
+        if (widths[column] === undefined) widths[column] = cell.props.colwidth?.[k] ?? null;
+        held[column] = cell.props.rowspan ?? 1;
+      }
     }
+    held = held.map((rows) => rows - 1);
   }
   while (colgroup.childElementCount > widths.length) colgroup.lastElementChild?.remove();
   while (colgroup.childElementCount < widths.length) colgroup.appendChild(document.createElement('col'));
@@ -333,7 +352,32 @@ const unfoldCellTables = new Plugin({
 });
 
 /**
- * Holds back the table plugin's repairs that add cells.
+ * Whether a step adds content: a cell, for the table plugin's repairs.
+ * @param step - The step.
+ * @returns True when it does.
+ */
+function inserts(step: Step): boolean {
+  return step instanceof ReplaceStep && step.slice.size > 0;
+}
+
+/**
+ * The table plugin's repair of one table, in steps against `doc`.
+ *
+ * `fixTables` scans only the tables that differ from the state it is given,
+ * so it is handed the document with this table swapped for a new node with
+ * the same content (`Node.copy` would hand back the node itself).
+ * @param doc - The document.
+ * @param tablePos - The position before the table.
+ * @returns The repair, or undefined when the table needs none.
+ */
+function repairOf(doc: PMNode, tablePos: number): Transaction | undefined {
+  const table = doc.nodeAt(tablePos)!;
+  const before = doc.replace(tablePos, tablePos + table.nodeSize, new Slice(Fragment.from(table.type.create(table.attrs, table.content, table.marks)), 0, 0));
+  return fixTables(EditorState.create({ doc }), EditorState.create({ doc: before }));
+}
+
+/**
+ * Holds back the table plugin's repairs that add cells, and keeps the rest.
  *
  * `tableEditing` evens every table a transaction touched, a peer's change
  * included. y-prosemirror writes nothing appended to a peer's change back to
@@ -342,14 +386,46 @@ const unfoldCellTables = new Plugin({
  * column, the table gains a column each time both type (prosemirror-tables
  * #249, y-prosemirror CAVEATS "Editor plugins that repair the document").
  * Repairs that set attributes (column widths, spans) or delete converge in
- * Yjs and go through. A table left short shows placeholders where its cells
- * are missing (`missingCells`), and a command run on it evens it first
- * (`squareTable`).
+ * Yjs and go through. The plugin writes a table's repair in one transaction,
+ * its attributes first and its added cells last, so for a short table the
+ * steps before the first added cell are applied here. A table left short shows
+ * placeholders where its cells are missing (`missingCells`), and a command run
+ * on it evens it first (`squareTable`).
  */
 const holdTableRepairs = new Plugin({
   key: new PluginKey('doc-table-hold-repairs'),
-  filterTransaction: (tr) =>
-    tr.getMeta(fixTablesKey) === undefined || !tr.steps.some((step) => step instanceof ReplaceStep && step.slice.size > 0),
+  filterTransaction: (tr) => tr.getMeta(fixTablesKey) === undefined || !tr.steps.some(inserts),
+  appendTransaction: (transactions, _old, state) => {
+    if (!transactions.some((tr) => tr.docChanged)) return null;
+    const tr = state.tr;
+    state.doc.descendants((table, tablePos) => {
+      if (table.type.name !== DOC_TABLE) return true;
+      const problems = TableMap.get(table).problems ?? [];
+      if (problems.some((problem) => problem.type === 'missing') && problems.some((problem) => problem.type !== 'missing')) {
+        const repair = repairOf(tr.doc, tr.mapping.map(tablePos));
+        const steps = repair?.steps ?? [];
+        const first = steps.findIndex(inserts);
+        for (const step of first < 0 ? steps : steps.slice(0, first)) tr.step(step);
+      }
+      return false;
+    });
+    return tr.docChanged ? tr : null;
+  },
+});
+
+/**
+ * Evens a short table before the table plugin pastes cells into it
+ * (`insertCells`, which writes the grid): pasting cells is a command on the
+ * table, as merging is.
+ */
+const squareBeforeCellPaste = new Plugin({
+  key: new PluginKey('doc-table-square-before-cell-paste'),
+  props: {
+    handlePaste: (view, _event, slice) => {
+      if (view.state.selection instanceof CellSelection || pastedCells(slice) !== null) squareSelectedTable(view);
+      return false;
+    },
+  },
 });
 
 /**
@@ -376,7 +452,7 @@ export interface MissingCell {
   readonly row: number;
   /** Its column. */
   readonly column: number;
-  /** Whether the row's cells are headers, judged by its last cell. */
+  /** Whether it is a header cell, judged as `missingCellsOf` says. */
   readonly header: boolean;
   /** The width of the column it stands in, when another row sets one. */
   readonly colwidth: unknown;
@@ -389,21 +465,70 @@ export interface MissingCell {
  */
 export function missingCellsOf(table: PMNode): MissingCell[] {
   const found: MissingCell[] = [];
-  for (const problem of TableMap.get(table).problems ?? []) {
+  const map = TableMap.get(table);
+  for (const problem of map.problems ?? []) {
     if (problem.type !== 'missing') continue;
     let rowPos = 0;
     for (let index = 0; index < problem.row; index += 1) rowPos += table.child(index).nodeSize;
     const row = table.child(problem.row);
+    // The row's last cell's kind, unless that cell stands in a header column:
+    // the rule `addColumn` follows for a new column's cells.
+    const last = row.lastChild;
+    const lastAt = rowPos + row.nodeSize - 1 - (last?.nodeSize ?? 0);
+    const header =
+      last?.type.name === DOC_TABLE_HEADER &&
+      !columnIsHeader(map, table, map.colCount(lastAt) + Number(last.attrs['colspan'] ?? 1) - 1);
     for (let n = 0; n < problem.n; n += 1) {
       const column = row.childCount + n;
       let colwidth: unknown = null;
       table.forEach((other) => {
         if (colwidth === null && other.childCount > column) colwidth = other.child(column).attrs['colwidth'];
       });
-      found.push({ at: rowPos + row.nodeSize - 1, row: problem.row, column, header: row.lastChild?.type.name === DOC_TABLE_HEADER, colwidth });
+      found.push({ at: rowPos + row.nodeSize - 1, row: problem.row, column, header, colwidth });
     }
   }
   return found;
+}
+
+/**
+ * Evens one table's grid in a transaction: short rows are filled at their end,
+ * where their missing cells are drawn (`missingCellsOf`), and the rest of the
+ * table plugin's repair (overlapping spans, the new cells' column widths)
+ * follows.
+ *
+ * The user running a command on the table is the one who evens it; the table
+ * plugin's own repairs that add cells are held back (`holdTableRepairs`).
+ * `fixTables` fills a short first row at its start, so it is handed the table
+ * with its rows already filled.
+ * @param tr - The transaction to add the repair to.
+ * @param tablePos - The position before the table.
+ */
+export function squareTable(tr: Transaction, tablePos: number): void {
+  const table = tr.doc.nodeAt(tablePos);
+  if (table === null || TableMap.get(table).problems === null) return;
+  const { nodes } = tr.doc.type.schema;
+  // The last first, so each insertion leaves the offsets before it standing.
+  for (const missing of missingCellsOf(table).reverse()) {
+    const type = nodes[missing.header ? DOC_TABLE_HEADER : DOC_TABLE_CELL]!;
+    tr.insert(tablePos + 1 + missing.at, type.createAndFill()!);
+  }
+  repairOf(tr.doc, tablePos)?.steps.forEach((step) => tr.step(step));
+}
+
+/**
+ * Evens the table the selection is in, in a transaction of its own, before a
+ * command of `prosemirror-tables` reads the editor's state.
+ * @param view - The editor view.
+ * @param view.state - Its state.
+ * @param view.dispatch - Where the repair goes.
+ */
+export function squareSelectedTable(view: { state: EditorState; dispatch: (tr: Transaction) => void }): void {
+  const { selection } = view.state;
+  const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$head);
+  if ($cell === null) return;
+  const tr = view.state.tr;
+  squareTable(tr, $cell.before($cell.depth - 1));
+  if (tr.docChanged) view.dispatch(tr);
 }
 
 /**
@@ -454,6 +579,7 @@ const DocTableEditing = Extension.create({
       View: null,
     }),
     unfoldCellTables,
+    squareBeforeCellPaste,
     tableEditing(),
     holdTableRepairs,
     missingCells,

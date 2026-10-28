@@ -33,7 +33,8 @@ import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
-import { cellAt, squareSelectedTable, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
+import { squareSelectedTable } from '@web/spaces/document/document-table-nodes';
+import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
   addRowAfter,
   cellAround,
@@ -278,8 +279,10 @@ function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { bloc
   for (let d = $head.depth - 1; d > cell.depth; d -= 1) {
     if (before ? $head.index(d) !== 0 : $head.indexAfter(d) !== $head.node(d).childCount) edgeLine = false;
   }
-  const edgeRow = edgeLine && (before ? at.top === 0 : at.bottom === at.map.height);
-  const edgeColumn = dir === 'left' ? at.left === 0 : dir === 'right' ? at.right === at.map.width : true;
+  // The map's next cell skips the missing cells of short rows.
+  const rel = cell.pos - at.tableStart;
+  const edgeRow = edgeLine && at.map.nextCell(rel, 'vert', before ? -1 : 1) === null;
+  const edgeColumn = dir === 'left' || dir === 'right' ? at.map.nextCell(rel, 'horiz', dir === 'left' ? -1 : 1) === null : true;
   const onEdgeLine = dir === 'up' || dir === 'down' ? headOnEdgeLine(view, $head.pos, dir === 'up' ? -1 : 1) : view.endOfTextblock(dir);
   if (!edgeRow || !edgeColumn || !onEdgeLine) return null;
   return { blockId: at.blockId, edge: before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1) };
