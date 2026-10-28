@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { extendFromPress, followFromPoint } from '@web/spaces/document/document-body-edge-pointer';

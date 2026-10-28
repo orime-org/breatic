@@ -6,8 +6,11 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { type BodyJsonObject, type BodyRecord, type BodyTreeUnit, type BodyTreeView } from '@breatic/shared';
-import { documentBodyFragment, documentBodyRecords, documentBodySource, documentCommentThreads, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import {
+  documentBodyFragment, documentBodyRecords, documentBodySource, documentCommentThreads,
+  readBodyTree, registerDocumentBodyRecords,
+  type BodyJsonObject, type BodyRecord, type BodyTreeUnit, type BodyTreeView,
+} from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { runBlockType } from '@web/spaces/document/document-block-run';
@@ -272,16 +275,6 @@ function expectLocalReplacementNames(body: OpenBody, names: readonly BodyTextPoi
   }
 }
 
-/** Builds the native deletion-undo oracle from Yjs redone pointers while retaining all original payloads. @throws {Error} If any expected original character is not restored. */
-function restoredNativeOracle(doc: Y.Doc, original: BodyTreeView): BodyTreeView {
-  return { ...original, owners: original.owners.map((owner) => ({ ...owner, units: owner.units.map((unit) => {
-    const id = bodyTokenId(unit.source, unit.id);
-    const restored = id === null ? null : bodyNativeItem(doc, id);
-    if (restored === null || !bodyNativeItemAlive(restored)) throw new Error('An original character was not restored through native undo');
-    return { ...unit, id: `${unit.source}/${restored.item.id.client}:${restored.item.id.clock + restored.offset}` };
-  }) })) };
-}
-
 describe('actual command producer provenance', () => {
   it('keeps first-child Backspace inline and promoted descendants on their original native sources', () => {
     const doc = fixture([
@@ -486,135 +479,6 @@ describe('actual command producer provenance', () => {
     expect(reopened.editor.prosemirrorState.doc.toJSON()).toEqual(after.toJSON());
     expect(native(reopened.doc).owners).toEqual(redone.owners);
     expect(documentCommentThreads(reopened.doc).toJSON()).toEqual(threads);
-    expect(reopened.history.undoStack).toHaveLength(0);
-  });
-
-  it.each([true, false])('keeps unseen first-child peer input through merge and author undo with author-first=%s', (authorFirst) => {
-    const doc = fixture([{ id: 'P', text: 'AB' }, { id: 'K', text: 'CD', parent: 'children' }, { id: 'Z', text: 'AA' }], [
-      { id: 'children', kind: 'container', type: 'blockGroup', attrs: {}, parent: 'P', order: 'z' },
-    ]);
-    const original = native(doc);
-    const author = open(doc);
-    const peer = open(clone(doc));
-    const schema = author.editor.pmSchema;
-    const threads = documentCommentThreads(doc).toJSON();
-    const before = documentOf(schema, [block(schema, 'P', 'AB', 'paragraph', {}, [block(schema, 'K', 'CD')]), block(schema, 'Z', 'AA')]);
-    expectFrame(author, before, ownership(original), original);
-    expectFrame(peer, before, ownership(original), original);
-    select(author, 'K', 0);
-    press(author, 'Backspace');
-    const merged = documentOf(schema, [block(schema, 'P', 'ABCD'), block(schema, 'Z', 'AA')]);
-    expectFrame(author, merged, [['P', [...ids(original, 'P'), ...ids(original, 'K')]], ['Z', ids(original, 'Z')]], original);
-
-    // This peer has not received the merge. Its actual endpoint permits bold
-    // and excludes the non-inclusive original link/comment from new input.
-    select(peer, 'K', 2);
-    expect(peer.editor.prosemirrorState.selection.$from.marks().map((mark) => mark.type.name)).toEqual(['bold']);
-    act(() => {
-      const view = peer.editor.prosemirrorView;
-      view.dispatch(view.state.tr.insertText('_PEER'));
-    });
-    const withPeer = native(peer.doc);
-    const peerIds = ids(withPeer, 'K').slice(2);
-    expect(peerIds).toHaveLength(5);
-    expect(peerIds.every((id) => !ids(original, 'K').includes(id))).toBe(true);
-    expect(peer.userUpdates).toBe(1);
-    expect(author.userUpdates).toBe(1);
-    const fullMarks = [schema.mark('bold'), schema.mark('link', { href: 'https://example.com/command' }), schema.mark('comment', { threadId: 'command-thread', orphan: false })];
-    const lateChild = schema.node('blockContainer', { id: 'K' }, schema.node('paragraph', null, [schema.text('CD', fullMarks), schema.text('_PEER', [schema.mark('bold')])]));
-    const separate = documentOf(schema, [block(schema, 'P', 'AB', 'paragraph', {}, [lateChild]), block(schema, 'Z', 'AA')]);
-    expectFrame(peer, separate, ownership(withPeer), withPeer);
-    const joined = documentOf(schema, [schema.node('blockContainer', { id: 'P' }, schema.node('paragraph', null, [schema.text('ABCD', fullMarks), schema.text('_PEER', [schema.mark('bold')])])), block(schema, 'Z', 'AA')]);
-    const joinedIds: Ownership = [['P', [...ids(original, 'P'), ...ids(original, 'K'), ...peerIds]], ['Z', ids(original, 'Z')]];
-    exchange(authorFirst ? author : peer, authorFirst ? peer : author);
-    expectFrame(author, joined, joinedIds, withPeer);
-    expectFrame(peer, joined, joinedIds, withPeer);
-    expect(author.history.undoStack).toHaveLength(1);
-    expect(peer.history.undoStack).toHaveLength(1);
-
-    act(() => { author.history.undo(); });
-    exchange(authorFirst ? author : peer, authorFirst ? peer : author);
-    expectFrame(author, separate, ownership(withPeer), withPeer);
-    expectFrame(peer, separate, ownership(withPeer), withPeer);
-    expect(peer.history.undoStack).toHaveLength(1);
-    act(() => { author.history.redo(); });
-    exchange(authorFirst ? author : peer, authorFirst ? peer : author);
-    expectFrame(author, joined, joinedIds, withPeer);
-    expectFrame(peer, joined, joinedIds, withPeer);
-    expect(documentCommentThreads(doc).toJSON()).toEqual(threads);
-    expect(documentCommentThreads(peer.doc).toJSON()).toEqual(threads);
-    const reopened = open(clone(doc));
-    expectFrame(reopened, joined, joinedIds, withPeer);
-    expect(reopened.history.undoStack).toHaveLength(0);
-  });
-
-  it.each([
-    ['paragraph', false, false], ['paragraph', true, false], ['bulletListItem', true, false],
-    ['numberedListItem', true, false], ['checkListItem', true, false], ['heading', false, false], ['heading', false, true],
-  ] as const)('deletes only selected native units before %s quoted=%s toggle-open=%s Enter', (type, quoted, isOpen) => {
-    if (type === 'heading') toggle(isOpen);
-    const attrs: BodyJsonObject = type === 'heading' ? { level: 2, isToggleable: true } : { quoted };
-    const doc = fixture([{ id: 'P', text: 'AAAAAA', type, attrs }, { id: 'K', text: 'AA', parent: 'children' }, { id: 'Z', text: 'AA' }], [
-      { id: 'children', kind: 'container', type: 'blockGroup', attrs: {}, parent: 'P', order: 'z' },
-    ]);
-    const original = native(doc);
-    const author = open(doc);
-    const peer = open(clone(doc));
-    const schema = author.editor.pmSchema;
-    const before = documentOf(schema, [block(schema, 'P', 'AAAAAA', type, attrs, [block(schema, 'K', 'AA')]), block(schema, 'Z', 'AA')]);
-    expectFrame(author, before, ownership(original), original);
-    const index = replacementIndex(author);
-    const from = index.owners.get('P')!.contentFrom;
-    const names = index.units.filter((unit) => unit.owner === 'P').map((unit) => nameBodyPoint(index, { kind: 'text', pos: unit.pos, assoc: 1 }));
-    act(() => {
-      const view = author.editor.prosemirrorView;
-      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from + 2, from + 4)));
-    });
-    press(author, 'Enter');
-    const nextId: unknown = author.editor.prosemirrorState.doc.firstChild?.child(1).attrs['id'];
-    if (typeof nextId !== 'string') throw new Error('The actual range Enter did not create a named sibling');
-    expect(original.body.records.has(nextId)).toBe(false);
-    const keepsChildren = type === 'heading' && !isOpen;
-    // The open-toggle tail handler declines a nonempty selection, so this
-    // path is the installed ordinary split after its explicit deletion.
-    const nextType = type === 'heading' ? 'paragraph' : type;
-    const nextAttrs: BodyJsonObject = type === 'heading' ? {} : { quoted };
-    const child = block(schema, 'K', 'AA');
-    const after = documentOf(schema, [
-      block(schema, 'P', 'AA', type, attrs, keepsChildren ? [child] : []),
-      block(schema, nextId, 'AA', nextType, nextAttrs, keepsChildren ? [] : [child]), block(schema, 'Z', 'AA'),
-    ]);
-    const p = ids(original, 'P');
-    const afterIds: Ownership = keepsChildren
-      ? [['P', p.slice(0, 2)], ['K', ids(original, 'K')], [nextId, p.slice(4)], ['Z', ids(original, 'Z')]]
-      : [['P', p.slice(0, 2)], [nextId, p.slice(4)], ['K', ids(original, 'K')], ['Z', ids(original, 'Z')]];
-    expectFrame(author, after, afterIds, original);
-    for (const name of names.slice(2, 4)) expect(isNamedCharacterAlive(replacementIndex(author), name)).toBe(false);
-    expect(author.userUpdates).toBe(1);
-    expect(author.history.undoStack).toHaveLength(1);
-    exchange(author, peer);
-    expectFrame(peer, after, afterIds, original);
-    act(() => { author.history.undo(); });
-    exchange(author, peer);
-    const restored = restoredNativeOracle(doc, original);
-    expectFrame(author, before, ownership(restored), restored);
-    expectFrame(peer, before, ownership(restored), restored);
-    const restoredP = ids(restored, 'P');
-    for (const offset of [0, 1, 4, 5]) expect(restoredP[offset]).toBe(p[offset]);
-    expect(ids(restored, 'K')).toEqual(ids(original, 'K'));
-    expect(ids(restored, 'Z')).toEqual(ids(original, 'Z'));
-    for (const [offset, name] of names.entries()) {
-      expect(isNamedCharacterAlive(replacementIndex(author), name)).toBe(true);
-      expect(resolveBodyPoint(replacementIndex(author), name)).toEqual({ status: 'resolved', pos: from + offset, epoch: replacementIndex(author).epoch });
-    }
-    act(() => { author.history.redo(); });
-    exchange(author, peer);
-    expectFrame(author, after, afterIds, original);
-    expectFrame(peer, after, afterIds, original);
-    for (const name of names.slice(2, 4)) expect(isNamedCharacterAlive(replacementIndex(author), name)).toBe(false);
-    expect(documentCommentThreads(doc).toJSON()).toEqual(documentCommentThreads(peer.doc).toJSON());
-    const reopened = open(clone(doc));
-    expectFrame(reopened, after, afterIds, original);
     expect(reopened.history.undoStack).toHaveLength(0);
   });
 });

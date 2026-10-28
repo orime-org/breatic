@@ -24,7 +24,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, renderHook, screen, waitFor } from '@testing-library/react';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { Awareness } from 'y-protocols/awareness';
 

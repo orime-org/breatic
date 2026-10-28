@@ -23,7 +23,7 @@ import * as Y from 'yjs';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';

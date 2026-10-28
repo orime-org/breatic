@@ -46,12 +46,12 @@ import {
 import {
   CONSENT_COOKIE_NAME,
   deriveId,
+  encodeInitialSpaceContent,
   parseConsentCookie,
   parseDocName,
   spaceContentDocName,
 } from "@breatic/shared";
 import { readCookie } from "@collab/infra/cookie.js";
-import { encodeInitialSpaceContent } from "@breatic/shared/document-body";
 import { reportSpaceCreated } from "@collab/services/space-analytics.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 

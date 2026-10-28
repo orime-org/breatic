@@ -27,7 +27,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { YjsThreadStore } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
-import { documentCommentThreads } from '@breatic/shared/document-body';
+import { documentCommentThreads } from '@breatic/shared';
 
 import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';

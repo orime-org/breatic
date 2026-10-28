@@ -11,7 +11,7 @@ import { act } from '@testing-library/react';
 import * as Y from 'yjs';
 import { SideMenuExtension } from '@blocknote/core/extensions';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';

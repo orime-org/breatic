@@ -8,7 +8,7 @@ import { withCollaboration } from '@blocknote/core/yjs';
 import { Plugin } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import type * as CollaborationModule from '@blocknote/core/yjs';
-import { documentBodyFragment, readBodyTree } from '@breatic/shared/document-body';
+import { documentBodyFragment, readBodyTree } from '@breatic/shared';
 
 import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/document/build-document-editor';
 import { bodyInlineOccurrences } from '@web/spaces/document/document-body-provenance';

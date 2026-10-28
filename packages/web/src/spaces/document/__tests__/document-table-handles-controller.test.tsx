@@ -14,7 +14,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { BlockNoteContext } from '@blocknote/react';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTableHandlesController';

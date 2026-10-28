@@ -29,7 +29,7 @@ import { screen, act, waitFor, fireEvent } from '@testing-library/react';
 
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 import { domElementOf, viewOf } from '@web/spaces/document/document-editor-view';
 import {
   expectHoverableSiblingFill,

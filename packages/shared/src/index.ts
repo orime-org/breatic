@@ -1,6 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
+export { bodyTreeOrderBetween } from "@shared/document-body-tree-vendor.js";
+
+export {
+  bodyTreeDependencies,
+  bodyTreeRecordProperties,
+  bodyTreeSourcePoint,
+  planBodyJoin,
+  planBodyRangeMove,
+  planBodyReparent,
+  planBodySplit,
+  readBodyTree,
+} from "@shared/document-body-tree.js";
 export type {
   BodyTreeNode,
   BodyTreeOwner,
@@ -409,9 +421,34 @@ export {
   type ErrorMonitoringEnvironment,
 } from "@shared/error-monitoring.js";
 
+export {
+  documentBodyFragment,
+  documentCommentThreads,
+  encodeInitialSpaceContent,
+} from "@shared/document-body.js";
+
 export type { DocumentBodyImportResult } from "@shared/document-body-import-types.js";
 
+export { importCurrentDocumentBody } from "@shared/document-body-import.js";
+export { convertLegacyTables, hasLegacyTable, LEGACY_TABLE_CONVERSION_ORIGIN } from "@shared/document-body-legacy-tables.js";
 export type { LegacyTableIdAllocator } from "@shared/document-body-legacy-tables.js";
+
+export {
+  assertBodySourceBoundary,
+  bodyCutId,
+  BODY_CONTEXT_ATTRIBUTE,
+  BODY_MARK_ATTRIBUTE_PREFIX,
+  BODY_REGISTRATION_ORIGIN,
+  documentBodyRecords,
+  documentBodySource,
+  DocumentBodyFormatError,
+  DOCUMENT_BODY_FORMAT,
+  DOCUMENT_BODY_FORMAT_VERSION,
+  readDocumentBodyRecords,
+  registerBodyCut,
+  registerDocumentBodyRecords,
+  seedDocumentBodyRecords,
+} from "@shared/document-body-records.js";
 
 export type {
   BodyAttributeFact,
@@ -485,6 +522,7 @@ export {
 export type { DynamicsField, DynamicsPreset, DynamicsSettings, DynamicsValue } from "@shared/audio-dynamics.js";
 export { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 export { formatBytes } from "@shared/format-bytes.js";
+
 
 // The confirmation email names the instant the window closes, in the buyer's
 // zone and in UTC; the eligibility rule beside it asks whether that instant

@@ -6,8 +6,7 @@ import { EditorState } from '@tiptap/pm/state';
 import { Mapping } from '@tiptap/pm/transform';
 import { fixTables, TableMap } from '@tiptap/pm/tables';
 
-import { deriveId, type BodyTreeView } from '@breatic/shared';
-import { bodyTreeOrderBetween, bodyTreeRecordProperties, DocumentBodyFormatError } from '@breatic/shared/document-body';
+import { bodyTreeOrderBetween, bodyTreeRecordProperties, deriveId, DocumentBodyFormatError, type BodyTreeView } from '@breatic/shared';
 
 import type { BodyDerivedRecord, BodyNodePosition } from '@web/spaces/document/document-body-codec-types';
 

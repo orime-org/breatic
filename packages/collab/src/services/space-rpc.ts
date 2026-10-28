@@ -66,8 +66,20 @@ import {
   withSpaceCountLock,
   SpaceCountLockBusyError,
 } from "@collab/services/space-count-lock.js";
-import { spaceContentDocName, projectMetaDocName, MAX_SPACES_PER_PROJECT, SpaceTypeSchema, type DocKind, type ProjectRole, type SpaceRpcErrorCode, type SpaceRpcRequest, type SpaceRpcResponse, ACTIVITY_NEW_SIGNAL, type ActivityNewSignal } from "@breatic/shared";
-import { encodeInitialSpaceContent } from "@breatic/shared/document-body";
+import {
+  spaceContentDocName,
+  projectMetaDocName,
+  encodeInitialSpaceContent,
+  MAX_SPACES_PER_PROJECT,
+  SpaceTypeSchema,
+  type DocKind,
+  type ProjectRole,
+  type SpaceRpcErrorCode,
+  type SpaceRpcRequest,
+  type SpaceRpcResponse,
+  ACTIVITY_NEW_SIGNAL,
+  type ActivityNewSignal,
+} from "@breatic/shared";
 
 const logger = createLogger("space-rpc");
 

@@ -4,8 +4,16 @@
 import { Fragment, Mark, type Node as PMNode, type NodeType, type Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
 
-import { type BodyRecord, type BodyTreeOwner, type BodyTreeUnit, type BodyTreeView } from '@breatic/shared';
-import { BODY_MARK_ATTRIBUTE_PREFIX, bodyTreeRecordProperties, DocumentBodyFormatError, readBodyTree } from '@breatic/shared/document-body';
+import {
+  BODY_MARK_ATTRIBUTE_PREFIX,
+  bodyTreeRecordProperties,
+  DocumentBodyFormatError,
+  readBodyTree,
+  type BodyRecord,
+  type BodyTreeOwner,
+  type BodyTreeUnit,
+  type BodyTreeView,
+} from '@breatic/shared';
 
 import type {
   BodyIndexedUnit,

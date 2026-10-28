@@ -13,7 +13,7 @@ import * as Y from 'yjs';
 import { AllSelection, NodeSelection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection, bodyEdgePos } from '@web/spaces/document/document-body-edge-selection';

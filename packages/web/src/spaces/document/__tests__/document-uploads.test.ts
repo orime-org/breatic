@@ -9,7 +9,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';

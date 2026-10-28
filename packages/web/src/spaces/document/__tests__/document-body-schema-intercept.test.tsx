@@ -4,8 +4,15 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import * as Y from 'yjs';
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY, DOCUMENT_SCHEMA_VERSION, documentSchemaVersion, type DocumentSchema } from '@breatic/shared';
-import { DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared/document-body';
+import {
+  DOCUMENT_BODY_FORMAT,
+  DOCUMENT_BODY_FORMAT_VERSION,
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
+  documentSchemaVersion,
+  type DocumentSchema,
+} from '@breatic/shared';
 
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 

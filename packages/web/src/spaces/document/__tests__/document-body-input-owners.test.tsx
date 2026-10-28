@@ -8,7 +8,7 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { TooltipProvider } from '@web/components/ui/tooltip';

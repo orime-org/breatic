@@ -15,7 +15,7 @@ import { AllSelection, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/s
 import { CellSelection } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';

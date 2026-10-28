@@ -7,8 +7,7 @@ import fc from 'fast-check';
 import type { Schema } from '@tiptap/pm/model';
 import { TableMap } from '@tiptap/pm/tables';
 
-import { type BodyJsonObject } from '@breatic/shared';
-import { documentBodyRecords, documentBodySource, registerBodyCut, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import { documentBodyRecords, documentBodySource, registerBodyCut, registerDocumentBodyRecords, type BodyJsonObject } from '@breatic/shared';
 
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';
 import type { BodyProjection } from '@web/spaces/document/document-body-codec-types';

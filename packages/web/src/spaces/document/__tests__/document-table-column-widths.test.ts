@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { holdColumnWidths } from '@web/spaces/document/document-table-column-widths';

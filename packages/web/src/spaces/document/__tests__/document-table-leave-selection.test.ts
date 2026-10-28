@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { BodyEdgeSelection, bodyEdgeBetween, bodyEdgePos, extendToBodyEdge, textEnds } from '@web/spaces/document/document-body-edge-selection';

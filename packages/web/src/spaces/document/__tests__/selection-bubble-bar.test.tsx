@@ -27,7 +27,7 @@ import { screen, act, waitFor } from '@testing-library/react';
 
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 import { viewOf } from '@web/spaces/document/document-editor-view';
 import {
   openSharedBody,

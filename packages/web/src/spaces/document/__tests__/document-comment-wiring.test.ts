@@ -20,7 +20,7 @@ import * as Y from 'yjs';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 import type { ProjectRole } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';

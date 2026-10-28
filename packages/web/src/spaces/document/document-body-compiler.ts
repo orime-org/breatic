@@ -4,8 +4,36 @@
 import type { Mark } from '@tiptap/pm/model';
 import { AddMarkStep, AddNodeMarkStep, RemoveMarkStep, RemoveNodeMarkStep, ReplaceStep } from '@tiptap/pm/transform';
 import * as Y from 'yjs';
-import { type BodyContext, type BodyFact, type BodyGroup, type BodyJsonObject, type BodyJsonValue, type BodyMarkPayload, type BodyParentEdge, type BodyRecord, type BodyRegistration, type BodySource, type BodyTreeUnit, type BodyTreeView } from '@breatic/shared';
-import { assertBodySourceBoundary, BODY_MARK_ATTRIBUTE_PREFIX, bodyCutId, bodyTreeDependencies, bodyTreeOrderBetween, bodyTreeRecordProperties, bodyTreeSourcePoint, documentBodyRecords, documentBodySource, planBodyJoin, planBodyRangeMove, planBodyReparent, planBodySplit, readBodyTree, registerBodyCut, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import {
+  assertBodySourceBoundary,
+  BODY_MARK_ATTRIBUTE_PREFIX,
+  bodyCutId,
+  bodyTreeDependencies,
+  bodyTreeOrderBetween,
+  bodyTreeRecordProperties,
+  bodyTreeSourcePoint,
+  documentBodyRecords,
+  documentBodySource,
+  planBodyJoin,
+  planBodyRangeMove,
+  planBodyReparent,
+  planBodySplit,
+  readBodyTree,
+  registerBodyCut,
+  registerDocumentBodyRecords,
+  type BodyContext,
+  type BodyFact,
+  type BodyGroup,
+  type BodyJsonObject,
+  type BodyJsonValue,
+  type BodyMarkPayload,
+  type BodyParentEdge,
+  type BodyRecord,
+  type BodyRegistration,
+  type BodySource,
+  type BodyTreeUnit,
+  type BodyTreeView,
+} from '@breatic/shared';
 
 import { compilerFrames, compilerJson, type CompilerFrame, type CompilerNode } from '@web/spaces/document/document-body-compiler-frames';
 import { transactionSource } from '@web/spaces/document/document-body-binding-key';

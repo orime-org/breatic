@@ -8,8 +8,7 @@ import { EditorState } from '@tiptap/pm/state';
 import { fixTables, TableMap } from '@tiptap/pm/tables';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
-import { type BodyFact, type BodyJsonObject, type BodyRecord } from '@breatic/shared';
-import { documentBodyFragment, documentBodySource, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import { documentBodyFragment, documentBodySource, registerDocumentBodyRecords, type BodyFact, type BodyJsonObject, type BodyRecord } from '@breatic/shared';
 
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';
 import type { BodyProjection } from '@web/spaces/document/document-body-codec-types';

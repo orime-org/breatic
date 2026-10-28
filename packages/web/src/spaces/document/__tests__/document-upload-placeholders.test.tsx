@@ -11,7 +11,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentUploadPlaceholders } from '@web/spaces/document/DocumentUploadPlaceholders';

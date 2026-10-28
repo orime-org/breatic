@@ -3,7 +3,7 @@
 
 import * as Y from "yjs";
 import { createLogger } from "@breatic/core";
-import { DocumentBodyFormatError, importCurrentDocumentBody } from "@breatic/shared/document-body";
+import { DocumentBodyFormatError, importCurrentDocumentBody } from "@breatic/shared";
 import { prepareDocData } from "@collab/services/yjs-documents.repo.js";
 
 const logger = createLogger("document-body-preparation");

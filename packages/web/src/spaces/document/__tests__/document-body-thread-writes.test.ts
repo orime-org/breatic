@@ -6,8 +6,7 @@ import { act } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { type ProjectRole } from '@breatic/shared';
-import { documentCommentThreads, encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { documentCommentThreads, encodeInitialSpaceContent, type ProjectRole } from '@breatic/shared';
 
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 import { _resetDocumentEditorCacheForTests, adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';

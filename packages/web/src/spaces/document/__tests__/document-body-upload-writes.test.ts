@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import type { StoredUpload } from '@web/data/upload/media-upload';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';

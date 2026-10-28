@@ -16,8 +16,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { DOCUMENT_SCHEMA } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 import * as Y from 'yjs';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';

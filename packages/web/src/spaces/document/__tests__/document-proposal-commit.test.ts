@@ -11,8 +11,7 @@
 import { act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import { deriveId, type DocumentProposal } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
 import { assetsApi, type UploadConfig } from '@web/data/api/assets';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';

@@ -15,7 +15,7 @@ import * as Y from 'yjs';
 import { Selection } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { moveToGap, startTableDrag, dragSourceOf } from '@web/spaces/document/document-table-drag';

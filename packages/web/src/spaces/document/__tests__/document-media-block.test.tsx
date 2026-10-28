@@ -13,8 +13,7 @@ import * as Y from 'yjs';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { DOCUMENT_SCHEMA } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
 import { BODY_PART } from '@web/spaces/document/document-body-focus';

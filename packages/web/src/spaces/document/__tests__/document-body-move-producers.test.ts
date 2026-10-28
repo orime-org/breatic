@@ -6,8 +6,14 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { type BodyTreeView } from '@breatic/shared';
-import { documentBodyFragment, documentBodySource, documentCommentThreads, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import {
+  documentBodyFragment,
+  documentBodySource,
+  documentCommentThreads,
+  readBodyTree,
+  registerDocumentBodyRecords,
+  type BodyTreeView,
+} from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';

@@ -48,7 +48,7 @@ import {
   documentBodyFragment,
   encodeInitialSpaceContent,
   importCurrentDocumentBody,
-} from '@breatic/shared/document-body';
+} from '@breatic/shared';
 import {
   blockTexts,
   seedParagraphs,

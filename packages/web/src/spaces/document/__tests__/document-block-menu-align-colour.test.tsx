@@ -25,7 +25,7 @@ import * as React from 'react';
 import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import {
   DropdownMenu,

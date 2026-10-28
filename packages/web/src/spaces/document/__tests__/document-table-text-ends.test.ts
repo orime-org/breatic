@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { caretAt, textEnds } from '@web/spaces/document/document-body-edge-selection';

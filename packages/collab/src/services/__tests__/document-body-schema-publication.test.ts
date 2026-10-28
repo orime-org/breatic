@@ -3,8 +3,14 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY, DOCUMENT_SCHEMA_VERSION, documentSchemaVersion } from "@breatic/shared";
-import { DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from "@breatic/shared/document-body";
+import {
+  DOCUMENT_BODY_FORMAT,
+  DOCUMENT_BODY_FORMAT_VERSION,
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
+  documentSchemaVersion,
+} from "@breatic/shared";
 
 import {
   keepDocumentSchemaPublished,

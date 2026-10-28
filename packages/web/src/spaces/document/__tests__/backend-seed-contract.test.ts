@@ -28,7 +28,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import {
   _resetDocumentEditorCacheForTests,

@@ -23,7 +23,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { screen, act, waitFor, fireEvent } from '@testing-library/react';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import {
   mountDocumentEditor,

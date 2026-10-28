@@ -15,8 +15,12 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import * as Y from 'yjs';
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY, DOCUMENT_SCHEMA_VERSION } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import {
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
+  documentBodyFragment,
+} from '@breatic/shared';
 
 import { useDocumentSchemaIntercept } from '@web/spaces/document/use-document-schema-intercept';
 

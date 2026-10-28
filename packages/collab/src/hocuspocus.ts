@@ -58,12 +58,12 @@ import {
 import * as Y from "yjs";
 import {
   parseDocName,
+  readDocumentBodyRecords,
   SpaceRpcRequestSchema,
   SyncConfirmRequestSchema,
   type ProjectRole,
   type SpaceRpcResponse,
 } from "@breatic/shared";
-import { readDocumentBodyRecords } from "@breatic/shared/document-body";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import {
   recordPresenceOnConnect,

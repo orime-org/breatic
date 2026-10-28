@@ -28,13 +28,13 @@ import {
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { documentCommentThreads } from '@breatic/shared/document-body';
+import { documentCommentThreads } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';

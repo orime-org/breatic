@@ -11,7 +11,7 @@ import * as Y from 'yjs';
 import {
   documentBodyFragment, documentBodyRecords, documentBodySource, documentCommentThreads,
   readBodyTree, registerDocumentBodyRecords,
-} from '@breatic/shared/document-body';
+} from '@breatic/shared';
 
 import { buildDocumentEditor, type DocumentEditorOptions } from '@web/spaces/document/build-document-editor';
 import type { DocumentBodyOptions } from '@web/spaces/document/document-body-binding-types';

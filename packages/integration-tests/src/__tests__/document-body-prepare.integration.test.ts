@@ -8,7 +8,7 @@ import { createTestDb, initCore } from "@breatic/core";
 import {
   documentBodyFragment, documentBodyRecords, documentCommentThreads,
   DocumentBodyFormatError, encodeInitialSpaceContent,
-} from "@breatic/shared/document-body";
+} from "@breatic/shared";
 import { createPersistenceExtension, fetchDoc } from "@collab/services/persistence.js";
 import { seedInitialState } from "@collab/services/yjs-documents.repo.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";

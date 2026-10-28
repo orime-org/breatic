@@ -23,7 +23,7 @@
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type Selection, type Transaction } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizing, tableEditing } from '@tiptap/pm/tables';
 import { ySyncPluginKey } from 'y-prosemirror';
 
@@ -261,26 +261,20 @@ function unwrapOpenSides(slice: Slice): Slice {
  * cell without it. Closing the slice at the table lands the table as a block:
  * in the middle of a line the line splits around it, at its end the table
  * goes under it, and at its start above it, the line kept whole.
- * @param slice - The actual source slice in either the product or private schema.
- * @param selection - The corresponding source selection.
- * @returns The same content with table wrapper openness preserved.
- * @throws {never}
  */
-export function bodyDropSlice(slice: Slice, selection: Selection): Slice {
-  const start = openAboveTables(slice.content, slice.openStart, -1);
-  const end = openAboveTables(slice.content, slice.openEnd, 1);
-  if (start === slice.openStart && end === slice.openEnd) return slice;
-  const closed = new Slice(slice.content, start, end);
-  return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
-}
-
-/** The same table wrapper rule applies to native clipboard arrivals. */
 const keepPastedTablesWhole = new Plugin({
   key: new PluginKey('doc-table-paste-whole'),
   props: {
     // A cell holds blocks but no table, so a table pasted in a cell is fitted
     // into the cell as before; what a paste into a cell does is inner#1312's.
-    transformPasted: (slice, view) => bodyDropSlice(slice, view.state.selection),
+    transformPasted: (slice, view) => {
+      const start = openAboveTables(slice.content, slice.openStart, -1);
+      const end = openAboveTables(slice.content, slice.openEnd, 1);
+      if (start === slice.openStart && end === slice.openEnd) return slice;
+      const closed = new Slice(slice.content, start, end);
+      const { selection } = view.state;
+      return cellDepthOf(selection.$from) > 0 && heldTables(selection) === null ? closed : unwrapOpenSides(closed);
+    },
     // At the start of a line with words, ProseMirror splits the line before
     // the table and leaves its empty first half above it.
     handlePaste: (view, _event, slice) => {

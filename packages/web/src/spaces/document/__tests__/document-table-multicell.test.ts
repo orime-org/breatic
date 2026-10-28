@@ -11,7 +11,7 @@ import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { alignFace, MIXED_ALIGNMENT, runAlignment } from '@web/spaces/document/document-align-run';

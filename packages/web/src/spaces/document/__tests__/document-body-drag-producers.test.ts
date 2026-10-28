@@ -6,8 +6,16 @@ import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { TableMap } from '@tiptap/pm/tables';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { type BodyJsonObject, type BodyTreeView } from '@breatic/shared';
-import { documentBodyFragment, documentBodyRecords, documentBodySource, documentCommentThreads, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import {
+  documentBodyFragment,
+  documentBodyRecords,
+  documentBodySource,
+  documentCommentThreads,
+  readBodyTree,
+  registerDocumentBodyRecords,
+  type BodyJsonObject,
+  type BodyTreeView,
+} from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';

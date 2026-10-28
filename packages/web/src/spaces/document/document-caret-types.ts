@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared/document-body';
+import type { DOCUMENT_BODY_FORMAT, DOCUMENT_BODY_FORMAT_VERSION } from '@breatic/shared';
 import type { DocumentBodyOptions } from '@web/spaces/document/document-body-binding-types';
 import type { BodySelectionName } from '@web/spaces/document/document-body-positions-types';
 

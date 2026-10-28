@@ -28,7 +28,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import * as Y from 'yjs';
 import type * as ConnectionModule from '@web/data/yjs/collab-socket';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { type DocumentProposal } from '@breatic/shared';

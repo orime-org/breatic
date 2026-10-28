@@ -12,7 +12,7 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import type * as SpaceConnectionModule from '@web/data/yjs/space-connection';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodySource, encodeInitialSpaceContent, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import { documentBodySource, encodeInitialSpaceContent, readBodyTree, registerDocumentBodyRecords } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 // The editor is only built once its caret wiring exists — both the provider and

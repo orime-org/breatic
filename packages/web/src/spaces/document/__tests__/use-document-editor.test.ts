@@ -36,7 +36,7 @@ import {
   documentBodyFragment,
   encodeInitialSpaceContent,
   readBodyTree,
-} from '@breatic/shared/document-body';
+} from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentBodyRuntime } from '@web/spaces/document/document-body-runtime';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';

@@ -6,7 +6,7 @@ import { EditorState, Plugin, type Transaction } from '@tiptap/pm/state';
 import fc from 'fast-check';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { documentBodySource } from '@breatic/shared/document-body';
+import { documentBodySource } from '@breatic/shared';
 
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';
 import type { BodyProjection } from '@web/spaces/document/document-body-codec-types';

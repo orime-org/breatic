@@ -19,8 +19,12 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { DOCUMENT_SCHEMA, DOCUMENT_SCHEMA_META_KEY, DOCUMENT_SCHEMA_VERSION } from '@breatic/shared';
-import { encodeInitialSpaceContent } from '@breatic/shared/document-body';
+import {
+  encodeInitialSpaceContent,
+  DOCUMENT_SCHEMA,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
+} from '@breatic/shared';
 
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { OpenSpace } from '@web/pages/project/OpenSpace';

@@ -58,8 +58,7 @@
 import type * as Y from 'yjs';
 import type { BlockNoteEditor } from '@blocknote/core';
 
-import { t } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment, t } from '@breatic/shared';
 
 import { assetsApi } from '@web/data/api/assets';
 import { uploadMedia } from '@web/data/upload/media-upload';

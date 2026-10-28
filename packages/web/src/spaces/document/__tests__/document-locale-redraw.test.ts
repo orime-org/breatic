@@ -19,8 +19,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import * as Y from 'yjs';
 
-import { getLocale, setLocale } from '@breatic/shared';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment, getLocale, setLocale } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { documentPlaceholderExtension } from '@web/spaces/document/document-placeholders-blocknote';

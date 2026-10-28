@@ -4,7 +4,7 @@
 import { act } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { documentBodyFragment, documentBodySource, registerDocumentBodyRecords } from '@breatic/shared/document-body';
+import { documentBodyFragment, documentBodySource, registerDocumentBodyRecords } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';

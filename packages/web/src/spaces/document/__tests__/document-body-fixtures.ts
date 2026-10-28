@@ -18,7 +18,7 @@
 
 import * as Y from 'yjs';
 
-import { documentBodyFragment, importCurrentDocumentBody, readBodyTree } from '@breatic/shared/document-body';
+import { documentBodyFragment, importCurrentDocumentBody, readBodyTree } from '@breatic/shared';
 
 /** The attributes every block node in this schema declares a default for. */
 const BLOCK_ATTRS = {

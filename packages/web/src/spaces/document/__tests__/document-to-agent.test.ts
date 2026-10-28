@@ -13,7 +13,7 @@ import { selectedFragmentToHTML } from '@blocknote/core';
 import { describe, it, expect, afterEach } from 'vitest';
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { blockItem, selectionItem } from '@web/spaces/document/document-to-agent';

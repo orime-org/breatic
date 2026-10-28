@@ -30,7 +30,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { AllSelection, TextSelection } from '@tiptap/pm/state';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import * as Y from 'yjs';
-import { documentBodyFragment } from '@breatic/shared/document-body';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {

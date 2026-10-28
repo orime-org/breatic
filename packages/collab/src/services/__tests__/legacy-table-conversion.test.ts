@@ -11,7 +11,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 
-import { documentBodyFragment } from "@breatic/shared/document-body";
+import { documentBodyFragment } from "@breatic/shared";
 
 import {
   convertLegacyTables,
