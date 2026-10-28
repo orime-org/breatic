@@ -46,7 +46,7 @@ export const MAX_TIMER_MS = 2 ** 31 - 1;
 /** How long a request beside a call may take: a cost lookup, a file delete. */
 export const SIDE_REQUEST_MS = 30_000;
 /** How much of a failed body an HttpStatus keeps. */
-const SNIPPET_CHARS = 500;
+export const SNIPPET_CHARS = 500;
 /** Error codes that mean the request never left this machine. */
 const NOT_SENT_CODES = new Set([
   "ECONNREFUSED",

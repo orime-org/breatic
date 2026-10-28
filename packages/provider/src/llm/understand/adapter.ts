@@ -10,13 +10,20 @@
 import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import { deliver, readBody, type OutgoingRequest } from "@provider/http/request.js";
+import { HttpStatus } from "@provider/http/errors.js";
+import { deliver, readBody, SNIPPET_CHARS, type OutgoingRequest } from "@provider/http/request.js";
 import { parsed } from "@provider/llm/switching.js";
+
+/** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
+export interface UploadedFile {
+  url: string;
+  uri?: string;
+}
 
 /** What one understand call keeps across its attempts (design 6.5). */
 export interface UnderstandSession {
-  /** Uris of the media uploaded to an upstream, by its base url, for later attempts to reuse. */
-  uploads: Map<string, string[]>;
+  /** The media uploaded to an upstream, by its base url and in item order, for later attempts to reuse. */
+  uploads: Map<string, UploadedFile[]>;
   /** Clean-ups to start once the call ends, answered or not; none is waited for. */
   cleanups: (() => void)[];
 }
@@ -87,6 +94,7 @@ export interface UnderstandAdapter {
   /**
    * Ask the question, once.
    * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure to send.
+   * @throws {BodyTooLarge} When a preparatory upload step's answer was larger than provider reads.
    * @throws {AnswerUnread} When the model answer's status arrived and its body could not be read.
    * @throws {HttpStatus | UnreadableAnswer} When a preparatory upload step failed or answered something unusable.
    * @throws {Error} For an item whose type the upstream cannot take.
@@ -138,6 +146,29 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
   }
   const text = new TextDecoder().decode(bytes);
   return { url: request.url, status: response.status, body: parsed(text), text, headers: response.headers };
+}
+
+/**
+ * Throw an answer whose status is not 2xx as HttpStatus, its headers kept for the route's Retry-After.
+ * @param answered - The answer.
+ * @throws {HttpStatus} When its status is not 2xx.
+ */
+export function assertSucceeded(answered: Answered): void {
+  if (answered.status < 200 || answered.status >= 300) {
+    throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, SNIPPET_CHARS), answered.headers);
+  }
+}
+
+/** The type an upstream is told for a media type it knows by another name; shared's VIDEO_FORMATS. */
+const WIRE_TYPES: Readonly<Record<string, string>> = { "video/quicktime": "video/mov" };
+
+/**
+ * The type an item is sent as.
+ * @param contentType - The item's type.
+ * @returns The upstream's name for it.
+ */
+export function wireTypeOf(contentType: string): string {
+  return WIRE_TYPES[contentType] ?? contentType;
 }
 
 /**

@@ -15,7 +15,7 @@ import { HttpStatus } from "@provider/http/errors.js";
 import { boundSignal, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel, usdOf } from "@provider/llm/switching.js";
-import { AnswerUnread, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
+import { AnswerUnread, assertSucceeded, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
@@ -254,7 +254,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param model - Our model id.
    * @param upstream - The upstream that answered last.
    * @param error - What the call threw.
-   * @param answerBody - The text of the last answer.
+   * @param answerBody - The text of the last model answer, when one came.
    * @param billed - What the answers before it were billed, in order.
    * @returns The error to throw.
    */
@@ -272,7 +272,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const said = (error.error as { message?: unknown } | null)?.message;
       return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status: failure.status, cause: error });
     }
-    const said = (parsed(answerBody) as { error?: { message?: unknown } } | null | undefined)?.error?.message;
+    // With no model answer, as when an upload step was refused, the upstream's words are its refusal's.
+    const words = answerBody ?? (error instanceof HttpStatus ? error.bodySnippet : undefined);
+    const said = (parsed(words) as { error?: { message?: unknown } } | null | undefined)?.error?.message;
     const cost = answerCost(upstream, failure.status, answerBody);
     return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, cost === undefined ? billed : [...billed, cost], {
       status: failure.status,
@@ -438,7 +440,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               throw error;
             }
             lastBody = answered.text;
-            if (answered.status < 200 || answered.status >= 300) throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, 500), answered.headers);
+            assertSucceeded(answered);
             const reading = adapter.read(answered.body);
             // Billed though unusable, and costed like a refused 2xx: never a price-table guess.
             if ("unreadable" in reading) throw new UnreadableAnswer(reading.unreadable, answerCost(c.upstream, answered.status, answered.text));
