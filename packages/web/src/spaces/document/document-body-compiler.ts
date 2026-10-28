@@ -12,7 +12,6 @@ import { transactionSource } from '@web/spaces/document/document-body-binding-ke
 import type { CompileBodyBatchOptions } from '@web/spaces/document/document-body-compiler-types';
 import type { BodyBatchPlan, BodyFreshRun, BodyNativeWrite, BodyPlannedCut } from '@web/spaces/document/document-body-plan-types';
 import { BodyProvenanceError, type BodyInlineUnit } from '@web/spaces/document/document-body-provenance';
-import { bodyTreePoints, type BodyTreePoint } from '@web/spaces/document/document-body-tree-points';
 
 const RIGHT = '\u00ff';
 
@@ -104,44 +103,6 @@ interface PlannerIndex {
   readonly units: ReadonlyMap<string, BodyTreeUnit>;
   readonly ownersByUnit: ReadonlyMap<string, BodyTreeOwner>;
   readonly labels: ReadonlyMap<string, readonly string[]>;
-  readonly points: ReadonlyMap<string, BodyTreePoint>;
-}
-
-/**
- * Captures table coverage inputs using normalized frame identities before ID appends finish.
- * Row order and each cell's identity, kind, span and widths determine the
- * original coverage used by the codec; inline content never changes it.
- * @param frame - One complete accepted semantic boundary.
- * @returns Canonical geometry inputs keyed by stable table identity.
- * @throws {never}
- */
-function frameTableGeometry(frame: CompilerFrame): ReadonlyMap<string, string> {
-  const result = new Map<string, string>();
-  for (const node of frame.nodes.values()) {
-    if (frame.document.type.schema.nodes[node.type]?.spec.tableRole !== 'table') continue;
-    const rows = (frame.children.get(node.id) ?? []).map((row) => [row, (frame.children.get(row) ?? []).map((id) => {
-      const cell = frame.nodes.get(id)!;
-      return [id, cell.type, cell.attrs['colspan'], cell.attrs['rowspan'], cell.attrs['colwidth']];
-    })]);
-    result.set(node.id, JSON.stringify(rows));
-  }
-  return result;
-}
-
-/**
- * Finds the table whose original coverage names a local derived descendant.
- * @param frame - The complete structural boundary containing the node.
- * @param id - An actual normalized node identity.
- * @returns Its nearest table identity, when it belongs to a table.
- * @throws {never}
- */
-function frameTable(frame: CompilerFrame, id: string): string | undefined {
-  let node = frame.nodes.get(id);
-  while (node !== undefined) {
-    if (frame.document.type.schema.nodes[node.type]?.spec.tableRole === 'table') return node.id;
-    node = frame.nodes.get(node.parent);
-  }
-  return undefined;
 }
 
 /** Compiles explicit descriptors and writes using only an isolated native planning snapshot. */
@@ -197,7 +158,7 @@ class BodyBatchCompiler {
       labels.set(owner.id, owner.units.filter((unit) => this.known.has(unit.id)).map((unit) => unit.id));
       for (const unit of owner.units) ownersByUnit.set(unit.id, owner);
     }
-    const result = { units: new Map(view.units.map((unit) => [unit.id, unit])), ownersByUnit, labels, points: bodyTreePoints(view) };
+    const result = { units: new Map(view.units.map((unit) => [unit.id, unit])), ownersByUnit, labels };
     this.indices.set(view, result);
     return result;
   }
@@ -395,16 +356,10 @@ class BodyBatchCompiler {
     const derived = this.input.projection.index.derived;
     if (derived.size === 0) return frames;
     const needed = new Set<string>();
-    const affectedTables = new Set<string>();
     const initial = frames[0];
     for (let index = 1; index < frames.length; index += 1) {
       const before = frames[index - 1];
       const after = frames[index];
-      const beforeGeometry = frameTableGeometry(before);
-      const afterGeometry = frameTableGeometry(after);
-      for (const table of new Set([...beforeGeometry.keys(), ...afterGeometry.keys()])) {
-        if (beforeGeometry.get(table) !== afterGeometry.get(table)) affectedTables.add(table);
-      }
       for (const id of derived.keys()) {
         const left = before.nodes.get(id);
         const right = after.nodes.get(id);
@@ -419,18 +374,6 @@ class BodyBatchCompiler {
         if (!derived.has(node.id) && derived.has(node.parent)) needed.add(node.parent);
       }
     }
-    // First materialization changes the original coverage even when accepted
-    // display geometry is unchanged. Preserve the other displayed slots named
-    // from that coverage in this same USER rather than renaming them afterwards.
-    for (const id of needed) {
-      const table = frameTable(initial, id);
-      if (table !== undefined) affectedTables.add(table);
-    }
-    const final = frames.at(-1)!;
-    for (const id of derived.keys()) {
-      const table = frameTable(initial, id);
-      if (final.nodes.has(id) && table !== undefined && affectedTables.has(table)) needed.add(id);
-    }
     let prior = -1;
     while (prior !== needed.size) {
       prior = needed.size;
@@ -438,7 +381,8 @@ class BodyBatchCompiler {
         const descriptor = derived.get(id);
         requireCompiler(descriptor !== undefined, 'A touched derived node lost its default descriptor');
         if (derived.has(descriptor.parent)) needed.add(descriptor.parent);
-        // A required local cell/group also needs its schema-required default body.
+        // A changed local cell/group needs its schema-required default body,
+        // but siblings outside that required local subtree remain projection-only.
         if (descriptor.kind === 'container') {
           for (const child of initial.children.get(id) ?? []) if (derived.has(child)) needed.add(child);
         }
@@ -587,10 +531,10 @@ class BodyBatchCompiler {
   }
 
   /**
-   * Finds or refines a cut whose selected left slot and optional right side share the requested gap.
+   * Finds a zero-width source boundary whose C and optionally R belong to this current owner.
    * @param owner - The current content owner of the boundary.
    * @param offset - The UTF-16 offset among its visible native units.
-   * @param rightInside - Whether the right branch must begin at the same gap in this owner.
+   * @param rightInside - Whether the right branch must still belong to this owner.
    * @returns The permanent cut identity representing this boundary.
    * @throws {Error} If an owner or scalar boundary is invalid.
    */
@@ -613,25 +557,12 @@ class BodyBatchCompiler {
     const existing = raw.find((entry) => entry.index === point.index && bodyCutId(entry.value) !== null)
       ?? raw.find((entry) => entry.index === point.index - 1 && bodyCutId(entry.value) !== null);
     const old = existing === undefined ? null : bodyCutId(existing.value);
-    if (old !== null) {
-      const points = this.index(view).points;
-      const boundary = points.get(`C:${old}`);
-      const right = points.get(`R:${old}`);
-      const left = [...(view.tree.children.get(`C:${old}`) ?? [])].reverse().find((id) => view.tree.selected.get(id)!.order < RIGHT);
-      const gap = left === undefined ? boundary?.from : points.get(left)?.to;
-      if (boundary?.owner === owner && gap === offset && (!rightInside || right?.owner === owner && right.from === offset)) return old;
-    }
+    if (old !== null && this.under(view, `C:${old}`, record.facet) && (!rightInside || this.under(view, `R:${old}`, record.facet))) return old;
     const originalText = documentBodySource(this.input.doc, point.source);
     const originalUnits = new Map([...this.originals.values()].filter((unit) => unit.source === point.source).map((unit) => [unit.id, unit]));
-    const originalCuts = new Map([...this.input.projection.view.pieces.values()].filter((piece) => piece.source === point.source).map((piece) => [piece.cut, piece.start - 1]));
-    const nextCut = [...view.pieces.values()].filter((piece) => piece.source === point.source && piece.start - 1 >= point.index && originalCuts.has(piece.cut)).sort((left, right) => left.start - right.start)[0];
     const next = view.units.filter((unit) => unit.source === point.source && unit.index >= point.index && originalUnits.has(unit.id)).sort((left, right) => left.index - right.index)[0];
     let anchor: number;
-    // An existing cut is itself a native anchor. Skipping it for the next
-    // character can register on the opposite side of an independently moved
-    // R branch: REG stays visibly equal but USER sees a different C/R/P chain.
-    if (nextCut !== undefined && (next === undefined || nextCut.start - 1 < next.index)) anchor = originalCuts.get(nextCut.cut)!;
-    else if (next !== undefined) anchor = originalUnits.get(next.id)!.index;
+    if (next !== undefined) anchor = originalUnits.get(next.id)!.index;
     else {
       const prior = view.units.filter((unit) => unit.source === point.source && unit.index < point.index && originalUnits.has(unit.id)).sort((left, right) => right.index - left.index)[0];
       requireCompiler(prior !== undefined, 'A new permanent cut has no existing native anchor');
@@ -891,24 +822,30 @@ class BodyBatchCompiler {
     this.cut(owner, offset, false);
     const view = this.view();
     const facet = this.owner(view, owner).facet;
-    const points = this.index(view).points;
     const slots: { readonly parent: string; readonly before: string; readonly after: string; readonly dependencies: number; readonly depth: number }[] = [];
-    for (const [id, point] of points) {
-      if (point.owner !== owner || view.nodes.get(id)?.kind !== 'cut') continue;
-      let ancestor = id;
-      let depth = 0;
-      while (ancestor !== facet) { ancestor = view.tree.parents.get(ancestor)!; depth += 1; }
-      const dependencies = bodyTreeDependencies(view, id).length;
+    let cursor = 0;
+    const tasks: ({ readonly kind: 'node'; readonly id: string; readonly depth: number }
+      | { readonly kind: 'slot'; readonly parent: string; readonly before: string; readonly after: string; readonly depth: number })[] = [{ kind: 'node', id: facet, depth: 0 }];
+    while (tasks.length > 0) {
+      const task = tasks.pop()!;
+      if (task.kind === 'slot') {
+        if (cursor === offset) slots.push({ ...task, dependencies: bodyTreeDependencies(view, task.parent).length });
+        continue;
+      }
+      const { id, depth } = task;
+      const node = view.nodes.get(id)!;
+      if (node.kind === 'piece') cursor += view.pieces.get(id)!.units.length;
       const children = view.tree.children.get(id) ?? [];
       const last = children.length === 0 ? '' : view.tree.selected.get(children.at(-1)!)!.order;
-      for (let index = 0; index < children.length; index += 1) {
+      if (node.kind === 'cut' && last < RIGHT) tasks.push({ kind: 'slot', parent: id, before: last, after: RIGHT, depth });
+      for (let index = children.length - 1; index >= 0; index -= 1) {
         const child = children[index];
         const order = view.tree.selected.get(child)!.order;
-        if (order <= RIGHT && points.get(child)?.from === offset) {
-          slots.push({ parent: id, before: index === 0 ? '' : view.tree.selected.get(children[index - 1])!.order, after: order, depth, dependencies });
+        tasks.push({ kind: 'node', id: child, depth: depth + 1 });
+        if (node.kind === 'cut' && order <= RIGHT) {
+          tasks.push({ kind: 'slot', parent: id, before: index === 0 ? '' : view.tree.selected.get(children[index - 1])!.order, after: order, depth });
         }
       }
-      if (last < RIGHT && point.to === offset) slots.push({ parent: id, before: last, after: RIGHT, depth, dependencies });
     }
     const slot = slots.sort((left, right) => left.dependencies - right.dependencies || left.depth - right.depth || left.parent.localeCompare(right.parent))[0];
     requireCompiler(slot !== undefined, 'A final fresh run has no exact native insertion slot');

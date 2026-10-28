@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { Mapping } from '@tiptap/pm/transform';
-import type { BodyProjection, BodyProjectionIndex, BodyNodePosition, BodyNativePoint } from '@web/spaces/document/document-body-codec-types';
+import type { BodyProjection, BodyProjectionIndex, BodyNodePosition } from '@web/spaces/document/document-body-codec-types';
 import type { CompileBodyBatchOptions } from '@web/spaces/document/document-body-compiler-types';
 import { compilerFrames } from '@web/spaces/document/document-body-compiler-frames';
 import { nameBodyPoint } from '@web/spaces/document/document-body-positions';
@@ -138,13 +137,6 @@ export function stageBodyProjection(input: CompileBodyBatchOptions, names: BodyS
     return original === undefined ? [] : [{ ...original, ...unit, owner: unit.block ?? original.owner }];
   });
   const stage: { readonly batch: string; readonly units: readonly BodyInlineUnit[]; readonly names: BodyStagedNames } = { batch: input.batchId, units: input.journal.units, names };
-  const mapping = new Mapping();
-  for (const transaction of input.journal.transactions) mapping.appendMapping(transaction.transaction.mapping);
-  const nativePoints = new Map<string, BodyNativePoint>([...input.projection.index.nativePoints].map(([id, point]) => [id, {
-    ...(point.before === undefined ? {} : { before: mapping.map(point.before, 1) }),
-    ...(point.after === undefined ? {} : { after: mapping.map(point.after, -1) }),
-  }]));
-  for (const unit of units) nativePoints.set(unit.token, { before: unit.pos, after: unit.pos + unit.width });
   return { ...input.projection, doc: input.journal.doc, units: input.journal.units,
-    index: { ...input.projection.index, doc: input.journal.doc, nodes, owners: nativeOwners, units, nativePoints, staged: stage } };
+    index: { ...input.projection.index, doc: input.journal.doc, nodes, owners: nativeOwners, units, staged: stage } };
 }

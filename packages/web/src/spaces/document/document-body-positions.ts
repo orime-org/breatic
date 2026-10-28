@@ -198,52 +198,29 @@ function resolveText(index: BodyProjectionIndex, name: BodyTextPointName): BodyP
   const absolute = Y.createAbsolutePositionFromRelativePosition(name.relative, index.sourceDoc);
   if (absolute === null) return { status: 'gone' };
   if (absolute.type !== documentBodySource(index.sourceDoc, name.source)) return { status: 'otherDocument' };
-  const units = index.units.filter((unit) => unit.source === name.source).sort((first, second) => first.index - second.index);
-  if (units.length === 0) {
-    const neighbor = resolveTextNeighbor(index, name);
-    if (neighbor !== null) return neighbor;
-  }
   const anchor = name.relative.item === null ? null : bodyNativeItem(index.sourceDoc, name.relative.item);
   if (anchor !== null && bodyNativeItemAlive(anchor)) {
     const anchorToken = `${name.source}/${anchor.item.id.client}:${anchor.item.id.clock + anchor.offset}`;
-    const point = index.nativePoints.get(anchorToken);
-    const position = name.relative.assoc < 0 ? point?.after : point?.before;
-    if (position !== undefined) return { status: 'resolved', pos: position, epoch: index.epoch };
+    const occurrence = index.units.find((unit) => unit.token === anchorToken);
+    if (occurrence !== undefined) return { status: 'resolved', pos: occurrence.pos + (name.relative.assoc < 0 ? occurrence.width : 0), epoch: index.epoch };
   }
-  const current = Y.createRelativePositionFromTypeIndex(absolute.type, absolute.index, name.relative.assoc).item;
-  if (current !== null) {
-    const point = index.nativePoints.get(`${name.source}/${current.client}:${current.clock}`);
-    const position = name.relative.assoc < 0 ? point?.after : point?.before;
-    if (position !== undefined) return { status: 'resolved', pos: position, epoch: index.epoch };
-  }
+  const units = index.units.filter((unit) => unit.source === name.source).sort((first, second) => first.index - second.index);
   const right = units.find((unit) => unit.index >= absolute.index);
   const left = units.findLast((unit) => unit.index < absolute.index);
   const point = name.assoc < 0
     ? left === undefined ? right?.pos : left.pos + left.width
     : right === undefined ? left === undefined ? undefined : left.pos + left.width : right.pos;
   if (point !== undefined) return { status: 'resolved', pos: point, epoch: index.epoch };
-  const neighbor = resolveTextNeighbor(index, name);
-  if (neighbor !== null) return neighbor;
+  if (name.fallback !== undefined) {
+    const neighbors = name.assoc < 0 ? [name.fallback.left, name.fallback.right] : [name.fallback.right, name.fallback.left];
+    for (const neighbor of neighbors) {
+      if (neighbor === null) continue;
+      const resolved = resolveText(index, neighbor);
+      if (resolved.status === 'resolved') return resolved;
+    }
+  }
   const empty = emptySourcePoint(index, name.source, absolute.index);
   return empty === null ? { status: 'hidden' } : { status: 'resolved', pos: empty, epoch: index.epoch };
-}
-
-/**
- * Retains the original cross-source gap when an independent fresh source is undone.
- * @param index - The exact current projection.
- * @param name - The point with its original adjacent native sources.
- * @returns A resolved adjacent gap, or null when its neighbors are unavailable.
- * @throws {DocumentBodyFormatError} If current native data violates its registered format.
- */
-function resolveTextNeighbor(index: BodyProjectionIndex, name: BodyTextPointName): BodyPointResolution | null {
-  if (name.fallback === undefined) return null;
-  const neighbors = name.assoc < 0 ? [name.fallback.left, name.fallback.right] : [name.fallback.right, name.fallback.left];
-  for (const neighbor of neighbors) {
-    if (neighbor === null) continue;
-    const resolved = resolveText(index, neighbor);
-    if (resolved.status === 'resolved') return resolved;
-  }
-  return null;
 }
 
 /**

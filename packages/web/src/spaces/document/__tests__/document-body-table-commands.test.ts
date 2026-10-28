@@ -3,15 +3,13 @@
 
 import { act } from '@testing-library/react';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
-import { CellSelection, TableMap } from '@tiptap/pm/tables';
+import { CellSelection } from '@tiptap/pm/tables';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { documentBodyFragment, readBodyTree } from '@breatic/shared/document-body';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 import { createDocumentBodyRuntime } from '@web/spaces/document/document-body-runtime';
-import { insertColumn, insertRow, mergeSelectedCells, splitCellAt } from '@web/spaces/document/document-table-run';
+import { mergeSelectedCells, splitCellAt } from '@web/spaces/document/document-table-run';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { cleanupCodecFixtures, codecFixture } from '@web/spaces/document/__tests__/document-body-codec-fixtures';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
@@ -71,113 +69,7 @@ function cells(doc: PMNode): Array<{ node: PMNode; pos: number }> {
   return result;
 }
 
-/** Reads the single actual table, including stable row identities. @throws {Error} If the table is absent. */
-function tableOf(doc: PMNode): PMNode {
-  let table: PMNode | undefined;
-  doc.descendants((node) => { if (node.type.spec.tableRole === 'table') table = node; });
-  if (table === undefined) throw new Error('Expected one table');
-  return table;
-}
-
-/** Checks the complete persisted projection against the accepted editor result. @throws {Error} If the binding is absent. */
-function expectPublished(body: ReturnType<typeof open>): void {
-  expect(body.runtime.read().status).toBe('active');
-  const binding = bodyBindingOf(body.editor.prosemirrorState);
-  if (binding === null) throw new Error('Expected the records binding');
-  expect(binding.read().doc.toJSON()).toEqual(body.editor.prosemirrorState.doc.toJSON());
-  expect(TableMap.get(tableOf(body.editor.prosemirrorState.doc)).problems).toBeNull();
-}
-
 describe('table commands through the actual records binding', () => {
-  for (const header of [false, true]) {
-    for (const axis of ['row', 'column'] as const) {
-      for (const slot of [0, 1, 2]) {
-        it(`keeps old identities when inserting a ${axis} at slot ${slot} with headers ${header}`, () => {
-          const body = open({ headerRows: header ? 1 : 0, rows: [{ cells: ['A', 'B'] }, { cells: ['C', 'D'] }] });
-          const { editor, undo, doc } = body;
-          const before = editor.prosemirrorState.doc;
-          const originalCells = cells(before);
-          const table = tableOf(before);
-          const native = readBodyTree(doc);
-          if (native.status !== 'ready') throw new Error('Expected native source');
-          const originalUnits = native.view.units.map((unit) => [unit.id, unit.source, unit.value]);
-          act(() => {
-            if (axis === 'row') insertRow(editor, originalCells[slot === 2 ? 2 : 0].pos, slot === 0 ? 'above' : 'below');
-            else insertColumn(editor, originalCells[slot === 2 ? 1 : 0].pos, slot === 0 ? 'left' : 'right');
-          });
-          expectPublished(body);
-          const after = editor.prosemirrorState.doc;
-          const afterCells = cells(after);
-          const actualTable = tableOf(after);
-          expect([TableMap.get(actualTable).width, TableMap.get(actualTable).height]).toEqual(axis === 'row' ? [2, 3] : [3, 2]);
-          for (const original of originalCells) {
-            expect(afterCells.find(({ node }) => node.attrs['id'] === original.node.attrs['id'])?.node.toJSON()).toEqual(original.node.toJSON());
-          }
-          expect(new Set(afterCells.map(({ node }) => node.attrs['id'])).size).toBe(6);
-          expect(actualTable.attrs).toEqual(table.attrs);
-          const oldRows = Array.from({ length: table.childCount }, (_, index) => table.child(index).attrs['id']);
-          expect(Array.from({ length: actualTable.childCount }, (_, index) => actualTable.child(index).attrs['id']).filter((id) => oldRows.includes(id))).toEqual(oldRows);
-          const expectedWords = axis === 'row'
-            ? [['', '', 'A', 'B', 'C', 'D'], ['A', 'B', '', '', 'C', 'D'], ['A', 'B', 'C', 'D', '', '']][slot]
-            : [['', 'A', 'B', '', 'C', 'D'], ['A', '', 'B', 'C', '', 'D'], ['A', 'B', '', 'C', 'D', '']][slot];
-          expect(afterCells.map(({ node }) => node.textContent)).toEqual(expectedWords);
-          const afterNative = readBodyTree(doc);
-          if (afterNative.status !== 'ready') throw new Error('Expected committed source');
-          expect(afterNative.view.units.map((unit) => [unit.id, unit.source, unit.value])).toEqual(originalUnits);
-          expect(undo.manager.undoStack).toHaveLength(1);
-          act(() => { editor.undo(); });
-          expect(editor.prosemirrorState.doc.toJSON()).toEqual(before.toJSON());
-          act(() => { editor.redo(); });
-          expect(editor.prosemirrorState.doc.toJSON()).toEqual(after.toJSON());
-          expectPublished(body);
-        });
-      }
-    }
-  }
-
-  it('adds a new row from the final cell with the real Tab handler', () => {
-    const body = open({ rows: [{ cells: ['A', 'B'] }, { cells: ['C', 'D'] }] });
-    const { editor, undo } = body;
-    const view = editor.prosemirrorView;
-    const before = view.state.doc;
-    const last = cells(before).at(-1)!;
-    act(() => view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, last.pos + last.node.nodeSize - 3))));
-    act(() => {
-      const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
-      expect(view.someProp('handleKeyDown', (handler) => handler(view, event))).toBe(true);
-    });
-    expectPublished(body);
-    expect(cells(view.state.doc).map(({ node }) => node.textContent)).toEqual(['A', 'B', 'C', 'D', '', '']);
-    expect(undo.manager.undoStack).toHaveLength(1);
-    act(() => { editor.undo(); });
-    expect(view.state.doc.toJSON()).toEqual(before.toJSON());
-  });
-
-  it('splits a partial merge without borrowing the untouched next cell identity', () => {
-    const body = open({ rows: [{ cells: ['A', 'X', 'B'] }] });
-    const { editor, undo } = body;
-    const view = editor.prosemirrorView;
-    const initial = cells(view.state.doc);
-    const untouched = initial[2].node;
-    act(() => view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, initial[0].pos, initial[1].pos))));
-    act(() => mergeSelectedCells(editor));
-    expectPublished(body);
-    undo.manager.clear();
-    undo.manager.stopCapturing();
-    const before = view.state.doc;
-    act(() => splitCellAt(editor, cells(view.state.doc)[0].pos));
-    expectPublished(body);
-    const after = view.state.doc;
-    expect(cells(after).map(({ node }) => node.textContent)).toEqual(['AX', '', 'B']);
-    expect(cells(after)[2].node.toJSON()).toEqual(untouched.toJSON());
-    expect(new Set(cells(after).map(({ node }) => node.attrs['id'])).size).toBe(3);
-    expect(undo.manager.undoStack).toHaveLength(1);
-    act(() => { editor.undo(); });
-    expect(view.state.doc.toJSON()).toEqual(before.toJSON());
-    act(() => { editor.redo(); });
-    expect(view.state.doc.toJSON()).toEqual(after.toJSON());
-  });
-
   for (const header of [false, true]) {
     for (const [width, height] of [[2, 1], [1, 2], [2, 2]] as const) {
       it(`splits a ${width} by ${height} ${header ? 'header' : 'ordinary'} cell and restores it with one undo`, () => {
