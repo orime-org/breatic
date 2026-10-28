@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Mapping, Transform, type Step } from '@tiptap/pm/transform';
+import { Mapping, type Step } from '@tiptap/pm/transform';
 import type { BodyJsonObject } from '@breatic/shared';
 
 import type { CompileBodyBatchOptions } from '@web/spaces/document/document-body-compiler-types';
@@ -32,8 +32,6 @@ export interface CompilerFrame {
   readonly owners: ReadonlyMap<string, readonly BodyInlineUnit[]>;
   readonly operation?: BodyTransferOperation;
   readonly step?: Step;
-  /** Handles that replace a block ID reused across content and structure. */
-  readonly rekeyed?: ReadonlySet<string>;
 }
 
 /**
@@ -67,18 +65,6 @@ function resolve(aliases: ReadonlyMap<string, string>, id: string): string {
 }
 
 /**
- * Reads whether a registered record holds inline content.
- * @param input - The source frame being compiled.
- * @param id - The registered record identity.
- * @returns True for an owner, false for a container, undefined when unregistered.
- * @throws {never}
- */
-function registeredOwner(input: CompileBodyBatchOptions, id: string): boolean | undefined {
-  const record = input.projection.view.body.records.get(id);
-  return record?.kind === 'owner' ? true : record?.kind === 'container' ? false : undefined;
-}
-
-/**
  * Reads real structural handles and exact inline ownership at one boundary.
  * @param input - The source frame being compiled.
  * @param document - Its actual stage document.
@@ -86,7 +72,6 @@ function registeredOwner(input: CompileBodyBatchOptions, id: string): boolean | 
  * @param previous - The preceding semantic frame.
  * @param mapping - Only the steps between these two boundaries.
  * @param aliases - Local new-owner names assigned by later ID appends.
- * @param rekeyed - Fresh handles for block IDs reused across content and structure.
  * @param allocate - Allocates an internal handle for a new unnamed node.
  * @returns The complete observed PM frame.
  * @throws {BodyProvenanceError} If structural identities are ambiguous.
@@ -98,7 +83,6 @@ function readFrame(
   previous: CompilerFrame | undefined,
   mapping: Mapping,
   aliases: Map<string, string>,
-  rekeyed: Map<string, string>,
   allocate: () => string,
 ): CompilerFrame {
   const nodes = new Map<string, CompilerNode>();
@@ -133,14 +117,8 @@ function readFrame(
       resolve(aliases, candidate.parent) === resolve(aliases, parent) && !nodes.has(resolve(aliases, candidate.id)),
     );
     const known = previous === undefined ? initialPositions.get(before) : undefined;
-    // A record is an owner or a container for good, while BlockNote keeps a
-    // block's ID when its content kind changes (`updateBlock` to a table).
-    const claimed = explicit === undefined ? undefined : resolve(aliases, explicit);
-    const former = claimed === undefined ? undefined : previous?.nodes.get(claimed)?.owner ?? registeredOwner(input, claimed);
-    if (claimed !== undefined && former !== undefined && former !== owner && !rekeyed.has(claimed)) rekeyed.set(claimed, allocate());
-    const fresh = claimed === undefined || former === undefined || former === owner ? undefined : rekeyed.get(claimed);
-    if (fresh === undefined && explicit !== undefined && mapped?.temporary === true && explicit !== mapped.id) aliases.set(mapped.id, explicit);
-    const id = fresh ?? resolve(aliases, explicit ?? known ?? mapped?.id ?? sameParent?.id ?? allocate());
+    if (explicit !== undefined && mapped?.temporary === true && explicit !== mapped.id) aliases.set(mapped.id, explicit);
+    const id = resolve(aliases, explicit ?? known ?? mapped?.id ?? sameParent?.id ?? allocate());
     if (nodes.has(id)) throw new BodyProvenanceError('Repeated body node handle in an accepted stage');
     const from = before + (owner ? 2 : 1);
     const current: CompilerNode = {
@@ -172,7 +150,6 @@ function readFrame(
  */
 export function compilerFrames(input: CompileBodyBatchOptions): readonly CompilerFrame[] {
   const aliases = new Map<string, string>();
-  const rekeyed = new Map<string, string>();
   let sequence = 0;
   /**
    * Allocates an internal identity without relying on words or reused block IDs.
@@ -180,7 +157,7 @@ export function compilerFrames(input: CompileBodyBatchOptions): readonly Compile
    * @throws {never}
    */
   function allocate(): string { return `${input.batchId}:unnamed:${sequence++}`; }
-  const frames: CompilerFrame[] = [readFrame(input, input.projection.doc, input.projection.units, undefined, new Mapping(), aliases, rekeyed, allocate)];
+  const frames: CompilerFrame[] = [readFrame(input, input.projection.doc, input.projection.units, undefined, new Mapping(), aliases, allocate)];
   for (const transaction of input.journal.transactions) {
     const operations = input.journal.operations.filter((operation) => operation.source.transaction === transaction.ordinal);
     let previous = 0;
@@ -189,7 +166,7 @@ export function compilerFrames(input: CompileBodyBatchOptions): readonly Compile
       const ending = operations.filter((operation) => operation.target.step === step && operation.source.step !== step);
       if (ending.length > 1) throw new BodyProvenanceError('Overlapping body operation boundaries');
       const stage = transaction.stages[step];
-      const frame = readFrame(input, stage.document, stage.units, frames.at(-1), transaction.transaction.mapping.slice(previous, step), aliases, rekeyed, allocate);
+      const frame = readFrame(input, stage.document, stage.units, frames.at(-1), transaction.transaction.mapping.slice(previous, step), aliases, allocate);
       frames.push({ ...frame, ...(ending[0] === undefined ? {} : { operation: ending[0] }), ...(step - previous === 1 ? { step: transaction.transaction.steps[previous] } : {}) });
       previous = step;
     }
@@ -200,34 +177,9 @@ export function compilerFrames(input: CompileBodyBatchOptions): readonly Compile
       return [id, { ...node, id, parent: resolve(aliases, node.parent), ...(node.owner ? { wrapperAttrs: { ...node.wrapperAttrs, id } } : Object.hasOwn(node.attrs, 'id') ? { attrs: { ...node.attrs, id } } : {}) }] as const;
     }));
     return {
-      ...frame, nodes, rekeyed: new Set(rekeyed.values()),
+      ...frame, nodes,
       children: new Map([...frame.children].map(([id, ids]) => [resolve(aliases, id), ids.map((child) => resolve(aliases, child))])),
       owners: new Map([...frame.owners].map(([id, units]) => [resolve(aliases, id), units])),
     };
   });
-}
-
-/**
- * Names the accepted document and its occurrences by the final frame's handles.
- * @param final - The last compiled frame of the batch.
- * @param doc - The accepted PM document.
- * @param units - The accepted inline occurrences.
- * @returns The projection the source must reproduce after commit.
- * @throws {never}
- */
-export function rekeyedExpectation(final: CompilerFrame, doc: PMNode, units: readonly BodyInlineUnit[]): { doc: PMNode; units: BodyInlineUnit[] } {
-  const fresh = [...final.nodes.values()].filter((node) => final.rekeyed?.has(node.id) === true);
-  if (fresh.length === 0) return { doc, units: [...units] };
-  const tr = new Transform(doc);
-  for (const node of fresh) {
-    const actual = doc.nodeAt(node.before);
-    if (actual !== null) tr.setNodeMarkup(node.before, undefined, { ...actual.attrs, id: node.id });
-  }
-  return {
-    doc: tr.doc,
-    units: units.map((unit) => {
-      const owner = fresh.find((node) => node.owner && unit.pos >= node.from && unit.pos < node.to);
-      return owner === undefined ? unit : { ...unit, block: owner.id };
-    }),
-  };
 }

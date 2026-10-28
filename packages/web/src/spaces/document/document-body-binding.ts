@@ -4,7 +4,7 @@
 import { createExtension, type ExtensionFactoryInstance } from '@blocknote/core';
 import { ReadOnlyExtension } from '@blocknote/core/extensions';
 import { Extension } from '@tiptap/core';
-import { Mark, type Node as PMNode, type Schema } from '@tiptap/pm/model';
+import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { Plugin, Selection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type * as Y from 'yjs';
 import { ySyncPluginKey } from 'y-prosemirror';
@@ -51,37 +51,6 @@ interface ProjectionMeta {
 function adoptProjection(frame: BodyProjection, doc: PMNode): BodyProjection {
   if (!frame.doc.eq(doc)) throw new Error('The accepted projection differs from its native frame');
   return { ...frame, doc, index: { ...frame.index, doc } };
-}
-
-/**
- * Moves a document that differs only in node attributes onto the projection
- * in place, so positions and the reader's selection stay where they are.
- * @param transaction - The projection transaction to extend.
- * @param from - The current document.
- * @param to - The projected document.
- * @returns Whether the two shared one shape and the attributes were adopted.
- * @throws {never}
- */
-function adoptAttributes(transaction: Transaction, from: PMNode, to: PMNode): boolean {
-  const changes: Array<{ pos: number; node: PMNode }> = [];
-  /**
-   * Compares one node pair and records attribute differences beneath it.
-   * @param a - The current node.
-   * @param b - The projected node.
-   * @param pos - The position before `a`, or -1 for the document.
-   * @returns Whether both have the same type, marks, text and children.
-   * @throws {never}
-   */
-  const same = (a: PMNode, b: PMNode, pos: number): boolean => {
-    if (a.type !== b.type || a.childCount !== b.childCount || a.text !== b.text || !Mark.sameSet(a.marks, b.marks)) return false;
-    if (pos >= 0 && JSON.stringify(a.attrs) !== JSON.stringify(b.attrs)) changes.push({ pos, node: b });
-    let shared = true;
-    a.forEach((child, offset, index) => { shared &&= same(child, b.child(index), pos + 1 + offset); });
-    return shared;
-  };
-  if (!same(from, to, -1)) return false;
-  for (const { pos, node } of changes) transaction.setNodeMarkup(pos, undefined, node.attrs);
-  return true;
 }
 
 /** Owns complete accepted batches and the single source mutation boundary. */
@@ -285,7 +254,7 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
     this.currentPhase = 'projecting';
     const state = this.editor.prosemirrorState;
     const transaction = state.tr;
-    if (!state.doc.eq(input.doc) && !adoptAttributes(transaction, state.doc, input.doc)) transaction.replaceWith(0, state.doc.content.size, input.doc.content);
+    if (!state.doc.eq(input.doc)) transaction.replaceWith(0, state.doc.content.size, input.doc.content);
     const frame = adoptProjection(input, transaction.doc);
     const requested = this.requestedSelection;
     if (requested !== null) {
