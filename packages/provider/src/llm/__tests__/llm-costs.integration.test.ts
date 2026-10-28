@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import fc from "fast-check";
 import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
@@ -221,6 +221,8 @@ describe("understand (design 6.5)", () => {
       deadlineAt: Date.now() + 60_000,
     });
     expect(answer.text).toBe("ok");
+    // The delete runs after the answer, without holding it (DD 27).
+    await vi.waitFor(() => expect(fakes.google.seen.some((r) => r.method === "DELETE")).toBe(true));
     const order = fakes.google.seen.map((r) => `${r.method} ${r.path}`);
     const generate = order.findIndex((o) => o.endsWith(":generateContent"));
     expect(order.indexOf("POST /upload/v1beta/files")).toBeLessThan(generate);

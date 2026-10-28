@@ -124,6 +124,7 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
   it.each([
     ["OpenRouter's answer is not JSON", "openrouter", { status: 200, raw: "<html>gateway</html>", contentType: "text/html" }, { state: "missing" }],
     ["OpenRouter's answer has no choice", "openrouter", { status: 200, body: { id: "gen-1", choices: [], usage: { cost: 0.01 } } }, { state: "known", usd: 0.01 }],
+    ["OpenRouter's answer has no choice and no cost", "openrouter", { status: 200, body: { id: "gen-2", choices: [] } }, { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-2" } }],
     ["Google's answer is not JSON", "google", { status: 200, raw: "<html>gateway</html>", contentType: "text/html" }, { state: "missing" }],
   ] as const)("rejects, costing the billed answer, when %s", async (_name, upstream, reply, cost) => {
     fakes[upstream].answer(() => reply);
