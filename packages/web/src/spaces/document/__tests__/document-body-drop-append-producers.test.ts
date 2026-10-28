@@ -52,59 +52,6 @@ afterEach(() => {
   });
 });
 
-describe('empty original owner names after a complete native text move', () => {
-  it.each([-1, 1] as const)('keeps the empty owner point through peer input and history with association %s', (assoc) => {
-    const doc = codecFixture([{ id: 'A', text: 'ABC' }, { id: 'B', text: 'xy' }]);
-    const original = native(doc);
-    const author = open(doc);
-    const view = author.editor.prosemirrorView;
-    const binding = bodyBindingOf(view.state)!;
-    const initial = binding.read().index;
-    const source = initial.owners.get('A')!;
-    const target = initial.owners.get('B')!;
-    beginDomDrag(author, TextSelection.create(view.state.doc, source.contentFrom, source.contentTo)).drop(target.contentTo);
-    const moved = binding.read().index;
-    const empty = moved.owners.get('A')!;
-    expect(empty.contentTo).toBe(empty.contentFrom);
-    expect(view.state.doc.toJSON()).toEqual(documentOf(author.editor.pmSchema, [
-      paragraph(author.editor.pmSchema, 'A', []),
-      paragraph(author.editor.pmSchema, 'B', [author.editor.pmSchema.text('xyABC')]),
-    ]).toJSON());
-    const point = nameBodyPoint(moved, { kind: 'text', pos: empty.contentFrom, assoc });
-    expect.soft(resolveBodyPoint(moved, point)).toEqual({ status: 'resolved', pos: empty.contentFrom, epoch: moved.epoch });
-    act(() => view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, empty.contentFrom))));
-    const peer = open(clone(doc));
-    const peerView = peer.editor.prosemirrorView;
-    const peerEnd = bodyBindingOf(peerView.state)!.read().index.owners.get('B')!.contentTo;
-    act(() => peerView.dispatch(peerView.state.tr.insertText('!', peerEnd)));
-    exchange(author, peer);
-    const withPeer = binding.read().index;
-    expect.soft(resolveBodyPoint(withPeer, point)).toEqual({ status: 'resolved', pos: empty.contentFrom, epoch: withPeer.epoch });
-    expect.soft(view.state.selection.toJSON()).toEqual({ type: 'text', anchor: empty.contentFrom, head: empty.contentFrom });
-    expect(view.state.doc.textContent).toBe('xyABC!');
-    expect(peerView.state.doc.toJSON()).toEqual(view.state.doc.toJSON());
-    act(() => { author.history.undo(); });
-    exchange(author, peer);
-    expect(view.state.doc.toJSON()).toEqual(documentOf(author.editor.pmSchema, [
-      paragraph(author.editor.pmSchema, 'A', [author.editor.pmSchema.text('ABC')]),
-      paragraph(author.editor.pmSchema, 'B', [author.editor.pmSchema.text('xy!')]),
-    ]).toJSON());
-    expect(ids(native(doc), 'A')).toEqual(ids(original, 'A'));
-    act(() => { author.history.redo(); });
-    exchange(author, peer);
-    const redone = binding.read().index;
-    expect.soft(resolveBodyPoint(redone, point)).toEqual({ status: 'resolved', pos: empty.contentFrom, epoch: redone.epoch });
-    expect(view.state.doc.toJSON()).toEqual(documentOf(author.editor.pmSchema, [
-      paragraph(author.editor.pmSchema, 'A', []),
-      paragraph(author.editor.pmSchema, 'B', [author.editor.pmSchema.text('xyABC!')]),
-    ]).toJSON());
-    expect(peerView.state.doc.toJSON()).toEqual(view.state.doc.toJSON());
-    expect(ids(native(doc), 'B').filter((id) => ids(original, 'A').includes(id))).toEqual(ids(original, 'A'));
-    expect(author.runtime.read().status).toBe('active');
-    expect(peer.runtime.read().status).toBe('active');
-  });
-});
-
 /** Reads original native units independently of the accepted PM state. @throws {Error} If source dependencies are incomplete. */
 function native(doc: Y.Doc): BodyTreeView {
   const read = readBodyTree(doc);

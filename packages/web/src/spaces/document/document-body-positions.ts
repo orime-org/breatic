@@ -95,22 +95,34 @@ function textOwner(index: BodyProjectionIndex, position: number): BodyNodePositi
 /**
  * Names a native text gap while separately retaining the associated character's identity.
  * @param index - The common final projection index.
- * @param unit - The associated original native occurrence.
+ * @param owner - The visible text owner's exact boundaries.
+ * @param unit - The associated original native occurrence, or none for an empty source.
  * @param position - The position in the supplied final PM document.
  * @param assoc - The native or container boundary affinity.
  * @returns A native point name and associated character identity.
  * @throws {DocumentBodyFormatError} If the gap has no existing native source or divides a Unicode scalar.
  */
-function nativeTextPoint(index: BodyProjectionIndex, unit: BodyIndexedUnit, position: number, assoc: BodyAssociation): BodyTextPointName {
-  const source = unit.source;
+function nativeTextPoint(index: BodyProjectionIndex, owner: BodyNodePosition, unit: BodyIndexedUnit | undefined, position: number, assoc: BodyAssociation): BodyTextPointName {
+  let source: string;
+  let physical: number;
+  if (unit === undefined) {
+    const facet = index.view.owners.find((entry) => entry.id === owner.id)!.facet;
+    const descriptor = [...index.view.body.sources.values()].find((entry) => entry.facet === facet);
+    if (descriptor === undefined) throw new DocumentBodyFormatError('An empty owner needs an existing native source');
+    source = descriptor.id;
+    physical = 1;
+  } else {
+    source = unit.source;
+    const text = documentBodySource(index.sourceDoc, source);
+    const base = Y.createRelativePositionFromTypeIndex(text, 0);
+    const id = bodyTokenId(source, unit.token);
+    const actual = id === null ? null : Y.createAbsolutePositionFromRelativePosition(new Y.RelativePosition(base.type, base.tname, id, 0), index.sourceDoc);
+    if (actual === null || actual.type !== text) throw new DocumentBodyFormatError('A named native unit has no current source boundary');
+    physical = actual.index + (position > unit.pos ? 1 : 0);
+  }
   const text = documentBodySource(index.sourceDoc, source);
-  const base = Y.createRelativePositionFromTypeIndex(text, 0);
-  const id = bodyTokenId(source, unit.token);
-  const actual = id === null ? null : Y.createAbsolutePositionFromRelativePosition(new Y.RelativePosition(base.type, base.tname, id, 0), index.sourceDoc);
-  if (actual === null || actual.type !== text) throw new DocumentBodyFormatError('A named native unit has no current source boundary');
-  const physical = actual.index + (position > unit.pos ? 1 : 0);
   assertBodySourceBoundary(text, physical);
-  return { version: 1, document: index.document, kind: 'text', source, relative: Y.createRelativePositionFromTypeIndex(text, physical, assoc), token: unit.token, assoc };
+  return { version: 1, document: index.document, kind: 'text', source, relative: Y.createRelativePositionFromTypeIndex(text, physical, assoc), token: unit?.token ?? null, assoc };
 }
 
 /**
@@ -118,23 +130,21 @@ function nativeTextPoint(index: BodyProjectionIndex, unit: BodyIndexedUnit, posi
  * @param index - The exact accepted or final common index.
  * @param position - The current PM inline boundary.
  * @param assoc - The requested boundary affinity.
- * @returns An empty owner boundary or a native name with identity-based gap neighbors.
+ * @returns A native name with shallow, identity-based gap neighbors.
  * @throws {DocumentBodyFormatError} If the boundary is invalid or divides a Unicode scalar.
  */
-function nameText(index: BodyProjectionIndex, position: number, assoc: BodyAssociation): BodyPointName {
+function nameText(index: BodyProjectionIndex, position: number, assoc: BodyAssociation): BodyTextPointName {
   const owner = textOwner(index, position);
   const units = index.units.filter((unit) => unit.owner === owner.id);
-  if (units.length === 0) return { version: 1, document: index.document, kind: 'node', node: owner.id, side: 'inside' };
   const right = units.find((unit) => unit.pos === position);
   const left = units.find((unit) => unit.pos + unit.width === position);
   const unit = assoc < 0 ? left ?? right : right ?? left;
-  if (unit === undefined) throw new DocumentBodyFormatError('A named text point is not a native unit boundary');
-  const name = nativeTextPoint(index, unit, position, assoc);
+  const name = nativeTextPoint(index, owner, unit, position, assoc);
   const before = units.findLast((entry) => entry.source !== name.source && entry.pos + entry.width <= position);
   const after = units.find((entry) => entry.source !== name.source && entry.pos >= position);
   return before === undefined && after === undefined ? name : { ...name, fallback: {
-    left: before === undefined ? null : nativeTextPoint(index, before, before.pos + before.width, -1),
-    right: after === undefined ? null : nativeTextPoint(index, after, after.pos, 1),
+    left: before === undefined ? null : nativeTextPoint(index, owner, before, before.pos + before.width, -1),
+    right: after === undefined ? null : nativeTextPoint(index, owner, after, after.pos, 1),
   } };
 }
 

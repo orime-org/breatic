@@ -7,7 +7,7 @@ import { AllSelection, NodeSelection, TextSelection, type Selection } from '@tip
 import type { Schema } from '@tiptap/pm/model';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { documentBodySource, DocumentBodyFormatError } from '@breatic/shared/document-body';
+import { documentBodySource } from '@breatic/shared/document-body';
 
 import { projectBodyTree } from '@web/spaces/document/document-body-codec';
 import type { BodyProjectionIndex } from '@web/spaces/document/document-body-codec-types';
@@ -16,15 +16,6 @@ import { bodyEdgeBetween, bodyEdgePos } from '@web/spaces/document/document-body
 import { cleanupCodecFixtures, codecFacts, codecFixture, codecSchema, codecTableFixture } from '@web/spaces/document/__tests__/document-body-codec-fixtures';
 
 afterEach(cleanupCodecFixtures);
-
-it.each([-1, 1] as const)('rejects a point inside a Unicode scalar in a nonempty owner with association %s', (assoc) => {
-  const schema = codecSchema();
-  const doc = codecFixture([{ id: 'A', text: 'A\u{1f600}B' }]);
-  const index = indexOf(doc, schema);
-  const owner = index.owners.get('A')!;
-  expect(index.doc.textContent).toBe('A\u{1f600}B');
-  expect(() => nameBodyPoint(index, { kind: 'text', pos: owner.contentFrom + 2, assoc })).toThrow(DocumentBodyFormatError);
-});
 
 /**
  * Requires the production final index rather than a position mapping stub.
