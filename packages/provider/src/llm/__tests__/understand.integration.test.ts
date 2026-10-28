@@ -191,6 +191,51 @@ describe("understand through Gemini's Files API (design 6.5, DD 27)", () => {
   });
 });
 
+describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () => {
+  /**
+   * Google's Files API answering as it should, unless a case answers first.
+   * @param special - The case's own answer, or undefined to answer as usual.
+   * @returns The route.
+   */
+  const filesRoute = (special: (r: { method: string; path: string }) => Reply | undefined) => (r: { method: string; path: string }): Reply =>
+    special(r)
+    ?? (r.path === "/upload/v1beta/files" ? uploadSession() : r.path === "/upload-session/1" ? activeFile : r.method === "DELETE" ? { status: 200, body: {} } : { status: 200, body: GENERATE_CONTENT_REPLY });
+
+  it("resumes an upload that failed part way from the item that failed", async () => {
+    let starts = 0;
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload/v1beta/files" && ++starts === 2 ? { status: 503, body: {} } : undefined)), 1);
+    const answer = await provider.llm.understand({ ...question(), media: [picture, picture] }, { mode: "upstream", upstream: "google" });
+    expect(answer.upstream).toBe("google");
+    expect(seenOn("POST", "/upload/v1beta/files")).toBe(3);
+  });
+
+  it("sends each upload step once, leaving retries to llmMaxRetries", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload/v1beta/files" ? { status: 429, body: {} } : undefined)), 1);
+    const answer = await provider.llm.understand(question());
+    expect(answer.upstream).toBe("openrouter");
+    expect(seenOn("POST", "/upload/v1beta/files")).toBe(2);
+  });
+
+  it("leaves Google at once when an upload step asks for more than a minute", async () => {
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload-session/1" ? { status: 429, body: {}, headers: { "retry-after": "3600" } } : undefined)), 2);
+    const answer = await provider.llm.understand(question());
+    expect(answer.upstream).toBe("openrouter");
+    expect(seenOn("POST", "/upload-session/1")).toBe(1);
+  });
+
+  it.each([
+    ["the upload answers a body that is not JSON", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload-session/1" ? { status: 200, raw: "<html>proxy</html>", contentType: "text/html" } : undefined],
+    ["the file's state answers null", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } } : r.method === "GET" ? { status: 200, raw: "null", contentType: "application/json" } : undefined],
+  ])("rejects without a status or a cost when %s", async (_name, special) => {
+    const error = await throughFiles(filesRoute(special)).llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBeUndefined();
+    expect((error as UpstreamRequestRejected).costs).toEqual([]);
+  });
+});
+
 describe("understand routes (design 6.5, DD 27)", () => {
   it("rejects a model no understand route matches, sending nothing", async () => {
     const provider = llmProvider(fakes, { ANTHROPIC_API_KEY: "a", OPENROUTER_API_KEY: "or" });

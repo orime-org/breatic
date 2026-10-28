@@ -23,6 +23,8 @@ let wavespeed: FakeUpstream;
 let openrouter: FakeUpstream;
 let images: Server;
 let imageUrl: string;
+/** The Content-Type the image server answers with; undefined sends none. */
+let imageType: string | undefined;
 
 beforeEach(async () => {
   wavespeed = await fakeUpstream();
@@ -41,8 +43,9 @@ beforeEach(async () => {
         }
       : undefined,
   );
+  imageType = "image/png";
   images = createServer((_req, res) => {
-    res.writeHead(200, { "content-type": "image/png" });
+    res.writeHead(200, imageType === undefined ? {} : { "content-type": imageType });
     res.end(Buffer.from([137, 80, 78, 71]));
   });
   await new Promise<void>((done) => images.listen(0, "127.0.0.1", () => done()));
@@ -203,6 +206,52 @@ describe("the element step's description (design 3.4, Y4, Z2)", () => {
     expect(failed.reason).toBeInstanceOf(MediaRefused);
     expect(openrouter.seen).toHaveLength(0);
     expect(wavespeed.seen).toHaveLength(0);
+  });
+});
+
+describe("the element image's type (design 3.1, DD 28)", () => {
+  /**
+   * Plan and send the describe step of one element image.
+   * @returns The answer of the send.
+   */
+  const describeImage = async (): Promise<MediaAnswer> => {
+    const r = runner();
+    const planned = expectState(
+      await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, {
+        idempotencyKey: "task-1",
+        sourceKeys: { [imageUrl]: "sha-img" },
+        clones: [],
+      }),
+      "send",
+    );
+    return r.send(stored(planned.ticket), live());
+  };
+
+  /**
+   * The data URI type of the image the understand request carried.
+   * @returns The type.
+   */
+  const sentType = (): string | undefined => {
+    const body = openrouter.seen.find((s) => s.path.endsWith("/chat/completions"))?.body as { messages: { content: { type: string; image_url?: { url: string } }[] }[] };
+    const url = body.messages[0]!.content.find((p) => p.type === "image_url")?.image_url?.url ?? "";
+    return /^data:([^;,]*)/.exec(url)?.[1];
+  };
+
+  it.each([
+    ["application/octet-stream", "application/octet-stream"],
+    ["no type", undefined],
+    ["a type with parameters in capitals", "IMAGE/PNG; charset=binary"],
+  ])("sends an image served as %s under the type its extension or declaration settles to", async (_name, served) => {
+    imageType = served;
+    expectState(await describeImage(), "send");
+    expect(sentType()).toBe("image/png");
+  });
+
+  it("answers failed with MediaRefused for an address that serves no image type, asking no model", async () => {
+    imageType = "text/html";
+    const failed = expectState(await describeImage(), "failed");
+    expect(failed.reason).toBeInstanceOf(MediaRefused);
+    expect(openrouter.seen).toHaveLength(0);
   });
 });
 
