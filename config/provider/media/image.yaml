@@ -1,7 +1,8 @@
 # Where each of our image models runs, upstream by upstream (design 4.2).
 # Weight is priority: the lowest configured weight is tried first, and weights
 # are unique per model. Each binding names the upstream's model id, the field
-# the prompt goes in, and how each of our params is written there: `field`,
+# the prompt goes in (`send_empty_prompt` sends it even when it is empty),
+# and how each of our params is written there: `field`,
 # `values` (our value to the upstream's spelling), `item_key` (each list
 # entry wrapped under it), `absent_value` (holding it sends nothing) and
 # `transform`. A param not listed is not sent to that upstream. `mentions` is

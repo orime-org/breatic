@@ -65,6 +65,8 @@ const bindingSchema = z.object({
   weight: z.number().int().min(0),
   model_id: z.string().min(1),
   prompt_field: z.string().optional(),
+  /** The prompt is written under `prompt_field` even when it is empty. */
+  send_empty_prompt: z.boolean().optional(),
   params: z.record(z.string(), paramSchema).optional(),
   extra_steps: z.array(extraStepSchema).optional(),
   /** The param a clone made by this binding is reused by; the model's own call is then a clone. */

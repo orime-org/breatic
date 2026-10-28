@@ -184,7 +184,8 @@ function bindingOf(model: RawModel, threeD: boolean): Record<string, unknown> {
     upstream: "wavespeed",
     weight: 1,
     model_id: provider.model_id,
-    ...(model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
+    // Today's 3D path sends the prompt on every call, "" when there is none.
+    ...(threeD ? { prompt_field: "prompt", send_empty_prompt: true } : model.takes_prompt === true ? { prompt_field: model.prompt_upstream ?? "prompt" } : {}),
     ...(Object.keys(params).length === 0 ? {} : { params }),
     ...(steps.length === 0 ? {} : { extra_steps: steps }),
     ...(model.reused_by === undefined ? {} : { reused_by: model.reused_by }),
@@ -197,7 +198,8 @@ const MEDIA_HEADER = `
 Where each of our {modality} models runs, upstream by upstream (design 4.2).
 Weight is priority: the lowest configured weight is tried first, and weights
 are unique per model. Each binding names the upstream's model id, the field
-the prompt goes in, and how each of our params is written there: \`field\`,
+the prompt goes in (\`send_empty_prompt\` sends it even when it is empty),
+and how each of our params is written there: \`field\`,
 \`values\` (our value to the upstream's spelling), \`item_key\` (each list
 entry wrapped under it), \`absent_value\` (holding it sends nothing) and
 \`transform\`. A param not listed is not sent to that upstream. \`mentions\` is

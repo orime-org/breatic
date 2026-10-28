@@ -54,7 +54,8 @@ export function mentionsWritten(binding: MediaBinding, prompt: string): string {
 /**
  * The body of a model's own call on WaveSpeed: each of our params under the
  * binding's field, its value spelled the upstream's way, an absent value and
- * an unbound param left out, and the prompt under `prompt_field` when there is one.
+ * an unbound param left out, and the prompt under `prompt_field` when there is one
+ * (an empty prompt only when the binding sets `send_empty_prompt`).
  * @param binding - The model's WaveSpeed binding.
  * @param input - Our prepared params and prompt.
  * @returns The body.
@@ -67,6 +68,6 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
     const out = written(bound, value);
     if (out !== undefined) body[bound.field] = out;
   }
-  if (binding.prompt_field !== undefined && input.prompt !== "") body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
+  if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty_prompt === true)) body[binding.prompt_field] = mentionsWritten(binding, input.prompt);
   return body;
 }

@@ -1,7 +1,8 @@
 # Where each of our three d models runs, upstream by upstream (design 4.2).
 # Weight is priority: the lowest configured weight is tried first, and weights
 # are unique per model. Each binding names the upstream's model id, the field
-# the prompt goes in, and how each of our params is written there: `field`,
+# the prompt goes in (`send_empty_prompt` sends it even when it is empty),
+# and how each of our params is written there: `field`,
 # `values` (our value to the upstream's spelling), `item_key` (each list
 # entry wrapped under it), `absent_value` (holding it sends nothing) and
 # `transform`. A param not listed is not sent to that upstream. `mentions` is
@@ -16,6 +17,7 @@ models:
         weight: 1
         model_id: wavespeed-ai/meshy6/text-to-3d
         prompt_field: prompt
+        send_empty_prompt: true
         params:
           art_style:
             field: art_style
@@ -40,6 +42,7 @@ models:
         weight: 1
         model_id: wavespeed-ai/hunyuan3d-v3/text-to-3d
         prompt_field: prompt
+        send_empty_prompt: true
         params:
           generate_type:
             field: generate_type
@@ -57,6 +60,8 @@ models:
       - upstream: wavespeed
         weight: 1
         model_id: wavespeed-ai/hunyuan3d-v3/image-to-3d
+        prompt_field: prompt
+        send_empty_prompt: true
         params:
           image:
             field: image
@@ -82,6 +87,8 @@ models:
       - upstream: wavespeed
         weight: 1
         model_id: wavespeed-ai/hunyuan-3d-v3.1/image-to-3d-rapid
+        prompt_field: prompt
+        send_empty_prompt: true
         params:
           image:
             field: image
