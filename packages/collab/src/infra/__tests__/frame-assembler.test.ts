@@ -363,6 +363,26 @@ describe("frame assembler — limits", () => {
     });
   });
 
+  it("A34 a user keeps the rest of their share when one of two messages completes", () => {
+    const r = asm();
+    const p1 = r.own("u");
+    const p2 = r.own("u");
+    const m = msg(F + 1, 3);
+    const [header, ...chunks] = frames(m);
+    r.rx(p1, header!);
+    r.rx(p2, decl(F + 1));
+    expect(r.a.userInUse().get("u")).toBe(2 * (F + 1));
+    expect(same(feed(r, p1, chunks).at(-1), m)).toBe(true);
+    expect(r.a.userInUse().get("u")).toBe(F + 1);
+    expect(r.a.inUseBytes()).toBe(F + 1);
+    const p3 = r.own("u");
+    r.rx(p3, decl(M - F));
+    closedWith(p3, 1013);
+    expect(only("warn", "collab_reassembly_budget_exhausted").ctx).toMatchObject({
+      ...ID(p3, "u"), scope: "user", bytes: M - F, userInUseBytes: F + 1, inUseBytes: F + 1,
+    });
+  });
+
   it("A06 refuses past the process budget while reassemblies already running finish", () => {
     const r = asm();
     const holders = [1, 2, 3, 4, 5, 6].map((i) => r.own(`u${i}`));
@@ -725,6 +745,16 @@ describe("frame assembler — ws errors and closes", () => {
     expect(dropping(r, p)).toBe(true);
   });
 
+  it("A19 (c) a ws error that is not an Error is still logged as a socket error", () => {
+    const r = asm();
+    const p = r.own("u");
+    r.a.onPeerError(p, "boom");
+    const line = only("error", "collab_socket_error");
+    expect(line.ctx).toMatchObject(ID(p, "u"));
+    expect(line.err).toBe("boom");
+    expect(dropping(r, p)).toBe(true);
+  });
+
   it("A20 a ws error after we closed is logged and changes nothing", () => {
     const r = asm();
     const q = r.own("v");
@@ -802,12 +832,20 @@ describe("frame assembler — ws errors and closes", () => {
     }
   });
 
-  it("A26 logs a null socket id before Hocuspocus assigned one", () => {
+  it("A26 (a) logs a null socket id before Hocuspocus assigned one", () => {
     const r = asm();
     const p = peer(false);
     r.users.set(p, "u");
     r.rx(p, txt("hello"));
     expect(only("warn", "collab_frame_malformed").ctx).toMatchObject({ socketId: null, userId: "u", remoteAddress: p.remoteAddress });
+  });
+
+  it("A26 (b) logs a null address when the socket no longer reports one", () => {
+    const r = asm();
+    const p = r.own("u");
+    Reflect.deleteProperty(p, "remoteAddress");
+    r.rx(p, txt("hello"));
+    expect(only("warn", "collab_frame_malformed").ctx).toMatchObject({ socketId: p._hocuspocus?.socketId, userId: "u", remoteAddress: null });
   });
 
   it("A28 a declaration does not allocate its buffer up front", () => {
@@ -876,7 +914,7 @@ describe("frame assembler — properties", () => {
       { weight: 1, arbitrary: fc.record({ k: fc.constant("error" as const), p: fc.nat(5), tooLarge: fc.boolean() }) },
     );
     fc.assert(
-      fc.property(params, fc.array(fc.constantFrom("a", "b", "c", undefined), { minLength: 2, maxLength: 6 }), fc.array(command, { maxLength: 60 }), (lim, owners, cmds) => {
+      fc.property(params, fc.array(fc.constantFrom("a", "b", "c", undefined), { minLength: 2, maxLength: 6 }), fc.array(command, { maxLength: 60, size: "max" }), (lim, owners, cmds) => {
         vi.clearAllTimers();
         vi.clearAllMocks();
         const r = asm({ maxMessageBytes: lim.M, budgetBytes: lim.B, idleTimeoutMs: lim.T });
@@ -1010,10 +1048,7 @@ describe("frame assembler — properties", () => {
                     st.received = after;
                     st.deadline = now + lim.T;
                     if (after === st.bytes) {
-                      const whole = new Uint8Array(after);
-                      let o = 0;
-                      for (const ch of st.chunks) { whole.set(ch, o); o += ch.byteLength; }
-                      expectedReturn = whole;
+                      expectedReturn = Buffer.concat(st.chunks);
                       release(p);
                       model.set(p, { s: "idle" });
                     }
