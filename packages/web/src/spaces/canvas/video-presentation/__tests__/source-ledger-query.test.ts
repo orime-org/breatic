@@ -16,10 +16,10 @@ import type { VideoPresentationResponse, VideoSourceLedgerCompanion } from '@bre
 
 import { sourceLedgerQuery } from '../source-ledger-query';
 
-const { readSpy } = vi.hoisted(() => ({ readSpy: vi.fn() }));
+const { readSpy, realRead } = vi.hoisted(() => ({ readSpy: vi.fn(), realRead: { current: undefined as unknown } }));
 vi.mock('@breatic/shared', async (original) => {
   const actual = await original<typeof shared>();
-  readSpy.mockImplementation(actual.readVideoSourceLedger);
+  realRead.current = actual.readVideoSourceLedger;
   return { ...actual, readVideoSourceLedger: readSpy };
 });
 
@@ -59,7 +59,7 @@ beforeEach(async () => {
     contentType: 'application/json', physicalFrameCount: 3, occurrenceCount: 3,
   };
   fetchMock.mockReset();
-  readSpy.mockClear();
+  readSpy.mockReset().mockImplementation(realRead.current as typeof shared.readVideoSourceLedger);
   vi.stubGlobal('fetch', fetchMock);
 });
 
@@ -115,17 +115,18 @@ describe('W02 the key is the receipt, the source and the policy', () => {
 
 describe('W03 nothing to read', () => {
   it.each([
-    ['no response yet', undefined],
-    ['a legacy response', presentation({ sourceLedger: undefined, sourceLedgerReadLimits: undefined })],
-    ['a ready receipt without read limits', presentation({ sourceLedgerReadLimits: undefined })],
-    ['a null ledger', presentation({ sourceLedger: null })],
-    ['a pending ledger', presentation({ sourceLedger: { state: 'pending', schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, attempt: companion.attempt } })],
-    ['a failed ledger', presentation({ sourceLedger: { state: 'failed', schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, attempt: companion.attempt, errorCode: 'ledger_invalid' } })],
-    ['an inactive Space', 'inactive'],
+    ['no response yet', () => undefined],
+    ['a legacy response', () => presentation({ sourceLedger: undefined, sourceLedgerReadLimits: undefined })],
+    ['a ready receipt without read limits', () => presentation({ sourceLedgerReadLimits: undefined })],
+    ['a null ledger', () => presentation({ sourceLedger: null })],
+    ['a pending ledger', () => presentation({ sourceLedger: { state: 'pending', schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, attempt: companion.attempt } })],
+    ['a failed ledger', () => presentation({ sourceLedger: { state: 'failed', schemaVersion: 1, sourceFingerprint: binding.contentHash, producerVersion: 1, attempt: companion.attempt, errorCode: 'ledger_invalid' } })],
+    ['a receipt naming another source', () => presentation({ sourceLedger: { state: 'ready', receipt: { ...receipt, sourceFingerprint: 'c'.repeat(64) } } })],
+    ['an inactive Space', 'inactive' as const],
   ])('reads nothing for %s', async (_name, response) => {
     const options = sourceLedgerQuery({
       projectId: 'project-a',
-      response: response === 'inactive' ? presentation() : (response as VideoPresentationResponse | undefined),
+      response: response === 'inactive' ? presentation() : response(),
       active: response !== 'inactive',
     });
     expect(options.enabled).toBe(false);
