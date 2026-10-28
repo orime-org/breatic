@@ -68,14 +68,17 @@ export async function lookupCost(config: ProviderConfig, options: ProviderOption
       { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS },
     );
     const data = (body as { data?: Record<string, unknown> } | null)?.data ?? {};
-    const cost = data.total_cost;
-    if (typeof cost !== "number" || !Number.isFinite(cost)) return unanswered("the generation carries no cost yet");
     const tokens: TokenBuckets = {
       input: count(data.native_tokens_prompt),
       cachedInput: count(data.native_tokens_cached),
       output: count(data.native_tokens_completion),
       reasoning: count(data.native_tokens_reasoning),
     };
+    const cost = data.total_cost;
+    if (typeof cost !== "number" || !Number.isFinite(cost)) {
+      const reason = "the generation carries no cost yet";
+      return lastAttempt ? { state: "missing", reason, tokens } : { state: "pending", lookup };
+    }
     return { state: "known", usd: cost, tokens, source: "billing" };
   } catch (error) {
     return unanswered(error instanceof Error ? error.message : String(error));
