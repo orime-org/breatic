@@ -412,7 +412,7 @@ describe("frame assembler — limits", () => {
     });
   });
 
-  it("A06 refuses past the process budget while reassemblies already running finish", () => {
+  it("A06 refuses past the process budget while reassemblies already running stay open and one of them finishes", () => {
     const r = asm();
     const holders = [1, 2, 3, 4, 5, 6].map((i) => r.own(`u${i}`));
     const m1 = msg(M, 11);

@@ -619,7 +619,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connection.sendStateless(JSON.stringify(response));
     },
 
-    // Document size limit — reject updates that would exceed max.
+    // Document size limit: a document past it is only logged (warn).
     onChange: async ({ documentName, document }) => {
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;

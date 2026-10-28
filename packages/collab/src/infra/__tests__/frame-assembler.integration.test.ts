@@ -400,7 +400,7 @@ describe("frame reassembly through real upgrades", () => {
     expect(st.asm.inUseBytes()).toBe(0);
   });
 
-  it("I05 the seventh account is refused at the process budget while the others finish", async () => {
+  it("I05 the seventh account is refused at the process budget while the six reassembling stay open and one of them finishes", async () => {
     const st = await stack();
     const big = upd("i05", "a".repeat(5_000_000), SYNC.update);
     const L = big.byteLength;
@@ -535,8 +535,9 @@ describe("frame reassembly through real upgrades", () => {
   });
 
   it("I12 the uploader hears back after the declaration and every chunk but the last", async () => {
-    // A busy uplink holds back the browser's pongs and awareness, so these
-    // acknowledgements are all it receives while the message is in flight.
+    // A busy uplink holds back the browser's pongs and awareness, and with them
+    // collab's replies; with no one else active these acknowledgements are all
+    // it receives while the message is in flight.
     const st = await stack();
     const a = await client(st, await sess(st, "ua-i12"));
     await auth(st, a, "i12");
