@@ -43,6 +43,15 @@ describe("costOf (design 3.6)", () => {
     expect(cost).toEqual({ state: "known", usd: 0.000136764, tokens: TOKENS, source: "reported" });
   });
 
+  it.each([Number.POSITIVE_INFINITY, Number.NaN, "0.5"])("reads a reported cost of %s as no cost, never a known one", (reported) => {
+    const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
+      model: "deepseek/deepseek-v4-pro",
+      usage,
+      providerMetadata: { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: reported as number } } },
+    });
+    expect(cost.state).not.toBe("known");
+  });
+
   it("answers pending with the lookup when OpenRouter did not say", () => {
     const cost = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.costOf({
       model: "deepseek/deepseek-v4-pro",

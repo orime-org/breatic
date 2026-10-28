@@ -43,4 +43,10 @@ describe("readBilling (design 6.2, 13.1 actual cost)", () => {
     const read = readBilling(answer([{ billing_type: "deduct", order: { price: 0.1 } }, { billing_type: type, order: { price: 0.1 } }]));
     expect(read).toMatchObject({ kind: "total", usd: 0.1 });
   });
+
+  it("reads a price JSON cannot hold as no price, never a known Infinity", () => {
+    const read = readBilling({ code: 200, data: { items: [{ billing_type: "deduct", order: { price: 0.1 } }, { billing_type: "deduct", order: { price: Number.POSITIVE_INFINITY } }] } });
+    expect(read).toMatchObject({ kind: "total", usd: 0.1 });
+    expect(read.warnings.map((w) => w.code)).toEqual(["billing_line_without_price"]);
+  });
 });
