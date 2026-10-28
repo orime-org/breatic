@@ -1,8 +1,96 @@
 diff --git a/dist/index.cjs b/dist/index.cjs
-index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..a5430d552db4f6e69d4f8a0a3837c84f99e36c64 100644
+index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..08477d5f6cfdbde75ccb0a92ba7a302606ea309f 100644
 --- a/dist/index.cjs
 +++ b/dist/index.cjs
-@@ -706,10 +706,13 @@ function isCellBoundarySelection({ $from, $to }) {
+@@ -67,12 +67,15 @@ var TableMap = class {
+ 	}
+ 	nextCell(pos, axis, dir) {
+ 		const { left, right, top, bottom } = this.findCell(pos);
++		// breatic (inner#1619): a row short of cells holds 0 where they are
++		// missing, the offset of the first row; the next cell is the next slot
++		// in that direction that holds one.
+ 		if (axis == "horiz") {
+-			if (dir < 0 ? left == 0 : right == this.width) return null;
+-			return this.map[top * this.width + (dir < 0 ? left - 1 : right)];
++			for (let col = dir < 0 ? left - 1 : right; col >= 0 && col < this.width; col += dir) if (this.map[top * this.width + col]) return this.map[top * this.width + col];
++			return null;
+ 		} else {
+-			if (dir < 0 ? top == 0 : bottom == this.height) return null;
+-			return this.map[left + this.width * (dir < 0 ? top - 1 : bottom)];
++			for (let row = dir < 0 ? top - 1 : bottom; row >= 0 && row < this.height; row += dir) if (this.map[left + this.width * row]) return this.map[left + this.width * row];
++			return null;
+ 		}
+ 	}
+ 	rectBetween(a, b) {
+@@ -91,7 +94,8 @@ var TableMap = class {
+ 		for (let row = rect.top; row < rect.bottom; row++) for (let col = rect.left; col < rect.right; col++) {
+ 			const index = row * this.width + col;
+ 			const pos = this.map[index];
+-			if (seen[pos]) continue;
++			// breatic (inner#1619): 0 is a missing cell of a short row.
++			if (pos === 0 || seen[pos]) continue;
+ 			seen[pos] = true;
+ 			if (col == rect.left && col && this.map[index - 1] == pos || row == rect.top && row && this.map[index - this.width] == pos) continue;
+ 			result.push(pos);
+@@ -437,6 +441,15 @@ function inSameTable($cellA, $cellB) {
+ /**
+ * @public
+ */
++/**
++* breatic (inner#1619): a row short of cells holds 0 in the map where they are
++* missing, the offset of the first row. The cell at the first slot from
++* `index`, stepping by `step`, that holds one.
++*/
++function cellSlotFrom(map, index, step) {
++	while (map.map[index] === 0) index += step;
++	return map.map[index];
++}
+ function findCell($pos) {
+ 	return TableMap.get($pos.node(-1)).findCell($pos.pos - $pos.start(-1));
+ }
+@@ -546,7 +559,8 @@ var CellSelection = class CellSelection extends prosemirror_state.Selection {
+ 			const rowContent = [];
+ 			for (let index = row * map.width + rect.left, col = rect.left; col < rect.right; col++, index++) {
+ 				const pos = map.map[index];
+-				if (seen[pos]) continue;
++				// breatic (inner#1619): 0 is a missing cell of a short row.
++				if (pos === 0 || seen[pos]) continue;
+ 				seen[pos] = true;
+ 				const cellRect = map.findCell(pos);
+ 				let cell = table.nodeAt(pos);
+@@ -612,11 +626,11 @@ var CellSelection = class CellSelection extends prosemirror_state.Selection {
+ 		const headRect = map.findCell($headCell.pos - tableStart);
+ 		const doc = $anchorCell.node(0);
+ 		if (anchorRect.top <= headRect.top) {
+-			if (anchorRect.top > 0) $anchorCell = doc.resolve(tableStart + map.map[anchorRect.left]);
+-			if (headRect.bottom < map.height) $headCell = doc.resolve(tableStart + map.map[map.width * (map.height - 1) + headRect.right - 1]);
++			if (anchorRect.top > 0) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, anchorRect.left, map.width));
++			if (headRect.bottom < map.height) $headCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (map.height - 1) + headRect.right - 1, -map.width));
+ 		} else {
+-			if (headRect.top > 0) $headCell = doc.resolve(tableStart + map.map[headRect.left]);
+-			if (anchorRect.bottom < map.height) $anchorCell = doc.resolve(tableStart + map.map[map.width * (map.height - 1) + anchorRect.right - 1]);
++			if (headRect.top > 0) $headCell = doc.resolve(tableStart + cellSlotFrom(map, headRect.left, map.width));
++			if (anchorRect.bottom < map.height) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (map.height - 1) + anchorRect.right - 1, -map.width));
+ 		}
+ 		return new CellSelection($anchorCell, $headCell);
+ 	}
+@@ -642,11 +656,11 @@ var CellSelection = class CellSelection extends prosemirror_state.Selection {
+ 		const headRect = map.findCell($headCell.pos - tableStart);
+ 		const doc = $anchorCell.node(0);
+ 		if (anchorRect.left <= headRect.left) {
+-			if (anchorRect.left > 0) $anchorCell = doc.resolve(tableStart + map.map[anchorRect.top * map.width]);
+-			if (headRect.right < map.width) $headCell = doc.resolve(tableStart + map.map[map.width * (headRect.top + 1) - 1]);
++			if (anchorRect.left > 0) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, anchorRect.top * map.width, 1));
++			if (headRect.right < map.width) $headCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (headRect.top + 1) - 1, -1));
+ 		} else {
+-			if (headRect.left > 0) $headCell = doc.resolve(tableStart + map.map[headRect.top * map.width]);
+-			if (anchorRect.right < map.width) $anchorCell = doc.resolve(tableStart + map.map[map.width * (anchorRect.top + 1) - 1]);
++			if (headRect.left > 0) $headCell = doc.resolve(tableStart + cellSlotFrom(map, headRect.top * map.width, 1));
++			if (anchorRect.right < map.width) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (anchorRect.top + 1) - 1, -1));
+ 		}
+ 		return new CellSelection($anchorCell, $headCell);
+ 	}
+@@ -706,10 +720,13 @@ function isCellBoundarySelection({ $from, $to }) {
  function isTextSelectionAcrossCells({ $from, $to }) {
  	let fromCellBoundaryNode;
  	let toCellBoundaryNode;
@@ -16,7 +104,7 @@ index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..a5430d552db4f6e69d4f8a0a3837c84f
  			break;
  		}
  	}
-@@ -717,10 +720,15 @@ function isTextSelectionAcrossCells({ $from, $to }) {
+@@ -717,10 +734,15 @@ function isTextSelectionAcrossCells({ $from, $to }) {
  		const node = $to.node(i);
  		if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
  			toCellBoundaryNode = node;
@@ -33,7 +121,16 @@ index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..a5430d552db4f6e69d4f8a0a3837c84f
  }
  function normalizeSelection(state, tr, allowTableNodeSelection) {
  	const sel = (tr || state).selection;
-@@ -2216,8 +2224,19 @@ function handleMouseDown$1(view, startEvent) {
+@@ -735,7 +757,7 @@ function normalizeSelection(state, tr, allowTableNodeSelection) {
+ 		} else if (!allowTableNodeSelection) {
+ 			const map = TableMap.get(sel.node);
+ 			const start = sel.from + 1;
+-			const lastCell = start + map.map[map.width * map.height - 1];
++			const lastCell = start + cellSlotFrom(map, map.width * map.height - 1, -1);
+ 			normalize = CellSelection.create(doc, start + 1, lastCell);
+ 		}
+ 	} else if (sel instanceof prosemirror_state.TextSelection && isCellBoundarySelection(sel)) normalize = prosemirror_state.TextSelection.create(doc, sel.from);
+@@ -2216,8 +2238,19 @@ function handleMouseDown$1(view, startEvent) {
  	function setCellSelection($anchor$1, event) {
  		let $head = cellUnderMouse(view, event);
  		const starting = tableEditingKey.getState(view.state) == null;
@@ -55,11 +152,109 @@ index 6c65eb7d57e207a8cd1f2a2ae3bb99507c405cef..a5430d552db4f6e69d4f8a0a3837c84f
  		const selection = new CellSelection($anchor$1, $head);
  		if (starting || !view.state.selection.eq(selection)) {
  			const tr = view.state.tr.setSelection(selection);
+@@ -2561,7 +2594,8 @@ function handleDecorations(state, cell) {
+ 	const col = map.colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+ 	for (let row = 0; row < map.height; row++) {
+ 		const index = col + row * map.width;
+-		if ((col == map.width - 1 || map.map[index] != map.map[index + 1]) && (row == 0 || map.map[index] != map.map[index - map.width])) {
++		// breatic (inner#1619): 0 is a missing cell of a short row.
++		if (map.map[index] !== 0 && (col == map.width - 1 || map.map[index] != map.map[index + 1]) && (row == 0 || map.map[index] != map.map[index - map.width])) {
+ 			var _columnResizingPlugin;
+ 			const cellPos = map.map[index];
+ 			const pos = start + cellPos + table.nodeAt(cellPos).nodeSize - 1;
 diff --git a/dist/index.js b/dist/index.js
-index 5b4ac25594ba5722409332b1e5c812f108c9bf11..c0af4d8fb5ef55d52c55c593698db76032eccab5 100644
+index 5b4ac25594ba5722409332b1e5c812f108c9bf11..3ec020cb831dc81006047a7ee0c6a2b9c7e5b672 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -706,10 +706,13 @@ function isCellBoundarySelection({ $from, $to }) {
+@@ -67,12 +67,15 @@ var TableMap = class {
+ 	}
+ 	nextCell(pos, axis, dir) {
+ 		const { left, right, top, bottom } = this.findCell(pos);
++		// breatic (inner#1619): a row short of cells holds 0 where they are
++		// missing, the offset of the first row; the next cell is the next slot
++		// in that direction that holds one.
+ 		if (axis == "horiz") {
+-			if (dir < 0 ? left == 0 : right == this.width) return null;
+-			return this.map[top * this.width + (dir < 0 ? left - 1 : right)];
++			for (let col = dir < 0 ? left - 1 : right; col >= 0 && col < this.width; col += dir) if (this.map[top * this.width + col]) return this.map[top * this.width + col];
++			return null;
+ 		} else {
+-			if (dir < 0 ? top == 0 : bottom == this.height) return null;
+-			return this.map[left + this.width * (dir < 0 ? top - 1 : bottom)];
++			for (let row = dir < 0 ? top - 1 : bottom; row >= 0 && row < this.height; row += dir) if (this.map[left + this.width * row]) return this.map[left + this.width * row];
++			return null;
+ 		}
+ 	}
+ 	rectBetween(a, b) {
+@@ -91,7 +94,8 @@ var TableMap = class {
+ 		for (let row = rect.top; row < rect.bottom; row++) for (let col = rect.left; col < rect.right; col++) {
+ 			const index = row * this.width + col;
+ 			const pos = this.map[index];
+-			if (seen[pos]) continue;
++			// breatic (inner#1619): 0 is a missing cell of a short row.
++			if (pos === 0 || seen[pos]) continue;
+ 			seen[pos] = true;
+ 			if (col == rect.left && col && this.map[index - 1] == pos || row == rect.top && row && this.map[index - this.width] == pos) continue;
+ 			result.push(pos);
+@@ -437,6 +441,15 @@ function inSameTable($cellA, $cellB) {
+ /**
+ * @public
+ */
++/**
++* breatic (inner#1619): a row short of cells holds 0 in the map where they are
++* missing, the offset of the first row. The cell at the first slot from
++* `index`, stepping by `step`, that holds one.
++*/
++function cellSlotFrom(map, index, step) {
++	while (map.map[index] === 0) index += step;
++	return map.map[index];
++}
+ function findCell($pos) {
+ 	return TableMap.get($pos.node(-1)).findCell($pos.pos - $pos.start(-1));
+ }
+@@ -546,7 +559,8 @@ var CellSelection = class CellSelection extends Selection {
+ 			const rowContent = [];
+ 			for (let index = row * map.width + rect.left, col = rect.left; col < rect.right; col++, index++) {
+ 				const pos = map.map[index];
+-				if (seen[pos]) continue;
++				// breatic (inner#1619): 0 is a missing cell of a short row.
++				if (pos === 0 || seen[pos]) continue;
+ 				seen[pos] = true;
+ 				const cellRect = map.findCell(pos);
+ 				let cell = table.nodeAt(pos);
+@@ -612,11 +626,11 @@ var CellSelection = class CellSelection extends Selection {
+ 		const headRect = map.findCell($headCell.pos - tableStart);
+ 		const doc = $anchorCell.node(0);
+ 		if (anchorRect.top <= headRect.top) {
+-			if (anchorRect.top > 0) $anchorCell = doc.resolve(tableStart + map.map[anchorRect.left]);
+-			if (headRect.bottom < map.height) $headCell = doc.resolve(tableStart + map.map[map.width * (map.height - 1) + headRect.right - 1]);
++			if (anchorRect.top > 0) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, anchorRect.left, map.width));
++			if (headRect.bottom < map.height) $headCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (map.height - 1) + headRect.right - 1, -map.width));
+ 		} else {
+-			if (headRect.top > 0) $headCell = doc.resolve(tableStart + map.map[headRect.left]);
+-			if (anchorRect.bottom < map.height) $anchorCell = doc.resolve(tableStart + map.map[map.width * (map.height - 1) + anchorRect.right - 1]);
++			if (headRect.top > 0) $headCell = doc.resolve(tableStart + cellSlotFrom(map, headRect.left, map.width));
++			if (anchorRect.bottom < map.height) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (map.height - 1) + anchorRect.right - 1, -map.width));
+ 		}
+ 		return new CellSelection($anchorCell, $headCell);
+ 	}
+@@ -642,11 +656,11 @@ var CellSelection = class CellSelection extends Selection {
+ 		const headRect = map.findCell($headCell.pos - tableStart);
+ 		const doc = $anchorCell.node(0);
+ 		if (anchorRect.left <= headRect.left) {
+-			if (anchorRect.left > 0) $anchorCell = doc.resolve(tableStart + map.map[anchorRect.top * map.width]);
+-			if (headRect.right < map.width) $headCell = doc.resolve(tableStart + map.map[map.width * (headRect.top + 1) - 1]);
++			if (anchorRect.left > 0) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, anchorRect.top * map.width, 1));
++			if (headRect.right < map.width) $headCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (headRect.top + 1) - 1, -1));
+ 		} else {
+-			if (headRect.left > 0) $headCell = doc.resolve(tableStart + map.map[headRect.top * map.width]);
+-			if (anchorRect.right < map.width) $anchorCell = doc.resolve(tableStart + map.map[map.width * (anchorRect.top + 1) - 1]);
++			if (headRect.left > 0) $headCell = doc.resolve(tableStart + cellSlotFrom(map, headRect.top * map.width, 1));
++			if (anchorRect.right < map.width) $anchorCell = doc.resolve(tableStart + cellSlotFrom(map, map.width * (anchorRect.top + 1) - 1, -1));
+ 		}
+ 		return new CellSelection($anchorCell, $headCell);
+ 	}
+@@ -706,10 +720,13 @@ function isCellBoundarySelection({ $from, $to }) {
  function isTextSelectionAcrossCells({ $from, $to }) {
  	let fromCellBoundaryNode;
  	let toCellBoundaryNode;
@@ -73,7 +268,7 @@ index 5b4ac25594ba5722409332b1e5c812f108c9bf11..c0af4d8fb5ef55d52c55c593698db760
  			break;
  		}
  	}
-@@ -717,10 +720,15 @@ function isTextSelectionAcrossCells({ $from, $to }) {
+@@ -717,10 +734,15 @@ function isTextSelectionAcrossCells({ $from, $to }) {
  		const node = $to.node(i);
  		if (node.type.spec.tableRole === "cell" || node.type.spec.tableRole === "header_cell") {
  			toCellBoundaryNode = node;
@@ -90,7 +285,16 @@ index 5b4ac25594ba5722409332b1e5c812f108c9bf11..c0af4d8fb5ef55d52c55c593698db760
  }
  function normalizeSelection(state, tr, allowTableNodeSelection) {
  	const sel = (tr || state).selection;
-@@ -2216,8 +2224,19 @@ function handleMouseDown$1(view, startEvent) {
+@@ -735,7 +757,7 @@ function normalizeSelection(state, tr, allowTableNodeSelection) {
+ 		} else if (!allowTableNodeSelection) {
+ 			const map = TableMap.get(sel.node);
+ 			const start = sel.from + 1;
+-			const lastCell = start + map.map[map.width * map.height - 1];
++			const lastCell = start + cellSlotFrom(map, map.width * map.height - 1, -1);
+ 			normalize = CellSelection.create(doc, start + 1, lastCell);
+ 		}
+ 	} else if (sel instanceof TextSelection && isCellBoundarySelection(sel)) normalize = TextSelection.create(doc, sel.from);
+@@ -2216,8 +2238,19 @@ function handleMouseDown$1(view, startEvent) {
  	function setCellSelection($anchor$1, event) {
  		let $head = cellUnderMouse(view, event);
  		const starting = tableEditingKey.getState(view.state) == null;
@@ -112,3 +316,13 @@ index 5b4ac25594ba5722409332b1e5c812f108c9bf11..c0af4d8fb5ef55d52c55c593698db760
  		const selection = new CellSelection($anchor$1, $head);
  		if (starting || !view.state.selection.eq(selection)) {
  			const tr = view.state.tr.setSelection(selection);
+@@ -2561,7 +2594,8 @@ function handleDecorations(state, cell) {
+ 	const col = map.colCount($cell.pos - start) + $cell.nodeAfter.attrs.colspan - 1;
+ 	for (let row = 0; row < map.height; row++) {
+ 		const index = col + row * map.width;
+-		if ((col == map.width - 1 || map.map[index] != map.map[index + 1]) && (row == 0 || map.map[index] != map.map[index - map.width])) {
++		// breatic (inner#1619): 0 is a missing cell of a short row.
++		if (map.map[index] !== 0 && (col == map.width - 1 || map.map[index] != map.map[index + 1]) && (row == 0 || map.map[index] != map.map[index - map.width])) {
+ 			var _columnResizingPlugin;
+ 			const cellPos = map.map[index];
+ 			const pos = start + cellPos + table.nodeAt(cellPos).nodeSize - 1;

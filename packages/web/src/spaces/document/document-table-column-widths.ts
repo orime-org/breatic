@@ -41,7 +41,8 @@ export function holdColumnWidths(
   const start = tablePos + 1;
   const seen = new Set<number>();
   map.map.forEach((rel, index) => {
-    if (seen.has(rel)) return;
+    // 0 is a missing cell of a short row: the offset of the row itself.
+    if (rel === 0 || seen.has(rel)) return;
     seen.add(rel);
     const cell = table.nodeAt(rel);
     if (cell === null) return;
@@ -68,7 +69,7 @@ function drawnColumns(view: EditorView, table: PMNode, start: number): (number |
   const columns: (number | null)[] = Array.from({ length: map.width }, () => null);
   map.map.forEach((rel, index) => {
     const left = index % map.width;
-    if (columns[left] !== null || Number(table.nodeAt(rel)?.attrs['colspan'] ?? 1) !== 1) return;
+    if (rel === 0 || columns[left] !== null || Number(table.nodeAt(rel)?.attrs['colspan'] ?? 1) !== 1) return;
     const dom = view.nodeDOM(start + rel);
     if (dom instanceof HTMLElement) columns[left] = dom.offsetWidth;
   });

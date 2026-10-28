@@ -73,6 +73,8 @@ export function canDragFrom(doc: PMNode, cellPos: number, orientation: DragOrien
   const slots = orientation === 'row' ? map.width : map.height;
   for (let i = 0; i < slots; i += 1) {
     const index = orientation === 'row' ? at.top * map.width + i : i * map.width + at.left;
+    // 0 is a missing cell of a short row, which spans nothing.
+    if (map.map[index] === 0) continue;
     const cell = map.findCell(map.map[index]!);
     const fits =
       orientation === 'row'
@@ -206,7 +208,10 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
   const edges: number[] = [];
   let right = 0;
   for (let col = 0; col < at.map.width; col += 1) {
-    const rel = at.map.map[col]!;
+    // A short row holds 0 where its cells are missing.
+    let row = 0;
+    while (at.map.map[row * at.map.width + col] === 0) row += 1;
+    const rel = at.map.map[row * at.map.width + col]!;
     const element = view.nodeDOM(at.tableStart + rel);
     if (!(element instanceof Element)) return null;
     const box = element.getBoundingClientRect();
