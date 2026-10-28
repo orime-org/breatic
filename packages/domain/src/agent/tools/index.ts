@@ -24,6 +24,7 @@ import {
   READ_NODE_HISTORY,
   RECORD_TOOL_NAMES,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
   SEARCH_CONVERSATIONS,
 } from "@domain/agent/tools/tool-names.js";
 import { imageSearch, makeImageSearchTool } from "@domain/agent/tools/image-search.js";
@@ -65,7 +66,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // -- gets a fresh one per turn from here. Tools may also bind per-turn
   // capabilities; context-independent tools can reuse one object.
   web_search: () => makeSearchTools().web_search,
-  understand_media: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
+  [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
   // wait for an answer read the same one, so there is no second spelling of
@@ -106,7 +107,7 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
 export const BASELINE_TOOLS: readonly string[] = [
   "web_search",
   "search_images",
-  "understand_media",
+  UNDERSTAND_MEDIA,
   ASK_USER,
   JUDGE_LIKELIHOOD,
   // The user's own records: about the project, not the Space in front of
@@ -140,6 +141,7 @@ export {
   PROPOSE_DOCUMENT_EDIT,
   RECORD_TOOL_NAMES,
   SAVE_IMAGE,
+  UNDERSTAND_MEDIA,
 } from "@domain/agent/tools/tool-names.js";
 
 /**
@@ -164,7 +166,7 @@ const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
   // The same key, which the service accepts on the image endpoint too
   // (measured 2026-09-11).
   search_images: "BRAVE_SEARCH_API_KEY",
-  understand_media: "OPENROUTER_API_KEY",
+  [UNDERSTAND_MEDIA]: "OPENROUTER_API_KEY",
   // The same key: the decisions endpoint sits on the same host and accepts it
   // (measured 2026-09-23).
   [JUDGE_LIKELIHOOD]: "OPENROUTER_API_KEY",

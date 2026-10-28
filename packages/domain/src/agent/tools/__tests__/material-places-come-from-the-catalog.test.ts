@@ -165,7 +165,7 @@ describe("a template whose model this deployment does not serve (inner#977)", ()
     const answer = answerFor({
       nodes: [
         { role: "source", type: "image", name: "Character" },
-        { role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25", prompt: [{ text: "A grid of " }, { ref: 0 }] },
+        { role: "generate", type: "image", name: "Grid", template: { id: "storyboard-grid-25" }, prompt: [{ text: "A grid of " }, { ref: 0 }] },
       ],
       edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
       rationale: "",

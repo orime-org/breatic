@@ -303,6 +303,20 @@ const proposalNodeSchema = z.object({
    * generates nothing.
    */
   takesPrompt: z.boolean().optional(),
+  /**
+   * The file we host that a template's resource node lands holding: a path
+   * under the hosted-resources address. Filled from the template, never by
+   * the model.
+   */
+  resource: z.string().optional(),
+  /**
+   * The template node this node stands for (inner#1345): its template and key,
+   * and for the guide text node the index of the anchor it explains. Written
+   * after the template check, never by the model.
+   */
+  templateNode: z
+    .object({ template: z.string(), key: z.string(), anchor: z.number().int().nonnegative().optional() })
+    .optional(),
 });
 
 /** One node, as {@link proposalNodeSchema} describes it. */
@@ -367,10 +381,41 @@ export function feedsOf(proposal: CanvasProposal): Array<{ fromIndex: number; to
   return [...proposal.edges.map(({ fromIndex, toIndex }) => ({ fromIndex, toIndex })), ...fills];
 }
 
+/** The key a template's guide text node carries; no template node may use it. */
+export const TEMPLATE_GUIDE_KEY = "guide";
+
+/**
+ * A template guide text node feeding the anchor it explains, one pair per guide.
+ * @param proposal - The proposal being read.
+ * @returns One pair per guide whose anchor is in the proposal.
+ * @throws {never} Never.
+ */
+function guideFeedsOf(proposal: CanvasProposal): Array<{ fromIndex: number; toIndex: number }> {
+  return proposal.nodes.flatMap((node, fromIndex) => {
+    const toIndex = node.templateNode?.key === TEMPLATE_GUIDE_KEY ? node.templateNode.anchor : undefined;
+    return toIndex === undefined || proposal.nodes[toIndex] === undefined ? [] : [{ fromIndex, toIndex }];
+  });
+}
+
+/**
+ * Every place one node feeds another as far as arranging the nodes goes:
+ * {@link feedsOf}, then each template guide text node into its anchor
+ * (inner#1345). The guide's pair is drawn on neither the canvas nor the card;
+ * it stands the guide one layer left of the anchor and in the anchor's run.
+ * @param proposal - The proposal being read.
+ * @returns One pair per feed, then one per guide.
+ * @throws {never} Never.
+ */
+export function layoutFeedsOf(proposal: CanvasProposal): Array<{ fromIndex: number; toIndex: number }> {
+  return [...feedsOf(proposal), ...guideFeedsOf(proposal)];
+}
+
 /**
  * How far downstream each node of a proposal sits, counting from what starts it.
  *
- * One further than the last thing that feeds it. Both the card's little
+ * One further than the last thing that feeds it; a template guide text node
+ * stands one before the anchor it explains, so the anchor is never in the
+ * first column with the guide under it where the generate panel opens. Both the card's little
  * diagram and the arrangement on the canvas are drawn from this, so the depth
  * a node is at is one answer -- read twice, the two drift the first time
  * either is changed. What each does on top of it differs: the card splits its
@@ -385,7 +430,7 @@ export function feedsOf(proposal: CanvasProposal): Array<{ fromIndex: number; to
  */
 export function layersOf(proposal: CanvasProposal): number[] {
   const depth = proposal.nodes.map(() => 0);
-  const feeds = feedsOf(proposal);
+  const feeds = layoutFeedsOf(proposal);
   for (let pass = 0; pass < proposal.nodes.length; pass += 1) {
     let moved = false;
     for (const edge of feeds) {
@@ -397,6 +442,7 @@ export function layersOf(proposal: CanvasProposal): number[] {
     }
     if (!moved) break;
   }
+  for (const guide of guideFeedsOf(proposal)) depth[guide.fromIndex] = Math.max(0, (depth[guide.toIndex] ?? 1) - 1);
   return depth;
 }
 

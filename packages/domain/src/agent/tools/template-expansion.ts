@@ -2,86 +2,136 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * A proposed node naming a generation template starts from it (inner#977).
+ * A proposed node naming a template starts from it (inner#977, inner#1345).
  *
- * The template is where the agent starts, not a lock: whatever the agent wrote
- * stays. The template's params belong to the template's mode and model, so
- * they come along only while the node keeps both. The prompt is the agent's
- * own (inner#1315): the template's words mark each reference for the reader
- * to mention by hand, and a proposal mentions the nodes it wires in, so the
- * agent sends those words back with a ref where each mark stood.
+ * The node names the template and its own place in it: the anchor, one of the
+ * template's other nodes by key, or one of its inputs. The template is where
+ * the agent starts, not a lock: whatever the agent wrote stays, and the
+ * template's params come along only while the node keeps the mode and model
+ * they belong to. A generate node's prompt is the agent's own (inner#1315):
+ * the template's words mark each reference for the reader to mention by hand,
+ * and a proposal mentions the nodes it wires in, so the agent sends those
+ * words back with a ref where each mark stood.
  */
 
 import {
   GENERATION_TEMPLATES,
-  findTemplate,
-  templatePrompt,
+  markedSegments,
+  t,
+  templateMarkTargets,
+  templateNodeDefaults,
   type GenerationTemplate,
   type ProposalNode,
+  type TemplateNodeKey,
 } from "@breatic/shared";
 
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
 
+/** Where a node stands in the template it names, as the agent writes it. */
+export type TemplateTag = { id: string; key?: string } | { id: string; input: string };
+
+/** Where a node stands once its tag is read: the anchor, another node by key, or an input. */
+export type TemplatePlace =
+  | { template: GenerationTemplate; key: TemplateNodeKey; anchor: boolean }
+  | { template: GenerationTemplate; input: string };
+
 /** The node with its template filled in, or why the template does not apply. */
-export type TemplateExpansion =
-  | { ok: true; node: ProposalNode }
-  | Refusal;
+export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
 
 /**
- * A template's prompt as the segments a proposal sends: words as they are,
- * each reference mark as a ref naming the node it stands for. The number is
- * the agent's to fill: it knows which node it wired in for which reference.
+ * Template keys and inputs, quoted, for a sentence.
+ * @param names - The names.
+ * @returns They, quoted and joined.
+ * @throws {never} Never.
+ */
+function quoted(names: readonly string[]): string {
+  return names.map((name) => `"${name}"`).join(", ");
+}
+
+/**
+ * A template generate node's prompt as the segments a proposal sends: words as
+ * they are, each reference mark as a ref naming what is wired in there by its
+ * key, the number left for the agent to fill since it knows which node it
+ * wired in for each.
  * @param template - The template.
+ * @param key - The generate node's key; the anchor when left out.
  * @returns The segments, written out as the agent would send them.
  * @throws {never} Never.
  */
-export function templateSegmentsText(template: GenerationTemplate): string {
-  const parts = templatePrompt(template).map((segment) =>
-    segment.slot?.kind === "asset"
-      ? `{"ref": <index of the node wired in for ${segment.slot.label}>}`
-      : JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot }),
-  );
+export function templateSegmentsText(template: GenerationTemplate, key: TemplateNodeKey = template.anchor): string {
+  const text = t(`canvas.template.${template.id}.${key === template.anchor ? "prompt" : `node.${key}.prompt`}`);
+  const targets = templateMarkTargets(template, key);
+  const parts = markedSegments(text).map((segment) => {
+    if (segment.slot?.kind === "asset") {
+      const target = targets.get(segment.slot.label);
+      const named = target === undefined ? `"${segment.slot.label}"` : "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
+      return `{"ref": <index of the node wired in for ${named}>}`;
+    }
+    return JSON.stringify(segment.slot === undefined ? { text: segment.text } : { slot: segment.slot });
+  });
   return `[${parts.join(", ")}]`;
 }
 
 /**
- * Fills a node from the template it names.
- * @param node - The node as the agent sent it, naming a template.
+ * Where a node stands in the template its tag names.
+ * @param tag - The tag as the agent wrote it.
+ * @param node - The node carrying it.
+ * @param templates - The registry to read the tag against.
+ * @returns Its place, or why the tag does not fit the node.
+ * @throws {never} Never.
+ */
+export function templatePlace(tag: TemplateTag, node: ProposalNode, templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES): TemplatePlace | Refusal {
+  const template = templates.find((candidate) => candidate.id === tag.id);
+  if (!template) {
+    return refuse("template-unknown", `No template "${tag.id}". Templates: ${templates.map((one) => one.id).join(", ")}.`);
+  }
+  if ("input" in tag) {
+    const input = template.inputs.find((one) => one.key === tag.input);
+    if (!input) {
+      return refuse("template-key-unknown", `Template "${template.id}" has no input "${tag.input}". Its inputs: ${quoted(template.inputs.map((one) => one.key)) || "none"}.`);
+    }
+    if (node.type !== input.type) {
+      return refuse("template-key-kind", `Input "${input.key}" of template "${template.id}" takes ${input.type}; "${node.name}" is a ${node.type} node.`);
+    }
+    return { template, input: input.key };
+  }
+  const key = tag.key ?? template.anchor;
+  const own = template.nodes.find((one) => one.key === key);
+  if (!own) {
+    return refuse("template-key-unknown", `Template "${template.id}" has no node "${key}". Its nodes: ${quoted(template.nodes.map((one) => one.key))}.`);
+  }
+  if (node.role !== own.role || node.type !== own.type) {
+    return refuse("template-key-kind", `Node "${key}" of template "${template.id}" is a ${own.role} ${own.type} node; "${node.name}" is a ${node.role} ${node.type} node.`);
+  }
+  return { template, key, anchor: key === template.anchor };
+}
+
+/**
+ * Fills a node from the template its tag has been read into.
+ * @param place - Where the node stands in its template.
+ * @param rest - The node, without its tag.
  * @param at - The node, as a fix names it.
  * @returns The expanded node, or a reason the agent can act on.
  * @throws {never} Never.
  */
-export function expandTemplate(node: ProposalNode & { template: string }, at: NodeLabel): TemplateExpansion {
-  const { template: id, ...rest } = node;
-  const template = findTemplate(id);
-  if (!template) {
-    return refuse("template-unknown", `No template "${id}". Templates: ${GENERATION_TEMPLATES.map((t) => t.id).join(", ")}.`);
+export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel): TemplateExpansion {
+  if ("input" in place) return { ok: true, node: rest };
+  const { template, key, anchor } = place;
+  if (rest.role === "source") {
+    if (rest.material !== undefined) {
+      return refuse("template-resource-material", `"${rest.name}" is template "${template.id}"'s "${key}", which lands holding the template's own file, so it takes no material.`);
+    }
+    return { ok: true, node: templateNodeDefaults(template, key, rest) };
   }
-  if (rest.role !== "generate") {
-    return refuse("template-role", `Template "${id}" goes on a generate node; "${rest.name}" is a ${rest.role} node.`);
-  }
-  if (rest.type !== template.nodeType) {
-    return refuse("template-type", `Template "${id}" is for ${template.nodeType} nodes, not ${rest.type}.`);
-  }
-  const mode = rest.mode ?? template.mode;
-  const model = rest.model ?? template.model;
-  const keepsTemplate = mode === template.mode && model === template.model;
-  if (rest.prompt === undefined) {
+  const own = template.nodes.find((one) => one.key === key);
+  const filled = templateNodeDefaults(template, anchor ? undefined : key, rest);
+  if (rest.prompt === undefined && rest.shots === undefined) {
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
-    const pool = keepsTemplate ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
-    return refuse("template-no-prompt", `"${rest.name}" names template "${id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template)}.${pool}`, fixOn(at, "write a prompt."));
+    const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
+    const pool = keeps ? ` Each node the prompt @s goes into the pool. ${poolSentence(rest.name)}` : "";
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no prompt. The template's prompt, to rewrite in the reader's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, "write a prompt."));
   }
-  const params = keepsTemplate ? { ...template.params, ...rest.params } : rest.params;
-  return {
-    ok: true,
-    node: {
-      ...rest,
-      mode,
-      model,
-      ...(params === undefined ? {} : { params }),
-      prompt: rest.prompt,
-    },
-  };
+  return { ok: true, node: filled };
 }

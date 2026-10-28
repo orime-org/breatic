@@ -20,6 +20,7 @@ import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const LIMIT = 20 * 1024 * 1024;
+const LONG_MEDIA_LIMIT = 2 * 1024 * 1024 * 1024;
 /** Where a node's file is stored: its key is what the file goes by. */
 const ASSET = 'https://cdn.invalid/upload/2026-09-20/1758_a1b2.aiff';
 
@@ -101,6 +102,53 @@ describe('what the browser refuses before it builds anything', () => {
     expect(
       understandRefusal({ kind: 'image', mimeType: 'image/png', sizeBytes: LIMIT, url: ASSET }, LIMIT),
     ).toBeNull();
+  });
+
+  it('lets oversized audio and video through up to the long-media source cap', () => {
+    expect(
+      understandRefusal(
+        { kind: 'audio', mimeType: 'audio/wav', sizeBytes: LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toBeNull();
+    expect(
+      understandRefusal(
+        { kind: 'video', mimeType: 'video/mp4', sizeBytes: LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toBeNull();
+  });
+
+  it('keeps the ordinary image cap when a long-media cap is available', () => {
+    expect(
+      understandRefusal(
+        { kind: 'image', mimeType: 'image/png', sizeBytes: LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toEqual({
+      kind: 'size',
+      limitBytes: LIMIT,
+      sizeBytes: LIMIT + 1,
+      file: '1758_a1b2.aiff',
+    });
+  });
+
+  it('refuses long audio over the configured source cap', () => {
+    expect(
+      understandRefusal(
+        { kind: 'audio', mimeType: 'audio/wav', sizeBytes: LONG_MEDIA_LIMIT + 1, url: ASSET },
+        LIMIT,
+        LONG_MEDIA_LIMIT,
+      ),
+    ).toEqual({
+      kind: 'size',
+      limitBytes: LONG_MEDIA_LIMIT,
+      sizeBytes: LONG_MEDIA_LIMIT + 1,
+      file: '1758_a1b2.aiff',
+    });
   });
 
   // Format first: a file that is both too large and in a format this endpoint

@@ -3,18 +3,58 @@
 
 /**
  * The template button in a generate panel's corner and the list it opens
- * (inner#977).
+ * (inner#977, inner#1345 A6): every panel lists the registry's templates for
+ * its node type, and a template is available only when every one of its
+ * generate nodes runs on a model this deployment serves.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { findTemplate, type GenerationNodeType } from '@breatic/shared';
+import {
+  GENERATION_TEMPLATES,
+  setLocaleMessages,
+  templatesFor,
+  type GenerationNodeType,
+  type GenerationTemplate,
+} from '@breatic/shared';
+import en from '@locales/en.json';
+
+vi.mock('@breatic/shared', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@breatic/shared')>();
+  return { ...actual, templatesFor: vi.fn(actual.templatesFor) };
+});
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 
 const TEMPLATE_MODEL = 'nano-banana-pro-edit-ultra';
+
+/**
+ * A two-generation fixture anchored on the given node type: an image
+ * generation upstream on one model feeding the anchor on another.
+ * @param type - The anchor's node type.
+ * @returns The template.
+ */
+function twoStep(type: GenerationNodeType): GenerationTemplate {
+  return {
+    id: 'fixture-two-step',
+    anchor: 'final',
+    nodes: [
+      { key: 'final', role: 'generate', type, mode: 'any', model: 'final-model', params: {} },
+      { key: 'first', role: 'generate', type: 'image', mode: 't2i', model: 'first-model', params: {} },
+    ],
+    edges: [{ from: 'first', to: 'final' }],
+    inputs: [],
+    steps: [],
+    agentNote: 'a fixture',
+  };
+}
+
+afterEach(() => {
+  vi.mocked(templatesFor).mockReset();
+  setLocaleMessages('en', en as Record<string, unknown>);
+});
 
 /**
  * Renders the menu and opens it.
@@ -67,6 +107,41 @@ describe('TemplateMenu', () => {
   });
 
   it('reads every template of the registry the test names', () => {
-    expect(findTemplate('storyboard-grid-25')?.model).toBe(TEMPLATE_MODEL);
+    const grid = GENERATION_TEMPLATES.find((template) => template.id === 'storyboard-grid-25');
+    const anchor = grid?.nodes.find((n) => n.key === grid.anchor);
+    expect(anchor?.role === 'generate' ? anchor.model : undefined).toBe(TEMPLATE_MODEL);
+  });
+
+  it.each<GenerationNodeType>(['image', 'video', 'audio'])(
+    'lists what the registry has for a %s panel, available when every generate node’s model is served',
+    (type) => {
+      vi.mocked(templatesFor).mockReturnValue([twoStep(type)]);
+      setLocaleMessages('en', {
+        ...en,
+        canvas: {
+          ...en.canvas,
+          template: { ...en.canvas.template, 'fixture-two-step': { name: 'Two step', description: 'A fixture' } },
+        },
+      } as Record<string, unknown>);
+      const onPick = vi.fn();
+      open(type, [{ name: 'final-model' }, { name: 'first-model' }], onPick);
+      expect(templatesFor).toHaveBeenCalledWith(type);
+      const item = screen.getByTestId('generate-template-fixture-two-step');
+      expect(item).toHaveTextContent('Two step');
+      expect(item).not.toHaveAttribute('data-disabled');
+      fireEvent.click(item);
+      expect(onPick).toHaveBeenCalledWith('fixture-two-step');
+    },
+  );
+
+  it('shows a template as unavailable when a non-anchor generate node’s model is not served', () => {
+    vi.mocked(templatesFor).mockReturnValue([twoStep('image')]);
+    const onPick = vi.fn();
+    open('image', [{ name: 'final-model' }], onPick);
+    const item = screen.getByTestId('generate-template-fixture-two-step');
+    expect(item).toHaveAttribute('data-disabled');
+    expect(item).toHaveTextContent('Unavailable');
+    fireEvent.click(item);
+    expect(onPick).not.toHaveBeenCalled();
   });
 });

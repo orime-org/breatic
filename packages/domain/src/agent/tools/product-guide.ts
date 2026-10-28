@@ -640,9 +640,18 @@ export function renderProductGuide(): string {
       `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
-      "template's; nothing asks first, and " +
-      `the message ${quoted(t("canvas.generatePanel.editMarks"))} appears. Its 📎 marks ask the reader to @ ` +
-      "the pictures it needs by hand (see below), and they can change anything after.",
+      "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
+      "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it. A template that brings " +
+      "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
+      "after it generates also places a text node listing them; the two listed here do neither. Picking it " +
+      "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
+      "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
+      "sight, zooming out only as far as that takes. Inside a group, the new nodes join the group. On a " +
+      `locked node nothing changes and it shows ${quoted(t("canvas.gate.locked"))} Inside a locked group that ` +
+      `would need a new node, nothing changes either and it shows ${quoted(t("canvas.template.groupLocked"))} ` +
+      `If placing fails, it shows ${quoted(t("canvas.template.applyFailed"))} When the prompt has places left to fill, the message ` +
+      `${quoted(t("canvas.generatePanel.editProposalMarks"))} appears. They can change anything after.`,
     "Fill in what the panel asks for, then press the round button with an upward arrow at the right end of the " +
       "panel's bottom row. Usually that is the prompt; some modes also need a source slot filled, a voice or " +
       "speakers picked, or a connected node mentioned in the prompt (see Mentions). If something is missing, " +
@@ -1065,9 +1074,11 @@ export function renderProductGuide(): string {
     "## Proposal cards",
     "A proposal you make appears in this chat as a card: a summary of a sentence or two; the nodes as chips, one " +
       "column per step with arrows between steps in the order they run (nodes of the same step stacked, empty " +
-      "nodes drawn dashed), with a | between runs that do not feed each other; any finished text in full under " +
-      "its node's name; when every generating node uses the same model and you gave a model note, a line with " +
-      "that model's name and the note; the list of what is left for the reader; and a " +
+      "nodes drawn dashed), with a | between runs that do not feed each other (a template's text node listing " +
+      "its steps is stacked in the step before the node it explains); any finished text in full under its " +
+      "node's name; when every generating node uses the same model and you gave a model note, a line with " +
+      "that model's name and the note; the list of what is left for the reader; a template's steps in full " +
+      "under that text node's name; and a " +
       `${quoted(t("chat.proposal.use"))} button. The card shows no credits and no run time; the credit ` +
       "estimate is in each node's generation panel.",
     "The list of what is left is headed by node names when the proposal places more than one node; nodes with " +
@@ -1082,7 +1093,9 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.proposal.failed"))} if it fails, with nothing placed. A proposal kept from before its shape changed shows ` +
       `${quoted(t("chat.proposal.expired"))} where its card would be, with no button. A canvas has to be open: ` +
       `anywhere else pressing it shows the message ${quoted(t("chat.proposal.needCanvas"))} and places nothing. ` +
-      "With one generating node its panel opens by itself; with several, the group is selected and the reader " +
+      "With one generating node its panel opens by itself, and the view instead moves once to show the nodes, " +
+      "their names and the panel clear of the left menu, the toolbar at the bottom right and the minimap, " +
+      "zooming out only as far as that takes; with several, the group is selected and the reader " +
       `right-clicks each node and chooses ${quoted(t("canvas.nodeMenu.generate"))}.`,
     "Each generating node arrives empty, with its mode, model and the settings the proposal chose already set " +
       "and, when the model has a prompt box, its prompt written. A video node in Multi-Shot arrives with its " +
@@ -1101,9 +1114,9 @@ export function renderProductGuide(): string {
       "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
       "generation still to run -- comes with a note saying what to do first; generating before then sends " +
       "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
-      "only when one does. A template's prompt carries 📎 and ✏️ marks; a proposal's prompt or shot carries ✏️ " +
-      "marks and notes, never a 📎 mark. A 📎 mark in square brackets " +
-      "asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
+      "only when one does. A template applied from the panel and a proposal both arrive this way: their prompt " +
+      "or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d. A 📎 mark in " +
+      "square brackets, where a prompt carries one, asks the reader to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the reader can write; they replace it with their own. An orange " +
       `note, starting ${quoted(t("canvas.generatePanel.notePrefix").trim())}, on a line of its own at the top of the box says how to operate the panel, such as which slot to pick ` +
@@ -1115,7 +1128,8 @@ export function renderProductGuide(): string {
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
-      "or by the reader where a template's 📎 mark asks. A node wired in that is not @'d is not used.",
+      "by a template applied from the panel likewise, or by the reader for a node they wire in themselves. A node " +
+      "wired in that is not @'d is not used.",
     "- Into one of the mode's source slots: it is not @'d. A slot a proposal filled from a node holding material " +
       "arrives holding it. For an empty node an orange note says which slot to pick it into, and a required slot " +
       "left empty stops the run. Once that node holds its file or its generated result, the reader opens the panel " +

@@ -743,6 +743,20 @@
       "when": 1792923631252,
       "tag": "0105_enterprise_memberships",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1793064782839,
+      "tag": "0106_long_media_understanding",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1793151689125,
+      "tag": "0107_drop_skill_tables",
+      "breakpoints": true
     }
   ]
 }
