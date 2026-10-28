@@ -9,6 +9,7 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import { COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
+import { ChunkingWebSocket } from '@web/data/yjs/chunking-websocket';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
 import { bindDocSync, type DocSyncBinding } from '@web/data/yjs/doc-sync-binding';
@@ -266,7 +267,10 @@ function destroyAccountTransport(): void {
  */
 function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
   if (!sharedSocket) {
-    sharedSocket = new HocuspocusProviderWebsocket({ url: toAbsoluteWsUrl(url) });
+    sharedSocket = new HocuspocusProviderWebsocket({
+      url: toAbsoluteWsUrl(url),
+      WebSocketPolyfill: ChunkingWebSocket,
+    });
     // The connection reports its own drops: each attached provider re-emits
     // this close, so reporting there sent one alert per open document. Only a
     // connection that had opened counts as dropped; while it is down every
