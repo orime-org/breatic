@@ -74,7 +74,8 @@ export interface JudgeRequest {
 export interface JudgeAnswer {
   status: number;
   body: string;
-  cost: Cost;
+  /** What a 2xx answer cost; absent on a refusal, which was not billed. */
+  cost?: Cost;
 }
 
 /** How a model's picture capability is decided. */

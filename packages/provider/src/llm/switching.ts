@@ -12,7 +12,7 @@
 import { APICallError } from "ai";
 import { usdOf, type Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
-import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, wait } from "@provider/http/request.js";
+import { backoff, MAX_RETRY_AFTER_MS, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
 import { passingStatus, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
@@ -51,15 +51,19 @@ const CONTENT = new Set(["text-delta", "reasoning-delta", "tool-input-start", "t
 export class InBandError extends Error {
   /** The vendor's own error value. */
   readonly error: unknown;
+  /** The status of the answer that carried it, when it came in a whole answer. */
+  readonly answerStatus?: number;
 
   /**
    * Record the vendor's error value.
    * @param error - What the error part carried.
+   * @param answerStatus - The status of the answer that carried it, for a whole answer.
    */
-  constructor(error: unknown) {
+  constructor(error: unknown, answerStatus?: number) {
     super(`The answer carried an error before its content: ${JSON.stringify(error) ?? String(error)}`, { cause: error });
     this.name = "InBandError";
     this.error = error;
+    if (answerStatus !== undefined) this.answerStatus = answerStatus;
   }
 }
 
@@ -251,27 +255,63 @@ export class SwitchingModel implements ModelV4 {
   }
 
   /**
+   * Hand a generation an upstream billed to the call's pending lookups.
+   * @param upstream - The upstream that answered.
+   * @param generationId - The id the answer named, if any.
+   * @returns The id, when it is one the upstream's costs are looked up by.
+   */
+  private track(upstream: string, generationId: unknown): string | undefined {
+    if (!this.setup.tracksGenerations(upstream) || !isGenerationId(generationId)) return undefined;
+    this.setup.pending.set(generationId, { state: "pending", lookup: { upstream, generationId } });
+    return generationId;
+  }
+
+  /**
    * One model call, whole.
    * @param options - The AI SDK's call options.
    * @returns The answer, its metadata naming the upstream that served it.
    * @throws {unknown} As `attempt` throws.
    */
   async doGenerate(options: CallOptions): Promise<GenerateResult> {
-    const { value, servedBy } = await this.attempt((c) => Promise.resolve(this.setup.modelFor(c).doGenerate(options)), options.abortSignal);
+    const { value, servedBy } = await this.attempt(async (c) => {
+      /**
+       * The call on this upstream.
+       * @returns What it answered.
+       */
+      const run = async (): Promise<GenerateResult> => this.setup.modelFor(c).doGenerate(options);
+      if (!this.setup.tracksGenerations(c.upstream)) return run();
+      // The SDK throws a 2xx whose body is an error without that body, so the body is read from a copy.
+      const bodies: Promise<string>[] = [];
+      try {
+        return await tapAnswers((copy) => void bodies.push(copy.text().catch(() => "")), run);
+      } catch (error) {
+        // A 2xx whose body is an error was billed, whether the call retries, moves on or stops on it.
+        if (APICallError.isInstance(error) && error.statusCode !== undefined && error.statusCode >= 200 && error.statusCode < 300) {
+          this.track(c.upstream, (parsed(await bodies.at(-1)) as { id?: unknown } | null | undefined)?.id);
+        }
+        throw error;
+      }
+    }, options.abortSignal);
     const id = isGenerationId(value.response?.id) ? value.response.id : undefined;
     const breatic = this.finished(servedBy.upstream, id, value.providerMetadata);
     return { ...value, providerMetadata: { ...value.providerMetadata, breatic: breatic as Record<string, never> } };
   }
 
   /**
-   * One model call, streamed; parts before the first content are held until it arrives.
+   * One model call, streamed; parts before the first content are held until it arrives. The
+   * upstream is asked for raw chunks so a generation is registered from the first chunk, an
+   * error included; they reach the caller only when it asked for them.
    * @param options - The AI SDK's call options.
    * @returns The stream, its finish naming the upstream that served it.
    * @throws {unknown} As `attempt` throws.
    */
   async doStream(options: CallOptions): Promise<StreamResult> {
+    const { pending } = this.setup;
     const { value, servedBy } = await this.attempt(async (c) => {
-      const result = await this.setup.modelFor(c).doStream(options);
+      const result = await this.setup.modelFor(c).doStream({ ...options, includeRawChunks: true });
+      // A direct vendor names no generation to look up: its answer is missing until its finish is read.
+      const direct = this.setup.tracksGenerations(c.upstream) ? undefined : `${c.upstream}:${globalThis.crypto.randomUUID()}`;
+      if (direct !== undefined) pending.set(direct, { state: "missing", reason: `${c.upstream} opened a stream that did not finish` });
       const reader = result.stream.getReader();
       const held: StreamPart[] = [];
       for (;;) {
@@ -285,59 +325,72 @@ export class SwitchingModel implements ModelV4 {
         if (read.done) break;
         // Registered as soon as it is read: a call stopped before its content is still billed.
         const part = read.value;
-        if (part.type === "response-metadata" && isGenerationId(part.id) && this.setup.tracksGenerations(c.upstream)) {
-          this.setup.pending.set(part.id, { state: "pending", lookup: { upstream: c.upstream, generationId: part.id } });
-        }
+        if (part.type === "raw") this.track(c.upstream, (part.rawValue as { id?: unknown } | null | undefined)?.id);
+        if (part.type === "response-metadata") this.track(c.upstream, part.id);
         if (part.type === "error") {
           await reader.cancel().catch(() => undefined);
           throw new InBandError(part.error);
         }
-        held.push(read.value);
-        if (CONTENT.has(read.value.type) || read.value.type === "finish") break;
+        held.push(part);
+        if (CONTENT.has(part.type) || part.type === "finish") break;
       }
-      return { result, reader, held };
+      return { result, reader, held, direct };
     }, options.abortSignal);
-    const { result, reader, held } = value;
+    const { result, reader, held, direct } = value;
     const upstream = servedBy.upstream;
-    const { pending } = this.setup;
     let generationId: string | undefined;
     /**
      * Note the generation a part names and mark the finish with who served it.
      * @param part - One part of the stream.
-     * @returns The part to hand on.
+     * @returns The part to hand on, or undefined for a raw chunk the caller did not ask for.
      */
-    const pass = (part: StreamPart): StreamPart => {
-      if (part.type === "response-metadata" && isGenerationId(part.id) && this.setup.tracksGenerations(upstream)) {
-        generationId = part.id;
-        pending.set(generationId, { state: "pending", lookup: { upstream, generationId } });
+    const pass = (part: StreamPart): StreamPart | undefined => {
+      if (part.type === "raw" || part.type === "response-metadata") {
+        generationId = this.track(upstream, part.type === "raw" ? (part.rawValue as { id?: unknown } | null | undefined)?.id : part.id) ?? generationId;
+        return part.type === "raw" && options.includeRawChunks !== true ? undefined : part;
       }
       if (part.type !== "finish") return part;
-      // A finish hands its generation over as costRef, error endings included. A stream the caller
-      // stopped stays pending: the provider SDK still closes it with a finish, but the AI SDK reports
-      // no end of the call after an abort, so that finish never reaches the caller.
-      if (generationId !== undefined && options.abortSignal?.aborted !== true) pending.delete(generationId);
+      // The AI SDK reports the end of the call once it reads the finish, a stop or not, and the
+      // finish hands its generation over as costRef; so the generation leaves the pending
+      // lookups here, and a stream stopped before its finish keeps it there.
+      if (generationId !== undefined) pending.delete(generationId);
+      if (direct !== undefined) pending.delete(direct);
       const breatic = this.finished(upstream, generationId, part.providerMetadata);
       return { ...part, providerMetadata: { ...part.providerMetadata, breatic: breatic as Record<string, never> } };
     };
-    const stream = new ReadableStream<StreamPart>({
-      async pull(controller) {
-        const part = held.shift();
-        if (part !== undefined) {
-          controller.enqueue(pass(part));
-          return;
-        }
-        try {
-          const read = await reader.read();
-          if (read.done) controller.close();
-          else controller.enqueue(pass(read.value));
-        } catch (error) {
-          controller.error(error);
-        }
+    const stream = new ReadableStream<StreamPart>(
+      {
+        async pull(controller) {
+          for (;;) {
+            let part = held.shift();
+            if (part === undefined) {
+              let read: ReadableStreamReadResult<StreamPart>;
+              try {
+                read = await reader.read();
+              } catch (error) {
+                controller.error(error);
+                return;
+              }
+              if (read.done) {
+                controller.close();
+                return;
+              }
+              part = read.value;
+            }
+            const out = pass(part);
+            if (out !== undefined) {
+              controller.enqueue(out);
+              return;
+            }
+          }
+        },
+        cancel(reason) {
+          return reader.cancel(reason);
+        },
       },
-      cancel(reason) {
-        return reader.cancel(reason);
-      },
-    });
+      // Read only on demand: a part is passed on, and its generation handed over, only when the reader asks for it.
+      { highWaterMark: 0 },
+    );
     return { ...result, stream };
   }
 }

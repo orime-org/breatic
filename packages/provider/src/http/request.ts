@@ -9,6 +9,7 @@
  * HttpStatus.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Aborted, BodyTooLarge, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 
 /** One outgoing request. */
@@ -380,6 +381,21 @@ export async function fetchJson(request: OutgoingRequest, options: ReadOptions):
   return JSON.parse(text) as unknown;
 }
 
+/** Where a copy of each answer aiSdkFetch hands back goes, inside a `tapAnswers` scope. */
+const answerTaps = new AsyncLocalStorage<(copy: Response) => void>();
+
+/**
+ * Run a model call with a copy of every answer its SDK fetches handed to `tap`, for an
+ * answer the SDK throws without its body (a 2xx whose body is an error).
+ * @param tap - Takes each copy; it must read or cancel it.
+ * @param run - The call.
+ * @returns What the call returned.
+ * @throws {unknown} What the call threw.
+ */
+export async function tapAnswers<T>(tap: (copy: Response) => void, run: () => Promise<T>): Promise<T> {
+  return answerTaps.run(tap, run);
+}
+
 /**
  * The `fetch` handed to AI SDK providers: every response is returned as is, and only
  * NotSent and NoAnswer are thrown, so they survive on the `cause` chain of AI SDK's
@@ -394,10 +410,13 @@ export async function fetchJson(request: OutgoingRequest, options: ReadOptions):
  */
 export async function aiSdkFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const url = input instanceof Request ? input.url : String(input);
+  let response: Response;
   try {
-    return await globalThis.fetch(input, init);
+    response = await globalThis.fetch(input, init);
   } catch (error) {
     if (init?.signal?.aborted === true) throw error;
     throw classify(url, error);
   }
+  answerTaps.getStore()?.(response.clone());
+  return response;
 }

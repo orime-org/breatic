@@ -12,6 +12,7 @@
 import { z } from "zod";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
+import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { fetchJson, readBody, send } from "@provider/http/request.js";
 import type { MediaWarning } from "@provider/media/runner.js";
@@ -87,25 +88,6 @@ const resultSchema = z.looseObject({
 });
 
 /**
- * A 2xx submit answer that could not be read: the upstream may have accepted, and billed, the
- * prediction. It rides as the cause of NoAnswer, carrying that unknown cost for costsOf.
- */
-export class SubmitUnread extends Error {
-  readonly costs: Cost[];
-
-  /**
-   * Record what the error carries.
-   * @param reason - What could not be read.
-   * @param cause - The read's own failure, when there was one.
-   */
-  constructor(reason: string, cause?: unknown) {
-    super(reason, cause === undefined ? undefined : { cause });
-    this.name = "SubmitUnread";
-    this.costs = [{ state: "missing", reason }];
-  }
-}
-
-/**
  * JSON text parsed, or undefined when it is not JSON.
  * @param text - The text.
  * @returns The value.
@@ -128,7 +110,7 @@ function jsonOf(text: string): unknown {
  * @param bounds - The deadline and signal.
  * @returns The prediction id, and the outputs when it finished at once.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted | BodyTooLarge} As the HTTP module classifies the failure.
- * @throws {NoAnswer} With a SubmitUnread cause carrying one missing cost, when a 2xx answer cannot be read.
+ * @throws {NoAnswer} With a BilledAnswerLost cause carrying one missing cost, when a 2xx answer cannot be read.
  */
 export async function submit(reach: Reach, endpoint: string, body: Record<string, unknown>, bounds: RequestBounds): Promise<Submitted> {
   const url = `${reach.decl.base_url}/${endpoint}`;
@@ -141,13 +123,13 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
     text = new TextDecoder().decode(await readBody(url, response, maxBodyBytes, idleMs, options));
   } catch (error) {
     if (!ok) throw error;
-    throw new NoAnswer(url, new SubmitUnread(`${reach.name} accepted the submit and its answer could not be read`, error));
+    throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
   }
   if (!ok) throw new HttpStatus(url, response.status, text);
   const parsed = submittedSchema.safeParse(jsonOf(text));
   const id = parsed.success && parsed.data.data.id !== "" ? parsed.data.data.id : undefined;
   const outputs = parsed.success && (parsed.data.data.outputs ?? []).length > 0 ? parsed.data.data.outputs! : undefined;
-  if (id === undefined && outputs === undefined) throw new NoAnswer(url, new SubmitUnread(`${reach.name} answered no prediction id and no outputs it could read`));
+  if (id === undefined && outputs === undefined) throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} answered no prediction id and no outputs it could read`));
   return { predictionId: id, outputs };
 }
 

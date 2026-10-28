@@ -100,6 +100,26 @@ export function costsOf(error: unknown): Cost[] {
   return costs;
 }
 
+/**
+ * A billed 2xx answer whose body could not be read (cut, not JSON, or missing what it
+ * promised): it rides as the cause of the error that ends the call, carrying one missing
+ * cost for costsOf (design 3.5, DD 33).
+ */
+export class BilledAnswerLost extends Error {
+  readonly costs: Cost[];
+
+  /**
+   * Record what the error carries.
+   * @param reason - What could not be read.
+   * @param cause - The read's own failure, when there was one.
+   */
+  constructor(reason: string, cause?: unknown) {
+    super(reason, cause === undefined ? undefined : { cause });
+    this.name = "BilledAnswerLost";
+    this.costs = [{ state: "missing", reason }];
+  }
+}
+
 /** A send that the upstream certainly did not accept and that cannot move to another upstream; the caller retries the same ticket. */
 export class SendNotAccepted extends Error {
   readonly upstream: string;
