@@ -8,7 +8,7 @@ import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import type { StoredUpload } from '@web/data/upload/media-upload';
 import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { _resetDocumentEditorCacheForTests, adoptDocumentEditor, evictDocumentEditor, getDocumentEditor, type DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
+import { _resetDocumentEditorCacheForTests, getDocumentEditor, type DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import { createDocumentUploader, type DocumentUploaderDeps } from '@web/spaces/document/document-uploads';
 import { uploadSlots } from '@web/spaces/document/document-upload-slots';
 
@@ -18,17 +18,16 @@ const STATES = ['waiting', 'failed', 'disposed'] as const;
 type State = typeof STATES[number];
 
 /** Opens the production records factory with its actual upload slot plugin. */
-function open(): { doc: Y.Doc; handle: DocumentEditorHandle; name: string } {
+function open(): { doc: Y.Doc; handle: DocumentEditorHandle } {
   const doc = new Y.Doc();
   docs.push(doc);
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const awareness = new Awareness(doc);
   cursors.push(awareness);
-  const name = `document:upload-${docs.length}`;
-  const handle = getDocumentEditor(doc, name, {
+  const handle = getDocumentEditor(doc, `document:upload-${docs.length}`, {
     caretProvider: { awareness }, readWho: () => ({ role: 'editor', viewerId: 'u1' }), editable: true,
   });
-  return { doc, handle, name };
+  return { doc, handle };
 }
 
 /** Pauses only the runtime so readonly presentation cannot stand in for final admission. */
@@ -43,15 +42,14 @@ function pause(handle: DocumentEditorHandle, state: State): void {
 }
 
 /** Builds actual uploader dependencies with explicit deferred network completion. */
-function dependencies(): { deps: DocumentUploaderDeps; finish: (stored: StoredUpload) => void; fail: (error: unknown) => void } {
+function dependencies(): { deps: DocumentUploaderDeps; finish: (stored: StoredUpload) => void } {
   let finish: (stored: StoredUpload) => void = () => { throw new Error('Upload has not started'); };
-  let fail: (error: unknown) => void = () => { throw new Error('Upload has not started'); };
   const deps: DocumentUploaderDeps = {
     maxUploadBytes: () => Promise.resolve(Infinity),
-    upload: vi.fn(() => new Promise<StoredUpload>((resolve, reject) => { finish = resolve; fail = reject; })),
+    upload: vi.fn(() => new Promise<StoredUpload>((resolve) => { finish = resolve; })),
     register: vi.fn(), unregister: vi.fn(), refuse: vi.fn(), undo: { stopCapturing: vi.fn() },
   };
-  return { deps, finish: (stored) => finish(stored), fail: (error) => fail(error) };
+  return { deps, finish: (stored) => finish(stored) };
 }
 
 afterEach(() => {
@@ -61,46 +59,6 @@ afterEach(() => {
 });
 
 describe('actual uploader await and final writer admission', () => {
-  it.each(['resolve', 'reject'] as const)('cleans up once without dispatching to a closed view when its network result is %s', async (ending) => {
-    const { doc, handle, name } = open();
-    const host = document.createElement('div');
-    document.body.append(host);
-    adoptDocumentEditor(handle, host);
-    const { deps, finish, fail } = dependencies();
-    const uploader = createDocumentUploader(deps);
-    const view = handle.editor.prosemirrorView;
-    await uploader.start(view, [new File(['data'], 'image.png', { type: 'image/png' })], () => 1, false);
-    const slot = uploadSlots(view.state)[0];
-    evictDocumentEditor(name);
-    expect(view.isDestroyed).toBe(true);
-    const dispatch = vi.spyOn(view, 'dispatch');
-    const nextDoc = new Y.Doc();
-    docs.push(nextDoc);
-    Y.applyUpdate(nextDoc, encodeInitialSpaceContent('document'));
-    const cursor = new Awareness(nextDoc);
-    cursors.push(cursor);
-    const next = getDocumentEditor(nextDoc, name, {
-      caretProvider: { awareness: cursor }, readWho: () => ({ role: 'editor', viewerId: 'u1' }), editable: true,
-    });
-    expect(next.runtime.incarnation).not.toBe(handle.runtime.incarnation);
-    const before = Y.encodeStateAsUpdate(doc);
-    const nextBefore = Y.encodeStateAsUpdate(nextDoc);
-    try {
-      if (ending === 'resolve') finish({ assetId: 'stored-image', fileUrl: 'https://example.com/stored.png', kind: 'image', width: null, height: null });
-      else fail(new Error('old network request failed'));
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(dispatch).not.toHaveBeenCalled();
-      expect(deps.register).toHaveBeenCalledExactlyOnceWith(slot.id);
-      expect(deps.unregister).toHaveBeenCalledExactlyOnceWith(slot.id);
-      expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
-      expect(Y.encodeStateAsUpdate(nextDoc)).toEqual(nextBefore);
-      expect(next.runtime.read().status).toBe('active');
-    } finally {
-      dispatch.mockRestore();
-      host.remove();
-    }
-  });
-
   it.each(STATES)('does not make a gap, slot or network upload after config returns to %s', async (state) => {
     const { doc, handle } = open();
     const { deps } = dependencies();

@@ -38,7 +38,7 @@ export function useCommentWrite(): CommentWrite {
         toast.error(t('spaces.document.comment.writeFailed'));
         // The reader is told what happened; this is for whoever has to work
         // out why, and the reason is the store's own.
-        console.error('a comment operation did not finish', reason);
+        console.error('a comment write was refused', reason);
         return undefined;
       }),
     [t],

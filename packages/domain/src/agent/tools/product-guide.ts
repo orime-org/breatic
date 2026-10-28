@@ -1429,9 +1429,8 @@ export function renderProductGuide(): string {
     `- A document waiting for shared content shows ${quoted(t("spaces.document.runtime.waiting"))} ` +
       `An editor failure shows ${quoted(t("spaces.document.runtime.failed"))} with ` +
       `${quoted(t("spaces.document.runtime.accepted"))} and ${quoted(t("spaces.document.runtime.lastGood"))}. ` +
-      `These are selectable plain-text comparison copies, not complete rich-text exports. Existing new-comment, reply, ` +
-      `caption and URL inputs stay visible and read-only while editing is paused. ` +
-      `Copy them before using ${quoted(t("connection.banner.reload"))}.`,
+      `These are selectable plain-text comparison copies, not complete rich-text exports. Existing URL inputs stay ` +
+      `visible and read-only while editing is paused. Copy them before using ${quoted(t("connection.banner.reload"))}.`,
     `- When this chat cannot load, it is covered with ${quoted(t("chat.load.failedTitle"))} or ` +
       `${quoted(t("chat.load.refusedTitle"))} and ${quoted(t("chat.load.retry"))}.`,
     `- ${quoted(t("canvas.upload.storageFull"))} when uploading or when pasting pictures, videos or sounds ` +

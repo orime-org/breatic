@@ -27,8 +27,6 @@ import {
 import * as landing from '@web/spaces/document/document-proposal-landing';
 import { useDocumentProposalPickup } from '@web/spaces/document/use-document-proposal-pickup';
 import { useDocumentProposals } from '@web/stores/document-proposals';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { commentsOn } from '@web/spaces/document/document-comment-extension';
 
 interface TransportProvider {
   document: Y.Doc;
@@ -217,79 +215,6 @@ afterEach(async () => {
 });
 
 describe('proposal pickup completion ownership (inner#1619)', () => {
-  it.each((['waiting', 'failed'] as const).flatMap((state) => (['write', 'comment'] as const).map((action) => [state, action] as const)))(
-    'retains the proposal and reports an incomplete %s runtime operation for %s', async (state, action) => {
-      const handle = open();
-      const held = proposal();
-      const binding = bodyBindingOf(handle.editor.prosemirrorState);
-      if (binding === null) throw new Error('Missing actual records binding');
-      const waiting = gate();
-      pauseConfig(waiting);
-      const execute = watchExecution();
-      useDocumentProposals.getState().start(held, action);
-      const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
-      if (action === 'write') await waiting.entered;
-      act(() => {
-        if (state === 'waiting') handle.runtime.wait(['context:later']);
-        else handle.runtime.fail({ phase: 'idle', error: new Error('proposal preparation failure'), batch: null,
-          epoch: binding.read().epoch, accepted: binding.read().doc, selection: null, journal: null,
-          lastGood: binding.read(), writeStarted: false, writeReturned: false });
-      });
-      const source = getDoc(NAME);
-      const before = Y.encodeStateAsUpdate(source);
-      await act(async () => {
-        waiting.release();
-        await execute.mock.results[0].value;
-      });
-      await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
-      expect(Y.encodeStateAsUpdate(source)).toEqual(before);
-      expect(commentsOn(handle.editor)!.threadStore.getThreads().size).toBe(0);
-      expect(handle.undoManager.undoStack).toHaveLength(0);
-      expect(result.current).toBeNull();
-      expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toBeUndefined();
-      expect(held.body).toBe('AGENT OUTPUT');
-      expect(toast.error).toHaveBeenCalledTimes(1);
-      expect(toast.warning).not.toHaveBeenCalled();
-    },
-  );
-
-  it('keeps an actually written proposal through publication failure and recognizes it after reopening', async () => {
-    const handle = open();
-    const held = proposal();
-    vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue(CONFIG);
-    const binding = bodyBindingOf(handle.editor.prosemirrorState);
-    if (binding === null) throw new Error('Missing actual records binding');
-    const stop = binding.subscribeApplied(() => { throw new Error('proposal publication failure'); });
-    useDocumentProposals.getState().start(held, 'write');
-    const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
-    await waitFor(() => expect(useDocumentProposals.getState().pending).toEqual({}));
-    stop();
-    expect(handle.runtime.read().status).toBe('failed');
-    const source = getDoc(NAME);
-    const actual = readBodyTree(source);
-    if (actual.status !== 'ready') throw new Error('Expected the actual written source');
-    expect(actual.view.owners.flatMap((owner) => owner.units.map((unit) => unit.value)).join('')).toBe('TARGETAGENT OUTPUT');
-    expect(result.current).toBeNull();
-    expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toBeUndefined();
-    expect(held.body).toBe('AGENT OUTPUT');
-    expect(toast.error).toHaveBeenCalledTimes(1);
-
-    const reopenedDoc = new Y.Doc();
-    extraDocs.push(reopenedDoc);
-    Y.applyUpdate(reopenedDoc, Y.encodeStateAsUpdate(source));
-    const cursor = new Awareness(reopenedDoc);
-    awareness.push(cursor);
-    const reopened = getDocumentEditor(reopenedDoc, 'document:proposal-reopened-source', {
-      caretProvider: { awareness: cursor }, readWho: () => ({ role: 'editor', viewerId: 'reader-1' }), editable: true,
-    });
-    const before = Y.encodeStateAsUpdate(reopenedDoc);
-    expect(await landing.landProposal(reopened, held, 'write', () => ({ available: true, writeAccess: 'granted' }))).toEqual({
-      outcome: 'applied', how: 'write', blockId: deriveId(`document-proposal:${PROPOSAL_ID}:0`),
-    });
-    expect(Y.encodeStateAsUpdate(reopenedDoc)).toEqual(before);
-    expect(reopened.undoManager.undoStack).toHaveLength(0);
-  });
-
   for (const ending of ['reset', 'reportSpace'] as const) {
     it(`does not write or publish after ${ending} ends its pending request during preparation`, async () => {
       const handle = open();

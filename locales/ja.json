@@ -1727,7 +1727,7 @@
         "closeRail": "コメント欄を閉じる",
         "empty": "この Document にはまだコメントがありません。本文を選択するか、行の左からコメントを追加できます。",
         "nothingUnresolved": "未解決のコメントはありません。",
-        "writeFailed": "操作を完了できませんでした。",
+        "writeFailed": "この変更を保存できませんでした。",
         "unknownAuthor": "不明",
         "fromAgent": "Agent から",
         "folded": "他 {count} 件",

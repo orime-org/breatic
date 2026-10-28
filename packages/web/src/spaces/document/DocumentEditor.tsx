@@ -390,7 +390,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
         <DocumentUploadPlaceholders
           editor={handle.editor}
           uploader={uploader}
-          readOnly={readOnly || paused}
+          readOnly={readOnly}
         />
       )}
       {/* The strip beside the row under the pointer. A viewer gets none of it

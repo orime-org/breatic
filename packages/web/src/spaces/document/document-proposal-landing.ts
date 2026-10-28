@@ -31,7 +31,6 @@ import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/documen
 import { proposalBlocks, writtenBlockId } from '@web/spaces/document/document-proposal-blocks';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import type { LandingAction } from '@web/stores/document-proposals';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 
 /** How a press ended; a landing that throws is reported as failed by its caller. */
@@ -48,17 +47,6 @@ export type ProposalAdmission = Readonly<{
 
 /** The editor parts landing uses. */
 type Landable = Pick<DocumentEditorHandle, 'editor' | 'undoManager'>;
-
-/**
- * Checks handle availability independently of permission and an existing landing.
- * @param handle - The original document whose proposal operation is completing.
- * @returns Whether its runtime or current batch prevents a truthful completion.
- * @throws {never}
- */
-function bindingUnavailable(handle: Landable): boolean {
-  const binding = bodyBindingOf(handle.editor.prosemirrorState);
-  return binding !== null && (binding.runtime.read().status !== 'active' || binding.phase() !== 'idle');
-}
 
 /**
  * A block anywhere in the body, by id.
@@ -312,7 +300,6 @@ function currentResult(
 ): LandingResult | null {
   const admission = readAdmission();
   if (!admission.available) return { outcome: 'failed' };
-  if (bindingUnavailable(handle)) return { outcome: 'failed' };
   const already = landedAt(handle, proposal);
   if (already !== null) return { outcome: 'applied', ...already };
   if (admission.writeAccess === 'unknown') return { outcome: 'failed' };
@@ -357,7 +344,6 @@ export async function landProposal(
   if (ready !== null) return ready;
   const leftOut = prepared.leftOut;
   landBlocks(handle, proposal, prepared.blocks);
-  if (bindingUnavailable(handle) || !readAdmission().available) return { outcome: 'failed' };
   const landed = landedAt(handle, proposal);
   if (landed !== null) return leftOut > 0 ? { outcome: 'applied', ...landed, leftOut } : { outcome: 'applied', ...landed };
   return leftOut > 0 ? { outcome: 'mediaOnly', leftOut } : { outcome: 'changed' };

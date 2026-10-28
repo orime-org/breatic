@@ -20,9 +20,6 @@ import { commentOn } from '@web/spaces/document/document-comment-post';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { draftWordsOf, repliesOf } from '@web/spaces/document/document-comment-unsent';
-import { createDocumentUploader, type DocumentUploader } from '@web/spaces/document/document-uploads';
-import { uploadSlots } from '@web/spaces/document/document-upload-slots';
-import type { StoredUpload } from '@web/data/upload/media-upload';
 
 const docs: Y.Doc[] = [];
 const providers: Awareness[] = [];
@@ -32,7 +29,7 @@ const providers: Awareness[] = [];
  * @returns A mounted, prepared handle with one real text block.
  * @throws {Error} If normal construction fails.
  */
-function openBody(name: string, uploader: DocumentUploader | null = null): DocumentEditorHandle {
+function openBody(name: string): DocumentEditorHandle {
   const doc = new Y.Doc();
   docs.push(doc);
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
@@ -41,7 +38,7 @@ function openBody(name: string, uploader: DocumentUploader | null = null): Docum
   const handle = getDocumentEditor(doc, `document:owners-${name}`, {
     caretProvider: { awareness }, readWho: () => ({ role: 'editor', viewerId: 'u1' }), editable: true,
   });
-  render(<TooltipProvider><DocumentEditor handle={handle} myRole='editor' uploader={uploader} /></TooltipProvider>);
+  render(<TooltipProvider><DocumentEditor handle={handle} myRole='editor' /></TooltipProvider>);
   act(() => handle.editor.replaceBlocks(handle.editor.document, [{ type: 'paragraph', content: 'Discuss' }] as never));
   return handle;
 }
@@ -124,32 +121,6 @@ describe('the existing URL form owner during a records pause', () => {
 });
 
 describe('real comment and caption owners during a records pause', () => {
-  it.each(['waiting', 'failed'] as const)('retains a failed upload placeholder and removes its unavailable retry while %s', async (status) => {
-    let finish: (stored: StoredUpload) => void = () => { throw new Error('Upload has not started'); };
-    const uploader = createDocumentUploader({
-      maxUploadBytes: () => Promise.resolve(Infinity),
-      upload: () => new Promise<StoredUpload>((resolve) => { finish = resolve; }),
-      register: () => undefined, unregister: () => undefined, refuse: () => undefined,
-      undo: { stopCapturing: () => undefined },
-    });
-    const handle = openBody(`upload-${status}`, uploader);
-    await act(async () => uploader.start(handle.editor.prosemirrorView,
-      [new File(['image'], 'unfinished.png', { type: 'image/png' })], () => 1, false));
-    const slot = uploadSlots(handle.editor.prosemirrorState)[0];
-    const input = screen.getByTestId('doc-upload-placeholder');
-    pause(handle, status);
-    await act(async () => {
-      finish({ assetId: 'stored-image', fileUrl: 'https://example.com/stored.png', kind: 'image', width: null, height: null });
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(screen.getByTestId('doc-upload-placeholder')).toBe(input);
-    expect(input.textContent).toContain('unfinished.png');
-    expect(input.getAttribute('data-phase')).toBe('failed');
-    expect(uploadSlots(handle.editor.prosemirrorState)[0]).toMatchObject({ id: slot.id, phase: 'failed', blockId: null });
-    expect(screen.queryByTestId('doc-upload-retry')).toBeNull();
-    expect(screen.getByTestId('doc-upload-remove')).toBeEnabled();
-  });
-
   it.each(['waiting', 'failed'] as const)('retains a readonly new comment and its opening while %s', async (status) => {
     const handle = openBody(`draft-${status}`);
     const binding = bodyBindingOf(handle.editor.prosemirrorState)!;
