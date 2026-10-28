@@ -6,7 +6,6 @@ import { ReadOnlyExtension } from '@blocknote/core/extensions';
 import { Extension } from '@tiptap/core';
 import { Mark, type Node as PMNode, type Schema } from '@tiptap/pm/model';
 import { Plugin, Selection, type EditorState, type Transaction } from '@tiptap/pm/state';
-import type { StepMap } from '@tiptap/pm/transform';
 import type * as Y from 'yjs';
 import { ySyncPluginKey } from 'y-prosemirror';
 import { captureException } from '@sentry/react';
@@ -100,7 +99,6 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
   private currentPhase: BodyBindingPhase = 'idle';
   private sequence = 0;
   private requestedSelection: BodySelectionName | null = null;
-  private changedRanges: number[] | null = null;
   private releaseRuntime: (() => void) | null = null;
   private writeState = { started: false, returned: false };
   private readonly stagedNames = new BodyStagedNames();
@@ -305,34 +303,6 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
   }
 
   /**
-   * Starts a new undo step when a user batch does not touch the previous one's
-   * changed ranges, as prosemirror-history groups (`isAdjacentTo`);
-   * the native history still merges adjacent batches by its capture time.
-   * @param maps - The batch's step maps in order.
-   * @throws {never}
-   */
-  private groupHistory(maps: readonly StepMap[]): void {
-    const previous = this.changedRanges;
-    let adjacent = false;
-    maps[0]?.forEach((start, end) => {
-      for (let index = 0; previous !== null && index < previous.length; index += 2) {
-        if (start <= previous[index + 1] && end >= previous[index]) adjacent = true;
-      }
-    });
-    if (!adjacent) this.history.stopCapturing();
-    // Every step's range, carried to the batch's end: BlockNote's appended
-    // ID stamp is the last step, and it alone would hide a split's range.
-    const ranges: number[] = [];
-    maps.forEach((map, index) => {
-      map.forEach((_oldStart, _oldEnd, start, end) => {
-        const later = maps.slice(index + 1);
-        ranges.push(later.reduce((pos, next) => next.map(pos, -1), start), later.reduce((pos, next) => next.map(pos, 1), end));
-      });
-    });
-    this.changedRanges = ranges;
-  }
-
-  /**
    * Commits only after the final accepted append loop has reached the view.
    * @throws {never} Original accepted input and source truth are retained on failure.
    */
@@ -361,7 +331,6 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
           if (phase !== 'written') this.currentPhase = phase;
         },
       };
-      if (batch.source === 'user') this.groupHistory(batch.accepted.transactions.flatMap((entry) => entry.transaction.mapping.maps));
       const prepared = prepareBodyBatch(environment, plan);
       const result = commitPreparedBodyBatch(environment, prepared);
       const frame = this.project(this.doc, epoch);
@@ -487,8 +456,8 @@ export class DocumentBodyBinding implements DocumentBodyBindingAccess {
   compatibility(): readonly ExtensionFactoryInstance[] {
     return [
       createExtension(() => ({ key: 'yUndo', manager: this.history,
-        undoCommand: (): boolean => { this.changedRanges = null; return this.canWrite() && this.history.undo() !== null; },
-        redoCommand: (): boolean => { this.changedRanges = null; return this.canWrite() && this.history.redo() !== null; },
+        undoCommand: (): boolean => this.canWrite() && this.history.undo() !== null,
+        redoCommand: (): boolean => this.canWrite() && this.history.redo() !== null,
       }))(),
       createExtension(() => ({ key: 'yPositionMapping', mapPosition: (position: number, side: 'left' | 'right' = 'left'): (() => number) => {
         if (position === 0) return (): number => 0;
