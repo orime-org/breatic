@@ -17,7 +17,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, type Page } from 'playwright/test';
+import { expect, type Browser, type Page } from 'playwright/test';
 import { test, stateFile } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
@@ -1017,6 +1017,89 @@ test('A17: two pages on one Space end up with the same table', async ({ browser 
     await expect.poll(() => grids(other)).toEqual(expected);
   } finally {
     await other.close();
+  }
+});
+
+/**
+ * Opens the Space on a new page whose frames to collab can be held back, so
+ * an edit there stays unseen by everyone until the case lets it go.
+ * @param browser - The browser.
+ * @param url - The project page.
+ * @param spaceId - The Space.
+ * @returns The page and the switch that holds or releases its frames.
+ */
+async function pageWithHeldFrames(
+  browser: Browser,
+  url: string,
+  spaceId: string,
+): Promise<{ p: Page; hold: (on: boolean) => void }> {
+  const p = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+  let held: (() => void)[] | null = null;
+  await p.routeWebSocket('**/ws', (route) => {
+    const server = route.connectToServer();
+    route.onMessage((data) => {
+      if (held === null) server.send(data);
+      else held.push(() => server.send(data));
+    });
+  });
+  await p.goto(url);
+  await p.getByTestId(`space-tab-name-${spaceId}`).click();
+  await expect(p.locator(`${EDITOR} table`)).toHaveCount(1, { timeout: 20_000 });
+  const hold = (on: boolean): void => {
+    if (on) {
+      held ??= [];
+      return;
+    }
+    const sends = held ?? [];
+    held = null;
+    for (const send of sends) send();
+  };
+  return { p, hold };
+}
+
+test('A17: a row and a column added at once leave one placeholder, and typing on both pages adds no columns', async ({ browser }) => {
+  const spaceId = await openFreshDocument(page);
+  await smallTable(page);
+  const first = await pageWithHeldFrames(browser, page.url(), spaceId);
+  const second = await pageWithHeldFrames(browser, page.url(), spaceId);
+  try {
+    first.hold(true);
+    second.hold(true);
+    await hoverCell(first.p, 'a2');
+    await first.p.getByTestId('doc-table-row-handle').click();
+    await first.p.getByTestId('doc-table-row-insertBelow').click();
+    await hoverCell(second.p, 'b1');
+    await second.p.getByTestId('doc-table-col-handle').click();
+    await second.p.getByTestId('doc-table-col-insertRight').click();
+    first.hold(false);
+    second.hold(false);
+
+    const shown = [[['a1', 'b1', ''], ['a2', 'b2', ''], ['', '', '']]];
+    await expect.poll(() => grids(first.p)).toEqual(shown);
+    await expect.poll(() => grids(second.p)).toEqual(shown);
+    await expect(first.p.locator(`${EDITOR} [data-doc-table-missing]`)).toHaveCount(1);
+
+    await clickAndSettle(first.p, cell(first.p, 'a1'));
+    await first.p.keyboard.press('End');
+    await clickAndSettle(second.p, cell(second.p, 'b2'));
+    await second.p.keyboard.press('End');
+    for (let round = 0; round < 3; round += 1) {
+      first.hold(true);
+      second.hold(true);
+      await first.p.keyboard.type('x');
+      await second.p.keyboard.type('y');
+      first.hold(false);
+      second.hold(false);
+    }
+
+    const typed = [[['a1xxx', 'b1', ''], ['a2', 'b2yyy', ''], ['', '', '']]];
+    await expect.poll(() => grids(first.p)).toEqual(typed);
+    await expect.poll(() => grids(second.p)).toEqual(typed);
+    await expect.poll(() => grids(page)).toEqual(typed);
+    await expect(page.locator(`${EDITOR} [data-doc-table-missing]`)).toHaveCount(1);
+  } finally {
+    await first.p.close();
+    await second.p.close();
   }
 });
 
