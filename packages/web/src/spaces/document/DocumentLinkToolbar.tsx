@@ -87,8 +87,6 @@ import {
 } from '@web/spaces/document/link-toolbar-timing';
 import { setLinkToolbarUp, textBarsStandAside, useDocumentBars } from '@web/spaces/document/document-bars';
 import { bodyFocusStore, bodyLayerMark } from '@web/spaces/document/document-body-focus';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { useDocumentBodyRuntime } from '@web/spaces/document/use-document-body-runtime';
 
 /** Which of the toolbar's two faces is showing. */
 type ToolbarFace = 'read' | 'form';
@@ -161,8 +159,6 @@ export function DocumentLinkToolbar({
   viewport: HTMLElement;
   yielding: boolean;
 }): React.JSX.Element | null {
-  const runtime = useDocumentBodyRuntime(editor);
-  const paused = runtime !== null && runtime.status !== 'active';
   const [held, setHeld] = React.useState<HeldLink | null>(null);
   const [open, setOpen] = React.useState(false);
   const [face, setFace] = React.useState<ToolbarFace>('read');
@@ -331,8 +327,6 @@ export function DocumentLinkToolbar({
    */
   const settle = React.useCallback((): void => {
     const state = editor.prosemirrorState;
-    const currentRuntime = bodyBindingOf(state)?.runtime;
-    if (currentRuntime !== undefined && currentRuntime.read().status !== 'active') return;
     /**
      * Where a handle's link sits now.
      * @param one - The handle, or nothing.
@@ -828,10 +822,8 @@ export function DocumentLinkToolbar({
    */
   const submit = React.useCallback(
     (href: string): void => {
-      if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
       const target = heldRangeNow();
       if (target) applyLink(editor, target, href);
-      if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
       dismiss();
     },
     [dismiss, editor, heldRangeNow],
@@ -839,7 +831,6 @@ export function DocumentLinkToolbar({
 
   /** Take the link off, and put the toolbar away. */
   const unlink = React.useCallback((): void => {
-    if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
     const target = heldRangeNow();
     if (target) removeLink(editor, target);
     closeToolbar();
@@ -891,14 +882,12 @@ export function DocumentLinkToolbar({
             href={held.href}
             onEdit={startEdit}
             onRemove={unlink}
-            readOnly={paused}
           />
         ) : (
           <DocumentLinkForm
             initial={held.href ?? ''}
             onSubmit={submit}
             inputRef={inputRef}
-            readOnly={paused}
           />
         )}
       </div>

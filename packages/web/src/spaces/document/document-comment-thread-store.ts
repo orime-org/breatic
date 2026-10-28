@@ -57,8 +57,6 @@ export interface DocumentCommentsOptions {
    * document and outlives a Space-tab switch, while a role does not (A17).
    */
   readonly readWho: () => DocumentCommentAuthInput;
-  /** Final handle admission, read synchronously inside each native mutation. */
-  readonly canWrite?: () => boolean;
 }
 
 /**
@@ -123,11 +121,11 @@ export function documentCommentsExtension(
   const store = new YjsThreadStore(
     options.readWho().viewerId ?? '',
     documentCommentThreads(options.doc),
-    documentCommentAuth(options.readWho, options.canWrite),
+    documentCommentAuth(options.readWho),
   );
 
   return CommentsExtension({
     threadStore: store,
     resolveUsers: resolveCommentUsers,
-  } as never);
+  } as never) as unknown as ExtensionFactoryInstance;
 }

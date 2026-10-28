@@ -30,23 +30,11 @@ export interface BodyTextPointName extends BodyNameIdentity {
   readonly relative: Y.RelativePosition;
   readonly token: string | null;
   readonly assoc: BodyAssociation;
-  /** Other-source neighbors preserve a gap when this entire independent source becomes empty. */
-  readonly fallback?: { readonly left: BodyTextPointName | null; readonly right: BodyTextPointName | null };
-}
-
-/** An accepted local character has a batch name until the actual USER allocates its native ID. */
-export interface BodyStagedTextPointName extends BodyNameIdentity {
-  readonly kind: 'stagedText';
-  readonly batch: string;
-  readonly token: string;
-  readonly offset: number;
-  readonly assoc: BodyAssociation;
 }
 
 /** Stable point names contain no stale PM coordinate. */
 export type BodyPointName =
   | BodyTextPointName
-  | BodyStagedTextPointName
   | (BodyNameIdentity & { readonly kind: 'node'; readonly node: string; readonly side: 'before' | 'after' | 'inside' })
   | (BodyNameIdentity & { readonly kind: 'gap'; readonly parent: string; readonly left: string | null; readonly right: string | null; readonly assoc: BodyAssociation })
   | (BodyNameIdentity & { readonly kind: 'bodyEdge'; readonly edge: BodyEdge });
@@ -75,7 +63,7 @@ export type BodyPointResolution = BodyPositionUnavailable | {
 /** Selection names retain their original semantic selection kind. */
 export type BodySelectionName = BodyNameIdentity & (
   | { readonly kind: 'text' | 'cell' | 'bodyEdge'; readonly anchor: BodyPointName; readonly head: BodyPointName }
-  | { readonly kind: 'node'; readonly node: string; readonly part?: 'content' }
+  | { readonly kind: 'node'; readonly node: string }
   | { readonly kind: 'all' }
 );
 

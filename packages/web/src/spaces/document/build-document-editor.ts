@@ -4,20 +4,23 @@
 /**
  * The one place a document editor is assembled.
  *
- * Records mode receives the existing handle's runtime, native history and
- * origin. Its own binding and position adapters are selected before any XML
- * collaboration factory is invoked. Parsing shares the same product schema
- * and extensions while keeping all content local to the temporary editor.
+ * `withCollaboration` merges `extensions` and `disableExtensions` from ITS OWN
+ * argument object and overwrites `initialContent`. Anything we want in those
+ * three keys therefore has to travel THROUGH it — spreading our own value
+ * beside the call loses one side or the other, silently and in opposite
+ * directions depending on the order. Measured on real editors:
  *
- * XML callers use `withCollaboration` with the same common extension options:
- * that wrapper merges its own extension arrays and replaces initialContent.
- * ProseMirror history stays disabled in the collaborative assemblies.
+ * ```
+ * ours before the spread : placeholder plugin survives, ours draws a second one
+ * ours after the spread  : "history" is dropped, prosemirror-history runs
+ *                          alongside y-undo on a Yjs document
+ * ```
  *
  * ## Why the awareness is withheld
  *
  * `CollaborationOptions.user` is required, and `YCursorPlugin` writes it onto
  * awareness as soon as it can reach one — measured, one frame at construction.
- * The client never states who it is:
+ * The delivered invariant (#1886) is that this client never states who it is:
  * the server writes the id from the validated credential, and a client that
  * announced its own would be announcing something nobody verified.
  *
@@ -34,8 +37,6 @@ import {
 import { withCollaboration } from '@blocknote/core/yjs';
 import type * as Y from 'yjs';
 
-import { DocumentBodyBinding } from '@web/spaces/document/document-body-binding';
-import type { DocumentBodyOptions } from '@web/spaces/document/document-body-binding-types';
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
@@ -90,10 +91,6 @@ import {
 export interface DocumentEditorOptions {
   /** The shared fragment this editor binds to. */
   readonly fragment: Y.XmlFragment;
-  /** Handle-owned records resources selected before any XML factory is called. */
-  readonly body?: DocumentBodyOptions;
-  /** Independent parsing uses the product schema without shared synchronization. */
-  readonly mode?: 'parse';
   /** Extensions to register, the cross-version fallbacks among them. */
   readonly extensions?: readonly ExtensionFactoryInstance[];
   /**
@@ -149,18 +146,19 @@ export const BODY_SURFACE_CLASS = 'doc-body';
 const UNUSED_USER = { name: '', color: '' } as const;
 
 /**
- * Assembles the product schema over records, an XML fragment or local parsing.
- * @param options - The selected body resources and product extensions.
+ * Assembles a document editor over a shared fragment.
+ * @param options - The fragment to bind to and the extensions to register.
  * @returns The editor, not yet mounted.
  * @throws {Error} Whatever BlockNote throws while validating the options.
  */
 export function buildDocumentEditor(
   options: DocumentEditorOptions,
 ): BlockNoteEditor<never, never, never> {
-  const doc = options.fragment.doc;
-  if (options.body !== undefined && doc === null) throw new Error('Records construction requires an attached content document');
-  const binding = options.mode === 'parse' || options.body === undefined || doc === null ? null : new DocumentBodyBinding(doc, options.body);
-  const common = {
+  const collaborative = withCollaboration({
+    collaboration: {
+      fragment: options.fragment,
+      user: UNUSED_USER,
+    },
     // The Enter binding goes in first so that a caller's extension can still
     // sit after it; the built-in list bindings it overrides are registered
     // with the blocks themselves.
@@ -195,10 +193,7 @@ export function buildDocumentEditor(
       // Ahead of the wiring: a press on two overlapping highlights has to be
       // answered before the library's own handler takes the first of them.
       documentCommentSelection(),
-      commentWiring(options.comments === undefined || binding === null ? options.comments : {
-        ...options.comments,
-        canWrite: (): boolean => binding.canWrite() && options.comments?.canWrite?.() !== false,
-      }),
+      commentWiring(options.comments),
       documentCommentPasteExtension(),
       documentCommentDraftRange(),
       documentFileDropExtension(options.onFiles),
@@ -224,19 +219,9 @@ export function buildDocumentEditor(
       // INTO the toolbar.
       'formattingToolbar',
     ],
-  };
-  const collaborative = options.mode === 'parse'
-    ? { ...common, disableExtensions: ['history', ...common.disableExtensions] }
-    : binding === null
-      ? withCollaboration({ ...common, collaboration: { fragment: options.fragment, user: UNUSED_USER } })
-      : {
-        ...common,
-        extensions: [binding.extension(), ...common.extensions, ...binding.compatibility()],
-        disableExtensions: ['history', ...common.disableExtensions],
-        initialContent: [{ type: 'paragraph', id: 'initialBlockId' }],
-      };
+  });
 
-  const editor = BlockNoteEditor.create({
+  return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
     links: { onClick: openLinkInANewTab },
     domAttributes: { editor: { class: BODY_SURFACE_CLASS } },
@@ -265,15 +250,6 @@ export function buildDocumentEditor(
         : filesPasteHandler(options.onFiles, documentPasteHandler),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
-  if (binding !== null) {
-    // TipTap installs plugins only in createView. The cache constructs this
-    // editor before mounting, so install that same plugin set before the first
-    // source projection; mounting later retains their state by plugin key.
-    const tiptap = editor._tiptapEditor;
-    tiptap.view.updateState(tiptap.state.reconfigure({ plugins: tiptap.extensionManager.plugins }));
-  }
-  binding?.initialize(editor);
-  return editor;
 }
 
 /**

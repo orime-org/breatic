@@ -80,9 +80,6 @@ import { documentSelectAllExtension } from '@web/spaces/document/document-select
 import {
   createDocumentUndo,
 } from '@web/spaces/document/document-undo-blocknote';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { createDocumentBodyRuntime } from '@web/spaces/document/document-body-runtime';
-import type { DocumentBodyRuntime } from '@web/spaces/document/document-body-runtime-types';
 import { marksStayOnTextExtension } from '@web/spaces/document/document-marks-on-text';
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { documentUploadsExtension, holdGap } from '@web/spaces/document/document-upload-slots';
@@ -112,8 +109,6 @@ export interface DocumentEditorHandle {
    * the local it is built in.
    */
   undoManager: Y.UndoManager;
-  /** Runtime restrictions share this exact cached handle's lifetime. */
-  readonly runtime: DocumentBodyRuntime;
   /** Local caption edits with the same lifetime as this open document. */
   captionDrafts: CaptionDrafts;
   /**
@@ -178,11 +173,6 @@ export interface DocumentEditorInputs {
   uploadTarget?: DocumentUploadTarget;
 }
 
-/** The existing cache key is also the ownership name for persisted positions. */
-interface CachedDocumentEditorInputs extends DocumentEditorInputs {
-  readonly documentName: string;
-}
-
 /**
  * The uploader for a body whose uploads land in this project and Space.
  * @param target - Where they land.
@@ -219,18 +209,13 @@ function uploaderFor(target: DocumentUploadTarget, undoManager: Y.UndoManager): 
  * @param doc - The document Space's Y.Doc.
  * @param inputs - Construction-time collaborative wiring.
  * @returns The editor and its undo manager.
- * @throws {Error} If native history or records editor construction fails.
  */
 function createDocumentEditor(
   doc: Y.Doc,
-  inputs: CachedDocumentEditorInputs,
+  inputs: DocumentEditorInputs,
 ): DocumentEditorHandle {
-  const runtime = createDocumentBodyRuntime(doc, (error) => {
-    console.error('document_body_runtime_diagnostic', { err: error, document: inputs.documentName });
-  });
-  const origin = Object.freeze({ document: inputs.documentName });
   const { manager: undoManager, extension: undoExtension } =
-    createDocumentUndo(doc, { runtime, origin });
+    createDocumentUndo(doc);
   const clearListeners = new Set<() => void>();
   const target = inputs.uploadTarget;
   const uploader = target === undefined ? null : uploaderFor(target, undoManager);
@@ -243,7 +228,6 @@ function createDocumentEditor(
 
   const editor = buildDocumentEditor({
     fragment: documentBodyFragment(doc),
-    body: { document: inputs.documentName, runtime, history: undoManager, origin },
     comments: { doc, readWho: inputs.readWho },
     ...(uploader !== null && {
       onFiles: (arrival: FilesArrival) => {
@@ -265,7 +249,6 @@ function createDocumentEditor(
       documentCaretExtension(
         inputs.caretProvider.awareness as never,
         inputs.resolveCollaboratorName,
-        { document: inputs.documentName, runtime },
       ),
       undoExtension,
       documentSelectAllExtension(() => {
@@ -291,7 +274,6 @@ function createDocumentEditor(
   return {
     editor,
     undoManager,
-    runtime,
     captionDrafts: captionDraftsFor(editor),
     surface,
     uploader,
@@ -304,12 +286,10 @@ function createDocumentEditor(
   };
 }
 
-const cache = createDocScopedCache<DocumentEditorHandle, CachedDocumentEditorInputs>(
+const cache = createDocScopedCache<DocumentEditorHandle, DocumentEditorInputs>(
   createDocumentEditor,
   (handle) => {
     handle.captionDrafts.dispose();
-    bodyBindingOf(handle.editor.prosemirrorState)?.dispose();
-    handle.undoManager.destroy();
     handle.editor.unmount();
     handle.surface.remove();
   },
@@ -363,7 +343,7 @@ export function getDocumentEditor(
   name: string,
   inputs: DocumentEditorInputs,
 ): DocumentEditorHandle {
-  const handle = cache.get(doc, name, { ...inputs, documentName: name });
+  const handle = cache.get(doc, name, inputs);
   // Editability is settled HERE, on the way out, and nowhere else. The editor
   // defaults to editable and the effect in `useDocumentEditor` that keeps it in
   // step runs after the first paint, so a viewer would otherwise get a writable

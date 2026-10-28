@@ -1654,12 +1654,6 @@
     "readOnlyNotice": "这个 Space 现在只能查看 —— 你做的改动不会被保存。",
     "lockedAria": "已锁定",
     "document": {
-      "runtime": {
-        "waiting": "正在等待内容，编辑暂不可用；本地输入保留。",
-        "failed": "编辑已暂停。请复制当前输入后刷新核对。",
-        "accepted": "当前输入（纯文字）",
-        "lastGood": "上次显示的内容（纯文字）"
-      },
       "loading": "正在加载编辑器…",
       "unavailable": {
         "text": "这个 Document 打不开。它可能已被删除，或者你已经没有访问权限了。",

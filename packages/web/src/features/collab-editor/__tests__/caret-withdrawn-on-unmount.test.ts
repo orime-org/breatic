@@ -21,7 +21,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
-import { documentBodyFragment, importCurrentDocumentBody } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 
@@ -33,12 +33,7 @@ describe('this client caret', () => {
     const awareness = new Awareness(doc);
     const para = new Y.XmlElement('paragraph');
     para.insert(0, [new Y.XmlText('some text to park a caret in')]);
-    const holder = new Y.XmlElement('blockContainer');
-    holder.insert(0, [para]);
-    const group = new Y.XmlElement('blockGroup');
-    group.insert(0, [holder]);
-    documentBodyFragment(doc).insert(0, [group]);
-    importCurrentDocumentBody(doc, 'project-p/document-leave');
+    documentBodyFragment(doc).insert(0, [para]);
 
     const rendered = renderHook(() =>
       useDocumentEditor({

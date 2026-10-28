@@ -7,7 +7,6 @@ import type * as Y from 'yjs';
 import type { BodyJsonObject, BodyRecord, BodyTreeUnit, BodyTreeView } from '@breatic/shared';
 
 import type { BodyInlineUnit } from '@web/spaces/document/document-body-provenance';
-import type { BodyStagedNames } from '@web/spaces/document/document-body-staged';
 
 /** The product-owned native encoding of one inline leaf. */
 export interface BodyInlineValue {
@@ -48,18 +47,6 @@ export interface BodyOpaquePayload {
   readonly units: readonly BodyTreeUnit[];
 }
 
-/** A local schema slot whose default records are registered only by its first real edit. */
-export interface BodyDerivedRecord {
-  readonly id: string;
-  readonly kind: 'container' | 'owner';
-  readonly type: string;
-  readonly parent: string;
-  readonly order: string;
-  readonly attrs: BodyJsonObject;
-  readonly wrapperAttrs: BodyJsonObject;
-  readonly generation: number;
-}
-
 /** The common final frame used by planning, selections and target consumers. */
 export interface BodyProjectionIndex extends BodyProjectionOptions {
   readonly sourceDoc: Y.Doc;
@@ -69,9 +56,6 @@ export interface BodyProjectionIndex extends BodyProjectionOptions {
   readonly nodes: ReadonlyMap<string, BodyNodePosition>;
   readonly owners: ReadonlyMap<string, BodyNodePosition>;
   readonly opaque: ReadonlyMap<string, BodyOpaquePayload>;
-  readonly derived: ReadonlyMap<string, BodyDerivedRecord>;
-  /** Accepted PM names remain separate from final native occurrences. */
-  readonly staged?: { readonly batch: string; readonly units: readonly BodyInlineUnit[]; readonly names: BodyStagedNames };
 }
 
 /** A read-only legal PM document paired with exact native occurrence names. */

@@ -20,7 +20,6 @@ import { render } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import {
-  encodeInitialSpaceContent,
   DOCUMENT_SCHEMA,
   DOCUMENT_SCHEMA_META_KEY,
   DOCUMENT_SCHEMA_VERSION,
@@ -81,13 +80,12 @@ describe('一个开着但没在看的 document tab', () => {
   it('服务器换了 schema，它的编辑器也被销毁', () => {
     const name = docName.documentSpace(PID, SID);
     const bodyDoc = getDoc(name);
-    Y.applyUpdate(bodyDoc, encodeInitialSpaceContent('document'));
     const metaDoc = getDoc(docName.projectMeta(PID));
 
     // 这个 tab 之前被看过，所以编辑器已经在缓存里、还绑着这份文档，而且
     // 挂在页面上 —— 销毁的是它的视图，没挂载就分辨不出前后。
     const handle = getDocumentEditor(bodyDoc, name, {
-      caretProvider: { awareness: socketAwareness },
+      caretProvider: { awareness: socketAwareness } as never,
       readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       editable: true,
     });
@@ -105,7 +103,6 @@ describe('一个开着但没在看的 document tab', () => {
   it('服务器那份跟我一样时，不碰它的编辑器', () => {
     const name = docName.documentSpace(PID, 's-ok');
     const bodyDoc = getDoc(name);
-    Y.applyUpdate(bodyDoc, encodeInitialSpaceContent('document'));
     const metaDoc = getDoc(docName.projectMeta(PID));
     metaDoc.transact(() => {
       const map = metaDoc.getMap(DOCUMENT_SCHEMA_META_KEY);
@@ -115,7 +112,7 @@ describe('一个开着但没在看的 document tab', () => {
     });
 
     const handle = getDocumentEditor(bodyDoc, name, {
-      caretProvider: { awareness: socketAwareness },
+      caretProvider: { awareness: socketAwareness } as never,
       readWho: () => ({ role: 'editor', viewerId: 'u1' }),
       editable: true,
     });

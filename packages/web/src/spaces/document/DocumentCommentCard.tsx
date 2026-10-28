@@ -118,8 +118,6 @@ interface DocumentCommentCardProps {
   reading: boolean;
   /** This reader's role on the project. */
   myRole: ProjectRole;
-  /** A mounted runtime pause does not change the reader's role or input owner. */
-  paused?: boolean;
   /** This reader's account id, absent until the session resolves. */
   viewerId: string | undefined;
   /**
@@ -262,7 +260,6 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   marked,
   reading,
   myRole,
-  paused = false,
   viewerId,
   draft,
   onDraft,
@@ -295,15 +292,14 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
   const shortened = !reading;
   const folded = shortened && card.entries.length > FOLDED_ENTRY_COUNT;
   const drawn = folded
-    ? [card.entries[0], card.entries[card.entries.length - 1]]
+    ? [card.entries[0]!, card.entries[card.entries.length - 1]!]
     : card.entries;
 
   const send = React.useCallback(() => {
-    if (paused) return;
     void onReply(card.id, reply).then((sent) => {
       if (sent) setReply('');
     });
-  }, [card.id, onReply, reply, setReply, paused]);
+  }, [card.id, onReply, reply, setReply]);
 
   /** Throws away what was written, which is what Cancel and Escape do. */
   const callOff = React.useCallback(() => {
@@ -362,7 +358,6 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
           name='reply'
           className='mt-2'
           value={reply}
-          readOnly={paused}
           placeholder={t('spaces.document.comment.reply')}
           onChange={setReply}
           onSave={send}

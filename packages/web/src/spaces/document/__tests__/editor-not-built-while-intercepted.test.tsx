@@ -16,7 +16,6 @@ import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import type { ProjectRole } from '@breatic/shared';
 
@@ -49,7 +48,6 @@ function make(): {
   readWho: () => { role: ProjectRole; viewerId: string };
   } {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   docs.push(doc);
   const awareness = new Awareness(doc);
   awarenesses.push(awareness);

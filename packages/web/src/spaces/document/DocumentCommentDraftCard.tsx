@@ -56,8 +56,6 @@ import {
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { useDocumentBodyRuntime } from '@web/spaces/document/use-document-body-runtime';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 interface DraftCardProps {
   /** The editor the comment lands in. */
@@ -107,8 +105,6 @@ export function DocumentCommentDraftCard({
   myRole,
   reading,
 }: DraftCardProps): React.JSX.Element {
-  const runtime = useDocumentBodyRuntime(editor);
-  const paused = runtime !== null && runtime.status !== 'active';
   const t = useTranslation();
   const mayWrite = canPostAnnotations(myRole);
   const said = useCommentWrite();
@@ -192,7 +188,7 @@ export function DocumentCommentDraftCard({
       // dropped the draft for that, so the notice A21 owes them is showing.
       // Nothing else moves: the words are theirs until they send them or
       // throw them away.
-      if (thread == null || bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) return;
+      if (thread == null) return;
       close();
     });
   }, [words, editor, close, said]);
@@ -248,7 +244,6 @@ export function DocumentCommentDraftCard({
         // eslint-disable-next-line jsx-a11y/no-autofocus -- a card the reader just asked for by pressing the comment entry; they expect to type immediately
         autoFocus={reading}
         value={words}
-        readOnly={paused}
         placeholder={t('spaces.document.comment.placeholder')}
         onChange={(next) => {
           writeDraftWords(opening, next);

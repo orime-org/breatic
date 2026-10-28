@@ -28,7 +28,6 @@ export type CaptionDraftEvent =
   | ({ readonly type: 'open' } & CaptionDraftContext)
   | ({ readonly type: 'sync' } & CaptionDraftContext)
   | { readonly type: 'input' | 'composition-start' | 'composition-end'; readonly session: number; readonly value: string }
-  | { readonly type: 'pause'; readonly session: number; readonly value: string }
   | { readonly type: 'detach'; readonly session: number; readonly value?: string }
   | { readonly type: 'cancel'; readonly session: number; readonly caption: string }
   | ({ readonly type: 'commit'; readonly session: number; readonly write: (value: string) => void } & CaptionDraftContext);
@@ -131,9 +130,6 @@ export function createCaptionDrafts(): CaptionDrafts {
     }
     if (current === undefined || event.session !== current.session || current.phase === 'closed') return;
     switch (event.type) {
-      case 'pause':
-        publish({ ...current, value: event.value, composing: false, readOnly: true, phase: current.exists ? 'suspended' : 'retained' });
-        return;
       case 'input':
       case 'composition-start':
       case 'composition-end': {

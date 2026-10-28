@@ -54,10 +54,6 @@ export interface BodyBatchEnvironment {
   readonly userOrigin: object;
   readonly canWrite: () => boolean;
   readonly project: (doc: Y.Doc) => BodyPlanProjection;
-  /** Synchronous boundaries used by the binding's failure snapshot and write gate. */
-  readonly onCommitPhase?: (phase: 'registering' | 'committing' | 'written' | 'projecting') => void;
-  /** A handle-owned plain marker records entry and return of the actual USER call. */
-  readonly writeState?: { started: boolean; returned: boolean };
 }
 
 /** A successful commit's final codec frame and fresh-to-native aliases. */

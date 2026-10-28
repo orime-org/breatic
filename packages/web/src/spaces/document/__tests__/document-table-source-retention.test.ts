@@ -6,11 +6,10 @@ import * as Y from 'yjs';
 import { act } from '@testing-library/react';
 import { Selection } from '@tiptap/pm/state';
 import { CellSelection, TableMap } from '@tiptap/pm/tables';
-import { documentBodyFragment, encodeInitialSpaceContent, readBodyTree } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { createDocumentBodyRuntime } from '@web/spaces/document/document-body-runtime';
 import { mergeSelectedCells } from '@web/spaces/document/document-table-run';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -26,7 +25,6 @@ interface OpenedBody {
 interface Pair {
   readonly author: OpenedBody;
   readonly peer: OpenedBody;
-  readonly original: readonly string[];
 }
 
 const opened: OpenedBody[] = [];
@@ -46,13 +44,8 @@ afterEach(() => {
 function open(bytes: Uint8Array): OpenedBody {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, bytes);
-  const runtime = createDocumentBodyRuntime(doc, () => undefined);
-  const origin = {};
-  const { manager, extension } = createDocumentUndo(doc, { runtime, origin });
-  const editor = buildDocumentEditor({
-    fragment: documentBodyFragment(doc), extensions: [extension],
-    body: { document: 'document:table-source-retention', runtime, history: manager, origin },
-  });
+  const { manager, extension } = createDocumentUndo(doc);
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
   const host = document.createElement('div');
   document.body.appendChild(host);
   const body = { doc, editor, manager, host };
@@ -73,23 +66,7 @@ function pair(): Pair {
   peer.manager.clear();
   author.manager.stopCapturing();
   peer.manager.stopCapturing();
-  return { author, peer, original: visibleNative(author.doc) };
-}
-
-/** Reads actual visible client/clock identities without matching repeated text. @throws {Error} If records are incomplete. */
-function visibleNative(doc: Y.Doc): readonly string[] {
-  const read = readBodyTree(doc);
-  if (read.status !== 'ready') throw new Error(`Expected ready records:${read.status}`);
-  return read.view.owners.flatMap((owner) => owner.units.map((unit) => unit.id));
-}
-
-/** Verifies that all original native units still occur exactly once in each peer. @throws {Error} If records are incomplete. */
-function originalUnits(value: Pair): void {
-  for (const body of [value.author, value.peer]) {
-    const ids = visibleNative(body.doc);
-    expect(ids.filter((id) => value.original.includes(id))).toEqual(value.original);
-    expect(new Set(ids).size).toBe(ids.length);
-  }
+  return { author, peer };
 }
 
 /** Finds a displayed cell by its exact current text. @throws {Error} If the fixture cell is absent. */
@@ -166,7 +143,6 @@ describe('table source retention', () => {
 
       expect(cells(value.author.editor)).toEqual([['L', 'R_PEER']]);
       expect(value.peer.editor.prosemirrorState.doc.toJSON()).toEqual(value.author.editor.prosemirrorState.doc.toJSON());
-      originalUnits(value);
     });
   });
 
@@ -183,7 +159,6 @@ describe('table source retention', () => {
 
       expect(cells(value.author.editor)).toEqual([['L'], ['R_PEER']]);
       expect(cells(value.peer.editor)).toEqual([['L'], ['R_PEER']]);
-      originalUnits(value);
     });
   });
 
@@ -198,8 +173,6 @@ describe('table source retention', () => {
 
       expect(cells(reloaded.editor)).toEqual([['L', 'R_PEER']]);
       expect(reloaded.editor.prosemirrorState.doc.toJSON()).toEqual(value.author.editor.prosemirrorState.doc.toJSON());
-      expect(visibleNative(reloaded.doc)).toEqual(visibleNative(value.author.doc));
-      originalUnits(value);
     });
   });
 });

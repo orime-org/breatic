@@ -31,7 +31,6 @@ import {
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { CommentsExtension } from '@blocknote/core/comments';
@@ -74,7 +73,6 @@ describe('what a card lets a reader do', () => {
       user: { id: ME, name: 'Me', email: 'me@example.com' },
     } as never);
     doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
     const { result } = renderHook(() =>
       useDocumentEditor({
@@ -139,8 +137,8 @@ describe('what a card lets a reader do', () => {
       const thread = await comments.threadStore.createThread({
         initialComment: { body: asCommentBody(body), ...(metadata === undefined ? {} : { metadata }) },
       });
-      const view = handle.editor.prosemirrorView;
-      const mark = view.state.schema.marks[COMMENT_MARK].create({
+      const view = handle.editor.prosemirrorView!;
+      const mark = view.state.schema.marks[COMMENT_MARK]!.create({
         threadId: thread.id,
         orphan: false,
       });
@@ -161,7 +159,7 @@ describe('what a card lets a reader do', () => {
    */
   async function answer(body: string): Promise<void> {
     const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
-    const threadId = [...store.getThreads().keys()][0];
+    const threadId = [...store.getThreads().keys()][0]!;
     await act(async () => {
       await replyToThread(handle.editor, threadId, body);
     });
@@ -177,7 +175,7 @@ describe('what a card lets a reader do', () => {
   /** The only thread in the document. */
   function onlyThread(): { resolved: boolean; comments: unknown[] } {
     const store = handle.editor.getExtension(CommentsExtension)!.threadStore;
-    return [...store.getThreads().values()][0];
+    return [...store.getThreads().values()][0] as never;
   }
 
   it('marks a comment that came from an Agent proposal (inner#1509)', async () => {
@@ -563,7 +561,7 @@ describe('what a card lets a reader do', () => {
     await answer('the third');
     await read();
 
-    await userEvent.click(screen.getAllByTestId('doc-comment-delete-reply')[0]);
+    await userEvent.click(screen.getAllByTestId('doc-comment-delete-reply')[0]!);
 
     await waitFor(() => {
       expect(

@@ -78,8 +78,6 @@ import {
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
-import { useDocumentBodyRuntime } from '@web/spaces/document/use-document-body-runtime';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 interface DocumentCommentRailProps {
   /** The editor whose threads this draws. */
@@ -141,8 +139,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   onClose,
   scroller,
 }: DocumentCommentRailProps): React.JSX.Element {
-  const runtime = useDocumentBodyRuntime(editor);
-  const paused = runtime !== null && runtime.status !== 'active';
   const t = useTranslation();
   const cards = useCommentCards(editor, rail);
   // Who is reading, for the rights each card draws itself with. The store is
@@ -253,20 +249,17 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // settled thread is one filter press away. A thread whose words are gone
   // has no card (A13), and what was typed in it goes too — it was never sent.
   React.useEffect(() => {
-    const current = bodyBindingOf(editor.prosemirrorState)?.runtime;
-    if (current !== undefined && current.read().status !== 'active') return;
     keepRepliesOf(
       editor,
       new Set([...cards.unresolved, ...cards.resolved].map((card) => card.id)),
     );
-  }, [editor, cards, paused]);
+  }, [editor, cards]);
 
   // One object, memoised: every card takes the same eight, and a fresh object
   // per render would stop `DocumentCommentCard`'s memo ever bailing out.
   const handling: CardHandling = React.useMemo(
     () => ({
       myRole,
-      paused,
       viewerId,
       onDraft,
       onReply,
@@ -277,7 +270,6 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     }),
     [
       myRole,
-      paused,
       viewerId,
       onDraft,
       onReply,
@@ -302,7 +294,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const column = React.useRef<HTMLDivElement>(null);
   // Keyed on the start alone, which is all the hook measures: the card sits
   // level with where the words begin.
-  const draftFrom = draft?.kind === 'aimed' ? draft.segments[0].from : null;
+  const draftFrom = draft?.kind === 'aimed' ? draft.segments[0]!.from : null;
   const draftAnchor = React.useMemo(
     () => (draftFrom === null ? null : { id: DRAFT_THREAD_ID, from: draftFrom }),
     [draftFrom],

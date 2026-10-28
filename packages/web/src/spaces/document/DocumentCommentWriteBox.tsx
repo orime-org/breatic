@@ -50,8 +50,6 @@ interface WriteBoxProps {
    * content, and each of those is the holder's to say.
    */
   className?: string;
-  /** Runtime pauses keep the original selectable input mounted. */
-  readOnly?: boolean;
 }
 
 /**
@@ -65,7 +63,6 @@ interface WriteBoxProps {
  * @param root0.onCancel - Throws it away.
  * @param root0.autoFocus - Focuses the box on arrival.
  * @param root0.className - Where the box sits in whatever holds it.
- * @param root0.readOnly - Keeps paused input selectable while refusing edits and submission.
  * @returns The box and, once it holds words, the pair.
  */
 export function DocumentCommentWriteBox({
@@ -77,7 +74,6 @@ export function DocumentCommentWriteBox({
   onCancel,
   autoFocus = false,
   className,
-  readOnly = false,
 }: WriteBoxProps): React.JSX.Element {
   const t = useTranslation();
   const box = React.useRef<HTMLTextAreaElement>(null);
@@ -106,10 +102,10 @@ export function DocumentCommentWriteBox({
   const keys = useNoteBox(
     React.useCallback(
       (action) => {
-        if (action.type === 'save' && !readOnly) onSave();
+        if (action.type === 'save') onSave();
         else if (action.type === 'escape') onCancel();
       },
-      [onSave, onCancel, readOnly],
+      [onSave, onCancel],
     ),
   );
 
@@ -132,9 +128,7 @@ export function DocumentCommentWriteBox({
           className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus-visible:border-0 md:text-sm'
           placeholder={placeholder}
           value={value}
-          readOnly={readOnly}
           onChange={(event) => {
-            if (readOnly) return;
             onChange(event.target.value);
           }}
           {...keys.box}
@@ -160,7 +154,6 @@ export function DocumentCommentWriteBox({
           <Button
             size='sm'
             data-testid={`doc-comment-${name}-save`}
-            disabled={readOnly}
             onClick={() => {
               if (keys.composing()) return;
               onSave();

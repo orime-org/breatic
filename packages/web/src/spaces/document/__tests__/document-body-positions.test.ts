@@ -63,34 +63,6 @@ describe('common native body point and selection names', () => {
     expect(Y.encodeRelativePosition(name.kind === 'text' ? name.relative : (() => { throw new Error('Expected native text name'); })())).toEqual(originalName);
   });
 
-  it('resolves a visible container gap between child blocks promoted from a detached owner', () => {
-    const schema = codecSchema();
-    const doc = codecFixture([
-      { id: 'A', text: 'A' }, { id: 'C', text: 'C', parent: 'nested' },
-      { id: 'D', text: 'D', parent: 'nested' }, { id: 'B', text: 'B' },
-    ], [{ id: 'nested', kind: 'container', type: 'blockGroup', attrs: {}, parent: 'A', order: 'zz' }]);
-    codecFacts(doc, 'move', [{ id: 'move-facet', kind: 'structure', group: 'move', dependencies: [],
-      edges: [{ child: 'F:A', parent: 'F:B', counter: 1, order: '\uffff' }] }]);
-    const initial = indexOf(doc, schema);
-    expect(initial.doc.textContent).toBe('CDBA');
-    expect(initial.doc.firstChild!.content.content.map((node) => node.attrs['id'])).toEqual(['C', 'D', 'B']);
-    const bytes = Y.encodeStateAsUpdate(doc);
-    const name = nameBodyPoint(initial, { kind: 'gap', parent: 'group', left: 'C', right: 'D', assoc: 1 });
-    expect(resolveBodyPoint(initial, name)).toEqual({ status: 'resolved', pos: 6, epoch: 1 });
-    expect(Y.encodeStateAsUpdate(doc)).toEqual(bytes);
-    const peer = new Y.Doc();
-    try {
-      Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-      documentBodySource(peer, 'S:C').insert(1, 'P', { ctx: 'base' });
-      Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer));
-      const next = indexOf(doc, schema, 2);
-      expect(next.doc.textContent).toBe('PCDBA');
-      expect(resolveBodyPoint(next, name)).toEqual({ status: 'resolved', pos: 7, epoch: 2 });
-    } finally {
-      peer.destroy();
-    }
-  });
-
   it('separates a deleted point from a live character and follows native redone identities', () => {
     const schema = codecSchema();
     const doc = codecFixture([{ id: 'A', text: 'ABC' }]);

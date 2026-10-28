@@ -118,12 +118,7 @@ import {
   syncBindingOf,
   type SyncBound,
   type TrackedLink,
-  type XmlTrackedLink,
 } from '@web/spaces/document/document-link-tracking';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { isNamedCharacterAlive, nameBodyPoint, resolveBodyPoint } from '@web/spaces/document/document-body-positions';
-import type { BodyPointName, BodyPointResolution } from '@web/spaces/document/document-body-positions-types';
-import type { BodyProjectionIndex } from '@web/spaces/document/document-body-codec-types';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import {
@@ -309,7 +304,7 @@ function carryEnd(
  * @param range - The range, against its letters.
  * @returns The two positions.
  */
-function trackDraft(bound: SyncBound, range: DraftRange): XmlTrackedLink {
+function trackDraft(bound: SyncBound, range: DraftRange): TrackedLink {
   const start = absolutePositionToRelativePosition(
     range.from,
     bound.type,
@@ -453,8 +448,8 @@ function endAcrossYjs(
 function carryAcrossYjs(
   tr: Transaction,
   bound: SyncBound,
-  link: XmlTrackedLink,
-  handed: XmlTrackedLink | null,
+  link: TrackedLink,
+  handed: TrackedLink | null,
   range: DraftRange,
 ): DraftRange | null {
   const from = endAcrossYjs(
@@ -549,85 +544,6 @@ function changesText(tr: Transaction): boolean {
 }
 
 /**
- * Applies the existing draft endpoint policy to a common native name.
- * @param tr - The current complete source projection.
- * @param index - The same new state's installed common index.
- * @param name - The endpoint retained by this draft owner.
- * @param handed - This opening's early native-history endpoint, when present.
- * @param was - The old PM endpoint belonging to tr.before.
- * @param side - The range endpoint's inclusion policy.
- * @returns A common outcome, preserving unavailable distinctly from lost words.
- * @throws {Error} If a complete native name is structurally invalid.
- */
-function endAcrossRecords(tr: Transaction, index: BodyProjectionIndex, name: BodyPointName, handed: BodyPointName | null, was: number, side: Side): BodyPointResolution {
-  if (handed !== null && isNamedCharacterAlive(index, handed)) {
-    const restored = resolveBodyPoint(index, handed);
-    if (restored.status === 'resolved' || restored.status === 'bindingUnavailable' || restored.status === 'pendingDependency') return restored;
-  }
-  const alive = isNamedCharacterAlive(index, name);
-  // A removed first letter stands at its old gap, including replacement input.
-  // A live first letter still excludes text inserted against its leading edge.
-  const endpoint = side === 'start' && !alive && name.kind === 'text' ? { ...name, assoc: -1 as const } : name;
-  const found = resolveBodyPoint(index, endpoint);
-  if (found.status === 'bindingUnavailable' || found.status === 'pendingDependency' || found.status === 'otherDocument') return found;
-  const line = endLineAt(tr.before, was, side);
-  let at = found.status === 'resolved' ? found.pos : null;
-  if (line !== null) {
-    const row = rowById(tr.doc, line.id);
-    if (row === undefined) at = besideGoneRow(tr, line.id, side);
-    else if (at !== null && !inLine(tr.doc, at, line)) {
-      const unchanged = lineNow(tr.doc, line);
-      const bounds = contentRangeOf(row);
-      // A split carries the endpoint only to its original row's surviving edge;
-      // text transferred into a new owner is outside that draft's old boundary.
-      at = unchanged ?? (bounds === undefined ? null : Math.min(bounds.to, Math.max(bounds.from, at)));
-    }
-  }
-  const carried = carryEnd(tr, line, at);
-  return carried === null ? { status: 'gone' } : { status: 'resolved', pos: carried, epoch: index.epoch };
-}
-
-/**
- * Carries draft letters through the new state's exact common projection index.
- * @param tr - The current source projection or accepted local transaction.
- * @param current - The existing opening and its currently surviving stretches.
- * @param after - The state whose installed index belongs to this transaction's doc.
- * @param tracked - Last complete native names for this opening.
- * @param handed - Names restored early from the actual native stack item.
- * @returns The same input owner while unavailable, exact surviving ranges, or targetGone.
- * @throws {Error} If a complete common frame violates its own name contract.
- */
-function carryRecordsDraft(tr: Transaction, current: Draft & { kind: 'aimed' }, after: EditorState, tracked: readonly TrackedLink[] | null, handed: readonly TrackedLink[] | null): Draft {
-  const body = bodyBindingOf(after);
-  if (body === null || body.runtime.read().status !== 'active') return current;
-  if (!fromYjs(tr)) {
-    const segments = current.segments.flatMap((segment) => {
-      const moved = mapDraftRange(segment, tr);
-      const letters = moved === null ? null : letterBounds(tr.doc, moved);
-      return letters === null ? [] : [letters];
-    });
-    return segments.length === 0 ? { kind: 'dropped', why: 'targetGone', opening: current.opening }
-      : sameSegments(segments, current.segments) ? current : { ...current, segments };
-  }
-  const index = body.read(after).index;
-  const segments: DraftRange[] = [];
-  for (const [ordinal, previous] of current.segments.entries()) {
-    const named = tracked?.[ordinal];
-    if (named === undefined || !('kind' in named)) continue;
-    const back = handed?.[ordinal];
-    const saved = back !== undefined && 'kind' in back ? back : null;
-    const from = endAcrossRecords(tr, index, named.start, saved?.start ?? null, previous.from, 'start');
-    const to = endAcrossRecords(tr, index, named.end, saved?.end ?? null, previous.to, 'end');
-    for (const point of [from, to]) if (point.status === 'bindingUnavailable' || point.status === 'pendingDependency') return current;
-    if (from.status !== 'resolved' || to.status !== 'resolved' || to.pos <= from.pos) continue;
-    const letters = letterBounds(tr.doc, { from: from.pos, to: to.pos });
-    if (letters !== null) segments.push(letters);
-  }
-  return segments.length === 0 ? { kind: 'dropped', why: 'targetGone', opening: current.opening }
-    : sameSegments(segments, current.segments) ? current : { ...current, segments };
-}
-
-/**
  * Carries the open draft across one transaction.
  * @param tr - The transaction.
  * @param current - The draft before it.
@@ -636,7 +552,6 @@ function carryRecordsDraft(tr: Transaction, current: Draft & { kind: 'aimed' }, 
  * @param handed - The range as named before the edit an undo or redo takes
  *   back, or null when that edit kept none for this draft; read only on the
  *   reader's own undo or redo.
- * @param after - The actual new state with its matching common index installed.
  * @returns The draft after it: the same object when nothing moved, dropped
  *   once the text it covered is gone.
  */
@@ -646,9 +561,7 @@ function carryDraft(
   before: EditorState,
   tracked: readonly TrackedLink[] | null,
   handed: readonly TrackedLink[] | null,
-  after: EditorState,
 ): Draft {
-  if (bodyBindingOf(after) !== null) return carryRecordsDraft(tr, current, after, tracked, handed);
   const bound = syncBindingOf(before);
   // Stretch by stretch. A stretch whose words are gone leaves the draft on the
   // ones that are still there; the draft is gone with the last of them.
@@ -658,12 +571,12 @@ function carryDraft(
     // The binding has rebuilt its index to the new nodes before it dispatches
     // (`_typeChanged`), so the relative positions resolve against this change.
     const carried =
-      fromYjs(tr) && link !== null && !('kind' in link) && bound !== null
+      fromYjs(tr) && link !== null && bound !== null
         ? carryAcrossYjs(
           tr,
           bound,
           link,
-          handed?.[index] !== undefined && !('kind' in handed[index]) ? handed[index] : null,
+          handed?.[index] ?? null,
           segment,
         )
         : mapDraftRange(segment, tr);
@@ -688,7 +601,7 @@ function carryDraft(
  * @returns True when they match one for one.
  */
 function sameSegments(a: readonly DraftRange[], b: readonly DraftRange[]): boolean {
-  return a.length === b.length && a.every((one, i) => one.from === b[i].from && one.to === b[i].to);
+  return a.length === b.length && a.every((one, i) => one.from === b[i]!.from && one.to === b[i]!.to);
 }
 
 /**
@@ -789,10 +702,9 @@ export const documentCommentDraftRange = createExtension(() => {
            * @param tr - The transaction being applied.
            * @param current - The draft before it.
            * @param before - The state the transaction applies to.
-           * @param after - The partially installed state with this transaction's current records frame.
            * @returns The draft after it.
            */
-          apply: (tr, current, before, after): Draft | null => {
+          apply: (tr, current, before): Draft | null => {
             const asked = tr.getMeta(DOCUMENT_COMMENT_DRAFT_RANGE) as
               | DraftCommand
               | undefined;
@@ -808,7 +720,7 @@ export const documentCommentDraftRange = createExtension(() => {
               // ranges already (`canCommentOver`), so one arriving means a
               // caller is wrong, and holding it would let a comment be written
               // with no words under it.
-              const segments = aimAt(tr.doc, asked);
+              const segments = aimAt(tr.doc, asked as readonly DraftRange[]);
               if (segments.length === 0) return current;
               // An open draft is moved, not replaced: it ends only on cancel
               // or save, and its words are kept against its opening.
@@ -826,7 +738,7 @@ export const documentCommentDraftRange = createExtension(() => {
             if (current?.kind !== 'aimed' || !changesText(tr)) return current;
             const kept = onUndoStack.handedFor(tr);
             const handed = kept?.entry === current.entry ? kept.links : null;
-            return carryDraft(tr, current, before, tracked, handed, after);
+            return carryDraft(tr, current, before, tracked, handed);
           },
         },
 
@@ -852,18 +764,9 @@ export const documentCommentDraftRange = createExtension(() => {
           return {
             update: (next, prev): void => {
               const range = draftRangeIn(next.state);
-              const body = bodyBindingOf(next.state);
               const bound = syncBindingOf(next.state);
               if (range === null) {
                 tracked = null;
-              } else if (body !== null) {
-                if (body.runtime.read().status === 'active' && (next.state.doc !== prev.doc || draftRangeIn(prev) !== range)) {
-                  const index = body.read(next.state).index;
-                  tracked = range.segments.map((segment) => ({ kind: 'records',
-                    start: nameBodyPoint(index, { kind: 'text', pos: segment.from, assoc: 1 }),
-                    end: nameBodyPoint(index, { kind: 'text', pos: segment.to, assoc: -1 }),
-                  }));
-                }
               } else if (
                 bound !== null &&
                 (next.state.doc !== prev.doc || draftRangeIn(prev) !== range)

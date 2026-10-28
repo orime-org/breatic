@@ -35,22 +35,19 @@ import {
 import {
   documentBodyFragment,
   encodeInitialSpaceContent,
-  readBodyTree,
 } from '@breatic/shared';
-import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { createDocumentBodyRuntime } from '@web/spaces/document/document-body-runtime';
-import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { viewOf } from '@web/spaces/document/document-editor-view';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 
 /** A block, as `replaceBlocks` takes it. */
 type Block = { type: string; content?: string };
 
-/** Reads the current authoritative source, independently of the local view. */
-function textOf(doc: Y.Doc): string {
-  const result = readBodyTree(doc);
-  if (result.status !== 'ready') throw new Error('Expected complete shared body records');
-  return result.view.owners.flatMap((owner) => owner.units.map((unit) => unit.value)).join('');
+/** Reads a fragment's plain text, markup stripped. */
+function textOf(fragment: Y.XmlFragment): string {
+  return fragment
+    .toArray()
+    .map((node) => node.toString().replace(/<[^>]*>/g, ''))
+    .join('');
 }
 
 /**
@@ -67,35 +64,24 @@ function syncAsRemote(target: Y.Doc, source: Y.Doc): void {
 }
 
 /**
- * Makes a real peer edit with its own native history and production binding.
- * @param peer - The independently received source snapshot.
- * @param edit - The actual peer command.
- * @throws {Error} If construction or the command fails.
+ * Appends one paragraph block to a peer's copy of the body.
+ *
+ * Written at the Yjs layer because a peer is a client this test does not run:
+ * what arrives over the wire is nodes, and the container plus the three
+ * attributes below are what a block IS in this schema — a bare paragraph
+ * pushed into the group would be a shape no client produces.
  */
-function withPeer(peer: Y.Doc, edit: (editor: ReturnType<typeof buildDocumentEditor>) => void): void {
-  const runtime = createDocumentBodyRuntime(peer, () => undefined);
-  const origin = {};
-  const history = createDocumentUndo(peer, { runtime, origin });
-  const editor = buildDocumentEditor({ fragment: documentBodyFragment(peer),
-    body: { document: 'project-p/document-s', runtime, history: history.manager, origin }, extensions: [history.extension] });
-  const host = document.createElement('div');
-  document.body.append(host);
-  try {
-    editor.mount(host);
-    edit(editor);
-  } finally {
-    runtime.dispose();
-    history.manager.destroy();
-    editor.unmount();
-    host.remove();
-  }
-}
-
-/** Appends the peer's paragraph through the actual records editor. */
 function appendPeerBlock(peer: Y.Doc, text: string): void {
-  withPeer(peer, (editor) => {
-    editor.insertBlocks([{ type: 'paragraph', content: text }] as never, editor.document.at(-1)!, 'after');
-  });
+  const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+  const container = new Y.XmlElement('blockContainer');
+  container.setAttribute('id', `peer-${text.replace(/\W+/g, '-')}`);
+  const paragraph = new Y.XmlElement('paragraph');
+  paragraph.setAttribute('backgroundColor', 'default');
+  paragraph.setAttribute('textColor', 'default');
+  paragraph.setAttribute('textAlignment', 'left');
+  paragraph.insert(0, [new Y.XmlText(text)]);
+  container.insert(0, [paragraph]);
+  group.push([container]);
 }
 
 describe('useDocumentEditor', () => {
@@ -200,7 +186,7 @@ describe('useDocumentEditor', () => {
     it('binds the editor to the document body fragment', async () => {
       const { editor } = await mountEditor();
       write(editor, { type: 'paragraph', content: 'hello' });
-      expect(textOf(doc)).toContain('hello');
+      expect(textOf(documentBodyFragment(doc))).toContain('hello');
     });
 
     it('reflects a remote peer edit in the local editor', async () => {
@@ -208,7 +194,9 @@ describe('useDocumentEditor', () => {
 
       const peer = new Y.Doc();
       syncAsRemote(peer, doc);
-      appendPeerBlock(peer, 'from the other side');
+      peer.transact(() => {
+        appendPeerBlock(peer, 'from the other side');
+      }, 'peer-origin');
 
       act(() => {
         syncAsRemote(doc, peer);
@@ -248,14 +236,14 @@ describe('useDocumentEditor', () => {
       const { editor, handle } = await mountEditor();
       write(editor, { type: 'paragraph', content: 'mine' });
       await waitFor(() =>
-        expect(textOf(doc)).toContain('mine'),
+        expect(textOf(documentBodyFragment(doc))).toContain('mine'),
       );
 
       act(() => {
         handle.undoManager.undo();
       });
 
-      expect(textOf(doc)).not.toContain('mine');
+      expect(textOf(documentBodyFragment(doc))).not.toContain('mine');
     });
 
     it('does not take a peer’s words out of the paragraph it shares with mine', async () => {
@@ -264,7 +252,7 @@ describe('useDocumentEditor', () => {
       // whole block unless the delete filter stops it. Measured before the
       // filter was in place: the block came back empty, the peer's text gone,
       // the deletion synced to everyone and absent from their undo stack.
-      const fragment = doc;
+      const fragment = documentBodyFragment(doc);
       const { editor, handle } = await mountEditor();
 
       write(editor, { type: 'paragraph', content: 'mine' });
@@ -272,10 +260,12 @@ describe('useDocumentEditor', () => {
 
       const peer = new Y.Doc();
       syncAsRemote(peer, doc);
-      withPeer(peer, (other) => {
-        const view = other.prosemirrorView;
-        view.dispatch(view.state.tr.insertText(' and theirs', textStart(other) + 4));
-      });
+      peer.transact(() => {
+        const group = documentBodyFragment(peer).get(0) as Y.XmlElement;
+        const container = group.get(0) as Y.XmlElement;
+        const block = container.get(0) as Y.XmlElement;
+        (block.get(0) as Y.XmlText).insert(4, ' and theirs');
+      }, 'peer-origin');
       act(() => {
         syncAsRemote(doc, peer);
       });
@@ -290,7 +280,7 @@ describe('useDocumentEditor', () => {
     });
 
     it('does NOT roll back a peer’s edit — that is the whole point', async () => {
-      const fragment = doc;
+      const fragment = documentBodyFragment(doc);
       const { editor, handle } = await mountEditor();
 
       // Write something local first, so there IS an entry on the stack —
@@ -301,7 +291,9 @@ describe('useDocumentEditor', () => {
 
       const peer = new Y.Doc();
       syncAsRemote(peer, doc);
-      appendPeerBlock(peer, 'theirs');
+      peer.transact(() => {
+        appendPeerBlock(peer, 'theirs');
+      }, 'peer-origin');
       act(() => {
         syncAsRemote(doc, peer);
       });
@@ -412,7 +404,7 @@ describe('useDocumentEditor', () => {
         { type: 'paragraph', content: 'third' },
       );
       await waitFor(() =>
-        expect(textOf(doc)).toContain('third'),
+        expect(textOf(documentBodyFragment(doc))).toContain('third'),
       );
 
       act(() => {
@@ -499,7 +491,7 @@ describe('useDocumentEditor', () => {
       act(() => {
         again.undoManager.undo();
       });
-      expect(textOf(doc)).not.toContain(
+      expect(textOf(documentBodyFragment(doc))).not.toContain(
         'written before the switch',
       );
     });
@@ -525,7 +517,7 @@ describe('useDocumentEditor', () => {
       act(() => {
         handle.undoManager.undo();
       });
-      const text = textOf(doc);
+      const text = textOf(documentBodyFragment(doc));
       expect(text).not.toContain('after switch');
       expect(text).toContain('before switch');
     });

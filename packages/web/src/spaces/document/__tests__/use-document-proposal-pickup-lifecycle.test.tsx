@@ -6,7 +6,7 @@ import { act, cleanup, render, renderHook, waitFor } from '@testing-library/reac
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { deriveId, documentBodyFragment, encodeInitialSpaceContent, readBodyTree, type DocumentProposal } from '@breatic/shared';
+import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
 import { assetsApi, type UploadConfig } from '@web/data/api/assets';
 import {
@@ -129,7 +129,6 @@ function pauseConfig(...waiting: Gate[]): void {
 /** Builds the cached editor and an already-loaded document connection. */
 function open(doc: Y.Doc = getDoc(NAME)): DocumentEditorHandle {
   if (doc !== getDoc(NAME)) extraDocs.push(doc);
-  if (readBodyTree(doc).status === 'uninitialized') Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const provider = acquireDocProvider(NAME, doc) as unknown as TransportProvider;
   provider.isAuthenticated = true;
   provider.authorizedScope = 'read-write';
@@ -232,7 +231,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
       const before = textOf(handle);
       await act(async () => {
         waiting.release();
-        await execute.mock.results[0].value;
+        await execute.mock.results[0]!.value;
       });
 
       expect(textOf(handle)).toBe(before);
@@ -259,7 +258,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     const pending = useDocumentProposals.getState().pending[PROPOSAL_ID];
     await act(async () => {
       old.release();
-      await execute.mock.results[0].value;
+      await execute.mock.results[0]!.value;
     });
 
     expect(textOf(handle)).toBe('TARGET');
@@ -269,7 +268,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
 
   it('does not write or publish through a provider replaced during preparation', async () => {
     const handle = open();
-    const oldProvider = transport.providers[0];
+    const oldProvider = transport.providers[0]!;
     const waiting = gate();
     pauseConfig(waiting);
     const execute = watchExecution();
@@ -287,7 +286,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     replacement.emit('synced');
     await act(async () => {
       waiting.release();
-      await execute.mock.results[0].value;
+      await execute.mock.results[0]!.value;
     });
 
     expect(textOf(handle)).toBe('TARGET');
@@ -305,13 +304,13 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     const { result } = renderHook(() => useDocumentProposalPickup(SPACE_ID, handle, 'granted', false, NAME));
     await waiting.entered;
     const pending = useDocumentProposals.getState().pending[PROPOSAL_ID];
-    const replica = replicaOf(transport.providers[0].document);
+    const replica = replicaOf(transport.providers[0]!.document);
     const before = documentBodyFragment(replica).toString();
 
     act(() => evictDocumentEditor(NAME));
     await act(async () => {
       waiting.release();
-      await Promise.resolve(execute.mock.results[0].value).catch(() => undefined);
+      await Promise.resolve(execute.mock.results[0]!.value).catch(() => undefined);
     });
 
     expect(documentBodyFragment(replica).toString()).toBe(before);
@@ -331,7 +330,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
       { initialProps: { unbuildable: false } },
     );
     await waiting.entered;
-    const replica = replicaOf(transport.providers[0].document);
+    const replica = replicaOf(transport.providers[0]!.document);
     const before = documentBodyFragment(replica).toString();
 
     act(() => evictDocumentEditor(NAME));
@@ -340,7 +339,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     expect(useDocumentProposals.getState().cards[PROPOSAL_ID]).toBeUndefined();
     await act(async () => {
       waiting.release();
-      await Promise.resolve(execute.mock.results[0].value).catch(() => undefined);
+      await Promise.resolve(execute.mock.results[0]!.value).catch(() => undefined);
     });
 
     expect(documentBodyFragment(replica).toString()).toBe(before);
@@ -378,7 +377,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     });
     await act(async () => {
       first.release();
-      await Promise.resolve(execute.mock.results[0].value).catch(() => undefined);
+      await Promise.resolve(execute.mock.results[0]!.value).catch(() => undefined);
     });
 
     expect(execute).toHaveBeenCalledTimes(2);
@@ -386,12 +385,12 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     expect(useDocumentProposals.getState().cards['55555555-5555-4555-8555-555555555555']).toEqual({ state: 'working', action: 'write' });
     await act(async () => {
       second.release();
-      await execute.mock.results[1].value;
+      await execute.mock.results[1]!.value;
     });
     await third.entered;
     await act(async () => {
       third.release();
-      await execute.mock.results[2].value;
+      await execute.mock.results[2]!.value;
     });
     expect(textOf(nextHandle)).toBe('TARGETTHIRDSECOND');
   });
@@ -416,7 +415,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
       handle.editor.insertBlocks([
         { id: blockId, type: 'paragraph', content: 'ALREADY LANDED' },
       ] as never, 'target', 'after');
-      const provider = transport.providers[0];
+      const provider = transport.providers[0]!;
       provider.isAuthenticated = true;
       provider.authorizedScope = 'readonly';
       provider.emit('authenticated', { scope: 'readonly' });
@@ -441,7 +440,7 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
     handle.editor.insertBlocks([
       { id: blockId, type: 'paragraph', content: 'ALREADY LANDED' },
     ] as never, 'target', 'after');
-    const provider = transport.providers[0];
+    const provider = transport.providers[0]!;
     provider.isAuthenticated = false;
     const fetchConfig = vi.spyOn(assetsApi, 'fetchUploadConfig');
     const connection = readDocConnection(NAME);
@@ -464,7 +463,7 @@ describe('proposal pickup admission while its body is hidden', () => {
   for (const event of ['granted', 'readonly', 'unknown', 'refused'] as const) {
     it(`uses the registry's current ${event} facts when preparation finishes under Activity`, async () => {
       const handle = open();
-      const provider = transport.providers[0];
+      const provider = transport.providers[0]!;
       const waiting = gate();
       pauseConfig(waiting);
       const execute = watchExecution();
@@ -525,7 +524,7 @@ describe('proposal pickup admission while its body is hidden', () => {
       // granted request above is still preparing and must read current facts.
       await act(async () => {
         waiting.release();
-        await execute.mock.results[0].value;
+        await execute.mock.results[0]!.value;
       });
 
       expect(useDocumentProposals.getState().pending).toEqual({});

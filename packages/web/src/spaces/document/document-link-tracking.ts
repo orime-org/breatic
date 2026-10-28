@@ -36,9 +36,6 @@ import {
   relativePositionToAbsolutePosition,
   ySyncPluginKey,
 } from 'y-prosemirror';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { nameBodyPoint, resolveBodyPoint } from '@web/spaces/document/document-body-positions';
-import type { BodyPointName, BodyPositionUnavailable } from '@web/spaces/document/document-body-positions-types';
 
 /**
  * The binding's index from Yjs types to the nodes it produced.
@@ -59,28 +56,10 @@ type ProsemirrorMapping = Map<
  * one before it. What sits between them is read back from the document, so a
  * link whose text a peer extended is still the same link.
  */
-export interface XmlTrackedLink {
+export interface TrackedLink {
   start: Y.RelativePosition;
   end: Y.RelativePosition;
 }
-
-/** A records hold uses the same native names as history and every other consumer. */
-export interface BodyTrackedLink {
-  readonly kind: 'records';
-  readonly start: BodyPointName;
-  readonly end: BodyPointName;
-}
-
-/** The existing hold keeps its original source family's native names. */
-export type TrackedLink = XmlTrackedLink | BodyTrackedLink;
-
-/** Suspension is explicit and must not be interpreted as a deleted link. */
-export interface TrackedSpanUnavailable {
-  readonly unavailable: BodyPositionUnavailable;
-}
-
-/** Normal and gone results retain the existing public object shapes. */
-export type TrackedLinkSelection = LinkSelection & { readonly unavailable?: BodyPositionUnavailable };
 
 /**
  * What the sync plugin keeps, in the shape this module reads.
@@ -123,17 +102,12 @@ export function syncBindingOf(editorState: EditorState): SyncBound | null {
  * @returns A handle that follows the link, or null while the sync plugin has
  *   yet to bind one: every editor is built over a shared fragment, so what can
  *   be missing is the binding rather than the document.
- * @throws {Error} If the supplied span has no legal common name.
+ * @throws {never}
  */
 export function trackLink(
   editorState: EditorState,
   span: { from: number; to: number },
 ): TrackedLink | null {
-  const body = bodyBindingOf(editorState);
-  if (body !== null) {
-    const index = body.read(editorState).index;
-    return { kind: 'records', start: nameBodyPoint(index, { kind: 'text', pos: span.from, assoc: 1 }), end: nameBodyPoint(index, { kind: 'text', pos: span.to, assoc: 1 }) };
-  }
   const bound = syncBindingOf(editorState);
   if (!bound) return null;
   return {
@@ -166,10 +140,9 @@ export function trackLink(
 export function resolveTrackedLink(
   state: EditorState,
   tracked: TrackedLink | null,
-): TrackedLinkSelection {
+): LinkSelection {
   const span = tracked ? resolveTrackedSpan(state, tracked) : null;
   if (!span) return { range: null, href: null };
-  if ('unavailable' in span) return { range: null, href: null, unavailable: span.unavailable };
   return resolveLinkInSpan(state, span.from, span.to);
 }
 
@@ -195,17 +168,7 @@ export function resolveTrackedLink(
 export function resolveTrackedSpan(
   editorState: EditorState,
   tracked: TrackedLink,
-): { from: number; to: number } | TrackedSpanUnavailable | null {
-  if ('kind' in tracked) {
-    const body = bodyBindingOf(editorState);
-    if (body === null) return { unavailable: { status: 'bindingUnavailable', runtime: 'disposed' } };
-    const index = body.read(editorState).index;
-    const options = { runtime: body.runtime.read().status };
-    const from = resolveBodyPoint(index, tracked.start, options);
-    const to = resolveBodyPoint(index, tracked.end, options);
-    for (const endpoint of [from, to]) if (endpoint.status !== 'resolved' && endpoint.status !== 'gone' && endpoint.status !== 'hidden') return { unavailable: endpoint };
-    return from.status === 'resolved' && to.status === 'resolved' && to.pos > from.pos ? { from: from.pos, to: to.pos } : null;
-  }
+): { from: number; to: number } | null {
   const bound = syncBindingOf(editorState);
   if (!bound) return null;
   const from = relativePositionToAbsolutePosition(

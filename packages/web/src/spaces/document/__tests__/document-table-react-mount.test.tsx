@@ -8,7 +8,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
-import { documentBodyFragment, importCurrentDocumentBody } from '@breatic/shared';
+import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
@@ -67,7 +67,6 @@ function loadedTable(): LoadedTable {
   });
   const tree: unknown = editor.prosemirrorState.doc.toJSON();
   Y.applyUpdate(doc, Y.encodeStateAsUpdate(seed));
-  importCurrentDocumentBody(doc, 'project-p/document-loaded-table');
   const cursor = new Awareness(doc);
   cursors.push(cursor);
   const handle = getDocumentEditor(doc, 'project-p/document-loaded-table', {
@@ -127,7 +126,7 @@ describe.each([false, true])('loaded table mounted from a React effect, StrictMo
     });
     expect(errors.mock.calls).toEqual([]);
     const table = container.querySelector('table')!;
-    const body = table.tBodies[0];
+    const body = table.tBodies[0]!;
     expect(snapshots[0]?.table).toBe(table);
     for (const snapshot of snapshots) {
       expect(snapshot.table).toBe(table);

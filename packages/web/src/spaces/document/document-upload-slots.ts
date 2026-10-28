@@ -41,9 +41,6 @@ import { rowById } from '@web/spaces/document/document-row-by-id';
 import { DOC_TABLE, holdsBlocks } from '@web/spaces/document/document-table-nodes';
 import { namesOnUndoStack } from '@web/spaces/document/document-undo-selection';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
-import { nameBodyPoint, resolveBodyPoint } from '@web/spaces/document/document-body-positions';
-import type { BodyPointName } from '@web/spaces/document/document-body-positions-types';
 
 /** Where a batch of files lands: a position between two blocks. */
 export type UploadGap = number;
@@ -134,12 +131,12 @@ interface InsertedSibling {
  */
 function insertedSibling(batch: UploadBatch, k: number, doc: PMNode): InsertedSibling | undefined {
   for (let later = k + 1; later < batch.slots.length; later += 1) {
-    const id = batch.slots[later].blockId;
+    const id = batch.slots[later]!.blockId;
     const row = id === null ? undefined : rowById(doc, id);
     if (row !== undefined) return { row, after: true };
   }
   for (let earlier = k - 1; earlier >= 0; earlier -= 1) {
-    const id = batch.slots[earlier].blockId;
+    const id = batch.slots[earlier]!.blockId;
     const row = id === null ? undefined : rowById(doc, id);
     if (row !== undefined) return { row, after: false };
   }
@@ -210,30 +207,7 @@ export function blockGapAt(doc: PMNode, pos: number): number {
 }
 
 /** Each batch's gap as Yjs names it, by batch id. */
-type NamedGaps = ReadonlyMap<string, Y.RelativePosition | BodyPointName>;
-
-/**
- * Names an actual upload insertion level using its common parent and neighbors.
- * @param state - The exact current records state.
- * @param gap - The legal PM insertion boundary on that state.
- * @returns Its existing common gap name, or a body edge for a synthetic hole.
- * @throws {Error} If no matching records binding exists.
- */
-function nameRecordsGap(state: EditorState, gap: UploadGap): BodyPointName {
-  const body = bodyBindingOf(state);
-  if (body === null) throw new Error('A records upload gap requires the current body binding');
-  const index = body.read(state).index;
-  const position = state.doc.resolve(blockGapAt(state.doc, gap));
-  for (let depth = position.depth; depth > 0; depth -= 1) {
-    if (!holdsBlocks(position.node(depth))) continue;
-    const parent = [...index.nodes.values()].find((node) => node.from === position.before(depth) && node.contentFrom === position.start(depth));
-    if (parent === undefined) continue;
-    const left = position.nodeBefore === null ? undefined : [...index.nodes.values()].find((node) => node.from === position.pos - position.nodeBefore!.nodeSize);
-    const right = position.nodeAfter === null ? undefined : [...index.nodes.values()].find((node) => node.from === position.pos);
-    return nameBodyPoint(index, { kind: 'gap', parent: parent.id, left: left?.id ?? null, right: right?.id ?? null, assoc: 1 });
-  }
-  return nameBodyPoint(index, { kind: 'bodyEdge', edge: gap <= 1 ? 'start' : 'end' });
-}
+type NamedGaps = ReadonlyMap<string, Y.RelativePosition>;
 
 /**
  * A gap as Yjs names it.
@@ -273,18 +247,11 @@ function carryGaps(
   named: NamedGaps,
   handed: NamedGaps | null,
 ): readonly UploadBatch[] {
-  const body = bodyBindingOf(state);
-  if (body !== null && body.runtime.read().status !== 'active') return batches;
   const bound = fromYjs(tr) ? syncBindingOf(state) : null;
   let changed = false;
   const next = batches.map((batch) => {
     const name = handed?.get(batch.id) ?? named.get(batch.id);
-    let found: number | null = null;
-    if (body !== null && name !== undefined && 'kind' in name) {
-      const result = resolveBodyPoint(body.read(state).index, name, { runtime: body.runtime.read().status });
-      if (result.status === 'bindingUnavailable' || result.status === 'pendingDependency') return batch;
-      if (result.status === 'resolved') found = result.pos;
-    } else if (bound !== null && name !== undefined && !('kind' in name)) found = gapNamed(bound, name);
+    const found = bound !== null && name !== undefined ? gapNamed(bound, name) : null;
     const gap = blockGapAt(tr.doc, found ?? tr.mapping.map(batch.gap));
     if (gap === batch.gap) return batch;
     changed = true;
@@ -479,11 +446,8 @@ export const documentUploadsExtension = createExtension(() => {
             update: (next, prev): void => {
               const batches = uploadBatchesIn(next.state);
               if (next.state.doc !== prev.doc || batches !== uploadBatchesIn(prev)) {
-                const body = bodyBindingOf(next.state);
                 const bound = syncBindingOf(next.state);
-                if (body !== null) {
-                  if (body.runtime.read().status === 'active') named = new Map(batches.map((batch) => [batch.id, nameRecordsGap(next.state, batch.gap)]));
-                } else named = new Map(
+                named = new Map(
                   bound === null
                     ? []
                     : batches.map((batch) => [batch.id, nameGap(bound, batch.gap)]),
@@ -553,18 +517,6 @@ export function addUploadBatch(
  * @returns A function giving the gap as it stands when called.
  */
 export function holdGap(view: EditorView, gap: UploadGap): () => UploadGap {
-  const body = bodyBindingOf(view.state);
-  if (body !== null) {
-    const name = nameRecordsGap(view.state, gap);
-    let held = gap;
-    return (): UploadGap => {
-      const current = bodyBindingOf(view.state);
-      if (current === null) return held;
-      const found = resolveBodyPoint(current.read(view.state).index, name, { runtime: current.runtime.read().status });
-      if (found.status === 'resolved') held = found.pos;
-      return held;
-    };
-  }
   const bound = syncBindingOf(view.state);
   if (bound === null) return () => gap;
   const name = nameGap(bound, gap);
@@ -615,7 +567,7 @@ export function insertSlotBlock(
   const batches = uploadBatchesIn(view.state);
   for (const batch of batches) {
     const k = batch.slots.findIndex((slot) => slot.id === slotId);
-    if (k < 0 || batch.slots[k].phase !== 'uploading') continue;
+    if (k < 0 || batch.slots[k]!.phase !== 'uploading') continue;
     const blockId = newId();
     const { at, quoted } = placeSlot(batch, k, view.state.doc);
     const props = { ...block.props, [QUOTED]: quoted };

@@ -18,7 +18,6 @@ import {
   commentsOn,
 } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 
 /**
@@ -42,7 +41,6 @@ export async function replyToThread(
     threadId,
     comment: { body: asCommentBody(body) },
   });
-  if (bodyBindingOf(editor.prosemirrorState)?.canWrite() === false) throw new Error('Document editing is unavailable');
   return true;
 }
 

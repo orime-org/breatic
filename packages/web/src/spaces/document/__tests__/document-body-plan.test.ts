@@ -95,78 +95,6 @@ function plan(env: BodyBatchEnvironment): BodyBatchPlan {
 }
 
 describe('explicit body batch preflight and commit', () => {
-  it('reports the actual registration user-write and projection boundaries', () => {
-    const { env } = fixture();
-    const phases: { phase: string; text: string }[] = [];
-    const phased = { ...env, onCommitPhase: (phase: string): void => { phases.push({ phase, text: project(env.doc).doc.textContent }); } };
-    const prepared = prepareBodyBatch(phased, plan(phased));
-    expect(phases).toEqual([]);
-    commitPreparedBodyBatch(phased, prepared);
-    expect(phases).toEqual([
-      { phase: 'registering', text: 'AB' }, { phase: 'committing', text: 'AB' },
-      { phase: 'written', text: 'ABQ' }, { phase: 'projecting', text: 'ABQ' },
-    ]);
-  });
-
-  it('records entry and return of the actual native USER call without observer callbacks', () => {
-    const { env } = fixture();
-    const writeState = { started: false, returned: false };
-    const tracked = { ...env, writeState };
-    const prepared = prepareBodyBatch(tracked, plan(tracked));
-    expect(writeState).toEqual({ started: false, returned: false });
-    commitPreparedBodyBatch(tracked, prepared);
-    expect(writeState).toEqual({ started: true, returned: true });
-  });
-
-  it('reports a USER observer failure while keeping its actual written source', () => {
-    const { env, history } = fixture();
-    const writeState = { started: false, returned: false };
-    const tracked = { ...env, writeState };
-    const prepared = prepareBodyBatch(tracked, plan(tracked));
-    const failure = new Error('native observer failed');
-    env.doc.on('update', (_update, origin) => { if (origin === env.userOrigin) throw failure; });
-    expect(() => commitPreparedBodyBatch(tracked, prepared)).toThrow(failure);
-    expect(project(env.doc).doc.textContent).toBe('ABQ');
-    expect(writeState).toEqual({ started: true, returned: false });
-    expect(history.undoStack).toHaveLength(1);
-  });
-
-  it.each([
-    ['registering', 'AB', 0], ['committing', 'AB', 0], ['written', 'ABQ', 1], ['projecting', 'ABQ', 1],
-  ] as const)('retains the real source after a failure at %s', (at, text, items) => {
-    const { env, history } = fixture();
-    const failure = new Error(`test-${at}`);
-    const writeState = { started: false, returned: false };
-    const phased = { ...env, writeState, onCommitPhase: (phase: string): void => { if (phase === at) throw failure; } };
-    const prepared = prepareBodyBatch(phased, plan(phased));
-    expect(() => commitPreparedBodyBatch(phased, prepared)).toThrow(failure);
-    expect(project(env.doc).doc.textContent).toBe(text);
-    expect(history.undoStack).toHaveLength(items);
-    expect(documentBodyRecords(env.doc).enabled.has('batch:group')).toBe(items === 1);
-    expect(writeState).toEqual({ started: items === 1, returned: items === 1 });
-  });
-
-  it('checks the source revision again after entering registration', () => {
-    const { env } = fixture();
-    const phased = { ...env, onCommitPhase: (phase: string): void => {
-      if (phase === 'registering') documentBodySource(env.doc, 'S:A').delete(1, 1);
-    } };
-    const prepared = prepareBodyBatch(phased, plan(phased));
-    expect(() => commitPreparedBodyBatch(phased, prepared)).toThrow(/revision/i);
-    expect(project(env.doc).doc.textContent).toBe('B');
-    expect(documentBodyRecords(env.doc).sources.has('fresh')).toBe(false);
-  });
-
-  it('checks final permission after entering the native USER phase', () => {
-    let allowed = true;
-    const { env } = fixture('AB', () => allowed);
-    const phased = { ...env, onCommitPhase: (phase: string): void => { if (phase === 'committing') allowed = false; } };
-    const prepared = prepareBodyBatch(phased, plan(phased));
-    expect(() => commitPreparedBodyBatch(phased, prepared)).toThrow(/admission/i);
-    expect(project(env.doc).doc.textContent).toBe('AB');
-    expect(documentBodySource(env.doc, 'fresh').length).toBe(2);
-  });
-
   it('preflights in isolation then registers before exactly one native user transaction', () => {
     const { env, history } = fixture();
     const before = Y.encodeStateAsUpdate(env.doc);
@@ -181,12 +109,12 @@ describe('explicit body batch preflight and commit', () => {
     });
     const result = commitPreparedBodyBatch(env, prepared);
     expect(observations.map((entry) => [entry.user, entry.text])).toEqual([[false, 'AB'], [true, 'ABQ']]);
-    expect(observations[0].ids).toEqual(expectedBefore.units.map((unit) => unit.token));
-    expect(observations[0].history).toBe(0);
+    expect(observations[0]!.ids).toEqual(expectedBefore.units.map((unit) => unit.token));
+    expect(observations[0]!.history).toBe(0);
     expect(history.undoStack).toHaveLength(1);
     expect(result.projection.doc.textContent).toBe('ABQ');
     expect(result.projection.units.slice(0, 2)).toEqual(expectedBefore.units);
-    expect(result.aliases.get('batch:fresh:0')).toBe(result.projection.units[2].token);
+    expect(result.aliases.get('batch:fresh:0')).toBe(result.projection.units[2]!.token);
     expect(result.aliases.size).toBe(1);
     history.undo();
     expect(project(env.doc).doc.textContent).toBe('AB');
@@ -199,7 +127,7 @@ describe('explicit body batch preflight and commit', () => {
     const input = plan(env);
     const malformed = damage === 'edges'
       ? { ...input, registration: { ...input.registration, facts: [] } }
-      : damage === 'destination' ? { ...input, fresh: [{ ...input.fresh[0], source: 'missing' }] }
+      : damage === 'destination' ? { ...input, fresh: [{ ...input.fresh[0]!, source: 'missing' }] }
         : damage === 'delete' ? { ...input, native: [{ kind: 'delete' as const, ids: ['missing/native'] }] }
           : { ...input, expected: { ...input.expected, doc: project(env.doc).doc } };
     const before = Y.encodeStateAsUpdate(env.doc);
@@ -294,7 +222,7 @@ describe('explicit body batch preflight and commit', () => {
     const input = plan(env);
     const source = Y.encodeStateAsUpdate(env.doc);
     expect(() => prepareBodyBatch(env, {
-      ...input, fresh: [{ ...input.fresh[0], source: 'S:A' }],
+      ...input, fresh: [{ ...input.fresh[0]!, source: 'S:A' }],
     })).toThrow();
     expect(Y.encodeStateAsUpdate(env.doc)).toEqual(source);
     expect(history.undoStack).toHaveLength(0);
@@ -307,7 +235,7 @@ describe('explicit body batch preflight and commit', () => {
     const source = Y.encodeStateAsUpdate(env.doc);
     const input: BodyBatchPlan = {
       id: 'half-surrogate', registration: {}, cuts: [],
-      native: [{ kind: 'delete', ids: [frame.units[1].token] }],
+      native: [{ kind: 'delete', ids: [frame.units[1]!.token] }],
       fresh: [], enable: [], expected: frame,
     };
     expect(() => prepareBodyBatch(env, input)).toThrow(/surrogate/i);
@@ -320,10 +248,10 @@ describe('explicit body batch preflight and commit', () => {
     const frame = project(env.doc);
     const prepared = prepareBodyBatch(env, {
       id: 'delete-A', registration: {}, cuts: [],
-      native: [{ kind: 'delete', ids: [frame.units[0].token] }], fresh: [], enable: [],
+      native: [{ kind: 'delete', ids: [frame.units[0]!.token] }], fresh: [], enable: [],
       expected: {
         doc: schema.nodes['doc'].create(null, schema.nodes['paragraph'].create({ id: 'A' }, schema.text('B'))),
-        units: [{ ...frame.units[1], pos: 1 }],
+        units: [{ ...frame.units[1]!, pos: 1 }],
       },
     });
     const result = commitPreparedBodyBatch(env, prepared);
@@ -367,7 +295,7 @@ describe('explicit body batch preflight and commit', () => {
         groups: [{ id: 'format:group', history: 'user', facts: ['format:bold'] }],
         facts: [{ id: 'format:bold', group: 'format:group', dependencies: [], kind: 'mark', payload: { type: 'bold', attrs: {} } }],
       }, cuts: [], fresh: [], enable: ['format:group'],
-      native: [{ kind: 'format', ids: [before.units[0].token], attributes: { 'mark:bold': { factId: 'format:bold' } } }],
+      native: [{ kind: 'format', ids: [before.units[0]!.token], attributes: { 'mark:bold': { factId: 'format:bold' } } }],
       expected: before,
     });
     commitPreparedBodyBatch(env, prepared);
@@ -391,7 +319,7 @@ describe('explicit body batch preflight and commit', () => {
     const source = Y.encodeStateAsUpdate(env.doc);
     expect(() => prepareBodyBatch(env, {
       id: 'invalid-context', registration: {}, cuts: [], fresh: [], enable: [], expected: before,
-      native: [{ kind: 'format', ids: [before.units[0].token], attributes: { ctx: null } }],
+      native: [{ kind: 'format', ids: [before.units[0]!.token], attributes: { ctx: null } }],
     })).toThrow(/mark keys/i);
     expect(Y.encodeStateAsUpdate(env.doc)).toEqual(source);
   });

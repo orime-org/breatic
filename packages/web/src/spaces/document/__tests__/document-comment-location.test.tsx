@@ -27,8 +27,6 @@ import { TextSelection } from '@tiptap/pm/state';
 import { CommentsExtension } from '@blocknote/core/comments';
 import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import * as Y from 'yjs';
-import type * as ConnectionModule from '@web/data/yjs/collab-socket';
-import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 
 import { type DocumentProposal } from '@breatic/shared';
@@ -48,7 +46,7 @@ import { useDocumentProposals } from '@web/stores/document-proposals';
 
 const connection = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@web/data/yjs/collab-socket', async (readActual) => ({
-  ...await readActual<typeof ConnectionModule>(),
+  ...await readActual<typeof import('@web/data/yjs/collab-socket')>(),
   readDocConnection: connection.read,
 }));
 
@@ -65,7 +63,6 @@ describe('an explicit Agent comment View', () => {
   beforeEach(async () => {
     useDocumentProposals.getState().reset();
     doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     awareness = new Awareness(doc);
     transport = new HocuspocusProviderWebsocket({
       url: 'ws://localhost',
@@ -200,7 +197,7 @@ describe('an explicit Agent comment View', () => {
     expect(card.dataset.selected).toBe('true');
     expect(screen.getByTestId('doc-comment-rail-filter-all')).toHaveAttribute('aria-pressed', 'true');
     expect(selectedThreadsIn(handle.editor.prosemirrorState)).toEqual([threadId]);
-    expect(handle.editor.prosemirrorView.dom.querySelector('.bn-thread-mark')).toHaveAttribute('data-orphan', 'true');
+    expect(handle.editor.prosemirrorView!.dom.querySelector('.bn-thread-mark')).toHaveAttribute('data-orphan', 'true');
   });
 
   it('keeps a later manual filter across Activity and prepares All for a fresh View', async () => {
@@ -225,7 +222,7 @@ describe('an explicit Agent comment View', () => {
   it('repeats the final reveal for a fresh View of the same selected thread', async () => {
     const { proposal, threadId } = await fixture();
     const viewport = document.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    vi.spyOn(handle.editor.prosemirrorView, 'coordsAtPos').mockReturnValue({
+    vi.spyOn(handle.editor.prosemirrorView!, 'coordsAtPos').mockReturnValue({
       top: 600, bottom: 620, left: 0, right: 10,
     });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement): DOMRect {
@@ -288,7 +285,7 @@ describe('an explicit Agent comment View', () => {
     const { proposal, threadId } = await fixture();
     const run = firstRun();
     act(() => {
-      const view = handle.editor.prosemirrorView;
+      const view = handle.editor.prosemirrorView!;
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, run.from + 8)));
     });
     const before = {

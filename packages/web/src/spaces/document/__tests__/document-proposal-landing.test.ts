@@ -11,7 +11,6 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
 import { Awareness } from 'y-protocols/awareness';
 import { deriveId, type DocumentProposal } from '@breatic/shared';
 
@@ -39,7 +38,6 @@ afterEach(() => {
  */
 async function open(markdown: string): Promise<DocumentEditorHandle> {
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const handle = getDocumentEditor(doc, `project-p/document-${String(Math.random())}`, {
     caretProvider: { awareness: new Awareness(doc) },
     readWho: () => ({ role: 'editor', viewerId: 'reader-1' }),
@@ -91,7 +89,7 @@ function marked(handle: DocumentEditorHandle): Array<{ threadId: string; text: s
  * @param index - The block to join upward.
  */
 function mergeIntoAbove(handle: DocumentEditorHandle, index: number): void {
-  const view = handle.editor.prosemirrorView;
+  const view = handle.editor.prosemirrorView!;
   const group = view.state.doc.firstChild!;
   let pos = 1;
   const starts: number[] = [];
@@ -100,8 +98,8 @@ function mergeIntoAbove(handle: DocumentEditorHandle, index: number): void {
     pos += node.nodeSize;
   });
   const above = group.child(index - 1);
-  const contentEnd = starts[index - 1] + 1 + above.firstChild!.nodeSize - 1;
-  view.dispatch(view.state.tr.delete(contentEnd, starts[index] + 2));
+  const contentEnd = starts[index - 1]! + 1 + above.firstChild!.nodeSize - 1;
+  view.dispatch(view.state.tr.delete(contentEnd, starts[index]! + 2));
 }
 
 /**
@@ -146,10 +144,10 @@ describe('a comment', () => {
     const result = await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
     const [thread] = threads(handle);
-    expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0].id, threadId: thread.id });
+    expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: blocks(handle)[0]!.id, threadId: thread!.id });
     expect(thread?.metadata).toEqual({ proposalId: proposal.proposalId });
     expect(thread?.comments[0]).toMatchObject({ userId: 'reader-1', metadata: { fromAgent: true } });
-    expect(marked(handle)).toEqual([{ threadId: thread.id, text: 'the gate' }]);
+    expect(marked(handle)).toEqual([{ threadId: thread!.id, text: 'the gate' }]);
   });
 
   it('hangs on words that run across table cells, one stretch per cell', async () => {
@@ -203,7 +201,7 @@ describe('one undo step', () => {
   it('takes back the landing and leaves what the reader typed just before it', async () => {
     const handle = await open('Typed here.\n\nTarget.');
     const proposal = proposalOn(handle, 1, { kind: 'rewrite', body: 'Rewritten.' });
-    const view = handle.editor.prosemirrorView;
+    const view = handle.editor.prosemirrorView!;
     view.dispatch(view.state.tr.insertText(' More', 3 + 'Typed here.'.length));
 
     await landProposal(handle, proposal, 'write', () => ({ available: true, writeAccess: 'granted' }));
@@ -272,7 +270,7 @@ describe('what is checked before anything is written', () => {
     const handle = await open('She turns.');
     const proposal = { ...proposalOn(handle, 0, { kind: 'comment', quote: 'turns', body: 'Why?' }), original: 'She turns.' };
     handle.editor.insertInlineContent(' She turns again.');
-    const now = blocks(handle)[0].text;
+    const now = blocks(handle)[0]!.text;
 
     expect(await landProposal(handle, { ...proposal, original: now }, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'changed' });
     expect(threads(handle)).toHaveLength(0);
@@ -318,7 +316,7 @@ describe('knowing a proposal has landed', () => {
 
     await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
-    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0].id });
+    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0]!.id });
   });
 
   it('names the thread a comment landed as, for the panel to open on it', async () => {
@@ -327,14 +325,14 @@ describe('knowing a proposal has landed', () => {
 
     const result = await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
 
-    expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0].id });
+    expect(result).toEqual({ outcome: 'applied', how: 'comment', blockId: proposal.blockId, threadId: threads(handle)[0]!.id });
   });
 
   it('does not count a comment whose words have gone', async () => {
     const handle = await open('The hero arrives.');
     const proposal = proposalOn(handle, 0, { kind: 'comment', quote: 'hero', body: 'Who?' });
     await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }));
-    handle.editor.removeBlocks([blocks(handle)[0].id]);
+    handle.editor.removeBlocks([blocks(handle)[0]!.id]);
 
     expect(threads(handle)).toHaveLength(1);
     expect(landedAt(handle, proposal)).toBeNull();
@@ -362,7 +360,7 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
       outcome: 'applied',
       how: 'comment',
       blockId: proposal.blockId,
-      threadId: threads(handle)[0].id,
+      threadId: threads(handle)[0]!.id,
     });
   });
 
@@ -375,9 +373,9 @@ describe('the block a landed proposal is shown at (inner#1509 review round 1)', 
     mergeIntoAbove(handle, 1);
 
     expect(blocks(handle).map((b) => b.text)).toEqual(['Scene two opens.The hero arrives.']);
-    const threadId = threads(handle)[0].id;
-    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: above.id, threadId });
-    expect(await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'applied', how: 'comment', blockId: above.id, threadId });
+    const threadId = threads(handle)[0]!.id;
+    expect(landedAt(handle, proposal)).toEqual({ how: 'comment', blockId: above!.id, threadId });
+    expect(await landProposal(handle, proposal, 'comment', () => ({ available: true, writeAccess: 'granted' }))).toEqual({ outcome: 'applied', how: 'comment', blockId: above!.id, threadId });
   });
 });
 

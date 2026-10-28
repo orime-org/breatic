@@ -1654,12 +1654,6 @@
     "readOnlyNotice": "You can only view this Space right now — anything you change will not be saved.",
     "lockedAria": "Locked",
     "document": {
-      "runtime": {
-        "waiting": "Waiting for content. Editing is paused; your input is kept.",
-        "failed": "Editing is paused. Copy your input, then reload to check the latest content.",
-        "accepted": "Current input (plain text)",
-        "lastGood": "Last displayed content (plain text)"
-      },
       "loading": "Loading editor…",
       "unavailable": {
         "text": "This document could not be opened. It may have been deleted, or you may no longer have access to it.",

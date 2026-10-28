@@ -28,9 +28,8 @@
  * caller says why (A21).
  */
 
-import type { CommentsExtension, ThreadData } from '@blocknote/core/comments';
-import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
+import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
+import type { EditorState } from '@tiptap/pm/state';
 
 import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
 import {
@@ -45,7 +44,7 @@ interface CommentableEditor {
   /** The view, absent until the editor is mounted. */
   readonly prosemirrorView: {
     readonly state: EditorState;
-    dispatch(tr: Transaction): void;
+    dispatch(tr: import('@tiptap/pm/state').Transaction): void;
   } | null;
   /**
    * The registered extension matching this factory.
@@ -96,24 +95,19 @@ export async function commentOn(
 ): Promise<ThreadData | null> {
   const view = editor.prosemirrorView;
   if (view === null || !somewhere(aim(view.state))) return null;
-  if (bodyBindingOf(view.state)?.canWrite() === false) throw new Error('Document editing is unavailable');
 
   const comments = commentsOn(editor);
   if (comments === undefined) return null;
 
-  const thread = await comments.threadStore.createThread({
+  const thread = (await comments.threadStore.createThread({
     initialComment: { body, ...(metadata.comment === undefined ? {} : { metadata: metadata.comment }) },
     ...(metadata.thread === undefined ? {} : { metadata: metadata.thread }),
-  });
-
-  // The native store writes synchronously, while its result crosses an await.
-  // A paused or disposed owner must retain the draft and report incomplete work.
-  if (bodyBindingOf(view.state)?.canWrite() === false) throw new Error('Document editing is unavailable');
+  })) as ThreadData;
 
   const landing = aim(view.state);
   if (!somewhere(landing)) return thread;
 
-  const mark = view.state.schema.marks[COMMENT_MARK].create({
+  const mark = view.state.schema.marks[COMMENT_MARK]!.create({
     threadId: thread.id,
     orphan: false,
   });

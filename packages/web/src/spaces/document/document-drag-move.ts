@@ -29,17 +29,9 @@
  */
 
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
-import type { Command } from '@tiptap/pm/state';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
 
-import {
-  BODY_OPERATION_META,
-  BodyOriginMirror,
-  BodyProvenanceError,
-  bodyInlineOccurrences,
-  recordBodyOperation,
-} from '@web/spaces/document/document-body-provenance';
 import {
   rowById,
   type RowInDocument,
@@ -108,28 +100,6 @@ export function rangeToLift(
 }
 
 /**
- * Runs the existing row removal and insertion against each state's live nodes.
- * The private state carries occurrence tags through the installed fitter.
- * @param blockId - The explicitly dragged row.
- * @param at - The actual pointer position before source removal.
- * @returns The same product move for the real and private schemas.
- * @throws {RangeError} If ProseMirror rejects the source range or insertion.
- */
-function rowMoveCommand(blockId: string, at: number): Command {
-  return (state, dispatch) => {
-    const row = rowById(state.doc, blockId);
-    if (row === undefined) return false;
-    const landing = landingFor(state.doc, at, row.node);
-    const leaving = rangeToLift(state.doc, row);
-    const tr = state.tr;
-    tr.delete(leaving.from, leaving.to);
-    tr.insert(tr.mapping.map(landing), row.node);
-    dispatch?.(tr);
-    return true;
-  };
-}
-
-/**
  * Moves the row to where the drop happened, reading it from the document.
  *
  * One transaction, so the row is never absent from the document and the two
@@ -146,8 +116,6 @@ function rowMoveCommand(blockId: string, at: number): Command {
  * @param view - The view to write to.
  * @param blockId - The row that was dragged.
  * @param at - The document position the pointer was over at the drop.
- * @throws {BodyProvenanceError} If the private fitter differs or changes inline content.
- * @throws {RangeError} If ProseMirror rejects the source range or insertion.
  */
 export function moveRowTo(view: EditorView, blockId: string, at: number): void {
   const row = rowById(view.state.doc, blockId);
@@ -157,20 +125,9 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
   if (landing >= row.from && landing <= row.to) return;
   if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) return;
 
-  const sourceAt = new Map(bodyInlineOccurrences(view.state.doc).map((unit) => [unit.pos, `row-source:${unit.pos}`]));
-  const mirror = new BodyOriginMirror(view.state.tr, { sourceAt });
-  const operation = mirror.nativeMove('whole row drop', row.from, row.to, view.state.selection, rowMoveCommand(blockId, at));
-  if (operation.created.length > 0 || (operation.dropped?.length ?? 0) > 0) {
-    throw new BodyProvenanceError('A whole row drop changed its inline content');
-  }
-  const transaction = mirror.tr.setMeta(BODY_OPERATION_META, []);
-  recordBodyOperation(transaction, {
-    id: operation.id,
-    name: operation.name,
-    source: operation.source,
-    target: operation.target,
-    handoffs: operation.handoffs.map((handoff) => ({ kind: handoff.kind, source: handoff.source, target: handoff.target })),
-    created: [],
-  });
-  view.dispatch(transaction);
+  const leaving = rangeToLift(view.state.doc, row);
+  const tr = view.state.tr;
+  tr.delete(leaving.from, leaving.to);
+  tr.insert(tr.mapping.map(landing), row.node);
+  view.dispatch(tr);
 }

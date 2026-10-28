@@ -36,7 +36,6 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeInitialSpaceContent } from '@breatic/shared';
 
 import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
@@ -46,7 +45,6 @@ describe('our own caret identity', () => {
 
   it('publishes no identity at all, only the window-focus flag', async () => {
     const doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     const awareness = new Awareness(doc);
 
     const rendered = renderHook(() =>
@@ -79,7 +77,6 @@ describe('our own caret identity', () => {
 
   it('carries no id in any state it ever publishes, not just the settled one', async () => {
     const doc = new Y.Doc();
-    Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
     const awareness = new Awareness(doc);
 
     // Subscribed BEFORE the editor exists, so the extension's own first write

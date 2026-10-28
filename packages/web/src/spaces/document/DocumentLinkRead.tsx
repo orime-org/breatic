@@ -22,19 +22,16 @@ import { isLinkAddressFollowable } from '@web/spaces/document/document-link';
  * @param props.href - The address, as stored on the link.
  * @param props.onEdit - Run when the reader asks to change the address.
  * @param props.onRemove - Run when the reader asks to take the link off.
- * @param props.readOnly - Refuses edit and remove actions during a runtime pause.
  * @returns The row.
  */
 export function DocumentLinkRead({
   href,
   onEdit,
   onRemove,
-  readOnly = false,
 }: {
   href: string | null;
   onEdit: () => void;
   onRemove: () => void;
-  readOnly?: boolean;
 }): React.JSX.Element {
   const t = useTranslation();
   return (
@@ -56,7 +53,6 @@ export function DocumentLinkRead({
           variant='outline'
           size='sm'
           onClick={onEdit}
-          disabled={readOnly}
           data-testid='doc-link-edit'
           className='bg-transparent'
         >
@@ -66,7 +62,6 @@ export function DocumentLinkRead({
           variant='outline'
           size='sm'
           onClick={onRemove}
-          disabled={readOnly}
           data-testid='doc-link-remove'
           className='bg-transparent'
         >
