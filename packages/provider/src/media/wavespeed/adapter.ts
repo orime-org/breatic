@@ -172,7 +172,7 @@ const MODEL_NOT_FOUND = "Model not found.";
 export function modelNotFound(error: HttpStatus): boolean {
   if (error.status !== 400) return false;
   try {
-    return (JSON.parse(error.bodySnippet) as { message?: unknown } | null)?.message === MODEL_NOT_FOUND;
+    return (JSON.parse(error.body) as { message?: unknown } | null)?.message === MODEL_NOT_FOUND;
   } catch {
     return false;
   }

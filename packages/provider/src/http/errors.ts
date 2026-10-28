@@ -27,30 +27,33 @@ export class NoAnswer extends Error {
   }
 }
 
+/** How much of a failed body a message or log line carries. */
+const SNIPPET_CHARS = 500;
+
 /** A response came back with a status the caller treats as a failure. */
 export class HttpStatus extends Error {
   readonly status: number;
+  /** The whole body, as read; everything that decides from the answer reads it. */
+  readonly body: string;
+  /** The start of the body, for messages and logs only. */
   readonly bodySnippet: string;
   /** The response headers, when the caller kept them (a Retry-After is read from them). */
   readonly headers?: Headers;
-  /** The whole body, when the caller read it whole (an upstream's words can sit past the snippet). */
-  readonly body?: string;
 
   /**
    * Record what the error carries.
    * @param url - Where it went.
    * @param status - The response status.
-   * @param bodySnippet - The start of the body, for logs.
-   * @param headers - The response headers.
    * @param body - The whole body.
+   * @param headers - The response headers.
    */
-  constructor(url: string, status: number, bodySnippet: string, headers?: Headers, body?: string) {
+  constructor(url: string, status: number, body: string, headers?: Headers) {
     super(`Request to ${url} answered ${status}`);
     this.name = "HttpStatus";
     this.status = status;
-    this.bodySnippet = bodySnippet;
+    this.body = body;
+    this.bodySnippet = body.slice(0, SNIPPET_CHARS);
     if (headers !== undefined) this.headers = headers;
-    if (body !== undefined) this.body = body;
   }
 }
 

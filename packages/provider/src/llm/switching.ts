@@ -123,7 +123,7 @@ export function classifyLlm(error: unknown, vendor?: Vendor): Failure | null {
     return statusFailure(error.statusCode, parsed(error.responseBody), vendor);
   }
   if (error instanceof InBandError) return valueFailure(error.error, vendor) ?? null;
-  if (error instanceof HttpStatus) return statusFailure(error.status, parsed(error.bodySnippet), vendor);
+  if (error instanceof HttpStatus) return statusFailure(error.status, parsed(error.body), vendor);
   return null;
 }
 

@@ -45,8 +45,6 @@ export const MAX_RETRY_AFTER_MS = 60_000;
 export const MAX_TIMER_MS = 2 ** 31 - 1;
 /** How long a request beside a call may take: a cost lookup, a file delete. */
 export const SIDE_REQUEST_MS = 30_000;
-/** How much of a failed body an HttpStatus keeps. */
-export const SNIPPET_CHARS = 500;
 /** Error codes that mean the request never left this machine. */
 const NOT_SENT_CODES = new Set([
   "ECONNREFUSED",
@@ -347,7 +345,7 @@ export async function fetchJson(request: OutgoingRequest, options: ReadOptions):
   const bytes = await readBody(request.url, response, options.maxBodyBytes, options.idleMs, options);
   const text = new TextDecoder().decode(bytes);
   if (response.status < 200 || response.status >= 300) {
-    throw new HttpStatus(request.url, response.status, text.slice(0, SNIPPET_CHARS));
+    throw new HttpStatus(request.url, response.status, text);
   }
   return JSON.parse(text) as unknown;
 }
