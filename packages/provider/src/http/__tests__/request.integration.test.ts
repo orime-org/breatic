@@ -3,13 +3,14 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Aborted, BodyTooLarge, HttpStatus, NoAnswer, NotSent } from "../errors.js";
 import { aiSdkFetch, fetchJson, send } from "../request.js";
 
 const servers: Server[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(servers.splice(0).map((s) => new Promise<void>((done) => s.close(() => done()))));
 });
 
@@ -232,5 +233,103 @@ describe("a deadline beyond what a timer can hold (design 2.2)", () => {
     const { url } = await serve((_req, res) => setTimeout(() => json(res, 200, { ok: 1 }), 50));
     const body = await fetchJson({ url, method: "GET" }, { replaySafe: false, deadlineAt: deadline(), ...read });
     expect(body).toEqual({ ok: 1 });
+  });
+});
+
+/**
+ * Make every platform fetch fail the way a refused connection does, counting the attempts.
+ * @returns How many deliveries were made.
+ */
+function refuseEveryConnection(): () => number {
+  vi.spyOn(Math, "random").mockReturnValue(0);
+  const fetch = vi.spyOn(globalThis, "fetch").mockRejectedValue(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }));
+  return () => fetch.mock.calls.length;
+}
+
+describe("resending what never left or got no answer, as shared's decideRetry does (DD 33)", () => {
+  it("replaySafe true resends a request that was never sent, three deliveries in all", async () => {
+    const deliveries = refuseEveryConnection();
+    await expect(send({ url: "http://127.0.0.1:9/x", method: "GET" }, { replaySafe: true })).rejects.toBeInstanceOf(NotSent);
+    expect(deliveries()).toBe(3);
+  });
+
+  it("replaySafe false sends a request that was never sent once, leaving the choice to the caller", async () => {
+    const deliveries = refuseEveryConnection();
+    await expect(send({ url: "http://127.0.0.1:9/x", method: "POST", body: "{}" }, { replaySafe: false })).rejects.toBeInstanceOf(NotSent);
+    expect(deliveries()).toBe(1);
+  });
+
+  it("replaySafe true resends after a reset and returns the later answer", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { url, count } = await serve((req, res, n) => (n === 1 ? req.socket.destroy() : json(res, 200, { ok: true })));
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).resolves.toEqual({ ok: true });
+    expect(count()).toBe(2);
+  });
+
+  it("replaySafe true sends a request that keeps getting reset at most three times", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { url, count } = await serve((req) => req.socket.destroy());
+    await expect(fetchJson({ url, method: "GET" }, { replaySafe: true, ...read })).rejects.toBeInstanceOf(NoAnswer);
+    expect(count()).toBe(3);
+  });
+});
+
+describe("a status above 599 is not a server error (DD 33)", () => {
+  it("comes back as HttpStatus and is not resent", async () => {
+    const { url, count } = await serve((_req, res) => {
+      res.writeHead(600, { "content-type": "application/json" });
+      res.end("{}");
+    });
+    const error = await fetchJson({ url, method: "GET" }, { replaySafe: true, ...read }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HttpStatus);
+    expect((error as HttpStatus).status).toBe(600);
+    expect(count()).toBe(1);
+  });
+});
+
+describe("error messages name the address without its query (DD 33)", () => {
+  it.each([
+    ["NotSent", async (): Promise<unknown> => send({ url: `${await closedPort()}/upload?upload_id=secret-session#part`, method: "POST" }, { replaySafe: false }).catch((e: unknown) => e)],
+    ["NoAnswer", async (): Promise<unknown> => {
+      const { url } = await serve((req) => req.socket.destroy());
+      return send({ url: `${url}/upload?upload_id=secret-session`, method: "POST", body: "{}" }, { replaySafe: false }).catch((e: unknown) => e);
+    }],
+    ["HttpStatus", async (): Promise<unknown> => {
+      const { url } = await serve((_req, res) => json(res, 400, {}));
+      return fetchJson({ url: `${url}/upload?upload_id=secret-session`, method: "POST" }, { replaySafe: false, ...read }).catch((e: unknown) => e);
+    }],
+    ["BodyTooLarge", async (): Promise<unknown> => {
+      const { url } = await serve((_req, res) => json(res, 200, { blob: "x".repeat(5_000) }));
+      return fetchJson({ url: `${url}/upload?upload_id=secret-session`, method: "GET" }, { replaySafe: false, maxBodyBytes: 100, idleMs: 2_000 }).catch((e: unknown) => e);
+    }],
+    ["Aborted", async (): Promise<unknown> => send({ url: "http://127.0.0.1:9/upload?upload_id=secret-session", method: "GET" }, { replaySafe: false, deadlineAt: Date.now() - 1 }).catch((e: unknown) => e)],
+  ])("%s keeps the path and drops the query", async (_name, fail) => {
+    const error = await fail();
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("/upload");
+    expect((error as Error).message).not.toContain("secret-session");
+  });
+});
+
+describe("the body limit at its edge", () => {
+  /**
+   * A server answering a JSON string body of exactly this many bytes.
+   * @param bytes - The body's length.
+   * @returns The URL.
+   */
+  const bodyOf = async (bytes: number): Promise<string> => {
+    const { url } = await serve((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(`"${"x".repeat(bytes - 2)}"`);
+    });
+    return url;
+  };
+
+  it("reads a body of exactly maxBodyBytes", async () => {
+    await expect(fetchJson({ url: await bodyOf(1_000), method: "GET" }, { replaySafe: false, maxBodyBytes: 1_000, idleMs: 2_000 })).resolves.toHaveLength(998);
+  });
+
+  it("refuses a body one byte over maxBodyBytes", async () => {
+    await expect(fetchJson({ url: await bodyOf(1_001), method: "GET" }, { replaySafe: false, maxBodyBytes: 1_000, idleMs: 2_000 })).rejects.toBeInstanceOf(BodyTooLarge);
   });
 });

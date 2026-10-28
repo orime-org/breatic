@@ -38,4 +38,9 @@ describe("readBilling (design 6.2, 13.1 actual cost)", () => {
   it.each([[null], [{}], [{ data: [{ price: 9.99 }] }], ["text"]])("answers none for a body it cannot read: %j", (body) => {
     expect(readBilling(body).kind).toBe("none");
   });
+
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])("leaves out a line of type %s, which names no sign of its own (DD 33)", (type) => {
+    const read = readBilling(answer([{ billing_type: "deduct", order: { price: 0.1 } }, { billing_type: type, order: { price: 0.1 } }]));
+    expect(read).toMatchObject({ kind: "total", usd: 0.1 });
+  });
 });

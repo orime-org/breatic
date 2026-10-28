@@ -386,7 +386,11 @@ for (const [name, family] of [["meshy", meshy], ["hunyuan3d", hunyuan3d]] as con
   const file = parse(readFileSync(resolve(ROOT, `config/models/three_d/${name}.yaml`), "utf8")) as { models: RawModel[] };
   for (const model of file.models) {
     const seen = new Set<string>();
-    for (const given of bodySamples(model)) {
+    // Every free-text param also as "": today's 3D path drops only null (transports/wavespeed.ts:139-142).
+    const blanks = Object.fromEntries(
+      Object.entries(filledEverything(model)).map(([name, value]) => [name, typeof value === "string" && !(model.params?.[name]?.values ?? []).includes(value) ? "" : value]),
+    );
+    for (const given of [...bodySamples(model), blanks]) {
       for (const prompt of model.takes_prompt === false ? [""] : ["", PROMPTS[1]!]) {
         const key = JSON.stringify([given, prompt]);
         if (seen.has(key)) continue;

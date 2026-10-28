@@ -78,6 +78,11 @@ describe("planRoute — explicit upstream", () => {
 });
 
 describe("planRoute — cheapest", () => {
+  it("puts an upstream with no estimate after every priced one, whatever its weight", () => {
+    const plan = planRoute("m", { mode: "cheapest" }, [{ ...official, estimateUsd: undefined }, fal]);
+    expect(plan.order.map((c) => c.upstream)).toEqual(["fal", "kling"]);
+  });
+
   it("orders by this call's estimate, lowest first", () => {
     const plan = planRoute("m", { mode: "cheapest" }, [official, wavespeed, fal]);
     expect(plan.order.map((c) => c.upstream)).toEqual(["wavespeed", "fal", "kling"]);

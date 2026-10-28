@@ -78,6 +78,13 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("replicate");
   });
 
+  it("refuses a model bound to one upstream twice, naming the model and the upstream (DD 33)", () => {
+    const problems = problemsOf(input([bind("wavespeed", 1), bind("wavespeed", 2)]));
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("seedance");
+    expect(problems[0]).toContain("wavespeed");
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);

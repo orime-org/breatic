@@ -17,6 +17,7 @@ describe("decide — media submit (design 5.3, media column)", () => {
     ["400", { kind: "http_status", status: 400 }, "stop"],
     ["409", { kind: "http_status", status: 409 }, "stop"],
     ["422", { kind: "http_status", status: 422 }, "stop"],
+    ["600, which is no server error", { kind: "http_status", status: 600 }, "stop"],
     ["sent but no answer (timeout, reset)", { kind: "no_answer" }, "stop"],
     ["deadline abort", { kind: "aborted" }, "stop"],
   ])("%s → %s", (_label, failure, expected) => {

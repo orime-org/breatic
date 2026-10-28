@@ -185,6 +185,48 @@ describe("one call stays on the upstream that first served it (design 5.5)", () 
     await expect(twoSteps(() => ({ status: 429, body: {} }))).rejects.toThrow();
     expect(posted(fakes.deepseek)).toHaveLength(1);
   });
+
+  it("retries the fixed upstream exactly llmMaxRetries times at the second step", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? { status: 200, body: TOOL_CALL_REPLY } : { status: 429, body: {} }));
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 2 }).llm.prepare("meta/llama-x", THINK);
+    await expect(generateText({
+      model: prepared.model,
+      prompt: "hi",
+      tools: { lookup: tool({ inputSchema: z.object({}), execute: async () => "found" }) },
+      stopWhen: stepCountIs(2),
+      ...prepared.options,
+    })).rejects.toThrow();
+    expect(posted(fakes.openrouter)).toHaveLength(1 + 3);
+  });
+
+  it("retries the fixed upstream when its connection is refused at the second step, and never moves (design 12.4)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let deepseekCalls = 0;
+    fakes.deepseek.answer(() => (deepseekCalls++, { status: 503, body: {} }));
+    fakes.openrouter.answer(() => ({ status: 200, body: TOOL_CALL_REPLY }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 1 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const fetch = globalThis.fetch;
+    let refused = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.startsWith(fakes.openrouter.url) && posted(fakes.openrouter).length >= 1) {
+        refused++;
+        return Promise.reject(Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNREFUSED" } }));
+      }
+      return fetch(input, init);
+    });
+    await expect(generateText({
+      model: prepared.model,
+      prompt: "hi",
+      tools: { lookup: tool({ inputSchema: z.object({}), execute: async () => "found" }) },
+      stopWhen: stepCountIs(2),
+      ...prepared.options,
+    })).rejects.toThrow();
+    expect(refused).toBe(2);
+    expect(deepseekCalls).toBe(2);
+  });
 });
 
 describe("what a call reports about its cost (design 3.5, S4)", () => {
@@ -575,12 +617,35 @@ describe("every exit of an understand call carries what was billed (design 3.5, 
     expect(costsOf(error)).toEqual((error as UnderstandInterrupted).costs);
   });
 
-  it("throws UnderstandInterrupted carrying the cost of an answer whose error form it cannot read, without moving on", async () => {
+  it("refuses with the answer's status 200, carrying its cost, an error whose code is not a number, without moving on (DD 33)", async () => {
     fakes.openrouter.answer(() => billedChoiceError("upstream_error"));
     const error = await ask({ OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" }, 0);
-    expect(error).toBeInstanceOf(UnderstandInterrupted);
-    expect((error as UnderstandInterrupted).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.5 })]);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBe(200);
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.5 })]);
     expect(posted(fakes.google)).toHaveLength(0);
+  });
+
+  it("keeps the cost a retried non-2xx answer carried, before the answer that served (DD 33)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? { status: 503, body: { error: { code: 503, message: "busy" }, usage: { cost: 0.01 } } } : { status: 200, body: CHAT_REPLY }));
+    const answer = await ask({ OPENROUTER_API_KEY: "or" }, 1);
+    expect((answer as { costs?: unknown }).costs).toEqual([
+      expect.objectContaining({ state: "known", usd: 0.01 }),
+      expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost }),
+    ]);
+  });
+
+  it("keeps a pending lookup for a retried non-2xx answer that names its generation (DD 33)", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let n = 0;
+    fakes.openrouter.answer(() => (++n === 1 ? { status: 502, body: { id: "gen-503", error: { code: 502, message: "busy" } } } : { status: 200, body: CHAT_REPLY }));
+    const answer = await ask({ OPENROUTER_API_KEY: "or" }, 1);
+    expect((answer as { costs?: unknown }).costs).toEqual([
+      { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-503" } },
+      expect.objectContaining({ state: "known", usd: CHAT_REPLY.usage.cost }),
+    ]);
   });
 
   it.each([413, 401, 400])("names the status %i on UpstreamRequestRejected, with the upstream's error as its cause", async (status) => {
@@ -894,6 +959,20 @@ describe("streams cut or left early (design 5.3, 3.5)", () => {
     const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
     expect(await stream.text.then(() => "done", () => "failed")).toBe("failed");
     expect(posted(fakes.anthropic)).toHaveLength(1);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+});
+
+describe("reasoning is content: a call that streamed it stays where it is (design 5.5)", () => {
+  it("surfaces an error after reasoning and asks no other upstream", async () => {
+    const raw = event({ id: "ds-1", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "thinking" }, finish_reason: null }] })
+      + event({ error: { code: "server_error", message: "busy" } });
+    fakes.deepseek.answer(() => ({ status: 200, raw, contentType: "text/event-stream" }));
+    fakes.openrouter.answer(() => ({ status: 200, raw: sse(true), contentType: "text/event-stream" }));
+    const prepared = llmProvider(fakes, BOTH, { llmMaxRetries: 2 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const stream = streamText({ model: prepared.model, prompt: "hi", onError: () => undefined, ...prepared.options });
+    await stream.consumeStream();
+    expect(posted(fakes.deepseek)).toHaveLength(1);
     expect(posted(fakes.openrouter)).toHaveLength(0);
   });
 });

@@ -50,4 +50,17 @@ describe("reachable (design 3.1, Z5)", () => {
   it("lets a name that does not resolve through, so the request reports why", async () => {
     await expect(reachable("https://nowhere.example/x.png")).resolves.toBe(true);
   });
+
+  it.each([
+    ["a data address", "data:image/png;base64,iVBORw0KGgo="],
+    ["a file address", "file:///etc/passwd"],
+    ["an ftp address", "ftp://93.184.216.34/x.png"],
+    ["a blob address", "blob:https://cdn.example.com/1234"],
+  ])("refuses %s: only http and https are fetched (DD 33)", async (_name, url) => {
+    await expect(reachable(url)).resolves.toBe(false);
+  });
+
+  it("accepts an IPv4-mapped IPv6 address that reaches a public IPv4 address", async () => {
+    await expect(reachable("http://[::ffff:8.8.8.8]/x.png")).resolves.toBe(true);
+  });
 });

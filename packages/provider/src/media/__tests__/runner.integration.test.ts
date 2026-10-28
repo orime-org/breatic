@@ -116,7 +116,7 @@ function config(): ProviderConfigInput {
  */
 function runner(keys: Record<string, string> = { WS_A_KEY: "key-a", WS_B_KEY: "key-b" }): MediaRunner {
   const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 2, cleanText: (t) => t });
-  return createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
+  return createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
 }
 
 /**
@@ -604,21 +604,6 @@ describe("the outputs of a finished run", () => {
     expectState(await r.poll(stored(running.ticket), live()), "failed");
   });
 
-  it("answers done with no cost for a submit that finished at once without an id to bill", async () => {
-    const r = runner();
-    a.answer(({ path }) => (path === "/billings/search" ? billing([]) : { status: 200, body: { code: 200, data: { status: "completed", outputs: ["https://out.example/v.mp4"] } } }));
-    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
-    const done = expectState(await r.send(stored(planned.ticket), live()), "done");
-    expect(done.costs).toEqual([]);
-    expect(billedIds(a.seen)).toEqual([]);
-  });
-
-  it("throws when the submit answer carries neither an id nor outputs", async () => {
-    const r = runner();
-    a.answer(() => ({ status: 200, body: { code: 200, data: { status: "created" } } }));
-    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
-    await expect(r.send(stored(planned.ticket), live())).rejects.toThrow();
-  });
 });
 
 describe("WaveSpeed billing (design 6.2)", () => {

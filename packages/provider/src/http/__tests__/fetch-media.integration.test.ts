@@ -100,4 +100,9 @@ describe("fetchMedia (design 3.1, Z5)", () => {
     await expect(fetchMedia({ url: `${url}/a.png`, maxBytes: 1_000, deadlineAt: Date.now() + 300 })).rejects.toBeInstanceOf(Aborted);
     expect(Date.now() - started).toBeLessThan(3_000);
   });
+
+  it("refuses an address that answers an empty body, before any model is paid to read it (DD 33)", async () => {
+    const { url } = await serve((_req, res) => png(res, new Uint8Array()));
+    await expect(fetchMedia({ url: `${url}/a.png`, ...limits() })).rejects.toMatchObject({ kind: "empty" });
+  });
 });

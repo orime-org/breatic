@@ -110,6 +110,14 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
       r.path === "/upload-session/1" ? { status: 200, body: {} } : undefined],
     ["the file has no uri", (r: { method: string; path: string }): Reply | undefined =>
       r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "files/abc", state: "ACTIVE" } } } : undefined],
+    ["the upload start names a session that is not an address (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload/v1beta/files" ? { status: 200, body: {}, headers: { "x-goog-upload-url": "abc" } } : undefined],
+    ["the upload start names an empty session (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload/v1beta/files" ? { status: 200, body: {}, headers: { "x-goog-upload-url": "" } } : undefined],
+    ["the upload answers a file with an empty name (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "", state: "ACTIVE", uri: "https://files.example/abc" } } } : undefined],
+    ["the upload answers a file name outside files/ (DD 33)", (r: { method: string; path: string }): Reply | undefined =>
+      r.path === "/upload-session/1" ? { status: 200, body: { file: { name: "../models", state: "ACTIVE", uri: "https://files.example/abc" } } } : undefined],
   ])("rejects without a status or a cost when %s, sending no question", async (_name, special) => {
     const provider = throughFiles((r) => special(r) ?? (r.path === "/upload/v1beta/files" ? uploadSession() : r.method === "DELETE" ? { status: 200, body: {} } : activeFile));
     const error = await provider.llm.understand(question()).catch((e: unknown) => e);
@@ -340,5 +348,109 @@ describe("understand routes (design 6.5, DD 27)", () => {
     const config = llmConfig(fakes);
     config.llm!.understand_routes = [{ prefix: "anthropic/", upstreams: [{ upstream: "anthropic", weight: 0 }, { upstream: "openrouter", weight: 1 }] }];
     expect(() => createProvider({ config, keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t })).toThrow(ProviderConfigError);
+  });
+});
+
+describe("a Files API step answered not found (DD 33)", () => {
+  it("is a refusal of that step, never a missing model, so the call does not move on", async () => {
+    const provider = throughFiles((r) => {
+      if (r.path === "/upload/v1beta/files") return uploadSession();
+      if (r.path === "/upload-session/1") return { status: 200, body: { file: { name: "files/abc", state: "PROCESSING" } } };
+      if (r.method === "GET") return { status: 404, body: { error: { code: 404, message: "File abc not found.", status: "NOT_FOUND" } } };
+      return { status: 200, body: {} };
+    });
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).upstream).toBe("google");
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+});
+
+/**
+ * Ask the understand model of a Google-only route, Google answering this.
+ * @param body - Google's 200 body.
+ * @returns The answer, or what it threw.
+ */
+async function googleAnswering(body: unknown): Promise<unknown> {
+  fakes.google.answer(() => ({ status: 200, body }));
+  return llmProvider(fakes, { GOOGLE_API_KEY: "g" }).llm.understand(question()).catch((e: unknown) => e);
+}
+
+describe("reading Gemini's answer against one typed structure (DD 33)", () => {
+  it("refuses a text part that is not a string, billed as an unreadable answer", async () => {
+    const error = await googleAnswering({ ...GENERATE_CONTENT_REPLY, candidates: [{ content: { parts: [{ text: 5 }] }, finishReason: "STOP" }] });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBeUndefined();
+  });
+
+  it("reads a block reason of null as no block", async () => {
+    const answer = await googleAnswering({ promptFeedback: { blockReason: null }, usageMetadata: { promptTokenCount: 10 } }) as { finishReason: string };
+    expect(answer.finishReason).toBe("other");
+  });
+
+  it("costs an answer without usage as missing, never a known $0", async () => {
+    const { usageMetadata: _usage, ...rest } = GENERATE_CONTENT_REPLY;
+    const answer = await googleAnswering(rest) as { costs: unknown[] };
+    expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
+  it("costs an answer whose token counts are not numbers as missing", async () => {
+    const answer = await googleAnswering({ ...GENERATE_CONTENT_REPLY, usageMetadata: { promptTokenCount: "11", candidatesTokenCount: 3 } }) as { costs: unknown[] };
+    expect(answer.costs).toEqual([expect.objectContaining({ state: "missing" })]);
+  });
+
+  it("counts the thoughts in the output tokens and prices them", async () => {
+    const answer = await googleAnswering({ ...GENERATE_CONTENT_REPLY, usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 10, thoughtsTokenCount: 5 } }) as { costs: { tokens?: unknown; usd?: number }[] };
+    expect(answer.costs[0]?.tokens).toEqual({ input: 20, cachedInput: 0, output: 15, reasoning: 5 });
+    expect(answer.costs[0]?.usd).toBeCloseTo((20 * 0.5 + 15 * 3) / 1_000_000, 12);
+  });
+});
+
+/**
+ * Ask the understand model with OpenRouter first, OpenRouter answering this.
+ * @param reply - OpenRouter's answer.
+ * @param media - The items.
+ * @returns The answer, or what it threw.
+ */
+async function openRouterAnswering(reply: Reply, media = [picture]): Promise<unknown> {
+  fakes.openrouter.answer(() => reply);
+  return llmProvider(fakes, { OPENROUTER_API_KEY: "or" }, { llmMaxRetries: 0, understandOpenRouterFirst: true }).llm.understand({ ...question(), media }).catch((e: unknown) => e);
+}
+
+describe("reading OpenRouter's understand answer against one typed structure (DD 33)", () => {
+  const completion = { id: "gen-u", choices: [{ index: 0, message: { role: "assistant", content: "a fox" }, finish_reason: "stop" }], usage: { cost: 0.001 } };
+
+  it.each(["constructor", "__proto__", "toString"])("reads the finish reason %s as other", async (reason) => {
+    const answer = await openRouterAnswering({ status: 200, body: { ...completion, choices: [{ ...completion.choices[0], finish_reason: reason }] } }) as { finishReason: unknown };
+    expect(answer.finishReason).toBe("other");
+  });
+
+  it.each([
+    ["at the top of the body, with a code that is not a number", { ...completion, error: { code: "upstream_error", message: "it broke" } }],
+    ["at the top of the body, with no code", { ...completion, error: { message: "it broke" } }],
+    ["in the choice, with no code and nothing written", { ...completion, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { message: "it broke" } }] }],
+  ])("refuses with the answer's own status an error %s, as today's understand does", async (_name, body) => {
+    const error = await openRouterAnswering({ status: 200, body });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBe(200);
+    expect((error as UpstreamRequestRejected).costs).toEqual([expect.objectContaining({ state: "known", usd: 0.001 })]);
+  });
+
+  it("refuses an answer whose choices are not a list", async () => {
+    const error = await openRouterAnswering({ status: 200, body: { ...completion, choices: { 0: completion.choices[0] } } });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBeUndefined();
+  });
+
+  it.each([
+    ["audio/x-m4a", "m4a"],
+    ["audio/m4a", "m4a"],
+    ["audio/x-mpeg", "mp3"],
+    ["audio/mp3", "mp3"],
+    ["audio/x-wav", "wav"],
+  ])("names %s by OpenRouter's format %s, as shared's canonical types do", async (contentType, format) => {
+    await openRouterAnswering({ status: 200, body: completion }, [{ bytes: new Uint8Array([1, 2]), contentType }]);
+    const sent = posted(fakes.openrouter)[0] as { messages: { content: { type: string; input_audio?: { format: string } }[] }[] };
+    expect(sent.messages[0]!.content.find((p) => p.type === "input_audio")?.input_audio?.format).toBe(format);
   });
 });

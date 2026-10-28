@@ -120,7 +120,7 @@ function twoUpstreams(second: FakeUpstream): ProviderConfigInput {
 function runner(raw: ProviderConfigInput = config()): MediaRunner {
   const keys: Record<string, string> = { WAVESPEED_API_KEY: "ws-key", WAVESPEED_B_API_KEY: "ws-b-key", OPENROUTER_API_KEY: "or-key" };
   const provider = createProvider({ config: raw, keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
-  return createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
+  return createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
 }
 
 const stored = (ticket: MediaTicket): MediaTicket => JSON.parse(JSON.stringify(ticket)) as MediaTicket;
@@ -387,6 +387,52 @@ describe("a describe step that cannot read its image (design 3.2)", () => {
       await new Promise<void>((done) => silent.close(() => done()));
     }
   });
+
+  /**
+   * Describe an image whose host answers every read with one status.
+   * @param status - The status.
+   * @returns What send did.
+   */
+  async function hostAnswering(status: number): Promise<unknown> {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const host = createServer((_req, res) => {
+      res.writeHead(status);
+      res.end();
+    });
+    await new Promise<void>((done) => host.listen(0, "127.0.0.1", () => done()));
+    try {
+      return await describeOnly(`http://127.0.0.1:${(host.address() as AddressInfo).port}/fox.png`, live());
+    } finally {
+      vi.restoreAllMocks();
+      await new Promise<void>((done) => host.close(() => done()));
+    }
+  }
+
+  it.each([408, 429, 500, 503])("throws SendNotAccepted when the image host answers %i, which may pass (DD 33)", async (status) => {
+    expect(await hostAnswering(status)).toBeInstanceOf(SendNotAccepted);
+    expect(openrouter.seen).toHaveLength(0);
+  });
+
+  it.each([403, 404])("answers failed with MediaRefused when the image host answers %i (DD 33)", async (status) => {
+    const failed = expectState(await hostAnswering(status) as MediaAnswer, "failed");
+    expect(failed.reason).toBeInstanceOf(MediaRefused);
+    expect(openrouter.seen).toHaveLength(0);
+  });
+
+  it("answers failed with MediaRefused when the image is empty, asking no model (DD 33)", async () => {
+    const host = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "image/png" });
+      res.end();
+    });
+    await new Promise<void>((done) => host.listen(0, "127.0.0.1", () => done()));
+    try {
+      const failed = expectState(await describeOnly(`http://127.0.0.1:${(host.address() as AddressInfo).port}/fox.png`, live()) as MediaAnswer, "failed");
+      expect((failed.reason as MediaRefused).kind).toBe("empty");
+      expect(openrouter.seen).toHaveLength(0);
+    } finally {
+      await new Promise<void>((done) => host.close(() => done()));
+    }
+  });
 });
 
 describe("a describe step whose understand call reaches no upstream (design 3.2, 5.3, 9)", () => {
@@ -397,7 +443,7 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
    */
   async function describeWith(keys: Record<string, string>): Promise<unknown> {
     const provider = createProvider({ config: config(), keyOf: (name) => keys[name], llmMaxRetries: 0, cleanText: (t) => t });
-    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
+    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
     const planned = expectState(
       await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
       "send",
@@ -442,7 +488,7 @@ describe("a describe step whose understand call reaches no upstream (design 3.2,
         ? { status: 200, body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 502, message: "Upstream died" } }] } }
         : "hang");
     const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
-    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 } });
+    const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
     const planned = expectState(
       await r.plan("kling-elements", { prompt: "go", params: { elements: [imageUrl] } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [] }),
       "send",

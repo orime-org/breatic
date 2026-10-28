@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "v
 import fc from "fast-check";
 import { ProviderConfigError } from "../../config/schema.js";
 import { NoAnswer } from "../../http/errors.js";
-import { NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
+import { costsOf, NoUpstreamAvailable, UpstreamRequestRejected } from "../../errors.js";
 import { generateText, type FinishReason, type LanguageModelUsage } from "ai";
 import { createProvider } from "../../provider.js";
 import type { CapabilityPolicy, UnderstandAnswer } from "../api.js";
+import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, GENERATE_CONTENT_REPLY, llmConfig, llmProvider, posted, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
 let fakes: LlmFakes;
@@ -86,6 +87,70 @@ describe("costOf (design 3.6)", () => {
       providerMetadata: { breatic: { upstream: "openrouter" } },
     });
     expect(cost).toMatchObject({ state: "missing", tokens: TOKENS });
+  });
+});
+
+describe("costOf by the price table, to the cent (design 3.6, critical path)", () => {
+  /**
+   * The cost of one direct Anthropic call with cache reads and writes, at these prices per million tokens:
+   * miss 3, hit 0.3, a 5-minute write 3.75, a one-hour write 6, output 15.
+   * @param cacheTtl - The cache the call asked for.
+   * @returns The cost.
+   */
+  const priced = (cacheTtl: "5m" | "1h"): unknown => {
+    const config = llmConfig(fakes);
+    config.llm!.prices!["anthropic/claude-priced"] = {
+      input_cache_miss_per_mtok: 3,
+      input_cache_hit_per_mtok: 0.3,
+      input_cache_write_5m_per_mtok: 3.75,
+      input_cache_write_1h_per_mtok: 6,
+      output_per_mtok: 15,
+    };
+    const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+    return provider.llm.costOf({
+      model: "anthropic/claude-priced",
+      usage: {
+        inputTokens: 100,
+        inputTokenDetails: { noCacheTokens: 50, cacheReadTokens: 20, cacheWriteTokens: 30 },
+        outputTokens: 10,
+        outputTokenDetails: { textTokens: 10, reasoningTokens: 0 },
+        totalTokens: 110,
+      },
+      providerMetadata: { breatic: { upstream: "anthropic", cacheTtl } },
+    });
+  };
+
+  it("charges the uncached input at the miss price, the cache read at the hit price and the write at the 5-minute price", () => {
+    expect((priced("5m") as { usd: number }).usd).toBeCloseTo((50 * 3 + 20 * 0.3 + 30 * 3.75 + 10 * 15) / 1_000_000, 12);
+  });
+
+  it("charges the write at the one-hour price for a one-hour cache", () => {
+    expect((priced("1h") as { usd: number }).usd).toBeCloseTo((50 * 3 + 20 * 0.3 + 30 * 6 + 10 * 15) / 1_000_000, 12);
+  });
+});
+
+describe("cost.lookup of numbers JSON cannot hold (design 3.6)", () => {
+  const lookup = { upstream: "openrouter", generationId: "gen-9" };
+  const raw = (body: string): Reply => ({ status: 200, raw: body, contentType: "application/json" });
+
+  it("reads a cost of 1e999 as no cost yet, never a known Infinity", async () => {
+    fakes.openrouter.answer(() => raw('{"data":{"total_cost":1e999,"native_tokens_prompt":5}}'));
+    expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup(lookup, { lastAttempt: false })).toEqual({ state: "pending", lookup });
+  });
+
+  it("reads a token count of 1e999 as 0", async () => {
+    fakes.openrouter.answer(() => raw('{"data":{"total_cost":0.5,"native_tokens_prompt":1e999,"native_tokens_completion":3}}'));
+    expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup(lookup, { lastAttempt: false })).toEqual({
+      state: "known",
+      usd: 0.5,
+      tokens: { input: 0, cachedInput: 0, output: 3, reasoning: 0 },
+      source: "billing",
+    });
+  });
+
+  it("answers missing on the last attempt for an answer whose data is not an object", async () => {
+    fakes.openrouter.answer(() => raw('{"data":"gen-9"}'));
+    expect((await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).cost.lookup(lookup, { lastAttempt: true })).state).toBe("missing");
   });
 });
 
@@ -360,7 +425,21 @@ describe("judge (JEV)", () => {
     const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request);
     expect(answer.status).toBe(503);
     expect(answer.body).toContain("busy");
+    expect(answer.cost).toBeUndefined();
     expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  it("carries no cost for a refusal, which was not billed (DD 33)", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: "bad question" } } }));
+    expect((await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge(request)).cost).toBeUndefined();
+  });
+
+  it("throws carrying one missing cost when a 2xx answer stops part way, since it was billed (DD 33)", async () => {
+    fakes.openrouter.answer(() => ({ status: 200, raw: "{\"likely\":", contentType: "application/json", hold: true }));
+    const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
+    fakes.openrouter.release();
   });
 
   it("cleans the state and the questions with the caller's text cleaning", async () => {
@@ -415,6 +494,26 @@ describe("capabilities (design 3.5, U6)", () => {
     fakes.openrouter.answer(({ path }) => (path === "/api/v1/models" ? { status: 200, body: models } : undefined));
     await new Promise((done) => setTimeout(done, 250));
     expect(await llm.capabilities("google/gemini-3.8-flash", policy)).toEqual({ pictures: true });
+  });
+
+  it.each([
+    ["data that is not a list", { status: 200, body: { data: {} } }],
+    ["a body that is not JSON", { status: 200, raw: "<html>", contentType: "text/html" }],
+  ] as const)("keeps the last list and cools down when a later list answers %s", async (_name, bad) => {
+    fakes.openrouter.answer(({ path }) => (path === "/api/v1/models" ? { status: 200, body: models } : undefined));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    const shortLived = { ...policy, ttlMs: 50 };
+    expect(await llm.capabilities("google/gemini-3.8-flash", shortLived)).toEqual({ pictures: true });
+    fakes.openrouter.answer(() => bad);
+    await new Promise((done) => setTimeout(done, 80));
+    expect(await llm.capabilities("google/gemini-3.8-flash", shortLived)).toEqual({ pictures: true });
+    expect(await llm.capabilities("google/gemini-3.8-flash", shortLived)).toEqual({ pictures: true });
+    expect(listed()).toBe(2);
+  });
+
+  it("skips a row that is not an object and reads the rest", async () => {
+    fakes.openrouter.answer(({ path }) => (path === "/api/v1/models" ? { status: 200, body: { data: [5, null, ...models.data] } } : undefined));
+    expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.capabilities("google/gemini-3.8-flash", policy)).toEqual({ pictures: true });
   });
 
   it("follows an override without asking", async () => {
