@@ -58,7 +58,6 @@ import {
 import * as Y from "yjs";
 import {
   parseDocName,
-  readDocumentBodyRecords,
   SpaceRpcRequestSchema,
   SyncConfirmRequestSchema,
   type ProjectRole,
@@ -393,11 +392,6 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
         return;
       }
-
-      // Complete records were prepared and committed during persistence load
-      // (inner#1619). Their retained XML is archival input, not an editable
-      // projection, and must not be passed through the old conversion hook.
-      if (parsed?.kind === "document" && readDocumentBodyRecords(document).status === "ready") return;
 
       // Stored tables become tables whose cells hold blocks (inner#1619),
       // before any client syncs: the hook runs after the Redis extension's

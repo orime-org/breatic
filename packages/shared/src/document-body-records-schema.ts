@@ -55,17 +55,6 @@ function isBodyJson(value: unknown, ancestors: Set<object> = new Set()): value i
   return valid;
 }
 
-/**
- * Validates native payloads against the same JSON grammar as stored descriptors.
- * @param value - The native snapshot payload at the import boundary.
- * @returns The complete original JSON value, including unknown own keys.
- * @throws {DocumentBodyFormatError} If the payload is not representable by this format.
- */
-export function parseBodyJsonValue(value: unknown): BodyJsonValue {
-  if (!isBodyJson(value)) throw new DocumentBodyFormatError("Invalid native body JSON payload");
-  return value;
-}
-
 const identifier = z.string().min(1);
 // Zod's record parser strips __proto__; these fields carry opaque product JSON.
 const jsonValue: z.ZodType<BodyJsonValue> = z.custom<BodyJsonValue>((value) => isBodyJson(value));
