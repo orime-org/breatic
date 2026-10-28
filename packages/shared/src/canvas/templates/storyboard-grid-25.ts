@@ -22,4 +22,14 @@ export const STORYBOARD_GRID_25: GenerationTemplate = {
   steps: [],
   agentNote:
     "one 5x5 storyboard picture of a continuous story, the same characters and place in every panel; made to be turned into a video afterwards",
+  goal: "comics-storyboards",
+  triggers: {
+    asks: [
+      "a storyboard",
+      "plan the shots of my story in one picture",
+    ],
+    offerWhen: [
+      "the reader wants a video that tells a story in several beats and has not planned its shots yet",
+    ],
+  },
 };
