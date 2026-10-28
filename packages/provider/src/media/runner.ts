@@ -191,6 +191,8 @@ interface Ticket {
 
 /** What a done step of each kind reads off its outputs. */
 const UPLOAD_PURPOSE: Readonly<Partial<Record<StepKind, string>>> = { upload_reference: "reference", upload_melody: "melody" };
+/** The image types the understand models read (shared's understand/media-formats.ts IMAGE_TYPES). */
+const IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 /** Kling caps an element's description at 100 characters. */
 const ELEMENT_DESCRIPTION_MAX = 100;
 
@@ -754,7 +756,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param ticket - The ticket.
    * @param index - The describe step's place; the element step follows it.
    * @param bounds - The deadline and signal.
-   * @returns The send answer for the element step; failed when the image is refused, no understand upstream can ever serve, or one refuses the request (its cost kept).
+   * @returns The send answer for the element step; failed when the image is refused or not an image type, no understand upstream can ever serve, or one refuses the request (its cost kept).
    * @throws {SendNotAccepted} When the image host could not be reached or dropped the read, or every understand upstream failed in a passing way.
    * @throws {DeadlinePassed} When the deadline cut the read or the description.
    * @throws {UnderstandInterrupted} When the understand call ended otherwise (a lost answer, an error it cannot read), carrying what was billed; other unknown errors are thrown as they are.
@@ -781,6 +783,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt);
       throw error;
     }
+    // Refused here, before any model call is spent being told the same.
+    if (!IMAGE_TYPES.has(media.contentType)) return failed(ticket, new MediaRefused("unsupported_type"));
     let answer;
     try {
       answer = await provider.llm.understand({

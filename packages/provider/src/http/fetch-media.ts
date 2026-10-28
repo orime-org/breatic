@@ -5,11 +5,20 @@ import { BodyTooLarge } from "@provider/http/errors.js";
 import { reachable } from "@provider/http/private-address.js";
 import { readBody, send } from "@provider/http/request.js";
 
+/** The media type each address extension implies (domain's understand/fetch-media.ts TYPE_BY_EXTENSION, images). */
+const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+};
+
 /** How many redirects one address may go through. */
 const MAX_HOPS = 10;
 
 /** Why a media address was not read. */
-export type MediaRefusal = "unreachable" | "too_large" | "unavailable";
+export type MediaRefusal = "unreachable" | "too_large" | "unavailable" | "unsupported_type";
 
 /** A media address that was refused or could not be read. */
 export class MediaRefused extends Error {
@@ -42,13 +51,35 @@ export interface FetchMediaRequest {
 /** The bytes at an address. */
 export interface FetchedMedia {
   bytes: Uint8Array;
+  /** The type settled from the declaration, else the address's extension. */
   contentType: string;
+}
+
+/**
+ * The type a fetched media settles to, as domain's understand settles it: the declared
+ * Content-Type without parameters, trimmed and lower-cased; `application/octet-stream` or
+ * none counts as no declaration (an object store answers it for keys it never registered),
+ * and the address's extension decides instead.
+ * @param headers - The answer's headers.
+ * @param url - The address asked for.
+ * @returns The type, or `application/octet-stream` when neither says one.
+ */
+function settledType(headers: Headers, url: string): string {
+  const declared = headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
+  if (declared !== undefined && declared !== "" && declared !== "application/octet-stream") return declared;
+  let extension = "";
+  try {
+    extension = new URL(url).pathname.split(".").pop()?.toLowerCase() ?? "";
+  } catch {
+    extension = "";
+  }
+  return TYPE_BY_EXTENSION[extension] ?? "application/octet-stream";
 }
 
 /**
  * Read the bytes at a public address, judging every redirect hop before following it.
  * @param request - What to read and its limits.
- * @returns The bytes and their declared type.
+ * @returns The bytes and the type they settle to.
  * @throws {MediaRefused} When an address is not public, the body is over the limit, or the address answers non-2xx.
  * @throws {Aborted} When the deadline or the signal ends the read.
  * @throws {NotSent} When the address could not be reached.
@@ -68,7 +99,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<FetchedMed
       }
       try {
         const bytes = await readBody(target, response, request.maxBytes, Math.max(0, request.deadlineAt - Date.now()), bounds);
-        return { bytes, contentType: response.headers.get("content-type") ?? "application/octet-stream" };
+        return { bytes, contentType: settledType(response.headers, request.url) };
       } catch (error) {
         if (error instanceof BodyTooLarge) throw new MediaRefused("too_large");
         throw error;
