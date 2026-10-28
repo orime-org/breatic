@@ -46,7 +46,6 @@ import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/docu
 import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { BodyEdgeSelection, bodyEdgeAt, bodyEdgeBetween, headOnEdgeLine, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
-import { bodyBindingOf } from '@web/spaces/document/document-body-binding-key';
 
 /** The parts of the editor these bindings use. */
 interface KeysEditor {
@@ -231,13 +230,7 @@ function deleteSelectedCells(editor: KeysEditor): boolean {
   const view = editor.prosemirrorView;
   const blockId = wholeEmptyTableSelected(view.state);
   if (blockId === null) return deleteCellSelection(view.state, view.dispatch);
-  const history = bodyBindingOf(view.state)?.history;
-  history?.stopCapturing();
-  try {
-    editor.removeBlocks([blockId]);
-  } finally {
-    history?.stopCapturing();
-  }
+  editor.removeBlocks([blockId]);
   return true;
 }
 

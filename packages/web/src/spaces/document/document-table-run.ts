@@ -304,26 +304,6 @@ export function isMerged(doc: PMNode, cellPos: number): boolean {
 }
 
 /**
- * Clears the copied ID only on cells the native split just created.
- * Existing cell positions follow the actual command mapping; UniqueID then
- * names the new cells through its normal null-ID append, in the same batch.
- * @param state - The real command state with a cell selected.
- * @param dispatch - The existing transaction receiver, when executing.
- * @returns Whether the installed split command applies.
- * @throws {RangeError} If the installed command creates invalid markup.
- */
-const splitWithNewCellIds: Command = (state, dispatch): boolean => splitCell(state, dispatch === undefined ? undefined : (tr) => {
-  const retained = new Set<number>();
-  state.doc.descendants((node, pos) => {
-    if (isTableCell(node)) retained.add(tr.mapping.map(pos + 1, 1) - 1);
-  });
-  tr.doc.descendants((node, pos) => {
-    if (isTableCell(node) && !retained.has(pos)) tr.setNodeMarkup(pos, undefined, { ...node.attrs, id: null });
-  });
-  dispatch(tr);
-});
-
-/**
  * Splits a merged cell back into the cells it covers; its content stays in
  * the top-left one.
  * @param editor - The editor to write to.
@@ -334,7 +314,7 @@ const splitWithNewCellIds: Command = (state, dispatch): boolean => splitCell(sta
 export function splitCellAt(editor: TableEditor, cellPos: number): void {
   runOnTable(editor, cellPos, (tr, at) => {
     runInCell(tr, cellPos, tableBodyCommand(
-      splitWithNewCellIds, 'table split', at.tableStart, at.tableStart + at.table.content.size, 'preserve',
+      splitCell, 'table split', at.tableStart, at.tableStart + at.table.content.size, 'preserve',
     ));
   });
 }
