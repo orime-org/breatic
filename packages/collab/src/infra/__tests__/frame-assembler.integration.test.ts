@@ -29,10 +29,10 @@ import {
   type Redis,
 } from "@breatic/core";
 import { COLLAB_FRAME_MAX_BYTES, sendInChunks } from "@breatic/shared";
-import { createFrameAssembler } from "@collab/infra/frame-assembler.js";
+import { createFrameAssembler, type FramePeer } from "@collab/infra/frame-assembler.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
-import { SYNC, WIRE, authFrame, decodeServerFrame, statelessFrameOfSize as stf, syncFrame, waitFor } from "../../__tests__/helpers/live-hocuspocus.js";
+import { SYNC, WIRE, authFrame, decodeServerFrame, statelessFrameOfSize, syncFrame, waitFor } from "../../__tests__/helpers/live-hocuspocus.js";
 
 const F = COLLAB_FRAME_MAX_BYTES;
 const M = 10_551_296;
@@ -105,7 +105,7 @@ interface Stack {
   stateless: string[];
   changes: string[];
   hookOrder: Array<{ hook: "error" | "close"; inUseAfter: number }>;
-  erroredPeers: Array<{ _hocuspocus?: { socketId?: string } }>;
+  erroredPeers: FramePeer[];
 }
 
 /**
@@ -134,10 +134,10 @@ async function stack(opts: Partial<{ maxMessageBytes: number; budgetBytes: numbe
     ...SOCKET_CEILINGS,
     websocketOptions: { maxPayload: F },
     receiveFrame: asm.receiveFrame,
-    onPeerClose: (peer: unknown, event: unknown) => { asm.onPeerClose(peer as never, event); s.hookOrder!.push({ hook: "close", inUseAfter: asm.inUseBytes() }); },
-    onPeerError: (peer: unknown, error: unknown) => {
-      s.erroredPeers!.push(peer as never);
-      asm.onPeerError(peer as never, error);
+    onPeerClose: (peer: FramePeer, event: unknown) => { asm.onPeerClose(peer, event); s.hookOrder!.push({ hook: "close", inUseAfter: asm.inUseBytes() }); },
+    onPeerError: (peer: FramePeer, error: unknown) => {
+      s.erroredPeers!.push(peer);
+      asm.onPeerError(peer, error);
       s.hookOrder!.push({ hook: "error", inUseAfter: asm.inUseBytes() });
     },
     extensions: [gate],
@@ -353,7 +353,7 @@ describe("frame reassembly through real upgrades", () => {
     const st = await stack();
     const a = await client(st, await sess(st, "ua-i02"));
     await auth(st, a, "i02");
-    a.ws.send(stf("i02", F));
+    a.ws.send(statelessFrameOfSize("i02", F));
     await waitFor(() => st.stateless.length === 1, "frame at the cap");
     expect(a.isOpen()).toBe(true);
 
@@ -377,7 +377,7 @@ describe("frame reassembly through real upgrades", () => {
     const a = await client(st, await sess(st, "ua-i03"));
     await auth(st, a, "i03");
     a.ws.send(decl(M + 1));
-    for (let i = 0; i < 5; i++) a.ws.send(stf("i03", F));
+    for (let i = 0; i < 5; i++) a.ws.send(statelessFrameOfSize("i03", F));
     expect(await a.closed).toEqual({ code: 1009, reason: CLOSE[1009] });
     await settle();
     const lines = linesOf("ua-i03");
@@ -433,7 +433,7 @@ describe("frame reassembly through real upgrades", () => {
     a1.ws.send(decl(M));
     await waitFor(() => st.asm.inUseBytes() === M, "a1 reserved");
     a2.ws.send(decl(M));
-    for (let i = 0; i < 3; i++) a2.ws.send(stf("i06", F));
+    for (let i = 0; i < 3; i++) a2.ws.send(statelessFrameOfSize("i06", F));
     expect(await a2.closed).toEqual({ code: 1013, reason: CLOSE[1013] });
     b.ws.send(decl(M));
     await waitFor(() => st.asm.inUseBytes() === 2 * M, "b reserved");
@@ -463,8 +463,8 @@ describe("frame reassembly through real upgrades", () => {
       c.ws.send(decl(3 * F));
       c.ws.send(new Uint8Array(F));
       c.ws.send("hello");
-      c.ws.send(stf(`i07${row}`, F));
-      c.ws.send(stf(`i07${row}`, F));
+      c.ws.send(statelessFrameOfSize(`i07${row}`, F));
+      c.ws.send(statelessFrameOfSize(`i07${row}`, F));
     }
     if (row === "c") {
       c.ws.send(decl(3 * F));

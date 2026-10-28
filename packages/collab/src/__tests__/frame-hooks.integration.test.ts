@@ -13,7 +13,7 @@ import type { IncomingMessage } from "node:http";
 import { Server } from "@hocuspocus/server";
 import WebSocket from "ws";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
-import { authFrame, statelessFrameOfSize as statelessOfSize, waitFor } from "./helpers/live-hocuspocus.js";
+import { authFrame, statelessFrameOfSize, waitFor } from "./helpers/live-hocuspocus.js";
 
 let running: Server | undefined;
 const clients: WebSocket[] = [];
@@ -86,8 +86,8 @@ describe("patched crossws hooks", () => {
     });
     const { ws } = await connect(port);
     await authenticate(ws, "ip01", authed);
-    ws.send(statelessOfSize("ip01", 2_048));
-    ws.send(statelessOfSize("ip01", 200_000));
+    ws.send(statelessFrameOfSize("ip01", 2_048));
+    ws.send(statelessFrameOfSize("ip01", 200_000));
     await waitFor(() => stateless.length === 2, "two stateless frames");
     expect(consoleError).not.toHaveBeenCalled();
   });
@@ -97,7 +97,7 @@ describe("patched crossws hooks", () => {
     const stateless: string[] = [];
     const markerA = new Uint8Array([0xa1, 0xa1, 0xa1, 0xa1]);
     const markerB = new Uint8Array([0xb2, 0xb2, 0xb2, 0xb2]);
-    const replacement = statelessOfSize("ip02", 100);
+    const replacement = statelessFrameOfSize("ip02", 100);
     const received: Uint8Array[] = [];
     const port = await serve({
       connected: async ({ documentName }: { documentName: string }) => { authed.push(documentName); },
@@ -115,7 +115,7 @@ describe("patched crossws hooks", () => {
     ws.send(markerA);
     await waitFor(() => stateless.length === 1, "replacement reached Hocuspocus");
     ws.send(markerB);
-    ws.send(statelessOfSize("ip02", 64));
+    ws.send(statelessFrameOfSize("ip02", 64));
     await waitFor(() => stateless.length === 2, "the frame after the swallowed one");
     expect(stateless[0]).toBe("x".repeat(stateless[0]!.length));
     expect(received.some((b) => Buffer.from(b).equals(Buffer.from(markerB)))).toBe(true);
