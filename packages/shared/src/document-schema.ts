@@ -170,9 +170,8 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textColor",
     ],
     paragraph: ["backgroundColor", "quoted", "textAlignment", "textColor"],
-    // The table before cells held blocks. collab converts it to `docTable`
-    // when it loads a document; the editor keeps the node so one that is
-    // still there shows.
+    // The table before cells held blocks. Documents keep it as stored, and
+    // the editor keeps the node so it shows.
     table: ["quoted", "textColor"],
     tableCell: [
       "backgroundColor",

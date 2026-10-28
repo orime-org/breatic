@@ -147,8 +147,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // (`ExtensionManager/index.ts:565-583`). `documentDividerInputExtension`
     // places the divider and the caret in one transaction instead.
     divider: { ...withProps(enabled.divider, QUOTED_PROP), extensions: [] },
-    // Stored tables from before cells held blocks, shown until collab
-    // converts them (inner#1619).
+    // Stored tables from before cells held blocks, kept as stored
+    // (inner#1619).
     table: legacyTableSpec(),
     ...docTableSpecs(),
     // The library's own props: image and video carry a width and an

@@ -5,9 +5,8 @@
  * The table documents held before cells could hold blocks (inner#1619), kept
  * so a document that still carries one shows it.
  *
- * collab converts these into `docTable` when it loads a document; a client
- * meets one only when that conversion failed or an outdated tab inserted one
- * mid-session. It is shown and its words can be edited, nothing more:
+ * Documents keep these as stored, with no conversion or upgrade. One is
+ * shown and its words can be edited, nothing more:
  *
  * - The node names, attributes and content rules are the ones stored
  *   documents hold (`table > tableRow > tableCell | tableHeader >

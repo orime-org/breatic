@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * inner#1619 T8, design section 4: a stored table from before cells held
- * blocks, met in a document collab has not converted yet. It shows, its
- * words can be edited, and nothing that acts on tables reaches it.
+ * inner#1619 design section 4: a stored table from before cells held blocks,
+ * kept as stored. It shows, its words can be edited, and nothing that acts on
+ * tables reaches it.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -80,7 +80,7 @@ function press(editor: Editor, key: string, shift = false): void {
   view.someProp('handleKeyDown', (handler) => handler(view, event));
 }
 
-describe('a stored table in a document not converted yet', () => {
+describe('a stored table from before cells held blocks', () => {
   it('shows its words in a table', () => {
     open();
     const stored = document.querySelector('[data-content-type="table"] table');
