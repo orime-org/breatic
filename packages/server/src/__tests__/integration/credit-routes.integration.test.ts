@@ -551,6 +551,38 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => {
+  it("sends each lot as buyer, date, purchased and remaining, and nothing about its refunds", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 120, fx.studioId);
+    await sql`UPDATE credit_lots SET refund_attempts = 2 WHERE id = ${lotId}`;
+    const [stored] = await sql<{ created_at: Date }[]>`
+      SELECT created_at FROM credit_lots WHERE id = ${lotId}
+    `;
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { lots: Record<string, unknown>[] } };
+    expect(body.data.lots).toHaveLength(1);
+    expect(Object.keys(body.data.lots[0]!).sort()).toEqual([
+      "buyerName",
+      "createdAt",
+      "id",
+      "purchasedCredits",
+      "remainingCredits",
+    ]);
+    expect(body.data.lots[0]).toEqual({
+      id: lotId,
+      purchasedCredits: 120,
+      remainingCredits: 120,
+      createdAt: stored!.created_at.toISOString(),
+      buyerName: fx.personalStudioName,
+    });
+  });
+});
+
 describe("GET /studio/:slug/credits — holds (inner#1611)", () => {
   it("reports what running work holds and what is left beside the spendable figure", async () => {
     const fx = await seedFixture();
