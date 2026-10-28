@@ -338,3 +338,65 @@ describe('validated source ledger read (inner#1306 N01–N04)', () => {
     expect('sourceLedger' in got).toBe(false);
   });
 });
+
+// inner#1306 source-ledger-oracle §2: presentation admission asks ingest for
+// the source ledger, and a source whose work has ended without one is
+// admitted once more. Whether that becomes a ledger-only attempt is the
+// ingest store's decision.
+describe('presentation admission requesting the source ledger (inner#1306 A04/A05)', () => {
+  const ledgerLimits = {
+    maxBytes: 16777216, probeStdoutBytes: 67108864, metadataBytes: 16777216, maxPhysicalFrames: 100000,
+    maxOccurrences: 100000, isoBoxCount: 100000, matroskaElementCount: 1000000, matroskaMaxBlocks: 250000,
+  };
+  const presentation = { schemaVersion: 1 as const, sourceFingerprint: asset.contentHash, original: { width: 48, height: 64, duration: 2 },
+    state: 'native' as const, attempt: { jobId: 'old', deadlineAt: 1900000000000 } };
+  const completed = { jobId: 'old', deadlineAt: 1900000000000, status: 'completed' as const, usage: null, usageRecorded: true };
+  const identity = { schemaVersion: 1, sourceFingerprint: asset.contentHash, producerVersion: 1, attempt: { jobId: 'old', deadlineAt: 1900000000000 } };
+
+  beforeEach(() => {
+    loadProjectRole.mockResolvedValue('viewer');
+    publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
+  });
+
+  it('requests the ledger with its eight frozen budgets and the companion URL derived from the registered key', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'new', deadlineAt: 1900000000000, status: 'accepted', usage: null } });
+    await ensureVideoPresentation({ assetId: asset.id });
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({
+      action: 'accept',
+      limits: expect.objectContaining({ sourceLedger: ledgerLimits }),
+      sourceLedgerURL: `https://assets.example.test/${asset.storageKey}.video-source-ledger.v1.json`,
+    }));
+  });
+
+  it.each([
+    ['no ledger state', undefined],
+    ['a null ledger', null],
+  ])('admits a finished source with %s once more on read', async (_name, sourceLedger) => {
+    videoPresentationAtIngest.mockImplementation(async (_url: string, _secret: string, request: { action: string }) =>
+      request.action === 'read'
+        ? { presentation, attempt: completed, ...(sourceLedger === undefined ? {} : { sourceLedger }) }
+        : { presentation, attempt: { jobId: 'ledger-only', deadlineAt: 1900000000000, status: 'accepted', usage: null },
+          sourceLedger: { state: 'pending', ...identity, attempt: { jobId: 'ledger-only', deadlineAt: 1900000000000 } } });
+    const got = await resolveVideoPresentation(input);
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'accept' }));
+    expect(got.sourceLedger).toEqual(expect.objectContaining({ state: 'pending' }));
+    expect(got.presentation).toEqual(presentation);
+  });
+
+  it.each([
+    ['pending', { state: 'pending', ...identity }],
+    ['failed', { state: 'failed', ...identity, errorCode: 'ledger_invalid' }],
+  ])('leaves a finished source with a %s ledger as it is', async (_name, sourceLedger) => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation, attempt: completed, sourceLedger });
+    await resolveVideoPresentation(input);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('does not admit again while the original work is still running', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'run', deadlineAt: 1900000000000, status: 'running', usage: null } });
+    await resolveVideoPresentation(input);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(queueAdd).toHaveBeenCalledTimes(1);
+  });
+});
