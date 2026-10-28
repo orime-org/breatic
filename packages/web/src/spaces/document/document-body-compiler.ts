@@ -863,21 +863,17 @@ class BodyBatchCompiler {
   }
 
   /**
-   * Hides wrappers absent from the final frame, including ones born at an intermediate stage, without confusing a consumed facet.
-   * @param frames - Every accepted frame of the batch.
+   * Hides final explicitly absent wrappers without confusing an intermediate replacement or a consumed facet.
+   * @param initial - The initial accepted frame containing observed wrappers.
    * @param final - The final frame after all accepted semantic actions.
    * @throws {Error} If a delete fact is invalid.
    */
-  private hideAbsent(frames: readonly CompilerFrame[], final: CompilerFrame): void {
-    const seen = new Set<string>();
-    for (const node of frames.flatMap((frame) => [...frame.nodes.values()])) {
-      if (final.nodes.has(node.id) || seen.has(node.id)) continue;
-      seen.add(node.id);
+  private hideAbsent(initial: CompilerFrame, final: CompilerFrame): void {
+    for (const node of initial.nodes.values()) {
+      if (final.nodes.has(node.id)) continue;
       const view = this.view();
       const record = view.body.records.get(node.id);
-      // A node born and gone within this batch was registered at its stage.
-      if (record === undefined) continue;
-      if (record.kind === 'owner' && view.tree.parents.get(record.facet) !== node.id) continue;
+      if (record?.kind === 'owner' && view.tree.parents.get(record.facet) !== node.id) continue;
       this.emit([{ id: this.id('delete'), kind: 'delete', owner: node.id, dependencies: this.dependencies(view, [node.id]) }]);
     }
   }
@@ -1039,7 +1035,7 @@ class BodyBatchCompiler {
       }
       const final = frames.at(-1)!;
       requireCompiler(final.document.eq(this.input.journal.doc), 'Compiler did not consume the complete accepted journal');
-      this.hideAbsent(frames, final);
+      this.hideAbsent(frames[0], final);
       this.freshRuns(final);
       return {
         id: this.input.batchId,
