@@ -149,13 +149,14 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
 }
 
 /**
- * Throw an answer whose status is not 2xx as HttpStatus, its headers kept for the route's Retry-After.
+ * Throw an answer whose status is not 2xx as HttpStatus, its headers kept for the route's
+ * Retry-After and its whole text for the upstream's words.
  * @param answered - The answer.
  * @throws {HttpStatus} When its status is not 2xx.
  */
 export function assertSucceeded(answered: Answered): void {
   if (answered.status < 200 || answered.status >= 300) {
-    throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, SNIPPET_CHARS), answered.headers);
+    throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, SNIPPET_CHARS), answered.headers, answered.text);
   }
 }
 

@@ -273,7 +273,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status: failure.status, cause: error });
     }
     // With no model answer, as when an upload step was refused, the upstream's words are its refusal's.
-    const words = answerBody ?? (error instanceof HttpStatus ? error.bodySnippet : undefined);
+    const words = answerBody ?? (error instanceof HttpStatus ? error.body : undefined);
     const said = (parsed(words) as { error?: { message?: unknown } } | null | undefined)?.error?.message;
     const cost = answerCost(upstream, failure.status, answerBody);
     return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, cost === undefined ? billed : [...billed, cost], {

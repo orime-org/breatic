@@ -33,6 +33,8 @@ export class HttpStatus extends Error {
   readonly bodySnippet: string;
   /** The response headers, when the caller kept them (a Retry-After is read from them). */
   readonly headers?: Headers;
+  /** The whole body, when the caller read it whole (an upstream's words can sit past the snippet). */
+  readonly body?: string;
 
   /**
    * Record what the error carries.
@@ -40,13 +42,15 @@ export class HttpStatus extends Error {
    * @param status - The response status.
    * @param bodySnippet - The start of the body, for logs.
    * @param headers - The response headers.
+   * @param body - The whole body.
    */
-  constructor(url: string, status: number, bodySnippet: string, headers?: Headers) {
+  constructor(url: string, status: number, bodySnippet: string, headers?: Headers, body?: string) {
     super(`Request to ${url} answered ${status}`);
     this.name = "HttpStatus";
     this.status = status;
     this.bodySnippet = bodySnippet;
     if (headers !== undefined) this.headers = headers;
+    if (body !== undefined) this.body = body;
   }
 }
 
