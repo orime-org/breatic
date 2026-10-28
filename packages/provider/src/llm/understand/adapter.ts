@@ -9,7 +9,8 @@
 
 import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
-import { readBody, send, type OutgoingRequest } from "@provider/http/request.js";
+import { deliver, readBody, type OutgoingRequest } from "@provider/http/request.js";
+import { parsed } from "@provider/llm/switching.js";
 
 /** One understand request on one upstream. */
 export interface UnderstandCall {
@@ -67,25 +68,43 @@ export interface UnderstandAdapter {
 /** The largest answer read, in bytes. */
 const MAX_ANSWER_BYTES = 10 * 1024 * 1024;
 
+/** An answer whose status arrived and whose body could not be read; the read's failure is its cause. */
+export class AnswerUnread extends Error {
+  readonly status: number;
+
+  /**
+   * Record what the error carries.
+   * @param url - Where the request went.
+   * @param status - The status that arrived.
+   * @param cause - Why the body could not be read.
+   */
+  constructor(url: string, status: number, cause: unknown) {
+    super(`The answer of ${url} (${status}) could not be read`, { cause });
+    this.name = "AnswerUnread";
+    this.status = status;
+  }
+}
+
 /**
- * Send one request and read its whole answer within the call's bounds; any status comes back.
+ * Send one request once and read its whole answer within the call's bounds; any status
+ * comes back. Retries belong to the caller's route, never to this one delivery.
  * @param request - The request.
  * @param call - The call, for its deadline and signal.
  * @returns The answer.
- * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies the failure.
+ * @throws {NotSent | NoAnswer | Aborted} As provider's HTTP module classifies a failure to send.
+ * @throws {AnswerUnread} When the status arrived and the body could not be read.
  */
 export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
-  const response = await send(request, bounds);
-  const bytes = await readBody(request.url, response, MAX_ANSWER_BYTES, Math.max(1, call.deadlineAt - Date.now()), bounds);
-  const text = new TextDecoder().decode(bytes);
-  let body: unknown;
+  const response = await deliver(request, bounds);
+  let bytes: Uint8Array;
   try {
-    body = JSON.parse(text) as unknown;
-  } catch {
-    body = undefined;
+    bytes = await readBody(request.url, response, MAX_ANSWER_BYTES, Math.max(1, call.deadlineAt - Date.now()), bounds);
+  } catch (error) {
+    throw new AnswerUnread(request.url, response.status, error);
   }
-  return { url: request.url, status: response.status, body, text, headers: response.headers };
+  const text = new TextDecoder().decode(bytes);
+  return { url: request.url, status: response.status, body: parsed(text), text, headers: response.headers };
 }
 
 /**

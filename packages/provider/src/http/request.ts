@@ -186,7 +186,7 @@ export async function wait(ms: number, options: SendOptions, url: string): Promi
  * @throws {NoAnswer} When no response came.
  * @throws {Aborted} When the bounds ended.
  */
-async function deliver(request: OutgoingRequest, options: SendOptions): Promise<Response> {
+export async function deliver(request: OutgoingRequest, options: SendOptions): Promise<Response> {
   if (ended(options)) throw new Aborted(request.url);
   const { signal, dispose } = boundSignal(options);
   try {
