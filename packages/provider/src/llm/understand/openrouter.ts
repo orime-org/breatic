@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 /**
- * Understanding through OpenRouter's chat completions (design 6.5), the request written as
- * domain's understand wrote it: the question, then each item labelled and inline, images as
- * `image_url`, video as `video_url` (data URIs) and audio as `input_audio` with OpenRouter's
- * name for its format.
+ * Understanding through OpenRouter's chat completions (design 6.5): the question, then each
+ * item labelled and sent inline, images included: images as `image_url` and video as
+ * `video_url` (data URIs), audio as `input_audio` with OpenRouter's name for its format.
  */
 
 import type { FinishReason, ProviderMetadata } from "ai";

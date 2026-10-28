@@ -19,7 +19,6 @@ import { AnswerUnread, assertSucceeded, UnreadableAnswer, type UnderstandSession
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { cacheMark, isClaude, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
 import type { ProviderOptions } from "@provider/provider.js";
-import { decide } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
 
@@ -254,17 +253,16 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param model - Our model id.
    * @param upstream - The upstream that answered last.
    * @param error - What the call threw.
-   * @param answerBody - The text of the last model answer, when one came.
    * @param billed - What the answers before it were billed, in order.
    * @returns The error to throw.
    */
-  const understandEnding = (model: string, upstream: string | undefined, error: unknown, answerBody: string | undefined, billed: Cost[]): Error => {
+  const understandEnding = (model: string, upstream: string | undefined, error: unknown, billed: Cost[]): Error => {
     if (error instanceof NoUpstreamAvailable) return new NoUpstreamAvailable(error.model, error.reasons, billed);
     if (error instanceof UnreadableAnswer && upstream !== undefined) {
       return new UpstreamRequestRejected(model, upstream, error.message, error.cost === undefined ? billed : [...billed, error.cost], { cause: error });
     }
     const failure = upstream === undefined ? null : classifyLlm(error, vendorOf(kindOf(upstream)));
-    if (upstream === undefined || failure?.kind !== "http_status" || decide(failure, "llm_before_content", 0, 0) !== "stop") {
+    if (upstream === undefined || failure?.kind !== "http_status") {
       return new UnderstandInterrupted(model, billed, error);
     }
     if (error instanceof InBandError) {
@@ -272,10 +270,10 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const said = (error.error as { message?: unknown } | null)?.message;
       return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status: failure.status, cause: error });
     }
-    // With no model answer, as when an upload step was refused, the upstream's words are its refusal's.
-    const words = answerBody ?? (error instanceof HttpStatus ? error.body : undefined);
+    // The refused answer's whole text, a model answer's or an upload step's.
+    const words = error instanceof HttpStatus ? error.body : undefined;
     const said = (parsed(words) as { error?: { message?: unknown } } | null | undefined)?.error?.message;
-    const cost = answerCost(upstream, failure.status, answerBody);
+    const cost = answerCost(upstream, failure.status, words);
     return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : (error as Error).message, cost === undefined ? billed : [...billed, cost], {
       status: failure.status,
       cause: error,
@@ -401,8 +399,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       let answering: string | undefined;
       // What each 2xx answer before the final one was billed, in order.
       const billed: Cost[] = [];
-      // The text of the last answer, for a refusal's cost and message.
-      let lastBody: string | undefined;
       const session: UnderstandSession = { uploads: new Map(), cleanups: [] };
       try {
         const served = await tryInOrder(plan, {
@@ -412,7 +408,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
           pause: (error, retry) => pauseBeforeRetry(error, retry, signal),
           attempt: async (c) => {
             answering = c.upstream;
-            lastBody = undefined;
             const decl = config.upstreams[c.upstream]!;
             const adapter = understandAdapterOf(decl.kind);
             const pin = config.llm.openrouter_backends[request.model];
@@ -439,7 +434,6 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               }
               throw error;
             }
-            lastBody = answered.text;
             assertSucceeded(answered);
             const reading = adapter.read(answered.body);
             // Billed though unusable, and costed like a refused 2xx: never a price-table guess.
@@ -457,7 +451,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
         });
         return { text: served.value.text, finishReason: served.value.finishReason, costs: [...billed, served.value.cost], upstream: served.servedBy };
       } catch (error) {
-        throw understandEnding(request.model, answering, error, lastBody, billed);
+        throw understandEnding(request.model, answering, error, billed);
       } finally {
         dispose();
         for (const cleanup of session.cleanups) cleanup();
