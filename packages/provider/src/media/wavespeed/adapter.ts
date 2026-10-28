@@ -82,9 +82,16 @@ const submittedSchema = z.looseObject({
   data: z.looseObject({ id: z.string().optional(), outputs: z.array(z.unknown()).nullish() }),
 });
 
-/** A prediction's result answer, as far as it is read. */
+/**
+ * A prediction's result answer, as far as it is read. Like today's poll, a part it cannot
+ * read reads as absent: no readable status is still running, outputs that are not a list none.
+ */
 const resultSchema = z.looseObject({
-  data: z.looseObject({ status: z.string().optional(), outputs: z.array(z.unknown()).nullish(), error: z.unknown().optional() }),
+  data: z.looseObject({
+    status: z.string().optional().catch(undefined),
+    outputs: z.array(z.unknown()).optional().catch(undefined),
+    error: z.unknown().optional(),
+  }).optional().catch(undefined),
 });
 
 /**
@@ -141,7 +148,6 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
  * @returns Whether it is running, done with its outputs, or failed with the upstream's words.
  * @throws {NotSent | NoAnswer | HttpStatus | Aborted} As the HTTP module classifies the failure.
  * @throws {SyntaxError} When a 2xx answer is not JSON.
- * @throws {Error} When a 2xx answer is not shaped as a result.
  */
 export async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): Promise<Asked> {
   const answer = await fetchJson(
@@ -149,8 +155,8 @@ export async function ask(reach: Reach, predictionId: string, bounds: RequestBou
     { replaySafe: true, ...bounds, ...limits(bounds) },
   );
   const parsed = resultSchema.safeParse(answer);
-  if (!parsed.success) throw new Error(`${reach.name} answered a result it cannot read: ${parsed.error.issues[0]?.message ?? "unknown"}`);
-  const data = parsed.data.data;
+  const data = parsed.success ? parsed.data.data : undefined;
+  if (data === undefined) return { state: "running" };
   if (data.status === "completed") return { state: "done", outputs: data.outputs ?? [] };
   // As today's poll: the upstream's error as text whatever its type, "unknown" when it gave none.
   if (data.status === "failed") return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error) };
