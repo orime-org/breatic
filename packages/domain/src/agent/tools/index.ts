@@ -14,6 +14,7 @@ import type { ToolPictureContext } from "@domain/agent/prepare-agent-pictures.js
 import {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
+  GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,
@@ -32,6 +33,7 @@ import { makeSearchTools } from "@domain/agent/tools/web-search.js";
 import { makeUnderstandMediaTool } from "@domain/agent/tools/understand-media.js";
 import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
+import { getGenerationTemplate } from "@domain/agent/tools/get-generation-template.js";
 import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
@@ -80,8 +82,9 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   [GET_CANVAS_CAPABILITIES]: () => canvasCapabilities,
   [LIST_GENERATION_MODELS]: () => generationModels,
   [GET_PRODUCT_GUIDE]: () => productGuide,
-  // Built per turn: its description quotes the template prompts in the
-  // reader's language.
+  // Renders a template in the turn's language when called, so one object
+  // serves every turn.
+  [GET_GENERATION_TEMPLATE]: () => getGenerationTemplate,
   [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
   // Holds nothing between calls, so one object serves every turn.
   [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
@@ -126,6 +129,7 @@ export const CANVAS_TOOLS: readonly string[] = [
   GET_CANVAS_CAPABILITIES,
   LIST_GENERATION_MODELS,
   GET_PRODUCT_GUIDE,
+  GET_GENERATION_TEMPLATE,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   SAVE_IMAGE,
@@ -134,6 +138,7 @@ export const CANVAS_TOOLS: readonly string[] = [
 export {
   ASK_USER,
   GET_CANVAS_CAPABILITIES,
+  GET_GENERATION_TEMPLATE,
   GET_PRODUCT_GUIDE,
   JUDGE_LIKELIHOOD,
   LIST_GENERATION_MODELS,

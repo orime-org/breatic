@@ -633,18 +633,25 @@ export function renderProductGuide(): string {
       `does not open and a message says why: ${quoted(t("canvas.generatePanel.catalogUnavailable"))}, or ` +
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
     `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
-      `opens a list under that heading of the templates for this kind of node, each a name with a line under ` +
-      `it. A picture node lists ${quoted(t("canvas.template.storyboard-grid-25.name"))} ` +
-      `(${quoted(t("canvas.template.storyboard-grid-25.description"))}) and ` +
-      `${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}); ` +
-      `video and sound nodes list none and show ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
+      "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
+      "name with a line under it. A picture node lists " +
+      `${quoted(t("canvas.template.goal.character"))}, holding ${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}), ` +
+      `${quoted(t("canvas.template.character-bible.name"))} (${quoted(t("canvas.template.character-bible.description"))}), ${quoted(t("canvas.template.expression-sheet.name"))} (${quoted(t("canvas.template.expression-sheet.description"))}) and ` +
+      `${quoted(t("canvas.template.character-design-from-text.name"))} (${quoted(t("canvas.template.character-design-from-text.description"))}); then ` +
+      `${quoted(t("canvas.template.goal.comics-storyboards"))}, holding ${quoted(t("canvas.template.storyboard-grid-25.name"))} (${quoted(t("canvas.template.storyboard-grid-25.description"))}). ` +
+      `A video node lists ${quoted(t("canvas.template.goal.character"))}, holding ${quoted(t("canvas.template.single-view-refs-scene.name"))} (${quoted(t("canvas.template.single-view-refs-scene.description"))}), ` +
+      `${quoted(t("canvas.template.identity-locked-sequence.name"))} (${quoted(t("canvas.template.identity-locked-sequence.description"))}) and ${quoted(t("canvas.template.character-showcase-orbit.name"))} (${quoted(t("canvas.template.character-showcase-orbit.description"))}). ` +
+      `A sound node shows ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +
       "connected to the node is used as it is; for one that is missing, an empty node is placed to the left, " +
-      "connected and @'d, and a note at the top of the prompt says what to put in it. A template that brings " +
+      "connected and @'d, and a note at the top of the prompt says what to put in it. A template may also place " +
+      "picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
+      "says to generate them first. When a template feeds what it needs into those nodes too, a picture already " +
+      "connected to the node is connected to them as well. A template that brings " +
       "files of its own places them as nodes to the left as well, connected and @'d, and one with steps to take " +
-      "after it generates also places a text node listing them; the two listed here do neither. Picking it " +
+      "after it generates also places a text node listing them. Picking it " +
       "again on the same node reuses what it placed before. When the nodes or the panel, grown around the prompt, " +
       "reach under the left menu, the toolbar at the bottom right or the minimap, the view moves them into " +
       "sight, zooming out only as far as that takes. Inside a group, the new nodes join the group. On a " +

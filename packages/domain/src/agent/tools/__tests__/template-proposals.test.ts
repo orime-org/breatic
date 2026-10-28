@@ -209,7 +209,7 @@ describe("the template prompts the agent reads inside a request", () => {
     const said = await runWithLocale("ja", async () => {
       const read = (await buildAgentConfig({ basePrompt: "base" })).tools["get_generation_template"];
       if (read?.execute === undefined) throw new Error("get_generation_template is not offered");
-      return String(await read.execute({ id: grid.id }, { toolCallId: "t", messages: [] }));
+      return String(await read.execute({ id: grid.id }, { toolCallId: "t", messages: [], context: {} }));
     });
     const japanese = runWithLocale("ja", () => shown(grid));
     expect(japanese).not.toBe(shown(grid));

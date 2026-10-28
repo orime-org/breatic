@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { markedSegments, t, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markedSegments, t, type GenerationTemplate, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useEnvWithKeys, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -302,7 +302,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "template-unknown": [{
     meets: group([EMPTY_PIC, { ...EDIT_POOL, template: { id: "no-such-template" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ['No template "no-such-template". Templates: storyboard-grid-25'],
+    states: [`No template "no-such-template". Templates: ${GENERATION_TEMPLATES.map((template) => template.id).join(", ")}.`],
   }, {
     meets: group([EMPTY_PIC, { ...EDIT_POOL, template: { id: "no-such-template" }, mode: undefined, model: undefined }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['No template "no-such-template". Templates: fixture-sheet, fixture-solo, fixture-steps, fixture-shots.'],
