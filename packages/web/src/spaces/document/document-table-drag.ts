@@ -29,7 +29,7 @@ import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
-import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
+import { cellAt, columnCellOf, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */
 export type DragOrientation = 'row' | 'column';
@@ -208,10 +208,7 @@ function edgesOf(view: EditorView, drag: Drag): number[] | null {
   const edges: number[] = [];
   let right = 0;
   for (let col = 0; col < at.map.width; col += 1) {
-    // A short row holds 0 where its cells are missing.
-    let row = 0;
-    while (at.map.map[row * at.map.width + col] === 0) row += 1;
-    const rel = at.map.map[row * at.map.width + col]!;
+    const rel = columnCellOf(at.map, at.table, col);
     const element = view.nodeDOM(at.tableStart + rel);
     if (!(element instanceof Element)) return null;
     const box = element.getBoundingClientRect();

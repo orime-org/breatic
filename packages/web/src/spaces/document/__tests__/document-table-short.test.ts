@@ -12,14 +12,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Selection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { CellSelection, columnResizingPluginKey, TableMap } from '@tiptap/pm/tables';
+import { CellSelection, columnResizingPluginKey, TableMap, updateColumnsOnResize } from '@tiptap/pm/tables';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { canDragFrom, startTableDrag } from '@web/spaces/document/document-table-drag';
-import { squareTable } from '@web/spaces/document/document-table-run';
+import { squareTable } from '@web/spaces/document/document-table-nodes';
+import { canMergeCells, headerOn, insertColumn } from '@web/spaces/document/document-table-run';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -352,5 +354,236 @@ describe('Tab at the end of a short row (A17)', () => {
     const { $head } = editor.prosemirrorState.selection;
     expect($head.pos).toBeGreaterThan(missing);
     expect($head.pos).toBeLessThan(missing + node.nodeAt(map.map[map.width + 2]!)!.nodeSize);
+  });
+});
+
+/**
+ * A short table and the table it evens into, each in an editor of its own.
+ * @param rows - The short table's rows.
+ * @returns The two editors: the short one, then the even one.
+ */
+function shortAndEven(rows: TableInput['rows']): [Editor, Editor] {
+  const width = Math.max(...rows.map((row) => row.cells.length));
+  const even = rows.map((row) => ({ cells: [...row.cells, ...Array.from({ length: width - row.cells.length }, () => '')] }));
+  return [open(rows), open(even)];
+}
+
+describe('cells pasted into a short table (A16, A17)', () => {
+  /**
+   * Copies two cells of a table and pastes them over a target, as the editor's
+   * paste does.
+   * @param editor - The editor.
+   * @param target - Puts the selection the paste lands on.
+   */
+  function pasteCells(editor: Editor, target: (view: NonNullable<Editor['prosemirrorView']>) => void): void {
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellOf(editor, 'a3'), cellOf(editor, 'b3'))));
+    const slice = view.state.selection.content();
+    target(view);
+    view.someProp('handlePaste', (handler) => handler(view, new Event('paste') as ClipboardEvent, slice));
+  }
+
+  it('land where they land in the table evened, with the caret in a short row', () => {
+    for (const editor of shortAndEven([{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2'] }, { cells: ['a3', 'b3', 'c3'] }])) {
+      pasteCells(editor, (view) => view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(cellOf(editor, 'a2') + 1)))));
+    }
+    const [short, even] = mounted.slice(-2) as [Editor, Editor];
+
+    expect(grid(short)).toEqual(grid(even));
+  });
+
+  it('land where they land in the table evened, over cells selected across a short first row', () => {
+    for (const editor of shortAndEven([{ cells: ['a1'] }, { cells: ['a2', 'b2', 'c2'] }, { cells: ['a3', 'b3', 'c3'] }])) {
+      pasteCells(editor, (view) => {
+        const map = TableMap.get(tableOf(editor).node);
+        const start = tableOf(editor).pos + 1;
+        view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellOf(editor, 'a1'), start + map.map[map.width + 1]!)));
+      });
+    }
+    const [short, even] = mounted.slice(-2) as [Editor, Editor];
+
+    expect(grid(short)).toEqual(grid(even));
+  });
+});
+
+describe('table tools reading a short table (A17)', () => {
+  it('offer merge over cells next to two missing ones', () => {
+    const editor = open([{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2'] }, { cells: ['a3', 'b3', 'c3'] }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellOf(editor, 'a1'), cellOf(editor, 'b3'))));
+
+    expect(canMergeCells(view.state)).toBe(true);
+  });
+
+  it('show a short header row as a header row', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['h1', 'h2'] }, { cells: ['a2', 'b2', 'c2'] }], headerRows: 1 })] as never);
+
+    expect(headerOn(editor.prosemirrorState.doc, tableOf(editor).pos + 2, 'row')).toBe(true);
+  });
+
+  it('show a header column as one though a row holds no cells', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['h1', 'a1'] }, { cells: [] }, { cells: ['h3', 'a3'] }], headerCols: 1 })] as never);
+
+    expect(headerOn(editor.prosemirrorState.doc, tableOf(editor).pos + 2, 'column')).toBe(true);
+  });
+
+  it('insert a column beside the cell the menu was opened on', () => {
+    const cases: [TableInput['rows'], string, 'left' | 'right'][] = [
+      [[{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2', 'c2'] }], 'a2', 'left'],
+      [[{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2', 'c2'] }], 'b2', 'right'],
+      [[{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2'] }], 'c1', 'right'],
+      [[{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2', 'c2'] }, { cells: ['a3', 'b3', 'c3'] }], 'a3', 'right'],
+    ];
+    for (const [rows, text, side] of cases) {
+      const [short, even] = shortAndEven(rows);
+      insertColumn(short, cellOf(short, text), side);
+      insertColumn(even, cellOf(even, text), side);
+
+      expect(grid(short)).toEqual(grid(even));
+    }
+  });
+});
+
+describe('arrow keys out of a short table that ends the body (A17)', () => {
+  it('open a line below from the last cell in reading order, and from above a missing cell', () => {
+    for (const [text, key] of [['a2', 'ArrowRight'], ['b1', 'ArrowDown']] as const) {
+      const editor = open([{ cells: ['a1', 'b1'] }, { cells: ['a2'] }]);
+      const view = editor.prosemirrorView!;
+      const cell = cellOf(editor, text);
+      view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(cell + view.state.doc.nodeAt(cell)!.nodeSize - 1), -1)));
+      view.endOfTextblock = (): boolean => true;
+      press(editor, key);
+
+      expect(editor.document).toHaveLength(3);
+      expect(headCell(editor)).toBe('');
+    }
+  });
+});
+
+describe('column widths of a table whose first row is short (A12, A17)', () => {
+  const widthsShort: TableInput['rows'] = [
+    { cells: [{ content: 'a1', props: { colwidth: [100] } }, { content: 'b1', props: { colwidth: [140] } }] },
+    { cells: [{ content: 'a2', props: { colwidth: [100] } }, { content: 'b2', props: { colwidth: [140] } }, { content: 'c2', props: { colwidth: [260] } }] },
+  ];
+
+  it('draws a column for every column of the grid, at its stored width', () => {
+    const editor = open(widthsShort);
+
+    const cols = Array.from(editor.prosemirrorView!.dom.querySelectorAll('colgroup col'), (col) => (col as HTMLElement).style.width);
+    expect(cols).toEqual(['100px', '140px', '260px']);
+  });
+
+  it('places a row\'s cells past a cell spanning it from above', () => {
+    const editor = open([
+      { cells: [{ content: 'a1', props: { rowspan: 2, colwidth: [100] } }, { content: 'b1', props: { colwidth: [140] } }] },
+      { cells: [{ content: 'b2', props: { colwidth: [140] } }, { content: 'c2', props: { colwidth: [260] } }] },
+    ]);
+
+    const cols = Array.from(editor.prosemirrorView!.dom.querySelectorAll('colgroup col'), (col) => (col as HTMLElement).style.width);
+    expect(cols).toEqual(['100px', '140px', '260px']);
+  });
+
+  it('reads a column\'s drawn width from a cell of that column alone, below a merged first row', () => {
+    const editor = open([{ cells: [{ content: 'ab', props: { colspan: 2 } }] }, { cells: ['a2', 'b2'] }]);
+    const view = editor.prosemirrorView!;
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function width(this: HTMLElement) {
+      return this.tagName === 'TD' ? 100 : 0;
+    });
+    view.dispatch(view.state.tr.setMeta(columnResizingPluginKey, { setHandle: cellOf(editor, 'a2') }));
+    view.dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, clientX: 100 }));
+
+    expect(view.state.doc.nodeAt(cellOf(editor, 'ab'))!.attrs['colwidth']).toEqual([100, 100]);
+    document.body.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: 100 }));
+  });
+
+  it('draws every column while a column edge is dragged', () => {
+    const editor = open(widthsShort);
+    const table = editor.prosemirrorView!.dom.querySelector('table')!;
+    updateColumnsOnResize(tableOf(editor).node, table.querySelector('colgroup')!, table, 25, 0, 120);
+
+    const cols = Array.from(table.querySelectorAll('colgroup col'), (col) => (col as HTMLElement).style.width);
+    expect(cols).toEqual(['120px', '140px', '260px']);
+  });
+
+  it('keeps the width repairs of a short table, which add no cell', () => {
+    const editor = open([
+      { cells: [{ content: 'a1', props: { colwidth: [300] } }, { content: 'b1', props: { colwidth: [300] } }, { content: 'c1', props: { colwidth: [300] } }] },
+      { cells: ['a2', 'b2'] },
+    ]);
+
+    const row = tableOf(editor).node.child(1);
+    expect([row.child(0).attrs['colwidth'], row.child(1).attrs['colwidth']]).toEqual([[300], [300]]);
+    expect(row.childCount).toBe(2);
+  });
+});
+
+describe('the kind of cell a short row lacks (A17)', () => {
+  it('is a body cell beside a header column, and a header in a header row', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2'] }], headerCols: 1 }),
+      tableBlock({ rows: [{ cells: ['h1'] }, { cells: ['a2', 'b2'] }], headerRows: 1 }),
+    ] as never);
+    const kinds = (): string[][] => {
+      const found: string[][] = [];
+      editor.prosemirrorState.doc.descendants((node) => {
+        if (node.type.name === 'docTableRow') {
+          const row: string[] = [];
+          node.forEach((cell) => row.push(cell.type.name));
+          found.push(row);
+          return false;
+        }
+        return true;
+      });
+      return found;
+    };
+    const missing = Array.from(editor.prosemirrorView!.dom.querySelectorAll('[data-doc-table-missing]'), (cell) => cell.tagName);
+    expect(missing).toEqual(['TD', 'TH']);
+    for (const block of [...editor.document].reverse()) {
+      const tr = editor.prosemirrorState.tr;
+      let pos = -1;
+      tr.doc.descendants((node, at) => {
+        if (pos < 0 && node.type.name === 'docTable' && (node.attrs['id'] as unknown) === (block as { id: string }).id) pos = at;
+        return pos < 0;
+      });
+      squareTable(tr, pos);
+      editor.prosemirrorView!.dispatch(tr);
+    }
+
+    expect(kinds()).toEqual([
+      ['docTableHeader', 'docTableCell'],
+      ['docTableHeader', 'docTableCell'],
+      ['docTableHeader', 'docTableHeader'],
+      ['docTableCell', 'docTableCell'],
+    ]);
+  });
+});
+
+describe('Markdown of a short table (A17)', () => {
+  it('is an HTML table, so a header row shorter than the rest drops no cells', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['h1', 'h2'] }, { cells: ['a2', 'b2', 'c2'] }], headerRows: 1 })] as never);
+
+    const markdown = blocksMarkdown(editor as never, editor.document as never);
+    expect(markdown).toContain('<table');
+    expect(markdown).toContain('c2');
   });
 });

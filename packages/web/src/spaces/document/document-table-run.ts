@@ -14,7 +14,7 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
-import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import {
   EditorState,
   TextSelection,
@@ -22,12 +22,12 @@ import {
   type Transaction,
 } from '@tiptap/pm/state';
 import {
-  addColumn,
+  addColumnAfter,
+  addColumnBefore,
   addRow,
   cellAround,
   CellSelection,
   columnIsHeader,
-  fixTables,
   removeColumn,
   removeRow,
   mergeCells,
@@ -47,7 +47,7 @@ import {
   type Alignment,
 } from '@web/spaces/document/document-align-run';
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
-import { DOC_TABLE_CELL, DOC_TABLE_HEADER, isTableCell, missingCellsOf } from '@web/spaces/document/document-table-nodes';
+import { isTableCell, squareSelectedTable, squareTable } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;
@@ -71,6 +71,25 @@ export interface CellAt {
 
 /** Which part of the table a cell attribute is written to. */
 export type CellScope = 'row' | 'column' | 'cell';
+
+/**
+ * The cell a column is read from: the first in it that covers that column
+ * alone, else the first in it at all. A short row's missing cell is none.
+ * @param map - The table's map.
+ * @param table - The table.
+ * @param col - The column.
+ * @returns The cell's offset in the table.
+ */
+export function columnCellOf(map: TableMap, table: PMNode, col: number): number {
+  let first = 0;
+  for (let row = 0; row < map.height; row += 1) {
+    const rel = map.map[row * map.width + col]!;
+    if (rel === 0) continue;
+    if (Number(table.nodeAt(rel)!.attrs['colspan'] ?? 1) === 1) return rel;
+    if (first === 0) first = rel;
+  }
+  return first;
+}
 
 /**
  * The cell at a position, and the table it is in.
@@ -119,53 +138,6 @@ function runOnTable(
 }
 
 /**
- * Evens one table's grid in a transaction: short rows are filled at their end,
- * where their missing cells are drawn (`missingCellsOf`), and overlapping
- * spans are cut back.
- *
- * The user running a command on the table is the one who evens it; the table
- * plugin's own repairs are held back (`holdTableRepairs`). `fixTables` fills a
- * short first row at its start, so it is left only the spans. It scans only
- * the tables that differ from the state it is given, so it is handed the
- * document with this table swapped for a new node with the same content
- * (`Node.copy` would hand back the node itself).
- * @param tr - The transaction to add the repair to.
- * @param tablePos - The position before the table.
- */
-export function squareTable(tr: Transaction, tablePos: number): void {
-  const table = tr.doc.nodeAt(tablePos);
-  if (table === null || TableMap.get(table).problems === null) return;
-  const { nodes } = tr.doc.type.schema;
-  // The last first, so each insertion leaves the offsets before it standing;
-  // the column widths of the new cells are left to `fixTables` below.
-  for (const missing of missingCellsOf(table).reverse()) {
-    const type = nodes[missing.header ? DOC_TABLE_HEADER : DOC_TABLE_CELL]!;
-    tr.insert(tablePos + 1 + missing.at, type.createAndFill()!);
-  }
-  const evened = tr.doc.nodeAt(tablePos)!;
-  if (TableMap.get(evened).problems === null) return;
-  const before = tr.doc.replace(tablePos, tablePos + evened.nodeSize, new Slice(Fragment.from(evened.type.create(evened.attrs, evened.content, evened.marks)), 0, 0));
-  const repair = fixTables(EditorState.create({ doc: tr.doc }), EditorState.create({ doc: before }));
-  repair?.steps.forEach((step) => tr.step(step));
-}
-
-/**
- * Evens the table the selection is in, in a transaction of its own, before a
- * command of `prosemirror-tables` reads the editor's state.
- * @param view - The editor view.
- * @param view.state - Its state.
- * @param view.dispatch - Where the repair goes.
- */
-export function squareSelectedTable(view: { state: EditorState; dispatch: (tr: Transaction) => void }): void {
-  const { selection } = view.state;
-  const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$head);
-  if ($cell === null) return;
-  const tr = view.state.tr;
-  squareTable(tr, $cell.before($cell.depth - 1));
-  if (tr.docChanged) view.dispatch(tr);
-}
-
-/**
  * The table as it stands in the transaction now, read from a position inside it.
  * @param tr - The transaction.
  * @param tableStart - Where the table's content started when the command began.
@@ -202,8 +174,10 @@ export function insertRow(editor: TableEditor, cellPos: number, side: 'above' | 
  * @param side - Which side.
  */
 export function insertColumn(editor: TableEditor, cellPos: number, side: 'left' | 'right'): void {
-  runOnTable(editor, cellPos, (tr, at) => {
-    addColumn(tr, at, side === 'left' ? at.left : at.right);
+  // In the cell's own state: `addColumn` maps its positions through the whole
+  // transaction, the cells evening the table added included.
+  runOnTable(editor, cellPos, (tr, _at, cell) => {
+    runInCell(tr, cell, side === 'left' ? addColumnBefore : addColumnAfter);
   });
 }
 

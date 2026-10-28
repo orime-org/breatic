@@ -21,7 +21,7 @@ import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizingPluginKey, TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { cellAt } from '@web/spaces/document/document-table-run';
+import { cellAt, columnCellOf } from '@web/spaces/document/document-table-run';
 
 /**
  * Gives every column of a table without a stored width the width given for it.
@@ -39,21 +39,16 @@ export function holdColumnWidths(
   if (table === null) return tr;
   const map = TableMap.get(table);
   const start = tablePos + 1;
-  const seen = new Set<number>();
-  map.map.forEach((rel, index) => {
-    // 0 is a missing cell of a short row: the offset of the row itself.
-    if (rel === 0 || seen.has(rel)) return;
-    seen.add(rel);
-    const cell = table.nodeAt(rel);
-    if (cell === null) return;
-    const left = index % map.width;
+  for (const rel of map.cellsInRect({ left: 0, top: 0, right: map.width, bottom: map.height })) {
+    const cell = table.nodeAt(rel)!;
+    const left = map.colCount(rel);
     const span = Number(cell.attrs['colspan'] ?? 1);
     const stored = cell.attrs['colwidth'] as (number | null)[] | null;
     const held = Array.from({ length: span }, (_, k) => stored?.[k] ?? columns[left + k] ?? null);
-    if (held.some((width) => width === null)) return;
-    if (stored !== null && held.every((width, k) => width === stored[k])) return;
+    if (held.some((width) => width === null)) continue;
+    if (stored !== null && held.every((width, k) => width === stored[k])) continue;
     tr.setNodeMarkup(start + rel, undefined, { ...cell.attrs, colwidth: held });
-  });
+  }
   return tr;
 }
 
@@ -66,14 +61,11 @@ export function holdColumnWidths(
  */
 function drawnColumns(view: EditorView, table: PMNode, start: number): (number | null)[] {
   const map = TableMap.get(table);
-  const columns: (number | null)[] = Array.from({ length: map.width }, () => null);
-  map.map.forEach((rel, index) => {
-    const left = index % map.width;
-    if (rel === 0 || columns[left] !== null || Number(table.nodeAt(rel)?.attrs['colspan'] ?? 1) !== 1) return;
+  return Array.from({ length: map.width }, (_, col) => {
+    const rel = columnCellOf(map, table, col);
     const dom = view.nodeDOM(start + rel);
-    if (dom instanceof HTMLElement) columns[left] = dom.offsetWidth;
+    return Number(table.nodeAt(rel)!.attrs['colspan'] ?? 1) === 1 && dom instanceof HTMLElement ? dom.offsetWidth : null;
   });
-  return columns;
 }
 
 /**

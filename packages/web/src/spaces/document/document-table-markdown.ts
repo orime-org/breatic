@@ -31,14 +31,16 @@ interface BlockLike {
 }
 
 /**
- * Whether a pipe table carries all of a table: every cell holds one
- * paragraph and nothing under it, no cell spans, and the headers are the
- * first row exactly, which a pipe table always reads as its header (GFM).
+ * Whether a pipe table carries all of a table: every row is as wide as the
+ * first, every cell holds one paragraph and nothing under it, no cell spans,
+ * and the headers are the first row exactly, which a pipe table always reads as its header (GFM).
  * @param table - The table block.
  * @returns True when it does.
  */
 function pipeCarries(table: BlockLike): boolean {
+  const width = table.children?.[0]?.children?.length ?? 0;
   return (table.children ?? []).every((row, r) =>
+    (row.children ?? []).length === width &&
     (row.children ?? []).every((cell) => {
       const blocks = cell.children ?? [];
       return (
