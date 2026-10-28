@@ -19,6 +19,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { canDragFrom, startTableDrag } from '@web/spaces/document/document-table-drag';
+import { squareTable } from '@web/spaces/document/document-table-run';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -294,5 +295,43 @@ describe('a table short of cells, before any command', () => {
     const editor = open(LAST_ROW_SHORT);
 
     expect(TableMap.get(tableOf(editor).node).problems).not.toBeNull();
+  });
+});
+
+describe('a short table evened by a command (A17)', () => {
+  it('fills each short row at its end, where its missing cells are drawn', () => {
+    for (const [rows, expected] of [
+      [
+        [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2', 'c2'] }],
+        [['a1', 'b1', ''], ['a2', 'b2', 'c2']],
+      ],
+      [
+        [{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2'] }, { cells: ['a3', 'b3'] }],
+        [['a1', 'b1', 'c1'], ['a2', 'b2', ''], ['a3', 'b3', '']],
+      ],
+    ] as const) {
+      const editor = open(rows as unknown as TableInput['rows']);
+      const view = editor.prosemirrorView!;
+      const tr = view.state.tr;
+      squareTable(tr, tableOf(editor).pos);
+      view.dispatch(tr);
+
+      expect(grid(editor)).toEqual(expected);
+      expect(TableMap.get(tableOf(editor).node).problems).toBeNull();
+    }
+  });
+
+  it('gives a filled cell its column\'s width', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2'] }], columnWidths: [100, 140] })] as never);
+    const tr = editor.prosemirrorState.tr;
+    squareTable(tr, tableOf(editor).pos);
+    editor.prosemirrorView!.dispatch(tr);
+
+    expect(tableOf(editor).node.child(1).child(1).attrs['colwidth']).toEqual([140]);
   });
 });

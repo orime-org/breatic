@@ -47,7 +47,7 @@ import {
   type Alignment,
 } from '@web/spaces/document/document-align-run';
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE_CELL, DOC_TABLE_HEADER, isTableCell, missingCellsOf } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;
@@ -120,19 +120,31 @@ function runOnTable(
 
 /**
  * Evens one table's grid in a transaction: short rows are filled at their end,
- * overlapping spans cut back.
+ * where their missing cells are drawn (`missingCellsOf`), and overlapping
+ * spans are cut back.
  *
  * The user running a command on the table is the one who evens it; the table
- * plugin's own repairs are held back (`holdTableRepairs`). `fixTables` scans only the tables that differ from the state it is given,
- * so it is handed the document with this table swapped for a new node with
- * the same content (`Node.copy` would hand back the node itself).
+ * plugin's own repairs are held back (`holdTableRepairs`). `fixTables` fills a
+ * short first row at its start, so it is left only the spans. It scans only
+ * the tables that differ from the state it is given, so it is handed the
+ * document with this table swapped for a new node with the same content
+ * (`Node.copy` would hand back the node itself).
  * @param tr - The transaction to add the repair to.
  * @param tablePos - The position before the table.
  */
 export function squareTable(tr: Transaction, tablePos: number): void {
   const table = tr.doc.nodeAt(tablePos);
   if (table === null || TableMap.get(table).problems === null) return;
-  const before = tr.doc.replace(tablePos, tablePos + table.nodeSize, new Slice(Fragment.from(table.type.create(table.attrs, table.content, table.marks)), 0, 0));
+  const { nodes } = tr.doc.type.schema;
+  // The last first, so each insertion leaves the offsets before it standing;
+  // the column widths of the new cells are left to `fixTables` below.
+  for (const missing of missingCellsOf(table).reverse()) {
+    const type = nodes[missing.header ? DOC_TABLE_HEADER : DOC_TABLE_CELL]!;
+    tr.insert(tablePos + 1 + missing.at, type.createAndFill()!);
+  }
+  const evened = tr.doc.nodeAt(tablePos)!;
+  if (TableMap.get(evened).problems === null) return;
+  const before = tr.doc.replace(tablePos, tablePos + evened.nodeSize, new Slice(Fragment.from(evened.type.create(evened.attrs, evened.content, evened.marks)), 0, 0));
   const repair = fixTables(EditorState.create({ doc: tr.doc }), EditorState.create({ doc: before }));
   repair?.steps.forEach((step) => tr.step(step));
 }

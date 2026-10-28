@@ -368,6 +368,44 @@ function missingCell(tag: string, colwidth: unknown): () => HTMLElement {
   };
 }
 
+/** A cell a short row lacks, in the place it is drawn and evened into. */
+export interface MissingCell {
+  /** Its offset in the table: the end of its row's content. */
+  readonly at: number;
+  /** Its row. */
+  readonly row: number;
+  /** Its column. */
+  readonly column: number;
+  /** Whether the row's cells are headers, judged by its last cell. */
+  readonly header: boolean;
+  /** The width of the column it stands in, when another row sets one. */
+  readonly colwidth: unknown;
+}
+
+/**
+ * The cells each short row of a table lacks, at the row's end, in order.
+ * @param table - The table.
+ * @returns The missing cells.
+ */
+export function missingCellsOf(table: PMNode): MissingCell[] {
+  const found: MissingCell[] = [];
+  for (const problem of TableMap.get(table).problems ?? []) {
+    if (problem.type !== 'missing') continue;
+    let rowPos = 0;
+    for (let index = 0; index < problem.row; index += 1) rowPos += table.child(index).nodeSize;
+    const row = table.child(problem.row);
+    for (let n = 0; n < problem.n; n += 1) {
+      const column = row.childCount + n;
+      let colwidth: unknown = null;
+      table.forEach((other) => {
+        if (colwidth === null && other.childCount > column) colwidth = other.child(column).attrs['colwidth'];
+      });
+      found.push({ at: rowPos + row.nodeSize - 1, row: problem.row, column, header: row.lastChild?.type.name === DOC_TABLE_HEADER, colwidth });
+    }
+  }
+  return found;
+}
+
 /**
  * Placeholders at the end of each row short of cells.
  * @param doc - The document.
@@ -377,24 +415,13 @@ function missingCellDecorations(doc: PMNode): DecorationSet {
   const found: Decoration[] = [];
   doc.descendants((table, tablePos) => {
     if (table.type.name !== DOC_TABLE) return true;
-    for (const problem of TableMap.get(table).problems ?? []) {
-      if (problem.type !== 'missing') continue;
-      let rowPos = tablePos + 1;
-      for (let index = 0; index < problem.row; index += 1) rowPos += table.child(index).nodeSize;
-      const row = table.child(problem.row);
-      const tag = row.lastChild?.type.name === DOC_TABLE_HEADER ? 'th' : 'td';
-      for (let n = 0; n < problem.n; n += 1) {
-        const column = row.childCount + n;
-        let colwidth: unknown = null;
-        table.forEach((other) => {
-          if (colwidth === null && other.childCount > column) colwidth = other.child(column).attrs['colwidth'];
-        });
-        found.push(Decoration.widget(rowPos + row.nodeSize - 1, missingCell(tag, colwidth), {
-          key: `doc-table-missing:${String(problem.row)}:${String(column)}:${tag}:${String(colwidth)}`,
-          side: 1,
-          ignoreSelection: true,
-        }));
-      }
+    for (const { at, row, column, header, colwidth } of missingCellsOf(table)) {
+      const tag = header ? 'th' : 'td';
+      found.push(Decoration.widget(tablePos + 1 + at, missingCell(tag, colwidth), {
+        key: `doc-table-missing:${String(row)}:${String(column)}:${tag}:${String(colwidth)}`,
+        side: 1,
+        ignoreSelection: true,
+      }));
     }
     return false;
   });
