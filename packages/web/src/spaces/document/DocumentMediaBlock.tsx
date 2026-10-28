@@ -268,7 +268,6 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   const panel = React.useRef<HTMLDivElement>(null);
   const closeEpochs = React.useRef(new WeakMap<EventTarget, number>());
   const trigger = React.useRef<HTMLDivElement>(null);
-  const actionsCapture = React.useRef(null);
   const migratingActions = React.useRef(false);
   const leaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionFocused = React.useRef(false);
@@ -774,7 +773,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             </PopoverContent>
           </Popover>
         ) : mediaFrame}
-        <MediaControlsPortal destination={floating && panelShown && !readOnly ? floatingActions : inlineActions} capture={actionsCapture} migrating={migratingActions}>{toolbar}</MediaControlsPortal>
+        <MediaControlsPortal destination={floating && panelShown && !readOnly ? floatingActions : inlineActions} migrating={migratingActions}>{toolbar}</MediaControlsPortal>
         {editingCaption ? (
           <input
             data-media-chrome={readOnly ? undefined : ''}

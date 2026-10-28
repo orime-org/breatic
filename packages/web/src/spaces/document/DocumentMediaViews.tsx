@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom';
 import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
 import { useTranslation } from '@web/i18n/use-translation';
 import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
-import { mediaBarShown, mediaEvent, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
+import { mediaBarShown, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
 import {
   mediaViewKey,
   mediaViewsOf,
@@ -54,9 +54,6 @@ export function DocumentMediaViews({ editor, readOnly = false, viewport = null }
       if (draft.exists && !present.has(draft.blockId)) drafts.event(draft.blockId, { type: 'sync', caption: draft.shared, readOnly, exists: false });
     }
   }, [views, drafts, readOnly]);
-  React.useEffect(() => () => {
-    for (const [host] of mediaViewsOf(editor)) mediaEvent(editor, { type: 'release', host });
-  }, [editor]);
   const onHover = React.useCallback(
     (host: HTMLElement, on: boolean): void => {
       setHoveredMedia(editor, host, on);

@@ -98,7 +98,7 @@ export function useSeekPointer(seek: (fraction: number) => void, target: VideoCo
  * Keeps the React portal destination stable while moving its DOM mount.
  * @param props - Control children and their current physical destination.
  * @param props.destination - The visible destination, or null to park.
- * @param props.capture - The current seek pointer.
+ * @param props.capture - The current seek pointer, for controls that seek.
  * @param props.migrating - Whether a physical transfer is in progress.
  * @param props.preserveFocus - Retains focus across an intermediate parked layout transfer.
  * @param props.children - The one control row.
@@ -106,7 +106,7 @@ export function useSeekPointer(seek: (fraction: number) => void, target: VideoCo
  */
 export function MediaControlsPortal({ destination, capture, migrating, preserveFocus = false, children }: {
   destination: HTMLElement | null;
-  capture: React.RefObject<MediaPointer | null>;
+  capture?: React.RefObject<MediaPointer | null>;
   migrating: React.RefObject<boolean>;
   preserveFocus?: boolean;
   children: React.ReactNode;
@@ -124,7 +124,7 @@ export function MediaControlsPortal({ destination, capture, migrating, preserveF
     if (parent === null || mount.parentNode === parent) return;
     const active = mount.contains(document.activeElement) ? document.activeElement as HTMLElement : preserveFocus ? heldFocus.current : null;
     heldFocus.current = preserveFocus ? active : null;
-    const held = capture.current;
+    const held = capture?.current ?? null;
     migrating.current = true;
     parent.appendChild(mount);
     if (active?.isConnected && destination !== null) active.focus({ preventScroll: true });
@@ -132,7 +132,7 @@ export function MediaControlsPortal({ destination, capture, migrating, preserveF
     migrating.current = false;
   }, [destination, mount, capture, migrating, preserveFocus]);
   React.useLayoutEffect(() => () => {
-    capture.current?.release();
+    capture?.current?.release();
     mount.remove();
   }, [capture, mount]);
   return <><div ref={park} hidden inert data-media-controls-park='' />{createPortal(children, mount)}</>;
