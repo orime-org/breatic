@@ -23,11 +23,11 @@
 import { addNodeAndExtensionsToSpec, createBlockSpec, createExtension } from '@blocknote/core';
 import { Extension } from '@tiptap/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos } from '@tiptap/pm/model';
-import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
-import { columnResizing, tableEditing } from '@tiptap/pm/tables';
-import { ySyncPluginKey } from 'y-prosemirror';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { columnResizing, fixTablesKey, TableMap, tableEditing } from '@tiptap/pm/tables';
+import { ReplaceStep } from '@tiptap/pm/transform';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
-import { deriveId } from '@breatic/shared';
 import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
@@ -333,64 +333,82 @@ const unfoldCellTables = new Plugin({
 });
 
 /**
- * Whether a transaction was appended to a peer's change.
- * @param tr - The transaction.
- * @returns True when its root is a change y-prosemirror applied from Yjs.
+ * Holds back the table plugin's repairs that add cells.
+ *
+ * `tableEditing` evens every table a transaction touched, a peer's change
+ * included. y-prosemirror writes nothing appended to a peer's change back to
+ * Yjs, so each client keeps its repair until its next edit writes it, and Yjs
+ * keeps every client's added cells: after one person adds a row and another a
+ * column, the table gains a column each time both type (prosemirror-tables
+ * #249, y-prosemirror CAVEATS "Editor plugins that repair the document").
+ * Repairs that set attributes (column widths, spans) or delete converge in
+ * Yjs and go through. A table left short shows placeholders where its cells
+ * are missing (`missingCells`), and a command run on it evens it first
+ * (`squareTable`).
  */
-function appendedToPeer(tr: Transaction): boolean {
-  const root = tr.getMeta('appendedTransaction') as Transaction | undefined;
-  const sync = root?.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined;
-  return sync?.isChangeOrigin === true;
+const holdTableRepairs = new Plugin({
+  key: new PluginKey('doc-table-hold-repairs'),
+  filterTransaction: (tr) =>
+    tr.getMeta(fixTablesKey) === undefined || !tr.steps.some((step) => step instanceof ReplaceStep && step.slice.size > 0),
+});
+
+/**
+ * Draws one placeholder for a cell a short row lacks.
+ * @param tag - The tag of the row's cells.
+ * @param colwidth - The width of the column it stands in, when set.
+ * @returns The widget's element factory.
+ */
+function missingCell(tag: string, colwidth: unknown): () => HTMLElement {
+  return () => {
+    const cell = document.createElement(tag);
+    cell.contentEditable = 'false';
+    cell.dataset['docTableMissing'] = '';
+    if (Array.isArray(colwidth) && typeof colwidth[0] === 'number') cell.setAttribute('colwidth', String(colwidth[0]));
+    return cell;
+  };
 }
 
 /**
- * Gives the cells the table plugin adds after a peer's change ids every
- * client derives alike.
- *
- * Two people changing one table's shape at once (a row here, a column there)
- * leave it short of cells once the changes meet, and each client's
- * `fixTables` adds the missing ones. y-prosemirror applies a peer's change
- * inside its mutex and does not write what is appended to it back to Yjs
- * (`sync-plugin.js` `_typeChanged`), so each client keeps its own added cells.
- * Ids from the random generator would differ between the two; an id derived
- * from the table, the cell's place and its row's other cells is the same on
- * both. Runs ahead of BlockNote's UniqueID (priority 10000), which would
- * otherwise mint random ones first.
+ * Placeholders at the end of each row short of cells.
+ * @param doc - The document.
+ * @returns The decorations.
  */
-const DocTablePeerFixIds = Extension.create({
-  name: 'docTablePeerFixIds',
-  priority: 10001,
-  addProseMirrorPlugins: () => [
-    new Plugin({
-      key: new PluginKey('doc-table-peer-fix-ids'),
-      appendTransaction: (transactions, _old, state) => {
-        if (!transactions.some((tr) => tr.docChanged && appendedToPeer(tr))) return null;
-        const tr = state.tr;
-        state.doc.descendants((table, tablePos) => {
-          if (table.type.name !== DOC_TABLE) return true;
-          table.forEach((row, rowOffset, rowIndex) => {
-            const known: string[] = [];
-            row.forEach((cell) => known.push(String(cell.attrs['id'])));
-            row.forEach((cell, cellOffset, cellIndex) => {
-              const cellPos = tablePos + 1 + rowOffset + 1 + cellOffset;
-              const cellId =
-                (cell.attrs['id'] as string | null) ??
-                deriveId(`doc-table-cell:${String(table.attrs['id'])}:${String(rowIndex)}:${String(cellIndex)}:${known.join(',')}`);
-              if (cell.attrs['id'] === null) tr.setNodeMarkup(cellPos, undefined, { ...cell.attrs, id: cellId });
-              cell.descendants((inner, rel) => {
-                if (inner.type.isInGroup('bnBlock') && inner.attrs['id'] === null) {
-                  tr.setNodeMarkup(cellPos + 1 + rel, undefined, { ...inner.attrs, id: deriveId(`${cellId}:${String(rel)}`) });
-                }
-                return true;
-              });
-            });
-          });
-          return false;
+function missingCellDecorations(doc: PMNode): DecorationSet {
+  const found: Decoration[] = [];
+  doc.descendants((table, tablePos) => {
+    if (table.type.name !== DOC_TABLE) return true;
+    for (const problem of TableMap.get(table).problems ?? []) {
+      if (problem.type !== 'missing') continue;
+      let rowPos = tablePos + 1;
+      for (let index = 0; index < problem.row; index += 1) rowPos += table.child(index).nodeSize;
+      const row = table.child(problem.row);
+      const tag = row.lastChild?.type.name === DOC_TABLE_HEADER ? 'th' : 'td';
+      for (let n = 0; n < problem.n; n += 1) {
+        const column = row.childCount + n;
+        let colwidth: unknown = null;
+        table.forEach((other) => {
+          if (colwidth === null && other.childCount > column) colwidth = other.child(column).attrs['colwidth'];
         });
-        return tr.docChanged ? tr.setMeta('addToHistory', false) : null;
-      },
-    }),
-  ],
+        found.push(Decoration.widget(rowPos + row.nodeSize - 1, missingCell(tag, colwidth), {
+          key: `doc-table-missing:${String(problem.row)}:${String(column)}:${tag}:${String(colwidth)}`,
+          side: 1,
+          ignoreSelection: true,
+        }));
+      }
+    }
+    return false;
+  });
+  return DecorationSet.create(doc, found);
+}
+
+/** Placeholders where a short table lacks cells. */
+const missingCells: Plugin<DecorationSet> = new Plugin<DecorationSet>({
+  key: new PluginKey('doc-table-missing-cells'),
+  state: {
+    init: (_config, state) => missingCellDecorations(state.doc),
+    apply: (tr, set) => (tr.docChanged ? missingCellDecorations(tr.doc) : set),
+  },
+  props: { decorations: (state) => missingCells.getState(state) },
 });
 
 /**
@@ -410,6 +428,8 @@ const DocTableEditing = Extension.create({
     }),
     unfoldCellTables,
     tableEditing(),
+    holdTableRepairs,
+    missingCells,
     keepPastedTablesWhole,
   ],
   extendNodeSchema: (extension) => {
@@ -575,7 +595,7 @@ export function docTableSpecs(): DocTableSpecs {
         };
       },
     } as never,
-    [createExtension({ key: 'doc-table-editing', tiptapExtensions: [DocTableEditing, DocTablePeerFixIds] })],
+    [createExtension({ key: 'doc-table-editing', tiptapExtensions: [DocTableEditing] })],
   );
   const row = createBlockSpec(
     {

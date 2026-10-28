@@ -26,6 +26,7 @@ import {
   insertRow,
   mergeSelectedCells,
 } from '@web/spaces/document/document-table-run';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { setTableTarget, tableTargetOf } from '@web/spaces/document/document-table-target';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -64,9 +65,10 @@ interface Pair {
 
 /**
  * Two editors on one 3 × 3 table, in step with each other.
+ * @param after - Blocks to put after the table.
  * @returns The pair.
  */
-function pair(): Pair {
+function pair(after: readonly unknown[] = []): Pair {
   const a = new Y.Doc();
   const b = new Y.Doc();
   const ours = mount(a);
@@ -80,6 +82,7 @@ function pair(): Pair {
         { cells: ['a3', 'b3', 'c3'] },
       ],
     }),
+    ...after,
   ] as never);
   /** Exchanges until neither side has anything the other lacks. */
   const sync = (): void => {
@@ -166,14 +169,34 @@ function rectangular(editor: Editor): boolean {
 }
 
 /**
- * Asserts both sides hold the same document, rectangular, and returns its tables.
+ * Asserts both sides hold the same document, and returns its tables.
  * @param p - The pair.
  * @returns The tables.
  */
 function converged(p: Pair): string[][][] {
   expect(p.theirs.prosemirrorState.doc.toJSON()).toEqual(p.ours.prosemirrorState.doc.toJSON());
-  expect(rectangular(p.ours)).toBe(true);
   return grids(p.ours);
+}
+
+/**
+ * Types before the table on both sides before either hears of the other: the
+ * edits that write each client's pending changes to Yjs.
+ * @param p - The pair.
+ */
+function typeOutsideOnBoth(p: Pair): void {
+  for (const editor of [p.ours, p.theirs]) {
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.insertText('x', Selection.atStart(view.state.doc).from));
+  }
+}
+
+/**
+ * How many cells each row of the first table holds.
+ * @param editor - The editor.
+ * @returns The row lengths.
+ */
+function rowLengths(editor: Editor): number[] {
+  return grids(editor)[0]!.map((row) => row.length);
 }
 
 describe('two people on one table (A17)', () => {
@@ -192,6 +215,130 @@ describe('two people on one table (A17)', () => {
     expect(words).toContain('c3?');
     expect(table).toHaveLength(4);
     expect(table![1]).toHaveLength(4);
+  });
+
+  it('leaves the row neither side widened short, and later edits on both sides add no cells', () => {
+    const p = pair();
+
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    p.sync();
+    expect(rowLengths(p.ours)).toEqual([4, 4, 4, 3]);
+    for (let round = 0; round < 3; round += 1) {
+      typeOutsideOnBoth(p);
+      p.sync();
+    }
+
+    converged(p);
+    expect(rowLengths(p.ours)).toEqual([4, 4, 4, 3]);
+    expect(p.ours.prosemirrorView!.dom.querySelectorAll('[data-doc-table-missing]')).toHaveLength(1);
+  });
+
+  it('adds no cells when one adds a row and the other deletes a column, then both type', () => {
+    const p = pair();
+
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    deleteColumnAt(p.theirs, cellOf(p.theirs, 'c1'));
+    p.sync();
+    for (let round = 0; round < 3; round += 1) {
+      typeOutsideOnBoth(p);
+      p.sync();
+    }
+
+    converged(p);
+    expect(Math.max(...rowLengths(p.ours))).toBe(3);
+  });
+
+  it('evens a short table before a command acts on it, for both sides', () => {
+    const p = pair();
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    p.sync();
+
+    insertColumn(p.ours, cellOf(p.ours, 'a1'), 'left');
+    p.sync();
+
+    converged(p);
+    expect(rectangular(p.ours)).toBe(true);
+    expect(rowLengths(p.ours)).toEqual([5, 5, 5, 5]);
+  });
+
+  it('evens only the table a command acts on', () => {
+    const p = pair([tableBlock({ rows: [{ cells: ['x1', 'y1'] }, { cells: ['x2', 'y2'] }] })]);
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertRow(p.ours, cellOf(p.ours, 'x2'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    insertColumn(p.theirs, cellOf(p.theirs, 'y1'), 'right');
+    p.sync();
+
+    insertRow(p.ours, cellOf(p.ours, 'a1'), 'above');
+    p.sync();
+
+    converged(p);
+    expect(grids(p.ours).map((table) => table.map((row) => row.length))).toEqual([[4, 4, 4, 4, 4], [3, 3, 2]]);
+  });
+
+  it('evens a short table before Tab in its last cell adds a row', () => {
+    const p = pair();
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    p.sync();
+    const view = p.ours.prosemirrorView!;
+    let lastCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.spec['tableRole'] === 'cell') lastCell = pos;
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(lastCell + 1))));
+
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    view.someProp('handleKeyDown', (handler) => handler(view, event));
+    p.sync();
+
+    converged(p);
+    expect(rectangular(p.ours)).toBe(true);
+    expect(rowLengths(p.ours)).toEqual([4, 4, 4, 4, 4]);
+  });
+
+  it('evens a short table before merging cells of it', () => {
+    const p = pair();
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    p.sync();
+    const view = p.ours.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(CellSelection.create(view.state.doc, cellOf(p.ours, 'a1'), cellOf(p.ours, 'b1'))));
+
+    mergeSelectedCells(p.ours);
+    p.sync();
+
+    converged(p);
+    expect(rectangular(p.ours)).toBe(true);
+    expect(rowLengths(p.ours)).toEqual([3, 4, 4, 4]);
+  });
+
+  it('writes a short table to markdown with its missing cells empty', () => {
+    const p = pair();
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    p.sync();
+
+    const markdown = blocksMarkdown(p.ours as never, p.ours.document as never);
+
+    expect(markdown).toContain('a1');
+    expect(markdown).toContain('c3');
+  });
+
+  it('leaves a short table short while someone types in it', () => {
+    const p = pair();
+    insertRow(p.ours, cellOf(p.ours, 'a3'), 'below');
+    insertColumn(p.theirs, cellOf(p.theirs, 'c1'), 'right');
+    p.sync();
+
+    typeInto(p.ours, 'b2', '!');
+    p.sync();
+
+    converged(p);
+    expect(rowLengths(p.ours)).toEqual([4, 4, 4, 3]);
   });
 
   it('agrees when one deletes a row and the other a column', () => {

@@ -33,7 +33,7 @@ import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
-import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
+import { cellAt, squareSelectedTable, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
   addRowAfter,
   cellAround,
@@ -92,6 +92,7 @@ function tabForward(editor: KeysEditor): boolean {
     return true;
   }
   if (!goToNextCell(1)(view.state, view.dispatch)) {
+    squareSelectedTable(view);
     addRowAfter(view.state, view.dispatch);
     goToNextCell(1)(view.state, view.dispatch);
   }

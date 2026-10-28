@@ -16,6 +16,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
+import { insertRow } from '@web/spaces/document/document-table-run';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -111,5 +112,19 @@ describe('holding a table\'s column widths before a column is dragged (A12)', ()
     const state = editor.prosemirrorState;
 
     expect(holdColumnWidths(state.tr, tableOf(state.doc), [100]).docChanged).toBe(false);
+  });
+});
+
+describe('a row added to a table with set column widths', () => {
+  it('takes the width of each column', () => {
+    const editor = open([{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }], [140, 300]);
+
+    insertRow(editor as never, tableOf(editor.prosemirrorState.doc) + 2, 'below');
+
+    expect(widths(editor.prosemirrorState.doc)).toEqual([
+      [[140], [300]],
+      [[140], [300]],
+      [[140], [300]],
+    ]);
   });
 });

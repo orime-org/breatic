@@ -14,7 +14,7 @@
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import {
   EditorState,
   TextSelection,
@@ -27,6 +27,7 @@ import {
   cellAround,
   CellSelection,
   columnIsHeader,
+  fixTables,
   removeColumn,
   removeRow,
   mergeCells,
@@ -91,28 +92,65 @@ export function cellAt(doc: PMNode, cellPos: number): CellAt | null {
 }
 
 /**
- * Runs a write against the table a cell is in, and puts the reader's
- * selection back.
+ * Runs a write against the table a cell is in, evened first, and puts the
+ * reader's selection back.
  * @param editor - The editor to write to.
  * @param cellPos - The cell the command acts on.
- * @param write - What the command does, given the cell as it stands in this
- *   transaction.
+ * @param write - What the command does, given the cell and its position as
+ *   they stand in this transaction once the table is evened.
  */
 function runOnTable(
   editor: TableEditor,
   cellPos: number,
-  write: (tr: Transaction, at: CellAt) => void,
+  write: (tr: Transaction, at: CellAt, cellPos: number) => void,
 ): void {
   editor.transact((tr) => {
-    const at = cellAt(tr.doc, cellPos);
-    if (at === null) return;
+    const found = cellAt(tr.doc, cellPos);
+    if (found === null) return;
     const reader = tr.selection;
     const written = tr.mapping.maps.length;
-    write(tr, at);
+    squareTable(tr, found.tableStart - 1);
+    const cell = tr.mapping.slice(written).map(cellPos);
+    write(tr, cellAt(tr.doc, cell)!, cell);
     if (tr.mapping.maps.length > written) {
       tr.setSelection(reader.map(tr.doc, tr.mapping.slice(written)));
     }
   });
+}
+
+/**
+ * Evens one table's grid in a transaction: short rows are filled at their end,
+ * overlapping spans cut back.
+ *
+ * The user running a command on the table is the one who evens it; the table
+ * plugin's own repairs are held back (`holdTableRepairs`). `fixTables` scans only the tables that differ from the state it is given,
+ * so it is handed the document with this table swapped for a new node with
+ * the same content (`Node.copy` would hand back the node itself).
+ * @param tr - The transaction to add the repair to.
+ * @param tablePos - The position before the table.
+ */
+export function squareTable(tr: Transaction, tablePos: number): void {
+  const table = tr.doc.nodeAt(tablePos);
+  if (table === null || TableMap.get(table).problems === null) return;
+  const before = tr.doc.replace(tablePos, tablePos + table.nodeSize, new Slice(Fragment.from(table.type.create(table.attrs, table.content, table.marks)), 0, 0));
+  const repair = fixTables(EditorState.create({ doc: tr.doc }), EditorState.create({ doc: before }));
+  repair?.steps.forEach((step) => tr.step(step));
+}
+
+/**
+ * Evens the table the selection is in, in a transaction of its own, before a
+ * command of `prosemirror-tables` reads the editor's state.
+ * @param view - The editor view.
+ * @param view.state - Its state.
+ * @param view.dispatch - Where the repair goes.
+ */
+export function squareSelectedTable(view: { state: EditorState; dispatch: (tr: Transaction) => void }): void {
+  const { selection } = view.state;
+  const $cell = selection instanceof CellSelection ? selection.$anchorCell : cellAround(selection.$head);
+  if ($cell === null) return;
+  const tr = view.state.tr;
+  squareTable(tr, $cell.before($cell.depth - 1));
+  if (tr.docChanged) view.dispatch(tr);
 }
 
 /**
@@ -250,8 +288,8 @@ export function isMerged(doc: PMNode, cellPos: number): boolean {
  * @param cellPos - The cell.
  */
 export function splitCellAt(editor: TableEditor, cellPos: number): void {
-  runOnTable(editor, cellPos, (tr) => {
-    runInCell(tr, cellPos, splitCell);
+  runOnTable(editor, cellPos, (tr, _at, cell) => {
+    runInCell(tr, cell, splitCell);
   });
 }
 
@@ -265,8 +303,8 @@ export function splitCellAt(editor: TableEditor, cellPos: number): void {
  * @param kind - The row or the column.
  */
 export function toggleHeaderAt(editor: TableEditor, cellPos: number, kind: 'row' | 'column'): void {
-  runOnTable(editor, cellPos, (tr) => {
-    runInCell(tr, cellPos, toggleHeader(kind));
+  runOnTable(editor, cellPos, (tr, _at, cell) => {
+    runInCell(tr, cell, toggleHeader(kind));
   });
 }
 
@@ -505,6 +543,8 @@ function isEmptyCell(cell: PMNode): boolean {
 export function mergeSelectedCells(editor: TableEditor): void {
   const view = editor.prosemirrorView;
   if (view === undefined) return;
+  if (!(view.state.selection instanceof CellSelection)) return;
+  squareSelectedTable(view);
   const { selection } = view.state;
   if (!(selection instanceof CellSelection)) return;
   const emptied = new Set<unknown>();
@@ -570,10 +610,10 @@ export function moveLineAt(
   orientation: 'row' | 'column',
   to: number,
 ): void {
-  runOnTable(editor, cellPos, (tr, at) => {
+  runOnTable(editor, cellPos, (tr, at, cell) => {
     const from = orientation === 'row' ? at.top : at.left;
     if (from === to) return;
     const move = orientation === 'row' ? moveTableRow : moveTableColumn;
-    runInCell(tr, cellPos, move({ from, to, select: false, pos: cellPos + 1 }));
+    runInCell(tr, cell, move({ from, to, select: false, pos: cell + 1 }));
   });
 }
