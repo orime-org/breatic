@@ -167,6 +167,7 @@ describe('registered presentation source authorization (inner#1306 §6.20)', () 
       sourceBinding: { assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video', mediaInfo: {
         width: null, height: null, duration: null, mimeType: asset.mimeType,
       } }, presentation: null, preparation: { status: 'accepted', attempt: { jobId: accepted.jobId, deadlineAt: accepted.deadlineAt } }, pollAfterMs: 5000,
+      sourceLedgerReadLimits: { maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 },
     });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({
       assetId: asset.id, sourceFingerprint: asset.contentHash, jobId: accepted.jobId, deadlineAt: accepted.deadlineAt,
@@ -204,6 +205,7 @@ describe('registered presentation source authorization (inner#1306 §6.20)', () 
       sourceBinding: { assetId: asset.id, contentHash: asset.contentHash, canonicalURL, kind: 'video', mediaInfo: {
         width: null, height: null, duration: null, mimeType: asset.mimeType,
       } }, presentation: null, preparation: { status: 'accepted', attempt: { jobId: fixed.jobId, deadlineAt: fixed.deadlineAt } }, pollAfterMs: 5000, attempt: { jobId: fixed.jobId, deadlineAt: fixed.deadlineAt },
+      sourceLedgerReadLimits: { maxBytes: 16777216, maxPhysicalFrames: 100000, maxOccurrences: 100000 },
     });
     expect(videoPresentationAtIngest).toHaveBeenCalledWith('https://ingest.example.test', 'secret', expect.objectContaining({
       action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: asset.contentHash,

@@ -3,7 +3,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
-import { alphaManifestKeyFor, alphaPackedKeyFor, t, videoPresentationAtIngest, videoPresentationResponseSchema, videoPresentationSourceBindingSchema,
+import { alphaManifestKeyFor, alphaPackedKeyFor, readVideoSourceLedger, t, videoPresentationAtIngest, videoPresentationResponseSchema, videoPresentationSourceBindingSchema,
+  VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, type VideoSourceLedgerCompanion, type VideoSourceLedgerReadLimits,
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationAttempt, type VideoPresentationIngestRequest,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding, type VideoPresentationRepairResponse } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
@@ -21,6 +22,8 @@ export interface EnsureVideoPresentationInput { assetId: string; parentDeadlineA
 export type { VideoPresentationRepairResponse } from '@breatic/shared';
 /** The queue retains the accepted source identity and original deadline on retry. */
 export interface VideoPresentationJob { assetId: string; sourceFingerprint: string; jobId: string; deadlineAt: number }
+/** The registered source and its whole validated frame table. */
+export interface VideoSourceLedgerRead { sourceBinding: VideoPresentationSourceBinding; ledger: VideoSourceLedgerCompanion }
 /** Source readiness and platform accounting remain independent observations. */
 export interface VideoPresentationExecutionResult { status: 'ready' | 'failed' | 'gone' | 'stale'; usageRecorded: boolean; usagePending: boolean; error?: string }
 /** Internal admission context; explicit repairs retain their actual requester. */
@@ -138,6 +141,16 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
 }
 
 /**
+ * The current read policy for a stored source frame table.
+ * @returns The three ceilings a reader holds the table to.
+ * @throws {Error} When configuration cannot be read.
+ */
+function sourceLedgerReadLimits(): VideoSourceLedgerReadLimits {
+  const policy = getMiniToolsConfig().presentation.source_ledger;
+  return { maxBytes: policy.max_bytes, maxPhysicalFrames: policy.max_physical_frames, maxOccurrences: policy.max_occurrences };
+}
+
+/**
  * Convert internal work facts to the owned public source response.
  * @param binding - Current registry identity.
  * @param snapshot - Validated durable source facts.
@@ -152,6 +165,9 @@ function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresen
     preparation: attempt === null ? null : { status: attempt.status, attempt: { jobId: attempt.jobId, deadlineAt: attempt.deadlineAt },
       ...(attempt.error === undefined ? {} : { error: attempt.error }) },
     pollAfterMs: pending ? getMiniToolsConfig().poll_interval_ms : null,
+    // An ingest answer without the field predates the ledger; it stays unknown.
+    ...(snapshot.sourceLedger === undefined ? {} : { sourceLedger: snapshot.sourceLedger }),
+    sourceLedgerReadLimits: sourceLedgerReadLimits(),
   });
 }
 
@@ -172,6 +188,39 @@ export async function resolveVideoPresentation(input: ResolveVideoPresentationIn
   if (snapshot.presentation === null && snapshot.attempt === null) snapshot = await accept(row, {});
   else await enqueue(row, snapshot);
   return response(binding, snapshot);
+}
+
+/**
+ * Read the stored source frame table of a registered video for a project member.
+ *
+ * The receipt is trusted only once it names the registered row's own hash and
+ * the companion address derived from its own storage key. A source with no
+ * ready table is refused here; admitting work to make one is the presentation
+ * read's job, not this one's.
+ * @param input - Current project member and selected canonical address.
+ * @param deadlineAt - The calling task's own deadline, in epoch ms.
+ * @param signal - The caller's signal.
+ * @returns The registered binding and the whole validated table.
+ * @throws {NotFoundError} When project read access is absent.
+ * @throws {ValidationError} When the URL has no live registered video.
+ * @throws {VideoSourceLedgerReadRefused} When there is no ready receipt for this source, or its body is not the stored table.
+ * @throws {DeadlinePassed} When the deadline comes before the table is validated.
+ * @throws {Error} When ingest or the companion delivery fails.
+ */
+export async function readSourceLedger(input: ResolveVideoPresentationInput, deadlineAt: number, signal?: AbortSignal): Promise<VideoSourceLedgerRead> {
+  await assertAccess(input);
+  const { row, binding } = await registeredSource(input.canonicalURL);
+  const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+    action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
+  });
+  const state = snapshot.sourceLedger;
+  if (state === undefined || state === null || state.state !== 'ready') throw new VideoSourceLedgerReadRefused('receipt');
+  const storage = await getStorageAdapter();
+  if (state.receipt.sourceFingerprint !== binding.contentHash || state.receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(row.storageKey))) {
+    throw new VideoSourceLedgerReadRefused('receipt');
+  }
+  const ledger = await readVideoSourceLedger(state.receipt, sourceLedgerReadLimits(), { deadlineAt, ...(signal === undefined ? {} : { signal }) });
+  return { sourceBinding: binding, ledger };
 }
 
 /**
