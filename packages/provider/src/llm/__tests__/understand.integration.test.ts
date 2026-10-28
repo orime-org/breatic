@@ -140,6 +140,7 @@ describe("understand answers that cannot be read (design 3.5, DD 27)", () => {
     ["parts are not a list", { content: { parts: {} }, finishReason: "STOP" }],
     ["parts hold a null", { content: { parts: [null] }, finishReason: "STOP" }],
     ["candidate is null", null],
+    ["content is not an object", { content: "oops", finishReason: "STOP" }],
   ])("rejects a Google answer whose %s, costing it", async (_name, candidate) => {
     fakes.google.answer(() => ({ status: 200, body: { candidates: [candidate], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 } } }));
     const error = await llmProvider(fakes, keys).llm.understand(question()).catch((e: unknown) => e);
@@ -253,6 +254,26 @@ describe("understand through Gemini's Files API steps (design 6.5, DD 28)", () =
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).message).toBe("Unsupported MIME type");
     expect((error as UpstreamRequestRejected).status).toBe(400);
+  });
+
+  it("names Google's own reason from a refusal longer than a log snippet", async () => {
+    // Google's answer to an upload start with a key it does not take, as measured (2026-10-28).
+    const refusal = JSON.stringify({
+      error: {
+        code: 400,
+        message: "API key not valid. Please pass a valid API key.",
+        status: "INVALID_ARGUMENT",
+        details: [
+          { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: "API_KEY_INVALID", domain: "googleapis.com", metadata: { service: "generativelanguage.googleapis.com" } },
+          { "@type": "type.googleapis.com/google.rpc.LocalizedMessage", locale: "en-US", message: "API key not valid. Please pass a valid API key." },
+        ],
+      },
+    }, null, 2);
+    expect(refusal.length).toBeGreaterThan(500);
+    const provider = throughFiles(filesRoute((r) => (r.path === "/upload/v1beta/files" ? { status: 400, raw: refusal, contentType: "application/json" } : undefined)));
+    const error = await provider.llm.understand(question()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).message).toBe("API key not valid. Please pass a valid API key.");
   });
 
   it("ends as interrupted, with no cost, when an upload answer's body never finishes", async () => {
