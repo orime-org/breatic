@@ -35,6 +35,7 @@ export interface UnderstandCall {
 export interface Answered {
   url: string;
   status: number;
+  headers: Headers;
   body: unknown;
   text: string;
 }
@@ -73,7 +74,7 @@ const MAX_ANSWER_BYTES = 10 * 1024 * 1024;
  * @returns The answer.
  * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies the failure.
  */
-export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered & { headers: Headers }> {
+export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
   const response = await send(request, bounds);
   const bytes = await readBody(request.url, response, MAX_ANSWER_BYTES, Math.max(1, call.deadlineAt - Date.now()), bounds);

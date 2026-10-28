@@ -431,7 +431,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               filePollMs: config.llm.gemini_file_poll_ms,
             });
             lastBody = answered.text;
-            if (answered.status < 200 || answered.status >= 300) throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, 500));
+            if (answered.status < 200 || answered.status >= 300) throw new HttpStatus(answered.url, answered.status, answered.text.slice(0, 500), answered.headers);
             // Every 2xx answer is costed here, whether it answered or carried an error.
             const { usage, providerMetadata, generationId } = adapter.billing(answered.body);
             const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);

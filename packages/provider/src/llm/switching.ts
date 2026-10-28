@@ -165,9 +165,17 @@ export function usdOf(value: unknown): number | undefined {
  * @throws {Aborted} When the signal ends the wait.
  */
 export async function pauseBeforeRetry(error: unknown, retry: number, signal: AbortSignal | undefined): Promise<"retry" | "switch"> {
-  const headers = APICallError.isInstance(error) ? error.responseHeaders : undefined;
-  const ms = Number(headers?.["retry-after-ms"]);
-  const asked = Number.isFinite(ms) && ms >= 0 ? ms : retryAfterOf(headers?.["retry-after"] ?? null);
+  /**
+   * One response header of the failure, from the AI SDK's error or provider's own.
+   * @param name - The header, lower-case.
+   * @returns Its value, or null.
+   */
+  const header = (name: string): string | null => {
+    if (APICallError.isInstance(error)) return error.responseHeaders?.[name] ?? null;
+    return error instanceof HttpStatus ? (error.headers?.get(name) ?? null) : null;
+  };
+  const ms = Number(header("retry-after-ms") ?? Number.NaN);
+  const asked = Number.isFinite(ms) && ms >= 0 ? ms : retryAfterOf(header("retry-after"));
   if (asked !== undefined && asked > MAX_RETRY_AFTER_MS) return "switch";
   await wait(asked ?? backoff(retry), { replaySafe: false, ...(signal ? { signal } : {}) }, "the model call");
   return "retry";
