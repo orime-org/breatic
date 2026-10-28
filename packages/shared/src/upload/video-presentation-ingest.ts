@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { VideoSourceLedgerProcessLimits, VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
-import { videoSourceLedgerStateSchema } from '@shared/upload/video-source-ledger.js';
+import type { VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
 
 import type { VideoPresentation, AlphaManifest } from '@shared/upload/video-presentation.js';
 import type { ContainerUsage } from '@shared/upload/mini-tool-job.js';
@@ -63,8 +62,6 @@ export type VideoPresentationIngestRequest = {
   projectId?: string | null;
   packedURL?: string;
   manifestURL?: string;
-  /** Where the source ledger companion is published; sent together with `limits.sourceLedger`. */
-  sourceLedgerURL?: string;
 };
 
 const usage = z.strictObject({ wallMs: z.number().finite().nonnegative(), cpuUsec: z.number().finite().nonnegative().nullable() });
@@ -73,18 +70,11 @@ export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing>
   size: z.strictObject({ vcpu: z.number().positive(), memory_gib: z.number().positive(), disk_gb: z.number().positive() }),
   prices: z.strictObject({ vcpu_second_usd: z.number().nonnegative(), memory_gib_second_usd: z.number().nonnegative(), disk_gb_second_usd: z.number().nonnegative() }),
 });
-const budget = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
-/** The eight source ledger budgets, all required once a ledger is requested. */
-export const videoSourceLedgerProcessLimitsSchema: z.ZodType<VideoSourceLedgerProcessLimits> = z.strictObject({
-  maxBytes: budget, probeStdoutBytes: budget, metadataBytes: budget, maxPhysicalFrames: budget,
-  maxOccurrences: budget, isoBoxCount: budget, matroskaElementCount: budget, matroskaMaxBlocks: budget,
-});
 /** Limits are validated at the edge and frozen for the original accepted job. */
 export const videoPresentationProcessLimitsSchema: z.ZodType<VideoPresentationProcessLimits> = z.strictObject({
   maxSourceBytes: z.number().int().positive(), maxPackedBytes: z.number().int().positive(),
   crf: z.number().int().min(0).max(51), preset: z.enum(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']),
   probeStdoutBytes: z.number().int().positive(), analysisStdoutBytes: z.number().int().positive(), stderrTailBytes: z.number().int().positive(),
-  sourceLedger: videoSourceLedgerProcessLimitsSchema.optional(),
 });
 /** The backend-only operation contract contains no client classification claim. */
 export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIngestRequest> = z.strictObject({
@@ -95,11 +85,7 @@ export const videoPresentationIngestRequestSchema: z.ZodType<VideoPresentationIn
   contentType: z.string().min(1).optional(), knownAlpha: z.boolean().optional(), repair: z.boolean().optional(),
   limits: videoPresentationProcessLimitsSchema.optional(), pricing: videoPresentationPricingSchema.optional(), actorUserId: z.uuid().optional(),
   projectId: z.uuid().nullable().optional(), packedURL: z.url().optional(), manifestURL: z.url().optional(),
-  sourceLedgerURL: z.url().optional(),
 }).superRefine((value, ctx) => {
-  if ((value.limits?.sourceLedger === undefined) !== (value.sourceLedgerURL === undefined)) {
-    ctx.addIssue({ code: 'custom', message: 'A source ledger request carries both its budgets and its companion URL' });
-  }
   if (value.action !== 'read' && (value.jobId === undefined || value.deadlineAt === undefined)) ctx.addIssue({ code: 'custom', message: 'Attempt operations require their fixed identity' });
   if (value.action === 'accept' && (value.original === undefined || value.contentType === undefined || value.limits === undefined || value.pricing === undefined || value.actorUserId === undefined || value.projectId === undefined || value.packedURL === undefined || value.manifestURL === undefined)) {
     ctx.addIssue({ code: 'custom', message: 'Admission requires frozen source facts, pricing, attribution and capabilities' });
@@ -113,7 +99,6 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
     error: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(), usageRecorded: z.boolean().optional(),
   }).nullable(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
-  sourceLedger: videoSourceLedgerStateSchema.optional(),
 });
 
 /**

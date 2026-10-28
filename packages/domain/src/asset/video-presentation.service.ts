@@ -132,14 +132,7 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     registeredMetadata: { width: row.width, height: row.height, duration: row.durationSeconds },
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,
     packedURL: storage.publicUrl(alphaPackedKeyFor(row.storageKey)), manifestURL: storage.publicUrl(alphaManifestKeyFor(row.storageKey)),
-    limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset,
-      sourceLedger: {
-        maxBytes: settings.source_ledger.max_bytes, probeStdoutBytes: settings.source_ledger.probe_stdout_bytes,
-        metadataBytes: settings.source_ledger.metadata_bytes, maxPhysicalFrames: settings.source_ledger.max_physical_frames,
-        maxOccurrences: settings.source_ledger.max_occurrences, isoBoxCount: settings.source_ledger.iso_box_count,
-        matroskaElementCount: settings.source_ledger.matroska_element_count, matroskaMaxBlocks: settings.source_ledger.matroska_max_blocks,
-      } },
-    sourceLedgerURL: storage.publicUrl(videoSourceLedgerKeyFor(row.storageKey)),
+    limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset },
     pricing: { containerClass: settings.container_class, size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: { ...config.prices } },
   };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request);
@@ -192,12 +185,7 @@ export async function resolveVideoPresentation(input: ResolveVideoPresentationIn
   let snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
     action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
   });
-  // Work that ended without a source ledger is admitted once more; the ingest
-  // store decides whether that is a ledger-only attempt and refuses a second
-  // one while the ledger is pending, ready or failed.
-  const active = snapshot.attempt?.status === 'accepted' || snapshot.attempt?.status === 'running';
-  const ledgerMissing = snapshot.sourceLedger === undefined || snapshot.sourceLedger === null;
-  if ((snapshot.presentation === null && snapshot.attempt === null) || (!active && snapshot.attempt !== null && ledgerMissing)) snapshot = await accept(row, {});
+  if (snapshot.presentation === null && snapshot.attempt === null) snapshot = await accept(row, {});
   else await enqueue(row, snapshot);
   return response(binding, snapshot);
 }
