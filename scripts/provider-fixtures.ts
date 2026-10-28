@@ -49,6 +49,8 @@ interface RawParam {
   max_items?: number;
   fields?: Record<string, { type?: string; values?: unknown[] }>;
   replaces?: string;
+  mention?: string;
+  description?: string;
 }
 interface RawModel {
   name: string;
@@ -194,10 +196,11 @@ const APP_FAMILIES = new Map<string, { consumes: ReadonlySet<string>; prepare?: 
 ]);
 
 /**
- * A filled value for a param the canvas or the panel fills by hand.
+ * A filled value for a param the canvas or the panel fills by hand, or that no
+ * panel fills and has no default (a worker-filled id, a view image).
  * @param name - The param.
  * @param spec - Its declaration.
- * @returns The value, or undefined for a param that takes none of these shapes.
+ * @returns The value, or undefined for a param with a default that takes none of these shapes.
  */
 function filled(name: string, spec: RawParam): unknown {
   const extension = { image: "png", audio: "mp3", video: "mp4" }[spec.accepts ?? ""] ?? "bin";
@@ -210,7 +213,47 @@ function filled(name: string, spec: RawParam): unknown {
     );
   }
   if (spec.type === "text") return `some ${name}`;
-  return undefined;
+  if (spec.default != null || spec.values !== undefined) return undefined;
+  // A param whose declaration says it is an image URL gets one; anything else a word.
+  return /image url/i.test(spec.description ?? "") ? `https://cdn.example/${name}-1.png` : `some ${name}`;
+}
+
+/**
+ * The defaults with every param filled, those an extra step serves included.
+ * @param model - The catalog entry.
+ * @returns The param set.
+ */
+function filledEverything(model: RawModel): Record<string, unknown> {
+  const out = ourDefaults(model);
+  for (const [name, spec] of Object.entries(model.params ?? {})) {
+    const value = filled(name, spec);
+    if (value !== undefined) out[name] = value;
+  }
+  return out;
+}
+
+/**
+ * The declarations with each mention written as design 4.2's neutral reference
+ * `<<ref:{param}:{n}>>`, so a joined slot names its pool as provider's input carries it.
+ * @param model - The catalog entry.
+ * @returns The declarations.
+ */
+function neutralDeclarations(model: RawModel): Record<string, RawParam> {
+  return Object.fromEntries(Object.entries(model.params ?? {}).map(([name, spec]) => [name, spec.mention === undefined ? spec : { ...spec, mention: `<<ref:${name}:{n}>>` }]));
+}
+
+/**
+ * A prompt that names the first source of every param with a mention, once in
+ * today's wording and once in neutral references; undefined for a model with none.
+ * @param model - The catalog entry.
+ * @returns Today's prompt and provider's.
+ */
+function mentioningPrompts(model: RawModel): { today: string; neutral: string } | undefined {
+  const named = Object.entries(model.params ?? {}).filter(([, spec]) => spec.mention !== undefined);
+  if (named.length === 0) return undefined;
+  const today = named.map(([, spec]) => spec.mention!.replace("{n}", "1").replace("{i}", "0"));
+  const neutral = named.map(([name]) => `<<ref:${name}:1>>`);
+  return { today: `${PROMPTS[1]} with ${today.join(" and ")}`, neutral: `${PROMPTS[1]} with ${neutral.join(" and ")}` };
 }
 
 /**
@@ -248,15 +291,15 @@ function ourDefaults(model: RawModel): Record<string, unknown> {
 
 /**
  * Our params as the application layer hands them to provider: slots joined
- * into their pools, item lists completed, empty values dropped, a param a
+ * into their pools with their notes naming files in neutral references, item lists completed, empty values dropped, a param a
  * filled one replaces dropped, and an application family's preparation applied.
  * @param model - The catalog entry.
  * @param given - The params the reader set.
- * @param written - The reader's prompt.
+ * @param written - The reader's prompt, its mentions already neutral references.
  * @returns The prepared params and prompt.
  */
 async function prepare(model: RawModel, given: Record<string, unknown>, written: string): Promise<{ params: Record<string, unknown>; prompt: string }> {
-  const declared = (model.params ?? {}) as Parameters<typeof joinSlotFiles>[0];
+  const declared = neutralDeclarations(model) as Parameters<typeof joinSlotFiles>[0];
   const family = APP_FAMILIES.get(model.name);
   const joined = joinSlotFiles(declared, given, written);
   const params: Record<string, unknown> = {};
@@ -300,16 +343,20 @@ for (const modality of MODALITIES) {
   const file = parse(readFileSync(resolve(ROOT, `config/models/${modality}/models.yaml`), "utf8")) as { models: RawModel[] };
   for (const model of file.models) {
     const seen = new Set<string>();
-    for (const sample of bodySamples(model)) {
-      const given = sample;
+    const samples = bodySamples(model);
+    const mentioning = mentioningPrompts(model);
+    for (const [index, given] of samples.entries()) {
       // A clone's own call takes no prompt; the speech after it does. A model that takes one is
-      // also run with it empty, which today's upstreamBody leaves out (upstream-body.ts:62).
-      for (const written of model.takes_prompt === false || model.reused_by !== undefined ? [""] : ["", PROMPTS[1]!]) {
+      // also run with it empty, which today's upstreamBody leaves out (upstream-body.ts:62), and
+      // with every source it can mention filled, once naming them.
+      const prompts = model.takes_prompt === false || model.reused_by !== undefined ? [{ today: "", neutral: "" }] : [{ today: "", neutral: "" }, { today: PROMPTS[1]!, neutral: PROMPTS[1]! }];
+      if (index === 1 && mentioning !== undefined && model.takes_prompt !== false && model.reused_by === undefined) prompts.push(mentioning);
+      for (const written of prompts) {
         const key = JSON.stringify([given, written]);
         if (seen.has(key)) continue;
         seen.add(key);
-        const prepared = await prepare(model, given, written);
-        bodyCases.push({ model: model.name, kind: "catalog", ...prepared, body: await todayBody(model, given, written) });
+        const prepared = await prepare(model, given, written.neutral);
+        bodyCases.push({ model: model.name, kind: "catalog", ...prepared, body: await todayBody(model, given, written.today) });
       }
     }
   }
@@ -453,6 +500,9 @@ for (const modality of MODALITIES) {
       { params: {}, prompt: PROMPTS[1]!, durations: {} },
       { params: filledAll, prompt: PROMPTS[1]!, durations: {} },
       ...samples.slice(1).map((params) => ({ params, prompt: PROMPTS[1]!, durations: clipLengths(model, params) })),
+      // Every param filled, those an extra step serves included, with and without clip lengths.
+      { params: filledEverything(model), prompt: PROMPTS[1]!, durations: clipLengths(model, filledEverything(model)) },
+      { params: filledEverything(model), prompt: PROMPTS[1]!, durations: {} },
       ...toolRaws,
     ];
     const seen = new Set<string>();
