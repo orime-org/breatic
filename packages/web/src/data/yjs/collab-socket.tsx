@@ -8,7 +8,7 @@ import {
 import * as React from 'react';
 import type * as Y from 'yjs';
 
-import { COLLAB_PING_INTERVAL_MS, COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
+import { COLLAB_REAUTH_REASONS, isReauthCloseReason, parseDocName } from '@breatic/shared';
 import { ChunkingWebSocket } from '@web/data/yjs/chunking-websocket';
 import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 import { destroyDoc } from '@web/data/yjs/manager';
@@ -270,11 +270,6 @@ function ensureSharedSocket(url: string): HocuspocusProviderWebsocket {
     sharedSocket = new HocuspocusProviderWebsocket({
       url: toAbsoluteWsUrl(url),
       WebSocketPolyfill: ChunkingWebSocket,
-      // While a long chunked upload fills the uplink, our own awareness
-      // renewals wait behind the chunks and collab's echo of them stops; the
-      // presence write each pong triggers, once per ping period, is then the
-      // only message left, so silence is judged over two periods (inner#1585).
-      messageReconnectTimeout: 2 * COLLAB_PING_INTERVAL_MS,
     });
     // The connection reports its own drops: each attached provider re-emits
     // this close, so reporting there sent one alert per open document. Only a

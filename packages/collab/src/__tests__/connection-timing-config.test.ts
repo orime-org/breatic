@@ -27,7 +27,6 @@
 
 import { describe, it, expect } from "vitest";
 
-import { COLLAB_PING_INTERVAL_MS } from "@breatic/shared";
 import { getCollabConfig, getConnectionTimings } from "@collab/config";
 
 describe("connection timing", () => {
@@ -43,8 +42,7 @@ describe("connection timing", () => {
     // not a knob that can change it. An integration test measures the real interval; if that ever
     // diverges from this number, the two expiries below are sized for a rhythm
     // that no longer exists.
-    // The browser sizes its silence limit on the same figure (`COLLAB_PING_INTERVAL_MS`).
-    expect(shipped.connection_ping_interval_ms).toBe(COLLAB_PING_INTERVAL_MS);
+    expect(shipped.connection_ping_interval_ms).toBe(30_000);
   });
 
   it("believes a seat for two ping periods", () => {
