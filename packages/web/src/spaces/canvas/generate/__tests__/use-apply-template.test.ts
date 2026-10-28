@@ -96,6 +96,8 @@ const FLOW: GenerationTemplate = {
   ],
   steps: ['split', 'animate'],
   agentNote: 'a fixture flow for tests',
+  goal: 'character',
+  triggers: { asks: ['a fixture'], offerWhen: ['a fixture is wanted'] },
 };
 
 /** The fixture's English strings; no locale file carries them. */

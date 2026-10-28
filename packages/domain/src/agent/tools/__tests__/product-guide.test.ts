@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t } from "@breatic/shared";
+import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
@@ -568,6 +568,30 @@ describe("what the guide says", () => {
     expect(cards).toMatch(/A node @'d that lands empty[^.]*comes with a note saying what to do first; generating before then sends nothing for it, and the run stops only where nothing else in that source holds a node and the model runs only when one does\./);
     const pool = cards.split("Into the reference list")[1] ?? "";
     expect(pool).toMatch(/by the proposal for every node it wires in[^.]*\. A node wired in that is not @'d is not used/);
+  });
+
+  it("says the template list opens on creative goals, each opening its templates, in the panel's order for each node type", () => {
+    const generating = section("Generating");
+    const list = generating.slice(generating.indexOf(`"${t("canvas.template.title")}"`));
+    expect(list).toMatch(/a list under that heading of creative goals; pointing at a goal opens the templates for it/);
+    const picture = list.slice(list.indexOf("A picture node"), list.indexOf("A video node"));
+    const video = list.slice(list.indexOf("A video node"), list.indexOf("A sound node"));
+    for (const [type, text] of [["image", picture], ["video", video]] as const) {
+      const rows = templateGoalsFor(type).flatMap(({ goal, templates }) => [
+        [`canvas.template.goal.${goal}`],
+        ...templates.map((template) => [`canvas.template.${template.id}.name`]),
+      ]);
+      expectRowsInOrder(text, rows);
+    }
+    expect(list.slice(list.indexOf("A sound node"))).toMatch(new RegExp(`^A sound node shows "${t("canvas.template.empty")}"`));
+    expect(list).not.toMatch(/video and sound nodes list none/);
+  });
+
+  it("says a template may place generations upstream to run first, wired and @'d, and an input fed upstream reuses a picture already connected", () => {
+    const generating = section("Generating");
+    expect(generating).toMatch(/A template may also place picture or video nodes to the left that generate first, connected and @'d; a note at the top of the prompt says to generate them first\./);
+    expect(generating).toMatch(/When a template feeds what it needs into those nodes too, a picture already connected to the node is connected to them as well\./);
+    expect(generating).not.toMatch(/the two listed here do neither/);
   });
 
   it("says a template from the panel and a proposal @ the nodes they wire into the reference list, and nothing in a slot", () => {

@@ -13,10 +13,11 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, markedSegments, markText, t, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markedSegments, markText, t, templateMarkTargets, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
+import { renderTemplateSegment } from "../get-generation-template.js";
 import { answerFor, checkProposal, makeProposeCanvasAction } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
@@ -585,15 +586,20 @@ describe("a mark the agent writes as words", () => {
 });
 
 describe("the templates as the agent is shown them", () => {
-  it("lists each prompt as the segments to send, each reference as a ref, labels without the words the canvas adds", () => {
-    const said = makeProposeCanvasAction().description ?? "";
+  it("lists each prompt as the segments to send, each reference as a ref to what is wired in, labels without the words the canvas adds", () => {
     for (const template of GENERATION_TEMPLATES) {
+      const said = renderTemplateSegment(template);
+      const targets = templateMarkTargets(template, template.anchor);
       for (const segment of markedSegments(t(`canvas.template.${template.id}.prompt`))) {
-        if (segment.slot?.kind === "asset") expect(said).toContain('{"ref": <index of the node wired in for input "reference">}');
-        else if (segment.slot) expect(said).toContain(JSON.stringify({ slot: segment.slot }));
+        if (segment.slot?.kind === "asset") {
+          const target = targets.get(segment.slot.label);
+          if (target === undefined) throw new Error(`${template.id}: no target for ${segment.slot.label}`);
+          const named = "input" in target ? `input "${target.input}"` : `node "${target.node}"`;
+          expect(said, template.id).toContain(`{"ref": <index of the node wired in for ${named}>}`);
+        } else if (segment.slot) expect(said, template.id).toContain(JSON.stringify({ slot: segment.slot }));
       }
+      expect(said, template.id).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
     }
-    expect(said).not.toContain(t("canvas.promptMark.reference", { label: "" }).trim());
   });
 });
 

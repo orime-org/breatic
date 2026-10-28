@@ -472,6 +472,8 @@ describe('a proposal made from a template (inner#1345)', () => {
     inputs: [],
     steps: ['split', 'animate'],
     agentNote: 'a fixture',
+    goal: 'character',
+    triggers: { asks: ['a fixture'], offerWhen: ['a fixture is wanted'] },
   };
 
   /** English with the fixture's strings added; no locale file carries them. */

@@ -3,7 +3,8 @@
 
 /**
  * The template registry: what each generate panel lists and what a template
- * writes (inner#977).
+ * writes (inner#977), and the creative goal and triggers each carries
+ * (inner#1807).
  */
 
 import { readFileSync } from 'node:fs';
@@ -12,6 +13,8 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   GENERATION_TEMPLATES,
+  TEMPLATE_GOALS,
+  templateGoalsFor,
   templatesFor,
   type GenerationTemplate,
   type TemplateGenerateNode,
@@ -118,42 +121,107 @@ afterEach(() => {
   setLocale('en');
 });
 
+/** The two templates that came over from the old preset shape: one anchor fed by one reference. */
+const MIGRATED = ['costume-sheet', 'storyboard-grid-25'];
+
+/**
+ * The generate nodes wired into a node's pool by a template edge.
+ * @param template - The template.
+ * @param key - The node.
+ * @returns Their keys.
+ */
+const upstreamGenerations = (template: GenerationTemplate, key: string): string[] =>
+  template.edges
+    .filter((edge) => edge.to === key && (edge.into ?? 'pool') === 'pool')
+    .map((edge) => edge.from)
+    .filter((from) => generateNodes(template).some((node) => node.key === from));
+
 describe('generation templates', () => {
-  it('lists the two image templates and nothing for video or audio yet', () => {
-    expect(templatesFor('image').map((t) => t.id)).toEqual(['storyboard-grid-25', 'costume-sheet']);
-    expect(templatesFor('video')).toEqual([]);
+  it('lists each node type its templates in registry order, audio none yet', () => {
+    expect(templatesFor('image').map((t) => t.id)).toEqual([
+      'costume-sheet',
+      'character-bible',
+      'expression-sheet',
+      'character-design-from-text',
+      'storyboard-grid-25',
+    ]);
+    expect(templatesFor('video').map((t) => t.id)).toEqual([
+      'single-view-refs-scene',
+      'identity-locked-sequence',
+      'character-showcase-orbit',
+    ]);
     expect(templatesFor('audio')).toEqual([]);
   });
 
   it('fixes the mode, model and the params the real runs settled on', () => {
-    const grid = byId('storyboard-grid-25');
-    const costume = byId('costume-sheet');
-    if (!grid || !costume) throw new Error('template missing');
-    expect(anchorOf(grid)).toMatchObject({
-      role: 'generate',
-      type: 'image',
-      mode: 'i2i',
-      model: 'nano-banana-pro-edit-ultra',
-      params: { aspect_ratio: '1:1', resolution: '4k' },
-    });
-    expect(anchorOf(costume)).toMatchObject({
-      role: 'generate',
-      type: 'image',
-      mode: 'i2i',
-      model: 'nano-banana-pro-edit-ultra',
-      params: { aspect_ratio: '16:9', resolution: '4k' },
-    });
+    const NANO = 'nano-banana-pro-edit-ultra';
+    const MINIMAX = 'minimax-h3-reference-to-video';
+    const QWEN = 'qwen-image-edit-multiple-angles';
+    const expected: Record<string, Record<string, Pick<TemplateGenerateNode, 'type' | 'mode' | 'model' | 'params'>>> = {
+      'storyboard-grid-25': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1', resolution: '4k' } } },
+      'costume-sheet': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } } },
+      'character-bible': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3', resolution: '4k' } } },
+      'expression-sheet': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } } },
+      'character-design-from-text': {
+        design: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } },
+        result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3', resolution: '4k' } },
+      },
+      'single-view-refs-scene': {
+        front: { type: 'image', mode: 'i2i', model: QWEN, params: { horizontal_angle: 0 } },
+        side: { type: 'image', mode: 'i2i', model: QWEN, params: { horizontal_angle: 90 } },
+        back: { type: 'image', mode: 'i2i', model: QWEN, params: { horizontal_angle: 180 } },
+        result: {
+          type: 'video',
+          mode: 't2v',
+          model: 'seedance-2.5-text-to-video',
+          params: { aspect_ratio: '16:9', duration: 10, generate_audio: true },
+        },
+      },
+      'identity-locked-sequence': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
+      'character-showcase-orbit': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
+    };
+    expect(GENERATION_TEMPLATES.map((template) => template.id).sort()).toEqual(Object.keys(expected).sort());
+    for (const template of GENERATION_TEMPLATES) {
+      const nodes = Object.fromEntries(
+        generateNodes(template).map(({ key, type, mode, model, params }) => [key, { type, mode, model, params }]),
+      );
+      expect(nodes, template.id).toEqual(expected[template.id]);
+      expect(template.anchor, template.id).toBe('result');
+    }
   });
 
+  it('feeds the single-view input into the three views and the scene, each view wired into the scene pool', () => {
+    const scene = byId('single-view-refs-scene');
+    if (!scene) throw new Error('template missing');
+    expect(scene.inputs).toEqual([{ key: 'reference', type: 'image', feeds: ['front', 'side', 'back', 'result'] }]);
+    expect(scene.edges).toEqual([
+      { from: 'front', to: 'result', into: 'pool' },
+      { from: 'side', to: 'result', into: 'pool' },
+      { from: 'back', to: 'result', into: 'pool' },
+    ]);
+    const design = byId('character-design-from-text');
+    if (!design) throw new Error('template missing');
+    expect(design.inputs).toEqual([]);
+    expect(design.edges).toEqual([{ from: 'design', to: 'result', into: 'pool' }]);
+  });
 
-  it('carries a prompt in every interface language with as many reference marks as it declares', () => {
+  it('names the into of every template edge, as the anchor models take a picture more than one way', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const edge of template.edges) expect(edge.into, `${template.id} ${edge.from}`).toBeDefined();
+    }
+  });
+
+  it('carries a prompt in every interface language with a reference mark for each thing wired into the anchor pool and a note for each upstream generation', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const locale of LOCALES) {
         setLocale(locale);
         const slots = promptOf(template).flatMap((s) => (s.slot ? [s.slot.kind] : []));
         const fedInputs = template.inputs.filter((input) => feedsOf(template, input).includes(template.anchor));
-        expect(slots.filter((kind) => kind === 'asset'), `${template.id} ${locale}`).toHaveLength(fedInputs.length);
-        expect(slots, `${template.id} ${locale}`).toEqual(['asset', 'tweak']);
+        const pooled = template.edges.filter((edge) => edge.to === template.anchor && (edge.into ?? 'pool') === 'pool');
+        const where = `${template.id} ${locale}`;
+        expect(slots.filter((kind) => kind === 'asset'), where).toHaveLength(fedInputs.length + pooled.length);
+        expect(slots.filter((kind) => kind === 'note'), where).toHaveLength(upstreamGenerations(template, template.anchor).length);
+        if (MIGRATED.includes(template.id)) expect(slots, where).toEqual(['asset', 'tweak']);
       }
     }
   });
@@ -172,7 +240,7 @@ describe('generation templates', () => {
   });
 
   it('migrates both templates to one anchor fed by one reference input, with no resource, edge or step', () => {
-    for (const template of GENERATION_TEMPLATES) {
+    for (const template of GENERATION_TEMPLATES.filter((one) => MIGRATED.includes(one.id))) {
       const skeleton = templateSkeleton(template);
       expect(skeleton.nodes, template.id).toEqual(new Map([[template.anchor, { role: 'generate', type: 'image' }]]));
       expect(skeleton.edges, template.id).toEqual([]);
@@ -184,13 +252,77 @@ describe('generation templates', () => {
   it('names the reference input after the label its mark carried in every language', () => {
     expect(raw('en', 'canvas.template.storyboard-grid-25.input.reference.name')).toBe('Character or scene');
     expect(raw('en', 'canvas.template.costume-sheet.input.reference.name')).toBe('Character');
+  });
+
+  it('@s in the anchor prompt everything wired into its pool, each by its name, in every language', () => {
     for (const template of GENERATION_TEMPLATES) {
       for (const locale of LOCALES) {
         setLocale(locale);
         const labels = promptOf(template).flatMap((s) => (s.slot?.kind === 'asset' ? [s.slot.label] : []));
-        expect(labels, `${template.id} ${locale}`).toEqual([raw(locale, textKey(template, 'input.reference.name'))]);
+        const names = [
+          ...template.inputs
+            .filter((input) => feedsOf(template, input).includes(template.anchor))
+            .map((input) => raw(locale, textKey(template, `input.${input.key}.name`))),
+          ...template.edges
+            .filter((edge) => edge.to === template.anchor && (edge.into ?? 'pool') === 'pool')
+            .map((edge) => raw(locale, textKey(template, `node.${edge.from}.name`))),
+        ];
+        expect([...labels].sort(), `${template.id} ${locale}`).toEqual([...names].sort());
       }
     }
+  });
+});
+
+describe('creative goals and triggers', () => {
+  it('lists the goals the registry uses, in panel order', () => {
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards']);
+  });
+
+  it('gives every template a known goal and words for when the agent offers it', () => {
+    const goals: Record<string, string> = {
+      'storyboard-grid-25': 'comics-storyboards',
+      'costume-sheet': 'character',
+      'character-bible': 'character',
+      'expression-sheet': 'character',
+      'character-design-from-text': 'character',
+      'single-view-refs-scene': 'character',
+      'identity-locked-sequence': 'character',
+      'character-showcase-orbit': 'character',
+    };
+    for (const template of GENERATION_TEMPLATES) {
+      expect(template.goal, template.id).toBe(goals[template.id]);
+      expect(template.triggers.asks.length, `${template.id} asks`).toBeGreaterThan(0);
+      expect(template.triggers.offerWhen.length, `${template.id} offerWhen`).toBeGreaterThan(0);
+      for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) {
+        expect(words.trim().length, template.id).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('uses every goal it lists, so no goal row opens on nothing', () => {
+    for (const goal of TEMPLATE_GOALS) {
+      expect(GENERATION_TEMPLATES.some((template) => template.goal === goal), goal).toBe(true);
+    }
+  });
+
+  it('names every goal in all five languages', () => {
+    for (const goal of TEMPLATE_GOALS) {
+      for (const locale of LOCALES) {
+        const name = raw(locale, `canvas.template.goal.${goal}`);
+        expect(typeof name === 'string' && name.length > 0, `${goal} ${locale}`).toBe(true);
+      }
+    }
+  });
+
+  it('groups a node type\'s templates under their goals in goal order, leaving out goals with none', () => {
+    expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
+      ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
+      ['comics-storyboards', ['storyboard-grid-25']],
+    ]);
+    expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
+      ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
+    ]);
+    expect(templateGoalsFor('audio')).toEqual([]);
   });
 });
 
@@ -286,6 +418,7 @@ describe('generation template registry checks', () => {
       ];
       const keys = [
         ...names,
+        'description',
         'prompt',
         ...generateNodes(template).filter((node) => node.key !== template.anchor).map((node) => `node.${node.key}.prompt`),
         ...template.inputs.map((input) => `input.${input.key}.note`),

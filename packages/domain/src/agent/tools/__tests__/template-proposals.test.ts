@@ -15,12 +15,21 @@ vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
 }));
 
 import { loadLocales, runWithLocale } from "@breatic/core";
-import { canvasProposalSchema, GENERATION_TEMPLATES, setLocale, templateGuideNode, type GenerationTemplate, type ProposalAnswer } from "@breatic/shared";
+import {
+  canvasProposalSchema,
+  GENERATION_TEMPLATES,
+  setLocale,
+  templateAnchor,
+  templateGuideNode,
+  type GenerationTemplate,
+  type ProposalAnswer,
+} from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
+import { renderTemplateSegment } from "../get-generation-template.js";
 import { answerFor, makeProposeCanvasAction, verdictFor } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
@@ -90,31 +99,28 @@ describe("templates in proposals", () => {
     expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining("No template") });
   });
 
-  // Design 6.7 step 7 replaces the old "1 reference" count: the description
-  // is generated from each template's skeleton (see the fixture's describe below).
-  it("names every template in its description", () => {
-    for (const template of GENERATION_TEMPLATES) {
-      expect(makeProposeCanvasAction().description).toContain(template.id);
-    }
-  });
-
-  it("shows each template's prompt in the reader's language, so the agent can rewrite it rather than start over", () => {
-    setLocale("zh-CN");
+  // inner#1807: the description indexes each template in one line, its goal,
+  // what it makes and when to offer it; the full text is read with
+  // get_generation_template.
+  it("indexes every template in its description with its goal, the reader's words for it and when to offer it", () => {
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
-      expect(said).toContain(shown(template));
+      expect(said).toContain(`${template.id} (${template.goal}, makes ${templateAnchor(template).type})`);
+      expect(said).toContain(template.agentNote);
+      for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) expect(said).toContain(words);
     }
-    expect(said).toContain("故事内容");
+    expect(said).toContain("get_generation_template");
+  });
+
+  it("carries no template's prompt or wiring, which the agent reads with get_generation_template", () => {
+    for (const locale of ["en", "zh-CN"]) {
+      setLocale(locale);
+      const said = makeProposeCanvasAction().description ?? "";
+      for (const template of GENERATION_TEMPLATES) expect(said, `${template.id} ${locale}`).not.toContain(shown(template));
+      expect(said).not.toContain("Prompts, as segments");
+      expect(said).not.toContain("To use one, send each of its nodes");
+    }
     setLocale("en");
-  });
-
-  // Design 6.7 step 7: a reference is written as the ref of the node wired in
-  // with a key, where it was the node wired in for a label.
-  it("shows each reference in a template's prompt as the ref of the node wired in with its key", () => {
-    const said = makeProposeCanvasAction().description ?? "";
-    expect(said).toMatch(/\{"ref": <index of the node wired in[^>]*\breference\b[^>]*>\}/);
-    expect(said).not.toContain("wired in for Character or scene");
-    expect(said).not.toContain('"kind":"asset"');
   });
 });
 
@@ -193,14 +199,18 @@ describe("an empty node wired into a reference pool", () => {
   });
 });
 
-describe("the template prompts the agent is shown inside a request", () => {
+describe("the template prompts the agent reads inside a request", () => {
   it("are in the request's language, which the turn pins rather than the process", async () => {
     const { runWithLocale } = await import("@breatic/core");
     const { buildAgentConfig } = await import("@domain/agent/agent-config.js");
-    const [grid] = GENERATION_TEMPLATES;
+    const grid = GENERATION_TEMPLATES.find((template) => template.id === "storyboard-grid-25");
     if (!grid) throw new Error("no template");
     setLocale("en");
-    const said = await runWithLocale("ja", async () => (await buildAgentConfig({ basePrompt: "base" })).tools["propose_canvas_action"]?.description ?? "");
+    const said = await runWithLocale("ja", async () => {
+      const read = (await buildAgentConfig({ basePrompt: "base" })).tools["get_generation_template"];
+      if (read?.execute === undefined) throw new Error("get_generation_template is not offered");
+      return String(await read.execute({ id: grid.id }, { toolCallId: "t", messages: [] }));
+    });
     const japanese = runWithLocale("ja", () => shown(grid));
     expect(japanese).not.toBe(shown(grid));
     expect(said).toContain(japanese);
@@ -353,9 +363,9 @@ function solo(): Sent {
   };
 }
 
-describe("the tool description, generated from each template's skeleton (design 6.7 step 7)", () => {
+describe("a template's full text, generated from its skeleton (design 6.7 step 7)", () => {
   it("lists the fixture's nodes with key, role, type, mode and model, its edges, inputs, resource, steps, note and prompt fragments", () => {
-    const said = makeProposeCanvasAction(FIXTURES).description ?? "";
+    const said = renderTemplateSegment(SHEET);
     for (const word of [
       "fixture-sheet",
       "sheet",
@@ -694,6 +704,8 @@ describe("the consistency check, round-1 review (inner#1345)", () => {
       inputs: [],
       steps: [],
       agentNote: "a fixture with one resource feeding two generations",
+      goal: "character",
+      triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
     };
     const note = { slot: { kind: "note" as const, label: "Generate First first" } };
     const sent: Sent = {
