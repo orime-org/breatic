@@ -1504,6 +1504,34 @@ test.describe('what a settled thread offers', () => {
   });
 });
 
+test.describe('the filter counts (inner#1199)', () => {
+  test('says how many comments each filter holds, and nothing at none', async ({
+    page,
+  }) => {
+    await openFreshDocument(page);
+    await page.keyboard.type('alpha bravo');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('charlie delta');
+    await commentOnParagraph(page, 0, 'first');
+    await commentOnParagraph(page, 1, 'second');
+    await page.getByTestId('doc-doc-menu-trigger').click();
+    await page.getByTestId('doc-doc-menu-comments').click();
+
+    const open = page.getByTestId('doc-comment-rail-filter-open-count');
+    const all = page.getByTestId('doc-comment-rail-filter-all-count');
+    await expect(open).toHaveText('2');
+    await expect(all).toHaveText('2');
+
+    for (const left of ['1', null]) {
+      await page.getByTestId('doc-comment-card').first().click();
+      await page.getByTestId('doc-comment-resolve').click();
+      if (left === null) await expect(open).toHaveCount(0);
+      else await expect(open).toHaveText(left);
+      await expect(all).toHaveText('2');
+    }
+  });
+});
+
 test.describe('a thread nobody is reading', () => {
   test('cuts each comment short and says what it is holding back', async ({
     page,

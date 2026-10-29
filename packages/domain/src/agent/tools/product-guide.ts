@@ -1483,7 +1483,8 @@ export function renderProductGuide(): string {
       `into ${quoted(t("spaces.document.comment.targetGone"))} If the reader can no longer edit, it turns into ` +
       `${quoted(t("spaces.document.comment.cannotWrite"))} The panel's header has ` +
       `${quoted(t("spaces.document.comment.filterOpen"))} (chosen when opening from the document menu), ` +
-      `${quoted(t("spaces.document.comment.filterAll"))} and an X that closes it; closing it drops anything not ` +
+      `${quoted(t("spaces.document.comment.filterAll"))}, each followed by a small grey count of the cards ` +
+      "it holds when it holds any, and an X that closes it; closing it drops anything not " +
       "yet posted. Each card sits level with its words and quotes them, then shows each comment's writer (" +
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
       `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
