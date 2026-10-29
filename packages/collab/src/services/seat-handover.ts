@@ -70,18 +70,16 @@ export interface DemotableConnection {
  * client is never sent the frame twice.
  * @param documentName - The document the connection is for.
  * @param connection - The connection.
- * @returns True when it was writable and is now read-only.
  */
 export function demoteConnection(
   documentName: string,
   connection: DemotableConnection,
-): boolean {
-  if (connection.readOnly) return false;
+): void {
+  if (connection.readOnly) return;
   connection.readOnly = true;
   connection.webSocket.send(
     new OutgoingMessage(documentName).writeAuthenticated(true).toUint8Array(),
   );
-  return true;
 }
 
 /** What one instance needs to carry out a demote it is responsible for. */

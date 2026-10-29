@@ -127,14 +127,15 @@ beforeEach(() => {
 
 describe("demoting one connection (the shared function)", () => {
   it("E-S01 makes a writable connection read-only and tells its client once", () => {
-    expect(demoteConnection(DOC, connection)).toBe(true);
+    demoteConnection(DOC, connection);
+    demoteConnection(DOC, connection);
     expect(connection.readOnly).toBe(true);
     expect(connection.sent).toEqual([READ_ONLY_FRAME]);
   });
 
   it("E-S04 leaves a connection that is already read-only alone", () => {
     connection.readOnly = true;
-    expect(demoteConnection(DOC, connection)).toBe(false);
+    demoteConnection(DOC, connection);
     expect(connection.readOnly).toBe(true);
     expect(connection.sent).toEqual([]);
   });
