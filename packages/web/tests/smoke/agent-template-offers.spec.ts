@@ -16,7 +16,7 @@
 import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES } from '@breatic/shared';
+import { GENERATION_TEMPLATES, feedsOf, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
@@ -29,27 +29,15 @@ const CHARACTER_TEMPLATES = new Set(GENERATION_TEMPLATES.filter((template) => te
 let page: Page;
 let spaceId = '';
 
-/** A proposal as the agent sent it: its nodes and the edges between them, by index. */
-interface Proposal {
-  nodes: { type?: string; role?: string; material?: string; fills?: Record<string, number[]> }[];
-  edges: { fromIndex: number; toIndex: number }[];
-}
-
 /**
  * How many generated videos in a proposal draw on the material it carries,
  * through an edge or a filled slot, directly or through generations between.
- * @param proposal - The proposal.
+ * @param proposal - The proposal, as the agent sent it.
  * @returns The count.
  */
-function videosCarryingMaterial(proposal: Proposal): number {
+function videosCarryingMaterial(proposal: CanvasProposal): number {
   const fed = new Map<number, number[]>();
-  const feed = (to: number, from: number): void => {
-    fed.set(to, [...(fed.get(to) ?? []), from]);
-  };
-  for (const edge of proposal.edges) feed(edge.toIndex, edge.fromIndex);
-  proposal.nodes.forEach((node, at) => {
-    for (const from of Object.values(node.fills ?? {}).flat()) feed(at, from);
-  });
+  for (const { fromIndex, toIndex } of feedsOf(proposal)) fed.set(toIndex, [...(fed.get(toIndex) ?? []), fromIndex]);
   const carries = (at: number, seen: Set<number>): boolean =>
     proposal.nodes[at]?.material !== undefined ||
     (fed.get(at) ?? []).some((from) => !seen.has(from) && carries(from, new Set([...seen, from])));
@@ -63,11 +51,13 @@ interface Turn {
   /** Each template id its landed proposals named. */
   templates: string[];
   /** The landed proposals, as sent. */
-  landed: Proposal[];
+  landed: CanvasProposal[];
   /** Each template id it read in full, counting only reads that answered. */
   read: string[];
   /** Everything it wrote or asked, as one text. */
   said: string;
+  /** Whether its reply is stored yet. */
+  stored: boolean;
 }
 
 /**
@@ -86,7 +76,7 @@ async function lastTurn(p: Page): Promise<Turn> {
         type?: string;
         text?: string;
         output?: unknown;
-        input?: { id?: string; nodes?: ({ template?: { id?: string } } & Proposal['nodes'][number])[]; edges?: Proposal['edges'] } & Record<string, unknown>;
+        input?: { id?: string; nodes?: { template?: { id?: string } }[] } & Record<string, unknown>;
       }[];
     }[];
     const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
@@ -97,18 +87,19 @@ async function lastTurn(p: Page): Promise<Turn> {
     return {
       tools: parts.flatMap((part) => (part.type?.startsWith('tool-') ? [part.type.slice('tool-'.length)] : [])),
       templates: landed.flatMap((part) => part.input?.nodes ?? []).flatMap((node) => (node.template?.id ? [node.template.id] : [])),
-      landed: landed.map((part) => ({ nodes: part.input?.nodes ?? [], edges: part.input?.edges ?? [] })),
+      landed: landed.map((part) => part.input as unknown as CanvasProposal),
       read: parts.flatMap((part) =>
         part.type === 'tool-get_generation_template' && typeof part.output === 'string' && part.input?.id ? [part.input.id] : [],
       ),
       said: parts.map((part) => (part.type === 'text' ? (part.text ?? '') : part.type?.startsWith('tool-ask_user') ? JSON.stringify(part.input) : '')).join('\n'),
+      stored: messages.some((m) => m.role === 'assistant'),
     };
   });
 }
 
 /**
  * The newest turn once its reply is stored: the turn's end on screen can come
- * before the reply's words are saved.
+ * before the server writes the reply, which it writes whole.
  * @param p - The signed-in page.
  * @returns What the turn did and said.
  */
@@ -117,9 +108,9 @@ async function settledTurn(p: Page): Promise<Turn> {
   await expect
     .poll(async () => {
       turn = await lastTurn(p);
-      return turn.said.trim().length;
+      return turn.stored;
     }, { timeout: 30_000 })
-    .toBeGreaterThan(0);
+    .toBe(true);
   return turn;
 }
 
