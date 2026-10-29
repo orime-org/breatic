@@ -677,7 +677,7 @@ describe("createCollabServer — the connected hook takes the seat (inner#1034)"
     expect(collabRedisStub.publish).not.toHaveBeenCalled();
   });
 
-  // Design 3.8: the registry logs a failed script once; the hook does not
+  // The registry logs a failed script once; the hook does not
   // log it again.
   it("E-C05 lets the connection write on when Redis could not answer", async () => {
     registryStub.takeSeat.mockResolvedValueOnce({ outcome: "unknown" });

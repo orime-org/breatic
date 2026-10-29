@@ -10,7 +10,7 @@
  * browser never learns it went read-only, skip the release and the seat is
  * held by a read-only connection for good.
  *
- * The first two are one shared function since inner#1034 (design 3.6): the
+ * The first two are one shared function since inner#1034: the
  * `connected` hook losing the race for a seat and a pong finding its seat gone
  * demote through it too, so the frame cannot be forgotten on one path.
  */
@@ -132,7 +132,7 @@ describe("demoting one connection (the shared function)", () => {
     expect(connection.sent).toEqual([READ_ONLY_FRAME]);
   });
 
-  it("E-S04 leaves a connection that is already read-only alone (design 3.8)", () => {
+  it("E-S04 leaves a connection that is already read-only alone", () => {
     connection.readOnly = true;
     expect(demoteConnection(DOC, connection)).toBe(false);
     expect(connection.readOnly).toBe(true);

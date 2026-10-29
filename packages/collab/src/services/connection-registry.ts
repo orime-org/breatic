@@ -37,7 +37,8 @@
  * the same script, so a key lives exactly as long as some member in it is
  * still answering.
  *
- * Per entry, this instance keeps `{ member, cap, state, inFlight }` and sends
+ * Per entry, this instance keeps `{ member, userId, arrivedAtMs, cap, state,
+ * inFlight }` (see `SeatEntry`) and sends
  * at most one script at a time. A reply is applied only to the entry that
  * sent it; an entry removed while its script was in flight (disconnect,
  * demote) is released with a ZREM on the same client, which Redis executes
@@ -311,7 +312,10 @@ type SeatRedis = Redis & {
 /** The two modes of {@link SEAT_SCRIPT}. */
 type ScriptMode = "arrive" | "refresh";
 
-/** This instance's record of one seat (design: `{ member, cap, state, inFlight }`). */
+/**
+ * This instance's record of one seat: its member, who holds it and when they
+ * arrived, the ceiling it was judged by, and where its script stands.
+ */
 interface SeatEntry {
   /** The member string in Redis. */
   member: string;
@@ -433,7 +437,7 @@ export function createConnectionRegistry(
   }
 
   /**
-   * Run the script for an entry and apply its reply (design 3.2.1).
+   * Run the script for an entry and apply its reply.
    *
    * A reply whose entry has been removed or replaced is dropped without a
    * trace: whoever removed it already sent the ZREM. `full` removes the entry

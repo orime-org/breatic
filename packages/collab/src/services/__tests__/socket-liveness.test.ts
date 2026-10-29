@@ -10,8 +10,8 @@
  * whole change unconnected to the pong while its expiry was cut to two ping
  * periods, and every test in the package stayed green.
  *
- * Since inner#1034 a renewal can also answer back, and the handler acts on it
- * (design 3.5): `replaced` asks for the other connection to be demoted, while
+ * Since inner#1034 a renewal can also answer back, and the handler acts on
+ * it: `replaced` asks for the other connection to be demoted, while
  * `full` (an arrival retried on this pong found no seat) and `lost` (a held
  * seat was gone and the document full) demote this socket's connection on
  * that document.

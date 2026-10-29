@@ -33,7 +33,7 @@ import type * as CoreModule from "@breatic/core";
 const { logWarn } = vi.hoisted(() => ({ logWarn: vi.fn() }));
 
 // Real core, apart from the logger: the registry is the one place a failed
-// script logs (design 3.8), and these cases read what it logged.
+// script logs, and these cases read what it logged.
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
   createLogger: () => ({ warn: logWarn, error: vi.fn(), info: vi.fn(), debug: vi.fn() }),
@@ -698,7 +698,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     expect(await reg.hasOwnSeat(DOC, "u1")).toBe("unknown");
   });
 
-  it("A31b does not count an expired seat of the person's own (design 3.8)", async () => {
+  it("A31b does not count an expired seat of the person's own", async () => {
     const { reg } = build();
     await seed(DOC, T - 61_000, m("u1", 1000, "i2", "sa"));
     expect(await reg.hasOwnSeat(DOC, "u1")).toBe("no");
@@ -985,7 +985,7 @@ interface ModelConn {
 
 /**
  * Two registries, the connections they hold and the wiring the hooks would
- * do with each answer (design 3.4, 3.5): `full` and `lost` make a connection
+ * do with each answer: `full` and `lost` make a connection
  * read-only, `replaced(x)` queues a demote of x, `unknown` and `gone` change
  * nothing. Script replies are held until a command delivers them, in any
  * order; Redis still runs every script in the order it was sent.
