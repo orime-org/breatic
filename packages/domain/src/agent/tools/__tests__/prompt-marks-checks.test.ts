@@ -17,7 +17,7 @@ import { GENERATION_TEMPLATES, markedSegments, markText, t, templateMarkTargets,
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
-import { renderTemplateSegment } from "../get-generation-template.js";
+import { describeTemplate } from "../get-generation-template.js";
 import { answerFor, checkProposal, makeProposeCanvasAction } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
@@ -588,7 +588,7 @@ describe("a mark the agent writes as words", () => {
 describe("the templates as the agent is shown them", () => {
   it("lists each prompt as the segments to send, each reference as a ref to what is wired in, labels without the words the canvas adds", () => {
     for (const template of GENERATION_TEMPLATES) {
-      const said = renderTemplateSegment(template);
+      const said = describeTemplate(template);
       const targets = templateMarkTargets(template, template.anchor);
       for (const segment of markedSegments(t(`canvas.template.${template.id}.prompt`))) {
         if (segment.slot?.kind === "asset") {

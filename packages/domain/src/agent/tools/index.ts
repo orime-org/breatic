@@ -35,7 +35,7 @@ import { canvasCapabilities } from "@domain/agent/tools/canvas-capabilities.js";
 import { generationModels } from "@domain/agent/tools/generation-models.js";
 import { getGenerationTemplate } from "@domain/agent/tools/get-generation-template.js";
 import { productGuide } from "@domain/agent/tools/product-guide.js";
-import { makeProposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
+import { makeProposeCanvasAction, proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
@@ -85,7 +85,8 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // Renders a template in the turn's language when called, so one object
   // serves every turn.
   [GET_GENERATION_TEMPLATE]: () => getGenerationTemplate,
-  [PROPOSE_CANVAS_ACTION]: () => makeProposeCanvasAction(),
+  // Holds nothing between calls, so one object serves every turn.
+  [PROPOSE_CANVAS_ACTION]: () => proposeCanvasAction,
   // Holds nothing between calls, so one object serves every turn.
   [PROPOSE_DOCUMENT_EDIT]: () => proposeDocumentEdit,
   // Built per turn: it holds whether a save is running, so one turn saves one

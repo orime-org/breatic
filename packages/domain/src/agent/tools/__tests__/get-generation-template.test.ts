@@ -17,7 +17,7 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
-import { renderTemplateSegment } from "../get-generation-template.js";
+import { describeTemplate } from "../get-generation-template.js";
 import { CANVAS_TOOLS, TOOL_MAP } from "../index.js";
 import { TEMPLATE_CRAFT } from "../template-craft.js";
 
@@ -87,7 +87,7 @@ describe("get_generation_template", () => {
       setLocale(locale);
       for (const template of GENERATION_TEMPLATES) {
         const said = await read(template.id);
-        expect(said, `${template.id} ${locale}`).toContain(renderTemplateSegment(template));
+        expect(said, `${template.id} ${locale}`).toContain(describeTemplate(template));
         expect(said, `${template.id} ${locale}`).toContain(shown(template));
       }
     }
@@ -126,7 +126,7 @@ describe("get_generation_template", () => {
 
 describe("a multi-node template's full text", () => {
   it("shows the single-view scene's wiring and @s each view and the original by what is wired in", () => {
-    const said = renderTemplateSegment(byId("single-view-refs-scene"));
+    const said = describeTemplate(byId("single-view-refs-scene"));
     for (const view of ["front", "side", "back"]) {
       expect(said).toContain(`"${view}" into "result" by "pool"`);
       expect(said).toContain(`{"ref": <index of the node wired in for node "${view}">}`);
@@ -137,7 +137,7 @@ describe("a multi-node template's full text", () => {
   });
 
   it("shows the designed character drawn into the sheet with a note to generate it first", () => {
-    const said = renderTemplateSegment(byId("character-design-from-text"));
+    const said = describeTemplate(byId("character-design-from-text"));
     expect(said).toContain('"design" into "result" by "pool"');
     expect(said).toContain('{"ref": <index of the node wired in for node "design">}');
     expect(said).toContain('"kind":"note"');

@@ -29,7 +29,7 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 
 import { templateSegmentsText as shown } from "@domain/agent/tools/template-expansion.js";
 
-import { renderTemplateSegment } from "../get-generation-template.js";
+import { describeTemplate } from "../get-generation-template.js";
 import { answerFor, makeProposeCanvasAction, verdictFor } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
@@ -365,7 +365,7 @@ function solo(): Sent {
 
 describe("a template's full text, generated from its skeleton (design 6.7 step 7)", () => {
   it("lists the fixture's nodes with key, role, type, mode and model, its edges, inputs, resource, steps, note and prompt fragments", () => {
-    const said = renderTemplateSegment(SHEET);
+    const said = describeTemplate(SHEET);
     for (const word of [
       "fixture-sheet",
       "sheet",

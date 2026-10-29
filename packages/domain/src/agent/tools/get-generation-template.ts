@@ -41,7 +41,7 @@ const HOW_TO_SEND =
  * @returns Its paragraph.
  * @throws {never} Never.
  */
-export function renderTemplateSegment(template: GenerationTemplate): string {
+export function describeTemplate(template: GenerationTemplate): string {
   const skeleton = templateSkeleton(template);
   const anchor = templateAnchor(template);
   const nodes = template.nodes.map((node) => {
@@ -59,37 +59,28 @@ export function renderTemplateSegment(template: GenerationTemplate): string {
   );
 }
 
-/**
- * The tool that reads one template.
- * @param templates - The registry it reads; its ids are the only input it takes.
- * @returns The tool.
- * @throws {Error} When the registry is empty, which the registry test rules out.
- */
-export function makeGetGenerationTemplate(templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES): Tool<{ id: string }, string> {
-  const [first, ...rest] = templates.map((template) => template.id);
-  if (first === undefined) throw new Error("no generation templates");
-  const inputSchema = z.object({ id: z.enum([first, ...rest]).describe("The template's id, as the proposal tool's description lists it.") });
-  return tool({
-    description:
-      `Read one generation template in full before proposing it with ${PROPOSE_CANVAS_ACTION}: its nodes and wiring, ` +
-      "the inputs the reader supplies, each generate node's prompt in the reader's language as the segments to send, " +
-      "how to send it, and the craft for writing its prompts. The templates, and when to offer each, are listed in " +
-      `${PROPOSE_CANVAS_ACTION}'s description.`,
-    inputSchema,
-    metadata: { runningLine: "chat.tool.readingTemplate" },
-    execute: async (
-      { id }: { id: string },
-      // Unused: builds text and returns, so there is nothing to abandon.
-      // Declared so every tool has the same shape.
-      _options: { abortSignal?: AbortSignal },
-    ): Promise<string> => {
-      const template = templates.find((one) => one.id === id);
-      // The input schema admits only registered ids.
-      if (template === undefined) throw new Error(`No template "${id}".`);
-      return [renderTemplateSegment(template), HOW_TO_SEND, templateCraft(template)].join("\n\n");
-    },
-  });
-}
+const [FIRST_ID, ...OTHER_IDS] = GENERATION_TEMPLATES.map((template) => template.id);
+// The registry test keeps the registry non-empty.
+if (FIRST_ID === undefined) throw new Error("no generation templates");
 
-/** The tool over the registry; it renders in the turn's language when called, so one object serves every turn. */
-export const getGenerationTemplate = makeGetGenerationTemplate();
+/** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
+export const getGenerationTemplate: Tool<{ id: string }, string> = tool({
+  description:
+    `Read one generation template in full before proposing it with ${PROPOSE_CANVAS_ACTION}: its nodes and wiring, ` +
+    "the inputs the reader supplies, each generate node's prompt in the reader's language as the segments to send, " +
+    "how to send it, and the craft for writing its prompts. The templates, and when to offer each, are listed in " +
+    `${PROPOSE_CANVAS_ACTION}'s description.`,
+  inputSchema: z.object({ id: z.enum([FIRST_ID, ...OTHER_IDS]).describe("The template's id, as the proposal tool's description lists it.") }),
+  metadata: { runningLine: "chat.tool.readingTemplate" },
+  execute: async (
+    { id }: { id: string },
+    // Unused: builds text and returns, so there is nothing to abandon.
+    // Declared so every tool has the same shape.
+    _options: { abortSignal?: AbortSignal },
+  ): Promise<string> => {
+    const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+    // The input schema admits only registered ids.
+    if (template === undefined) throw new Error(`No template "${id}".`);
+    return [describeTemplate(template), HOW_TO_SEND, templateCraft(template)].join("\n\n");
+  },
+});

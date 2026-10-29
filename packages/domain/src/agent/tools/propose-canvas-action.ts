@@ -517,3 +517,6 @@ export function makeProposeCanvasAction(
   },
 });
 }
+
+/** The proposal tool over the registry; it holds nothing between calls, so one object serves every turn. */
+export const proposeCanvasAction = makeProposeCanvasAction();
