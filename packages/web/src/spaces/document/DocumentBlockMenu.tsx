@@ -90,22 +90,6 @@ import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 
-/**
- * How far from the menu's edge its submenus sit.
- *
- * A panel that hangs off a surface keeps a visible gap from that surface's
- * edge, and user 2026-08-27 put the width of it at 4px. This menu opens its
- * submenus to the SIDE, so the gap is between the panel's right edge and the
- * submenu's left.
- *
- * `sideOffset` measures from the TRIGGER, and this trigger is a row sitting
- * inside the panel's own 4px padding and 1px border. Those 5px come out of the
- * gap — measured with no offset at all, the submenu stood 4.67px INSIDE the
- * panel — so 9 puts the visible gap at 4. The bubble bar reaches its own 4px
- * the same way (`DocumentBubbleMenu.tsx`).
- */
-const SUBMENU_SIDE_OFFSET = 4 + 5;
-
 interface DocumentBlockMenuProps {
   /** The editor to write to. */
   editor: HandleEditor;
@@ -341,7 +325,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
@@ -392,7 +375,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 className={TYPE_MENU_WIDTH}
                 rowsClassName='flex flex-col gap-1'
               >
@@ -423,7 +405,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 rowsClassName='flex flex-col gap-1'
               >
                 {ALIGN_ITEMS.map((item) => {
@@ -465,7 +446,6 @@ export function DocumentBlockMenu({
                 {label}
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
-                sideOffset={SUBMENU_SIDE_OFFSET}
                 rowsClassName='py-2'
               >
                 <DocumentColourPanel

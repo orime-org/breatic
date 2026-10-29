@@ -48,7 +48,7 @@ Before changing templates or how the agent proposes them, read the generation te
 
 ### Tool guidance lives in the tool definition
 
-**Everything about a tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's note to the model is its `agentNote` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The system prompt side of this rule is [in server](../server/AGENTS.md#the-system-prompt-names-no-tool); `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
+**Everything about a tool (what it does, when to use it, how to read its answer) is written in its `description` and its fields' `.describe()`; a template's words to the model are its `agentNote` and `triggers` in the template definition.** Guidance written anywhere else is a second copy that drifts, and it stays behind when the tool is removed. The system prompt side of this rule is [in server](../server/AGENTS.md#the-system-prompt-names-no-tool); `agent/tools/__tests__/tools-say-their-own-use.test.ts` guards this side. A tool or template is handled specially only when that has been explicitly asked for.
 
 Check: is the sentence I am writing about one tool or template? Then it belongs in that tool's or template's own definition.
 

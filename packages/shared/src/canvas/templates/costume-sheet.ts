@@ -22,4 +22,16 @@ export const COSTUME_SHEET: GenerationTemplate = {
   steps: [],
   agentNote:
     "a character costume sheet: front, side and back full-body views plus close-ups of the hands or another body part, for keeping a character consistent",
+  goal: "character",
+  triggers: {
+    asks: [
+      "three views of my character",
+      "a turnaround or costume sheet",
+      "front, side and back views",
+      "a fitting or wardrobe test shot",
+    ],
+    offerWhen: [
+      "the reader is about to use one character in several pictures or videos and the canvas has no front, side and back views of them yet",
+    ],
+  },
 };
