@@ -40,7 +40,8 @@ export type SourceLedgerQueryOptions = UseQueryOptions<VideoSourceLedgerCompanio
 export function sourceLedgerQuery(input: SourceLedgerQueryInput): SourceLedgerQueryOptions {
   const binding = input.response?.sourceBinding;
   const state = input.response?.sourceLedger;
-  const receipt = state?.state === 'ready' && state.receipt.sourceFingerprint === binding?.contentHash ? state.receipt : null;
+  // Only a version 1 receipt names a companion this reader parses; a version 2 receipt waits for the v2 reader.
+  const receipt = state?.state === 'ready' && state.receipt.schemaVersion === 1 && state.receipt.sourceFingerprint === binding?.contentHash ? state.receipt : null;
   const limits = input.response?.sourceLedgerReadLimits ?? null;
   return queryOptions({
     queryKey: ['video-source-ledger', 1, input.projectId, binding?.canonicalURL ?? '', binding?.contentHash ?? '', receipt, limits] as const,
