@@ -7,8 +7,12 @@ import { advanceVideoPresentation, type AcceptedVideoPresentationAttempt } from 
 import type { AlphaPresentationReport, AlphaProbeEvidence } from '@ingest/alpha-run-contract.js';
 import type { VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
-import { videoSourceLedgerKeyFor, videoSourceLedgerReceiptSchema, type VideoSourceLedgerReceipt, type VideoSourceLedgerStrategy } from '@breatic/shared';
+import { classifyVideoSourceLedgerFailure, videoSourceLedgerKeyFor, videoSourceLedgerReceiptV2Schema, videoSourceLedgerTableKeyFor,
+  type VideoSourceLedgerReceiptV2, type VideoSourceLedgerStateV2 } from '@breatic/shared';
 import { hashStoredObject } from '@ingest/stored-object.js';
+
+/** Source facts as this store keeps them: it writes only version 2 ledger states. */
+export type PresentationSnapshot = Omit<VideoPresentationIngestSnapshot, 'sourceLedger'> & { sourceLedger?: VideoSourceLedgerStateV2 | null };
 
 /** Backend-authorized admission of one canonical source's auxiliary work. */
 export interface VideoPresentationAdmission extends AcceptedVideoPresentationAttempt {
@@ -25,13 +29,14 @@ export interface VideoPresentationAdmission extends AcceptedVideoPresentationAtt
   packedURL?: string;
   manifestURL?: string;
   sourceLedgerURL?: string;
+  sourceLedgerTableURL?: string;
   ledgerOnly?: boolean;
 }
 
 /** Private durable state remains valid even while original metadata is unknown. */
 interface PresentationRecord {
   admission: VideoPresentationAdmission;
-  snapshot: VideoPresentationIngestSnapshot;
+  snapshot: PresentationSnapshot;
   descriptorETag: string | null;
   token: string;
   evidence?: AlphaProbeEvidence;
@@ -39,23 +44,26 @@ interface PresentationRecord {
   encoded?: Extract<AlphaPresentationReport, { kind: 'encoded' }>;
   packedReceipt?: { etag: string; size: number; sha256: string };
   writeOwner?: string;
-  sourceLedgerIntent?: { claim: SourceLedgerWriteClaim; declaration: SourceLedgerDeclaration; active: boolean };
+  sourceLedgerIntent?: { claim: SourceLedgerWriteClaim; declaration: SourceLedgerDeclaration; active: boolean; tableETag?: string };
   finalized?: boolean;
 }
 /** The physical container receives only the currently accepted admission. */
-export interface PreparedAlphaAdmission { admission: VideoPresentationAdmission | null; token: string | null; snapshot: VideoPresentationIngestSnapshot }
+export interface PreparedAlphaAdmission { admission: VideoPresentationAdmission | null; token: string | null; snapshot: PresentationSnapshot }
 /** A private accepted capability accompanies bytes without changing public schema. */
 export interface AlphaPackedIdentity extends AcceptedVideoPresentationAttempt { token: string }
 /** The durable pre-write claim supplies the actual previously observed R2 version. */
 export interface AlphaPackedWriteClaim { owner: string; key: string; etag: string | null; byteLength: number }
 /** Facts measured from the complete stored bytes, never from an HTTP caller. */
 export interface AlphaPackedReceipt { etag: string; size: number; sha256: string }
-/** The original trusted producer's complete byte and count declaration. */
-export interface SourceLedgerDeclaration {
-  producerVersion: 1; strategy: VideoSourceLedgerStrategy; byteLength: number; physicalFrameCount: number; occurrenceCount: number;
+/** The producer's declaration of its one write: the full ledger and the compact table written before it. */
+export interface SourceLedgerDeclaration { producerVersion: 2; byteLength: number; table: { byteLength: number; frameCount: number } }
+/** Durable authorization for one write of both objects, each under its own observed version. */
+export interface SourceLedgerWriteClaim {
+  owner: string; key: string; priorETag: string | null; byteLength: number;
+  table: { key: string; priorETag: string | null; byteLength: number };
 }
-/** Durable authorization for one conditional companion write. */
-export interface SourceLedgerWriteClaim { owner: string; key: string; priorETag: string | null; byteLength: number }
+/** Facts measured from both stored objects, never from an HTTP caller. */
+export interface SourceLedgerMeasurement extends AlphaPackedReceipt { table: AlphaPackedReceipt }
 const RECORD_KEY = 'video-presentation-v1';
 
 /** Durable gate shared by the production container and a storage-only test object. */
@@ -86,44 +94,40 @@ export class VideoPresentationStore {
     return this.gate(async () => {
       const record = await this.storage.get<PresentationRecord>(RECORD_KEY);
       const limits = record?.admission.limits?.sourceLedger;
+      const within = (value: unknown, ceiling: number): boolean => Number.isSafeInteger(value) && (value as number) > 0 && (value as number) <= ceiling;
       if (record === undefined || !this.owns(record, identity) || limits === undefined || record.admission.sourceLedgerURL === undefined ||
-        identity.deadlineAt <= Date.now() || record.snapshot.sourceLedger?.state !== 'pending' || record.sourceLedgerIntent !== undefined ||
-        declaration.producerVersion !== 1 || !['iso_explicit_rate_one', 'iso_unedited_rate_one', 'matroska_rate_one'].includes(declaration.strategy) ||
-        !Number.isSafeInteger(declaration.byteLength) || declaration.byteLength <= 0 || declaration.byteLength > limits.maxBytes ||
-        !Number.isSafeInteger(declaration.physicalFrameCount) || declaration.physicalFrameCount <= 0 || declaration.physicalFrameCount > limits.maxPhysicalFrames ||
-        !Number.isSafeInteger(declaration.occurrenceCount) || declaration.occurrenceCount < 0 || declaration.occurrenceCount > limits.maxOccurrences) return null;
+        record.admission.sourceLedgerTableURL === undefined || identity.deadlineAt <= Date.now() || record.snapshot.sourceLedger?.state !== 'pending' ||
+        record.sourceLedgerIntent !== undefined || declaration.producerVersion !== 2 || !within(declaration.byteLength, limits.maxBytes) ||
+        !within(declaration.table?.byteLength, limits.maxBytes) || !within(declaration.table.frameCount, Number.MAX_SAFE_INTEGER)) return null;
       const key = videoSourceLedgerKeyFor(record.admission.storageKey);
-      const head = await this.bucket.head(key);
-      const claim = { owner: crypto.randomUUID(), key, priorETag: head?.etag ?? null, byteLength: declaration.byteLength };
-      record.sourceLedgerIntent = { claim, declaration: { ...declaration }, active: true };
+      const tableKey = videoSourceLedgerTableKeyFor(record.admission.storageKey);
+      const [head, tableHead] = await Promise.all([this.bucket.head(key), this.bucket.head(tableKey)]);
+      const claim = { owner: crypto.randomUUID(), key, priorETag: head?.etag ?? null, byteLength: declaration.byteLength,
+        table: { key: tableKey, priorETag: tableHead?.etag ?? null, byteLength: declaration.table.byteLength } };
+      record.sourceLedgerIntent = { claim, declaration: { producerVersion: 2, byteLength: declaration.byteLength,
+        table: { byteLength: declaration.table.byteLength, frameCount: declaration.table.frameCount } }, active: true };
       await this.persist(record);
       return claim;
     });
   }
 
   /**
-   * Retain an actual measured companion receipt under its original intent.
+   * Retain the measured receipt of both stored objects under their original, still active write intent.
    * @param identity - The original accepted private capability.
    * @param owner - The original durable write nonce.
-   * @param measured - Actual stored byte facts.
+   * @param measured - Actual stored byte facts of the ledger and its table.
    * @returns Whether that original receipt was accepted.
    * @throws {Error} When durable storage or physical verification fails.
    */
-  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: AlphaPackedReceipt): Promise<boolean> {
+  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: SourceLedgerMeasurement): Promise<boolean> {
     return this.gate(async () => {
       const record = await this.originalRecord(identity);
-      if (record === undefined || !this.owns(record, identity) || record.sourceLedgerIntent?.claim.owner !== owner) return false;
-      const object = await this.bucket.head(record.sourceLedgerIntent.claim.key);
-      if (!this.ledgerObjectMatches(record, object) || object!.etag !== measured.etag || object!.size !== measured.size) return false;
-      const receipt = this.ledgerReceipt(record, measured);
-      if (receipt === null) return false;
-      const prior = record.snapshot.sourceLedger;
-      if (prior?.state === 'ready' && (prior.receipt.etag !== receipt.etag || prior.receipt.sha256 !== receipt.sha256 || prior.receipt.size !== receipt.size)) return false;
-      record.snapshot.sourceLedger = { state: 'ready', receipt };
-      record.sourceLedgerIntent.active = false;
-      this.finalizeWork(record);
-      await this.persist(record);
-      return true;
+      // A released claim's writer gave up; its late objects are not this job's result.
+      if (record === undefined || !this.owns(record, identity) || record.sourceLedgerIntent?.claim.owner !== owner || !record.sourceLedgerIntent.active) return false;
+      const [object, table] = await this.ledgerObjects(record.admission.storageKey);
+      if (!this.ledgerObjectsMatch(record, object, table) || object!.etag !== measured.etag || object!.size !== measured.size ||
+        table!.etag !== measured.table?.etag || table!.size !== measured.table.size) return false;
+      return this.commitLedger(record, measured);
     });
   }
 
@@ -228,42 +232,48 @@ export class VideoPresentationStore {
    * @returns The durable accepted identity and any measured descriptor.
    * @throws {Error} When durable admission or R2 persistence fails.
    */
-  async accept(input: VideoPresentationAdmission): Promise<VideoPresentationIngestSnapshot> {
+  async accept(input: VideoPresentationAdmission): Promise<PresentationSnapshot> {
     return this.gate(async () => {
       const current = await this.storage.get<PresentationRecord>(RECORD_KEY);
       const requestedLedger = input.limits?.sourceLedger !== undefined;
-      if (current?.admission.sourceFingerprint === input.sourceFingerprint) {
+      const sameSource = current?.admission.sourceFingerprint === input.sourceFingerprint;
+      // A ready ledger or a content failure is settled: producing it again from the same bytes gives the same result.
+      let settledLedger: VideoSourceLedgerStateV2 | null | undefined;
+      if (sameSource) {
         const status = current.snapshot.attempt?.status;
         if (status === 'accepted' || status === 'running') return current.snapshot;
         await this.refreshLedger(current);
-        if (input.repair !== true && (!requestedLedger || current.snapshot.sourceLedger !== undefined && current.snapshot.sourceLedger !== null)) return current.snapshot;
-        if (current.snapshot.presentation?.state === 'alpha_ready' && (!requestedLedger || current.snapshot.sourceLedger?.state === 'ready') &&
-          await this.manifest(current.admission, current.snapshot.presentation, current.packedReceipt) !== null) return current.snapshot;
+        const ledger = current.snapshot.sourceLedger;
+        if (ledger?.state === 'ready' || (ledger?.state === 'failed' && classifyVideoSourceLedgerFailure(ledger.errorCode) === 'content')) settledLedger = ledger;
+        // A transient failure, or no ledger yet, is produced again; this admission is the one entry for that, retries included.
+        const produceLedger = requestedLedger && settledLedger === undefined;
+        const presentation = current.snapshot.presentation;
+        const presentationReady = presentation?.state === 'native' ||
+          (presentation?.state === 'alpha_ready' && await this.manifest(current.admission, presentation, current.packedReceipt) !== null);
+        if (!produceLedger && (input.repair !== true || presentationReady)) return current.snapshot;
       }
       if (current !== undefined) await this.storage.put(`${RECORD_KEY}:${current.admission.jobId}`, current);
-      const sameSource = current?.admission.sourceFingerprint === input.sourceFingerprint;
       const stored = current === undefined ? await this.bucket.get(videoPresentationKeyFor(input.storageKey)) : null;
       const previous = sameSource ? current.snapshot.presentation : stored === null ? null : parseVideoPresentation(await stored.json().catch(() => null), input.sourceFingerprint);
       const previousManifest = previous?.state === 'alpha_ready' ? await this.manifest(sameSource ? current.admission : input, previous, sameSource ? current.packedReceipt : undefined) : null;
       const readyPresentation = previous?.state === 'native' || previous?.state === 'alpha_ready' && previousManifest !== null;
-      const previousLedger = sameSource && current.snapshot.sourceLedger?.state === 'ready' ? current.snapshot.sourceLedger : undefined;
-      const ledgerOnly = requestedLedger && previousLedger === undefined && readyPresentation;
+      const ledgerOnly = requestedLedger && settledLedger === undefined && readyPresentation;
       const admission = { ...input };
       delete admission.ledgerOnly;
       if (ledgerOnly) admission.ledgerOnly = true;
-      // This attempt receives a write capability only for a missing ledger.
-      // Reusing an existing receipt preserves its actual producer and URL.
-      if (previousLedger !== undefined) delete admission.sourceLedgerURL;
+      // This attempt receives a write capability only for a ledger it must produce.
+      // A settled ledger keeps its actual producer and URLs.
+      if (settledLedger !== undefined) { delete admission.sourceLedgerURL; delete admission.sourceLedgerTableURL; }
       const original = input.original;
       const presentation: VideoPresentation | null = ledgerOnly ? previous : original === null ? null : {
         schemaVersion: 1, sourceFingerprint: input.sourceFingerprint, original,
         state: input.knownAlpha === true ? 'alpha_pending' : 'classifying', attempt: { jobId: input.jobId, deadlineAt: input.deadlineAt },
       };
-      const snapshot: VideoPresentationIngestSnapshot = { presentation, attempt: {
+      const snapshot: PresentationSnapshot = { presentation, attempt: {
         jobId: input.jobId, deadlineAt: input.deadlineAt, status: 'accepted', usage: null,
       }, ...(ledgerOnly && previousManifest !== null ? { manifest: previousManifest } : {}),
-      ...(previousLedger !== undefined ? { sourceLedger: previousLedger } : requestedLedger ? {
-        sourceLedger: { state: 'pending', schemaVersion: 1, sourceFingerprint: input.sourceFingerprint, producerVersion: 1,
+      ...(settledLedger !== undefined ? { sourceLedger: settledLedger } : requestedLedger ? {
+        sourceLedger: { state: 'pending', schemaVersion: 2, sourceFingerprint: input.sourceFingerprint, producerVersion: 2,
           attempt: { jobId: input.jobId, deadlineAt: input.deadlineAt } },
       } : {}) };
       const head = await this.bucket.head(videoPresentationKeyFor(input.storageKey));
@@ -320,6 +330,7 @@ export class VideoPresentationStore {
           (known.duration !== null && !videoDurationsMatch(known.duration, fact.original.duration)))) {
           rejectedProbe = true;
           if (record.snapshot.attempt !== null) { record.snapshot.attempt.status = 'failed'; record.snapshot.attempt.error = 'metadata_mismatch'; }
+          this.endPendingLedger(record);
           if (original !== null) proposed = { schemaVersion: 1, sourceFingerprint: fact.sourceFingerprint, original, state: 'failed',
             attempt: { jobId: fact.jobId, deadlineAt: fact.deadlineAt }, error: 'metadata_mismatch' };
         } else {
@@ -355,6 +366,7 @@ export class VideoPresentationStore {
             record.snapshot.presentation = { ...record.snapshot.presentation, state: 'failed', error };
             if (isActive) proposed = record.snapshot.presentation;
           }
+          this.endPendingLedger(record);
         }
       }
       this.finalizeWork(record);
@@ -375,7 +387,7 @@ export class VideoPresentationStore {
    * @returns Current source facts, ignoring superseded attempts.
    * @throws {Error} When persistence fails.
    */
-  async fail(identity: AcceptedVideoPresentationAttempt, error: string): Promise<VideoPresentationIngestSnapshot> {
+  async fail(identity: AcceptedVideoPresentationAttempt, error: string): Promise<PresentationSnapshot> {
     let proposed: VideoPresentation | null = null;
     const snapshot = await this.gate(async () => {
       const record = await this.originalRecord(identity);
@@ -384,7 +396,8 @@ export class VideoPresentationStore {
       const ready = record.snapshot.presentation?.state === 'native' || record.snapshot.presentation?.state === 'alpha_ready';
       if (ready && record.admission.limits?.sourceLedger === undefined) return record.snapshot;
       if (record.snapshot.attempt !== null) { record.snapshot.attempt.status = 'failed'; record.snapshot.attempt.error = error; }
-      this.failLedger(record, error);
+      // Before the presentation is ready the error is the presentation's own; the ledger never started and stays retryable.
+      this.failLedger(record, ready || error === 'expired' ? error : 'presentation_failed');
       if (record.snapshot.presentation !== null && !ready) proposed = { ...record.snapshot.presentation, state: 'failed', error };
       await this.persist(record);
       return record.snapshot;
@@ -398,7 +411,7 @@ export class VideoPresentationStore {
    * @returns Its unchanged source facts with an independent usage acknowledgement.
    * @throws {Error} When durable acknowledgement fails.
    */
-  async acknowledgeUsage(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+  async acknowledgeUsage(identity: AcceptedVideoPresentationAttempt): Promise<PresentationSnapshot> {
     return this.gate(async () => {
       const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
       const record = active?.admission.jobId === identity.jobId ? active : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${identity.jobId}`);
@@ -415,7 +428,7 @@ export class VideoPresentationStore {
    * @returns Its own durable facts, including late measured usage.
    * @throws {Error} When storage cannot be read.
    */
-  async snapshotFor(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+  async snapshotFor(identity: AcceptedVideoPresentationAttempt): Promise<PresentationSnapshot> {
     return this.gate(async () => {
       const active = await this.storage.get<PresentationRecord>(RECORD_KEY);
       const record = active?.admission.jobId === identity.jobId ? active : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${identity.jobId}`);
@@ -448,37 +461,74 @@ export class VideoPresentationStore {
   }
 
   /**
-   * Bind actual object headers to one retained original write intent.
-   * @param record - The actual producer's admission and retained intent.
-   * @param object - Actual complete R2 headers, never caller metadata.
-   * @returns Whether the physical object belongs to that exact declared write.
-   * @throws {never} Only measured headers and retained scalar facts are compared.
+   * Read the current headers of the ledger and its compact table.
+   * @param storageKey - The registered canonical key both objects are derived from.
+   * @returns The ledger and table headers, each null when absent.
+   * @throws {Error} When R2 cannot be read.
    */
-  private ledgerObjectMatches(record: PresentationRecord, object: R2Object | null): boolean {
-    const intent = record.sourceLedgerIntent;
-    const limits = record.admission.limits?.sourceLedger;
-    return object !== null && intent !== undefined && limits !== undefined && record.admission.sourceLedgerURL !== undefined &&
-      intent.claim.key === videoSourceLedgerKeyFor(record.admission.storageKey) && intent.declaration.producerVersion === 1 &&
-      object.size === intent.claim.byteLength && object.size > 0 && object.size <= limits.maxBytes && object.httpMetadata?.contentType === 'application/json' &&
-      object.customMetadata?.sourceLedgerJobId === record.admission.jobId && object.customMetadata.sourceLedgerClaimOwner === intent.claim.owner;
+  private ledgerObjects(storageKey: string): Promise<[R2Object | null, R2Object | null]> {
+    return Promise.all([this.bucket.head(videoSourceLedgerKeyFor(storageKey)), this.bucket.head(videoSourceLedgerTableKeyFor(storageKey))]);
   }
 
   /**
-   * Assemble a small receipt from original admission and actual stored measurements.
-   * @param record - The original producer, retaining its fixed public address.
-   * @param measured - Actual complete stored bytes measured by the edge writer.
+   * Bind the actual headers of both objects to one retained original write intent.
+   * @param record - The actual producer's admission and retained intent.
+   * @param object - Actual complete ledger headers, never caller metadata.
+   * @param table - Actual complete table headers, never caller metadata.
+   * @returns Whether both physical objects belong to that exact declared write.
+   * @throws {never} Only measured headers and retained scalar facts are compared.
+   */
+  private ledgerObjectsMatch(record: PresentationRecord, object: R2Object | null, table: R2Object | null): boolean {
+    const intent = record.sourceLedgerIntent;
+    const limits = record.admission.limits?.sourceLedger;
+    const owned = (stored: R2Object | null, byteLength: number): boolean => stored !== null && limits !== undefined && stored.size === byteLength &&
+      stored.size > 0 && stored.size <= limits.maxBytes && stored.httpMetadata?.contentType === 'application/json' &&
+      stored.customMetadata?.sourceLedgerJobId === record.admission.jobId && stored.customMetadata.sourceLedgerClaimOwner === intent?.claim.owner;
+    // A version 1 intent has no table claim; its objects are never a version 2 ledger.
+    return intent !== undefined && intent.declaration.producerVersion === 2 && record.admission.sourceLedgerURL !== undefined &&
+      record.admission.sourceLedgerTableURL !== undefined && intent.claim.key === videoSourceLedgerKeyFor(record.admission.storageKey) &&
+      intent.claim.table.key === videoSourceLedgerTableKeyFor(record.admission.storageKey) &&
+      owned(object, intent.claim.byteLength) && owned(table, intent.claim.table.byteLength);
+  }
+
+  /**
+   * Assemble the receipt of both objects from the original admission and actual stored measurements.
+   * @param record - The original producer, retaining its fixed public addresses and declaration.
+   * @param measured - Actual complete stored bytes of both objects.
    * @returns A validated original receipt, otherwise none.
    * @throws {never} Invalid scalar facts do not become ready receipts.
    */
-  private ledgerReceipt(record: PresentationRecord, measured: AlphaPackedReceipt): VideoSourceLedgerReceipt | null {
+  private ledgerReceipt(record: PresentationRecord, measured: SourceLedgerMeasurement): VideoSourceLedgerReceiptV2 | null {
     const declaration = record.sourceLedgerIntent?.declaration;
     if (declaration === undefined) return null;
-    const parsed = videoSourceLedgerReceiptSchema.safeParse({
-      schemaVersion: 1, sourceFingerprint: record.admission.sourceFingerprint, producerVersion: declaration.producerVersion, strategy: declaration.strategy,
+    const parsed = videoSourceLedgerReceiptV2Schema.safeParse({
+      schemaVersion: 2, sourceFingerprint: record.admission.sourceFingerprint, producerVersion: 2,
       attempt: { jobId: record.admission.jobId, deadlineAt: record.admission.deadlineAt }, url: record.admission.sourceLedgerURL,
-      etag: measured.etag, size: measured.size, sha256: measured.sha256, contentType: 'application/json', physicalFrameCount: declaration.physicalFrameCount, occurrenceCount: declaration.occurrenceCount,
+      etag: measured.etag, size: measured.size, sha256: measured.sha256, contentType: 'application/json',
+      table: { url: record.admission.sourceLedgerTableURL, sha256: measured.table.sha256, size: measured.table.size, frameCount: declaration.table.frameCount },
     });
     return parsed.success ? parsed.data : null;
+  }
+
+  /**
+   * The one writer of a ready ledger: retain the measured receipt under its original producer.
+   * @param producer - The original producer whose write intent the objects match.
+   * @param measured - Actual complete stored bytes of both objects.
+   * @returns Whether the receipt was retained; a different receipt never replaces a ready one.
+   * @throws {Error} When durable persistence fails.
+   */
+  private async commitLedger(producer: PresentationRecord, measured: SourceLedgerMeasurement): Promise<boolean> {
+    const receipt = this.ledgerReceipt(producer, measured);
+    if (receipt === null) return false;
+    const prior = producer.snapshot.sourceLedger;
+    if (prior?.state === 'ready' && (prior.receipt.etag !== receipt.etag || prior.receipt.sha256 !== receipt.sha256 ||
+      prior.receipt.size !== receipt.size || prior.receipt.table.sha256 !== receipt.table.sha256 || prior.receipt.table.size !== receipt.table.size)) return false;
+    producer.snapshot.sourceLedger = { state: 'ready', receipt };
+    producer.sourceLedgerIntent!.active = false;
+    producer.sourceLedgerIntent!.tableETag = measured.table.etag;
+    this.finalizeWork(producer);
+    await this.persist(producer);
+    return true;
   }
 
   /**
@@ -494,9 +544,20 @@ export class VideoPresentationStore {
     if (current?.state === 'pending') record.snapshot.sourceLedger = { ...current, state: 'failed', errorCode };
     else if (current?.state === 'ready' && physical) {
       const receipt = current.receipt;
-      record.snapshot.sourceLedger = { state: 'failed', schemaVersion: 1, sourceFingerprint: receipt.sourceFingerprint,
-        producerVersion: 1, attempt: receipt.attempt, errorCode };
+      record.snapshot.sourceLedger = { state: 'failed', schemaVersion: 2, sourceFingerprint: receipt.sourceFingerprint,
+        producerVersion: 2, attempt: receipt.attempt, errorCode };
     }
+  }
+
+  /**
+   * End a still pending ledger once its attempt has failed: nothing will produce it under this job.
+   * @param record - Original capability whose attempt may have just become terminal.
+   * @returns Nothing; the presentation's own error code never becomes the ledger's.
+   * @throws {never} No IO is performed.
+   */
+  private endPendingLedger(record: PresentationRecord): void {
+    const attempt = record.snapshot.attempt;
+    if (attempt?.status === 'failed') this.failLedger(record, attempt.error === 'expired' ? 'expired' : 'presentation_failed');
   }
 
   /**
@@ -510,30 +571,33 @@ export class VideoPresentationStore {
     if (record.admission.limits?.sourceLedger === undefined || attempt === null || record.finalized !== true || attempt.status === 'completed' || attempt.status === 'failed') return;
     const presentation = record.snapshot.presentation;
     const ledger = record.snapshot.sourceLedger;
-    if (presentation?.state === 'failed' || ledger?.state === 'failed') {
+    // A content failure settled by an earlier job is kept, not this job's failure.
+    const ownFailure = ledger?.state === 'failed' && ledger.attempt.jobId === record.admission.jobId;
+    if (presentation?.state === 'failed' || ownFailure) {
       attempt.status = 'failed';
       attempt.error = presentation?.state === 'failed' ? presentation.error : ledger?.state === 'failed' ? ledger.errorCode : 'presentation_failed';
-    } else if ((presentation?.state === 'native' || presentation?.state === 'alpha_ready') && ledger?.state === 'ready') {
+    } else if ((presentation?.state === 'native' || presentation?.state === 'alpha_ready') && (ledger?.state === 'ready' || ledger?.state === 'failed')) {
       attempt.status = 'completed';
     }
   }
 
   /**
-   * Recover only actual complete stored bytes, retaining their original producer.
+   * Verify a ready receipt against both stored objects, and recover objects a producer stored but never committed.
    * @param record - Current source facts held under the canonical storage gate.
    * @returns Nothing after verified original receipt recovery and any eligible sibling reuse.
    * @throws {Error} When actual R2 bytes or durable facts cannot be read.
    */
   private async refreshLedger(record: PresentationRecord): Promise<void> {
-    const key = videoSourceLedgerKeyFor(record.admission.storageKey);
-    const object = await this.bucket.head(key);
+    const storageKey = record.admission.storageKey;
+    const [object, table] = await this.ledgerObjects(storageKey);
     const prior = record.snapshot.sourceLedger;
     if (prior?.state === 'ready') {
       const receipt = prior.receipt;
       const producer = await this.originalRecord({ sourceFingerprint: receipt.sourceFingerprint, ...receipt.attempt });
-      if (producer !== undefined && receipt.sourceFingerprint === record.admission.sourceFingerprint && this.ledgerObjectMatches(producer, object) &&
-        receipt.etag === object!.etag && receipt.size === object!.size) return;
-      this.failLedger(record, object === null ? 'source_ledger_missing' : 'source_ledger_invalid', true);
+      if (producer !== undefined && receipt.sourceFingerprint === record.admission.sourceFingerprint &&
+        this.ledgerObjectsMatch(producer, object, table) && receipt.etag === object!.etag && receipt.size === object!.size &&
+        producer.sourceLedgerIntent!.tableETag === table!.etag) return;
+      this.failLedger(record, object === null || table === null ? 'source_ledger_missing' : 'source_ledger_invalid', true);
       await this.persist(record);
     }
     const jobId = object?.customMetadata?.sourceLedgerJobId;
@@ -542,23 +606,16 @@ export class VideoPresentationStore {
     const terminal = record.snapshot.attempt?.status === 'completed' || record.snapshot.attempt?.status === 'failed';
     if (!own && (!terminal || record.sourceLedgerIntent?.active === true)) return;
     const producer = own ? record : await this.storage.get<PresentationRecord>(`${RECORD_KEY}:${jobId}`);
-    if (producer === undefined || producer.admission.sourceFingerprint !== record.admission.sourceFingerprint || producer.admission.storageKey !== record.admission.storageKey ||
-      !this.ledgerObjectMatches(producer, object)) return;
-    const measured = { etag: object!.etag, size: object!.size, sha256: await hashStoredObject(this.bucket, key) };
-    const fresh = await this.bucket.head(key);
-    if (!this.ledgerObjectMatches(producer, fresh) || fresh!.etag !== measured.etag || fresh!.size !== measured.size) return;
-    const previous = producer.snapshot.sourceLedger;
-    if (previous?.state === 'ready' && (previous.receipt.etag !== measured.etag || previous.receipt.size !== measured.size || previous.receipt.sha256 !== measured.sha256)) return;
-    const receipt = this.ledgerReceipt(producer, measured);
-    if (receipt === null) return;
-    producer.snapshot.sourceLedger = { state: 'ready', receipt };
-    producer.sourceLedgerIntent!.active = false;
-    this.finalizeWork(producer);
-    await this.persist(producer);
-    if (!own) {
-      record.snapshot.sourceLedger = { state: 'ready', receipt };
-      await this.persist(record);
-    }
+    if (producer === undefined || producer.admission.sourceFingerprint !== record.admission.sourceFingerprint || producer.admission.storageKey !== storageKey ||
+      !this.ledgerObjectsMatch(producer, object, table)) return;
+    const measured: SourceLedgerMeasurement = { etag: object!.etag, size: object!.size, sha256: await hashStoredObject(this.bucket, videoSourceLedgerKeyFor(storageKey)),
+      table: { etag: table!.etag, size: table!.size, sha256: await hashStoredObject(this.bucket, videoSourceLedgerTableKeyFor(storageKey)) } };
+    const [fresh, freshTable] = await this.ledgerObjects(storageKey);
+    if (!this.ledgerObjectsMatch(producer, fresh, freshTable) || fresh!.etag !== measured.etag || fresh!.size !== measured.size ||
+      freshTable!.etag !== measured.table.etag || freshTable!.size !== measured.table.size) return;
+    if (!await this.commitLedger(producer, measured) || own) return;
+    record.snapshot.sourceLedger = producer.snapshot.sourceLedger;
+    await this.persist(record);
   }
 
   /**
@@ -580,7 +637,7 @@ export class VideoPresentationStore {
    * @returns The current durable facts, including rejection of stale writes.
    * @throws {Error} When storage cannot commit the facts.
    */
-  async advance(identity: AcceptedVideoPresentationAttempt, proposed: VideoPresentation): Promise<VideoPresentationIngestSnapshot> {
+  async advance(identity: AcceptedVideoPresentationAttempt, proposed: VideoPresentation): Promise<PresentationSnapshot> {
     return this.gate(async () => {
       const current = await this.storage.get<PresentationRecord>(RECORD_KEY);
       if (current === undefined) return { presentation: null, attempt: null };
@@ -595,12 +652,13 @@ export class VideoPresentationStore {
       const terminal = previousAttempt?.status === 'completed' || previousAttempt?.status === 'failed';
       const status = terminal ? previousAttempt.status : next.state === 'failed' ? 'failed' :
         accepted.limits?.sourceLedger === undefined && (next.state === 'native' || next.state === 'alpha_ready') ? 'completed' : 'running';
-      const snapshot: VideoPresentationIngestSnapshot = { ...current.snapshot, presentation: next,
+      const snapshot: PresentationSnapshot = { ...current.snapshot, presentation: next,
         ...(manifest === null ? {} : { manifest }), attempt: { jobId: accepted.jobId, deadlineAt: accepted.deadlineAt,
           ...previousAttempt, status, usage: previousAttempt?.usage ?? null, ...(next.state === 'failed' ? { error: next.error } : {}) },
       };
       if (!await this.writeDescriptor(current, next)) return current.snapshot;
       current.snapshot = snapshot;
+      this.endPendingLedger(current);
       this.finalizeWork(current);
       current.admission.original = next.original;
       if (next.state === 'alpha_pending') current.admission.knownAlpha = true;
@@ -616,7 +674,7 @@ export class VideoPresentationStore {
    * @returns Current source facts, retaining unknown for absent descriptors.
    * @throws {Error} When durable storage or R2 cannot be read.
    */
-  async read(storageKey: string, sourceFingerprint: string): Promise<VideoPresentationIngestSnapshot> {
+  async read(storageKey: string, sourceFingerprint: string): Promise<PresentationSnapshot> {
     return this.gate(async () => {
       const record = await this.storage.get<PresentationRecord>(RECORD_KEY);
       if (record?.admission.sourceFingerprint === sourceFingerprint) {
@@ -633,6 +691,7 @@ export class VideoPresentationStore {
             record.snapshot.presentation = failed;
             delete record.snapshot.manifest;
             if (record.snapshot.attempt !== null) record.snapshot.attempt = { ...record.snapshot.attempt, status: 'failed', error: 'descriptor_invalid' };
+            this.endPendingLedger(record);
             await this.storage.put(RECORD_KEY, record);
             await this.refreshLedger(record);
             return record.snapshot;
@@ -645,6 +704,7 @@ export class VideoPresentationStore {
             ...record.snapshot.attempt, status: 'failed', error: 'presentation_missing',
           } };
           delete record.snapshot.manifest;
+          this.endPendingLedger(record);
           await this.storage.put(RECORD_KEY, record);
         }
         await this.refreshLedger(record);

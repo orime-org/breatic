@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { DurableObject } from 'cloudflare:workers';
-import type { VideoPresentation, VideoPresentationIngestSnapshot } from '@breatic/shared';
-import { VideoPresentationStore, type VideoPresentationAdmission, type PreparedAlphaAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt, type SourceLedgerDeclaration, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
+import type { VideoPresentation } from '@breatic/shared';
+import { VideoPresentationStore, type VideoPresentationAdmission, type PreparedAlphaAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt, type SourceLedgerDeclaration, type SourceLedgerWriteClaim, type SourceLedgerMeasurement, type PresentationSnapshot } from '@ingest/video-presentation-store.js';
 import type { AlphaPresentationReport } from '@ingest/alpha-run-contract.js';
 import type { AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
 
@@ -15,7 +15,7 @@ export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucke
   }
 
   /** Delegate actual stored measurement publication. @throws {Error} When the production owner rejects. */
-  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: AlphaPackedReceipt): Promise<boolean> {
+  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: SourceLedgerMeasurement): Promise<boolean> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).completeSourceLedger(identity, owner, measured);
   }
 
@@ -25,12 +25,12 @@ export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucke
   }
 
   /** Apply original failure semantics through the actual owner. @throws {Error} When persistence fails. */
-  fail(identity: AcceptedVideoPresentationAttempt, error: string): Promise<VideoPresentationIngestSnapshot> {
+  fail(identity: AcceptedVideoPresentationAttempt, error: string): Promise<PresentationSnapshot> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).fail(identity, error);
   }
 
   /** Acknowledge original actual usage without substituting current work. @throws {Error} When persistence fails. */
-  acknowledgeUsage(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+  acknowledgeUsage(identity: AcceptedVideoPresentationAttempt): Promise<PresentationSnapshot> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).acknowledgeUsage(identity);
   }
   /**
@@ -49,7 +49,7 @@ export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucke
    * @returns Its durable receipt including archived measured usage.
    * @throws {Error} When storage fails.
    */
-  snapshotFor(identity: AcceptedVideoPresentationAttempt): Promise<VideoPresentationIngestSnapshot> {
+  snapshotFor(identity: AcceptedVideoPresentationAttempt): Promise<PresentationSnapshot> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work)).snapshotFor(identity);
   }
 
@@ -103,7 +103,7 @@ export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucke
    * @returns Current verified source presentation.
    * @throws {Error} When the production persistence helper rejects.
    */
-  read(storageKey: string, sourceFingerprint: string): Promise<VideoPresentationIngestSnapshot> {
+  read(storageKey: string, sourceFingerprint: string): Promise<PresentationSnapshot> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, (work) => this.ctx.blockConcurrencyWhile(work)).read(storageKey, sourceFingerprint);
   }
 
@@ -113,7 +113,7 @@ export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucke
    * @returns Actual durable storage and R2 facts.
    * @throws {Error} When the production persistence helper rejects.
    */
-  accept(input: VideoPresentationAdmission): Promise<VideoPresentationIngestSnapshot> {
+  accept(input: VideoPresentationAdmission): Promise<PresentationSnapshot> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, (work) => this.ctx.blockConcurrencyWhile(work)).accept(input);
   }
 
@@ -124,7 +124,7 @@ export class PresentationStateTestObject extends DurableObject<{ BUCKET: R2Bucke
    * @returns Actual current durable facts.
    * @throws {Error} When the production persistence helper rejects.
    */
-  advance(identity: AcceptedVideoPresentationAttempt, proposed: VideoPresentation): Promise<VideoPresentationIngestSnapshot> {
+  advance(identity: AcceptedVideoPresentationAttempt, proposed: VideoPresentation): Promise<PresentationSnapshot> {
     return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, (work) => this.ctx.blockConcurrencyWhile(work)).advance(identity, proposed);
   }
 }
