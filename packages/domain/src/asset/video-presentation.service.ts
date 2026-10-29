@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
 import { alphaManifestKeyFor, alphaPackedKeyFor, readVideoSourceLedger, t, videoPresentationAtIngest, videoPresentationResponseSchema, videoPresentationSourceBindingSchema,
-  VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, type VideoSourceLedgerCompanion, type VideoSourceLedgerReadLimits,
+  VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, videoSourceLedgerTableKeyFor, type VideoSourceLedgerCompanion, type VideoSourceLedgerReadLimits,
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationAttempt, type VideoPresentationIngestRequest,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding, type VideoPresentationRepairResponse } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
@@ -124,6 +124,7 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
   const storage = await getStorageAdapter();
   const config = getMiniToolsConfig();
   const settings = config.presentation;
+  const ledger = settings.source_ledger;
   const size = config.classes[settings.container_class]!;
   const request: VideoPresentationIngestRequest = {
     action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
@@ -132,7 +133,11 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     registeredMetadata: { width: row.width, height: row.height, duration: row.durationSeconds },
     actorUserId: options.userId ?? row.producedByUserId, projectId: options.projectId ?? null,
     packedURL: storage.publicUrl(alphaPackedKeyFor(row.storageKey)), manifestURL: storage.publicUrl(alphaManifestKeyFor(row.storageKey)),
-    limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset },
+    // Every admission requests the ledger; the ingest store decides whether this source still needs one produced.
+    sourceLedgerURL: storage.publicUrl(videoSourceLedgerKeyFor(row.storageKey)), sourceLedgerTableURL: storage.publicUrl(videoSourceLedgerTableKeyFor(row.storageKey)),
+    limits: { ...config.plan_limits, maxSourceBytes: settings.max_source_bytes, maxPackedBytes: settings.max_packed_bytes, crf: settings.crf, preset: settings.preset,
+      sourceLedger: { maxBytes: ledger.max_bytes, probeStdoutBytes: ledger.probe_stdout_bytes, metadataBytes: ledger.metadata_bytes,
+        isoBoxCount: ledger.iso_box_count, matroskaElementCount: ledger.matroska_element_count, matroskaMaxBlocks: ledger.matroska_max_blocks } },
     pricing: { containerClass: settings.container_class, size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: { ...config.prices } },
   };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request);
@@ -185,7 +190,9 @@ export async function resolveVideoPresentation(input: ResolveVideoPresentationIn
   let snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
     action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
   });
-  if (snapshot.presentation === null && snapshot.attempt === null) snapshot = await accept(row, {});
+  // Work that is not running and has no ledger state yet is admitted once; any ledger state, including a failure, is answered as it is.
+  const status = snapshot.attempt?.status;
+  if (status !== 'accepted' && status !== 'running' && (snapshot.sourceLedger === undefined || snapshot.sourceLedger === null)) snapshot = await accept(row, {});
   else await enqueue(row, snapshot);
   return response(binding, snapshot);
 }
@@ -214,7 +221,8 @@ export async function readSourceLedger(input: ResolveVideoPresentationInput, dea
     action: 'read', storageKey: row.storageKey, sourceFingerprint: row.contentHash,
   });
   const state = snapshot.sourceLedger;
-  if (state === undefined || state === null || state.state !== 'ready') throw new VideoSourceLedgerReadRefused('receipt');
+  // A version 2 receipt is read by the v2 reader; this one reads version 1 only.
+  if (state === undefined || state === null || state.state !== 'ready' || state.receipt.schemaVersion !== 1) throw new VideoSourceLedgerReadRefused('receipt');
   const storage = await getStorageAdapter();
   if (state.receipt.sourceFingerprint !== binding.contentHash || state.receipt.url !== storage.publicUrl(videoSourceLedgerKeyFor(row.storageKey))) {
     throw new VideoSourceLedgerReadRefused('receipt');
