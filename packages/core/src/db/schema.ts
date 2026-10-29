@@ -42,6 +42,7 @@ import type {
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
+import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
 import type { StripeWebhookResult } from "@breatic/shared";
 
@@ -3068,6 +3069,8 @@ export const storageReclaimQueue = pgTable(
      * — the project never destroys records).
      */
     reclaimedAt: timestamp("reclaimed_at", { withTimezone: true }),
+    /** Exact original issued grant key; absent legacy associations remain explicit. */
+    originStorageKey: text("origin_storage_key"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -3154,4 +3157,64 @@ export const enterpriseMembershipOperations = pgTable("enterprise_membership_ope
   result: jsonb("result").$type<EnterpriseMembershipResult>().notNull(),
   ...timestamps,
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+// ── Explicit offline maintenance (inner#1791) ───────────────────────
+/** Server-bound preview of exact immutable candidate identities. */
+export const storageReclaimPreviews = pgTable("storage_reclaim_previews", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestedBy: text("requested_by").notNull(),
+  items: jsonb("items").$type<ReclaimScope[]>().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+/** Immutable W plus independently versioned owner switch. */
+export const storageReclaimOperations = pgTable("storage_reclaim_operations", {
+  id: uuid("id").defaultRandom().primaryKey(), key: text("key").notNull().unique(),
+  fingerprint: text("fingerprint").notNull(),
+  decision: jsonb("decision").$type<ReclaimDecision>().notNull(),
+  scope: jsonb("scope").$type<ReclaimScope[]>().notNull(),
+  state: text("state").notNull(), version: integer("version").notNull().default(1),
+  changedBy: text("changed_by").notNull(), changedAt: timestamp("changed_at", { withTimezone: true }).notNull(),
+  nextCheckAt: timestamp("next_check_at", { withTimezone: true }).notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (t) => [index("storage_reclaim_operations_due_idx").on(t.nextCheckAt)]);
+/** Independent control keys, including first-run resume receipts. */
+export const storageReclaimControls = pgTable("storage_reclaim_controls", {
+  id: uuid("id").defaultRandom().primaryKey(), key: text("key").notNull().unique(),
+  operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+  fingerprint: text("fingerprint").notNull(), kind: text("kind").notNull(),
+  decision: jsonb("decision").$type<ReclaimControlDecision>().notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+/** Durable per-key registration stop, approval association and lease. */
+export const storageReclaimObjects = pgTable("storage_reclaim_objects", {
+  id: uuid("id").defaultRandom().primaryKey(), storageKey: text("storage_key").notNull().unique(),
+  operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+  scope: jsonb("scope").$type<ReclaimScope>().notNull(),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+  leaseVersion: integer("lease_version").notNull().default(0),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  inFlight: boolean("in_flight").notNull().default(false),
+  latest: jsonb("latest").$type<ReclaimItemResult>().notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (t) => [index("storage_reclaim_objects_operation_key_idx").on(t.operationId,t.storageKey)]);
+/** Full traversal snapshots; first run is never overwritten by later rounds. */
+export const storageReclaimRuns = pgTable("storage_reclaim_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+  number: integer("number").notNull(),
+  snapshot: jsonb("snapshot").$type<ReclaimRun>().notNull(),
+  ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
+}, (t) => [uniqueIndex("storage_reclaim_runs_operation_number_unique").on(t.operationId, t.number)]);
+
+/** Immutable physical attempt replies, including stale lease replies. */
+export const storageReclaimAttempts = pgTable("storage_reclaim_attempts", {
+ id: uuid("id").defaultRandom().primaryKey(),
+ operationId: uuid("operation_id").notNull().references(() => storageReclaimOperations.id, { onDelete: "restrict" }),
+ objectId: uuid("object_id").notNull().references(() => storageReclaimObjects.id, { onDelete: "restrict" }),
+ runId: uuid("run_id").notNull().references(() => storageReclaimRuns.id, { onDelete: "restrict" }),
+ leaseVersion: integer("lease_version").notNull(),
+ result: jsonb("result").$type<ReclaimItemResult>().notNull(),
+ ...timestamps, deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
