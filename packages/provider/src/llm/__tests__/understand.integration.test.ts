@@ -454,3 +454,12 @@ describe("reading OpenRouter's understand answer against one typed structure (DD
     expect(sent.messages[0]!.content.find((p) => p.type === "input_audio")?.input_audio?.format).toBe(format);
   });
 });
+
+describe("a refused understand answer whose body cannot be read is still its status (DD 34)", () => {
+  it("moves on from an OpenRouter 503 whose body is over the limit, as from any 503", async () => {
+    fakes.openrouter.answer(() => ({ status: 503, raw: "x".repeat(11 * 1024 * 1024), contentType: "text/plain" }));
+    const answer = await llmProvider(fakes, keys, { llmMaxRetries: 0, understandOpenRouterFirst: true }).llm.understand(question());
+    expect(answer.upstream).toBe("google");
+  });
+});
+
