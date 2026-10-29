@@ -1322,7 +1322,10 @@ export function renderProductGuide(): string {
       "a row. While one of these " +
       "menus is open, the cells it acts on are tinted the way selected cells are. Dragging the line on a " +
       "column's right side changes that column's width only; the other columns keep theirs and the table " +
-      "grows. A table wider than the page scrolls sideways inside its own frame. A selection that runs from a " +
+      "grows. A table wider than the page scrolls sideways inside its own frame. When two people add a row and a " +
+      "column to the same table at the same moment, a row can come out a cell short: the gap shows as an empty " +
+      "cell that takes no typing, and Tab or any command from the table's menus fills it in first. A selection " +
+      "that runs from a " +
       "cell out of the table, by Shift and an arrow or by dragging past the table's edge, takes the whole " +
       "table: every cell shows as selected, and typing or deleting takes the table away with the rest of the " +
       "selection.",
@@ -1330,7 +1333,8 @@ export function renderProductGuide(): string {
       "and this box go when the pointer leaves the table. The box opens " +
       `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.table.cellFill"))} and ` +
       `${quoted(t("spaces.document.table.splitCell"))} for that cell, and ` +
-      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged. A cell holds blocks ` +
+      `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
+      "that cell is tinted the way selected cells are. A cell holds blocks " +
       "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
       "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
       "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
