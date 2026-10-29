@@ -634,8 +634,8 @@ export default tseslint.config(
       "packages/shared/src/http/**",
       // provider is a routing layer meant to leave this repository, so it
       // carries its own HTTP module rather than the shared transport (design
-      // 2.2); that module is where its one bare fetch lives.
-      "packages/provider/src/http/**",
+      // 2.2); its request.ts is the one file that calls fetch.
+      "packages/provider/src/http/request.ts",
       "**/__tests__/**",
       "**/*.test.ts",
       "**/*.spec.ts",
