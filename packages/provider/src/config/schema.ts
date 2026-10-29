@@ -264,28 +264,30 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     gemini_inline_max_bytes: raw.llm?.gemini_inline_max_bytes ?? GEMINI_INLINE_MAX_BYTES,
     gemini_file_poll_ms: raw.llm?.gemini_file_poll_ms ?? GEMINI_FILE_POLL_MS,
   };
-  for (const prefix of Object.keys(raw.routing?.llm ?? {})) {
-    if (!llm.routes.some((r) => r.prefix === prefix)) problems.push(`LLM route "${prefix}": the override names a prefix no route has`);
-  }
-  for (const route of llm.routes) {
-    for (const { upstream } of route.upstreams) {
-      const kind = raw.upstreams[upstream]?.kind;
-      if (kind !== undefined && !hasLlmAdapter(kind)) {
-        problems.push(`LLM route "${route.prefix}": upstream "${upstream}" is of kind "${kind}", which no LLM adapter speaks to`);
+  /**
+   * Report, for one list of LLM routes, an override naming a prefix no route has and an
+   * upstream of a kind no adapter of that list speaks to.
+   * @param routes - The routes, overrides applied.
+   * @param override - The deployment's weights for the list, by prefix.
+   * @param speaks - Whether an adapter of this list speaks to a kind.
+   * @param list - What the list's routes are called: "route" or "understand route".
+   * @param adapter - What its adapters are called: "LLM" or "understand".
+   */
+  const checkRoutes = (routes: LlmRoute[], override: Record<string, unknown> | undefined, speaks: (kind: string) => boolean, list: string, adapter: string): void => {
+    for (const prefix of Object.keys(override ?? {})) {
+      if (!routes.some((r) => r.prefix === prefix)) problems.push(`LLM ${list} "${prefix}": the override names a prefix no ${list} has`);
+    }
+    for (const route of routes) {
+      for (const { upstream } of route.upstreams) {
+        const kind = raw.upstreams[upstream]?.kind;
+        if (kind !== undefined && !speaks(kind)) {
+          problems.push(`LLM ${list} "${route.prefix}": upstream "${upstream}" is of kind "${kind}", which no ${adapter} adapter speaks to`);
+        }
       }
     }
-  }
-  for (const route of llm.understand_routes) {
-    for (const { upstream } of route.upstreams) {
-      const kind = raw.upstreams[upstream]?.kind;
-      if (kind !== undefined && !hasUnderstandAdapter(kind)) {
-        problems.push(`LLM understand route "${route.prefix}": upstream "${upstream}" is of kind "${kind}", which no understand adapter speaks to`);
-      }
-    }
-  }
-  for (const prefix of Object.keys(raw.routing?.understand ?? {})) {
-    if (!llm.understand_routes.some((r) => r.prefix === prefix)) problems.push(`LLM understand route "${prefix}": the override names a prefix no understand route has`);
-  }
+  };
+  checkRoutes(llm.routes, raw.routing?.llm, hasLlmAdapter, "route", "LLM");
+  checkRoutes(llm.understand_routes, raw.routing?.understand, hasUnderstandAdapter, "understand route", "understand");
   if (problems.length > 0) throw new ProviderConfigError(problems);
   return { upstreams: raw.upstreams, models, llm };
 }
