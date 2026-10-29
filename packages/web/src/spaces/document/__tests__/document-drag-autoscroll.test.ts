@@ -275,7 +275,7 @@ describe('the drag session', () => {
       tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['a2', 'b2'] }] }),
     ]);
     const view = editor.prosemirrorView;
-    // The frame the body draws around a table (`document-table-blocknote.tsx`)
+    // The frame the body draws around a table (`DocumentTableScroller.tsx`)
     // is a React view a test page does not mount; it is put in place.
     const table = view.dom.querySelector('table')!;
     const frame = document.createElement('div');
