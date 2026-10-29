@@ -60,6 +60,16 @@ export interface LiveConnectionsOptions {
     socketId: string,
     connections: ReadonlyMap<string, HeldConnection>,
   ) => void;
+  /**
+   * How often the transport pings each connection. A pong less than half of
+   * this after the last one handled on its socket is ignored: RFC 6455 lets a
+   * client send pongs unasked, each handled one runs a seat script per
+   * document on the Redis every tenant shares, and one inside half a period
+   * proves nothing the last one did not.
+   */
+  pingIntervalMs: number;
+  /** Clock, injectable for tests (default `Date.now`). */
+  now?: () => number;
 }
 
 /** This instance's connections, indexed by socket (see module doc). */
@@ -103,7 +113,8 @@ export interface LiveConnections {
 export function createLiveConnections(
   options: LiveConnectionsOptions,
 ): LiveConnections {
-  const { onPong } = options;
+  const { onPong, pingIntervalMs, now = Date.now } = options;
+  const minPongGapMs = pingIntervalMs / 2;
 
   const bySocket = new Map<string, Map<string, HeldConnection>>();
 
@@ -122,11 +133,17 @@ export function createLiveConnections(
         // own hook, but that early return leaves only crossws's handler —
         // every other listener on the emitter still fires. No timer of ours
         // and no extra frames on the wire.
+        let lastHandledAt = -Infinity;
         /**
-         * Refresh what this socket holds, because it just answered a ping.
-         * @returns Nothing.
+         * Refresh what this socket holds, because it just answered a ping,
+         * unless a pong was handled less than half a period ago.
          */
-        const pong = (): void => onPong(socketId, held);
+        const pong = (): void => {
+          const t = now();
+          if (t - lastHandledAt < minPongGapMs) return;
+          lastHandledAt = t;
+          onPong(socketId, held);
+        };
         connection.webSocket.on("pong", pong);
         connection.webSocket.once("close", () => {
           connection.webSocket.off?.("pong", pong);

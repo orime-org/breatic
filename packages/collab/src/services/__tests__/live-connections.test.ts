@@ -71,7 +71,7 @@ function fire(
 describe("live connections — one listener per socket", () => {
   it("attaches the pong listener once however many documents the socket carries", () => {
     const onPong = vi.fn();
-    const table = createLiveConnections({ onPong });
+    const table = createLiveConnections({ onPong, pingIntervalMs: 30_000 });
     const first = fakeConnection();
     const second = fakeConnection();
 
@@ -87,7 +87,7 @@ describe("live connections — one listener per socket", () => {
 
   it("hands the pong callback everything that socket carries", () => {
     const onPong = vi.fn();
-    const table = createLiveConnections({ onPong });
+    const table = createLiveConnections({ onPong, pingIntervalMs: 30_000 });
     const meta = fakeConnection({ kind: "meta" });
     const canvas = fakeConnection({ kind: "canvas" });
     table.remember("s-1", "doc-meta", meta);
@@ -109,7 +109,7 @@ describe("live connections — one listener per socket", () => {
 
   it("stops answering for a socket once it closes", () => {
     const onPong = vi.fn();
-    const table = createLiveConnections({ onPong });
+    const table = createLiveConnections({ onPong, pingIntervalMs: 30_000 });
     const connection = fakeConnection();
     table.remember("s-1", "doc-a", connection);
 
@@ -121,7 +121,7 @@ describe("live connections — one listener per socket", () => {
   });
 
   it("drops one document without losing the rest of the socket", () => {
-    const table = createLiveConnections({ onPong: vi.fn() });
+    const table = createLiveConnections({ onPong: vi.fn(), pingIntervalMs: 30_000 });
     const meta = fakeConnection();
     const canvas = fakeConnection();
     table.remember("s-1", "doc-meta", meta);
@@ -134,7 +134,7 @@ describe("live connections — one listener per socket", () => {
   });
 
   it("keeps a demote for another instance's socket out of this one", () => {
-    const table = createLiveConnections({ onPong: vi.fn() });
+    const table = createLiveConnections({ onPong: vi.fn(), pingIntervalMs: 30_000 });
     table.remember("s-1", "doc-a", fakeConnection());
 
     expect(table.find("doc-a", "s-2")).toBeUndefined();
@@ -159,6 +159,7 @@ describe("live connections — a socket outlives the documents on it (inner#1034
         requestDemote: vi.fn(async () => undefined),
         presencePolicy: { now: () => 1_000, staleAfterMs: 60_000 },
       }),
+      pingIntervalMs: 30_000,
     });
 
     table.remember("s-1", "doc-a", first);
@@ -175,5 +176,29 @@ describe("live connections — a socket outlives the documents on it (inner#1034
     expect(second.webSocket.send).toHaveBeenCalledWith(
       new OutgoingMessage("doc-b").writeAuthenticated(true).toUint8Array(),
     );
+  });
+});
+
+describe("live connections — pongs are handled at most twice per ping period (inner#1034)", () => {
+  const PING = 30_000;
+
+  it("handles one pong of a flood that arrives within half a period, and the next one after it", () => {
+    let clock = 1_000_000;
+    const onPong = vi.fn();
+    const table = createLiveConnections({ onPong, pingIntervalMs: PING, now: () => clock });
+    const connection = fakeConnection();
+    table.remember("s-1", "doc-a", connection);
+
+    // RFC 6455 lets a client send unsolicited pongs; each handled one runs a
+    // script per seat on the shared Redis.
+    for (let i = 0; i < 50; i++) {
+      fire(connection, "pong");
+      clock += 100;
+    }
+    expect(onPong).toHaveBeenCalledTimes(1);
+
+    clock = 1_000_000 + PING / 2;
+    fire(connection, "pong");
+    expect(onPong).toHaveBeenCalledTimes(2);
   });
 });

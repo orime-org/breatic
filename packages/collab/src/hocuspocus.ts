@@ -169,6 +169,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         staleAfterMs: timings.presenceStaleAfterMs,
       },
     }),
+    pingIntervalMs: timings.pingIntervalMs,
   });
 
   // Contexts of connections `connected` refused as a second connection to a
