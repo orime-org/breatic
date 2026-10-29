@@ -462,6 +462,9 @@ describe('proposal pickup completion ownership (inner#1619)', () => {
 describe('proposal pickup admission while its body is hidden', () => {
   for (const event of ['granted', 'readonly', 'unknown', 'refused'] as const) {
     it(`uses the registry's current ${event} facts when preparation finishes under Activity`, async () => {
+      // The registry binds its connections to the signed-in account before any
+      // is opened (`CollabSocketProvider`), as the Project page does.
+      render(<CollabSocketProvider userId='reader-1'>{null}</CollabSocketProvider>);
       const handle = open();
       const provider = transport.providers[0]!;
       const waiting = gate();
