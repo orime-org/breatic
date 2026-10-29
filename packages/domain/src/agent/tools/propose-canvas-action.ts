@@ -518,5 +518,9 @@ export function makeProposeCanvasAction(
 });
 }
 
-/** The proposal tool over the registry; it holds nothing between calls, so one object serves every turn. */
+/**
+ * The proposal tool over the registry; it holds nothing between calls, so one
+ * object serves every turn. It is built when the module loads, so its
+ * description carries no text in the reader's language.
+ */
 export const proposeCanvasAction = makeProposeCanvasAction();
