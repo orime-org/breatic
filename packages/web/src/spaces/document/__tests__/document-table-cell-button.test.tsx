@@ -242,6 +242,16 @@ describe('the cell button (A11)', () => {
     expect(rows()).toEqual(['align', 'fill', 'split(off)']);
   });
 
+  it('marks the one cell it acts on while its menu is open, as row and column menus mark theirs', () => {
+    const { editor, viewport } = open();
+    render(<DocumentTableCellButton editor={editor} viewport={viewport} />);
+    pointIn(editor, 'b2');
+
+    fireEvent.click(screen.getByTestId('doc-table-cell-button'));
+
+    expect(Array.from(document.querySelectorAll('.doc-table-target'), (cell) => cell.textContent)).toEqual(['b2']);
+  });
+
   it('aligns the one cell', () => {
     const { editor, viewport } = open();
     render(<DocumentTableCellButton editor={editor} viewport={viewport} />);

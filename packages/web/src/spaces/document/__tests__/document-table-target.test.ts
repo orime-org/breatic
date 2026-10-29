@@ -167,11 +167,11 @@ describe('the cells a row or column menu acts on (A6)', () => {
     expect(marked()).toEqual(['b1', 'b2']);
   });
 
-  it('are not marked for the cell button, which acts on its one cell', () => {
+  it('is the one cell, marked, while the cell button\'s menu holds it', () => {
     const editor = open();
-    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'));
+    setTableTarget(editor.prosemirrorView!, cellOf(editor, 'b2'), 'cell');
 
-    expect(marked()).toEqual([]);
+    expect(marked()).toEqual(['b2']);
   });
 
   it('follow the row when a row is added above it, and go when the menu lets go', () => {
