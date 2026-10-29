@@ -27,6 +27,30 @@ describe("the shipped provider configuration (design 4.1)", () => {
     expect(upstreams.wavespeed?.base_url).toBe("https://api.wavespeed.ai/api/v3");
   });
 
+  // Today's DIRECT_ROUTES (domain/src/agent/llm.ts at ce553bb38): prefix, vendor and the key it authenticates with.
+  it.each([
+    ["anthropic/", "anthropic", "ANTHROPIC_API_KEY"],
+    ["google/", "google", "GOOGLE_API_KEY"],
+    ["openai/", "openai", "OPENAI_API_KEY"],
+    ["deepseek/", "deepseek", "DEEPSEEK_API_KEY"],
+  ])("sends %s models straight to %s when %s is set, as today's DIRECT_ROUTES does (acceptance 6)", (prefix, kind, key) => {
+    const provider = createProvider({ config: shipped(), keyOf: (name) => (name === key ? "k" : undefined), llmMaxRetries: 0, cleanText: (t) => t });
+    const [first] = provider.llm.availability(`${prefix}some-model`, "call").upstreams;
+    expect(first).toMatchObject({ configured: true, envVar: key });
+    expect(parseProviderConfig(shipped()).upstreams[first!.upstream]?.kind).toBe(kind);
+  });
+
+  it("sends any other model to OpenRouter on OPENROUTER_API_KEY, as today's FALLBACK_ROUTE does (acceptance 6)", () => {
+    const provider = createProvider({ config: shipped(), keyOf: (name) => (name === "OPENROUTER_API_KEY" ? "k" : undefined), llmMaxRetries: 0, cleanText: (t) => t });
+    const upstreams = provider.llm.availability("meta/llama-x", "call").upstreams;
+    expect(upstreams).toEqual([expect.objectContaining({ configured: true, envVar: "OPENROUTER_API_KEY" })]);
+    expect(parseProviderConfig(shipped()).upstreams[upstreams[0]!.upstream]?.kind).toBe("openrouter");
+  });
+
+  it("asks DeepSeek for Flash 1017 as deepseek-flash, as today's vendorId does (acceptance 6)", () => {
+    expect(shipped().llm?.vendor_ids?.["deepseek/deepseek-v4.1-flash-1017"]).toEqual({ deepseek: "deepseek-flash" });
+  });
+
   it("routes each direct vendor first and OpenRouter after it, and reads understanding through Google first, OpenRouter after it (DD 26)", () => {
     const { llm } = shipped();
     for (const prefix of ["anthropic/", "deepseek/", "google/", "openai/"]) {

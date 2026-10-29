@@ -94,6 +94,21 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain(key);
   });
 
+  it("refuses a misspelled key in a pricing rule, naming it (DD 36)", () => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { pricing: { ...pricing, discount_rat: 50 } })]));
+    expect(problems.join("\n")).toContain("discount_rat");
+  });
+
+  it.each(["openroutr", "wavespeed", "toString"])("refuses an LLM route on an upstream of kind %s, which no LLM adapter speaks to (DD 36)", (kind) => {
+    const raw: ProviderConfigInput = {
+      upstreams: { ...upstreams, typo: { kind, base_url: "https://x.example", key_env: "TYPO_KEY" } },
+      media: { models: {} },
+      llm: { routes: [{ prefix: "", upstreams: [{ upstream: "typo", weight: 0 }] }] },
+    };
+    const problems = problemsOf(raw);
+    expect(problems.join("\n")).toContain("typo");
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);
