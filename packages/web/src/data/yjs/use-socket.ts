@@ -254,7 +254,7 @@ export function useSocket({ name, doc }: UseSocketOptions): SocketState {
       provider.off('authenticationFailed', onAuthFailed);
       provider.off('close', onClose);
       setProvider(null);
-      releaseDocProvider(name);
+      releaseDocProvider(name, doc);
       setSynced(false);
       // Not a reset of the latch itself — that lives in the registry and is
       // untouched here. This only clears the local mirror for the case where

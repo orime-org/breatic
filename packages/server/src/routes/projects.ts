@@ -29,9 +29,10 @@ import {
   projectMembersService,
   projectService,
   recentService,
+  sceneAssetService,
 } from "@server/modules";
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
-import { projectAuthService } from "@breatic/core";
+import { getSceneConfig, projectAuthService } from "@breatic/core";
 import { NotFoundError } from "@breatic/core";
 import { projectNameSchema, t } from "@breatic/shared";
 import type { ProjectDetail } from "@breatic/shared";
@@ -39,6 +40,31 @@ import type { ProjectDetail } from "@breatic/shared";
 const projects = new Hono<{ Variables: AuthVariables }>();
 
 projects.use(requireAuth);
+
+/**
+ * `GET /projects/:id/three-d/config` — scene controls configuration for a Viewer.
+ * @returns The scale sensitivity used by the versioned controls adapter.
+ */
+projects.get(
+  "/:id/three-d/config",
+  validate("param", z.object({ id: z.string().uuid() })),
+  requireRoleOnParam("id", "viewer"),
+  (c) => c.json({ data: { scaleSensitivity: getSceneConfig().scale_sensitivity } }),
+);
+
+/**
+ * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
+ * @returns The registered model URL and MIME type in the standard data envelope.
+ */
+projects.get(
+  "/:id/three-d/assets/:assetId",
+  validate("param", z.object({ id: z.string().uuid(), assetId: z.string().uuid() })),
+  requireRoleOnParam("id", "viewer"),
+  async (c) => {
+    const { id, assetId } = c.req.valid("param");
+    return c.json({ data: await sceneAssetService.resolveSceneAsset(id, c.get("user").id, assetId) });
+  },
+);
 
 /**
  * `POST /projects` — create a new project in the studio named by `studioId`.
@@ -139,10 +165,8 @@ projects.get(
  */
 projects.delete(
   "/:id/transfer/:transferId",
-  // Registered BEFORE the role middleware, which reads `:id` and puts it
-  // straight into a uuid comparison of its own — a validator behind it would
-  // never see a bad `:id`, and the 500 it exists to prevent would happen in
-  // the middleware instead.
+  // Registered BEFORE the role middleware, so a malformed `:id` or
+  // `:transferId` is answered as a malformed request before any lookup.
   validate(
     "param",
     z.object({ id: z.string().uuid(), transferId: z.string().uuid() }),

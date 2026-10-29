@@ -145,3 +145,56 @@ describe("GET a studio's credits", () => {
     expect(listLedgerByStudio).not.toHaveBeenCalled();
   });
 });
+
+describe("a lot on a studio's credits page (inner#1052)", () => {
+  /**
+   * A stored lot with every entity field set away from its default, so a
+   * mapper that spreads the row or forgets a conversion shows up.
+   * @param buyerName - Who bought it, or null when their personal studio is gone.
+   * @returns A lot of the shape the snapshot hands the view.
+   */
+  function storedLot(buyerName: string | null): Record<string, unknown> {
+    return {
+      id: "lot-1",
+      sourceId: "payment-1",
+      sourceKind: "payment",
+      userId: "buyer-1",
+      purchasedCredits: "120.500000",
+      remainingCredits: "37.250000",
+      designatedStudioId: "s-1",
+      lifecycle: "depleted",
+      refundAttempts: 2,
+      createdAt: new Date("2026-10-01T08:09:10.123Z"),
+      updatedAt: new Date("2026-10-02T00:00:00.000Z"),
+      buyerName,
+    };
+  }
+
+  const PAGE_FIELDS = ["buyerName", "createdAt", "id", "purchasedCredits", "remainingCredits"];
+
+  it("carries exactly what the page shows: who bought it, when, and what is left of it", async () => {
+    readStudioCredits.mockResolvedValue({
+      spendable: 37.25, debt: 0, held: 0, available: 37.25, lots: [storedLot("Alice")], ledger: [],
+    });
+    const view = await getStudioCredits("s-1", undefined, undefined);
+    const lot = view.lots![0]!;
+    expect(Object.keys(lot).sort()).toEqual(PAGE_FIELDS);
+    expect(lot).toStrictEqual({
+      id: "lot-1",
+      purchasedCredits: 120.5,
+      remainingCredits: 37.25,
+      createdAt: "2026-10-01T08:09:10.123Z",
+      buyerName: "Alice",
+    });
+  });
+
+  it("keeps the buyer key, as null, when the buyer's personal studio is gone", async () => {
+    readStudioCredits.mockResolvedValue({
+      spendable: 37.25, debt: 0, held: 0, available: 37.25, lots: [storedLot(null)], ledger: [],
+    });
+    const view = await getStudioCredits("s-1", undefined, undefined);
+    const lot = view.lots![0]!;
+    expect(Object.keys(lot).sort()).toEqual(PAGE_FIELDS);
+    expect(lot.buyerName).toBeNull();
+  });
+});

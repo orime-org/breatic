@@ -143,6 +143,7 @@ function mount(): ReturnType<typeof render> {
             edges={[]}
             nodes={nodes()}
             getLastWriteWasLocal={LAST_WRITE_LOCAL}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>
@@ -210,6 +211,7 @@ describe('图片容器让它的 memo 子组件还能 bail', () => {
               edges={[]}
               nodes={nodes()}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => undefined}
             />
           </CanvasContext.Provider>
         </ReactFlow>

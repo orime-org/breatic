@@ -7,11 +7,10 @@
  * Reads `config/membership.yaml`: which tier a new account lands in, and the
  * six ceilings each of the four configured tiers carries.
  *
- * Four, not five. An account may also be on `enterprise`, whose ceilings are
- * negotiated per customer and will come from the database — writing a set of
- * them here would hand such an account a quota nobody agreed to. Everything in
- * this file therefore speaks `ConfiguredMembershipTier`, which leaves that
- * tier out, so no caller can reach a ceiling for it by accident.
+ * Enterprise ceilings are negotiated per account and stored alongside their
+ * validity in enterprise_memberships. Membership lookups resolve that record
+ * and ordinary subscription facts together. This loader accepts only the four
+ * ConfiguredMembershipTier values whose limits belong in the YAML file.
  *
  * Lives in core rather than beside the other business limits in server,
  * because two services need it: server enforces five of the ceilings (storage

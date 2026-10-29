@@ -123,6 +123,7 @@ async function openSphere(mentioned: string[]): Promise<HTMLElement> {
             nodes={[{ id: 'target', type: 'image', data: { handling: false } }, ...SOURCES]}
             edges={WIRES}
             getLastWriteWasLocal={() => true}
+            placeTemplate={() => undefined}
           />
         </CanvasContext.Provider>
       </ReactFlow>

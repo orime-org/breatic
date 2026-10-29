@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { whenBlurLeaves } from '@web/spaces/canvas/blur-left';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 
 /** The props a text box takes from {@link useDraftBox}. */

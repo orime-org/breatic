@@ -36,6 +36,8 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import postgres from "postgres";
 import {
   initCore,
@@ -43,7 +45,10 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
+  logger,
+  initLogger,
 } from "@breatic/core";
+import { t } from "@breatic/shared";
 import type { Hono } from "hono";
 
 try {
@@ -52,6 +57,14 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+
+// A real pino instance, as in production: the default export is a Proxy that a
+// spy cannot attach to.
+initLogger("recent-routes-test", {
+  logsRoot: resolve(tmpdir(), "breatic-test-logs"),
+  debug: false,
+  console: "none",
+});
 
 const PG_DRIVER_LOCAL = "recent-routes-test-driver";
 
@@ -174,6 +187,46 @@ describe("POST /api/v1/projects/:id/opened — record open (real PG + Redis)", (
 
     expect(res.status).toBe(404);
     expect(await openRowCount(stranger, pid)).toBe(0);
+  });
+
+  it("404 for an id that is not a uuid, with nothing logged as an error (inner#1139)", async () => {
+    const user = await insertUser();
+    const errors = vi.spyOn(logger, "error");
+    try {
+      const res = await app.request("/api/v1/projects/not-a-uuid/opened", {
+        method: "POST",
+        headers: { Cookie: await loginCookie(user) },
+      });
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { error: { code: number; message: string } };
+      expect(body.error).toMatchObject({ code: 404, message: t("server.error.not_found") });
+      expect(errors).not.toHaveBeenCalled();
+      const rows = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM project_last_opened WHERE user_id = ${user}
+      `;
+      expect(rows[0]!.n).toBe(0);
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("404 for a member's own project id written in braces; no open is recorded (inner#1139)", async () => {
+    const owner = await insertUser();
+    const studioId = await insertStudio(owner);
+    await insertStudioMember(studioId, owner, "admin");
+    const pid = await insertProject(studioId, owner);
+    const errors = vi.spyOn(logger, "error");
+    try {
+      const res = await app.request(`/api/v1/projects/${encodeURIComponent(`{${pid}}`)}/opened`, {
+        method: "POST",
+        headers: { Cookie: await loginCookie(owner) },
+      });
+      expect(res.status).toBe(404);
+      expect(errors).not.toHaveBeenCalled();
+      expect(await openRowCount(owner, pid)).toBe(0);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("401 for the unauthenticated (no session cookie)", async () => {

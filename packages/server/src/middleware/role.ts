@@ -12,7 +12,7 @@
  *
  * Both "no such project" and "user has no membership" collapse to
  * `403 Forbidden`. Distinguishing them with `404` would leak project
- * existence to outsiders who guess UUIDs (BUG-048 class).
+ * existence to outsiders who guess UUIDs.
  *
  * The middleware reads `:pid` from the route param. Routes that use
  * a different param name (e.g. `:id` on the legacy `projects.ts`
@@ -27,13 +27,6 @@ import type { ProjectRole } from "@breatic/shared";
 import type { AuthVariables } from "@server/middleware/auth.js";
 
 /** Variables stamped on `c` by `requireRole`. */
-/**
- * What a project id looks like. Anything else is refused before it can reach a
- * uuid comparison — see the check in {@link requireRoleOnParam}.
- */
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export interface RoleVariables {
   /** Project UUID resolved from the route param. */
   projectId: string;
@@ -57,17 +50,7 @@ export function requireRoleOnParam(
 ): MiddlewareHandler<{ Variables: AuthRoleVariables }> {
   return async (c, next) => {
     const userId = c.get("user").id;
-    const projectId = c.req.param(paramName);
-    if (!projectId || !UUID_RE.test(projectId)) {
-      // Shape-checked HERE, not in each route. This middleware is what puts the
-      // param into a uuid comparison, so anything that is not a uuid makes
-      // Postgres reject the statement (SQLSTATE 22P02) and a user-supplied
-      // string becomes an unclassified 500. Validating at the route instead
-      // means every new route has to remember — and the answer is the same 403
-      // either way, since a malformed id names no project the caller can reach.
-      throw new ForbiddenError(t("server.error.forbidden"));
-    }
-
+    const projectId = c.req.param(paramName) ?? "";
     const role = await projectAuthService.loadProjectRole(userId, projectId);
     if (role === null) {
       throw new ForbiddenError(t("server.error.forbidden"));

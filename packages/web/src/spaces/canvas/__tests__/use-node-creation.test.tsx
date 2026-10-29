@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
 import type * as Y from 'yjs';
 import type { CanvasProposal } from '@breatic/shared';
 
@@ -14,8 +14,11 @@ import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manag
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
-import { ROW_GAP_PX, occupiedRects, planFlowLayout } from '@web/spaces/canvas/lib/place-flow';
-import { GROUP_PADDING, groupRectForMembers } from '@web/spaces/canvas/group-geometry';
+import { GUIDE_STEP_PX, LAYER_STEP_PX, ROW_GAP_PX, occupiedRects, planFlowLayout, textFootprintHeight } from '@web/spaces/canvas/lib/place-flow';
+import { EMPTY_NODE_SIZE, GROUP_PADDING, groupRectForMembers, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
+import { createEmptyNode, createGroupNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { ApiException } from '@web/data/api/types';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
@@ -1279,6 +1282,835 @@ describe('useNodeCreation', () => {
         second!.y >= first!.y + first!.height ||
         first!.y >= second!.y + second!.height;
       expect(apart).toBe(true);
+    });
+
+    describe('landing a template around nodes already on the canvas (inner#1345)', () => {
+      const GUIDE_TEXT = 'Fixture template\n1. Split the grid\n2. Upscale each cell';
+      const STYLE_PATH = 'templates/fx/style.png';
+
+      /** What the caller says about one proposal index already on the canvas. */
+      type ExistingEntry = {
+        nodeId: string;
+        mention: ProposalMention;
+        paramsByModel?: Record<string, Record<string, unknown>>;
+      };
+
+      /**
+       * The anchor placeholder a template rewrites.
+       * @param prompt - Its prompt.
+       * @returns The proposal node.
+       */
+      const anchorSlot = (prompt: CanvasProposal['nodes'][number]['prompt']): CanvasProposal['nodes'][number] => ({
+        role: 'generate',
+        type: 'image',
+        name: 'Anchor',
+        mode: 'i2i',
+        model: 'tpl-model',
+        takesPrompt: true,
+        params: { ratio: '1:1' },
+        prompt,
+      });
+
+      /** The guide text node of the fixture template, pointing at index 0. */
+      const GUIDE = {
+        role: 'written',
+        type: 'text',
+        name: 'Fixture template',
+        prompt: [{ text: GUIDE_TEXT }],
+        templateNode: { template: 'fx', key: 'guide', anchor: 0 },
+      } as unknown as CanvasProposal['nodes'][number];
+
+      /** The fixture's upstream generate node, fed by its resource at index 2. */
+      const UPSTREAM = {
+        role: 'generate',
+        type: 'image',
+        name: 'Sketch',
+        mode: 't2i',
+        model: 'tpl-model',
+        takesPrompt: true,
+        params: {},
+        prompt: [{ text: 'a sketch in ' }, { ref: 2 }],
+        templateNode: { template: 'fx', key: 'up' },
+      } as unknown as CanvasProposal['nodes'][number];
+
+      /** The fixture's resource node. */
+      const STYLE = {
+        role: 'source',
+        type: 'image',
+        name: 'Style',
+        resource: STYLE_PATH,
+        templateNode: { template: 'fx', key: 'style' },
+      } as unknown as CanvasProposal['nodes'][number];
+
+      /**
+       * A proposal out of nodes and edges.
+       * @param nodes - Its nodes.
+       * @param edges - Its edges.
+       * @returns The proposal.
+       */
+      const proposalOf = (
+        nodes: CanvasProposal['nodes'],
+        edges: CanvasProposal['edges'] = [],
+      ): CanvasProposal => ({ nodes, edges, rationale: '' });
+
+      /**
+       * Put a node on the canvas directly, the way it would already be there.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param type - Its type.
+       * @param at - Its stored position (relative to its group when it has one).
+       * @param data - Data written over the empty node's.
+       * @param parentId - Its group.
+       * @returns Its id.
+       */
+      const seed = (
+        projectId: string,
+        spaceId: string,
+        type: CreatableNodeType,
+        at: { x: number; y: number },
+        data: Record<string, unknown> = {},
+        parentId?: string,
+      ): string => {
+        const node = createEmptyNode(type, at, 'u-9');
+        canvasSpace.addNode(projectId, spaceId, {
+          ...node,
+          ...(parentId === undefined ? {} : { parentId }),
+          data: { ...node.data, ...data },
+        });
+        return node.id;
+      };
+
+      /**
+       * Put a generation node on the canvas on a model of its own.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param at - Its stored position.
+       * @param name - Its name.
+       * @param parentId - Its group.
+       * @returns Its id.
+       */
+      const seedAnchor = (
+        projectId: string,
+        spaceId: string,
+        at: { x: number; y: number },
+        name = 'My shot',
+        parentId?: string,
+      ): string => {
+        const id = seed(projectId, spaceId, 'image', at, { name }, parentId);
+        canvasSpace.setNodeMode(projectId, spaceId, id, 'i2i', 'old-model', { 'old-model': { ratio: '4:3' } });
+        canvasSpace.setNodeModel(projectId, spaceId, id, 'i2i', 'old-model', { 'old-model': { ratio: '4:3' } });
+        return id;
+      };
+
+      /**
+       * Put a group around nodes already on the canvas.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param rect - The group's rect.
+       * @param members - Its members, at their positions inside it.
+       * @param locked - Whether the group is locked.
+       * @returns Its id.
+       */
+      const seedGroup = (
+        projectId: string,
+        spaceId: string,
+        rect: { x: number; y: number; width: number; height: number },
+        members: Array<{ id: string; position: { x: number; y: number } }>,
+        locked = false,
+      ): string => {
+        const id = `grp-${projectId}`;
+        canvasSpace.createGroup(projectId, spaceId, createGroupNode(id, { x: rect.x, y: rect.y }, rect.width, rect.height, 'u-9'), members);
+        if (locked) canvasSpace.setNodeLocked(projectId, spaceId, id, true);
+        return id;
+      };
+
+      /**
+       * A mention of a node already on the canvas, as its rail row shows it.
+       * @param nodeId - The node.
+       * @param label - The name on its row.
+       * @param thumbnail - The picture on its row.
+       * @returns The mention.
+       */
+      const mentionOf = (nodeId: string, label: string, thumbnail?: string): ProposalMention => ({
+        sourceNodeId: nodeId,
+        label,
+        kind: 'image',
+        ...(thumbnail === undefined ? {} : { thumbnail }),
+      });
+
+      /**
+       * Every node's absolute top-left, by id.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @returns The positions.
+       */
+      const absolute = (projectId: string, spaceId: string): Map<string, { x: number; y: number }> => {
+        const { nodes } = canvasSpace.readCanvasGraph(projectId, spaceId);
+        const byId = new Map(nodes.map((n) => [n.id, n]));
+        return new Map(
+          nodes.map((n) => {
+            const group = n.parentId === undefined ? undefined : byId.get(n.parentId);
+            return [n.id, { x: n.position.x + (group?.position.x ?? 0), y: n.position.y + (group?.position.y ?? 0) }];
+          }),
+        );
+      };
+
+      /**
+       * The nodes on a Space that are not in a set of ids taken earlier.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param before - The ids that were there before.
+       * @returns The new nodes.
+       */
+      const addedSince = (
+        projectId: string,
+        spaceId: string,
+        before: ReadonlySet<string>,
+      ): canvasSpace.CanvasNodeView[] =>
+        canvasSpace.readCanvasGraph(projectId, spaceId).nodes.filter((n) => !before.has(n.id));
+
+      /**
+       * The ids on a Space now.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @returns The ids.
+       */
+      const idsNow = (projectId: string, spaceId: string): Set<string> =>
+        new Set(canvasSpace.readCanvasGraph(projectId, spaceId).nodes.map((n) => n.id));
+
+      /**
+       * A node's template tag as its view carries it.
+       * @param projectId - The project.
+       * @param spaceId - The Space.
+       * @param id - The node.
+       * @returns The tag, or undefined.
+       */
+      const tagOf = (projectId: string, spaceId: string, id: string | undefined): unknown =>
+        (contentAt(canvasSpace.readCanvasGraph(projectId, spaceId).nodes, id) as { templateNode?: unknown }).templateNode;
+
+      /**
+       * Whether two rects share any area.
+       * @param a - One rect.
+       * @param b - The other.
+       * @returns True when they overlap.
+       */
+      const overlaps = (a: Rect, b: Rect): boolean =>
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+
+      let ingestUrl: MockInstance<typeof canvasApi.ingestUrl>;
+
+      beforeEach(() => {
+        vi.mocked(toast.error).mockClear();
+        vi.mocked(toast.info).mockClear();
+        ingestUrl = vi.spyOn(canvasApi, 'ingestUrl').mockResolvedValue({ task_id: 't-1' });
+      });
+
+      afterEach(() => {
+        ingestUrl.mockRestore();
+      });
+
+      it('writes the template onto the existing anchor instead of placing a new node, keeping its other model records', () => {
+        const anchor = seedAnchor('p-ex1', 's-ex1', { x: 1000, y: 500 });
+        const paramsByModel = { 'old-model': { ratio: '4:3' }, 'tpl-model': { ratio: '1:1' } };
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex1', 's-ex1'));
+
+        result.current.placeProposalAt(proposalOf([anchorSlot([{ text: 'template words' }])]), { x: 0, y: 0 }, [], existing);
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-ex1', 's-ex1');
+        expect(nodes).toHaveLength(1);
+        const view = contentAt(nodes, anchor);
+        expect(view.name).toBe('My shot');
+        expect(view.mode).toBe('i2i');
+        expect(view.model).toBe('tpl-model');
+        expect(view.paramsByModel).toEqual(paramsByModel);
+        expect(canvasSpace.getPromptFragment('p-ex1', 's-ex1', anchor, 'i2i')!.toJSON()).toContain('template words');
+      });
+
+      it('@s a reused reference under the name and picture its rail row shows, and leaves the reference as it was', () => {
+        const HERO = 'https://ours.example/image/hero.png';
+        const anchor = seedAnchor('p-ex2', 's-ex2', { x: 1000, y: 500 });
+        const input = seed('p-ex2', 's-ex2', 'image', { x: 640, y: 500 }, { name: 'Hero photo', content: HERO });
+        canvasSpace.addEdge('p-ex2', 's-ex2', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo', HERO) }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex2', 's-ex2'));
+
+        result.current.placeProposalAt(
+          proposalOf([
+            anchorSlot([{ text: 'pose of ' }, { ref: 1 }]),
+            { role: 'source', type: 'image', name: 'character reference' },
+          ]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const { nodes, edges } = canvasSpace.readCanvasGraph('p-ex2', 's-ex2');
+        expect(nodes).toHaveLength(2);
+        expect(edges).toHaveLength(1);
+        const written = canvasSpace.getPromptFragment('p-ex2', 's-ex2', anchor, 'i2i')!.toJSON();
+        expect(written).toContain(`sourceNodeId="${input}"`);
+        expect(written).toContain('label="Hero photo"');
+        expect(written).toContain(`thumbnail="${HERO}"`);
+        const reference = contentAt(nodes, input);
+        expect(reference.name).toBe('Hero photo');
+        expect(reference.model).toBeUndefined();
+        expect(reference.mode).toBeUndefined();
+      });
+
+      it('places a new reference right beside a top-level anchor on an empty canvas, wired and @\'d', () => {
+        const anchor = seedAnchor('p-ex3', 's-ex3', { x: 1000, y: 500 });
+        const before = idsNow('p-ex3', 's-ex3');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex3', 's-ex3'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex3', 's-ex3', before);
+        expect(added).toHaveLength(1);
+        const fresh = added[0]!;
+        expect(fresh.parentId).toBeUndefined();
+        expect(absolute('p-ex3', 's-ex3').get(fresh.id)).toEqual({ x: 1000 - LAYER_STEP_PX, y: 500 });
+        expect(canvasSpace.readCanvasGraph('p-ex3', 's-ex3').edges.map((e) => `${e.source}->${e.target}`)).toEqual([
+          `${fresh.id}->${anchor}`,
+        ]);
+        const written = canvasSpace.getPromptFragment('p-ex3', 's-ex3', anchor, 'i2i')!.toJSON();
+        expect(written).toContain(`sourceNodeId="${fresh.id}"`);
+        expect(written).toContain('label="character reference"');
+      });
+
+      it('keeps the new nodes at the top level beside a top-level anchor, with no group of their own', () => {
+        const anchor = seedAnchor('p-ex4', 's-ex4', { x: 1000, y: 500 });
+        const before = idsNow('p-ex4', 's-ex4');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex4', 's-ex4'));
+
+        const placed = result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex4', 's-ex4', before);
+        expect(added.map((n) => n.type).sort()).toEqual(['image', 'image', 'text']);
+        expect(added.every((n) => n.parentId === undefined)).toBe(true);
+        expect(placed.groupId).toBeUndefined();
+      });
+
+      it('moves the new nodes left, as one block, past a neighbour on the anchor\'s left', () => {
+        const anchor = seedAnchor('p-ex5', 's-ex5', { x: 1000, y: 500 });
+        const before = idsNow('p-ex5', 's-ex5');
+        const neighbour = { x: 1000 - LAYER_STEP_PX, y: 500, width: 100, height: 100 };
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex5', 's-ex5'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [neighbour],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-ex5', 's-ex5', before);
+        const at = absolute('p-ex5', 's-ex5').get(fresh!.id)!;
+        // Same row; the right edge clears the neighbour by the gap, with or
+        // without the room its task counts take.
+        expect(at.y).toBe(500);
+        expect(at.x + EMPTY_NODE_SIZE.width + ROW_GAP_PX).toBeLessThanOrEqual(neighbour.x);
+        expect(at.x + EMPTY_NODE_SIZE.width + ROW_GAP_PX + COUNTS_COLUMN_FLOW_REACH).toBeGreaterThanOrEqual(neighbour.x);
+        // The anchor stays where it was.
+        expect(absolute('p-ex5', 's-ex5').get(anchor)).toEqual({ x: 1000, y: 500 });
+      });
+
+      it('does not put a new node on top of a reused reference', () => {
+        const anchor = seedAnchor('p-ex6', 's-ex6', { x: 1000, y: 500 });
+        // Exactly where the arrangement puts the second node of the column.
+        const input = seed('p-ex6', 's-ex6', 'image', { x: 1000 - LAYER_STEP_PX, y: 620 }, { name: 'Hero photo' });
+        canvasSpace.addEdge('p-ex6', 's-ex6', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const inputRect = { x: 1000 - LAYER_STEP_PX, y: 620, ...EMPTY_NODE_SIZE };
+        const before = idsNow('p-ex6', 's-ex6');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex6', 's-ex6'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [
+              anchorSlot([{ ref: 1 }, { text: ' and ' }, { ref: 2 }]),
+              { role: 'source', type: 'image', name: 'character reference' },
+              { role: 'source', type: 'image', name: 'second reference' },
+            ],
+            [{ fromIndex: 2, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [inputRect],
+          existing,
+        );
+
+        const added = addedSince('p-ex6', 's-ex6', before);
+        expect(added).toHaveLength(1);
+        const at = absolute('p-ex6', 's-ex6').get(added[0]!.id)!;
+        expect(overlaps({ ...at, ...EMPTY_NODE_SIZE }, inputRect)).toBe(false);
+        expect(at.x + EMPTY_NODE_SIZE.width).toBeLessThanOrEqual(inputRect.x);
+      });
+
+      it('puts the guide one guide step left of a 9:16 anchor that already has its reference, clear of the anchor', () => {
+        const anchor = seed('p-ex7', 's-ex7', 'image', { x: 1000, y: 500 }, {
+          name: 'My shot',
+          content: 'https://ours.example/image/tall.png',
+          mediaWidth: 1080,
+          mediaHeight: 1920,
+        });
+        const input = seed('p-ex7', 's-ex7', 'image', { x: 1000 - LAYER_STEP_PX, y: -400 }, { name: 'Hero photo' });
+        canvasSpace.addEdge('p-ex7', 's-ex7', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const before = idsNow('p-ex7', 's-ex7');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex7', 's-ex7'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }, GUIDE]),
+          { x: 0, y: 0 },
+          [{ x: 1000 - LAYER_STEP_PX, y: -400, ...EMPTY_NODE_SIZE }],
+          existing,
+        );
+
+        const added = addedSince('p-ex7', 's-ex7', before);
+        expect(added).toHaveLength(1);
+        const at = absolute('p-ex7', 's-ex7').get(added[0]!.id)!;
+        expect(at.x).toBe(1000 - GUIDE_STEP_PX);
+        const anchorRect = { x: 1000, y: 500, width: EMPTY_NODE_SIZE.width, height: mediaNodeHeight(1080, 1920) };
+        expect(overlaps({ ...at, width: EMPTY_NODE_SIZE.width, height: textFootprintHeight(GUIDE_TEXT) }, anchorRect)).toBe(false);
+      });
+
+      it('tags each template node it places and points the guide at the anchor node', () => {
+        const anchor = seedAnchor('p-ex8', 's-ex8', { x: 1000, y: 500 });
+        const before = idsNow('p-ex8', 's-ex8');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-ex8', 's-ex8'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+            [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-ex8', 's-ex8', before);
+        const byName = new Map(
+          added.flatMap((n) => (n.type === 'group' || n.type === 'annotation' ? [] : [[n.data.name, n.id] as const])),
+        );
+        expect(tagOf('p-ex8', 's-ex8', byName.get('Sketch'))).toEqual({ template: 'fx', key: 'up' });
+        expect(tagOf('p-ex8', 's-ex8', byName.get('Style'))).toEqual({ template: 'fx', key: 'style' });
+        expect(tagOf('p-ex8', 's-ex8', byName.get('Fixture template'))).toEqual({ template: 'fx', key: 'guide', anchor });
+        expect(tagOf('p-ex8', 's-ex8', anchor)).toBeUndefined();
+        expect(bodyToPlainText(canvasSpace.getTextBody('p-ex8', 's-ex8', byName.get('Fixture template')!)!)).toBe(GUIDE_TEXT);
+      });
+
+      it('points the guide of an agent proposal at the anchor node it placed', () => {
+        const { result } = renderHook(() => useNodeCreation('p-ag1', 's-ag1'));
+
+        const { nodeIds } = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+        );
+
+        expect(tagOf('p-ag1', 's-ag1', nodeIds[3])).toEqual({ template: 'fx', key: 'guide', anchor: nodeIds[0] });
+        expect(tagOf('p-ag1', 's-ag1', nodeIds[1])).toEqual({ template: 'fx', key: 'up' });
+        expect(tagOf('p-ag1', 's-ag1', nodeIds[0])).toBeUndefined();
+      });
+
+      it('stamps the edges it adds with strictly increasing createdAt, in the proposal\'s edge order', () => {
+        const now = vi.spyOn(Date, 'now').mockReturnValue(7000);
+        const { result } = renderHook(() => useNodeCreation('p-ord', 's-ord'));
+
+        const { nodeIds } = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [
+                { role: 'source', type: 'image', name: 'Second' },
+                { role: 'source', type: 'image', name: 'First' },
+                anchorSlot([{ ref: 1 }, { text: ' and ' }, { ref: 0 }]),
+              ],
+              [{ fromIndex: 1, toIndex: 2, into: 'pool' }, { fromIndex: 0, toIndex: 2, into: 'pool' }],
+            ),
+            groupName: 'Two references',
+          },
+          { x: 0, y: 0 },
+          [],
+        );
+        now.mockRestore();
+
+        const edges = canvasSpace.readCanvasGraph('p-ord', 's-ord').edges;
+        const stampOf = (source: string | undefined): number | undefined =>
+          edges.find((e) => e.source === source && e.target === nodeIds[2])?.createdAt;
+        const first = stampOf(nodeIds[1]);
+        const second = stampOf(nodeIds[0]);
+        expect(typeof first).toBe('number');
+        expect(second).toBeGreaterThan(first!);
+      });
+
+      it('fetches a template resource into storage once the batch is written, and not before', () => {
+        const name = docName.canvasSpace('p-res1', 's-res1');
+        const undo = canvasSpace.getCanvasUndoManager(getDoc(name), name);
+        const seen: Array<{ present: boolean; steps: number }> = [];
+        ingestUrl.mockImplementation((body) => {
+          seen.push({
+            present: canvasSpace.readCanvasGraph('p-res1', 's-res1').nodes.some((n) => n.id === body.node_id),
+            steps: undo.undoStack.length,
+          });
+          return Promise.resolve({ task_id: 't-1' });
+        });
+        const { result } = renderHook(() => useNodeCreation('p-res1', 's-res1'));
+
+        const { nodeIds } = result.current.placeProposalAt(
+          {
+            ...proposalOf(
+              [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE],
+              [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
+            ),
+            groupName: 'Fixture template',
+          },
+          { x: 0, y: 0 },
+          [],
+        );
+
+        expect(ingestUrl).toHaveBeenCalledTimes(1);
+        expect(ingestUrl).toHaveBeenCalledWith({
+          template_resource: STYLE_PATH,
+          project_id: 'p-res1',
+          space_id: 's-res1',
+          node_id: nodeIds[2],
+        });
+        expect(seen).toEqual([{ present: true, steps: 1 }]);
+      });
+
+      it('says the upload failed when the resource fetch is refused', async () => {
+        ingestUrl.mockRejectedValue(new ApiException({ status: 429, message: 'slow down' }));
+        const { result } = renderHook(() => useNodeCreation('p-res2', 's-res2'));
+
+        result.current.placeProposalAt(
+          { ...proposalOf([anchorSlot([{ ref: 1 }]), STYLE], [{ fromIndex: 1, toIndex: 0, into: 'pool' }]), groupName: 'Fixture' },
+          { x: 0, y: 0 },
+          [],
+        );
+
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith(en.canvas.upload.failed));
+      });
+
+      it('fetches nothing when the batch fails part way', () => {
+        const stale = {
+          ...proposalOf(
+            [
+              anchorSlot([{ text: 'from ' }, { slot: { kind: 'ref', label: 'x', note: 'y' } }] as unknown as Parameters<typeof anchorSlot>[0]),
+              STYLE,
+            ],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          groupName: 'Fixture',
+        } as unknown as CanvasProposal;
+        const { result } = renderHook(() => useNodeCreation('p-res3', 's-res3'));
+
+        expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+
+        expect(ingestUrl).not.toHaveBeenCalled();
+      });
+
+      it('fetches again into a reused resource node that is still empty', () => {
+        const anchor = seedAnchor('p-res4', 's-res4', { x: 1000, y: 500 });
+        const style = seed('p-res4', 's-res4', 'image', { x: 640, y: 500 }, { name: 'Style', templateNode: { template: 'fx', key: 'style' } });
+        canvasSpace.addEdge('p-res4', 's-res4', { id: `${style}->${anchor}`, source: style, target: anchor });
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: style, mention: mentionOf(style, 'Style') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-res4', 's-res4'));
+
+        result.current.placeProposalAt(proposalOf([anchorSlot([{ ref: 1 }]), STYLE]), { x: 0, y: 0 }, [], existing);
+
+        expect(canvasSpace.readCanvasGraph('p-res4', 's-res4').nodes).toHaveLength(2);
+        expect(ingestUrl).toHaveBeenCalledTimes(1);
+        expect(ingestUrl).toHaveBeenCalledWith({
+          template_resource: STYLE_PATH,
+          project_id: 'p-res4',
+          space_id: 's-res4',
+          node_id: style,
+        });
+      });
+
+      it('leaves a reused resource node alone when it holds its file or a fetch into it is running', () => {
+        const anchor = seedAnchor('p-res5', 's-res5', { x: 1000, y: 500 });
+        const held = seed('p-res5', 's-res5', 'image', { x: 640, y: 300 }, {
+          name: 'Style',
+          content: 'https://ours.example/image/style.png',
+          templateNode: { template: 'fx', key: 'style' },
+        });
+        const running = seed('p-res5', 's-res5', 'image', { x: 640, y: 700 }, {
+          name: 'Style two',
+          taskCounts: { running: 1, done: 0, failed: 0, expired: 0 },
+          templateNode: { template: 'fx', key: 'style' },
+        });
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: held, mention: mentionOf(held, 'Style') }],
+          [2, { nodeId: running, mention: mentionOf(running, 'Style two') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-res5', 's-res5'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ ref: 1 }, { ref: 2 }]), STYLE, { ...STYLE, name: 'Style two' }]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        expect(canvasSpace.readCanvasGraph('p-res5', 's-res5').nodes).toHaveLength(3);
+        expect(ingestUrl).not.toHaveBeenCalled();
+      });
+
+      it('brings a reused upstream node back to the template and @s the resource wired only into it', () => {
+        const STYLE_URL = 'https://ours.example/image/style.png';
+        const anchor = seedAnchor('p-up', 's-up', { x: 1000, y: 500 });
+        const up = seedAnchor('p-up', 's-up', { x: 640, y: 500 }, 'My sketch');
+        const style = seed('p-up', 's-up', 'image', { x: 280, y: 500 }, {
+          name: 'Style ref',
+          content: STYLE_URL,
+          templateNode: { template: 'fx', key: 'style' },
+        });
+        canvasSpace.addEdge('p-up', 's-up', { id: `${style}->${up}`, source: style, target: up });
+        canvasSpace.addEdge('p-up', 's-up', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const upParams = { 'old-model': { ratio: '4:3' }, 'tpl-model': {} };
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'My sketch'), paramsByModel: upParams }],
+          [2, { nodeId: style, mention: mentionOf(style, 'Style ref', STYLE_URL) }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-up', 's-up'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const { nodes, edges } = canvasSpace.readCanvasGraph('p-up', 's-up');
+        expect(nodes).toHaveLength(3);
+        expect(edges).toHaveLength(2);
+        const upstream = contentAt(nodes, up);
+        expect(upstream.name).toBe('My sketch');
+        expect(upstream.mode).toBe('t2i');
+        expect(upstream.model).toBe('tpl-model');
+        expect(upstream.paramsByModel).toEqual(upParams);
+        const written = canvasSpace.getPromptFragment('p-up', 's-up', up, 't2i')!.toJSON();
+        expect(written).toContain('a sketch in ');
+        expect(written).toContain(`sourceNodeId="${style}"`);
+        expect(written).toContain('label="Style ref"');
+        expect(contentAt(nodes, style)).toMatchObject({ name: 'Style ref', content: STYLE_URL });
+        expect(ingestUrl).not.toHaveBeenCalled();
+      });
+
+      it('puts the new nodes into the anchor\'s unlocked group and grows its frame to keep the padding', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-grow', 's-grow', { x: PAD, y: PAD });
+        const groupId = seedGroup(
+          'p-grow',
+          's-grow',
+          { x: 0, y: 0, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: anchor, position: { x: PAD, y: PAD } }],
+        );
+        const before = idsNow('p-grow', 's-grow');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-grow', 's-grow'));
+
+        result.current.placeProposalAt(
+          proposalOf(
+            [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }, GUIDE],
+            [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
+          ),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        const added = addedSince('p-grow', 's-grow', before);
+        expect(added).toHaveLength(2);
+        expect(added.map((n) => n.parentId)).toEqual([groupId, groupId]);
+        const abs = absolute('p-grow', 's-grow');
+        expect(abs.get(anchor)).toEqual({ x: PAD, y: PAD });
+        const [group] = canvasSpace.readNodePlacements('p-grow', 's-grow').filter((p) => p.type === 'group');
+        const frame = { x: group!.x, y: group!.y, width: group!.width ?? 0, height: group!.height ?? 0 };
+        const rects = added.map((n) => ({
+          ...abs.get(n.id)!,
+          width: EMPTY_NODE_SIZE.width,
+          height: n.type === 'text' ? textFootprintHeight(GUIDE_TEXT) : EMPTY_NODE_SIZE.height,
+        }));
+        expect(frame.x).toBe(Math.min(...rects.map((r) => r.x)) - PAD);
+        for (const r of rects) {
+          expect(r.x).toBeGreaterThanOrEqual(frame.x + PAD);
+          expect(r.y).toBeGreaterThanOrEqual(frame.y + PAD);
+          expect(r.x + r.width).toBeLessThanOrEqual(frame.x + frame.width - PAD);
+          expect(r.y + r.height).toBeLessThanOrEqual(frame.y + frame.height - PAD);
+        }
+      });
+
+      it('applies a template that places no new node into a locked group, leaving the group as it was', () => {
+        const PAD = GROUP_PADDING;
+        const anchor = seedAnchor('p-lock', 's-lock', { x: PAD + LAYER_STEP_PX, y: PAD });
+        const input = seed('p-lock', 's-lock', 'image', { x: PAD, y: PAD }, { name: 'Hero photo' });
+        const rect = { x: 0, y: 0, width: LAYER_STEP_PX + EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD };
+        seedGroup('p-lock', 's-lock', rect, [
+          { id: input, position: { x: PAD, y: PAD } },
+          { id: anchor, position: { x: PAD + LAYER_STEP_PX, y: PAD } },
+        ], true);
+        canvasSpace.addEdge('p-lock', 's-lock', { id: `${input}->${anchor}`, source: input, target: anchor });
+        const placementsBefore = canvasSpace.readNodePlacements('p-lock', 's-lock');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: input, mention: mentionOf(input, 'Hero photo') }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-lock', 's-lock'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'pose of ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }]),
+          { x: 0, y: 0 },
+          [],
+          existing,
+        );
+
+        expect(canvasSpace.readNodePlacements('p-lock', 's-lock')).toEqual(placementsBefore);
+        const view = contentAt(canvasSpace.readCanvasGraph('p-lock', 's-lock').nodes, anchor);
+        expect(view.model).toBe('tpl-model');
+        expect(canvasSpace.getPromptFragment('p-lock', 's-lock', anchor, 'i2i')!.toJSON()).toContain(`sourceNodeId="${input}"`);
+      });
+
+      it('lines a new node up left of the reused node it feeds, reading the edges already on the canvas', () => {
+        const anchor = seedAnchor('p-chain', 's-chain', { x: 1000, y: 500 });
+        const up = seedAnchor('p-chain', 's-chain', { x: 1000 - LAYER_STEP_PX, y: 500 }, 'My sketch');
+        canvasSpace.addEdge('p-chain', 's-chain', { id: `${up}->${anchor}`, source: up, target: anchor });
+        const before = idsNow('p-chain', 's-chain');
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My shot'), paramsByModel: { 'tpl-model': { ratio: '1:1' } } }],
+          [1, { nodeId: up, mention: mentionOf(up, 'My sketch'), paramsByModel: { 'tpl-model': {} } }],
+        ]);
+        const { result } = renderHook(() => useNodeCreation('p-chain', 's-chain'));
+
+        result.current.placeProposalAt(
+          proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE], [{ fromIndex: 2, toIndex: 1, into: 'pool' }]),
+          { x: 0, y: 0 },
+          [{ x: 1000 - LAYER_STEP_PX, y: 500, ...EMPTY_NODE_SIZE }],
+          existing,
+        );
+
+        const [fresh] = addedSince('p-chain', 's-chain', before);
+        const at = absolute('p-chain', 's-chain').get(fresh!.id)!;
+        expect(at.x + EMPTY_NODE_SIZE.width).toBeLessThanOrEqual(1000 - LAYER_STEP_PX);
+      });
+
+      it('takes every write back through a temporary undo manager when one fails part way, leaving no undo step', () => {
+        const PAD = GROUP_PADDING;
+        const name = docName.canvasSpace('p-rb', 's-rb');
+        const undo = canvasSpace.getCanvasUndoManager(getDoc(name), name);
+        const anchor = seed('p-rb', 's-rb', 'audio', { x: PAD, y: PAD }, { name: 'My song' });
+        canvasSpace.setNodeMode('p-rb', 's-rb', anchor, 't2m', 'old-model', { 'old-model': { length: 30 } });
+        canvasSpace.setNodeModel('p-rb', 's-rb', anchor, 't2m', 'old-model', { 'old-model': { length: 30 } });
+        writeProposalPrompt(canvasSpace.getPromptFragment('p-rb', 's-rb', anchor, 't2m')!, [{ text: 'old prompt' }]);
+        writeProposalPrompt(canvasSpace.getLyricsFragment('p-rb', 's-rb', anchor, 't2m')!, [{ text: 'old lyrics' }]);
+        const cover = seed('p-rb', 's-rb', 'image', { x: -600, y: PAD }, { name: 'Cover art' });
+        canvasSpace.addEdge('p-rb', 's-rb', { id: `${cover}->${anchor}`, source: cover, target: anchor });
+        seedGroup(
+          'p-rb',
+          's-rb',
+          { x: 0, y: 0, width: EMPTY_NODE_SIZE.width + 2 * PAD, height: EMPTY_NODE_SIZE.height + 2 * PAD },
+          [{ id: anchor, position: { x: PAD, y: PAD } }],
+        );
+        const graphBefore = canvasSpace.readCanvasGraph('p-rb', 's-rb');
+        const placementsBefore = canvasSpace.readNodePlacements('p-rb', 's-rb');
+        const promptBefore = canvasSpace.getPromptFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON();
+        const lyricsBefore = canvasSpace.getLyricsFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON();
+        const stacks = { undo: undo.undoStack.length, redo: undo.redoStack.length };
+        const existing = new Map<number, ExistingEntry>([
+          [0, { nodeId: anchor, mention: mentionOf(anchor, 'My song'), paramsByModel: { 'old-model': { length: 30 }, 'tpl-model': {} } }],
+        ]);
+        // Growing the group is the last write of the batch, after the prompt
+        // and the lyrics of the anchor have been rewritten.
+        const grow = vi.spyOn(canvasSpace, 'expandGroup').mockImplementationOnce(() => {
+          throw new Error('no room');
+        });
+        const { result } = renderHook(() => useNodeCreation('p-rb', 's-rb'));
+
+        expect(() =>
+          result.current.placeProposalAt(
+            proposalOf(
+              [
+                { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ text: 'new prompt' }] },
+                { role: 'written', type: 'text', name: 'Verse', prompt: [{ text: 'la la' }] },
+              ],
+              [{ fromIndex: 1, toIndex: 0, into: 'lyrics' }],
+            ),
+            { x: 0, y: 0 },
+            [],
+            existing,
+          ),
+        ).toThrow('no room');
+        grow.mockRestore();
+
+        const graphAfter = canvasSpace.readCanvasGraph('p-rb', 's-rb');
+        expect(graphAfter.nodes.map((n) => n.id).sort()).toEqual(graphBefore.nodes.map((n) => n.id).sort());
+        expect(graphAfter.edges.map((e) => e.id)).toEqual(graphBefore.edges.map((e) => e.id));
+        const view = contentAt(graphAfter.nodes, anchor);
+        expect(view.mode).toBe('t2m');
+        expect(view.model).toBe('old-model');
+        expect(view.paramsByModel).toEqual({ 'old-model': { length: 30 } });
+        expect(canvasSpace.getPromptFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON()).toBe(promptBefore);
+        expect(canvasSpace.getLyricsFragment('p-rb', 's-rb', anchor, 't2m')!.toJSON()).toBe(lyricsBefore);
+        expect(canvasSpace.readNodePlacements('p-rb', 's-rb')).toEqual(placementsBefore);
+        expect({ undo: undo.undoStack.length, redo: undo.redoStack.length }).toEqual(stacks);
+      });
     });
   });
 });

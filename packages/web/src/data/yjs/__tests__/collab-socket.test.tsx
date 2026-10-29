@@ -11,6 +11,7 @@ const { wsInstances, providerInstances } = vi.hoisted(() => ({
     destroy: ReturnType<typeof vi.fn>;
     receivedOnOpenPayload?: Event;
     emit: (event: string, data?: unknown) => void;
+    config: Record<string, unknown>;
   }>,
   providerInstances: [] as Array<{
     destroy: ReturnType<typeof vi.fn>;
@@ -33,7 +34,9 @@ vi.mock('@hocuspocus/provider', () => ({
     emit(event: string, data?: unknown): void {
       for (const cb of [...(this.listeners[event] ?? [])]) cb(data);
     }
-    constructor() {
+    config: Record<string, unknown>;
+    constructor(config: Record<string, unknown>) {
+      this.config = config;
       wsInstances.push(this);
     }
   },
@@ -65,9 +68,10 @@ import { reportCollabFailure } from '@web/data/yjs/collab-failure-report';
 
 import {
   acquireDocProvider,
-  releaseDocProvider,
+  readDocFacts,
   readDocProvider,
   subscribeDocProvider,
+  releaseDocProvider,
   _resetCollabSocketForTests,
 } from '@web/data/yjs/collab-socket';
 import { getDoc, _resetForTests as _resetDocsForTests } from '@web/data/yjs/manager';
@@ -122,6 +126,15 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     releaseDocProvider(META);
     vi.runOnlyPendingTimers();
     expect(changed).toHaveBeenCalledTimes(1);
+  });
+
+  it('WU08 builds the shared socket on ChunkingWebSocket, once per tab', async () => {
+    const { ChunkingWebSocket } = await import('@web/data/yjs/chunking-websocket');
+    acquireDocProvider(META, getDoc(META), '/ws');
+    acquireDocProvider('project-p1/canvas-s1', getDoc('project-p1/canvas-s1'), '/ws');
+    expect(wsInstances).toHaveLength(1);
+    expect(wsInstances[0]!.config.WebSocketPolyfill).toBe(ChunkingWebSocket);
+    expect(wsInstances[0]!.config.url).toBe(`ws://${window.location.host}/ws`);
   });
 
   it('creates ONE shared socket + attaches the provider on first acquire', () => {
@@ -220,6 +233,73 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     releaseDocProvider(META); // consumer 2 leaves — refcount 0
     vi.runAllTimers();
     expect(getDoc(META)).not.toBe(doc); // now evicted
+  });
+
+  it('releases the canonical scene document owned by its provider', () => {
+    const name = 'project-p1/3d-s1';
+    const doc = getDoc(name);
+    acquireDocProvider(name, doc);
+    releaseDocProvider(name, doc);
+    vi.runAllTimers();
+    expect(doc.isDestroyed).toBe(true);
+    expect(getDoc(name)).not.toBe(doc);
+  });
+
+  it('keeps the same account document and provider across a deferred StrictMode remount', () => {
+    const name = 'project-p1/3d-s1';
+    const doc = getDoc(name);
+    const first = acquireDocProvider(name, doc);
+    releaseDocProvider(name, doc);
+    const second = acquireDocProvider(name, getDoc(name));
+    vi.runAllTimers();
+
+    expect(second).toBe(first);
+    expect(providerInstances).toHaveLength(1);
+    expect(providerInstances[0].destroy).not.toHaveBeenCalled();
+    expect(getDoc(name)).toBe(doc);
+  });
+
+  it('ignores late cleanup from a retired provider after the scene reopens', () => {
+    const name = 'project-p1/3d-s1';
+    const oldDoc = getDoc(name);
+    acquireDocProvider(name, oldDoc);
+    releaseDocProvider(name, oldDoc);
+    vi.runAllTimers();
+    expect(oldDoc.isDestroyed).toBe(true);
+    const nextDoc = getDoc(name);
+    const nextProvider = acquireDocProvider(name, nextDoc);
+    releaseDocProvider(name, oldDoc);
+    vi.runAllTimers();
+    expect(providerInstances[1].destroy).not.toHaveBeenCalled();
+    expect(getDoc(name)).toBe(nextDoc);
+    expect(acquireDocProvider(name, nextDoc)).toBe(nextProvider);
+  });
+
+  it('destroys every cached provider during a synchronous test reset', () => {
+    acquireDocProvider('project-p1/3d-s1', getDoc('project-p1/3d-s1'));
+    acquireDocProvider(META, getDoc(META));
+    _resetCollabSocketForTests();
+    expect(providerInstances.every((provider) => provider.destroy.mock.calls.length === 1)).toBe(true);
+    expect(wsInstances[0].destroy).toHaveBeenCalledOnce();
+  });
+
+  it('ignores events from a retired provider generation after the canonical name is reused', () => {
+    const name = 'project-p1/3d-s1';
+    acquireDocProvider(name, getDoc(name));
+    const retired = providerInstances[0];
+    releaseDocProvider(name);
+    vi.runAllTimers();
+    acquireDocProvider(name, getDoc(name));
+    const current = providerInstances[1];
+
+    retired.emit('synced');
+    retired.emit('authenticationFailed', { reason: 'Old refusal' });
+    retired.emit('close', { event: { reason: 'Session ended' } });
+    expect(readDocFacts(name)).toEqual({ hasEverSynced: false, authFailure: null, sessionEnded: false });
+
+    current.emit('close', { event: { reason: 'Session ended' } });
+    retired.emit('authenticated');
+    expect(readDocFacts(name).sessionEnded).toBe(true);
   });
 });
 

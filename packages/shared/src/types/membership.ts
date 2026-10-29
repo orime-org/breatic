@@ -49,17 +49,10 @@ export type MembershipTier = (typeof MEMBERSHIP_TIERS)[number];
 /**
  * The tiers whose ceilings are written in `config/membership.yaml`.
  *
- * Enterprise is absent, and that absence is the whole point. Its numbers are
- * agreed per customer, so there is no single set of them to put in a config
- * file; they will be read from the database when that work happens. Writing a
- * set before then would hand an account put on that tier a quota nobody
- * negotiated, and nothing would surface it.
- *
- * So the tier is legal to store and impossible to price: the constraint
- * accepts the word, and asking for its ceilings fails loudly, naming the
- * account. Narrowing every ceiling lookup to this subset is what makes the
- * compiler insist that each one says out loud what it does about enterprise,
- * rather than indexing a config object and getting `undefined`.
+ * Enterprise limits are negotiated per account and read from saved enterprise
+ * information by core's membership reader. Missing legacy information raises
+ * an explicit count-limit error until that information is completed.
+ * This subset makes configured-limit lookups handle enterprise separately.
  */
 export const CONFIGURED_MEMBERSHIP_TIERS = [
   "base",

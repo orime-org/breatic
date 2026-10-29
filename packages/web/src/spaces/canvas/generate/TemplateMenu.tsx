@@ -21,12 +21,13 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
+import { templateServed } from '@web/spaces/canvas/generate/template-writes';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 interface TemplateMenuProps {
   /** The panel's node type: it lists only that type's templates. */
   nodeType: GenerationNodeType;
-  /** The models this deployment serves for the node type. */
+  /** Every model this deployment serves, across node types: a template's nodes can run in several. */
   models: readonly { name: string }[];
   /** Applies the picked template to the node. */
   onPick: (template: GenerationTemplate) => void;
@@ -80,7 +81,7 @@ export const TemplateMenu = React.memo(function TemplateMenu({
           </p>
         ) : (
           templates.map((template) => {
-            const available = served.has(template.model);
+            const available = templateServed(template, served);
             return (
               <DropdownMenuItem
                 key={template.id}

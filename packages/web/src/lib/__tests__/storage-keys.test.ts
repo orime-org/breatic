@@ -18,6 +18,7 @@ describe('storage-keys registry', () => {
       locale: 'breatic.locale',
       theme: 'breatic.theme',
       projectTabs: 'breatic.projectTabs',
+      sceneViews: 'breatic.sceneViews',
       userPreferences: 'breatic.userPreferences',
       sessionSeen: 'breatic.sessionSeen',
       deferredAppVersions: 'breatic.deferredAppVersions',

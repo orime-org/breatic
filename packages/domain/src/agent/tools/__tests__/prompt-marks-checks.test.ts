@@ -13,7 +13,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, markText, t, templatePrompt, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { GENERATION_TEMPLATES, markedSegments, markText, t, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
@@ -332,15 +332,15 @@ describe("marks the reader can act on", () => {
     expect(checkProposal(proposal)).toEqual({ ok: true });
   });
 
-  it("places a lone generation from a template, which the reader wires their own node into", () => {
-    // The reader said they already have the material: the proposal places the
-    // generation only, and the reader wires their node in and @s it.
+  it("refuses a lone generation from a template whose input has no node, as the panel would place one", () => {
+    // inner#1345 design 6.7 step 3: a template lands whole from either entry,
+    // so its input comes with a node of its own the reader fills.
     const answer = answerFor({
-      nodes: [{ role: "generate", type: "image", name: "Grid", template: "storyboard-grid-25", prompt: [{ slot: { kind: "note", label: "Wire your character in and @ it" } }, { text: "A 5x5 storyboard." }] }],
+      nodes: [{ role: "generate", type: "image", name: "Grid", template: { id: "storyboard-grid-25" }, prompt: [{ slot: { kind: "note", label: "Wire your character in and @ it" } }, { text: "A 5x5 storyboard." }] }],
       edges: [],
       rationale: "",
     });
-    expect(answer.placed).toBe(true);
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('takes input "reference"') });
   });
 
   it("tells a text node wired into a model drawing no prompt box that its edge goes nowhere", () => {
@@ -588,8 +588,8 @@ describe("the templates as the agent is shown them", () => {
   it("lists each prompt as the segments to send, each reference as a ref, labels without the words the canvas adds", () => {
     const said = makeProposeCanvasAction().description ?? "";
     for (const template of GENERATION_TEMPLATES) {
-      for (const segment of templatePrompt(template)) {
-        if (segment.slot?.kind === "asset") expect(said).toContain(`{"ref": <index of the node wired in for ${segment.slot.label}>}`);
+      for (const segment of markedSegments(t(`canvas.template.${template.id}.prompt`))) {
+        if (segment.slot?.kind === "asset") expect(said).toContain('{"ref": <index of the node wired in for input "reference">}');
         else if (segment.slot) expect(said).toContain(JSON.stringify({ slot: segment.slot }));
       }
     }

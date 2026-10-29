@@ -36,7 +36,7 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
-import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
+import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import {
   imageModeTakesReferences,
   IMAGE_MODE_OPTIONS,
@@ -83,7 +83,7 @@ import {
 } from '@web/spaces/canvas/generate/submit-generation';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
-import { useApplyTemplate } from '@web/spaces/canvas/generate/use-apply-template';
+import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
 /**
  * For the two derivations below that deliberately want no body text. Shared so
@@ -112,6 +112,8 @@ interface GeneratePanelContainerProps {
    * commit that ends a pick.
    */
   getLastWriteWasLocal: () => boolean;
+  /** Places a picked template around the node (inner#1345), as `CanvasSpace` places a proposal. */
+  placeTemplate: PlaceTemplate;
 }
 
 /**
@@ -145,6 +147,7 @@ function asNum(value: unknown): number | undefined {
  * @param root0.projectId - Project id.
  * @param root0.spaceId - Canvas space id.
  * @param root0.getLastWriteWasLocal - Reads who made the newest document write.
+ * @param root0.placeTemplate - Places a picked template around the node.
  * @returns The Generate panel.
  */
 function GeneratePanelBody({
@@ -154,6 +157,7 @@ function GeneratePanelBody({
   projectId,
   spaceId,
   getLastWriteWasLocal,
+  placeTemplate,
 }: GeneratePanelContainerProps & { nodeId: string }): React.JSX.Element {
   const t = useTranslation();
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
@@ -168,6 +172,8 @@ function GeneratePanelBody({
   const { caretProvider } = useCanvasContext();
 
   const { data: catalog } = useQuery(modelCatalogQuery());
+  // A template's nodes can run in other node types than the panel's.
+  const templateModels = React.useMemo(() => allGenerationModels(catalog), [catalog]);
   // `?? []` is pure defence now: since #1966 this body mounts only inside
   // `CatalogGatedFrame`, which withholds it until the query has data, so
   // `catalog` is defined every time this line runs. Kept because the type still
@@ -338,7 +344,7 @@ function GeneratePanelBody({
     [projectId, spaceId, nodeId, models],
   );
 
-  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, models);
+  const onPickTemplate = useApplyTemplate(projectId, spaceId, nodeId, templateModels, placeTemplate);
 
   /**
    * The node's live content view, or undefined when the node is gone or is not
@@ -733,7 +739,7 @@ function GeneratePanelBody({
   return (
     <GeneratePanel
       models={stableModels}
-      catalogModels={models}
+      catalogModels={templateModels}
       onPickTemplate={onPickTemplate}
       model={vm.model}
       mode={vm.mode}

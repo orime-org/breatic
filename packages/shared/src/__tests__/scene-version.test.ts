@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
 import * as shared from "../index.js";
+import { encodeInitialSpaceContent } from "../document-body.js";
 
 type RootShape = "text" | "array" | "mixed";
 const fixtureDocuments: Y.Doc[] = [];
@@ -50,6 +51,15 @@ function initialize(doc: Y.Doc): void {
 }
 
 describe("scene document initialization", () => {
+  it("seeds a 3D Space through the common content encoder without a document body", () => {
+    const doc = new Y.Doc();
+    fixtureDocuments.push(doc);
+    Y.applyUpdate(doc, encodeInitialSpaceContent("3d"));
+    expect(doc.getMap("scene").toJSON()).toEqual({ formatVersion: 1 });
+    expect(doc.getMap("objects").toJSON()).toEqual({});
+    expect(doc.share.has("content")).toBe(false);
+  });
+
   it("seeds version one and exactly the two scene roots", () => {
     const doc = new Y.Doc();
     initialize(doc);
