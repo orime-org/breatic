@@ -26,6 +26,8 @@ import {
   canConnect,
   canGenerate,
   t,
+  templateGoalsFor,
+  type GenerationNodeType,
   type NodeType,
 } from "@breatic/shared";
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
@@ -117,6 +119,29 @@ function miniToolLines(): string[] {
         `  - ${quoted(t(tool.labelKey))}: ${tool.guide}${tool.run.kind === "container" ? ` (${BILLED_BY_RUN_TIME})` : ""}.`,
     ),
   ]);
+}
+
+/**
+ * One node type's template menu, read off the registry: each goal the menu
+ * lists and the templates it holds, by the names and lines the rows show.
+ * The registry's own copy check holds every one of these ids against every
+ * locale, as it does a mini-tool's name.
+ * @param type - The generate node type.
+ * @param node - How the guide names that node.
+ * @returns One sentence.
+ * @throws {never} Never.
+ */
+function templateMenuLine(type: GenerationNodeType, node: string): string {
+  const goals = templateGoalsFor(type);
+  if (goals.length === 0) return `${node} shows ${quoted(t("canvas.template.empty"))}.`;
+  const rows = goals.map(({ goal, templates }) => {
+    const named = templates.map(
+      (template) => `${quoted(t(`canvas.template.${template.id}.name`))} (${quoted(t(`canvas.template.${template.id}.description`))})`,
+    );
+    const held = named.length < 2 ? named.join("") : `${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
+    return `${quoted(t(`canvas.template.goal.${goal}`))}, holding ${held}`;
+  });
+  return `${node} lists ${rows.join("; then ")}.`;
 }
 
 /**
@@ -634,14 +659,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.catalogOffline"))}`,
     `Left of the X is a button with a layout icon whose tip reads ${quoted(t("canvas.template.title"))}. It ` +
       "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
-      "name with a line under it. A picture node lists " +
-      `${quoted(t("canvas.template.goal.character"))}, holding ${quoted(t("canvas.template.costume-sheet.name"))} (${quoted(t("canvas.template.costume-sheet.description"))}), ` +
-      `${quoted(t("canvas.template.character-bible.name"))} (${quoted(t("canvas.template.character-bible.description"))}), ${quoted(t("canvas.template.expression-sheet.name"))} (${quoted(t("canvas.template.expression-sheet.description"))}) and ` +
-      `${quoted(t("canvas.template.character-design-from-text.name"))} (${quoted(t("canvas.template.character-design-from-text.description"))}); then ` +
-      `${quoted(t("canvas.template.goal.comics-storyboards"))}, holding ${quoted(t("canvas.template.storyboard-grid-25.name"))} (${quoted(t("canvas.template.storyboard-grid-25.description"))}). ` +
-      `A video node lists ${quoted(t("canvas.template.goal.character"))}, holding ${quoted(t("canvas.template.single-view-refs-scene.name"))} (${quoted(t("canvas.template.single-view-refs-scene.description"))}), ` +
-      `${quoted(t("canvas.template.identity-locked-sequence.name"))} (${quoted(t("canvas.template.identity-locked-sequence.description"))}) and ${quoted(t("canvas.template.character-showcase-orbit.name"))} (${quoted(t("canvas.template.character-showcase-orbit.description"))}). ` +
-      `A sound node shows ${quoted(t("canvas.template.empty"))}. A template whose model this ` +
+      `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
+      `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
       `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first. The pictures it needs are @'d in the prompt: a picture already " +

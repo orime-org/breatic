@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
+import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
@@ -662,7 +662,15 @@ describe("in the reader's language", () => {
     // translations; a name written out in English instead shows up as a
     // fragment no id accounts for.
     const text = runWithLocale("zh-CN", renderProductGuide);
-    const ids: MessageCall[] = [...messageCalls(), ...MINI_TOOLS.map((tool): MessageCall => [tool.labelKey, undefined])];
+    const ids: MessageCall[] = [
+      ...messageCalls(),
+      ...MINI_TOOLS.map((tool): MessageCall => [tool.labelKey, undefined]),
+      ...TEMPLATE_GOALS.map((goal): MessageCall => [`canvas.template.goal.${goal}`, undefined]),
+      ...GENERATION_TEMPLATES.flatMap((template): MessageCall[] => [
+        [`canvas.template.${template.id}.name`, undefined],
+        [`canvas.template.${template.id}.description`, undefined],
+      ]),
+    ];
     const shown = new Set(ids.map(([id, values]) => runWithLocale("zh-CN", () => `"${t(id, values)}"`)));
     const quotedFragments = text.match(/"[^"\n]+"/g) ?? [];
     expect(quotedFragments.length).toBeGreaterThan(0);
@@ -707,11 +715,17 @@ describe("messages the guide borrows", () => {
 
 describe("the guide's source", () => {
   it("spells every message id out, where the missing-key check can read it", () => {
-    // The one id read off a value is each mini-tool's name, whose keys the
-    // registry's own copy check holds against every locale.
-    const registry = "t(tool.labelKey)";
-    expect(source.split(registry)).toHaveLength(2);
-    const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => call !== registry);
+    // The ids read off a value are each mini-tool's name and each template's
+    // goal, name and line, whose keys their registries' own copy checks hold
+    // against every locale.
+    const registry = [
+      "t(tool.labelKey)",
+      "t(`canvas.template.goal.${goal}`)",
+      "t(`canvas.template.${template.id}.name`)",
+      "t(`canvas.template.${template.id}.description`)",
+    ];
+    for (const call of registry) expect(source.split(call), call).toHaveLength(2);
+    const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => !registry.includes(call));
     expect(calls.length).toBeGreaterThan(0);
     // A sample number may fill a message that carries one; nothing else goes in.
     for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
