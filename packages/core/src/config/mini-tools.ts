@@ -71,12 +71,13 @@ export const miniToolsConfigSchema = z
     }).default({ "video.remove-bg": { model: "bria-fibo-video-background-remover" } }),
     presentation: z.strictObject({
       container_class: z.string().min(1).default("MediaContainer"),
-      max_source_bytes: z.number().int().positive().default(1_073_741_824),
+      // Every uploadable video gets a presentation and a ledger: this equals storage.upload.max_upload_bytes.
+      max_source_bytes: z.number().int().positive().default(2_147_483_648),
       max_packed_bytes: z.number().int().positive().default(1_073_741_824),
       crf: z.number().int().min(0).max(51).default(18),
       preset: z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]).default("medium"),
       source_ledger: sourceLedgerConfigSchema.default(sourceLedgerDefaults),
-    }).default({ container_class: "MediaContainer", max_source_bytes: 1_073_741_824, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults }),
+    }).default({ container_class: "MediaContainer", max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824, crf: 18, preset: "medium", source_ledger: sourceLedgerDefaults }),
     plan_limits: miniToolPlanLimitsSchema.extend({
       probeStdoutBytes: miniToolPlanLimitsSchema.shape.probeStdoutBytes.default(268_435_456),
       analysisStdoutBytes: miniToolPlanLimitsSchema.shape.analysisStdoutBytes.default(16_777_216),

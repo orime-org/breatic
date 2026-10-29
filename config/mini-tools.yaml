@@ -22,7 +22,8 @@ plan_limits:
 # Automatic presentation preparation is platform funded and uses the metadata container.
 presentation:
   container_class: "MediaContainer"
-  max_source_bytes: 1073741824
+  # Equal to storage.yaml upload.max_upload_bytes: every uploadable video is presented.
+  max_source_bytes: 2147483648
   max_packed_bytes: 1073741824
   crf: 18
   preset: "medium"
