@@ -350,47 +350,39 @@ describe('R stored receipt v2 names the full ledger and the compact table', () =
   });
 });
 
-// Design §2 "失败与重试" and §10.2: expiry, container failure and a missing or
-// mismatched stored object are transient; unsupported content is not retried.
+// Design §2 "失败分类": a code is transient when running the producer again on the
+// same source bytes can give a different result, content when the bytes decide it.
 const TRANSIENT = [
-  ['expired', 'deadline passed (alpha-presentation.ts beforeStage, media-container.ts:203)'],
-  ['source_ledger_missing', 'stored ledger object missing on refresh (video-presentation-store.ts:536)'],
-  ['source_ledger_invalid', 'stored ledger object does not match its receipt (video-presentation-store.ts:536)'],
-  ['presentation_failed', 'container answered non-ok or threw (media-container.ts:220,226; alpha-presentation.ts outer catch)'],
-  ['presentation_report_failed', 'container could not deliver its report (alpha-presentation.ts report)'],
-  ['cleanup_failed', 'container temporary directory cleanup failed (alpha-presentation.ts finally)'],
+  'expired', 'source_ledger_missing', 'source_ledger_invalid', 'presentation_failed', 'presentation_report_failed', 'cleanup_failed',
+  'admission_invalid', 'source_missing', 'invalid_limits', 'resource_limit', 'source_ledger_over_cap',
+  // The producer's catch-all for unclassified exceptions.
+  'source_ledger_failed',
 ] as const;
 const CONTENT = [
-  ['source_ledger_format_unknown', 'neither ISO BMFF nor Matroska/WebM (alpha-presentation.ts produceSourceLedger)'],
-  ['source_ledger_selection_unknown', 'no unambiguous first video stream (alpha-presentation.ts produceSourceLedger)'],
-  ['unsupported_rate', 'edit rate zero or negative (iso-bmff-presentation.ts planner)'],
-  ['invalid_edit', 'malformed edit list entry (iso-bmff-presentation.ts planner)'],
-  ['invalid_clock', 'zero or malformed clock (iso-bmff-presentation.ts planner)'],
-  ['invalid_ledger', 'physical frames not dense or not strictly increasing (iso-bmff-presentation.ts planner)'],
+  'source_ledger_format_unknown', 'source_ledger_selection_unknown', 'unsupported_rate', 'invalid_edit', 'invalid_clock', 'invalid_ledger',
+  'classification_unknown', 'clock_unknown', 'metadata_unknown', 'audio_clock_unknown', 'probe_invalid', 'source_over_cap', 'no_presented_frames',
 ] as const;
 
 describe('F ledger failure classification', () => {
-  it.each(TRANSIENT)('F01 %s is transient: %s', (code) => {
+  it.each(TRANSIENT)('F01 %s is transient', (code) => {
     expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('transient');
   });
 
-  it.each(CONTENT)('F02 %s is content: %s', (code) => {
+  it.each(CONTENT)('F02 %s is content', (code) => {
     expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('content');
   });
 
-  it('F03 classifies every stable error code as exactly one class (property)', () => {
-    const classify = required('classifyVideoSourceLedgerFailure');
-    fc.assert(fc.property(fc.stringMatching(/^[a-z][a-z0-9_]{0,40}$/), (code) => {
-      expect(['transient', 'content']).toContain(classify(code));
-    }), { seed: 1306, numRuns: 200 });
+  // Presentation-run codes are not written into ledger state (design §2); that
+  // belongs to the store slice. Here they are just unlisted codes.
+  it.each(['packed_over_cap', 'packed_clock_mismatch', 'metadata_mismatch', 'attempt_conflict', 'not_a_known_code'])('F03 unlisted code %s is transient', (code) => {
+    expect(required('classifyVideoSourceLedgerFailure')(code)).toBe('transient');
   });
 
-  // Codes the design does not settle; each is a question in test plan §76.
-  it.todo('F04 source_ledger_failed: producer catch-all that mixes planner content rejections with IO and tool failures');
-  it.todo('F04 probe_invalid: ffprobe answered malformed JSON, tool fault or content');
-  it.todo('F04 classification_unknown and clock_unknown: raised both by the ledger producer (E4) and the presentation run (E5, which §10.2 maps to transient)');
-  it.todo('F04 metadata_unknown, audio_clock_unknown, packed_over_cap, packed_clock_mismatch: presentation-run codes that reach the ledger only through store.fail (E5)');
-  it.todo('F04 source_over_cap and source_ledger_over_cap: deterministic for the same bytes and config, but design §2 lifts both caps to cover every upload');
-  it.todo('F04 admission_invalid and source_missing: server or storage faults that a retry with the same admission may not change');
-  it.todo('F04 resource_limit and invalid_limits: planner ceiling codes, while design §2 removes the frame ceiling');
+  it('F04 every code outside the content list is transient (property)', () => {
+    const classify = required('classifyVideoSourceLedgerFailure');
+    const content = new Set<string>(CONTENT);
+    fc.assert(fc.property(fc.oneof(fc.stringMatching(/^[a-z][a-z0-9_]{0,40}$/), fc.constantFrom(...CONTENT)), (code) => {
+      expect(classify(code)).toBe(content.has(code) ? 'content' : 'transient');
+    }), { seed: 1306, numRuns: 300 });
+  });
 });

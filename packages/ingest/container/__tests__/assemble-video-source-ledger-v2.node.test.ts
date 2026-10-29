@@ -418,11 +418,15 @@ describe("A source ledger v2 and compact table from one pure producer call", () 
     expect(JSON.stringify(output.table).length).toBeLessThan(256);
   });
 
-  it("A15 rejects a source whose edits present no frame instead of storing an empty table", () => {
+  it.each([
+    ["only empty edits", [{ segmentDurationMovieTicks: "250", mediaTimeTrackTicks: "-1", mediaRateFixed16_16: "65536" }]],
+    ["an empty edit list", []],
+    ["only a zero-duration edit", [{ segmentDurationMovieTicks: "0", mediaTimeTrackTicks: "4096", mediaRateFixed16_16: "65536" }]],
+  ] as const)("A15 fails with content code no_presented_frames for %s instead of storing an empty table", (_, edits) => {
     const input = isoFixture("cfr.mp4");
-    input.metadata.tracks[0]!.edits = [{ segmentDurationMovieTicks: "250", mediaTimeTrackTicks: "-1", mediaRateFixed16_16: "65536" }];
+    input.metadata.tracks[0]!.edits = [...edits];
     const producer = assemble();
-    expect(() => producer(input)).toThrowError(Error);
+    expect(() => producer(input)).toThrowError(expect.objectContaining({ code: "no_presented_frames" }));
   });
 
   it("A16 is pure: frozen input unchanged, no clock read, identity passed through (property)", () => {
