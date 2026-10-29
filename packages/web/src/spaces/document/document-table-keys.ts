@@ -281,14 +281,12 @@ function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { bloc
   for (let d = $head.depth - 1; d > cell.depth; d -= 1) {
     if (before ? $head.index(d) !== 0 : $head.indexAfter(d) !== $head.node(d).childCount) edgeLine = false;
   }
-  let edgeCell: boolean;
-  if (dir === 'up' || dir === 'down') {
-    edgeCell = at.map.nextCell(cell.pos - at.tableStart, 'vert', before ? -1 : 1) === null;
-  } else {
-    const order: number[] = [];
-    at.table.forEach((row, rowOffset) => row.forEach((_cell, cellOffset) => order.push(at.tableStart + rowOffset + 1 + cellOffset)));
-    edgeCell = cell.pos === (before ? order[0] : order[order.length - 1]);
-  }
+  // Left and right read the table from the selection, the empty one
+  // `leaveEdgeTable` holds when it asks about them.
+  const edgeCell =
+    dir === 'up' || dir === 'down'
+      ? at.map.nextCell(cell.pos - at.tableStart, 'vert', before ? -1 : 1) === null
+      : !goToNextCell(before ? -1 : 1)(view.state);
   const onEdgeLine = dir === 'up' || dir === 'down' ? headOnEdgeLine(view, $head.pos, dir === 'up' ? -1 : 1) : view.endOfTextblock(dir);
   if (!edgeLine || !edgeCell || !onEdgeLine) return null;
   return { blockId: at.blockId, edge: before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1) };
