@@ -344,7 +344,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       offset(side === 'top' ? 0 : ({ rects }) => -rects.floating.height - TOOLBAR_GAP),
       shift({ boundary: viewport ?? undefined }),
     ],
-    whileElementsMounted: autoUpdate,
+    // The library runs this whenever both elements are mounted, open or not.
+    whileElementsMounted: inCell ? autoUpdate : undefined,
   });
   const { setReference, setFloating } = layerRefs;
   const holdBox = React.useCallback((el: HTMLDivElement | null): void => {
