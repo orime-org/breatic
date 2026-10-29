@@ -360,21 +360,55 @@ export async function readBody(url: string, response: Response, maxBytes: number
 }
 
 /**
+ * Read an answer's body as text. A refusal (non-2xx) is that status whatever its body does:
+ * one that cannot be read (over the limit, cut, stalled, stopped) reads as no words, as
+ * today's callers read it with `text().catch(() => "")`; a 2xx body's failure is thrown.
+ * @param url - Where it came from.
+ * @param response - The response.
+ * @param maxBytes - The most bytes read.
+ * @param idleMs - The longest wait for the next bytes.
+ * @param options - The caller's bounds.
+ * @returns The text.
+ * @throws {BodyTooLarge | NoAnswer | Aborted} As `readBody` throws, for a 2xx answer only.
+ */
+export async function answerText(url: string, response: Response, maxBytes: number, idleMs: number, options: SendOptions): Promise<string> {
+  try {
+    return new TextDecoder().decode(await readBody(url, response, maxBytes, idleMs, options));
+  } catch (error) {
+    if (response.status >= 200 && response.status < 300) throw error;
+    return "";
+  }
+}
+
+/**
+ * A response body parsed as JSON.
+ * @param text - The body.
+ * @returns The value, or undefined when it is absent or not JSON.
+ */
+export function parsed(text: string | undefined): unknown {
+  if (text === undefined) return undefined;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Send a request and read a JSON body within limits; any non-2xx is a failure.
  * @param request - The request.
  * @param options - Replay, abort, deadline and body limits.
  * @returns The parsed body.
  * @throws {NotSent} When the request never left.
  * @throws {NoAnswer} When no complete answer came.
- * @throws {HttpStatus} When the status is not 2xx (after any allowed resends).
- * @throws {BodyTooLarge} When the body exceeds the limit.
+ * @throws {HttpStatus} When the status is not 2xx (after any allowed resends), with no words when its body could not be read.
+ * @throws {BodyTooLarge} When a 2xx body exceeds the limit.
  * @throws {Aborted} When the signal fired or the deadline passed.
  * @throws {SyntaxError} When a 2xx body is not JSON.
  */
 export async function fetchJson(request: OutgoingRequest, options: ReadOptions): Promise<unknown> {
   const response = await send(request, options);
-  const bytes = await readBody(request.url, response, options.maxBodyBytes, options.idleMs, options);
-  const text = new TextDecoder().decode(bytes);
+  const text = await answerText(request.url, response, options.maxBodyBytes, options.idleMs, options);
   if (response.status < 200 || response.status >= 300) {
     throw new HttpStatus(request.url, response.status, text);
   }

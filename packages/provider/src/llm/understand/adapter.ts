@@ -9,10 +9,8 @@
 
 import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
-import type { Cost } from "@provider/cost.js";
 import { HttpStatus } from "@provider/http/errors.js";
-import { deliver, readBody, type OutgoingRequest } from "@provider/http/request.js";
-import { parsed } from "@provider/llm/switching.js";
+import { answerText, deliver, parsed, type OutgoingRequest } from "@provider/http/request.js";
 
 /** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
 export interface UploadedFile {
@@ -64,20 +62,16 @@ export type Reading = { text: string; finishReason: FinishReason } | { error: un
 /**
  * The upstream answered something provider cannot use (design 3.5): a Files API step
  * that ended without what it promised, or a 2xx model answer that cannot be read. The
- * call stops there; `cost` is what that answer was billed, when it was a model answer.
+ * call stops there; a model answer's cost was recorded where it arrived.
  */
 export class UnreadableAnswer extends Error {
-  readonly cost?: Cost;
-
   /**
    * Record what the error carries.
    * @param reason - What was unusable.
-   * @param cost - What the answer was billed, for a model answer.
    */
-  constructor(reason: string, cost?: Cost) {
+  constructor(reason: string) {
     super(reason);
     this.name = "UnreadableAnswer";
-    if (cost !== undefined) this.cost = cost;
   }
 }
 
@@ -158,13 +152,12 @@ export class AnswerUnread extends Error {
 export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCall, "deadlineAt" | "signal">): Promise<Answered> {
   const bounds = { replaySafe: false, deadlineAt: call.deadlineAt, signal: call.signal };
   const response = await deliver(request, bounds);
-  let bytes: Uint8Array;
+  let text: string;
   try {
-    bytes = await readBody(request.url, response, MAX_ANSWER_BYTES, Math.max(1, call.deadlineAt - Date.now()), bounds);
+    text = await answerText(request.url, response, MAX_ANSWER_BYTES, Math.max(1, call.deadlineAt - Date.now()), bounds);
   } catch (error) {
     throw new AnswerUnread(request.url, response.status, error);
   }
-  const text = new TextDecoder().decode(bytes);
   return { url: request.url, status: response.status, body: parsed(text), text, headers: response.headers };
 }
 

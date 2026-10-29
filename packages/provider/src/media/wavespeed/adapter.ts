@@ -14,7 +14,7 @@ import type { UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { fetchJson, readBody, send } from "@provider/http/request.js";
+import { answerText, fetchJson, parsed, send } from "@provider/http/request.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 
@@ -95,19 +95,6 @@ const resultSchema = z.looseObject({
 });
 
 /**
- * JSON text parsed, or undefined when it is not JSON.
- * @param text - The text.
- * @returns The value.
- */
-function jsonOf(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
  * Submit one prediction; resent only on a 408 or 429, which the upstream did not process.
  * A 2xx whose answer cannot be read (cut, not JSON, no id and no outputs) is NoAnswer: sent,
  * outcome unknown (design 3.4).
@@ -127,15 +114,14 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
   const { maxBodyBytes, idleMs } = limits(bounds);
   let text: string;
   try {
-    text = new TextDecoder().decode(await readBody(url, response, maxBodyBytes, idleMs, options));
+    text = await answerText(url, response, maxBodyBytes, idleMs, options);
   } catch (error) {
-    if (!ok) throw error;
     throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} accepted the submit and its answer could not be read`, error));
   }
   if (!ok) throw new HttpStatus(url, response.status, text);
-  const parsed = submittedSchema.safeParse(jsonOf(text));
-  const id = parsed.success && parsed.data.data.id !== "" ? parsed.data.data.id : undefined;
-  const outputs = parsed.success && (parsed.data.data.outputs ?? []).length > 0 ? parsed.data.data.outputs! : undefined;
+  const read = submittedSchema.safeParse(parsed(text));
+  const id = read.success && read.data.data.id !== "" ? read.data.data.id : undefined;
+  const outputs = read.success && (read.data.data.outputs ?? []).length > 0 ? read.data.data.outputs! : undefined;
   if (id === undefined && outputs === undefined) throw new NoAnswer(url, new BilledAnswerLost(`${reach.name} answered no prediction id and no outputs it could read`));
   return { predictionId: id, outputs };
 }
@@ -207,11 +193,7 @@ const MODEL_NOT_FOUND = "Model not found.";
  */
 export function modelNotFound(error: HttpStatus): boolean {
   if (error.status !== 400) return false;
-  try {
-    return (JSON.parse(error.body) as { message?: unknown } | null)?.message === MODEL_NOT_FOUND;
-  } catch {
-    return false;
-  }
+  return (parsed(error.body) as { message?: unknown } | null | undefined)?.message === MODEL_NOT_FOUND;
 }
 
 /**

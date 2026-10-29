@@ -13,9 +13,9 @@ import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { boundSignal, readBody, send } from "@provider/http/request.js";
+import { answerText, boundSignal, parsed, readBody, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, costRefOf, InBandError, parsed, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
+import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
 import { costedOf } from "@provider/llm/understand/openrouter.js";
@@ -498,10 +498,9 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const response = await send({ url, method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body }, bounds);
       let text: string;
       try {
-        text = new TextDecoder().decode(await readBody(url, response, Number.MAX_SAFE_INTEGER, Math.max(1, bounds.deadlineAt - Date.now()), bounds));
+        text = await answerText(url, response, Number.MAX_SAFE_INTEGER, Math.max(1, bounds.deadlineAt - Date.now()), bounds);
       } catch (error) {
-        // A 2xx was billed though its body was lost; a refusal was not.
-        if (!response.ok) throw error;
+        // A 2xx was billed though its body was lost; a refusal's lost body reads as no words.
         throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error));
       }
       if (!response.ok) return { status: response.status, body: text };
