@@ -424,6 +424,37 @@ describe('presentation admission requesting the source ledger v2 (inner#1306 §7
     expect(queueAdd).toHaveBeenCalledTimes(1);
   });
 
-  it.todo('D05 a read of a finished source whose ledger failed transiently: design §2 says the next admission re-produces it and §10.2 shows the panel a retry button, but leaves open whether an ordinary read admits by itself or only the retry does');
-  it.todo('D06 the retry (E7) entry point: design §10.2 says retry and admission share one admission entry, but names no server route or domain function for the panel retry');
+  it('D05 a read of a finished source whose ledger failed transiently does not admit and projects the failure; admission is the accept path', async () => {
+    const failed = { state: 'failed', ...identity, errorCode: 'source_ledger_invalid' };
+    ingestAnswers({ presentation, attempt: completed, sourceLedger: failed });
+    const got = await resolveVideoPresentation(input);
+    expect(got.sourceLedger).toEqual(failed);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'read' }));
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('D06 the retry is the existing repair accept: it requests the ledger and returns the new pending ledger job', async () => {
+    videoPresentationAtIngest.mockResolvedValue(ledgerOnly);
+    const got = await repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'retry-press' });
+    const request = videoPresentationAtIngest.mock.calls[0]![2] as { action: string; repair?: boolean; limits: { sourceLedger?: unknown }; sourceLedgerURL?: string; sourceLedgerTableURL?: string };
+    expect(request).toMatchObject({ action: 'accept', repair: true });
+    expect(request.limits.sourceLedger).toBeDefined();
+    expect(request.sourceLedgerURL).toBe(`https://assets.example.test/${videoSourceLedgerKeyFor(asset.storageKey)}`);
+    expect(request.sourceLedgerTableURL).toBe(`https://assets.example.test/${tableKeyFor(asset.storageKey)}`);
+    expect(got.sourceLedger).toEqual(ledgerOnly.sourceLedger);
+    expect(got.attempt).toEqual({ jobId: 'ledger-only', deadlineAt: 1900000000000 });
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'ledger-only' }), expect.objectContaining({ jobId: 'ledger-only' }));
+  });
+
+  it('D06 two concurrent retries queue the one producer job the ingest store accepted, never their own proposed ids', async () => {
+    videoPresentationAtIngest.mockResolvedValue(ledgerOnly);
+    const [a, b] = await Promise.all([
+      repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'press-a' }),
+      repairVideoPresentation({ ...input, sourceFingerprint: asset.contentHash, requestId: 'press-b' }),
+    ]);
+    expect(a.sourceLedger).toEqual(ledgerOnly.sourceLedger);
+    expect(b.attempt).toEqual(a.attempt);
+    expect(new Set(queueAdd.mock.calls.map(([, job]) => (job as { jobId: string }).jobId))).toEqual(new Set(['ledger-only']));
+  });
 });

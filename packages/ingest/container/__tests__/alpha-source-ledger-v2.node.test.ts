@@ -291,6 +291,25 @@ describe('source ledger v2 producer ordering and output (inner#1306 §77)', () =
     expect(await handle(changed)).toEqual({ status: 500, value: { ok: false, error: 'presentation_failed' } });
   });
 
-  it.todo('V12 ISO audio track selection for audioEdits: design §5 says the ledger records the audio track\'s own edit list but not how the audio stream ffprobe reports is matched to an ISO track id, nor which track wins when there are several');
-  it.todo('V13 the edge outbound handler that receives the one PUT and calls writeVideoSourceLedger, and executePresentation passing sourceLedgerOutputURL: not wired today (media-container.ts:211-219) and no workerd harness runs executePresentation');
+  it.each([
+    ['the only audio stream', [{ index: 4, id: '0x2', codec_type: 'audio', codec_name: 'aac' }], 2],
+    ['the first of two audio streams', [{ index: 4, id: '0x2', codec_type: 'audio', codec_name: 'aac' }, { index: 5, id: '0x3', codec_type: 'audio', codec_name: 'aac' }], 2],
+    ['the first audio stream in ffprobe order, not the lowest track id', [{ index: 4, id: '0x3', codec_type: 'audio', codec_name: 'aac' }, { index: 5, id: '0x2', codec_type: 'audio', codec_name: 'aac' }], 3],
+  ] as const)('V12 audio edits describe the ISO track of %s (the consumer maps 0:a:0)', async (_name, audio, trackId) => {
+    const video = iso.tracks[0]!;
+    iso.tracks.push({ ...structuredClone(video), trackId: 2, mediaTimescale: '48000', edits: [{ segmentDurationMovieTicks: '2000', mediaTimeTrackTicks: '1024', mediaRateFixed16_16: '65536' }] });
+    iso.tracks.push({ ...structuredClone(video), trackId: 3, mediaTimescale: '48000', edits: [{ segmentDurationMovieTicks: '1000', mediaTimeTrackTicks: '0', mediaRateFixed16_16: '131072' }] });
+    raw.streams.push(...audio.map((stream) => ({ ...stream })));
+    const body = job();
+    expect(await runAlphaPresentation(body)).toEqual({ ok: true });
+    const physical = physicalOwner.parsePhysicalVideoProbe({ ...raw, streams: raw.streams }, physicalBytes);
+    const assemble = (audioTrackId: number | null): VideoSourceLedgerV2 => assemblyOwner.assembleVideoSourceLedgerV2({ kind: 'iso_bmff', sourceFingerprint: body.sourceFingerprint,
+      attempt: { jobId: body.jobId, deadlineAt: body.deadlineAt }, metadata: iso, physical, audioTrackId }).ledger;
+    const expected = assemble(trackId);
+    expect(expected.audioEdits).not.toEqual(assemble(trackId === 2 ? 3 : 2).audioEdits);
+    expect(expected.audioEdits).not.toBeNull();
+    expect(ledger().value).toEqual(expected);
+  });
+
+  it.todo('V13 executePresentation passing sourceLedgerOutputURL and registering the ledger outbound host: verified in the real-app run at affected-scope verification');
 });
