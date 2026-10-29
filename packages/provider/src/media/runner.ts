@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import { candidatesOf, parseProviderConfig, type MediaBinding, type ProviderConfig } from "@provider/config/schema.js";
+import { candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
@@ -281,11 +281,9 @@ function outputUrls(outputs: readonly unknown[]): string[] {
  * @param provider - The instance.
  * @param options - Limits on the media it reads.
  * @returns The runner.
- * @throws {ProviderConfigError} When the instance's configuration is invalid.
  */
 export function createMediaRunner(provider: Provider, options: MediaRunnerOptions): MediaRunner {
-  const config: ProviderConfig = parseProviderConfig(provider.options.config);
-  const { keyOf } = provider.options;
+  const { config, keyOf } = provider;
   const inFlight = new Map<string, { count: number; waiting: (() => void)[] }>();
 
   /**

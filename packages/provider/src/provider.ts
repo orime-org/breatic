@@ -40,7 +40,10 @@ export interface ProviderOptions {
 
 /** One provider instance (design 3). */
 export interface Provider {
-  readonly options: ProviderOptions;
+  /** The validated configuration, deployment overrides applied. */
+  readonly config: ProviderConfig;
+  /** The caller's key reader. */
+  readonly keyOf: (envName: string) => string | undefined;
   /** A model's upstreams in effective weight order, each saying whether its key is configured. */
   availability(model: string): Availability;
   /**
@@ -82,7 +85,8 @@ export function createProvider(options: ProviderOptions): Provider {
    */
   const pricingRules = (model: string): PricingRules => ({ model, upstreams: (config.models[model] ?? []).map(pricingOf) });
   return {
-    options,
+    config,
+    keyOf: options.keyOf,
     availability,
     assertBindsCatalog: (catalog) => assertBindsCatalog(config, catalog),
     pricingRules,
