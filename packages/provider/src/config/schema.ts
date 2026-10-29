@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
-import { isPricingRule } from "@provider/pricing/estimate.js";
+import { hasLlmAdapter } from "@provider/llm/vendors.js";
 import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
@@ -11,10 +11,14 @@ const weights = z.record(z.string(), z.number().int().min(0));
 const weighted = z.strictObject({ upstream: z.string(), weight: z.number().int().min(0) });
 
 /**
- * A pricing rule provider can evaluate. Kept as `unknown` in the types, so a
- * caller's yaml reads in as it is; the check runs at load.
+ * A pricing rule provider can evaluate (pricing/estimate.ts PricingRule): checked at load, an
+ * unknown key refused by name, and kept as `unknown` in the types so a caller's yaml reads in
+ * as it is; its readers take it as a PricingRule.
  */
-const pricingRule = z.custom<unknown>((value) => isPricingRule(value), { message: "is not a valid pricing rule" });
+const pricingRule = z
+  .unknown()
+  .pipe(z.strictObject({ kind: z.literal("formula"), base_price: z.number(), formula: z.string(), discount_rate: z.number() }))
+  .transform((rule): unknown => rule);
 
 const upstreamSchema = z.strictObject({
   kind: z.string().min(1),
@@ -125,28 +129,19 @@ const inputSchema = z.strictObject({
 export type UpstreamDecl = z.infer<typeof upstreamSchema>;
 /** How one of our params is written for one upstream. */
 export type ParamBinding = z.infer<typeof paramSchema>;
-/** What the element step asks the understand model to write about each reference image. */
-export type DescribeBinding = z.infer<typeof describeSchema>;
-/** One extra upstream call of a binding, before or after the model's own call (design 4.2, 6.2). */
-export type ExtraStepBinding = z.infer<typeof extraStepSchema>;
 /** One model bound to one upstream (design 4.2). */
 export type MediaBinding = z.infer<typeof bindingSchema>;
 /** The raw provider configuration, as read from the yaml files by the caller. */
 export type ProviderConfigInput = z.input<typeof inputSchema>;
-/** The deployment's weight overrides (design 4.4): per media model, and per LLM route prefix. */
-export type RoutingOverride = z.infer<typeof routingSchema>;
 /** One LLM route: the first whose prefix matches a model id wins. */
 export type LlmRoute = z.infer<typeof llmRouteSchema>;
-/** The LLM routing file (design 4.3). */
-export type LlmConfigInput = z.infer<typeof llmSchema>;
-/** One model's direct token prices, USD per million tokens. */
-export type LlmPrice = z.infer<typeof llmPriceSchema>;
 
 /** The validated configuration, with deployment overrides applied. */
 export interface ProviderConfig {
   upstreams: Record<string, UpstreamDecl>;
   models: Record<string, MediaBinding[]>;
-  llm: Required<Pick<LlmConfigInput, "routes" | "understand_routes" | "vendor_ids" | "openrouter_backends" | "prices" | "gemini_inline_max_bytes" | "gemini_file_poll_ms">>;
+  /** The LLM routing file (design 4.3), every field filled. */
+  llm: Required<z.infer<typeof llmSchema>>;
 }
 
 /** The catalog facts a binding is checked against: each model's params and the values each offers. */
@@ -273,6 +268,14 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
   };
   for (const prefix of Object.keys(raw.routing?.llm ?? {})) {
     if (!llm.routes.some((r) => r.prefix === prefix)) problems.push(`LLM route "${prefix}": the override names a prefix no route has`);
+  }
+  for (const route of llm.routes) {
+    for (const { upstream } of route.upstreams) {
+      const kind = raw.upstreams[upstream]?.kind;
+      if (kind !== undefined && !hasLlmAdapter(kind)) {
+        problems.push(`LLM route "${route.prefix}": upstream "${upstream}" is of kind "${kind}", which no LLM adapter speaks to`);
+      }
+    }
   }
   for (const route of llm.understand_routes) {
     for (const { upstream } of route.upstreams) {

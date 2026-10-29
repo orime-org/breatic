@@ -13,7 +13,7 @@ const ADAPTERS: Readonly<Record<string, UnderstandAdapter>> = { google: googleUn
  * @returns True when an understand adapter speaks to it.
  */
 export function hasUnderstandAdapter(kind: string): boolean {
-  return ADAPTERS[kind] !== undefined;
+  return Object.hasOwn(ADAPTERS, kind);
 }
 
 /**
@@ -23,7 +23,6 @@ export function hasUnderstandAdapter(kind: string): boolean {
  * @throws {Error} When provider reads no media through upstreams of that kind.
  */
 export function understandAdapterOf(kind: string): UnderstandAdapter {
-  const adapter = ADAPTERS[kind];
-  if (adapter === undefined) throw new Error(`No understand adapter speaks to upstreams of kind "${kind}"`);
-  return adapter;
+  if (!hasUnderstandAdapter(kind)) throw new Error(`No understand adapter speaks to upstreams of kind "${kind}"`);
+  return ADAPTERS[kind]!;
 }

@@ -231,9 +231,17 @@ const VENDORS: Readonly<Record<string, Vendor>> = {
  * @throws {Error} When provider has no LLM adapter of that kind.
  */
 export function vendorOf(kind: string): Vendor {
-  const vendor = VENDORS[kind];
-  if (vendor === undefined) throw new Error(`No LLM adapter speaks to upstreams of kind "${kind}"`);
-  return vendor;
+  if (!hasLlmAdapter(kind)) throw new Error(`No LLM adapter speaks to upstreams of kind "${kind}"`);
+  return VENDORS[kind]!;
+}
+
+/**
+ * Whether an LLM adapter speaks to upstreams of a kind.
+ * @param kind - The upstream kind, as the configuration names it.
+ * @returns True when one does.
+ */
+export function hasLlmAdapter(kind: string): boolean {
+  return Object.hasOwn(VENDORS, kind);
 }
 
 /**
