@@ -27,7 +27,7 @@ export type EstimateBound = "exact" | "at_least" | "at_most" | "per_thousand_cha
 
 /** What one upstream would charge for a run. */
 export interface Estimate {
-  costUsd: number;
+  usd: number;
   bound: EstimateBound;
   upstream: string;
 }
@@ -201,11 +201,11 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput): Promise<
   const usd = await priceAt(input.prompt, true);
   const everyRun = await priceAt(input.prompt, false);
   if (textPriced) {
-    if (everyRun === 0) return { costUsd: await priceAt(SAMPLE_TEXT, false), bound: "per_thousand_chars", upstream: rule.upstream };
+    if (everyRun === 0) return { usd: await priceAt(SAMPLE_TEXT, false), bound: "per_thousand_chars", upstream: rule.upstream };
     unknown = true;
   }
-  if (unknown) return { costUsd: everyRun, bound: "at_least", upstream: rule.upstream };
-  return { costUsd: usd, bound: ownReused || stepReused ? "at_most" : "exact", upstream: rule.upstream };
+  if (unknown) return { usd: everyRun, bound: "at_least", upstream: rule.upstream };
+  return { usd, bound: ownReused || stepReused ? "at_most" : "exact", upstream: rule.upstream };
 }
 
 /**
@@ -248,7 +248,7 @@ export async function orderByPrice(rules: PricingRules, availability: Availabili
     if (!configured || rule === undefined) continue;
     out.push({ ...(await estimateOn(rule, input)), weight });
   }
-  return out.sort((a, b) => a.costUsd - b.costUsd || a.weight - b.weight);
+  return out.sort((a, b) => a.usd - b.usd || a.weight - b.weight);
 }
 
 /**
@@ -263,7 +263,7 @@ export async function orderByPrice(rules: PricingRules, availability: Availabili
 export async function estimateCost(rules: PricingRules, availability: Availability, input: EstimateInput, route: Route): Promise<Estimate | null> {
   if (route.mode === "cheapest") {
     const [head] = await orderByPrice(rules, availability, input);
-    return head === undefined ? null : { costUsd: head.costUsd, bound: head.bound, upstream: head.upstream };
+    return head === undefined ? null : { usd: head.usd, bound: head.bound, upstream: head.upstream };
   }
   const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
   const chosen = route.mode === "upstream" ? configured.find((u) => u.upstream === route.upstream) : configured.find((u) => ruleOf(rules, u.upstream) !== undefined);

@@ -708,7 +708,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         placeholders: [],
         durationsMissing: [],
       });
-      candidates = candidates.map((c) => ({ ...c, estimateUsd: estimates.find((e) => e.upstream === c.upstream)?.costUsd }));
+      candidates = candidates.map((c) => ({ ...c, estimateUsd: estimates.find((e) => e.upstream === c.upstream)?.usd }));
     }
     return planRoute(model, chosen, candidates);
   };
