@@ -8,6 +8,7 @@ import { db, createQueue, defaultJobOpts, maintenanceRepo as repo, type ReclaimS
 import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { storageReclaimRepo } from "@breatic/domain";
 import { maintenanceAvailability, maintenanceConfig, maintenanceNow, getMaintenanceDependencies } from "@server/modules/maintenance/dependencies.js";
+import { checkKeptHead } from "@server/modules/maintenance/kept-head.js";
 import { qualify } from "@server/modules/maintenance/qualification.js";
 
 /**
@@ -114,13 +115,10 @@ export async function preview(ids: string[], requestedBy: string): Promise<Maint
       if (!maintenanceAvailability().configured)
         reason = "executor_unavailable";
       else {
-        try {
-          if (await getMaintenanceDependencies().storage.head(row.keptStorageKey) !== "present")
-            reason = "kept_missing";
-        }
-        catch {
-          reason = "storage_error";
-        }
+        reason = await checkKeptHead(getMaintenanceDependencies().storage, {
+          stage: "preview", requestedBy, operationKey: null, previewId: null,
+          candidateIds: [row.id], storageKeys: [row.storageKey], keptStorageKey: row.keptStorageKey,
+        });
       }
     }
     items.push({
@@ -187,12 +185,11 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
       const keptKeys = [...new Set(checkedPreview.items.map(item => item.keptStorageKey))];
       for (let offset = 0; offset < keptKeys.length; offset += 4) {
         const results = await Promise.all(keptKeys.slice(offset, offset + 4).map(async (key) => {
-          try {
-            return await storage.head(key) === "present" ? null : "kept_missing";
-          }
-          catch {
-            return "storage_error";
-          }
+          const candidates = checkedPreview.items.filter(item => item.keptStorageKey === key);
+          return checkKeptHead(storage, {
+            stage: "submit", requestedBy: input.requestedBy, operationKey: input.key, previewId: input.previewId,
+            candidateIds: candidates.map(item => item.id), storageKeys: candidates.map(item => item.storageKey), keptStorageKey: key,
+          });
         }));
         physicalReason = results.find(result => result !== null) ?? null;
         if (physicalReason)
