@@ -311,6 +311,12 @@ describe("error messages name the address without its query (DD 33)", () => {
   });
 });
 
+describe("error messages name a label from our own code as given", () => {
+  it.each(["wavespeed", "the model call"])("an abort while waiting on %s names it", (label) => {
+    expect(new Aborted(label).message).toContain(label);
+  });
+});
+
 describe("the body limit at its edge", () => {
   /**
    * A server answering a JSON string body of exactly this many bytes.
