@@ -108,7 +108,7 @@ export interface SeatMember {
  * @param instanceId - The instance holding it.
  * @returns `{userId}:{arrivedAtMs}:{instanceId}:{socketId}`.
  */
-export function seatMember(holder: SeatHolder, instanceId: string): string {
+function seatMember(holder: SeatHolder, instanceId: string): string {
   return `${seatPrefix(holder.userId)}${holder.arrivedAtMs}:${instanceId}:${holder.socketId}`;
 }
 
@@ -117,7 +117,7 @@ export function seatMember(holder: SeatHolder, instanceId: string): string {
  * @param userId - The person.
  * @returns `{userId}:`.
  */
-export function seatPrefix(userId: string): string {
+function seatPrefix(userId: string): string {
   return `${userId}:`;
 }
 
@@ -225,11 +225,11 @@ export type TakeSeatResult =
 /** Something a pong's renewal found that its caller has to act on. */
 export type SeatRefreshResult =
   /** A retried arrival took one of this person's earlier seats. */
-  | { documentName: string; member: string; outcome: "replaced"; replaced: string }
+  | { documentName: string; outcome: "replaced"; replaced: string }
   /** A retried arrival found `liveCount` seats taken under its `cap`. */
-  | { documentName: string; member: string; outcome: "full"; liveCount: number; cap: number }
+  | { documentName: string; outcome: "full"; liveCount: number; cap: number }
   /** A held seat was gone and `liveCount` seats taken under its `cap`. */
-  | { documentName: string; member: string; outcome: "lost"; liveCount: number; cap: number };
+  | { documentName: string; outcome: "lost"; liveCount: number; cap: number };
 
 /** Whether a person holds a seat; `unknown` when Redis could not answer. */
 export type OwnSeat = "yes" | "no" | "unknown";
@@ -322,14 +322,6 @@ interface SeatEntry {
   /** Whether a script for this entry is in flight. */
   inFlight: boolean;
 }
-
-/** A script reply once applied to its entry. */
-type Applied =
-  | { kind: "gone" }
-  | { kind: "error" }
-  | { kind: "seated" }
-  | { kind: "replaced"; replaced: string }
-  | { kind: "full"; liveCount: number };
 
 /**
  * Build a cross-instance seat registry over the given Redis.
@@ -443,28 +435,28 @@ export function createConnectionRegistry(
     documentName: string,
     entry: SeatEntry,
     mode: ScriptMode,
-  ): Promise<Applied> {
+  ): Promise<TakeSeatResult> {
     let reply: unknown;
     try {
       reply = await sendScript(documentName, entry, mode);
     } catch (err) {
-      if (!isCurrent(socketId, documentName, entry)) return { kind: "gone" };
+      if (!isCurrent(socketId, documentName, entry)) return { outcome: "gone" };
       entry.inFlight = false;
       const tag = mode === "arrive" ? "conn_registry_take_failed" : "conn_registry_refresh_failed";
       logger.warn({ err, documentName, tag }, "connection-registry seat script failed (fail-open)");
-      return { kind: "error" };
+      return { outcome: "unknown" };
     }
-    if (!isCurrent(socketId, documentName, entry)) return { kind: "gone" };
+    if (!isCurrent(socketId, documentName, entry)) return { outcome: "gone" };
     entry.inFlight = false;
     const [status, detail] = reply as [string, string];
     if (status === "full") {
       drop(socketId, documentName);
       await release(documentName, entry.member, "conn_registry_release_failed");
-      return { kind: "full", liveCount: Number(detail) };
+      return { outcome: "full", liveCount: Number(detail) };
     }
     entry.state = "held";
-    if (status === "replaced") return { kind: "replaced", replaced: detail };
-    return { kind: "seated" };
+    if (status === "replaced") return { outcome: "replaced", replaced: detail };
+    return { outcome: "seated" };
   }
 
   /**
@@ -493,19 +485,7 @@ export function createConnectionRegistry(
       bySocket.set(holder.socketId, seats);
     }
     seats.set(documentName, entry);
-    const applied = await run(holder.socketId, documentName, entry, "arrive");
-    switch (applied.kind) {
-      case "gone":
-        return { outcome: "gone" };
-      case "error":
-        return { outcome: "unknown" };
-      case "seated":
-        return { outcome: "seated" };
-      case "replaced":
-        return { outcome: "replaced", replaced: applied.replaced };
-      case "full":
-        return { outcome: "full", liveCount: applied.liveCount };
-    }
+    return run(holder.socketId, documentName, entry, "arrive");
   }
 
   /**
@@ -537,15 +517,15 @@ export function createConnectionRegistry(
       if (entry.inFlight) continue;
       entry.inFlight = true;
       const mode: ScriptMode = entry.state === "arriving" ? "arrive" : "refresh";
-      const { member, cap } = entry;
+      const { cap } = entry;
       pending.push(
-        run(socketId, documentName, entry, mode).then((applied): SeatRefreshResult | null => {
-          if (applied.kind === "replaced") {
-            return { documentName, member, outcome: "replaced", replaced: applied.replaced };
+        run(socketId, documentName, entry, mode).then((result): SeatRefreshResult | null => {
+          if (result.outcome === "replaced") {
+            return { documentName, outcome: "replaced", replaced: result.replaced };
           }
-          if (applied.kind !== "full") return null;
+          if (result.outcome !== "full") return null;
           const outcome = mode === "arrive" ? "full" : "lost";
-          return { documentName, member, outcome, liveCount: applied.liveCount, cap };
+          return { documentName, outcome, liveCount: result.liveCount, cap };
         }),
       );
     }

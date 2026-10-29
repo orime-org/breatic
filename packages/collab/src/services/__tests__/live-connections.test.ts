@@ -151,7 +151,7 @@ describe("live connections — a socket outlives the documents on it (inner#1034
     // by the same pong, only the first gets the answer.
     const refreshSeats = vi
       .fn()
-      .mockResolvedValueOnce([{ documentName: "doc-b", member: "u-1:1:i1:s-1", outcome: "lost", liveCount: 2, cap: 2 }])
+      .mockResolvedValueOnce([{ documentName: "doc-b", outcome: "lost", liveCount: 2, cap: 2 }])
       .mockResolvedValue([]);
     const table = createLiveConnections({
       onPong: createPongHandler({

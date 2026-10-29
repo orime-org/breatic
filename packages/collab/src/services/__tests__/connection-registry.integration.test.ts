@@ -389,7 +389,7 @@ describe("A · the script's branches", () => {
     await seed(DOC, T, m("u2", 1000, "i2", "x2"));
 
     const mark = w.log.length;
-    expect(await reg.refreshSocket("s1")).toEqual([{ documentName: DOC, member: mine, outcome: "lost", liveCount: 2, cap: 2 }]);
+    expect(await reg.refreshSocket("s1")).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
     expect(await has(DOC, m("u1", 1000, "i2", "sa"))).toBe(true);
     await w.flush();
     const slice = w.log.slice(mark);
@@ -408,7 +408,7 @@ describe("A · the script's branches", () => {
     await seed(DOC, T + 61_000, m("u2", 1000, "i2", "x2"));
     await seed(DOC, T + 61_000, m("u3", 1000, "i2", "x3"));
 
-    expect(await reg.refreshSocket("s1")).toEqual([{ documentName: DOC, member: m("u1", 5000, "i1", "s1"), outcome: "lost", liveCount: 2, cap: 2 }]);
+    expect(await reg.refreshSocket("s1")).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u2", 1000, "i2", "x2"), m("u3", 1000, "i2", "x3")].sort());
   });
 });
@@ -601,7 +601,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
 
     clock = T + 30_000;
     expect(await reg.refreshSocket("s9")).toEqual([
-      { documentName: DOC, member: m("u1", 2000, "i1", "s9"), outcome: "replaced", replaced: m("u1", 1000, "i1", "sa") },
+      { documentName: DOC, outcome: "replaced", replaced: m("u1", 1000, "i1", "sa") },
     ]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 2000, "i1", "s9"), m("u2", 1000, "i2", "x2")].sort());
   });
@@ -630,7 +630,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     });
 
     expect(await reg.refreshSocket("s2")).toEqual([
-      { documentName: DOC, member: m("u1", 2000, "i1", "s2"), outcome: "full", liveCount: 2, cap: 2 },
+      { documentName: DOC, outcome: "full", liveCount: 2, cap: 2 },
     ]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 3000, "i1", "s3"), m("u2", 500, "i1", "sb")].sort());
   });
@@ -646,7 +646,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
     });
 
     expect(await reg.refreshSocket("s1")).toEqual([
-      { documentName: DOC, member: m("u1", 1000, "i1", "s1"), outcome: "full", liveCount: 2, cap: 2 },
+      { documentName: DOC, outcome: "full", liveCount: 2, cap: 2 },
     ]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 2000, "i1", "s2"), m("u2", 500, "i1", "sb")].sort());
     const mark = w.log.length;
@@ -786,7 +786,7 @@ describe("A · Redis errors, client timeouts and retries", () => {
 
     expect(await reg.refreshSocket("s1")).toEqual([]);
     expect(await reg.refreshSocket("s2")).toEqual([]);
-    expect(await reg.refreshSocket("s3")).toEqual([{ documentName: DOC, member: m("u3", 3000, "i1", "s3"), outcome: "lost", liveCount: 2, cap: 2 }]);
+    expect(await reg.refreshSocket("s3")).toEqual([{ documentName: DOC, outcome: "lost", liveCount: 2, cap: 2 }]);
     expect(Object.keys(await members(DOC)).sort()).toEqual([m("u1", 1000, "i1", "s1"), m("u2", 2000, "i1", "s2")].sort());
   });
 });
@@ -1075,18 +1075,19 @@ class World {
   }
 
   /**
-   * Act on a pong's answers the way the pong handler does.
+   * Act on a pong's answers the way the pong handler does. Every connection
+   * has a socket of its own, so whatever the pong returns is about `conn`.
+   * @param conn - The connection whose socket answered.
    * @param items - What refreshSocket returned.
    */
-  onPong(items: RefreshItem[]): void {
+  onPong(conn: ModelConn, items: RefreshItem[]): void {
     for (const item of items) {
-      const conn = this.byMember(item.member);
-      if (!conn) {
-        this.problems.push(`pong answered for unknown member ${item.member}`);
+      if (item.documentName !== DOC) {
+        this.problems.push(`pong answered for unknown document ${item.documentName}`);
         continue;
       }
       if (item.outcome === "full" || item.outcome === "lost") conn.readOnly = true;
-      if (item.outcome === "replaced") this.checkReplaced(item.member, String(item.replaced));
+      if (item.outcome === "replaced") this.checkReplaced(conn.member, String(item.replaced));
     }
   }
 
@@ -1131,7 +1132,7 @@ class World {
    * @param conn - The connection.
    */
   pong(conn: ModelConn): void {
-    void this.regs[conn.inst].refreshSocket(conn.socketId).then((items) => this.onPong(items));
+    void this.regs[conn.inst].refreshSocket(conn.socketId).then((items) => this.onPong(conn, items));
   }
 
   /**
