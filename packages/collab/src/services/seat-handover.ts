@@ -9,9 +9,9 @@
  *
  *   handover      another of the same person's connections replaced its seat;
  *                 the replacing instance asks over the channel below
- *   race lost     the `connected` hook's seat script found the document full
- *   seat lost     a pong found the seat gone and the document full (or a
- *                 retried arrival found it full)
+ *   race lost     an arrival's seat script (in the `connected` hook, or
+ *                 retried on a pong) found the document full
+ *   seat lost     a pong found a held seat gone and the document full
  *
  * The last two also share their log line, through {@link demoteForSeat}, so
  * one tag carries the same fields wherever it is written.
@@ -116,19 +116,10 @@ export function demoteForSeat(
   connection: DemotableConnection,
   degrade: SeatDegrade,
 ): void {
-  const { reason, socketId, userId, documentName, liveCount, cap } = degrade;
-  demoteConnection(documentName, connection);
+  demoteConnection(degrade.documentName, connection);
   logger.warn(
-    {
-      socketId,
-      userId,
-      documentName,
-      projectId: parseDocName(documentName)?.projectId,
-      liveCount,
-      cap,
-      reason,
-    },
-    reason,
+    { ...degrade, projectId: parseDocName(degrade.documentName)?.projectId },
+    degrade.reason,
   );
 }
 
