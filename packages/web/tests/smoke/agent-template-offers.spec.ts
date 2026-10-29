@@ -5,9 +5,9 @@
  * The agent offers a character template (inner#1807): when the reader asks
  * for consistent shots of one character outright, it reads one of the
  * character templates and the proposal built on it lands; when the reader
- * attaches a photo of a character and only asks for several videos of it, the
- * reply or a landed proposal brings up keeping that character the same with
- * one of them, unasked.
+ * attaches a photo of a character and only asks for two videos of it, what
+ * lands carries that character into both videos, whether through a template
+ * or a setup of its own.
  *
  * Real model turns:
  *
@@ -16,25 +16,45 @@
 import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
+import { GENERATION_TEMPLATES } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
 
-/** The character templates, by id and by the name the reader sees. */
-const CHARACTER_TEMPLATES: Record<string, string> = {
-  'costume-sheet': 'Character turnaround',
-  'character-bible': 'Character sheet',
-  'expression-sheet': 'Expression sheet',
-  'character-design-from-text': 'Character from a description',
-  'single-view-refs-scene': 'Character in a video scene',
-  'identity-locked-sequence': 'One character, three shots',
-  'character-showcase-orbit': 'Character orbit',
-};
+/** The ids of the templates that serve the character goal. */
+const CHARACTER_TEMPLATES = new Set(GENERATION_TEMPLATES.filter((template) => template.goal === 'character').map((template) => template.id));
 
 let page: Page;
 let spaceId = '';
+
+/** A proposal as the agent sent it: its nodes and the edges between them, by index. */
+interface Proposal {
+  nodes: { type?: string; role?: string; material?: string; fills?: Record<string, number[]> }[];
+  edges: { fromIndex: number; toIndex: number }[];
+}
+
+/**
+ * How many generated videos in a proposal draw on the material it carries,
+ * through an edge or a filled slot, directly or through generations between.
+ * @param proposal - The proposal.
+ * @returns The count.
+ */
+function videosCarryingMaterial(proposal: Proposal): number {
+  const fed = new Map<number, number[]>();
+  const feed = (to: number, from: number): void => {
+    fed.set(to, [...(fed.get(to) ?? []), from]);
+  };
+  for (const edge of proposal.edges) feed(edge.toIndex, edge.fromIndex);
+  proposal.nodes.forEach((node, at) => {
+    for (const from of Object.values(node.fills ?? {}).flat()) feed(at, from);
+  });
+  const carries = (at: number, seen: Set<number>): boolean =>
+    proposal.nodes[at]?.material !== undefined ||
+    (fed.get(at) ?? []).some((from) => !seen.has(from) && carries(from, new Set([...seen, from])));
+  return proposal.nodes.filter((node, at) => node.type === 'video' && node.role === 'generate' && carries(at, new Set([at]))).length;
+}
 
 /** What the newest stored conversation's turn did and said. */
 interface Turn {
@@ -42,6 +62,8 @@ interface Turn {
   tools: string[];
   /** Each template id its landed proposals named. */
   templates: string[];
+  /** The landed proposals, as sent. */
+  landed: Proposal[];
   /** Each template id it read in full, counting only reads that answered. */
   read: string[];
   /** Everything it wrote or asked, as one text. */
@@ -64,17 +86,18 @@ async function lastTurn(p: Page): Promise<Turn> {
         type?: string;
         text?: string;
         output?: unknown;
-        input?: { id?: string; nodes?: { template?: { id?: string } }[] } & Record<string, unknown>;
+        input?: { id?: string; nodes?: ({ template?: { id?: string } } & Proposal['nodes'][number])[]; edges?: Proposal['edges'] } & Record<string, unknown>;
       }[];
     }[];
     const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
+    // A refused proposal answers { placed: false } and never reaches the canvas.
+    const landed = parts.filter(
+      (part) => part.type === 'tool-propose_canvas_action' && (part.output as { placed?: boolean } | undefined)?.placed === true,
+    );
     return {
       tools: parts.flatMap((part) => (part.type?.startsWith('tool-') ? [part.type.slice('tool-'.length)] : [])),
-      templates: parts
-        // A refused proposal answers { placed: false } and never reaches the canvas.
-        .filter((part) => part.type === 'tool-propose_canvas_action' && (part.output as { placed?: boolean } | undefined)?.placed === true)
-        .flatMap((part) => part.input?.nodes ?? [])
-        .flatMap((node) => (node.template?.id ? [node.template.id] : [])),
+      templates: landed.flatMap((part) => part.input?.nodes ?? []).flatMap((node) => (node.template?.id ? [node.template.id] : [])),
+      landed: landed.map((part) => ({ nodes: part.input?.nodes ?? [], edges: part.input?.edges ?? [] })),
       read: parts.flatMap((part) =>
         part.type === 'tool-get_generation_template' && typeof part.output === 'string' && part.input?.id ? [part.input.id] : [],
       ),
@@ -143,23 +166,19 @@ test('asked outright for consistent shots of one character, it reads a character
     'I have one photo of my character, a courier in a red coat. Make three shots of her in a row and keep her exactly the same in all of them. Do not ask me anything, just propose it.',
   );
   const turn = await settledTurn(page);
-  const proposed = turn.templates.filter((id) => id in CHARACTER_TEMPLATES);
+  const proposed = turn.templates.filter((id) => CHARACTER_TEMPLATES.has(id));
   expect(proposed, `a landed proposal named a character template. Named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).not.toEqual([]);
   // The template it proposed is one it read in full first.
   expect(turn.read, `read: ${turn.read.join(', ')}`).toEqual(expect.arrayContaining(proposed));
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('given a character photo and asked for several videos of it, it brings up keeping that character the same, unasked @needs-model', async () => {
+test('given a character photo and asked for two videos of her, it lands both videos carrying that character @needs-model', async () => {
   test.setTimeout(240_000);
-  await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café.', 'character.jpg');
+  await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café. Do not ask me anything, just propose it.', 'character.jpg');
   const turn = await settledTurn(page);
-  // Offered where the reader sees it: a landed proposal built on it, or its name in the reply or a question.
-  const named = Object.entries(CHARACTER_TEMPLATES).filter(
-    ([id, name]) => turn.templates.includes(id) || turn.said.includes(id) || turn.said.toLowerCase().includes(name.toLowerCase()),
-  );
-  expect(
-    named,
-    `the turn offered a character template. Proposed: ${turn.templates.join(', ')}; read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`,
-  ).not.toEqual([]);
+  // What the reader asked for is solved when both videos draw on her photo,
+  // whether through a template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
+  expect(carrying, `videos drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);
 });
