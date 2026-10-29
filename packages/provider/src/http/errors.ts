@@ -4,11 +4,12 @@
 /**
  * An address as error messages name it: origin and path, the query and fragment marked as
  * dropped, as shared's redactUrl writes it; they can carry keys and upload sessions.
- * @param url - The address.
+ * @param url - The address, or a label that is not one.
  * @returns The address to name.
  */
 function named(url: string): string {
-  if (!URL.canParse(url)) return "an address that does not parse";
+  // A label from our own code (an upstream's name, "the model call") is written as given.
+  if (!URL.canParse(url)) return url;
   const parsed = new URL(url);
   return `${parsed.origin}${parsed.pathname}${parsed.search !== "" ? "?<redacted>" : ""}${parsed.hash !== "" ? "#<redacted>" : ""}`;
 }
