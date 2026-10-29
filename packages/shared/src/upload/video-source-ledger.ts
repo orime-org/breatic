@@ -162,16 +162,6 @@ export const videoSourceLedgerReceiptSchema: z.ZodType<VideoSourceLedgerReceipt>
   sha256: hash, contentType: z.literal('application/json'), physicalFrameCount: positiveCount, occurrenceCount: ordinal,
 });
 
-/** Independent capability state, carrying no frame arrays or native claims. */
-export const videoSourceLedgerStateSchema: z.ZodType<VideoSourceLedgerState> = z.union([
-  z.null(),
-  z.discriminatedUnion('state', [
-    z.strictObject({ state: z.literal('pending'), ...identity }),
-    z.strictObject({ state: z.literal('ready'), receipt: videoSourceLedgerReceiptSchema }),
-    z.strictObject({ state: z.literal('failed'), ...identity, errorCode: z.string().regex(/^[a-z][a-z0-9_]*$/) }),
-  ]),
-]);
-
 const safeTick = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
 const httpsUrl = z.url().refine(value => value.startsWith('https://'));
 const identityV2 = { schemaVersion: z.literal(2), sourceFingerprint: hash, producerVersion: z.literal(2), attempt };
@@ -241,6 +231,22 @@ export const videoSourceLedgerReceiptV2Schema: z.ZodType<VideoSourceLedgerReceip
   table: z.strictObject({ url: httpsUrl, sha256: hash, size: positiveCount, frameCount: positiveCount }),
 }).refine(value => value.table.url !== value.url, { message: 'The compact table and the full ledger are different objects' });
 
+const errorCode = z.string().regex(/^[a-z][a-z0-9_]*$/);
+/** Independent capability state, carrying no frame arrays or native claims; version 1 states stay accepted until their readers move to version 2. */
+export const videoSourceLedgerStateSchema: z.ZodType<VideoSourceLedgerState> = z.union([
+  z.null(),
+  z.discriminatedUnion('state', [
+    z.strictObject({ state: z.literal('pending'), ...identityV2 }),
+    z.strictObject({ state: z.literal('ready'), receipt: videoSourceLedgerReceiptV2Schema }),
+    z.strictObject({ state: z.literal('failed'), ...identityV2, errorCode }),
+  ]),
+  z.discriminatedUnion('state', [
+    z.strictObject({ state: z.literal('pending'), ...identity }),
+    z.strictObject({ state: z.literal('ready'), receipt: videoSourceLedgerReceiptSchema }),
+    z.strictObject({ state: z.literal('failed'), ...identity, errorCode }),
+  ]),
+]);
+
 // Codes the source bytes decide: producing again from the same bytes fails the same way.
 const CONTENT_FAILURES: ReadonlySet<string> = new Set([
   'source_ledger_format_unknown', 'source_ledger_selection_unknown', 'unsupported_rate', 'invalid_edit', 'invalid_clock', 'invalid_ledger',
@@ -291,4 +297,14 @@ export function parseVideoSourceLedger(value: unknown, receipt: VideoSourceLedge
  */
 export function videoSourceLedgerKeyFor(key: string): string {
   return `${key}.video-source-ledger.v1.json`;
+}
+
+/**
+ * Derive the compact presentation table key, stored beside the source ledger, from the registered canonical storage key.
+ * @param key - Original registered canonical storage key.
+ * @returns The deterministic versioned table key.
+ * @throws {never} Never.
+ */
+export function videoSourceLedgerTableKeyFor(key: string): string {
+  return `${key}.video-presentation-table.v1.json`;
 }

@@ -952,6 +952,10 @@ export {
   videoSourceLedgerStateSchema,
   parseVideoSourceLedger,
   videoSourceLedgerKeyFor,
+  videoSourceLedgerTableKeyFor,
+  videoSourceLedgerV2Schema,
+  videoSourceLedgerReceiptV2Schema,
+  classifyVideoSourceLedgerFailure,
 } from "@shared/upload/video-source-ledger.js";
 export {
   readVideoSourceLedger,
@@ -965,6 +969,10 @@ export type {
   VideoSourceLedgerReceipt,
   VideoSourceLedgerCompanion,
   VideoSourceLedgerState,
+  VideoSourceLedgerStateV2,
+  VideoSourceLedgerReceiptV2,
+  VideoSourceLedgerV2,
+  VideoSourceLedgerFailureClass,
   VideoSourceLedgerParseLimits,
   VideoSourceLedgerProcessLimits,
 } from "@shared/upload/video-source-ledger-types.js";

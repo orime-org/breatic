@@ -144,22 +144,26 @@ export type VideoSourceLedgerCompanion = VideoSourceLedgerBase & ({
   physical: MatroskaPhysicalVideoProbe;
   container: { kind: 'matroska'; timestampScaleNs: string; track: MatroskaTrackMetadata; blocks: MatroskaBlockMetadata[] };
 });
-/** Independent capability state; ready means a stored receipt exists. */
+/** Independent capability state; ready means a stored receipt exists. Version 1 states stay readable until their readers move to version 2. */
 export type VideoSourceLedgerState = null | {
   state: 'pending'; schemaVersion: 1; sourceFingerprint: string; producerVersion: 1; attempt: VideoSourceLedgerAttempt;
 } | { state: 'ready'; receipt: VideoSourceLedgerReceipt } | {
   state: 'failed'; schemaVersion: 1; sourceFingerprint: string; producerVersion: 1; attempt: VideoSourceLedgerAttempt; errorCode: string;
+} | VideoSourceLedgerStateV2;
+/** Version 2 capability state: ready names the full ledger and the compact table written with it. */
+export type VideoSourceLedgerStateV2 = {
+  state: 'pending'; schemaVersion: 2; sourceFingerprint: string; producerVersion: 2; attempt: VideoSourceLedgerAttempt;
+} | { state: 'ready'; receipt: VideoSourceLedgerReceiptV2 } | {
+  state: 'failed'; schemaVersion: 2; sourceFingerprint: string; producerVersion: 2; attempt: VideoSourceLedgerAttempt; errorCode: string;
 };
 /** Mandatory caller ceilings without operational defaults in the parser. */
 export interface VideoSourceLedgerParseLimits { maxPhysicalFrames: number; maxOccurrences: number }
 
-/** Frozen operations ceilings for one original source-ledger preparation. */
+/** Frozen operations budgets for one source-ledger production; there is no frame-count ceiling. */
 export interface VideoSourceLedgerProcessLimits {
   maxBytes: number;
   probeStdoutBytes: number;
   metadataBytes: number;
-  maxPhysicalFrames: number;
-  maxOccurrences: number;
   isoBoxCount: number;
   matroskaElementCount: number;
   matroskaMaxBlocks: number;
