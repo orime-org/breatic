@@ -21,6 +21,7 @@ import {
   Type,
   X,
 } from 'lucide-react';
+import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -42,6 +43,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popo
 import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
 import { documentBarsOf, mediaEvent, mediaPanelShown, useDocumentBars } from '@web/spaces/document/document-bars';
 import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
@@ -325,6 +327,34 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     const room = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
     setSide(room >= bar.offsetHeight + TOOLBAR_GAP ? 'top' : 'inside');
   }, [viewport]);
+  // A table clips what reaches past it (its scroller scrolls sideways), so in
+  // a cell the toolbar's layer is placed against the viewport, `fixed`, at
+  // the same place against the media and kept inside the body. It stays in
+  // the block's own elements: React reads a pointer moving between portals
+  // nested in portals as leaving them.
+  const [inCell, setInCell] = React.useState(false);
+  React.useLayoutEffect(() => {
+    setInCell(host.closest(`[data-node-type='${DOC_TABLE}']`) !== null);
+  }, [host]);
+  const { refs: layerRefs, floatingStyles: layerStyles } = useFloating({
+    open: inCell,
+    placement: 'top',
+    strategy: 'fixed',
+    middleware: [
+      offset(side === 'top' ? 0 : ({ rects }) => -rects.floating.height - TOOLBAR_GAP),
+      shift({ boundary: viewport ?? undefined }),
+    ],
+    whileElementsMounted: autoUpdate,
+  });
+  const { setReference, setFloating } = layerRefs;
+  const holdBox = React.useCallback((el: HTMLDivElement | null): void => {
+    frame.current = el;
+    setReference(el);
+  }, [setReference]);
+  const holdLayer = React.useCallback((el: HTMLDivElement | null): void => {
+    setInlineActions(el);
+    setFloating(el);
+  }, [setFloating]);
   // Placed when it shows, and again on every scroll while it is up: the room
   // above the media changes as the body moves under it.
   React.useEffect(() => {
@@ -687,7 +717,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       className={`flex w-full ${sized ? (JUSTIFY[alignment] ?? 'justify-center') : ''}`}
     >
       <div
-        ref={frame}
+        ref={holdBox}
         data-testid='doc-media-box'
         data-media-box=''
         data-controls-mode={type === 'video' ? floating ? 'floating' : 'inline' : undefined}
@@ -707,18 +737,21 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             block and the bar stays up. It takes the pointer only while the bar is shown, so
             the line above the media is clickable the rest of the time. */}
         <div
-          ref={setInlineActions}
+          ref={holdLayer}
           data-media-chrome=''
           onPointerEnter={pointerOn}
           onPointerLeave={pointerOff}
+          style={inCell ? layerStyles : undefined}
           className={cn(
-            'absolute left-1/2 z-10 -translate-x-1/2',
             toolbarShown ? 'pointer-events-auto' : 'pointer-events-none',
-            side === 'top' ? 'bottom-full pb-2' : 'top-2',
+            inCell
+              // Over the table's row and column handles (10), as the
+              // selection bubble bar is: both are summoned by the reader's
+              // hand and go when it leaves.
+              ? ['z-20', side === 'top' && 'pb-2']
+              : ['absolute left-1/2 z-10 -translate-x-1/2', side === 'top' ? 'bottom-full pb-2' : 'top-2'],
           )}
-        >
-
-        </div>
+        />
         {/* The media itself, which is what a frame goes around: the caption
             under it is the block's text, not its content area. */}
         {type === 'video' ? (

@@ -1214,6 +1214,50 @@ test('T7: a picture picked from the plus on an empty line in a narrow cell lands
   expect(sizes.media).toBeLessThanOrEqual(sizes.inner + 1);
 });
 
+test('T7: the toolbar of a picture in the first cell of a table stands whole over the page, past the table\'s edges', async () => {
+  await openFreshDocument(page);
+  await insertTable(page, 1, 3);
+  const cell = page.locator(`${EDITOR} td`).first();
+  const box = await cell.boundingBox();
+  await page.mouse.click(box!.x + 50, box!.y + box!.height / 2);
+  await page.mouse.move(5, 5);
+  await page.mouse.move(box!.x + 50, box!.y + box!.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-plus').click();
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByTestId('doc-block-insert-image').click();
+  await (await chooser).setFiles({
+    name: 'portrait.png',
+    mimeType: 'image/png',
+    buffer: readFileSync(resolve(__dirname, '../fixtures/portrait.png')),
+  });
+  const media = cell.locator('[data-content-type="image"] [data-media-box]');
+  await expect(media).toBeVisible({ timeout: 60_000 });
+
+  await page.mouse.move(5, 5);
+  const shown = await media.boundingBox();
+  await page.mouse.move(shown!.x + shown!.width / 2, shown!.y + shown!.height / 2, { steps: 3 });
+  const toolbar = page.getByTestId('doc-media-toolbar');
+  await expect(toolbar).toHaveAttribute('data-shown', 'true');
+
+  // Each corner of the toolbar is what the page shows at that point: nothing
+  // clips it and nothing covers it.
+  const corners = await toolbar.evaluate((bar) => {
+    const r = bar.getBoundingClientRect();
+    return [[r.left + 2, r.top + 2], [r.right - 2, r.top + 2], [r.left + 2, r.bottom - 2], [r.right - 2, r.bottom - 2]]
+      .map(([x, y]) => bar.contains(document.elementFromPoint(x!, y!)));
+  });
+  expect(corners).toEqual([true, true, true, true]);
+
+  // The pointer goes from the picture up onto the toolbar and it stays up to
+  // be used.
+  const remove = page.getByTestId('doc-media-delete');
+  const target = await remove.boundingBox();
+  await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 6 });
+  await expect(toolbar).toHaveAttribute('data-shown', 'true');
+  await remove.click();
+  await expect(page.locator(`${EDITOR} [data-content-type="image"]`)).toHaveCount(0);
+});
+
 test('T14: a selection run from a cell out of the table with the keyboard takes the whole table, and a typed key replaces it', async () => {
   await openFreshDocument(page);
   await smallTable(page);
