@@ -16,8 +16,7 @@ import { verifyAlphaPackedClock, type AlphaPresentationClock } from '@ingest/con
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { inspectMatroskaFile } from '@ingest/container/matroska-metadata.js';
 import { parsePhysicalVideoProbe, parseMatroskaPhysicalVideoProbe } from '@ingest/container/physical-video-probe.js';
-import { assembleVideoSourceLedger } from '@ingest/container/assemble-video-source-ledger.js';
-import type { VideoSourceLedgerCompanion } from '@shared/upload/video-source-ledger-types.js';
+import { assembleVideoSourceLedgerV2 } from '@ingest/container/assemble-video-source-ledger.js';
 
 /** A stable failure code, with raw diagnostics remaining in container logs. */
 class AlphaFailure extends Error {
@@ -99,14 +98,28 @@ async function sourceMetadata(input: string, job: AlphaRunBody, signal: AbortSig
 }
 
 /**
- * Assemble and upload the original source's independent complete frame companion.
+ * The ISO track id of the first audio stream in ffprobe order, the one the consumer maps as `0:a:0`.
+ * @param raw - Complete default-view stream metadata.
+ * @returns Its track id, or null when the source has no audio stream.
+ * @throws {AlphaFailure} When the first audio stream carries no ISO track id.
+ */
+function firstAudioTrackId(raw: Record<string, unknown>): number | null {
+  const audio = (raw.streams as unknown[]).map(record).find(stream => stream.codec_type === 'audio');
+  if (audio === undefined) return null;
+  const id = typeof audio.id === 'string' && /^0x[0-9a-f]+$/i.test(audio.id) ? Number.parseInt(audio.id.slice(2), 16) : Number.NaN;
+  if (!Number.isSafeInteger(id) || id <= 0) throw new AlphaFailure('source_ledger_selection_unknown');
+  return id;
+}
+
+/**
+ * Assemble the source ledger v2 and upload it with its compact table in one write.
  * @param input - The same immutable downloaded source used by presentation.
  * @param directory - This original execution's temporary directory.
  * @param raw - Complete default-view metadata, retained separately from physical ISO.
- * @param job - Original identity and granted ledger-specific capabilities.
+ * @param job - Original identity and granted ledger budgets.
  * @param signal - The original IO lifetime.
- * @returns Nothing after the dedicated writer acknowledges the complete file.
- * @throws {Error} When exact source selection, metadata, planning or publication fails.
+ * @returns Nothing after the dedicated writer acknowledges both objects.
+ * @throws {Error} When exact source selection, metadata, planning or publication fails; planner errors carry their own `code`.
  */
 async function produceSourceLedger(input: string, directory: string, raw: Record<string, unknown>, job: AlphaRunBody, signal: AbortSignal): Promise<void> {
   const limits = job.limits.sourceLedger!;
@@ -123,27 +136,44 @@ async function produceSourceLedger(input: string, directory: string, raw: Record
   const frames = await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', ...(iso ? ['-ignore_editlist', '1'] : []),
     '-select_streams', integer(video.index), '-show_frames', '-show_entries', 'frame=media_type,stream_index,pts,pkt_pos', '-of', 'json', input],
   { signal, stdoutBytes: limits.probeStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes });
-  const base = { sourceFingerprint: job.sourceFingerprint, attempt: { jobId: job.jobId, deadlineAt: job.deadlineAt },
-    limits: { maxPhysicalFrames: limits.maxPhysicalFrames, maxOccurrences: limits.maxOccurrences } };
+  const base = { sourceFingerprint: job.sourceFingerprint, attempt: { jobId: job.jobId, deadlineAt: job.deadlineAt } };
   beforeStage(job, signal);
-  let companion: VideoSourceLedgerCompanion;
+  let assembled: ReturnType<typeof assembleVideoSourceLedgerV2>;
   if (iso) {
     const metadata = await inspectIsoBmffFile(input, { metadataBytes: limits.metadataBytes, boxCount: limits.isoBoxCount });
-    companion = assembleVideoSourceLedger({ ...base, kind: 'iso_bmff', metadata, physical: parsePhysicalVideoProbe(physicalMetadata, frames) });
+    assembled = assembleVideoSourceLedgerV2({ ...base, kind: 'iso_bmff', metadata, physical: parsePhysicalVideoProbe(physicalMetadata, frames), audioTrackId: firstAudioTrackId(raw) });
   } else {
     const metadata = await inspectMatroskaFile(input, { metadataBytes: limits.metadataBytes, elementCount: limits.matroskaElementCount, maxBlocks: limits.matroskaMaxBlocks });
-    companion = assembleVideoSourceLedger({ ...base, kind: 'matroska', metadata, physical: parseMatroskaPhysicalVideoProbe(physicalMetadata, frames, metadata) });
+    assembled = assembleVideoSourceLedgerV2({ ...base, kind: 'matroska', metadata, physical: parseMatroskaPhysicalVideoProbe(physicalMetadata, frames, metadata) });
   }
-  const bytes = Buffer.from(JSON.stringify(companion), 'utf8');
-  if (bytes.length > limits.maxBytes) throw new AlphaFailure('source_ledger_over_cap');
+  const table = Buffer.from(JSON.stringify(assembled.table), 'utf8');
+  const ledger = Buffer.from(JSON.stringify(assembled.ledger), 'utf8');
+  if (ledger.length > limits.maxBytes || table.length > limits.maxBytes) throw new AlphaFailure('source_ledger_over_cap');
   beforeStage(job, signal);
   const output = join(directory, 'source-ledger.json');
-  await writeFile(output, bytes);
+  // One write carries both objects: the compact table, then the full ledger.
+  await writeFile(output, Buffer.concat([table, ledger]));
   const destination = new URL(job.sourceLedgerOutputURL!);
-  for (const [key, value] of Object.entries({ producerVersion: companion.producerVersion, strategy: companion.strategy,
-    physicalFrameCount: companion.physical.frames.length, occurrenceCount: companion.presentation.frames.length })) destination.searchParams.set(key, String(value));
+  const frameCount = assembled.table.runs.reduce((total, run) => total + run.count, 0);
+  for (const [key, value] of Object.entries({ producerVersion: assembled.ledger.producerVersion, byteLength: ledger.length, tableByteLength: table.length,
+    tableFrameCount: frameCount })) destination.searchParams.set(key, String(value));
   beforeStage(job, signal);
   await put(destination.toString(), output, signal);
+}
+
+/**
+ * The code a ledger failure is reported with.
+ * @param cause - What the ledger production threw.
+ * @param job - The original deadline.
+ * @param signal - The original IO lifetime.
+ * @returns `expired` past the deadline, the planner's or our own stable code, otherwise `source_ledger_failed`.
+ * @throws {never} Never.
+ */
+function ledgerFailureCode(cause: unknown, job: AlphaRunBody, signal: AbortSignal): string {
+  if (signal.aborted || job.deadlineAt <= Date.now()) return 'expired';
+  if (cause instanceof AlphaFailure) return cause.code;
+  const code = (cause as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && /^[a-z][a-z0-9_]*$/.test(code) ? code : 'source_ledger_failed';
 }
 
 /**
@@ -255,8 +285,9 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
   let directory: string | undefined;
   let error: string | undefined;
   let ledgerError: string | undefined;
-  let ledgerFinished = false;
   const requestedLedger = job.limits.sourceLedger !== undefined || job.sourceLedgerOutputURL !== undefined || job.ledgerOnly === true;
+  // The ledger is produced only once the presentation is ready, so playback never waits for it.
+  let ready: { input: string; directory: string; raw?: Record<string, unknown> } | undefined;
   try {
     beforeStage(job, signal);
     if (requestedLedger && (job.limits.sourceLedger === undefined || job.sourceLedgerOutputURL === undefined ||
@@ -265,21 +296,10 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
     const input = join(directory, 'source');
     await download(job.sourceURL, input, signal);
     if ((await stat(input)).size > job.limits.maxSourceBytes) throw new AlphaFailure('source_over_cap');
-    let defaultMetadata: Record<string, unknown> | undefined;
-    if (requestedLedger) {
-      try {
-        defaultMetadata = await sourceMetadata(input, job, signal, job.limits.sourceLedger!.probeStdoutBytes);
-        await produceSourceLedger(input, directory, defaultMetadata, job, signal);
-      } catch (cause) {
-        ledgerError = signal.aborted || job.deadlineAt <= Date.now() ? 'expired' : cause instanceof AlphaFailure ? cause.code : 'source_ledger_failed';
-        console.error('source_ledger_failed', { err: cause, jobId: job.jobId, sourceFingerprint: job.sourceFingerprint });
-        await reportLedgerFailure(job, ledgerError);
-      }
-      ledgerFinished = true;
-    }
-    if (job.ledgerOnly !== true) {
+    if (job.ledgerOnly === true) ready = { input, directory };
+    else {
       beforeStage(job, signal);
-      const raw = defaultMetadata ?? await probe(input, job, signal, false);
+      const raw = await probe(input, job, signal, false);
       beforeStage(job, signal);
       if (pixelFormats === undefined) pixelFormats = JSON.parse((await runPlanCommand('ffprobe', ['-v', 'error', '-show_pixel_formats', '-of', 'json'], {
         signal, stdoutBytes: job.limits.probeStdoutBytes, stderrTailBytes: job.limits.stderrTailBytes,
@@ -330,21 +350,33 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
         beforeStage(job, signal);
         await put(job.outputURL, output, signal);
       }
+      ready = { input, directory, raw };
     }
   } catch (cause) {
     const observed = signal.aborted || job.deadlineAt <= Date.now() ? 'expired' : cause instanceof AlphaFailure ? cause.code : 'presentation_failed';
+    // A failed presentation produces no ledger; the store ends the pending ledger without this code.
     if (job.ledgerOnly !== true) error = observed;
-    if (requestedLedger && !ledgerFinished) {
+    else {
       ledgerError = observed;
       await reportLedgerFailure(job, ledgerError);
     }
     console.error('alpha_presentation_failed', { err: cause, jobId: job.jobId, sourceFingerprint: job.sourceFingerprint });
-  } finally {
-    if (directory !== undefined) await rm(directory, { recursive: true, force: true }).catch((err: unknown) => {
-      console.error('alpha_presentation_cleanup_failed', { err, jobId: job.jobId });
-      error ??= 'cleanup_failed';
-    });
   }
+  if (requestedLedger && ready !== undefined) {
+    try {
+      const raw = ready.raw ?? await sourceMetadata(ready.input, job, signal, job.limits.sourceLedger!.probeStdoutBytes);
+      await produceSourceLedger(ready.input, ready.directory, raw, job, signal);
+    } catch (cause) {
+      ledgerError = ledgerFailureCode(cause, job, signal);
+      console.error('source_ledger_failed', { err: cause, jobId: job.jobId, sourceFingerprint: job.sourceFingerprint });
+      await reportLedgerFailure(job, ledgerError);
+    }
+  }
+  // Cleanup runs after both phases; neither of them throws past its own catch.
+  if (directory !== undefined) await rm(directory, { recursive: true, force: true }).catch((err: unknown) => {
+    console.error('alpha_presentation_cleanup_failed', { err, jobId: job.jobId });
+    error ??= 'cleanup_failed';
+  });
   const afterCPU = await cpuUsec();
   const usage = { wallMs: Date.now() - startedAt, cpuUsec: beforeCPU === null || afterCPU === null ? null : Math.max(0, afterCPU - beforeCPU) };
   // Reporting a completed measurement is not another media subprocess and may
