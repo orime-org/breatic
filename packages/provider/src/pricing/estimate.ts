@@ -59,55 +59,38 @@ export const pricingRuleSchema = z.strictObject({
 /** How one call on one upstream is priced. */
 export type PricingRule = z.infer<typeof pricingRuleSchema>;
 
-/** What the browser needs to price a run on one upstream. */
-export interface UpstreamPricing {
-  upstream: string;
+/**
+ * What the browser needs to price a run on one upstream: the one description of the entry the
+ * model list carries, checked whole wherever it is read back.
+ */
+const upstreamPricingSchema = z.looseObject({
+  upstream: z.string(),
   /** The field the prompt is priced under; absent for a model that takes no prompt. */
-  prompt_field?: string;
+  prompt_field: z.string().optional(),
   /** Our param name to the upstream's field, for the params whose names differ. */
-  fields: Record<string, string>;
-  pricing: PricingRule;
+  fields: z.record(z.string(), z.string()),
+  pricing: pricingRuleSchema,
   /** Calls the run makes besides the model's own. */
-  steps: { for_param?: string; per_item?: boolean; reused?: boolean; pricing?: PricingRule }[];
+  steps: z.array(z.looseObject({
+    /** The param the step serves; the step is skipped when it carries nothing. */
+    for_param: z.string().optional(),
+    /** Whether the step runs once per item of its param. */
+    per_item: z.boolean().optional(),
+    /** Whether a cloned source lets a later run skip the step. */
+    reused: z.boolean().optional(),
+    pricing: pricingRuleSchema.optional(),
+  })),
   /** The param whose source, once cloned, lets a later run skip the model's own call. */
-  reused_by?: string;
-}
+  reused_by: z.string().optional(),
+});
+
+/** What the browser needs to price a run on one upstream. */
+export type UpstreamPricing = z.infer<typeof upstreamPricingSchema>;
+
+/** A model's pricing rules as the browser reads them back. */
+const pricingRulesSchema = z.looseObject({ model: z.string(), upstreams: z.array(upstreamPricingSchema) });
 
 const SAMPLE_TEXT = "x".repeat(1000);
-
-/**
- * Whether a value is a pricing rule provider can evaluate.
- * @param value - The value.
- * @returns True for a well-formed rule.
- */
-function isPricingRule(value: unknown): value is PricingRule {
-  return pricingRuleSchema.safeParse(value).success;
-}
-
-/**
- * Whether a value is one upstream's pricing as the provider writes it.
- * @param value - The value.
- * @returns True for a well-formed entry.
- */
-function isUpstreamPricing(value: unknown): value is UpstreamPricing {
-  if (typeof value !== "object" || value === null) return false;
-  const entry = value as Record<string, unknown>;
-  /**
-   * Whether a field is absent or a string.
-   * @param v - The field.
-   * @returns True when it is.
-   */
-  const optionalString = (v: unknown): boolean => v === undefined || typeof v === "string";
-  return typeof entry.upstream === "string"
-    && optionalString(entry.prompt_field)
-    && optionalString(entry.reused_by)
-    && typeof entry.fields === "object" && entry.fields !== null
-    && Object.values(entry.fields).every((f) => typeof f === "string")
-    && isPricingRule(entry.pricing)
-    && Array.isArray(entry.steps)
-    && entry.steps.every((step: unknown) => typeof step === "object" && step !== null
-      && ((step as { pricing?: unknown }).pricing === undefined || isPricingRule((step as { pricing?: unknown }).pricing)));
-}
 
 /**
  * The evaluator's shape of a rule.
@@ -225,12 +208,9 @@ function ruleOf(rules: PricingRules, upstream: string): UpstreamPricing | undefi
  * @throws {Error} When they are not pricing rules.
  */
 export function parsePricingRules(raw: unknown): PricingRules {
-  if (typeof raw !== "object" || raw === null) throw new Error("Pricing rules must be an object");
-  const { model, upstreams } = raw as { model?: unknown; upstreams?: unknown };
-  if (typeof model !== "string" || !Array.isArray(upstreams) || !upstreams.every(isUpstreamPricing)) {
-    throw new Error("Not a model's pricing rules");
-  }
-  return { model, upstreams };
+  const parsed = pricingRulesSchema.safeParse(raw);
+  if (!parsed.success) throw new Error(`Not a model's pricing rules: ${parsed.error.issues[0]?.message ?? "unknown"}`);
+  return { model: parsed.data.model, upstreams: parsed.data.upstreams };
 }
 
 /**
