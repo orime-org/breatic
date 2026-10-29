@@ -260,9 +260,11 @@ function collapseInCell(view: EditorView, dir: -1 | 1): boolean {
 type EdgeArrow = 'up' | 'down' | 'left' | 'right';
 
 /**
- * Where a caret on its way out of a table leaves it: on the first row going
- * up or the last going down, at the start of the first cell going left or the
- * end of the last going right — its block the cell's first or last at every
+ * Where a caret on its way out of a table leaves it: with no cell above it
+ * going up or below it going down (the map's next cell skips the missing
+ * cells of short rows), at the start of the first cell going left or the end
+ * of the last going right in reading order, as Tab and the table plugin's own
+ * horizontal arrow move — its block the cell's first or last at every
  * level down from the cell, a nested one included (`prosemirror-tables`
  * `atEndOfCell`), and on that line as far as the view says.
  * @param view - The editor view.
@@ -279,12 +281,16 @@ function tableExit(view: EditorView, $head: ResolvedPos, dir: EdgeArrow): { bloc
   for (let d = $head.depth - 1; d > cell.depth; d -= 1) {
     if (before ? $head.index(d) !== 0 : $head.indexAfter(d) !== $head.node(d).childCount) edgeLine = false;
   }
-  // The map's next cell skips the missing cells of short rows.
-  const rel = cell.pos - at.tableStart;
-  const edgeRow = edgeLine && at.map.nextCell(rel, 'vert', before ? -1 : 1) === null;
-  const edgeColumn = dir === 'left' || dir === 'right' ? at.map.nextCell(rel, 'horiz', dir === 'left' ? -1 : 1) === null : true;
+  let edgeCell: boolean;
+  if (dir === 'up' || dir === 'down') {
+    edgeCell = at.map.nextCell(cell.pos - at.tableStart, 'vert', before ? -1 : 1) === null;
+  } else {
+    const order: number[] = [];
+    at.table.forEach((row, rowOffset) => row.forEach((_cell, cellOffset) => order.push(at.tableStart + rowOffset + 1 + cellOffset)));
+    edgeCell = cell.pos === (before ? order[0] : order[order.length - 1]);
+  }
   const onEdgeLine = dir === 'up' || dir === 'down' ? headOnEdgeLine(view, $head.pos, dir === 'up' ? -1 : 1) : view.endOfTextblock(dir);
-  if (!edgeRow || !edgeColumn || !onEdgeLine) return null;
+  if (!edgeLine || !edgeCell || !onEdgeLine) return null;
   return { blockId: at.blockId, edge: before ? cell.before(cell.depth - 1) : cell.after(cell.depth - 1) };
 }
 

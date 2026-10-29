@@ -94,6 +94,21 @@ function grid(editor: Editor): string[][] {
 }
 
 /**
+ * The attributes of the cell holding some text.
+ * @param editor - The editor.
+ * @param text - Its words.
+ * @returns The attributes.
+ */
+function cellOfAttrs(editor: Editor, text: string): Record<string, unknown> {
+  let attrs: Record<string, unknown> = {};
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.spec['tableRole'] !== undefined && String(node.type.spec['tableRole']).includes('cell') && node.textContent === text) attrs = node.attrs;
+    return true;
+  });
+  return attrs;
+}
+
+/**
  * Sends a key through the editor's key handlers.
  * @param editor - The editor.
  * @param key - The key.
@@ -585,5 +600,105 @@ describe('Markdown of a short table (A17)', () => {
     const markdown = blocksMarkdown(editor as never, editor.document as never);
     expect(markdown).toContain('<table');
     expect(markdown).toContain('c2');
+  });
+});
+
+describe('arrow keys along reading order in a table that ends or starts the body (A17)', () => {
+  /**
+   * Opens an editor holding only a table.
+   * @param rows - The table's rows.
+   * @returns The editor.
+   */
+  function tableOnly(rows: TableInput['rows']): Editor {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [tableBlock({ rows })] as never);
+    return editor;
+  }
+
+  it('move right from a row\'s last cell into the next row, though no cell stands below it', () => {
+    const cases: [TableInput['rows'], string][] = [
+      [[{ cells: ['a1', 'b1'] }, { cells: ['a2'] }], 'b1'],
+      [[{ cells: ['a1', 'b1', 'c1'] }, { cells: ['a2', 'b2'] }], 'c1'],
+      [[{ cells: ['a1', { content: 'b1', props: { rowspan: 2 } }] }, { cells: ['a2'] }], 'b1'],
+    ];
+    for (const [rows, text] of cases) {
+      const editor = tableOnly(rows);
+      const view = editor.prosemirrorView!;
+      const cell = cellOf(editor, text);
+      view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(cell + view.state.doc.nodeAt(cell)!.nodeSize - 1), -1)));
+      view.endOfTextblock = (): boolean => true;
+      press(editor, 'ArrowRight');
+
+      expect(editor.document).toHaveLength(1);
+    }
+  });
+
+  it('move left from a row\'s first cell into the row above, though no cell stands above it', () => {
+    const editor = tableOnly([{ cells: ['a1'] }, { cells: ['a2', 'b2'] }]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(cellOf(editor, 'a2') + 1))));
+    view.endOfTextblock = (): boolean => true;
+    press(editor, 'ArrowLeft');
+
+    expect(editor.document).toHaveLength(1);
+  });
+});
+
+describe('repairs of a table beside a short one (A17)', () => {
+  it('keep a full table\'s width repair that came with a short table\'s', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c'] }] }),
+      tableBlock({ rows: [{ cells: [{ content: 'x1', props: { colwidth: [120] } }, 'y1'] }, { cells: ['x2', 'y2'] }] }),
+    ] as never);
+
+    expect(cellOfAttrs(editor, 'x2')['colwidth']).toEqual([120]);
+  });
+});
+
+describe('the header row of a short table with a header column (A17)', () => {
+  it('evens into header cells, as the header row switch reads it', () => {
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      tableBlock({ rows: [{ cells: ['h0'] }, { cells: ['r1'] }, { cells: ['s', 't', 'u'] }], headerRows: 1, headerCols: 1 }),
+    ] as never);
+    const missing = Array.from(editor.prosemirrorView!.dom.querySelectorAll('[data-doc-table-missing]'), (cell) => cell.tagName);
+    expect(missing).toEqual(['TH', 'TH', 'TD', 'TD']);
+    const tr = editor.prosemirrorState.tr;
+    squareTable(tr, tableOf(editor).pos);
+    editor.prosemirrorView!.dispatch(tr);
+
+    const row = (index: number): string[] => {
+      const found: string[] = [];
+      tableOf(editor).node.child(index).forEach((cell) => found.push(cell.type.name));
+      return found;
+    };
+    expect([row(0), row(1)]).toEqual([
+      ['docTableHeader', 'docTableHeader', 'docTableHeader'],
+      ['docTableHeader', 'docTableCell', 'docTableCell'],
+    ]);
+  });
+});
+
+describe('a stored column width of 0 (A12)', () => {
+  it('is drawn as no width, as a column edge drag draws it', () => {
+    const editor = open([{ cells: [{ content: 'all', props: { colspan: 3, colwidth: [0, 0, 170] } }] }]);
+    const table = editor.prosemirrorView!.dom.querySelector('table')!;
+
+    const cols = Array.from(table.querySelectorAll('colgroup col'), (col) => (col as HTMLElement).style.width);
+    expect(cols).toEqual(['', '', '170px']);
+    expect(table.style.width).toBe('');
   });
 });

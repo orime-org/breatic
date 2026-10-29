@@ -31,6 +31,7 @@ import {
   columnIsHeader,
   columnResizing,
   fixTables,
+  rowIsHeader,
   fixTablesKey,
   TableMap,
   tableEditing,
@@ -171,7 +172,8 @@ function drawColumns(colgroup: HTMLElement, table: HTMLElement, block: TableBloc
     for (const cell of row.children) {
       while ((held[column] ?? 0) > 0) column += 1;
       for (let k = 0; k < (cell.props.colspan ?? 1); k += 1, column += 1) {
-        if (widths[column] === undefined) widths[column] = cell.props.colwidth?.[k] ?? null;
+        // A stored 0 is no width, as the table plugin reads it.
+        if (widths[column] === undefined) widths[column] = cell.props.colwidth?.[k] || null;
         held[column] = cell.props.rowspan ?? 1;
       }
     }
@@ -386,9 +388,11 @@ function repairOf(doc: PMNode, tablePos: number): Transaction | undefined {
  * column, the table gains a column each time both type (prosemirror-tables
  * #249, y-prosemirror CAVEATS "Editor plugins that repair the document").
  * Repairs that set attributes (column widths, spans) or delete converge in
- * Yjs and go through. The plugin writes a table's repair in one transaction,
- * its attributes first and its added cells last, so for a short table the
- * steps before the first added cell are applied here. A table left short shows
+ * Yjs and go through. The plugin writes the repairs of every table it touched
+ * in one transaction, which is held back whole when any of them adds a cell;
+ * each table's repair writes its attributes first and its added cells last,
+ * so here every table left with a problem other than a missing cell gets the
+ * steps before its first added cell. A table left short shows
  * placeholders where its cells are missing (`missingCells`), and a command run
  * on it evens it first (`squareTable`).
  */
@@ -401,7 +405,7 @@ const holdTableRepairs = new Plugin({
     state.doc.descendants((table, tablePos) => {
       if (table.type.name !== DOC_TABLE) return true;
       const problems = TableMap.get(table).problems ?? [];
-      if (problems.some((problem) => problem.type === 'missing') && problems.some((problem) => problem.type !== 'missing')) {
+      if (problems.some((problem) => problem.type !== 'missing')) {
         const repair = repairOf(tr.doc, tr.mapping.map(tablePos));
         const steps = repair?.steps ?? [];
         const first = steps.findIndex(inserts);
@@ -439,13 +443,13 @@ function missingCell(tag: string, colwidth: unknown): () => HTMLElement {
     const cell = document.createElement(tag);
     cell.contentEditable = 'false';
     cell.dataset['docTableMissing'] = '';
-    if (Array.isArray(colwidth) && typeof colwidth[0] === 'number') cell.setAttribute('colwidth', String(colwidth[0]));
+    if (Array.isArray(colwidth) && typeof colwidth[0] === 'number' && colwidth[0] > 0) cell.setAttribute('colwidth', String(colwidth[0]));
     return cell;
   };
 }
 
 /** A cell a short row lacks, in the place it is drawn and evened into. */
-export interface MissingCell {
+interface MissingCell {
   /** Its offset in the table: the end of its row's content. */
   readonly at: number;
   /** Its row. */
@@ -463,7 +467,7 @@ export interface MissingCell {
  * @param table - The table.
  * @returns The missing cells.
  */
-export function missingCellsOf(table: PMNode): MissingCell[] {
+function missingCellsOf(table: PMNode): MissingCell[] {
   const found: MissingCell[] = [];
   const map = TableMap.get(table);
   for (const problem of map.problems ?? []) {
@@ -471,13 +475,16 @@ export function missingCellsOf(table: PMNode): MissingCell[] {
     let rowPos = 0;
     for (let index = 0; index < problem.row; index += 1) rowPos += table.child(index).nodeSize;
     const row = table.child(problem.row);
-    // The row's last cell's kind, unless that cell stands in a header column:
-    // the rule `addColumn` follows for a new column's cells.
+    // A header row's cells are headers, as the header row switch reads it
+    // (`headerOn`); otherwise the row's last cell's kind, unless that cell
+    // stands in a header column: the rule `addColumn` follows for a new
+    // column's cells.
     const last = row.lastChild;
     const lastAt = rowPos + row.nodeSize - 1 - (last?.nodeSize ?? 0);
     const header =
-      last?.type.name === DOC_TABLE_HEADER &&
-      !columnIsHeader(map, table, map.colCount(lastAt) + Number(last.attrs['colspan'] ?? 1) - 1);
+      (problem.row === 0 && rowIsHeader(map, table, 0)) ||
+      (last?.type.name === DOC_TABLE_HEADER &&
+        !columnIsHeader(map, table, map.colCount(lastAt) + Number(last.attrs['colspan'] ?? 1) - 1));
     for (let n = 0; n < problem.n; n += 1) {
       const column = row.childCount + n;
       let colwidth: unknown = null;
