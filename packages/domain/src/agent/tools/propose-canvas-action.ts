@@ -45,7 +45,6 @@ import {
   t,
   templateAnchor,
   templateGuideNode,
-  templateSkeleton,
   type CanvasProposal,
   type GenerationTemplate,
   type ProposalAnswer,
@@ -59,8 +58,8 @@ import { checkMaterial, checkNodeRole, markTypedAsWords } from "@domain/agent/to
 import { fixEdges, fixGroup, nodeLabel, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { aNode, chosenModelOf, routeEdges, spaced, waysOrNone } from "@domain/agent/tools/proposal-routing.js";
 import { anchoredInstances, checkTemplateInstances, type AnchoredInstance } from "@domain/agent/tools/template-consistency.js";
-import { expandAt, templatePlace, templateSegmentsText, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
-import { GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
+import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools/template-expansion.js";
+import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
@@ -432,45 +431,26 @@ export function renderProposalForModel(answer: ProposalAnswer): string {
 }
 
 /**
- * The templates as the agent reads them, generated from each one's skeleton:
- * its nodes, wiring, inputs, resources and follow-up steps, what it makes, and
- * each generate node's prompt in the reader's language, so the agent can
- * rewrite that prompt rather than write one from nothing.
- *
- * A prompt is shown as the segments a proposal sends, not as the box shows
- * it: the box adds words to a reference mark, and a model copying what it
- * reads would send those words back inside the label, or a bracket as text.
+ * The templates as one line each, what the agent weighs when choosing one:
+ * its id, goal and anchor type, what it makes, the words a reader asks for it
+ * with and when to offer it unasked (inner#1807). The full text is read with
+ * get_generation_template, so a turn carries every template's index but only
+ * the prompts of the template it means to propose.
  * @param templates - The registry.
  * @returns The paragraph appended to the tool's description.
  * @throws {never} Never.
  */
-function templateGuide(templates: readonly GenerationTemplate[]): string {
-  const described = templates.map((template) => {
-    const skeleton = templateSkeleton(template);
-    const anchor = templateAnchor(template);
-    const nodes = template.nodes.map((node) => {
-      const what = node.role === "generate" ? `generate ${node.type}, ${node.mode}, ${node.model}` : `source ${node.type} holding ${node.resource}`;
-      return `"${node.key}"${node.key === anchor.key ? " (anchor)" : ""}: ${what}`;
-    });
-    const edges = skeleton.edges.map((edge) => `"${edge.from}" into "${edge.to}" by "${edge.into ?? "pool"}"`);
-    const inputs = skeleton.inputs.map((input) => `"${input.key}" (${input.type}) into ${input.feeds.map((fed) => `"${fed}"`).join(", ")}`);
-    const steps = skeleton.steps.map((step) => t(`canvas.template.${template.id}.step.${step}`));
-    const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key)}`] : []));
-    return (
-      `${template.id}: ${template.agentNote}. Nodes: ${nodes.join("; ")}. ` +
-      `Edges: ${edges.length === 0 ? "none" : edges.join("; ")}. Inputs: ${inputs.length === 0 ? "none" : inputs.join("; ")}. ` +
-      `Steps after it generates: ${steps.length === 0 ? "none" : steps.join(" / ")}. Prompts, as segments: ${prompts.join("; ")}`
-    );
-  });
+function templateIndex(templates: readonly GenerationTemplate[]): string {
+  const lines = templates.map(
+    (template) =>
+      `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
+      `The reader asks for it with words like: ${template.triggers.asks.join("; ")}. ` +
+      `Offer it unasked when: ${template.triggers.offerWhen.join("; ")}.`,
+  );
   return (
-    "Templates: " +
-    described.join(" | ") +
-    ". To use one, send each of its nodes as a node: { id } in template on the anchor, { id, key } on each other node, " +
-    "and wire them as its edges say. Give each input a node of your own wired into the nodes it feeds; " +
-    "{ id, input } on that node is optional. A resource node lands holding the template's file: send it with no material. " +
-    "Leave out the mode and model you keep. Send each generate node's prompt as its own, rewritten in the language " +
-    "the reader writes in with their story or detail in it: fill a tweak segment with words or keep it for them. " +
-    "A template with steps gets a text node listing them when it is placed, so write no node for them."
+    `Templates: ${lines.join(" | ")} ` +
+    `Before proposing a template, read it with ${GET_GENERATION_TEMPLATE}: it gives the nodes, wiring, inputs and each prompt ` +
+    "in the reader's language, and how to send them."
   );
 }
 
@@ -482,8 +462,8 @@ export interface ProposeContext extends Record<string, unknown> {
 const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.string().min(1) });
 
 /**
- * The proposal tool, built per turn: its description carries the template
- * prompts in the reader's language, which only a turn knows.
+ * The proposal tool over a template registry: its description indexes the
+ * registry's templates.
  * @param templates - The template registry it reads.
  * @returns The tool.
  */
@@ -518,7 +498,7 @@ export function makeProposeCanvasAction(
     "can judge; the rest is theirs to run. Say in your reply, in numbered " +
     `steps written from what ${GET_PRODUCT_GUIDE} says, what they do once it ` +
     "is placed -- what to put in, what to pick, what to press. " +
-    templateGuide(templates),
+    templateIndex(templates),
   inputSchema,
   contextSchema: proposeContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
@@ -537,3 +517,10 @@ export function makeProposeCanvasAction(
   },
 });
 }
+
+/**
+ * The proposal tool over the registry; it holds nothing between calls, so one
+ * object serves every turn. It is built when the module loads, so its
+ * description carries no text in the reader's language.
+ */
+export const proposeCanvasAction = makeProposeCanvasAction();

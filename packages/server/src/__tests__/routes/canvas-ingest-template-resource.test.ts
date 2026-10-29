@@ -88,6 +88,8 @@ const FIXTURE: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote: "a test template with one hosted resource",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
 // The registry is the one the route reads; the fixture joins it for this file

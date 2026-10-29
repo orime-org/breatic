@@ -784,14 +784,18 @@ export {
 } from "@shared/canvas/node-media.js";
 export {
   GENERATION_TEMPLATES,
+  TEMPLATE_GOALS,
   templateAnchor,
+  templateGoalsFor,
   templatesFor,
   type GenerationTemplate,
   type TemplateEdge,
   type TemplateGenerateNode,
+  type TemplateGoal,
   type TemplateInput,
   type TemplateNodeKey,
   type TemplateResourceNode,
+  type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export {
   expandTemplate,

@@ -1698,6 +1698,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
     });
     fireEvent.keyDown(await screen.findByTestId('generate-template-trigger'), { key: 'Enter' });
+    fireEvent.keyDown(await screen.findByTestId('generate-template-goal-comics-storyboards'), { key: 'ArrowRight' });
     fireEvent.click(await screen.findByTestId('generate-template-storyboard-grid-25'));
     await waitFor(() => expect(placeTemplate).toHaveBeenCalledTimes(1));
     const [proposal, existing] = placeTemplate.mock.calls[0] as [

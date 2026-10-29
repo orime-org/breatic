@@ -52,12 +52,14 @@ export function DropdownMenuContent({
   rowsClassName,
   children,
   sideOffset = 6,
+  collisionPadding = 8,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Content> & MenuSurfaceProps): ReactNode {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
         className={cn(
           'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[10rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
           'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
@@ -188,7 +190,15 @@ export function DropdownMenuTrailing({
   ...props
 }: ComponentProps<'span'>): ReactNode {
   return (
-    <span className={cn('ml-auto text-xs text-muted-foreground', className)} {...props} />
+    // Muted text on the hover fill, or on an open submenu's row, falls under
+    // 4.5:1 in the dark theme, so the mark steps up to the label's colour there.
+    <span
+      className={cn(
+        'ml-auto text-xs text-muted-foreground in-data-[highlighted]:text-foreground in-aria-expanded:text-foreground',
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
@@ -232,18 +242,28 @@ export function DropdownMenuSubTrigger({
 }
 
 /**
- * Submenu surface, capped and scrolling like the menu it opens from.
- * @param props - Radix SubContent props plus `rowsClassName`.
+ * Submenu surface, capped and scrolling like the menu it opens from. It
+ * stands 4px off that menu by default: `sideOffset` measures from the trigger
+ * row, which sits inside the menu surface's 4px padding and 1px border, so
+ * those 5px are added back. The same 5px lift it so its first row lines up with
+ * the row that opened it, and it keeps 8px off the window's edges.
+ * @param props - Radix SubContent props (`sideOffset`, …) plus `rowsClassName`.
  * @returns The submenu panel.
  */
 export function DropdownMenuSubContent({
   className,
   rowsClassName,
   children,
+  sideOffset = 4 + 5,
+  alignOffset = -5,
+  collisionPadding = 8,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.SubContent> & MenuSurfaceProps): ReactNode {
   return (
     <DropdownMenuPrimitive.SubContent
+      sideOffset={sideOffset}
+      alignOffset={alignOffset}
+      collisionPadding={collisionPadding}
       className={cn(
         'z-[var(--z-popover)] grid max-h-[var(--radix-dropdown-menu-content-available-height)] min-w-[8rem] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-overlay border border-border bg-popover text-popover-foreground shadow-md',
         'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
