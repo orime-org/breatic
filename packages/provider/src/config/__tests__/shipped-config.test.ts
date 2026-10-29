@@ -38,6 +38,8 @@ describe("the shipped provider configuration (design 4.1)", () => {
     const [first] = provider.llm.availability(`${prefix}some-model`, "call").upstreams;
     expect(first).toMatchObject({ configured: true, envVar: key });
     expect(parseProviderConfig(shipped()).upstreams[first!.upstream]?.kind).toBe(kind);
+    // The upstream name is what the call is charged under (agent_usage_records.provider), as today's route name.
+    expect(first!.upstream).toBe(kind);
   });
 
   it("sends any other model to OpenRouter on OPENROUTER_API_KEY, as today's FALLBACK_ROUTE does (acceptance 6)", () => {
@@ -45,6 +47,7 @@ describe("the shipped provider configuration (design 4.1)", () => {
     const upstreams = provider.llm.availability("meta/llama-x", "call").upstreams;
     expect(upstreams).toEqual([expect.objectContaining({ configured: true, envVar: "OPENROUTER_API_KEY" })]);
     expect(parseProviderConfig(shipped()).upstreams[upstreams[0]!.upstream]?.kind).toBe("openrouter");
+    expect(upstreams[0]!.upstream).toBe("openrouter");
   });
 
   it("asks DeepSeek for Flash 1017 as deepseek-flash, as today's vendorId does (acceptance 6)", () => {

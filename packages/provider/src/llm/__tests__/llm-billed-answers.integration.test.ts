@@ -171,6 +171,19 @@ describe("a direct vendor's stream cut before its finish (DD 33)", () => {
   });
 });
 
+describe("an OpenRouter stream stopped before its first data chunk (DD 37)", () => {
+  it("hands one cost to pendingCosts: its 200 was billed", async () => {
+    fakes.openrouter.answer(() => ({ status: 200, raw: ": OPENROUTER PROCESSING\n\n", contentType: "text/event-stream", hold: true }));
+    const prepared = llmProvider(fakes, OR, { llmMaxRetries: 0 }).llm.prepare("meta/llama-x", THINK);
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 300);
+    const stream = streamText({ model: prepared.model, prompt: "hi", abortSignal: stop.signal, ...prepared.options, onError: () => undefined });
+    await Promise.resolve(stream.consumeStream()).catch(() => undefined);
+    expect(prepared.pendingCosts()).toEqual([expect.objectContaining({ state: "missing" })]);
+    fakes.openrouter.release();
+  });
+});
+
 describe("a stop that lands around the finish (DD 33)", () => {
   it.each(["text-delta", "finish-step", "finish"])("hands the generation over exactly once when the caller stops at its %s", async (at) => {
     fakes.openrouter.answer(() => ({ status: 200, raw: finished("gen-1"), contentType: "text/event-stream" }));
