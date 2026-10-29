@@ -45,7 +45,7 @@ describe("estimate — equal to today's estimate on every case (design 7.2, 13.2
   it.each(fixture.cases.map((c, i) => [`${i} ${c.model}`, c] as const))("%s", async (_label, c) => {
     const server = await provider.estimate(c.model, c.input, { mode: "default" });
     expect(server).not.toBeNull();
-    expect(server!.costUsd).toBeCloseTo(c.usd, 9);
+    expect(server!.usd).toBeCloseTo(c.usd, 9);
     expect(server!.bound).toBe(c.bound);
     expect(server!.upstream).toBe("wavespeed");
     const browser = await estimateCost(provider.pricingRules(c.model), provider.availability(c.model), c.input, { mode: "default" });

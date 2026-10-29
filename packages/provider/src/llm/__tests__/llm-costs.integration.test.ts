@@ -616,6 +616,13 @@ describe("a refused understand call (design 3.5, 5.4)", () => {
   });
 });
 
+describe("OpenRouter's backend pin (design 4.3, DD 35)", () => {
+  it("is not sent on a prepared call: only understand pins the backend, as today", () => {
+    const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("google/gemini-3.8-flash", { thinking: false, cache: false });
+    expect(prepared.options.providerOptions.openrouter).not.toHaveProperty("provider");
+  });
+});
+
 describe("cheapest mode for LLM calls (design 5.1)", () => {
   it("serves a priced direct upstream before OpenRouter, whatever their weights", async () => {
     const config = llmConfig(fakes);

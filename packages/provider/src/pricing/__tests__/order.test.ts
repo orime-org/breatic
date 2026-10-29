@@ -49,9 +49,9 @@ describe("orderByPrice and estimateCost (design 3.3, 5.1, 13.1)", () => {
       expect(order.map((e) => e.upstream).sort()).toEqual(NAMES.filter((_, i) => configured[i]).slice().sort());
       for (let i = 1; i < order.length; i++) {
         const [a, b] = [order[i - 1]!, order[i]!];
-        expect(a.costUsd < b.costUsd || (a.costUsd === b.costUsd && a.weight < b.weight)).toBe(true);
+        expect(a.usd < b.usd || (a.usd === b.usd && a.weight < b.weight)).toBe(true);
       }
-      for (const e of order) expect(e.costUsd).toBeGreaterThanOrEqual(0);
+      for (const e of order) expect(e.usd).toBeGreaterThanOrEqual(0);
     }));
   });
 
@@ -83,7 +83,7 @@ describe("orderByPrice and estimateCost (design 3.3, 5.1, 13.1)", () => {
 
   it("answers the named upstream's estimate in upstream mode, and null when that one has no key", async () => {
     const p = priced([300_000, 100_000, 200_000], [true, false, true]);
-    expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "upstream", upstream: "up_c" })).toMatchObject({ upstream: "up_c", costUsd: 0.2 });
+    expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "upstream", upstream: "up_c" })).toMatchObject({ upstream: "up_c", usd: 0.2 });
     expect(await estimateCost(p.pricingRules("m"), p.availability("m"), input, { mode: "upstream", upstream: "up_b" })).toBeNull();
   });
 

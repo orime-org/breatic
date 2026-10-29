@@ -85,6 +85,15 @@ describe("parseProviderConfig", () => {
     expect(problems[0]).toContain("wavespeed");
   });
 
+  it.each([
+    ["a routing section", (): ProviderConfigInput => ({ ...input([bind("wavespeed", 1)]), routing: { model: { seedance: { weights: { wavespeed: 0 } } } } as unknown as ProviderConfigInput["routing"] }), "model"],
+    ["a binding option", (): ProviderConfigInput => input([{ ...bind("wavespeed", 1), send_empty_promt: true } as unknown as MediaBinding]), "send_empty_promt"],
+    ["an upstream field", (): ProviderConfigInput => ({ ...input([bind("wavespeed", 1)]), upstreams: { ...upstreams, wavespeed: { ...upstreams.wavespeed, keyenv: "X" } as unknown as typeof upstreams.wavespeed } }), "keyenv"],
+  ])("refuses a misspelled key in %s, naming it (DD 35)", (_where, raw, key) => {
+    const problems = problemsOf(raw());
+    expect(problems.join("\n")).toContain(key);
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);

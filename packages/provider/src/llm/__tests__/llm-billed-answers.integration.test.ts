@@ -122,6 +122,30 @@ describe("a whole 2xx answer that cannot be read (DD 34)", () => {
   });
 });
 
+describe("a whole 2xx answer the caller stops while it arrives (DD 35)", () => {
+  it.each([
+    ["OpenRouter", "openrouter", "meta/llama-x", OR],
+    ["DeepSeek", "deepseek", "deepseek/deepseek-v4-pro", { DEEPSEEK_API_KEY: "ds" }],
+  ] as const)("%s: was billed once its 200 arrived, so the call hands over one cost", async (_name, upstream, model, keys) => {
+    fakes[upstream].answer(() => ({ status: 200, raw: '{"id":"gen-held",   ', contentType: "application/json", hold: true }));
+    const prepared = llmProvider(fakes, keys, { llmMaxRetries: 0 }).llm.prepare(model, THINK);
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 300);
+    await expect(generateText({ model: prepared.model, prompt: "hi", abortSignal: stop.signal, ...prepared.options })).rejects.toThrow();
+    expect(prepared.pendingCosts()).toHaveLength(1);
+    fakes[upstream].release();
+  });
+
+  it("hands over nothing for a stop before any answer arrived", async () => {
+    fakes.deepseek.answer(() => "hang");
+    const prepared = llmProvider(fakes, { DEEPSEEK_API_KEY: "ds" }, { llmMaxRetries: 0 }).llm.prepare("deepseek/deepseek-v4-pro", THINK);
+    const stop = new AbortController();
+    setTimeout(() => stop.abort(), 300);
+    await expect(generateText({ model: prepared.model, prompt: "hi", abortSignal: stop.signal, ...prepared.options })).rejects.toThrow();
+    expect(prepared.pendingCosts()).toEqual([]);
+  });
+});
+
 describe("a direct vendor's stream cut before its finish (DD 33)", () => {
   const opening = chunk("ds-1", { role: "assistant", content: "he" });
 
