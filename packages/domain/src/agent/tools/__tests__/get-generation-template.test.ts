@@ -117,6 +117,11 @@ describe("get_generation_template", () => {
   it("has words in every craft section", () => {
     for (const craft of Object.values(TEMPLATE_CRAFT)) expect(craft.trim().length).toBeGreaterThan(0);
   });
+
+  it("lets a character reference lend its rendering, which the sheet prompts ask to keep", () => {
+    expect(TEMPLATE_CRAFT.character).toMatch(/rendering/);
+    expect(TEMPLATE_CRAFT.character).not.toMatch(/lends only/);
+  });
 });
 
 describe("a multi-node template's full text", () => {

@@ -24,7 +24,9 @@ export const TEMPLATE_CRAFT = {
     "what stays still; one light source logic; sound in layers, saying where silence falls.",
   character:
     "Craft for a character: when one character appears in several pictures or videos, make a character sheet " +
-    "before the shots; a reference picture lends only the face, hairstyle, body shape and outfit.",
+    "before the shots; a reference picture lends the face, hairstyle, body shape and outfit, and its rendering " +
+    "(a 3D render stays 3D, a drawing stays a drawing) unless the prompt names another style; it does not lend " +
+    "its background, pose or lighting.",
 } as const;
 
 /**
