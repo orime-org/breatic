@@ -34,19 +34,14 @@ async function claim(op: repo.MaintenanceOperation, deps: MaintenanceDependencie
     if (!current || current.decision.decision !== "accepted")
       return null;
     const now = deps.now();
+    const object = await repo.findClaimableObject(current.id, now, tx);
+    if (!object)
+      return null;
     const objects = await repo.listObjects(op.id, tx);
     const first = await repo.firstRun(op.id, tx);
     const latestRun = await repo.latestRun(op.id, tx);
     let run = first && first.finishedAt === null ? first : latestRun;
     if (!run || run.finishedAt !== null) {
-      if (current.state === "paused" && !objects.some(o => o.inFlight && o.leaseUntil !== null && o.leaseUntil <= now)) {
-        await repo.updateOperation(op.id, {
-          nextCheckAt: new Date(now.getTime() + deps.config.checkIntervalSeconds * 1000)
-        }, tx);
-        return null;
-      }
-      if (current.state !== "paused" && current.nextCheckAt > now)
-        return null;
       run = {
         id: randomUUID(), number: (latestRun?.number ?? 0) + 1, state: "running", startedAt: now.toISOString(), finishedAt: null, items: objects.map(o => ({
           ...o.latest, state: "queued", reason: null
@@ -54,16 +49,7 @@ async function claim(op: repo.MaintenanceOperation, deps: MaintenanceDependencie
       };
       await repo.addRun(op.id, run, tx);
     }
-    const object = objects.find(o => {
-      const item = run!.items.find(i => i.id === o.scope.id);
-      return item && (item.state === "queued" || item.state === "running" || item.state === "unknown") && (o.leaseUntil === null || o.leaseUntil <= now) && (current.state !== "paused" || o.inFlight);
-    });
-    if (!object) {
-      return null;
-    }
-    const latest = (await repo.findObject(object.storageKey, tx))!;
-    if (latest.leaseUntil !== null && latest.leaseUntil > now)
-      return null;
+    const latest = object;
     const version = latest.leaseVersion + 1;
     await repo.updateObject(object.id, {
       leaseVersion: version, leaseUntil: new Date(now.getTime() + deps.config.leaseSeconds * 1000)

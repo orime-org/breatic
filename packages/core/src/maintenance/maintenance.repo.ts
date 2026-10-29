@@ -4,7 +4,7 @@
 /**
  * Single owner of maintenance persistence; callers compose transactions explicitly.
  */
-import { and, desc, eq, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, desc, eq, exists, isNull, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { storageReclaimPreviews as previews, storageReclaimOperations as operations, storageReclaimControls as controls, storageReclaimObjects as objects, storageReclaimRuns as runs, storageReclaimAttempts as attempts } from "@core/db/schema.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
@@ -177,14 +177,86 @@ export async function updateObject(id: string, value: Partial<Pick<MaintenanceOb
 }
 
 /**
- * List bounded due operations, including paused operations for HEAD recovery.
+ * Shared operation eligibility for global discovery and locked revalidation.
+ * @param now - The executor's injected scheduling instant.
+ * @returns The accepted, live and due operation condition.
+ */
+function claimableOperation(now: Date): SQL {
+  return and(
+    isNull(operations.deletedAt),
+    lte(operations.nextCheckAt, now),
+    sql`${operations.decision}->>'decision' = 'accepted'`,
+  )!;
+}
+
+/**
+ * Shared exact-key eligibility, including the original first-run preference.
+ * Both selected-run lookups are bounded by the operation/number index.
+ * Object eligibility combines its lease with pending membership in the selected run.
+ * @param now - The same injected instant used for operation eligibility.
+ * @returns The unleased pending object, or paused in-flight recovery condition.
+ */
+function claimableObject(now: Date): SQL {
+  const selectedRun = sql`COALESCE(
+    (SELECT first_run.snapshot FROM ${runs} AS first_run
+     WHERE first_run.operation_id = ${operations.id}
+       AND first_run.number = 1 AND first_run.deleted_at IS NULL
+       AND first_run.snapshot->>'finishedAt' IS NULL
+     LIMIT 1),
+    (SELECT latest_run.snapshot FROM ${runs} AS latest_run
+     WHERE latest_run.operation_id = ${operations.id}
+       AND latest_run.deleted_at IS NULL
+     ORDER BY latest_run.number DESC LIMIT 1)
+  )`;
+  return and(
+    isNull(objects.deletedAt),
+    or(isNull(objects.leaseUntil), lte(objects.leaseUntil, now)),
+    or(eq(operations.state, "enabled"), and(eq(operations.state, "paused"), eq(objects.inFlight, true))),
+    sql`(
+      ${selectedRun} IS NULL
+      OR ${selectedRun}->>'finishedAt' IS NOT NULL
+      OR EXISTS (
+        SELECT 1 FROM jsonb_array_elements(${selectedRun}->'items') AS pending_item
+        WHERE pending_item->>'id' = ${objects.scope}->>'id'
+          AND pending_item->>'state' IN ('queued', 'running', 'unknown')
+      )
+    )`,
+  )!;
+}
+
+/**
+ * List bounded due operations with a claimable object.
+ * Eligibility includes runnable keys and due paused-call recovery.
  * @param now - Scheduling instant.
  * @param limit - Work bound.
- * @returns Due accepted operations.
+ * @returns Due accepted operations, including paused HEAD-only recovery.
  * @throws {Error} On an infrastructure failure; the current transaction rolls back.
  */
 export async function listDue(now: Date, limit: number): Promise<MaintenanceOperation[]> {
-  return db.select().from(operations).where(and(lte(operations.nextCheckAt, now), isNull(operations.deletedAt))).orderBy(operations.nextCheckAt, operations.id).limit(limit);
+  const eligibleObject = db.select({ id: objects.id }).from(objects).where(and(
+    eq(objects.operationId, operations.id), claimableObject(now),
+  ));
+  return db.select().from(operations).where(and(
+    claimableOperation(now), exists(eligibleObject),
+  )).orderBy(operations.nextCheckAt, operations.id).limit(limit);
+}
+
+/**
+ * Revalidate the discovery condition after locking the immutable operation id.
+ * The caller retains that operation lock through the lease write.
+ * Eligibility is re-evaluated within that transaction after the immutable-id lock.
+ * @param operationId - The operation whose row the caller has locked.
+ * @param now - The executor's injected scheduling instant.
+ * @param tx - The transaction retaining the operation lock.
+ * @returns The first claimable exact key in stable storage-key order, or null.
+ * @throws {Error} On an infrastructure failure; the current transaction rolls back.
+ */
+export async function findClaimableObject(operationId: string, now: Date, tx: DbTx): Promise<MaintenanceObject | null> {
+  const rows = await tx.select({ object: objects }).from(objects)
+    .innerJoin(operations, eq(operations.id, objects.operationId))
+    .where(and(eq(operations.id, operationId), claimableOperation(now), claimableObject(now)))
+    .orderBy(objects.storageKey).limit(1);
+  return rows[0]?.object ?? null;
 }
 
 /**

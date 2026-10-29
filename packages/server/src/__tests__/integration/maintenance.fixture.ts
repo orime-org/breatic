@@ -6,6 +6,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type postgres from "postgres";
+import { maintenanceRepo, rawPg } from "@breatic/core";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -102,4 +103,16 @@ export async function recordMaintenancePaginationPlans(sql: Sql, operationKey: s
   const lastCandidates = await sql`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) SELECT id,storage_key FROM storage_reclaim_queue WHERE id>${tail?.id ?? firstCandidate!.id} ORDER BY id LIMIT 8`;
   const result = { fixtureRuns: 25, runPageLimit: 8, lastRunBeforeNumber: 8, plans: { firstRuns, lastRuns, firstCandidates, lastCandidates } };
   await writeFile(join(tmpdir(), "jobs30-maintenance-pagination-plans.json"), `${JSON.stringify(result, null, 2)}\n`);
+  const [due] = await sql<{ next_check_at: Date }[]>`SELECT next_check_at FROM storage_reclaim_operations WHERE key=${operationKey}`;
+  const observed: { query: string; parameters: unknown[] }[] = [];
+  const previousDebug = rawPg.options.debug;
+  rawPg.options.debug = (_connection: number, query: string, parameters: unknown[]): void => {
+    if (query.includes("storage_reclaim_operations") && query.includes("jsonb_array_elements")) observed.push({ query, parameters });
+  };
+  try { await maintenanceRepo.listDue(new Date(due!.next_check_at.getTime() + 1), 20); }
+  finally { rawPg.options.debug = previousDebug; }
+  const statement = observed.at(-1);
+  if (!statement) throw new Error("maintenance_due_statement_not_observed");
+  const globalDuePlan = await sql.unsafe(`EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) ${statement.query}`, statement.parameters as Parameters<Sql["unsafe"]>[1]);
+  await writeFile(join(tmpdir(), "jobs30-r1-fixes-global-due-plan.json"), `${JSON.stringify({ fixtureRuns: 25, statement, globalDuePlan }, null, 2)}\n`);
 }
