@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { VideoSourceFrame } from "@shared/mini-tools/video-frame-table.js";
+import type { VideoSourceFrame } from "@ingest/container/video-frame-probe.js";
 import type { MiniToolPlanPixelRect } from "@shared/upload/mini-tool-plan-types.js";
 
 /** A candidate still awaiting registered thumbnail and persistent person identity. */

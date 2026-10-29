@@ -1,7 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
-import type { VideoFrameTable } from "@shared/mini-tools/video-frame-table.js";
+/** One decoded video sample in presentation order on its source clock. */
+export interface VideoSourceFrame { frameIndex: number; pts: number }
+
+/** A complete ordered decoded frame sequence and its independently resolved endpoint. */
+export interface VideoFrameTable { frames: readonly VideoSourceFrame[]; videoEnd: number }
 
 /** Complete decoded raw frames and their encoded source metadata. */
 export interface VideoFrameProbe {
