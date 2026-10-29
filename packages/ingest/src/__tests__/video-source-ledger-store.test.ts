@@ -4,7 +4,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoPresentationKeyFor, videoSourceLedgerKeyFor } from '@breatic/shared';
-import { fixture, LEDGER_LIMITS, ORIGINAL, PRICING, putClaim, receipt, replacement } from './helpers/source-ledger-fixture.js';
+import { fixture, LEDGER_LIMITS, ORIGINAL, PRICING, putClaim, receipt, replacement, tableKeyFor } from './helpers/source-ledger-fixture.js';
 import { writeAlphaPacked } from '@ingest/video-presentation-packed.js';
 
 const evidence = { codecName: 'vp9', pixelFormat: 'yuv420p', pixelAlpha: 0 as const, alphaMode: null, formatName: 'matroska,webm', videoStreamIndex: 0 };
@@ -13,7 +13,7 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
   it('A04 persists pending capability under the original job and freezes all requested limits on replay', async () => {
     const value = await fixture();
     const before = await value.owner.snapshotFor(value.identity);
-    expect(before.sourceLedger).toEqual({ state: 'pending', schemaVersion: 1, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 1,
+    expect(before.sourceLedger).toEqual({ state: 'pending', schemaVersion: 2, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 2,
       attempt: { jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt } });
     const replay = await value.owner.accept({ ...value.admission, jobId: 'later-proposal', deadlineAt: value.identity.deadlineAt + 1000,
       limits: { ...value.admission.limits!, sourceLedger: { ...LEDGER_LIMITS, maxBytes: 1 } } });
@@ -27,7 +27,7 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     const value = await fixture({ requested: false });
     const before = await value.owner.snapshotFor(value.identity);
     const replay = await value.owner.accept({ ...value.admission, jobId: 'new-capability-proposal',
-      sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(value.admission.storageKey)}`,
+      sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(value.admission.storageKey)}`, sourceLedgerTableURL: `https://assets.example.test/${tableKeyFor(value.admission.storageKey)}`,
       limits: { ...value.admission.limits!, sourceLedger: LEDGER_LIMITS } });
     expect(replay).toEqual(before);
     expect(Object.hasOwn(replay, 'sourceLedger')).toBe(false);
@@ -39,12 +39,12 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     expect(await value.owner.report({ ...value.identity, kind: 'probe', classification: 'confirmed_opaque', original: ORIGINAL, evidence })).toBe(true);
     const before = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
     const descriptor = await (await env.BUCKET.get(videoPresentationKeyFor(value.admission.storageKey)))!.text();
-    const admission = { ...value.admission, jobId: 'ledger-only-B', sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(value.admission.storageKey)}`,
+    const admission = { ...value.admission, jobId: 'ledger-only-B', sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(value.admission.storageKey)}`, sourceLedgerTableURL: `https://assets.example.test/${tableKeyFor(value.admission.storageKey)}`,
       limits: { ...value.admission.limits!, sourceLedger: LEDGER_LIMITS } };
     const accepted = await value.owner.accept(admission);
     expect(accepted.presentation).toEqual(before.presentation);
     expect(accepted.attempt).toEqual({ jobId: 'ledger-only-B', deadlineAt: value.identity.deadlineAt, status: 'accepted', usage: null });
-    expect(accepted.sourceLedger).toEqual({ state: 'pending', schemaVersion: 1, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 1,
+    expect(accepted.sourceLedger).toEqual({ state: 'pending', schemaVersion: 2, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 2,
       attempt: { jobId: 'ledger-only-B', deadlineAt: value.identity.deadlineAt } });
     expect((await value.owner.prepare(admission)).admission?.ledgerOnly).toBe(true);
     expect(await value.owner.snapshotFor(value.identity)).toEqual(before);
@@ -71,7 +71,7 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     expect(await writeAlphaPacked({ bucket: env.BUCKET, owner: value.owner, identity: value.identity, body, byteLength: packed.length })).toEqual({ ok: true, status: 200 });
     const before = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
     const descriptor = await (await env.BUCKET.get(videoPresentationKeyFor(value.admission.storageKey)))!.text();
-    const admission = { ...value.admission, jobId: 'alpha-ledger-only-B', sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(value.admission.storageKey)}`,
+    const admission = { ...value.admission, jobId: 'alpha-ledger-only-B', sourceLedgerURL: `https://assets.example.test/${videoSourceLedgerKeyFor(value.admission.storageKey)}`, sourceLedgerTableURL: `https://assets.example.test/${tableKeyFor(value.admission.storageKey)}`,
       limits: { ...value.admission.limits!, sourceLedger: LEDGER_LIMITS } };
     await value.owner.accept(admission);
     const prepared = await value.owner.prepare(admission);
@@ -81,7 +81,7 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     const read = await value.owner.read(admission.storageKey, identity.sourceFingerprint);
     expect(read.presentation).toEqual(before.presentation);
     expect(read.manifest).toEqual(before.manifest);
-    expect(read.sourceLedger).toEqual({ state: 'failed', schemaVersion: 1, sourceFingerprint: identity.sourceFingerprint, producerVersion: 1,
+    expect(read.sourceLedger).toEqual({ state: 'failed', schemaVersion: 2, sourceFingerprint: identity.sourceFingerprint, producerVersion: 2,
       attempt: { jobId: identity.jobId, deadlineAt: identity.deadlineAt }, errorCode: 'source_ledger_invalid' });
     expect(await (await env.BUCKET.get(videoPresentationKeyFor(admission.storageKey)))!.text()).toBe(descriptor);
   });
@@ -94,7 +94,7 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     expect(await value.owner.completeSourceLedger(value.identity, claim!.owner, measured)).toBe(true);
     await value.owner.report({ ...value.identity, kind: 'finished', usage: { wallMs: 250, cpuUsec: 10 }, error: 'packed_clock_mismatch' });
     const read = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
-    expect(read.sourceLedger).toEqual({ state: 'ready', receipt: receipt(value, measured) });
+    expect(read.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, measured) });
     expect(read.presentation).toMatchObject({ state: 'failed', error: 'packed_clock_mismatch' });
     expect(read.usageFact).toEqual({ jobId: value.identity.jobId, actorUserId: value.admission.actorUserId, projectId: null,
       usage: { wallMs: 250, cpuUsec: 10 }, pricing: PRICING });
@@ -109,7 +109,7 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     expect(await value.owner.completeSourceLedger(value.identity, claim!.owner, measured)).toBe(true);
     const unfinalized = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
     expect(unfinalized.attempt).toEqual({ jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt, status: 'running', usage: null });
-    expect(unfinalized.sourceLedger).toEqual({ state: 'ready', receipt: receipt(value, measured) });
+    expect(unfinalized.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, measured) });
     const finished = { ...value.identity, kind: 'finished' as const, usage: { wallMs: 123, cpuUsec: 0 } };
     expect(await value.owner.report(finished)).toBe(true);
     const before = await value.owner.snapshotFor(value.identity);
@@ -119,16 +119,16 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     expect(await value.owner.snapshotFor(value.identity)).toEqual(before);
   });
 
-  it('retains a ready native descriptor while source-ledger failure and real final usage settle independently', async () => {
+  it('retains a ready native descriptor while a content source-ledger failure and real final usage settle independently', async () => {
     const value = await fixture();
     await value.owner.report({ ...value.identity, kind: 'probe', classification: 'confirmed_opaque', original: ORIGINAL, evidence });
     const presentation = (await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint)).presentation;
-    expect(await value.owner.report({ ...value.identity, kind: 'source_ledger_failed', error: 'source_ledger_invalid' })).toBe(true);
+    expect(await value.owner.report({ ...value.identity, kind: 'source_ledger_failed', error: 'unsupported_rate' })).toBe(true);
     expect(await value.owner.report({ ...value.identity, kind: 'finished', usage: { wallMs: 123, cpuUsec: null } })).toBe(true);
     const read = await value.owner.acknowledgeUsage(value.identity);
     expect(read.presentation).toEqual(presentation);
-    expect(read.sourceLedger).toEqual({ state: 'failed', schemaVersion: 1, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 1,
-      attempt: { jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt }, errorCode: 'source_ledger_invalid' });
+    expect(read.sourceLedger).toEqual({ state: 'failed', schemaVersion: 2, sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 2,
+      attempt: { jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt }, errorCode: 'unsupported_rate' });
     expect(read.attempt).toMatchObject({ status: 'failed', usage: { wallMs: 123, cpuUsec: null }, usageRecorded: true });
     expect(read.usageFact).toEqual({ jobId: value.identity.jobId, actorUserId: value.admission.actorUserId, projectId: null,
       usage: { wallMs: 123, cpuUsec: null }, pricing: PRICING });
@@ -170,27 +170,20 @@ describe('source-ledger durable capability and independent siblings (inner#1306)
     const value = await fixture();
     const claims = await Promise.all([value.owner.claimSourceLedger(value.identity, value.declaration), value.owner.claimSourceLedger(value.identity, value.declaration)]);
     expect(claims.filter(claim => claim !== null)).toHaveLength(1);
-    expect(claims.find(claim => claim !== null)).toEqual({ owner: expect.any(String), key: videoSourceLedgerKeyFor(value.admission.storageKey), priorETag: null, byteLength: value.bytes.length });
+    expect(claims.find(claim => claim !== null)).toEqual({ owner: expect.any(String), key: videoSourceLedgerKeyFor(value.admission.storageKey), priorETag: null, byteLength: value.bytes.length,
+      table: { key: tableKeyFor(value.admission.storageKey), priorETag: null, byteLength: value.tableBytes.length } });
   });
 
   it.each([
-    { field: 'producerVersion', value: 2 }, { field: 'byteLength', value: 0 }, { field: 'byteLength', value: 16777217 },
-    { field: 'physicalFrameCount', value: 0 }, { field: 'physicalFrameCount', value: 100001 },
-    { field: 'occurrenceCount', value: -1 }, { field: 'occurrenceCount', value: 100001 },
+    { field: 'producerVersion', value: 1 }, { field: 'byteLength', value: 0 }, { field: 'byteLength', value: 16777217 },
+    { field: 'table.byteLength', value: 0 }, { field: 'table.frameCount', value: 0 }, { field: 'table.frameCount', value: 1.5 },
   ])('refuses an inadmissible $field declaration $value before a physical mutation', async ({ field, value: invalid }) => {
     const value = await fixture();
     const before = await value.owner.snapshotFor(value.identity);
-    expect(await value.owner.claimSourceLedger(value.identity, { ...value.declaration, [field]: invalid })).toBeNull();
+    const declaration = field.startsWith('table.') ? { ...value.declaration, table: { ...value.declaration.table, [field.slice(6)]: invalid } } : { ...value.declaration, [field]: invalid };
+    expect(await value.owner.claimSourceLedger(value.identity, declaration)).toBeNull();
     expect(await value.owner.snapshotFor(value.identity)).toEqual(before);
     expect(await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey))).toBeNull();
-  });
-
-  it('admits a zero-occurrence declaration without fabricating a physical publication', async () => {
-    const value = await fixture();
-    // This is declaration validation only; no claim that N01 produced an empty schedule.
-    const claim = await value.owner.claimSourceLedger(value.identity, { ...value.declaration, occurrenceCount: 0 });
-    expect(claim).toEqual({ owner: expect.any(String), key: videoSourceLedgerKeyFor(value.admission.storageKey), priorETag: null, byteLength: value.bytes.length });
-    await value.owner.releaseSourceLedger(value.identity, claim!.owner);
-    expect(await env.BUCKET.get(videoSourceLedgerKeyFor(value.admission.storageKey))).toBeNull();
+    expect(await value.owner.claimSourceLedger(value.identity, value.declaration)).not.toBeNull();
   });
 });

@@ -45,7 +45,7 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     const before = await value.b.owner.snapshotFor(value.b.identity);
     expect(before.sourceLedger?.state).toBe('failed');
     const read = await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint);
-    expect(read).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: receipt(value.a, measured) } });
+    expect(read).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: await receipt(value.a, measured) } });
     expect(read.presentation?.attempt?.jobId).toBe(value.a.identity.jobId);
     expect(read.attempt?.jobId).toBe(value.b.identity.jobId);
     expect((await env.BUCKET.head(value.claimA.key))!.etag).toBe(measured.etag);
@@ -57,7 +57,7 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     expect(claim).not.toBeNull();
     await a.owner.fail(a.identity, 'expired');
     const { sourceLedger: _ledger, ...limits } = a.admission.limits!;
-    const { sourceLedgerURL: _url, ...base } = a.admission;
+    const { sourceLedgerURL: _url, sourceLedgerTableURL: _tableURL, ...base } = a.admission;
     const admission = { ...base, limits, jobId: 'completed-legacy-B', repair: true };
     await a.owner.accept(admission);
     const prepared = await a.owner.prepare(admission);
@@ -70,7 +70,7 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     expect(before.attempt?.status).toBe('completed');
     const measured = await putClaim(a, claim!);
     expect(await a.owner.completeSourceLedger(a.identity, claim!.owner, measured)).toBe(true);
-    expect(await a.owner.read(admission.storageKey, identity.sourceFingerprint)).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: receipt(a, measured) } });
+    expect(await a.owner.read(admission.storageKey, identity.sourceFingerprint)).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: await receipt(a, measured) } });
   });
 
   it('H03 separates stale new mutation from the genuine original complete callback and the later read reconciliation', async () => {
@@ -82,8 +82,8 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     expect(await value.a.owner.report({ ...value.a.identity, kind: 'source_ledger_failed', error: 'source_ledger_invalid' })).toBe(false);
     expect(await value.a.owner.completeSourceLedger(value.a.identity, value.claimA.owner, measured)).toBe(true);
     expect(await value.b.owner.snapshotFor(value.b.identity)).toEqual(before);
-    expect((await value.a.owner.snapshotFor(value.a.identity)).sourceLedger).toEqual({ state: 'ready', receipt: receipt(value.a, measured) });
-    expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: receipt(value.a, measured) } });
+    expect((await value.a.owner.snapshotFor(value.a.identity)).sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value.a, measured) });
+    expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: await receipt(value.a, measured) } });
   });
 
   it('H04 keeps actual valid winner B and fences the already-issued conditional A PUT', async () => {
@@ -92,7 +92,7 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     expect(await value.b.owner.completeSourceLedger(value.b.identity, value.claimB.owner, measured)).toBe(true);
     expect(await losingPut(value.a, value.claimA)).toBeNull();
     const before = await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint);
-    expect(before.sourceLedger).toEqual({ state: 'ready', receipt: receipt(value.b, measured) });
+    expect(before.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value.b, measured) });
     expect(await value.a.owner.completeSourceLedger(value.a.identity, value.claimA.owner, measured)).toBe(false);
     expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual(before);
   });
@@ -105,7 +105,7 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     const before = await value.b.owner.snapshotFor(value.b.identity);
     expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual(before);
     await value.b.owner.releaseSourceLedger(value.b.identity, value.claimB.owner);
-    expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: receipt(value.a, measured) } });
+    expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual({ ...before, sourceLedger: { state: 'ready', receipt: await receipt(value.a, measured) } });
   });
 
   it('H06 does not infer terminality or adopt archived A while current B is running', async () => {
@@ -140,7 +140,7 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     expect(await value.owner.report({ ...value.identity, kind: 'finished', usage: { wallMs: 319, cpuUsec: 73 } })).toBe(true);
     await value.owner.acknowledgeUsage(value.identity);
     const before = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
-    expect(before.sourceLedger).toEqual({ state: 'ready', receipt: receipt(value, measured) });
+    expect(before.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value, measured) });
     expect(before.presentation?.state).toBe('native');
     expect(before.attempt?.status).toBe('completed');
     const foreignOwner = `foreign-${claim!.owner}`;
@@ -152,8 +152,8 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
       customMetadata: { sourceLedgerJobId: value.identity.jobId, sourceLedgerClaimOwner: foreignOwner } });
     expect(new Uint8Array(await actual!.arrayBuffer())).toEqual(value.bytes);
     const after = await value.owner.read(value.admission.storageKey, value.identity.sourceFingerprint);
-    expect(after).toEqual({ ...before, sourceLedger: { state: 'failed', schemaVersion: 1,
-      sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 1,
+    expect(after).toEqual({ ...before, sourceLedger: { state: 'failed', schemaVersion: 2,
+      sourceFingerprint: value.identity.sourceFingerprint, producerVersion: 2,
       attempt: { jobId: value.identity.jobId, deadlineAt: value.identity.deadlineAt }, errorCode: expect.any(String) } });
   });
 
@@ -199,10 +199,13 @@ describe('actual winner recovery and receipt producer identity (inner#1306)', ()
     await failB(value);
     const [object] = await Promise.all([writing, piping]);
     expect(object!.uploaded.getTime()).toBeGreaterThan(value.b.identity.deadlineAt);
-    const measured = { etag: object!.etag, size: object!.size, sha256: await digest(value.a.bytes) };
+    const table = await env.BUCKET.put(value.claimA.table.key, value.a.tableBytes, { httpMetadata: { contentType: 'application/json' },
+      customMetadata: { sourceLedgerJobId: value.a.identity.jobId, sourceLedgerClaimOwner: value.claimA.owner } });
+    const measured = { etag: object!.etag, size: object!.size, sha256: await digest(value.a.bytes),
+      table: { etag: table.etag, size: table.size, sha256: await digest(value.a.tableBytes) } };
     expect(await value.a.owner.completeSourceLedger(value.a.identity, value.claimA.owner, measured)).toBe(true);
     const once = await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint);
-    expect(once.sourceLedger).toEqual({ state: 'ready', receipt: receipt(value.a, measured) });
+    expect(once.sourceLedger).toEqual({ state: 'ready', receipt: await receipt(value.a, measured) });
     expect(await value.b.owner.read(value.b.admission.storageKey, value.b.identity.sourceFingerprint)).toEqual(once);
     expect((await env.BUCKET.head(videoSourceLedgerKeyFor(value.a.admission.storageKey)))!.etag).toBe(measured.etag);
   });

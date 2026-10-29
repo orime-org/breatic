@@ -65,7 +65,7 @@ describe("source ledger operations configuration (inner#1306)", () => {
     expect(miniToolsConfigSchema.parse(legacy)).toEqual({
       ...legacy,
       presentation: {
-        container_class: "MediaContainer", max_source_bytes: 1073741824, max_packed_bytes: 1073741824, crf: 18, preset: "medium",
+        container_class: "MediaContainer", max_source_bytes: 2147483648, max_packed_bytes: 1073741824, crf: 18, preset: "medium",
         source_ledger: DEFAULTS,
       },
     });

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DeadlinePassed, VideoSourceLedgerReadRefused, type StudioAssetEntity, type VideoSourceLedgerCompanion } from '@breatic/shared';
-import { NotFoundError, ValidationError } from '@breatic/core';
+import * as sharedModule from '@breatic/shared';
+import { DeadlinePassed, VideoSourceLedgerReadRefused, videoSourceLedgerKeyFor, type StudioAssetEntity, type VideoSourceLedgerCompanion } from '@breatic/shared';
+import { NotFoundError, ValidationError, getMiniToolsConfig } from '@breatic/core';
 import type * as coreModule from '@breatic/core';
 import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation, runVideoPresentation, readSourceLedger } from '../video-presentation.service.js';
 
@@ -337,4 +338,92 @@ describe('validated source ledger read (inner#1306 N01–N04)', () => {
     const got = await resolveVideoPresentation(input);
     expect('sourceLedger' in got).toBe(false);
   });
+});
+
+// inner#1306 test plan §77 (D cases): every presentation admission requests the
+// source ledger v2 again, with its budgets from configuration and no frame
+// ceiling, and the public addresses of both stored objects derived from the
+// registered key. A finished source with no ledger is admitted once more; the
+// ingest store decides whether that is a ledger-only attempt.
+describe('presentation admission requesting the source ledger v2 (inner#1306 §77)', () => {
+  const presentation = { schemaVersion: 1 as const, sourceFingerprint: asset.contentHash, original: { width: 48, height: 64, duration: 2 },
+    state: 'native' as const, attempt: { jobId: 'old', deadlineAt: 1900000000000 } };
+  const completed = { jobId: 'old', deadlineAt: 1900000000000, status: 'completed' as const, usage: null, usageRecorded: true };
+  const identity = { schemaVersion: 2, sourceFingerprint: asset.contentHash, producerVersion: 2, attempt: { jobId: 'old', deadlineAt: 1900000000000 } };
+  const ledgerOnly = { presentation, attempt: { jobId: 'ledger-only', deadlineAt: 1900000000000, status: 'accepted', usage: null },
+    sourceLedger: { state: 'pending', ...identity, attempt: { jobId: 'ledger-only', deadlineAt: 1900000000000 } } };
+
+  /**
+   * The registered key of the compact presentation table, read at call time so a missing export fails one case.
+   * @param key - Registered storage key.
+   * @returns The table key.
+   */
+  function tableKeyFor(key: string): string {
+    const derive = (sharedModule as Record<string, unknown>).videoSourceLedgerTableKeyFor;
+    expect(typeof derive).toBe('function');
+    return (derive as (value: string) => string)(key);
+  }
+
+  /**
+   * Answer an ingest read with this finished source and an accept with a ledger-only attempt.
+   * @param read - The snapshot a read answers.
+   */
+  function ingestAnswers(read: Record<string, unknown>): void {
+    videoPresentationAtIngest.mockImplementation(async (_url: string, _secret: string, request: { action: string }) => request.action === 'read' ? read : ledgerOnly);
+  }
+
+  beforeEach(() => {
+    loadProjectRole.mockResolvedValue('viewer');
+    publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
+  });
+
+  it('D01 requests the ledger with its six configured budgets, no frame ceiling and both URLs derived from the registered key', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'new', deadlineAt: 1900000000000, status: 'accepted', usage: null } });
+    await ensureVideoPresentation({ assetId: asset.id });
+    const settings = getMiniToolsConfig().presentation;
+    const ledger = settings.source_ledger;
+    const request = videoPresentationAtIngest.mock.calls[0]![2] as { action: string; limits: Record<string, unknown>; sourceLedgerURL?: string; sourceLedgerTableURL?: string };
+    expect(request.action).toBe('accept');
+    expect(request.limits.maxSourceBytes).toBe(settings.max_source_bytes);
+    expect(request.limits.sourceLedger).toEqual({
+      maxBytes: ledger.max_bytes, probeStdoutBytes: ledger.probe_stdout_bytes, metadataBytes: ledger.metadata_bytes,
+      isoBoxCount: ledger.iso_box_count, matroskaElementCount: ledger.matroska_element_count, matroskaMaxBlocks: ledger.matroska_max_blocks,
+    });
+    expect(request.sourceLedgerURL).toBe(`https://assets.example.test/${videoSourceLedgerKeyFor(asset.storageKey)}`);
+    expect(request.sourceLedgerTableURL).toBe(`https://assets.example.test/${tableKeyFor(asset.storageKey)}`);
+  });
+
+  it.each([
+    ['no ledger state', undefined],
+    ['a null ledger', null],
+  ])('D02 admits a finished, already ready source with %s once more on read', async (_name, sourceLedger) => {
+    ingestAnswers({ presentation, attempt: completed, ...(sourceLedger === undefined ? {} : { sourceLedger }) });
+    const got = await resolveVideoPresentation(input);
+    expect(videoPresentationAtIngest).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.objectContaining({ action: 'accept' }));
+    expect(got.sourceLedger).toEqual(ledgerOnly.sourceLedger);
+    expect(got.presentation).toEqual(presentation);
+  });
+
+  it.each([
+    ['pending', { state: 'pending', ...identity }],
+    ['ready', { state: 'ready', receipt: { ...identity, url: `https://assets.example.test/${asset.storageKey}.ledger.json`, etag: '"e"', size: 912,
+      sha256: 'b'.repeat(64), contentType: 'application/json', table: { url: `https://assets.example.test/${asset.storageKey}.table.json`, sha256: 'c'.repeat(64), size: 81, frameCount: 17 } } }],
+    ['content-failed', { state: 'failed', ...identity, errorCode: 'unsupported_rate' }],
+  ])('D03 leaves a finished source with a %s ledger as it is and projects that state', async (_name, sourceLedger) => {
+    ingestAnswers({ presentation, attempt: completed, sourceLedger });
+    const got = await resolveVideoPresentation(input);
+    expect(got.sourceLedger).toEqual(sourceLedger);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('D04 does not admit again while the original work is still running', async () => {
+    videoPresentationAtIngest.mockResolvedValue({ presentation: null, attempt: { jobId: 'run', deadlineAt: 1900000000000, status: 'running', usage: null } });
+    await resolveVideoPresentation(input);
+    expect(videoPresentationAtIngest).toHaveBeenCalledTimes(1);
+    expect(queueAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it.todo('D05 a read of a finished source whose ledger failed transiently: design §2 says the next admission re-produces it and §10.2 shows the panel a retry button, but leaves open whether an ordinary read admits by itself or only the retry does');
+  it.todo('D06 the retry (E7) entry point: design §10.2 says retry and admission share one admission entry, but names no server route or domain function for the panel retry');
 });
