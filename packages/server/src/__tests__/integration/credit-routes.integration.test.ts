@@ -28,6 +28,8 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import type { Hono } from "hono";
 import postgres from "postgres";
 import {
@@ -36,8 +38,11 @@ import {
   getRedis,
   setSession,
   sessionCookieName,
+  logger,
+  initLogger,
 } from "@breatic/core";
 import { creditHoldService, creditLotService } from "@breatic/domain";
+import { t } from "@breatic/shared";
 import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "credit-routes-test-driver";
@@ -53,6 +58,13 @@ beforeAll(async () => {
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
   });
   loadLocales();
+  // A real pino instance, as in production: the default export is a Proxy
+  // that a spy cannot attach to.
+  initLogger("credit-routes-test", {
+    logsRoot: resolve(tmpdir(), "breatic-test-logs"),
+    debug: false,
+    console: "none",
+  });
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,
@@ -539,6 +551,38 @@ describe("GET /studio/:slug/credits", () => {
   });
 });
 
+describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => {
+  it("sends each lot as buyer, date, purchased and remaining, and nothing about its refunds", async () => {
+    const fx = await seedFixture();
+    const lotId = await seedLot(fx, 120, fx.studioId);
+    await sql`UPDATE credit_lots SET refund_attempts = 2 WHERE id = ${lotId}`;
+    const [stored] = await sql<{ created_at: Date }[]>`
+      SELECT created_at FROM credit_lots WHERE id = ${lotId}
+    `;
+
+    const res = await app.request(`/api/v1/studio/${fx.studioSlug}/credits`, {
+      headers: { Cookie: fx.cookie },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { data: { lots: Record<string, unknown>[] } };
+    expect(body.data.lots).toHaveLength(1);
+    expect(Object.keys(body.data.lots[0]!).sort()).toEqual([
+      "buyerName",
+      "createdAt",
+      "id",
+      "purchasedCredits",
+      "remainingCredits",
+    ]);
+    expect(body.data.lots[0]).toEqual({
+      id: lotId,
+      purchasedCredits: 120,
+      remainingCredits: 120,
+      createdAt: stored!.created_at.toISOString(),
+      buyerName: fx.personalStudioName,
+    });
+  });
+});
+
 describe("GET /studio/:slug/credits — holds (inner#1611)", () => {
   it("reports what running work holds and what is left beside the spendable figure", async () => {
     const fx = await seedFixture();
@@ -597,6 +641,22 @@ describe("GET /projects/:id/credits", () => {
       headers: { Cookie: stranger.cookie },
     });
     expect(res.status).toBe(404);
+  });
+
+  it("answers 404 for an id that is not a uuid, with nothing logged as an error (inner#1139)", async () => {
+    const fx = await seedFixture();
+    const errors = vi.spyOn(logger, "error");
+    try {
+      const res = await app.request("/api/v1/projects/not-a-uuid/credits", {
+        headers: { Cookie: fx.cookie },
+      });
+      expect(res.status).toBe(404);
+      const body = (await res.json()) as { error: { code: number; message: string } };
+      expect(body.error).toMatchObject({ code: 404, message: t("server.error.not_found") });
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("给这个 project 的成员看它所属 studio 还能花多少", async () => {

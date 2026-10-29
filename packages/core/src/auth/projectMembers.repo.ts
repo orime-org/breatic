@@ -18,6 +18,7 @@ import { and, eq, isNull, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@core/db/client.js";
 import type { DbTx } from "@core/db/client.js";
 import { projectMembers, projects, studioMembers } from "@core/db/schema.js";
+import { CANONICAL_UUID } from "@core/db/canonical-uuid.js";
 import type { DecisionGrantRole, ProjectMember, ProjectRole } from "@breatic/shared";
 
 /**
@@ -100,15 +101,20 @@ export interface ProjectAccess {
  * Same join and the same null collapse as `getRole`; the role is the stored
  * one. Capping it for an archived project is the caller's decision
  * (`loadProjectRole` caps, `loadProjectAccess` reports).
+ *
+ * The project id arrives from request input (a route param, a Yjs document
+ * name). One that is not a uuid names no project, and comparing it with the
+ * uuid column makes Postgres reject the statement, so it answers null here.
  * @param projectId - Project UUID
  * @param userId - User UUID
- * @returns Role and archive state, or null if the project is missing/deleted
- *   or the user has no active membership
+ * @returns Role and archive state, or null if the project id is not a uuid,
+ *   the project is missing/deleted or the user has no active membership
  */
 export async function getAccess(
   projectId: string,
   userId: string,
 ): Promise<ProjectAccess | null> {
+  if (!CANONICAL_UUID.test(projectId)) return null;
   const rows = await db
     .select({ role: projectMembers.role, archivedAt: projects.archivedAt })
     .from(projectMembers)

@@ -35,6 +35,7 @@ import {
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
+import { createFrameAssembler } from "@collab/infra/frame-assembler.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
 import { SOCKET_CEILINGS } from "@collab/infra/socket-ceilings.js";
 import {
@@ -85,7 +86,7 @@ import {
   writeRescueNote,
 } from "@collab/services/rescue-file.js";
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
-import { getCollabConfig, getConnectionTimings } from "@collab/config.js";
+import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import {
   handleSpaceRpc,
 } from "@collab/services/space-rpc.js";
@@ -279,9 +280,23 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   // so reading it late is safe.
   const storeGate: { current?: UnloadGate } = {};
 
+  // A frame carries at most 128 KiB; larger messages arrive chunked and are
+  // reassembled within the limits in config/collab.yaml (inner#1585).
+  const limits = getReassemblyLimits();
+  const frameAssembler = createFrameAssembler({
+    maxMessageBytes: limits.maxMessageBytes,
+    budgetBytes: limits.budgetBytes,
+    idleTimeoutMs: limits.idleTimeoutMs,
+    userOf: sessionGate.userOf,
+  });
+
   const wsServer = new Server({
     port: infra.port,
     quiet: cfg.quiet,
+    websocketOptions: { maxPayload: limits.frameMaxBytes },
+    receiveFrame: frameAssembler.receiveFrame,
+    onPeerClose: frameAssembler.onPeerClose,
+    onPeerError: frameAssembler.onPeerError,
 
     // The library installs its own SIGINT / SIGQUIT / SIGTERM handler by
     // default (`stopOnSignals`, hocuspocus-server.esm.js:1675-1682) and it is
@@ -604,7 +619,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       connection.sendStateless(JSON.stringify(response));
     },
 
-    // Document size limit — reject updates that would exceed max.
+    // Document size limit: a document past it is only logged (warn).
     onChange: async ({ documentName, document }) => {
       if (cfg.max_document_bytes > 0) {
         const size = Y.encodeStateAsUpdate(document).byteLength;

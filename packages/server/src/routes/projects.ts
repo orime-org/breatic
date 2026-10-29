@@ -165,10 +165,8 @@ projects.get(
  */
 projects.delete(
   "/:id/transfer/:transferId",
-  // Registered BEFORE the role middleware, which reads `:id` and puts it
-  // straight into a uuid comparison of its own — a validator behind it would
-  // never see a bad `:id`, and the 500 it exists to prevent would happen in
-  // the middleware instead.
+  // Registered BEFORE the role middleware, so a malformed `:id` or
+  // `:transferId` is answered as a malformed request before any lookup.
   validate(
     "param",
     z.object({ id: z.string().uuid(), transferId: z.string().uuid() }),
