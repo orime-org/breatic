@@ -73,25 +73,6 @@ export interface CellAt {
 export type CellScope = 'row' | 'column' | 'cell';
 
 /**
- * The cell a column is read from: the first in it that covers that column
- * alone, else the first in it at all. A short row's missing cell is none.
- * @param map - The table's map.
- * @param table - The table.
- * @param col - The column.
- * @returns The cell's offset in the table.
- */
-export function columnCellOf(map: TableMap, table: PMNode, col: number): number {
-  let first = 0;
-  for (let row = 0; row < map.height; row += 1) {
-    const rel = map.map[row * map.width + col]!;
-    if (rel === 0) continue;
-    if (Number(table.nodeAt(rel)!.attrs['colspan'] ?? 1) === 1) return rel;
-    if (first === 0) first = rel;
-  }
-  return first;
-}
-
-/**
  * The cell at a position, and the table it is in.
  * @param doc - The document.
  * @param cellPos - The position before the cell node.

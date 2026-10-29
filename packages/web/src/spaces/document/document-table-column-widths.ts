@@ -21,7 +21,8 @@ import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizingPluginKey, TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { cellAt, columnCellOf } from '@web/spaces/document/document-table-run';
+import { columnCellOf } from '@web/spaces/document/document-table-nodes';
+import { cellAt } from '@web/spaces/document/document-table-run';
 
 /**
  * Gives every column of a table without a stored width the width given for it.

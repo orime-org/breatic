@@ -433,17 +433,36 @@ const squareBeforeCellPaste = new Plugin({
 });
 
 /**
+ * The cell a column is read from: the first in it that covers that column
+ * alone, else the first in it at all. A short row's missing cell is none.
+ * @param map - The table's map.
+ * @param table - The table.
+ * @param col - The column.
+ * @returns The cell's offset in the table.
+ */
+export function columnCellOf(map: TableMap, table: PMNode, col: number): number {
+  let first = 0;
+  for (let row = 0; row < map.height; row += 1) {
+    const rel = map.map[row * map.width + col]!;
+    if (rel === 0) continue;
+    if (Number(table.nodeAt(rel)!.attrs['colspan'] ?? 1) === 1) return rel;
+    if (first === 0) first = rel;
+  }
+  return first;
+}
+
+/**
  * Draws one placeholder for a cell a short row lacks.
  * @param tag - The tag of the row's cells.
  * @param colwidth - The width of the column it stands in, when set.
  * @returns The widget's element factory.
  */
-function missingCell(tag: string, colwidth: unknown): () => HTMLElement {
+function missingCell(tag: string, colwidth: number | null): () => HTMLElement {
   return () => {
     const cell = document.createElement(tag);
     cell.contentEditable = 'false';
     cell.dataset['docTableMissing'] = '';
-    if (Array.isArray(colwidth) && typeof colwidth[0] === 'number' && colwidth[0] > 0) cell.setAttribute('colwidth', String(colwidth[0]));
+    if (colwidth !== null) cell.setAttribute('colwidth', String(colwidth));
     return cell;
   };
 }
@@ -458,8 +477,8 @@ interface MissingCell {
   readonly column: number;
   /** Whether it is a header cell, judged as `missingCellsOf` says. */
   readonly header: boolean;
-  /** The width of the column it stands in, when another row sets one. */
-  readonly colwidth: unknown;
+  /** The width of the column it stands in, when one is stored. */
+  readonly colwidth: number | null;
 }
 
 /**
@@ -485,12 +504,12 @@ function missingCellsOf(table: PMNode): MissingCell[] {
       (problem.row === 0 && rowIsHeader(map, table, 0)) ||
       (last?.type.name === DOC_TABLE_HEADER &&
         !columnIsHeader(map, table, map.colCount(lastAt) + Number(last.attrs['colspan'] ?? 1) - 1));
-    for (let n = 0; n < problem.n; n += 1) {
-      const column = row.childCount + n;
-      let colwidth: unknown = null;
-      table.forEach((other) => {
-        if (colwidth === null && other.childCount > column) colwidth = other.child(column).attrs['colwidth'];
-      });
+    for (let column = 0; column < map.width; column += 1) {
+      if (map.map[problem.row * map.width + column] !== 0) continue;
+      // The width the column is drawn at; a stored 0 is no width.
+      const rel = columnCellOf(map, table, column);
+      const stored = table.nodeAt(rel)!.attrs['colwidth'] as (number | null)[] | null;
+      const colwidth = stored?.[column - map.colCount(rel)] || null;
       found.push({ at: rowPos + row.nodeSize - 1, row: problem.row, column, header, colwidth });
     }
   }
