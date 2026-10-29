@@ -73,7 +73,7 @@ describe('Run with a trusted frame table and an unknown presented frame', () => 
     commitVideoToolDraft(doc, nodeId, 'video.extract-frames', draft);
     canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.extract-frames', { sourceContent: sourceURL, params: {} });
     const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...source.mediaInfo } };
-    const frameTable = { frames: [{ frameIndex: 0, pts: 0 }, { frameIndex: 1, pts: 0.04 }, { frameIndex: 2, pts: 0.12 }, { frameIndex: 3, pts: 0.2 }], videoEnd: 0.28 };
+    const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
     const onRun = vi.fn().mockResolvedValue(undefined);
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} onRunVideo={onRun} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 3, presentedTime: null }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
     const run = screen.getByTestId('mini-tool-run');

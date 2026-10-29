@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import * as React from 'react';
-import type { VideoFrameTable } from '@breatic/shared/mini-tools';
+import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
 import type { VideoToolPresentation } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 
 /** Optional authoritative table supplied by the source-frame owner. */
-export interface CanonicalVideoFrameTable { sourceKey: string; table: VideoFrameTable }
+export interface CanonicalVideoFrameTable { sourceKey: string; table: VideoPresentationTable }
 /** Existing node notifications and the active tool's current runtime attachment. */
 export interface CanvasVideoBindings {
   bindings: ReadonlyMap<string, MediaPlayerVideoSnapshot>;

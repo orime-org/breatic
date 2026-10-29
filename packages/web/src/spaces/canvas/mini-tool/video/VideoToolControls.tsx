@@ -7,7 +7,7 @@ import { useVideoFrameThumbnails } from '@web/spaces/canvas/mini-tool/video/use-
 import { Skeleton } from '@web/components/ui/skeleton';
 import { AudioLines, Film, Plus, RefreshCw, Trash2, Users } from 'lucide-react';
 import { newId } from '@breatic/shared';
-import { planVideoFrames, planVideoSplit, type MiniToolAnalysisRecord, type VideoFrameTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { planVideoFrames, planVideoSplit, presentationFrameAt, presentationFrameCount, presentationVideoEnd, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
@@ -28,7 +28,7 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   draft: VideoToolDraftById[K];
   onChange: (draft: VideoToolDraftById[K]) => void;
   analyses: readonly MiniToolAnalysisRecord[];
-  frameTable: VideoFrameTable | null;
+  frameTable: VideoPresentationTable | null;
   presentedTime: number | null;
   disabled: boolean;
   pickingSlot: string | null;
@@ -182,7 +182,7 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
     case 'video.split': {
       const draft = props.draft as VideoToolDraftById['video.split'];
       const planned = props.frameTable === null ? [] : planVideoSplit(props.frameTable, draft.params.cuts);
-      return <><VideoCutStrip {...props} /><Button variant='outline' size='sm' data-testid='video-detect-scenes' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onAnalyse('scene_cuts')}>{t('canvas.miniTool.videoUI.detectScenes')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button><div className='flex items-center justify-between gap-2'><span className='text-xs text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : t('canvas.miniTool.videoUI.segmentCount', { count: planned.length })}</span><Button variant='outline' size='compact' disabled={props.disabled || props.frameTable === null || props.presentedTime === null || props.presentedTime <= 0 || props.presentedTime >= (props.frameTable?.videoEnd ?? 0)} onClick={() => { if (props.presentedTime !== null) props.onChange({ ...draft, params: { ...draft.params, cuts: [...new Set([...draft.params.cuts, props.presentedTime])].sort((a, b) => a - b) } }); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div><ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{draft.params.cuts.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => props.onChange({ ...draft, params: { ...draft.params, cuts: draft.params.cuts.map((item, at) => at === index ? value : item) } })} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onClick={() => props.onChange({ ...draft, params: { ...draft.params, cuts: draft.params.cuts.filter((_, at) => at !== index) } })}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea></>;
+      return <><VideoCutStrip {...props} /><Button variant='outline' size='sm' data-testid='video-detect-scenes' loading={props.analysing} disabled={props.disabled || props.analysing} onClick={() => props.onAnalyse('scene_cuts')}>{t('canvas.miniTool.videoUI.detectScenes')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button><div className='flex items-center justify-between gap-2'><span className='text-xs text-muted-foreground'>{props.frameTable === null ? t('canvas.miniTool.videoUI.loadingFrames') : t('canvas.miniTool.videoUI.segmentCount', { count: planned.length })}</span><Button variant='outline' size='compact' disabled={props.disabled || props.frameTable === null || props.presentedTime === null || props.presentedTime <= 0 || props.presentedTime >= (props.frameTable === null ? 0 : presentationVideoEnd(props.frameTable))} onClick={() => { if (props.presentedTime !== null) props.onChange({ ...draft, params: { ...draft.params, cuts: [...new Set([...draft.params.cuts, props.presentedTime])].sort((a, b) => a - b) } }); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button></div><ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{draft.params.cuts.map((cut, index) => <div key={index} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} max={draft.source.mediaInfo.duration} disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => props.onChange({ ...draft, params: { ...draft.params, cuts: draft.params.cuts.map((item, at) => at === index ? value : item) } })} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onClick={() => props.onChange({ ...draft, params: { ...draft.params, cuts: draft.params.cuts.filter((_, at) => at !== index) } })}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea></>;
     }
   }
 }
@@ -202,7 +202,7 @@ function VideoCutStrip(props: VideoToolControlsProps): React.JSX.Element {
   React.useEffect(() => { gesture.current = null; setTemporary(null); }, [draft.revision, props.sourceEpoch, props.seekEpoch, props.disabled]);
   const normalized = props.frameTable === null ? draft.params.cuts : planVideoSplit(props.frameTable, draft.params.cuts).slice(1).map((segment) => segment.start);
   const cuts = temporary ?? normalized;
-  const duration = props.frameTable?.videoEnd ?? draft.source.mediaInfo.duration;
+  const duration = props.frameTable === null ? draft.source.mediaInfo.duration : presentationVideoEnd(props.frameTable);
   return <div className='grid gap-2'>
     <div className='relative h-14 overflow-hidden rounded-chrome border border-border'>
       <FilmStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} />
@@ -216,9 +216,11 @@ function VideoCutStrip(props: VideoToolControlsProps): React.JSX.Element {
       const at = normalized[index];
       if (at === undefined) return;
       event.preventDefault(); event.stopPropagation();
-      const frames = [...new Set(props.frameTable.frames.map((frame) => frame.pts))].filter((pts) => pts > 0 && pts < duration);
       const backwards = event.key === 'ArrowLeft' || event.key === 'ArrowDown';
-      const next = backwards ? frames.filter((pts) => pts < at).at(-1) : frames.find((pts) => pts > at);
+      const covering = planVideoFrames(props.frameTable, { mode: 'current', currentTime: at })[0]!;
+      const neighbour = backwards ? (covering.pts < at ? covering.frameIndex : covering.frameIndex - 1) : (covering.pts > at ? covering.frameIndex : covering.frameIndex + 1);
+      const pts = neighbour >= 0 && neighbour < presentationFrameCount(props.frameTable) ? presentationFrameAt(props.frameTable, neighbour).pts : undefined;
+      const next = pts !== undefined && pts > 0 && pts < duration ? pts : undefined;
       if (next !== undefined) props.onChange({ ...draft, params: { ...draft.params, cuts: normalized.map((pts, position) => position === index ? next : pts) } });
     }} onPointerDownCapture={() => { gesture.current = draft.revision; }} onValueChange={(values) => setTemporary(values)} onValueCommit={(values) => {
       const current = latest.current.draft as VideoToolDraftById['video.split'];

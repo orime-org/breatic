@@ -8,7 +8,7 @@ import type { PresentedMediaFrame, MediaSurfaceBinding } from '@web/spaces/canva
 import { useStore } from '@xyflow/react';
 import { useQueries, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { CANVAS_NODES_KEY, newId, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, planVideoFrames, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type VideoFrameTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, planVideoFrames, projectMiniToolAnalysisInput, videoToolAnalysisRefs, videoToolSourceRefSchema, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type VideoPresentationTable, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { miniToolAnalysesApi, miniToolAnalysisQuery, latestMiniToolAnalysis } from '@web/data/api/mini-tool-analyses';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -44,7 +44,7 @@ function analysisRecords(queries: readonly UseQueryResult<MiniToolAnalysisRecord
 
 /** Authoritative presentation facts supplied by the video node owner. */
 export interface VideoToolPresentation {
-  frameTable: VideoFrameTable | null;
+  frameTable: VideoPresentationTable | null;
   presentedTime: number | null;
   /** Reads the owner's current frame at a press, independently of React preview cadence. */
   getPresentedFrame?: () => PresentedMediaFrame | null;

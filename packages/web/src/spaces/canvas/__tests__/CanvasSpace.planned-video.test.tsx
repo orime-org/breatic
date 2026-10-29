@@ -28,7 +28,7 @@ import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useCanvasStore } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import type { VideoToolDraftById, VideoFrameTable } from '@breatic/shared/mini-tools';
+import type { VideoToolDraftById, VideoPresentationTable } from '@breatic/shared/mini-tools';
 
 vi.mock('@web/data/yjs/canvas-space', async (original) => ({ ...(await original<typeof CanvasModule>()), useCanvasSpace: vi.fn() }));
 vi.mock('@web/spaces/canvas/mini-tool/start-planned-video-run', async (original) => ({ ...(await original<typeof StartModule>()), startPlannedVideoRun: vi.fn() }));
@@ -42,13 +42,13 @@ const PROJECT = '30000000-0000-4000-8000-000000000001';
 const SPACE = '30000000-0000-4000-8000-000000000002';
 const SOURCE = '30000000-0000-4000-8000-000000000003';
 const URL = 'https://assets.example.test/canonical.webm';
-const TABLE: VideoFrameTable = { frames: [{ frameIndex: 0, pts: 0 }, { frameIndex: 1, pts: 0.04 }, { frameIndex: 2, pts: 0.12 }, { frameIndex: 3, pts: 0.2 }], videoEnd: 0.28 };
+const TABLE: VideoPresentationTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
 const DRAFT: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '30000000-0000-4000-8000-000000000004', revision: '30000000-0000-4000-8000-000000000005', source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: {} };
 const SOURCE_BINDING: VideoPresentationSourceBinding = { assetId: '30000000-0000-4000-8000-000000000007', contentHash: 'a'.repeat(64), canonicalURL: URL, kind: 'video', mediaInfo: DRAFT.source.mediaInfo };
 const clients: QueryClient[] = [];
 
 /** Supplies explicit presentation facts without running a browser decoder. @throws {never} Never. */
-function presentation(table: VideoFrameTable | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready'): BindingModule.CanvasVideoBindings {
+function presentation(table: VideoPresentationTable | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready'): BindingModule.CanvasVideoBindings {
   const element = document.createElement('video');
   const binding = { sourceKey: 'registered-source', sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: DRAFT.source.mediaInfo, getSeekEpoch: () => 0, getPresentedFrame: () => null, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const facts: BindingModule.CanvasVideoBindings = {
