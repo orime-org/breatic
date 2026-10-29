@@ -34,7 +34,7 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **Register any per-connection resource (Redis counter, lock, mapping) in the `connected` hook and release it in `onDisconnect`.** `onDisconnect` fires only for connections whose `Connection` object was created; a connection rejected by auth or failing document load never gets one, so anything registered in `onConnect` or `onAuthenticate` leaks, and with a refresh loop it never expires.
 
-**The two sides ask different questions on purpose: registering checks document type and writability (`shouldRegisterConnection`), unregistering checks document type only (`shouldTrackConnection`).** `onDisconnectPayload` carries no `connectionConfig`, and removing a member that was never added is a no-op.
+**The two sides ask different questions on purpose: a seat is taken only when the auth hook handed the connection a ceiling (`AuthContext.seatCap` is not null, so writable content documents only), and unregistering checks document type only (`shouldTrackConnection`).** `onDisconnectPayload` carries no `connectionConfig`, and removing a member that was never added is a no-op.
 
 ### No direct connection from a load hook
 
