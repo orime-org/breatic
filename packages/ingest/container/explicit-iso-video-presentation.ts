@@ -9,7 +9,7 @@ import type { PhysicalVideoProbe } from "@ingest/container/physical-video-probe.
  * Assemble a selected physical track's complete explicit edit schedule without IO or implicit edits.
  * @param iso - Container metadata from the same immutable source as the physical probe.
  * @param physical - The selected video track's exact unedited clock and complete frame ledger.
- * @param maxOccurrences - Caller-frozen expansion ceiling passed to the rate-one planner.
+ * @param maxOccurrences - Caller-frozen expansion ceiling passed to the edit planner.
  * @returns The owned explicit schedule, or null when the matched track has no explicit edit list.
  * @throws {Error} When track association, exact planning or the caller's ceiling fails.
  */

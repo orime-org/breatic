@@ -61,6 +61,7 @@
     "../../shared/src/mini-tools/types.ts",
     "../../shared/src/upload/video-presentation-types.ts",
     "../../shared/src/upload/video-source-ledger-types.ts",
+    "../../shared/src/mini-tools/video-presentation-projection.ts",
     "__tests__/*.ts"
   ]
 }

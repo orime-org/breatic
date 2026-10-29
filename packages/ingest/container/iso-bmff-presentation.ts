@@ -56,7 +56,8 @@ export function planUneditedVideoPresentation(
 }
 
 /**
- * Project complete rate-one edits onto physical frames, including clipped overlap at an edit start.
+ * Project complete positive-rate edits onto physical frames, including clipped overlap at an edit start and end.
+ * An edit [T, T+d) at rate r presents source [m, m + d·r); source time p shows at T + (p − m)/r.
  * @param input - Integer source facts and a complete explicitly supplied edit schedule.
  * @param maxOccurrences - Frozen maximum expansion, independent from raw-frame count.
  * @returns Exact movie intervals and stable occurrence-to-raw identities.
@@ -72,7 +73,9 @@ export function planRateOnePresentation(input: RateOnePresentationInput, maxOccu
   const result: OwnedVideoPresentation = { edits: [], frames: [] };
   let movieStart = rational(0n, 1n);
   for (const [editOccurrence, edit] of input.edits.entries()) {
-    if (integer(edit.mediaRateFixed16_16, "unsupported_rate") !== 65536n) throw presentationError("unsupported_rate", "This planner requires an exact rate-one edit");
+    const rateFixed = integer(edit.mediaRateFixed16_16, "unsupported_rate");
+    if (rateFixed <= 0n) throw presentationError("unsupported_rate", "Edit rates must be positive");
+    const rate = rational(rateFixed, 65536n);
     const durationTicks = integer(edit.segmentDurationMovieTicks, "invalid_edit");
     const mediaTicks = integer(edit.mediaTimeTrackTicks, "invalid_edit");
     if (durationTicks < 0n || mediaTicks < -1n) throw presentationError("invalid_edit", "Invalid edit duration or media time");
@@ -82,7 +85,15 @@ export function planRateOnePresentation(input: RateOnePresentationInput, maxOccu
     result.edits.push({ editOccurrence, empty, start: exact(movieStart), end: exact(movieEnd) });
     if (!empty && durationTicks > 0n) {
       const mediaStart = rational(mediaTicks, mediaScale);
-      const mediaEnd = add(mediaStart, duration);
+      const mediaEnd = add(mediaStart, multiply(duration, rate));
+      const editStart = movieStart;
+      /**
+       * Movie time of a source time inside this edit.
+       * @param source - Source time within the edit.
+       * @returns Its movie time.
+       * @throws {never} Never.
+       */
+      const toMovie = (source: Rational): Rational => add(editStart, divide(subtract(source, mediaStart), rate));
       let index = firstAtOrAfter(physical, mediaStart);
       if (index > 0) index -= 1;
       for (; index < physical.length; index += 1) {
@@ -96,9 +107,8 @@ export function planRateOnePresentation(input: RateOnePresentationInput, maxOccu
         const frame = input.frames[index]!;
         result.frames.push({
           presentationOrdinal: result.frames.length, editOccurrence, rawDecodeOrdinal: frame.rawDecodeOrdinal,
-          sourcePtsTicks: frame.ptsTicks, mappedPts: exact(add(movieStart, subtract(pts, mediaStart))),
-          displayStart: exact(add(movieStart, subtract(start, mediaStart))),
-          displayEnd: exact(add(movieStart, subtract(end, mediaStart))),
+          sourcePtsTicks: frame.ptsTicks, mappedPts: exact(toMovie(pts)),
+          displayStart: exact(toMovie(start)), displayEnd: exact(toMovie(end)),
         });
       }
     }
@@ -153,6 +163,16 @@ function add(left: Rational, right: Rational): Rational { return rational(left.n
  * @throws {never} Never.
  */
 function subtract(left: Rational, right: Rational): Rational { return rational(left.n * right.d - right.n * left.d, left.d * right.d); }
+
+/** Scale an exact time by an exact factor.
+ * @throws {never} Never.
+ */
+function multiply(left: Rational, right: Rational): Rational { return rational(left.n * right.n, left.d * right.d); }
+
+/** Divide an exact time by a positive exact factor.
+ * @throws {never} Never; callers pass a positive divisor.
+ */
+function divide(left: Rational, right: Rational): Rational { return rational(left.n * right.d, left.d * right.n); }
 
 /** Order exact rational times using their full integer products.
  * @throws {never} Never.
