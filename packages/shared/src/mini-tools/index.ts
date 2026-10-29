@@ -12,6 +12,7 @@ export * from "@shared/mini-tools/analysis-record.js";
 export * from "@shared/mini-tools/analysis-request.js";
 export * from "@shared/mini-tools/consumption-identity.js";
 export * from "@shared/mini-tools/video-draft.js";
+export * from "@shared/mini-tools/video-presentation-table.js";
 export * from "@shared/mini-tools/video-plan.js";
 export * from "@shared/mini-tools/canonical-value.js";
 export * from "@shared/mini-tools/execution-record.js";

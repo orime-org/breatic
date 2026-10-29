@@ -2,8 +2,14 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from "zod";
-import type { VideoFrameTable, VideoSourceFrame } from "@shared/mini-tools/video-frame-table.js";
-export type { VideoFrameTable, VideoSourceFrame } from "@shared/mini-tools/video-frame-table.js";
+import {
+  presentationCoveringFrame,
+  presentationFrameAt,
+  presentationFrameCount,
+  presentationTableSchema,
+  presentationVideoEnd,
+  type VideoPresentationTable,
+} from "@shared/mini-tools/video-presentation-table.js";
 import {
   videoToolDialogueRowSchema,
   videoToolExpansionFrameSchema,
@@ -15,16 +21,10 @@ import {
 } from "@shared/mini-tools/video-draft.js";
 
 export interface VideoFrameRequest { mode: "first" | "last" | "current" | "interval"; currentTime?: number; interval?: number }
-export interface VideoFrameOutput extends VideoSourceFrame { outputIndex: number }
+export interface VideoFrameOutput { outputIndex: number; frameIndex: number; pts: number }
 export interface VideoSplitOutput { outputIndex: number; start: number; end: number }
 export interface VideoExpandPlan { width: number; height: number; sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number }
 
-const frameTableSchema = z.strictObject({
-  frames: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), pts: z.number() })).min(1),
-  videoEnd: z.number().positive(),
-}).superRefine((source, ctx) => {
-  if (source.frames.some((frame, index) => frame.frameIndex !== index || frame.pts >= source.videoEnd || (index > 0 && frame.pts < source.frames[index - 1]!.pts))) ctx.addIssue({ code: "custom", path: ["frames"], message: "Expected complete presentation-ordered source frames before videoEnd" });
-});
 const frameRequestSchema = z.strictObject({
   mode: z.enum(["first", "last", "current", "interval"]),
   currentTime: z.number().nonnegative().optional(),
@@ -35,68 +35,83 @@ const frameRequestSchema = z.strictObject({
 });
 
 /**
- * Finds the displayed frame covering a source-clock instant.
- * @param frames - Validated frames in presentation order.
- * @param time - The requested source time.
- * @returns The covering frame, bounded by the first and last displayed frames.
+ * The smallest sample index whose time reaches a frame start.
+ * @param start - The frame start in seconds.
+ * @param interval - The sampling period in seconds.
+ * @returns The sample index, or null when it lies beyond exact float counting.
  * @throws {never} Never.
  */
-function coveringFrame(frames: readonly VideoSourceFrame[], time: number): VideoSourceFrame {
-  let left = 0;
-  let right = frames.length - 1;
-  while (left < right) {
-    const middle = Math.ceil((left + right) / 2);
-    if (frames[middle]!.pts <= time) left = middle;
-    else right = middle - 1;
-  }
-  return frames[left]!;
+function firstSampleFrom(start: number, interval: number): number | null {
+  let k = Math.ceil(start / interval);
+  if (!Number.isSafeInteger(k)) return null;
+  while (k > 0 && (k - 1) * interval >= start) k -= 1;
+  while (k * interval < start) k += 1;
+  return k;
 }
 
 /**
- * Builds every selected displayed-frame output, in source order.
- * @param source - The decoded source frame table and video end.
- * @param request - The selected frame mode and source-clock parameters.
- * @returns Complete deduplicated frame outputs with stable indices.
- * @throws {z.ZodError} When frame metadata or selection parameters are invalid.
+ * Every frame covering a sample k·interval inside the video, jumping from frame to frame instead of sample to sample.
+ * @param table - A validated presentation table.
+ * @param interval - The sampling period in seconds.
+ * @returns Ascending distinct covering frame indices.
+ * @throws {never} Never.
  */
-export function planVideoFrames(source: VideoFrameTable, request: VideoFrameRequest): VideoFrameOutput[] {
-  const table = frameTableSchema.parse(source);
-  const selection = frameRequestSchema.parse(request);
-  let selected: VideoSourceFrame[];
-  switch (selection.mode) {
-    case "first": selected = [table.frames[0]!]; break;
-    case "last": selected = [table.frames[table.frames.length - 1]!]; break;
-    case "current": selected = [coveringFrame(table.frames, selection.currentTime!)]; break;
-    case "interval": {
-      const interval = selection.interval!;
-      // Frame windows keep dense sampling bounded by the actual displayed-frame set.
-      selected = table.frames.filter((frame, index) => {
-        const start = Math.max(0, frame.pts);
-        const end = table.frames[index + 1]?.pts ?? table.videoEnd;
-        const candidate = Math.floor(start / interval);
-        const sampleTime = candidate * interval >= start ? candidate * interval : (candidate + 1) * interval;
-        return end > start && (end - start >= interval || sampleTime < end);
-      });
+function intervalFrames(table: VideoPresentationTable, interval: number): number[] {
+  const count = presentationFrameCount(table);
+  const videoEnd = presentationVideoEnd(table);
+  const picked: number[] = [];
+  for (let from = 0; from < count;) {
+    const k = firstSampleFrom(presentationFrameAt(table, from).pts, interval);
+    if (k === null) {
+      // The period is shorter than one tick here, so every remaining frame holds a sample.
+      for (let frame = from; frame < count; frame += 1) picked.push(frame);
       break;
     }
+    if (k * interval >= videoEnd) break;
+    const frame = presentationCoveringFrame(table, k * interval);
+    picked.push(frame);
+    from = frame + 1;
   }
-  return selected.map((frame, outputIndex) => ({ outputIndex, ...frame }));
+  return picked;
 }
 
 /**
- * Normalizes cuts to the shared displayed-frame boundaries and returns all segments.
- * @param source - The decoded source frame table and video end.
+ * Builds every selected displayed-frame output, in source order, without expanding frames.
+ * @param source - The compact presentation table.
+ * @param request - The selected frame mode and source-clock parameters.
+ * @returns Complete deduplicated frame outputs with stable indices.
+ * @throws {z.ZodError} When the table or selection parameters are invalid.
+ */
+export function planVideoFrames(source: VideoPresentationTable, request: VideoFrameRequest): VideoFrameOutput[] {
+  const table = presentationTableSchema.parse(source);
+  const selection = frameRequestSchema.parse(request);
+  let picked: number[];
+  switch (selection.mode) {
+    case "first": picked = [0]; break;
+    case "last": picked = [presentationFrameCount(table) - 1]; break;
+    case "current": picked = [presentationCoveringFrame(table, selection.currentTime!)]; break;
+    case "interval": picked = intervalFrames(table, selection.interval!); break;
+  }
+  return picked.map((frameIndex, outputIndex) => ({ outputIndex, frameIndex, pts: presentationFrameAt(table, frameIndex).pts }));
+}
+
+/**
+ * Snaps cuts to covering frame starts and returns all segments from the first frame to the video end.
+ * @param source - The compact presentation table.
  * @param cuts - Editable source-clock cut positions.
  * @returns N plus one ranges for N distinct internal frame boundaries.
- * @throws {z.ZodError} When source metadata or a cut is invalid.
+ * @throws {z.ZodError} When the table or a cut is invalid.
  * @throws {RangeError} When a cut lies beyond the source video.
  */
-export function planVideoSplit(source: VideoFrameTable, cuts: readonly number[]): VideoSplitOutput[] {
-  const table = frameTableSchema.parse(source);
+export function planVideoSplit(source: VideoPresentationTable, cuts: readonly number[]): VideoSplitOutput[] {
+  const table = presentationTableSchema.parse(source);
   const requested = z.array(z.number().nonnegative()).parse(cuts);
-  if (requested.some((cut) => cut > table.videoEnd)) throw new RangeError("Split cut lies beyond videoEnd");
-  const normalized = [...new Set(requested.filter((cut) => cut > 0 && cut < table.videoEnd).map((cut) => coveringFrame(table.frames, cut).pts).filter((pts) => pts > 0 && pts < table.videoEnd))].sort((a, b) => a - b);
-  const boundaries = [0, ...normalized, table.videoEnd];
+  const first = presentationFrameAt(table, 0).pts;
+  const videoEnd = presentationVideoEnd(table);
+  if (requested.some((cut) => cut > videoEnd)) throw new RangeError("Split cut lies beyond videoEnd");
+  const inner = [...new Set(requested.filter((cut) => cut > first && cut < videoEnd).map((cut) => presentationFrameAt(table, presentationCoveringFrame(table, cut)).pts))]
+    .filter((start) => start > first).sort((a, b) => a - b);
+  const boundaries = [first, ...inner, videoEnd];
   return boundaries.slice(0, -1).map((start, outputIndex) => ({ outputIndex, start, end: boundaries[outputIndex + 1]! }));
 }
 
