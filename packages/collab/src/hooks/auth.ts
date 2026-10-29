@@ -434,7 +434,6 @@ export function createAuthHook({
             const own = await hasOwnSeat(documentName, userId);
             if (own !== "no") atCapacity = false;
           }
-          if (!atCapacity) seatCap = cap;
           if (atCapacity) {
             // Permanent structured log. The cap degrade was previously
             // silent (baseline smoke found no ops signal) — oncall /
@@ -451,6 +450,8 @@ export function createAuthHook({
               },
               "connection_cap_degraded",
             );
+          } else {
+            seatCap = cap;
           }
         }
       }
