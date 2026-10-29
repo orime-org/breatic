@@ -3,7 +3,7 @@
 
 import { BodyTooLarge } from "@provider/http/errors.js";
 import { reachable } from "@provider/http/private-address.js";
-import { readBody, send } from "@provider/http/request.js";
+import { isSuccess, readBody, send } from "@provider/http/request.js";
 
 /** The media type each address extension implies (domain's understand/fetch-media.ts TYPE_BY_EXTENSION, images). */
 const TYPE_BY_EXTENSION: Readonly<Record<string, string>> = {
@@ -88,7 +88,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<FetchedMed
     const response = await send({ url: target, method: "GET" }, bounds);
     const location = response.status >= 300 && response.status < 400 ? response.headers.get("location") : null;
     if (location === null) {
-      if (response.status < 200 || response.status >= 300) {
+      if (!isSuccess(response.status)) {
         await response.body?.cancel();
         throw new MediaRefused("unavailable", response.status);
       }

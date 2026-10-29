@@ -156,6 +156,15 @@ export function retryAfterOf(raw: string | null): number | undefined {
 }
 
 /**
+ * Whether a status says the request succeeded: 200 to 299.
+ * @param status - The status.
+ * @returns True for 2xx.
+ */
+export function isSuccess(status: number): boolean {
+  return status >= 200 && status < 300;
+}
+
+/**
  * Whether a status says the server's own side failed: 500 to 599, no class above it.
  * @param status - The status.
  * @returns True for 5xx.
@@ -375,7 +384,7 @@ export async function answerText(url: string, response: Response, maxBytes: numb
   try {
     return new TextDecoder().decode(await readBody(url, response, maxBytes, idleMs, options));
   } catch (error) {
-    if (response.status >= 200 && response.status < 300) throw error;
+    if (isSuccess(response.status)) throw error;
     return "";
   }
 }
@@ -409,7 +418,7 @@ export function parsed(text: string | undefined): unknown {
 export async function fetchJson(request: OutgoingRequest, options: ReadOptions): Promise<unknown> {
   const response = await send(request, options);
   const text = await answerText(request.url, response, options.maxBodyBytes, options.idleMs, options);
-  if (response.status < 200 || response.status >= 300) {
+  if (!isSuccess(response.status)) {
     throw new HttpStatus(request.url, response.status, text);
   }
   return JSON.parse(text) as unknown;

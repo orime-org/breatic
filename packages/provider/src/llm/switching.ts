@@ -13,7 +13,7 @@ import { APICallError } from "ai";
 import { z } from "zod";
 import { numberLeaf, type Cost } from "@provider/cost.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
-import { backoff, MAX_RETRY_AFTER_MS, parsed, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
+import { backoff, isSuccess, MAX_RETRY_AFTER_MS, parsed, retryAfterOf, tapAnswers, wait } from "@provider/http/request.js";
 import { inBandBodyOf, inBandStatusOf, type ModelV4, type Vendor } from "@provider/llm/vendors.js";
 import { passingStatus, type Failure } from "@provider/routing/decide.js";
 import type { Candidate, RoutePlan } from "@provider/routing/route.js";
@@ -36,8 +36,8 @@ export interface SwitchingSetup {
   tracksGenerations: (upstream: string) => boolean;
   maxRetries: number;
   /**
-   * Each billed model call whose finish was not read, shared with the prepared call: a pending
-   * lookup for an OpenRouter generation, a missing cost for a direct vendor's call.
+   * Each billed answer the call could not hand over in a finish, shared with the prepared call:
+   * a lookup when its generation id is known, else a missing cost.
    */
   pending: Map<string, Cost>;
   /** Extra fields for `providerMetadata.breatic`. */
@@ -297,7 +297,7 @@ export class SwitchingModel implements ModelV4 {
        */
       const keep = (copy: Response): void => {
         void last?.copy?.body?.cancel().catch(() => undefined);
-        const needed = tracks && copy.status >= 200 && copy.status < 300;
+        const needed = tracks && isSuccess(copy.status);
         if (!needed) void copy.body?.cancel().catch(() => undefined);
         last = { status: copy.status, copy: needed ? copy : undefined };
       };
@@ -308,7 +308,7 @@ export class SwitchingModel implements ModelV4 {
       } catch (error) {
         // A 2xx that arrived was billed, however the call then ended (its SDK refused the body, it
         // was cut, the caller stopped): by the generation it names, else missing (DD 35).
-        if (last !== undefined && last.status >= 200 && last.status < 300) {
+        if (last !== undefined && isSuccess(last.status)) {
           const text = last.copy === undefined ? "" : await last.copy.text().catch(() => "");
           const id = tracks ? this.track(c.upstream, (parsed(text) as { id?: unknown } | null | undefined)?.id) : undefined;
           if (id === undefined) this.missing(c.upstream, `${c.upstream} answered ${last.status} and the call ended before it could use the answer`);

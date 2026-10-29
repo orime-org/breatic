@@ -10,7 +10,7 @@
 import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import { HttpStatus } from "@provider/http/errors.js";
-import { answerText, deliver, parsed, type OutgoingRequest } from "@provider/http/request.js";
+import { answerText, deliver, isSuccess, parsed, type OutgoingRequest } from "@provider/http/request.js";
 
 /** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
 export interface UploadedFile {
@@ -170,7 +170,7 @@ export async function exchange(request: OutgoingRequest, call: Pick<UnderstandCa
  * @throws {StepRefused} When a preparatory step's status is not 2xx.
  */
 export function assertSucceeded(answered: Answered, preparatory = false): void {
-  if (answered.status >= 200 && answered.status < 300) return;
+  if (isSuccess(answered.status)) return;
   if (preparatory) throw new StepRefused(answered.url, answered.status, answered.text, answered.headers);
   throw new HttpStatus(answered.url, answered.status, answered.text, answered.headers);
 }

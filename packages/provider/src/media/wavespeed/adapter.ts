@@ -14,7 +14,7 @@ import type { UpstreamDecl } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, fetchJson, parsed, send } from "@provider/http/request.js";
+import { answerText, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { MediaWarning } from "@provider/media/runner.js";
 import { readBilling } from "@provider/media/wavespeed/billing.js";
 
@@ -110,7 +110,7 @@ export async function submit(reach: Reach, endpoint: string, body: Record<string
   const url = `${reach.decl.base_url}/${endpoint}`;
   const options = { replaySafe: false, ...bounds };
   const response = await send({ url, method: "POST", headers: headers(reach), body: JSON.stringify(body) }, options);
-  const ok = response.status >= 200 && response.status < 300;
+  const ok = isSuccess(response.status);
   const { maxBodyBytes, idleMs } = limits(bounds);
   let text: string;
   try {

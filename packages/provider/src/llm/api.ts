@@ -31,8 +31,8 @@ export interface PreparedCall {
   /** The system messages, with each upstream's cache marks. */
   system(parts: SystemParts): SystemModelMessage[];
   /**
-   * Each billed model call whose finish was not read: a pending lookup for an OpenRouter
-   * generation, a missing cost for a direct vendor's call.
+   * Each billed answer the call could not hand over in a finish: a lookup when its generation
+   * id is known, else a missing cost.
    */
   pendingCosts(): Cost[];
 }

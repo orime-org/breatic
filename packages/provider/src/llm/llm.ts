@@ -13,7 +13,7 @@ import type { Cost, TokenBuckets } from "@provider/cost.js";
 import { z } from "zod";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
-import { answerText, boundSignal, fetchJson, parsed, send } from "@provider/http/request.js";
+import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
 import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
 import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
@@ -301,7 +301,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (reported !== undefined) return { state: "known", usd: reported, source: "reported" };
     const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body.id, undefined);
     if (ref !== undefined) return { state: "pending", lookup: ref };
-    return status >= 200 && status < 300 ? { state: "missing", reason: `${upstream} answered with no cost and no generation id` } : undefined;
+    return isSuccess(status) ? { state: "missing", reason: `${upstream} answered with no cost and no generation id` } : undefined;
   };
 
   /**
@@ -448,7 +448,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               const cost = answerCost(c.upstream, answered.status, answered.text);
               if (cost !== undefined) billed.push(cost);
             };
-            if (answered.status < 200 || answered.status >= 300) {
+            if (!isSuccess(answered.status)) {
               recordUnserved();
               assertSucceeded(answered);
             }
