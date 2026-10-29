@@ -102,12 +102,26 @@ export interface SeatMember {
 }
 
 /**
- * Take a member string apart.
- *
- * Lives next to the one function that builds them, and is the only way to
- * read one: three readers used to derive the format by hand, each with its
- * own idea of what counts as malformed, so a change to the format would have
- * left some of them working and the rest silently doing nothing.
+ * The member string a seat is stored under.
+ * @param holder - Who holds it, on which socket, and when they arrived.
+ * @param instanceId - The instance holding it.
+ * @returns `{userId}:{arrivedAtMs}:{instanceId}:{socketId}`.
+ */
+export function seatMember(holder: SeatHolder, instanceId: string): string {
+  return `${seatPrefix(holder.userId)}${holder.arrivedAtMs}:${instanceId}:${holder.socketId}`;
+}
+
+/**
+ * What every member of one person's seats starts with.
+ * @param userId - The person.
+ * @returns `{userId}:`.
+ */
+export function seatPrefix(userId: string): string {
+  return `${userId}:`;
+}
+
+/**
+ * Take a member string apart; the inverse of {@link seatMember}.
  * @param member - A member string as stored in the sorted set.
  * @returns Its four parts, or null when it is not one of ours.
  */
@@ -124,7 +138,6 @@ export function parseSeatMember(member: string): SeatMember | null {
   if (!Number.isFinite(arrivedAtMs)) return null;
   return { userId, arrivedAtMs, instanceId, socketId };
 }
-
 
 /**
  * The one place a member is added to a seat set (see module doc).
@@ -413,7 +426,7 @@ export function createConnectionRegistry(
       t,
       ttlSeconds,
       mode,
-      `${entry.userId}:`,
+      seatPrefix(entry.userId),
       silentSeatCutoff(t, pingIntervalMs),
       entry.arrivedAtMs,
     );
@@ -474,7 +487,7 @@ export function createConnectionRegistry(
     cap: number,
   ): Promise<TakeSeatResult> {
     const entry: SeatEntry = {
-      member: `${holder.userId}:${holder.arrivedAtMs}:${instanceId}:${holder.socketId}`,
+      member: seatMember(holder, instanceId),
       userId: holder.userId,
       arrivedAtMs: holder.arrivedAtMs,
       cap,
@@ -561,7 +574,7 @@ export function createConnectionRegistry(
         `(${now() - seatExpiryMs}`,
         "+inf",
       );
-      return live.some((member) => member.startsWith(`${userId}:`)) ? "yes" : "no";
+      return live.some((member) => member.startsWith(seatPrefix(userId))) ? "yes" : "no";
     } catch (err) {
       logger.warn(
         { err, documentName, tag: "conn_registry_own_seat_failed" },
