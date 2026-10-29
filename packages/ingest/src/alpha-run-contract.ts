@@ -12,6 +12,9 @@ export const ALPHA_PACKED_HOST = 'alpha-packed.local';
 /** Outbound handler names are owned protocol, unrelated to mini-tool recipes. */
 export const ALPHA_REPORT_HANDLER = 'reportAlphaPresentation';
 export const ALPHA_PACKED_HANDLER = 'writeAlphaPresentation';
+/** The source ledger and its compact table arrive in one write through their own outbound destination. */
+export const SOURCE_LEDGER_HOST = 'source-ledger.local';
+export const SOURCE_LEDGER_HANDLER = 'writeSourceLedgerPresentation';
 
 /** Fixed source identity and resource limits, with no backend addresses or credentials. */
 export interface AlphaRunBody {

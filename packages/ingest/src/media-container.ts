@@ -28,11 +28,14 @@ import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { askedKey } from "@ingest/object-url.js";
 import { objectUrlOn } from '@ingest/object-url.js';
 import { mediaObjectUrl, MEDIA_OBJECT_HOST } from '@ingest/media-object-route.js';
-import { alphaPackedKeyFor, videoPresentationOriginalSchema, type VideoPresentationIngestSnapshot } from '@breatic/shared';
-import { VideoPresentationStore, type VideoPresentationAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt } from '@ingest/video-presentation-store.js';
+import { alphaPackedKeyFor, videoPresentationOriginalSchema, videoSourceLedgerKeyFor, type VideoPresentationIngestSnapshot } from '@breatic/shared';
+import { VideoPresentationStore, type VideoPresentationAdmission, type AlphaPackedIdentity, type AlphaPackedWriteClaim, type AlphaPackedReceipt,
+  type SourceLedgerDeclaration, type SourceLedgerMeasurement, type SourceLedgerWriteClaim } from '@ingest/video-presentation-store.js';
 import { writeAlphaPacked } from '@ingest/video-presentation-packed.js';
+import { writeVideoSourceLedger } from '@ingest/video-source-ledger-write.js';
 import type { AcceptedVideoPresentationAttempt } from '@ingest/video-presentation-state.js';
-import { ALPHA_RUN_PATH, ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, ALPHA_PACKED_HOST, ALPHA_PACKED_HANDLER, type AlphaPresentationReport, type AlphaRunBody } from '@ingest/alpha-run-contract.js';
+import { ALPHA_RUN_PATH, ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, ALPHA_PACKED_HOST, ALPHA_PACKED_HANDLER, SOURCE_LEDGER_HOST, SOURCE_LEDGER_HANDLER,
+  type AlphaPresentationReport, type AlphaRunBody } from '@ingest/alpha-run-contract.js';
 import { noteFailure } from '@ingest/error-monitoring.js';
 import { serveOneObject } from "@ingest/media-object-route.js";
 import { writeStreamedObject } from "@ingest/stored-object.js";
@@ -159,6 +162,38 @@ export class MediaContainer extends Container<MediaEnv> {
   releasePacked(identity: AlphaPackedIdentity, owner: string): Promise<void> { return this.presentationStore().releasePacked(identity, owner); }
 
   /**
+   * Claim both ledger objects before the outbound handler can write R2.
+   * @param identity - Originally accepted private capability.
+   * @param declaration - The producer's declared ledger and table lengths and frame count.
+   * @returns One physical writer or a refusal.
+   * @throws {Error} When durable state or R2 cannot be read.
+   */
+  claimSourceLedger(identity: AlphaPackedIdentity, declaration: SourceLedgerDeclaration): Promise<SourceLedgerWriteClaim | null> {
+    return this.presentationStore().claimSourceLedger(identity, declaration);
+  }
+
+  /**
+   * Commit the measured ledger and table under their still active claim.
+   * @param identity - Originally accepted private capability.
+   * @param owner - Durable pre-write owner.
+   * @param measured - Actual measured stored bytes of both objects.
+   * @returns Whether the ready ledger committed.
+   * @throws {Error} When storage fails.
+   */
+  completeSourceLedger(identity: AlphaPackedIdentity, owner: string, measured: SourceLedgerMeasurement): Promise<boolean> {
+    return this.presentationStore().completeSourceLedger(identity, owner, measured);
+  }
+
+  /**
+   * Release only the failed ledger write's own claim.
+   * @param identity - Originally accepted private capability.
+   * @param owner - Failed physical writer.
+   * @returns Nothing after exact release.
+   * @throws {Error} When storage fails.
+   */
+  releaseSourceLedger(identity: AlphaPackedIdentity, owner: string): Promise<void> { return this.presentationStore().releaseSourceLedger(identity, owner); }
+
+  /**
    * Stop an expired attempt without extending its budget.
    * @param identity - Originally accepted work.
    * @returns Current source state.
@@ -208,14 +243,24 @@ export class MediaContainer extends Container<MediaEnv> {
     const source = await this.env.BUCKET.head(admission.storageKey);
     if (source === null) return store.fail(identity, 'source_missing');
     if (source.size > admission.limits.maxSourceBytes) return store.fail(identity, 'source_over_cap');
+    // This job produces a ledger only when it owns a pending one; a settled ledger is never produced again.
+    const ledger = prepared.snapshot.sourceLedger;
+    const producesLedger = ledger?.state === 'pending' && ledger.attempt.jobId === identity.jobId && admission.limits.sourceLedger !== undefined &&
+      admission.sourceLedgerURL !== undefined && admission.sourceLedgerTableURL !== undefined;
+    const { sourceLedger: _ledgerLimits, ...presentationLimits } = admission.limits;
     try {
       await this.setOutboundByHost(MEDIA_OBJECT_HOST, SERVE_OBJECT, { key: admission.storageKey });
       await this.setOutboundByHost(ALPHA_REPORT_HOST, ALPHA_REPORT_HANDLER, { key: admission.storageKey });
       await this.setOutboundByHost(ALPHA_PACKED_HOST, ALPHA_PACKED_HANDLER, { key: admission.storageKey });
+      if (producesLedger) await this.setOutboundByHost(SOURCE_LEDGER_HOST, SOURCE_LEDGER_HANDLER, { key: admission.storageKey });
+      const capability = { jobId: identity.jobId, sourceFingerprint: identity.sourceFingerprint, deadlineAt: String(identity.deadlineAt), token: prepared.token };
       const outputURL = new URL(objectUrlOn(ALPHA_PACKED_HOST, alphaPackedKeyFor(admission.storageKey)));
-      outputURL.search = new URLSearchParams({ jobId: identity.jobId, sourceFingerprint: identity.sourceFingerprint, deadlineAt: String(identity.deadlineAt), token: prepared.token }).toString();
+      outputURL.search = new URLSearchParams(capability).toString();
+      const ledgerURL = new URL(objectUrlOn(SOURCE_LEDGER_HOST, videoSourceLedgerKeyFor(admission.storageKey)));
+      ledgerURL.search = new URLSearchParams(capability).toString();
       const body: AlphaRunBody = { ...identity, token: prepared.token, sourceURL: mediaObjectUrl(admission.storageKey), outputURL: outputURL.toString(),
-        reportURL: objectUrlOn(ALPHA_REPORT_HOST, admission.storageKey), limits: admission.limits, vcpu: admission.pricing.size.vcpu };
+        reportURL: objectUrlOn(ALPHA_REPORT_HOST, admission.storageKey), limits: producesLedger ? admission.limits : presentationLimits, vcpu: admission.pricing.size.vcpu,
+        ...(producesLedger ? { sourceLedgerOutputURL: ledgerURL.toString() } : {}), ...(admission.ledgerOnly === true ? { ledgerOnly: true } : {}) };
       const answer = await super.fetch(new Request(`http://media${ALPHA_RUN_PATH}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
       if (!answer.ok) return store.fail(identity, 'presentation_failed');
       const result = await answer.json<{ ok?: boolean; error?: string }>();
@@ -250,7 +295,8 @@ export async function reportAlphaPresentation(request: Request, env: MediaEnv, c
   const value = await request.json<Record<string, unknown>>().catch(() => null);
   if (value === null || typeof value.jobId !== 'string' || typeof value.sourceFingerprint !== 'string' || typeof value.deadlineAt !== 'number' || typeof value.token !== 'string') return new Response('Invalid report', { status: 400 });
   if (value.kind === 'probe' && (!videoPresentationOriginalSchema.safeParse(value.original).success || (value.classification !== 'confirmed_alpha' && value.classification !== 'confirmed_opaque'))) return new Response('Invalid probe', { status: 400 });
-  if (value.kind !== 'probe' && value.kind !== 'encoded' && value.kind !== 'finished') return new Response('Invalid report', { status: 400 });
+  if (value.kind !== 'probe' && value.kind !== 'encoded' && value.kind !== 'finished' && value.kind !== 'source_ledger_failed') return new Response('Invalid report', { status: 400 });
+  if (value.kind === 'source_ledger_failed' && (typeof value.error !== 'string' || !/^[a-z][a-z0-9_]*$/.test(value.error))) return new Response('Invalid ledger failure', { status: 400 });
   if (value.kind === 'finished') {
     const usage = value.usage as { wallMs?: unknown; cpuUsec?: unknown } | undefined;
     if (usage === undefined || typeof usage.wallMs !== 'number' || !Number.isFinite(usage.wallMs) || usage.wallMs < 0 || (usage.cpuUsec !== null && (typeof usage.cpuUsec !== 'number' || !Number.isFinite(usage.cpuUsec) || usage.cpuUsec < 0))) return new Response('Invalid usage', { status: 400 });
@@ -286,6 +332,50 @@ export async function writeAlphaPresentation(request: Request, env: MediaEnv, ct
   } catch (err) {
     noteFailure('ingest_video_presentation_write_failed', { err, storageKey: ctx.params.key, jobId, sourceFingerprint });
     return new Response('Packed write failed', { status: 502 });
+  }
+}
+
+/**
+ * A positive safe integer written as plain decimal digits.
+ * @param value - One query parameter.
+ * @returns The integer, or null when it is anything else.
+ * @throws {never} Never.
+ */
+function positiveInteger(value: string | null): number | null {
+  const parsed = value !== null && /^[1-9]\d*$/.test(value) ? Number(value) : Number.NaN;
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+/**
+ * Accept the producer's one ledger write, the compact table then the full ledger, only through their durable pre-write claim.
+ * @param request - Container-local PUT whose query carries the accepted identity and the declared lengths.
+ * @param env - Actual canonical durable owner and R2 bindings.
+ * @param ctx - The exact canonical key authorized for this container.
+ * @returns 200 once both objects and the ready ledger are stored; 400 malformed; 403 another key; 409 refused claim; 502 storage failure.
+ * @throws {never} Infrastructure faults are logged and returned as failed writes.
+ */
+export async function writeSourceLedgerPresentation(request: Request, env: MediaEnv, ctx: OutboundHandlerContext<ServeOneKey>): Promise<Response> {
+  if (request.method !== 'PUT' || askedKey(request) !== videoSourceLedgerKeyFor(ctx.params.key)) return new Response('Not allowed', { status: 403 });
+  const query = new URL(request.url).searchParams;
+  const jobId = query.get('jobId');
+  const sourceFingerprint = query.get('sourceFingerprint');
+  const deadlineAt = positiveInteger(query.get('deadlineAt'));
+  const token = query.get('token');
+  const byteLength = positiveInteger(query.get('byteLength'));
+  const tableByteLength = positiveInteger(query.get('tableByteLength'));
+  const frameCount = positiveInteger(query.get('tableFrameCount'));
+  const contentLength = positiveInteger(request.headers.get('content-length'));
+  if (jobId === null || jobId.length === 0 || sourceFingerprint === null || !/^[a-f0-9]{64}$/.test(sourceFingerprint) || deadlineAt === null ||
+    token === null || token.length === 0 || query.get('producerVersion') !== '2' || byteLength === null || tableByteLength === null || frameCount === null ||
+    contentLength === null || contentLength !== byteLength + tableByteLength || request.body === null) return new Response('Invalid ledger write', { status: 400 });
+  try {
+    const owner = env.MEDIA.get(env.MEDIA.idFromName(ctx.params.key));
+    const result = await writeVideoSourceLedger({ bucket: env.BUCKET, owner, identity: { jobId, sourceFingerprint, deadlineAt, token },
+      declaration: { producerVersion: 2, byteLength, table: { byteLength: tableByteLength, frameCount } }, body: request.body });
+    return new Response(null, { status: result.status });
+  } catch (err) {
+    noteFailure('ingest_video_source_ledger_write_failed', { err, storageKey: ctx.params.key, jobId, sourceFingerprint });
+    return new Response('Ledger write failed', { status: 502 });
   }
 }
 
@@ -360,4 +450,5 @@ MediaContainer.outboundHandlers = {
   [WRITE_UPRIGHT]: writeUpright,
   [ALPHA_REPORT_HANDLER]: reportAlphaPresentation,
   [ALPHA_PACKED_HANDLER]: writeAlphaPresentation,
+  [SOURCE_LEDGER_HANDLER]: writeSourceLedgerPresentation,
 };

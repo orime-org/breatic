@@ -32,7 +32,9 @@ export async function videoPresentationRoute(request: Request, env: VideoPresent
         jobId: body.jobId!, deadlineAt: body.deadlineAt!, original: body.original!, contentType: body.contentType!,
         registeredMetadata: body.registeredMetadata,
         limits: body.limits!, pricing: body.pricing!, actorUserId: body.actorUserId!, projectId: body.projectId!,
-        packedURL: body.packedURL!, manifestURL: body.manifestURL!, knownAlpha: body.knownAlpha, repair: body.repair };
+        packedURL: body.packedURL!, manifestURL: body.manifestURL!, knownAlpha: body.knownAlpha, repair: body.repair,
+        ...(body.sourceLedgerURL === undefined ? {} : { sourceLedgerURL: body.sourceLedgerURL }),
+        ...(body.sourceLedgerTableURL === undefined ? {} : { sourceLedgerTableURL: body.sourceLedgerTableURL }) };
       return Response.json(await instance.acceptPresentation(admission));
     }
     const identity = { sourceFingerprint: body.sourceFingerprint, jobId: body.jobId!, deadlineAt: body.deadlineAt! };
