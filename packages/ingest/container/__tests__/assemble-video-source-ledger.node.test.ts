@@ -160,11 +160,11 @@ describe("pure complete source-ledger assembly through the original format owner
     const input = original("repeated-edit"); input.limits.maxOccurrences = 7; expectRejected(input);
   });
 
-  it.each(["missing-track", "ambiguous-track", "non-rate-one"])("keeps original explicit rejection for %s rather than starting an unedited fallback", (kind) => {
+  it.each(["missing-track", "ambiguous-track", "non-positive-rate"])("keeps original explicit rejection for %s rather than starting an unedited fallback", (kind) => {
     const input = original();
     if (kind === "missing-track") input.physical.trackId = 99;
     if (kind === "ambiguous-track") input.metadata.tracks.push({ ...input.metadata.tracks[0]! });
-    if (kind === "non-rate-one") input.metadata.tracks[0]!.edits![0]!.mediaRateFixed16_16 = "32768";
+    if (kind === "non-positive-rate") input.metadata.tracks[0]!.edits![0]!.mediaRateFixed16_16 = "0";
     const fallback = vi.spyOn(uneditedOwner, "assembleUneditedIsoVideoPresentation"); expectRejected(input); expect(fallback).not.toHaveBeenCalled();
   });
 

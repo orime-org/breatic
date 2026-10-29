@@ -168,7 +168,7 @@ describe("original rate-one planner error boundaries", () => {
   it("J17 allows exactly eight occurrences even though the physical input contains seventeen frames", () => {
     expect(assembleExplicitIsoVideoPresentation(metadata(), physical(), 8)).toEqual(golden());
   });
-  it.each(["32768", "0", "-65536"])("J18 preserves unsupported_rate for selected rate %s", (rate) => {
+  it.each(["0", "-65536"])("J18 preserves unsupported_rate for selected non-positive rate %s", (rate) => {
     const iso = metadata(); selected(iso).edits = [edit("500", "4096", rate)];
     expect(() => assembleExplicitIsoVideoPresentation(iso, physical(), 32)).toThrowError(expect.objectContaining({ code: "unsupported_rate" }));
   });

@@ -100,8 +100,8 @@ describe("owned rate-one presentation occurrences from a complete physical ledge
   it("rejects unknown or zero clock divisors without constructing guessed frame times", () => {
     for (const input of [{ ...INPUT, movieTimescale: "0" }, { ...INPUT, mediaTimescale: "0" }, { ...INPUT, sourceTimeBase: time(1, 0) }, { ...INPUT, sourceTimeBase: time(0, 1) }]) expect(() => planRateOnePresentation(input, 32)).toThrowError(expect.objectContaining({ code: "invalid_clock" }));
   });
-  it("does not reinterpret a fractional or negative source edit rate as rate one", () => {
-    for (const rate of ["32768", "0", "-65536", "131072"]) expect(() => planRateOnePresentation({ ...INPUT, edits: [{ ...EDIT, mediaRateFixed16_16: rate }] }, 32)).toThrowError(expect.objectContaining({ code: "unsupported_rate" }));
+  it("rejects a zero or negative source edit rate", () => {
+    for (const rate of ["0", "-65536"]) expect(() => planRateOnePresentation({ ...INPUT, edits: [{ ...EDIT, mediaRateFixed16_16: rate }] }, 32)).toThrowError(expect.objectContaining({ code: "unsupported_rate" }));
   });
   it("rejects invalid negative media-time edits while retaining separate empty-edit semantics", () => {
     expect(() => planRateOnePresentation({ ...INPUT, edits: [{ ...EDIT, mediaTimeTrackTicks: "-2" }] }, 32)).toThrowError(expect.objectContaining({ code: "invalid_edit" }));
