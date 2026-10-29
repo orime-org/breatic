@@ -8,7 +8,7 @@ import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
 const weights = z.record(z.string(), z.number().int().min(0));
-const weighted = z.object({ upstream: z.string(), weight: z.number().int().min(0) });
+const weighted = z.strictObject({ upstream: z.string(), weight: z.number().int().min(0) });
 
 /**
  * A pricing rule provider can evaluate. Kept as `unknown` in the types, so a
@@ -16,14 +16,14 @@ const weighted = z.object({ upstream: z.string(), weight: z.number().int().min(0
  */
 const pricingRule = z.custom<unknown>((value) => isPricingRule(value), { message: "is not a valid pricing rule" });
 
-const upstreamSchema = z.object({
+const upstreamSchema = z.strictObject({
   kind: z.string().min(1),
   base_url: z.string().min(1),
   key_env: z.string().min(1),
   concurrency: z.number().int().positive().optional(),
 });
 
-const paramSchema = z.object({
+const paramSchema = z.strictObject({
   field: z.string().min(1),
   /** Our value to the upstream's spelling. */
   values: z.record(z.string(), choice).optional(),
@@ -35,14 +35,14 @@ const paramSchema = z.object({
   transform: z.literal("pronunciation_pairs").optional(),
 });
 
-const describeSchema = z.object({
+const describeSchema = z.strictObject({
   /** Our LLM model id, routed by `understand_routes`. */
   model: z.string().min(1),
   question: z.string().min(1),
   max_output_tokens: z.number().int().positive(),
 });
 
-const extraStepSchema = z.object({
+const extraStepSchema = z.strictObject({
   kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak"]),
   endpoint: z.string().min(1),
   at: z.enum(["before", "after"]),
@@ -60,7 +60,7 @@ const extraStepSchema = z.object({
 
 // Every binding carries its price (design 4.2): the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
-const bindingSchema = z.object({
+const bindingSchema = z.strictObject({
   upstream: z.string().min(1),
   weight: z.number().int().min(0),
   model_id: z.string().min(1),
@@ -76,9 +76,9 @@ const bindingSchema = z.object({
   pricing: pricingRule,
 });
 
-const llmRouteSchema = z.object({ prefix: z.string(), upstreams: z.array(weighted) });
+const llmRouteSchema = z.strictObject({ prefix: z.string(), upstreams: z.array(weighted) });
 
-const llmPriceSchema = z.object({
+const llmPriceSchema = z.strictObject({
   input_cache_miss_per_mtok: z.number().min(0),
   input_cache_hit_per_mtok: z.number().min(0).optional(),
   input_cache_write_5m_per_mtok: z.number().min(0).optional(),
@@ -91,11 +91,11 @@ const GEMINI_INLINE_MAX_BYTES = 20_000_000;
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
 
-const llmSchema = z.object({
+const llmSchema = z.strictObject({
   routes: z.array(llmRouteSchema),
   understand_routes: z.array(llmRouteSchema).optional(),
   vendor_ids: z.record(z.string(), z.record(z.string(), z.string())).optional(),
-  openrouter_backends: z.record(z.string(), z.object({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
+  openrouter_backends: z.record(z.string(), z.strictObject({ only: z.array(z.string()), allow_fallbacks: z.boolean() })).optional(),
   /** Direct token prices in USD per million tokens, by our model id. */
   prices: z.record(z.string(), llmPriceSchema).optional(),
   /** The request size past which Gemini takes media through its Files API, in bytes (design 6.5). */
@@ -104,17 +104,17 @@ const llmSchema = z.object({
   gemini_file_poll_ms: z.number().int().positive().default(GEMINI_FILE_POLL_MS),
 });
 
-const routingSchema = z.object({
-  models: z.record(z.string(), z.object({ weights })).optional(),
+const routingSchema = z.strictObject({
+  models: z.record(z.string(), z.strictObject({ weights })).optional(),
   /** By prefix of `llm.routes`. */
-  llm: z.record(z.string(), z.object({ weights })).optional(),
+  llm: z.record(z.string(), z.strictObject({ weights })).optional(),
   /** By prefix of `llm.understand_routes`. */
-  understand: z.record(z.string(), z.object({ weights })).optional(),
+  understand: z.record(z.string(), z.strictObject({ weights })).optional(),
 });
 
-const inputSchema = z.object({
+const inputSchema = z.strictObject({
   upstreams: z.record(z.string(), upstreamSchema),
-  media: z.object({ models: z.record(z.string(), z.object({ upstreams: z.array(bindingSchema) })) }),
+  media: z.strictObject({ models: z.record(z.string(), z.strictObject({ upstreams: z.array(bindingSchema) })) }),
   /** `config/provider/llm.yaml` (design 4.3). */
   llm: llmSchema.optional(),
   /** `config/provider/routing.yaml`; absent when the deployment ships none. */
