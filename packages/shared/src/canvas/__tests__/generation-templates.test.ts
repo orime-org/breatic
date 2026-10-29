@@ -249,7 +249,7 @@ describe('generation templates', () => {
     }
   });
 
-  it('names the reference input after the label its mark carried in every language', () => {
+  it('names the two migrated templates\' reference input after the label its mark carried', () => {
     expect(raw('en', 'canvas.template.storyboard-grid-25.input.reference.name')).toBe('Character or scene');
     expect(raw('en', 'canvas.template.costume-sheet.input.reference.name')).toBe('Character');
   });

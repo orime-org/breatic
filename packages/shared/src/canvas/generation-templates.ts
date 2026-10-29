@@ -12,8 +12,8 @@
  * `{✏️ …}` for words to fill in. What to put in an input is its
  * `canvas.template.<id>.input.<key>.note`.
  *
- * The mode, model, ratio and wording of the two image templates come from real
- * runs on Nano Banana Pro Ultra: a fixed ratio keeps the reference's own frame
+ * The mode, model, ratio and wording of the storyboard and costume sheet
+ * templates come from real runs on Nano Banana Pro Ultra: a fixed ratio keeps the reference's own frame
  * and background out of the result, and the costume sheet needs the
  * photographic style and the hairstyle named or it drifts.
  *

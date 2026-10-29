@@ -159,7 +159,7 @@ test('asked outright for consistent shots of one character, it reads a character
   const turn = await settledTurn(page);
   const proposed = turn.templates.filter((id) => CHARACTER_TEMPLATES.has(id));
   expect(proposed, `a landed proposal named a character template. Named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).not.toEqual([]);
-  // The template it proposed is one it read in full first.
+  // The template it proposed is one it also read in full.
   expect(turn.read, `read: ${turn.read.join(', ')}`).toEqual(expect.arrayContaining(proposed));
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });

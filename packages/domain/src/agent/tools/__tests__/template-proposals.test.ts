@@ -122,6 +122,12 @@ describe("templates in proposals", () => {
     }
     setLocale("en");
   });
+
+  it("indexes the registry it is given and no other", () => {
+    const said = makeProposeCanvasAction(FIXTURES).description ?? "";
+    expect(said).toContain("fixture-steps");
+    expect(said).not.toContain("storyboard-grid-25");
+  });
 });
 
 describe("a template drawing on work generated upstream", () => {
@@ -397,12 +403,6 @@ describe("a template's full text, generated from its skeleton (design 6.7 step 7
     for (const note of ["Put a pose picture in Pose first", "Put the front view in Front view first", "Put the back view in Back view first", "Put the character in Character first"]) {
       expect(said).not.toContain(note);
     }
-  });
-
-  it("lists the registry it is given and no other", () => {
-    const said = makeProposeCanvasAction(FIXTURES).description ?? "";
-    expect(said).toContain("fixture-steps");
-    expect(said).not.toContain("storyboard-grid-25");
   });
 });
 

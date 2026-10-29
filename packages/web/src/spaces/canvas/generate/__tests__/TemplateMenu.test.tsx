@@ -123,6 +123,7 @@ describe('TemplateMenu', () => {
     open('image');
     openGoal('comics-storyboards');
     expect(screen.getByTestId('generate-template-storyboard-grid-25')).toHaveTextContent('25-panel storyboard');
+    expect(screen.getByTestId('generate-template-storyboard-grid-25')).toHaveTextContent('A 5×5 sequence of one story, for turning into a video');
     expect(screen.queryByTestId('generate-template-costume-sheet')).toBeNull();
   });
 

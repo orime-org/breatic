@@ -340,7 +340,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 
 **文档提议卡和落地**:`to-chat-message.ts` 用 `@breatic/shared` 的 `documentProposalSchema` 核对存下的答复,读成 `documentProposals`,`DocumentProposalCard.tsx` 画成卡。按下后由 `stores/document-proposals.ts` 记下这次按下,`ProjectPage` 打开或切到那个 document,`DocumentSpace` 在编辑器就绪后逐张处理:先看它是不是已经落地,再核连接可写、这一段还是提议时的样子,然后写入(`document-proposal-landing.ts`)。批注走用户手动批注的同一个函数,跟用户手动加的一样不进撤销栈;改写和插入各是一个撤销步骤,顶层新块的 id 由提议 id 推出。**落没落地由文档本身判**(`landedAt`:带这个提议 id 的批注还挂着、或由提议 id 推出的第一个块还在),刷新后只要这个 document 打开过就认得出(没打开时卡片显示成没落地,再按一次会在打开后先认出已经落地、不重复写),用户撤销改写或插入之后卡片也跟着回到可以再按。没做成的按下用 toast 告诉用户,卡片回到可以再按的样子;「在 Document 中查看」没做成时什么都没写,卡片保持已落地、不弹 toast。落地后,改写和插入滚到那一块并画 2 秒框;批注打开批注栏并选中它的卡片,批注在宽表格被横向滚走的一列里时,表格横向滚到那一格。
 
-**这六个单列一组,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。判据是**这个工具答的是不是「某个人眼前的我们的产品」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
+**这七个单列一组,不进 `BASELINE_TOOLS`**(`CANVAS_TOOLS`,`tools/index.ts`)。判据是**这个工具答的是不是「某个人眼前的我们的产品」**:搜索那两个虽然也由面板独自画出来,答的却不是画布,所以不在其列。
 
 **能力答复描述的是面板给什么,不是目录允许什么**(MANDATORY)。目录说得出「这个模型声明了 `camera`」,说不出「这个节点的面板画不画得出这个控件、画出来要等什么条件才算数、哪个参数由画布填而不该让人去打字」。这些事实现在由模型自己的 yaml 一词一答:每个参数写一个 `fill`(`canvas` · `pool` · `editor` · `panel` · `remote` · `storyboard` · `none`),等什么条件写 `when`,只在哪几个模式下算数写 `modes`;画法留在面板,而两边对不上的时候 `packages/web/src/spaces/canvas/generate/__tests__/declarations-have-claimants.test.ts` 的十三条守卫会点名是哪个模型的哪个参数。判定题:**我正要让答复说一句关于「用户能不能设这个」的话吗?那句话的出处必须是那个参数自己的声明。**
 
