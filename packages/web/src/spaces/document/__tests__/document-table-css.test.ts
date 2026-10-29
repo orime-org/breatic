@@ -24,6 +24,10 @@ describe('a table in the body', () => {
     expect(ruleBody('.doc-body [data-node-type=\'docTable\'] th')).toContain('font-weight: bold');
   });
 
+  it('starts a header cell\'s words at the cell\'s left, as the body cells below and the Alignment menu\'s default', () => {
+    expect(ruleBody('.doc-body [data-node-type=\'docTable\'] th')).toContain('text-align: left');
+  });
+
   it('shows a picture or video in a cell no wider than the cell, and keeps it out of its column\'s width (inner#1619 T7)', () => {
     for (const tail of ['td', 'th']) {
       const body = ruleBody(`.doc-body [data-node-type='docTable'] ${tail} [data-media-box]`);

@@ -2072,6 +2072,9 @@ body {
     border-width: 1px;
     border-color: var(--color-border);
     font-weight: bold;
+    /* The browser centres a th; a header starts at the left as its column's
+       cells do and as the Alignment menu reads it, and the menu centres it. */
+    text-align: left;
     padding: var(--space-3) var(--space-5);
     background-color: var(--color-muted);
   }
