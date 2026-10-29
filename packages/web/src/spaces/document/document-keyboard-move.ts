@@ -5,7 +5,7 @@
  * Shift-Mod-ArrowUp and Shift-Mod-ArrowDown: move the selected rows one place.
  *
  * BlockNote binds both keys to `moveBlocksUp` / `moveBlocksDown`
- * (`KeyboardShortcutsExtension.ts:989-996`), which take the rows out and put
+ * (`KeyboardShortcutsExtension.ts:1039-1046`), which take the rows out and put
  * them back through `removeAndInsertBlocks` and `insertBlocks` — that is,
  * through the rows' JSON (`moveBlocks.ts`). A comment is a mark with no place
  * in that JSON, so every comment on a moved row lost its highlight and its

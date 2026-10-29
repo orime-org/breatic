@@ -14,8 +14,7 @@
  * behind it, which stays in the editor while the body does not hold the
  * focus and is then not drawn (inner#1127, `document-body-focus.ts`): the
  * row handles, the table handles and the link toolbar the pointer raises
- * stand aside while the bubble bar is up, and the column handle makes room for the cell button
- * while it is up.
+ * stand aside while the bubble bar is up.
  */
 
 import * as React from 'react';
@@ -209,7 +208,8 @@ export function mediaBarShown(bars: DocumentBars, host: HTMLElement, selected: b
 
 /**
  * Whether the link toolbar and the selection bubble bar step aside, which they
- * do while a media block is under the pointer.
+ * do while a media block is under the pointer, has its panel asked for (by
+ * the pointer or the keyboard), or has controls holding the focus or seeking.
  * @param bars - The state.
  * @returns True when they do.
  */

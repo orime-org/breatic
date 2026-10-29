@@ -32,7 +32,7 @@ const BUTTON = 20;
 const INSET = 2;
 const RIGHT_INSET = COLUMN_RESIZE_ZONE + 1;
 
-/** The column handle's width and height (`w-6`, `h-3`), and the row handle's width (`w-3`). */
+/** The column handle's width and height (`w-6`, `h-3`). */
 export const COLUMN_HANDLE_WIDTH = 24;
 export const COLUMN_HANDLE_HEIGHT = 12;
 

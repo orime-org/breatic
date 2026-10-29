@@ -76,7 +76,7 @@ const MEDIA_BOX = '[data-media-box]';
 /** A table block. */
 const TABLE_BLOCK = '[data-content-type="table"], [data-node-type="docTable"]';
 
-/** The library's wrapper around a table (prosemirror-tables `TableView`). */
+/** The wrapper `DocumentTableScroller` draws around a table's `<table>` (`mountScroller` in `document-table-nodes.tsx`). */
 const TABLE_WRAPPER = '.tableWrapper';
 /** The edges of a table's frame that say columns run on (`DocumentTableScroller`). */
 const OVERFLOW_EDGE = '.doc-table-overflow-edge';
@@ -588,7 +588,7 @@ function holdTable(table: HTMLElement | null | undefined, widths: readonly numbe
 
 /**
  * Ends a row's or a cell selection's frame at its table: the room the
- * library's wrapper keeps under the table is for the frame's scrollbar, which
+ * table's wrapper keeps under the table is for the frame's scrollbar, which
  * the preview does not draw, and with it a quote's rule would run on past the
  * rows (design §4). The frame's edges end at the table with it.
  * @param copy - The copied table block.
@@ -653,7 +653,7 @@ export function tableLinePreviewContent(
   const widths = columnWidths(table);
   if (orientation === 'column') {
     // A column is narrower than its frame, so the frame has nothing to scroll.
-    // The table stays in the library's wrapper, a block as in the body: in
+    // The table stays in its wrapper, a block as in the body: in
     // WebKit a collapsed table of a set width laid out as a flex item, which
     // the block's content is, is 1px wider. The room the wrapper keeps under
     // the table is for the frame's scrollbar. The block is as wide as the

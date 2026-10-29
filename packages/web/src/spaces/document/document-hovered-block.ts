@@ -28,7 +28,7 @@ import {
  * selection, their caret and the undo stack untouched.
  *
  * The range covers the `blockContent` node alone. A `blockContainer` holds
- * `blockContent blockGroup?` (`BlockContainer.ts:27`), so a range over the
+ * `blockContent blockGroup?` (`BlockContainer.ts:71`), so a range over the
  * container would take every nested block with it.
  * @param doc - The document to look in.
  * @param blockId - Which block the pointer is over.

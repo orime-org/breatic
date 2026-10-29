@@ -25,14 +25,14 @@
  * −6.94 on level two, −8.48 on level three and +1.81 / +2.22 on paragraphs —
  * the reader's report was that it sat above the line on a heading. The table is
  * replaced rather than adjusted: `floatingUIOptions.useFloatingOptions` is
- * spread after the library's defaults (`SideMenuController.tsx:120-129`), so a
+ * spread after the library's defaults (`SideMenuController.tsx:128-137`), so a
  * `middleware` list without it leaves the carrier exactly on the row's top
  * edge and the strip does the rest itself.
  *
  * WHY THE STRIP AND NOT THE CARRIER, VERTICALLY. The carrier's position reference is a
  * VIRTUAL element — `GenericPopover` hands floating-ui a cached
  * `getBoundingClientRect` plus `contextElement`, the block container
- * (`GenericPopover.tsx:196-202`). A line box can only be measured on the
+ * (`GenericPopover.tsx:200-206`). A line box can only be measured on the
  * element the words are in, which is a descendant of that container and is
  * looked up by id anyway (a type change replaces it, see below), so the row is
  * reached here by its id and the strip shifts itself down. Sideways the carrier
@@ -64,9 +64,10 @@ export const STRIP_OUTSET = 12;
 export const STRIP_SIZE = 24;
 
 /**
- * How far a table's own strip stands out from the table's left line: past
- * the strip of a block in its first column, which stands where every other
- * block's does, by a 4px gap (inner#1619 T13, user 2026-10-21). The gutter
+ * How far a table's own strip stands out from the body's left edge, whatever
+ * the table's nesting: for a top-level table, whose left line is the body's
+ * edge, past the strip of a block in its first column, which stands where
+ * every other block's does, by a 4px gap (inner#1619 T13, user 2026-10-21). The gutter
  * this side of it belongs to the first column's blocks
  * (`document-table-side-menu.ts`).
  */
@@ -127,8 +128,8 @@ function standsOnTableLine(cell: Element): boolean {
  * left line, or out from the table's left line in the first column
  * (inner#1619 T13). For a row outside a table the reference is the row's own
  * container, which a nested row has indented with it. The body's edge is the
- * root block group, the element the library itself takes the side menu's x
- * from (`SideMenu.ts:257-266`). Moving the carrier rather than the strip
+ * root block group, the element the library probes the pointer's line from
+ * (`sideMenuHover.ts:52-59`, `probeBlockAtHeight`). Moving the carrier rather than the strip
  * inside it leaves nothing of it in the indent, where a click has to reach
  * the row; and the x comes from the same reference rect floating-ui placed
  * with, so a stale reference after a move still lands `STRIP_OUTSET` out
@@ -317,9 +318,9 @@ export function useStripOnFirstLine(
   // identity stays put. Measured 2026-09-18 — a co-editor turning the hovered
   // row into a heading left the handle 6.25px off the line, three times the
   // tolerance A2 is held to, and nothing upstream reports it: the library
-  // refreshes its state on a document change (`SideMenu.ts:683-688`) but
-  // `updateStateFromMousePos` returns early while the hovered element still
-  // carries the same `data-id` (`:229-236`).
+  // refreshes its state on a document change (`SideMenu.ts:381-385`) but
+  // `update` keeps the menu as it is while the pointer still resolves to the
+  // menu's block (`:201-206`).
   //
   // THE CONTAINER, NOT THE CONTENT ELEMENT. A type change replaces the
   // `.bn-block-content` element and detaches the old one, while the `[data-id]`

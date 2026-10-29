@@ -207,7 +207,7 @@ function openBlockAt(
  * text untouched — Enter is not a request to replace the document.
  *
  * Answered before anything else looks at the key because BlockNote's own
- * `splitBlock` raises on this selection: `splitBlock.ts:55` hands the
+ * `splitBlock` raises on this selection: `splitBlock.ts:77` hands the
  * selection straight to `tr.split`, and a whole-document selection resolves
  * outside every block, so `prosemirror-transform` reads `copy` off an
  * undefined parent. That throw reaches the keydown handler.
@@ -230,7 +230,7 @@ function handleWholeDocumentEnter(editor: ListEditor): boolean {
  * does.
  *
  * Answered here because BlockNote's own answer raises:
- * `NodeSelectionKeyboard.ts:52` inserts a bare `paragraph`, which a
+ * `NodeSelectionKeyboard.ts:89` inserts a bare `paragraph`, which a
  * `blockGroup` does not accept.
  *
  * The new block goes after the whole CONTAINER. The gesture selects the

@@ -8,7 +8,7 @@
  * Handed to `SideMenuController` in place of the library's own strip, which
  * cannot serve here for two reasons: its handle draws a `react-icons` glyph at
  * a fixed size where the demo asks for lucide at 16 (A2), and its handle sits
- * inside `Components.Generic.Menu.Trigger` (`DragHandleButton.tsx:44`), which
+ * inside `Components.Generic.Menu.Trigger` (`DragHandleButton.tsx:46`), which
  * comes from a `ComponentsContext` this build does not provide. A menu
  * trigger is also the one thing the handle must not be: Radix's calls
  * `preventDefault()` on `onPointerDown`, which stops the browser from ever
@@ -200,9 +200,9 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
 
   // A1: a reader holding a selection is served by the bubble bar, and the two
   // are never on screen together. The library's side menu answers to the
-  // pointer alone (`SideMenu.ts:607` — `onMouseMove` straight to
-  // `updateStateFromMousePos`, with no selection in the judgement; it hides
-  // only while a key is pressed in the body, `:600-604`), so this gate is
+  // pointer alone (`SideMenu.ts:314-338` — its `mousemove` listener straight
+  // to `update`, with no selection in the judgement; it hides only while a key
+  // is pressed in the body, `:360-370`), so this gate is
   // ours. It reads whether the bubble bar is up rather than the selection
   // behind it: a selection the body let go of stays in the editor without
   // being drawn, and nothing stands over it (inner#1127, `document-bars.ts`).

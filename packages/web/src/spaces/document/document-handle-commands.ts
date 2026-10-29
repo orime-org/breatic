@@ -39,8 +39,8 @@ export interface PressedBlock {
  * Puts a copy of the block below it, with everything indented under it.
  *
  * Below the whole subtree, which is what `insertBlocks` with `'after'` does on
- * its own here (`insertBlocks.ts:41-42` advances by the container's
- * `nodeSize`) — the copy of a block that has nested blocks belongs after them,
+ * its own here (`getInsertionPos` puts it at the container's end,
+ * `getBlockInfoFromPos.ts:580-582`) — the copy of a block that has nested blocks belongs after them,
  * not between the original and its children.
  *
  * The id is dropped on the way in so the editor mints fresh ones: reusing the
@@ -79,7 +79,7 @@ function withoutIds(block: PressedBlock): Record<string, unknown> {
  *
  * Removing the last block leaves one empty paragraph behind, which is what A9
  * asks for, and nothing here has to arrange it: the document requires at least
- * one block (`BlockGroup.ts:11` is `blockGroupChild+`), so ProseMirror fills
+ * one block (`BlockGroup.ts:12` is `blockGroupChild+`), so ProseMirror fills
  * the required content back in as it applies the deletion. Measured — taking
  * the guard this once carried back out left
  * `document-handle-commands.test.ts`'s last case green, and that case is what
@@ -104,9 +104,9 @@ export interface IndentReach {
 }
 
 /**
- * Which way a block can be indented: the same two questions BlockNote's
- * `canNestBlock` and `canUnnestBlock` ask of the caret's block
- * (`nestBlock.ts:194-208`), asked of the block named here.
+ * Which way the block named here can be indented, read off the document.
+ * BlockNote's `canNestBlock` and `canUnnestBlock` answer only for the caret's
+ * block, by running the command (`nestBlock.ts:242-248`).
  * @param doc - The document.
  * @param blockId - The block.
  * @returns Which way it can go; neither when no block carries the id.
@@ -135,7 +135,7 @@ export function indentReach(doc: PMNode, blockId: string): IndentReach {
  * Indents or outdents the named block, leaving the reader's selection where it
  * was.
  *
- * BlockNote nests whatever `tr.selection` is in (`nestBlock.ts:19,163`), so the
+ * BlockNote nests whatever `tr.selection` is in (`nestBlock.ts:44,195`), so the
  * selection is put on the block for the step and the reader's own is mapped
  * through and put back in the same transaction.
  * @param editor - The editor to write to.

@@ -186,9 +186,10 @@ export function MediaPlayer({
       ? 'shrink-0 text-2xs tabular-nums'
       : 'hidden shrink-0 text-2xs tabular-nums @min-[16rem]:inline';
 
-  // Video controls sit on a dark scrim (light-on-video); audio controls sit on
-  // the themed node surface.
-  // The glyphs are white because the control bar itself carries `text-white`
+  // Video controls on the video sit on a dark scrim (light-on-video); audio
+  // controls, and video controls moved into a document popover
+  // (`videoControls.surface === 'popover'`), sit on a themed surface and take
+  // the themed hover and ring. On the scrim the glyphs are white because the control bar itself carries `text-white`
   // and these buttons ship `variant={null}`, so no variant colour is layered
   // over it.
   // The focus ring is the one thing the video branch has to restate. `Button`

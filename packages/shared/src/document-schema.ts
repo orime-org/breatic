@@ -93,7 +93,7 @@ export interface DocumentSchema {
  * Keep it in step with what `buildDocumentEditor` in `packages/web` assembles.
  * That is not left to memory: `document-schema-matches-extensions.test.ts`
  * builds the real ProseMirror schema from that editor and fails when it
- * disagrees with these two lists, down to attribute names.
+ * disagrees with these three lists, down to attribute names and content rules.
  *
  * Move {@link DocumentSchema.publishedAt} forward whenever any list changes,
  * and pin the pair in `document-schema.test.ts`. It decides whether a collab

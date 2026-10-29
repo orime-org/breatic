@@ -11,7 +11,7 @@
  * nothing asks for it.
  *
  * `BlockNoteContext` IS needed — `SideMenuController` renders `<Component />`
- * with no props (`SideMenuController.tsx:157`), so the strip reaches the
+ * with no props (`SideMenuController.tsx:165`), so the strip reaches the
  * editor through `useBlockNoteEditor`, which reads this context.
  */
 

@@ -3,8 +3,8 @@
 
 /**
  * What a table's row handle, column handle and cell button share: the gate
- * that steps them aside for a selection, the two submenus that write a cell
- * attribute, and the rule that a menu whose cell is gone closes.
+ * that steps them aside for a selection, the two submenus that align the
+ * blocks in the cells and fill the cells, and the rule that a menu whose cell is gone closes.
  */
 
 import { Palette, TextAlignStart } from 'lucide-react';

@@ -18,7 +18,9 @@
  * (`DocumentMediaBlock.tsx`).
  *
  * A press on the media selects it as it lands, and only then gives the body
- * the focus. While the body has no focus ProseMirror keeps a selection in its
+ * the focus; a press on the player's playback controls (`[data-media-playback]`)
+ * selects the media and leaves the focus and pointer capture with the
+ * control. While the body has no focus ProseMirror keeps a selection in its
  * state without writing it to the page. On taking the focus back it writes it
  * only when the page's selection changed since it last read it
  * (`prosemirror-view` `input.ts`, `handlers.focus`). `EditorView.focus` writes the state's

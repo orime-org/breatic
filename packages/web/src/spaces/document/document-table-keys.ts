@@ -433,8 +433,10 @@ export const documentTableKeysExtension = createExtension(() => ({
     Tab: ({ editor }: { editor: KeysEditor }) => tabForward(editor),
     'Shift-Tab': ({ editor }: { editor: KeysEditor }) => tabBack(editor),
     // Enter over a selection holding a whole table is `document-enter`'s,
-    // which takes it away first. Shift+Enter takes it away through its own
-    // replace and then breaks the line at the caret it leaves: the body's
+    // which takes it away first. Over a text selection holding one, Shift+Enter
+    // takes it away through its own replace and then breaks the line at the
+    // caret it leaves (over a body-edge selection the key is `document-enter`'s,
+    // which does nothing): the body's
     // leaves the range and breaks at its head (BlockNote `handleEnter(true)`),
     // which here can be in a cell.
     Enter: ({ editor }: { editor: KeysEditor }) => breakLine(editor.prosemirrorView),

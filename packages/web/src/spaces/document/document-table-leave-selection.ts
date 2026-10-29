@@ -26,7 +26,9 @@
  * `tr.insertText`; a pasted link marks the selection, as in the body. These
  * take it away first through `takeAwayHeldTables`, which leaves the caret
  * where the body's deletes do: Backspace, Delete, the word and line deletes,
- * Shift+Enter (`document-table-keys.ts`), an input method's composition and
+ * Shift+Enter over a `TableSpanSelection` (`document-table-keys.ts`; over a
+ * body-edge selection `document-enter.ts` claims the key and does nothing),
+ * an input method's composition and
  * the browser's own deletes (`beforeinput`). A pasted table and text the
  * browser inserts with no key turn the held tables into empty lines first
  * (`swapHeldTables`) and then go over what is left as in the body.

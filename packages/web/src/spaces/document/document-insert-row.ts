@@ -67,9 +67,9 @@ function emptyTable(size: TableSize, quoted: boolean): BlockSpec {
  *
  * The new row goes directly under the pressed row's own content and BEFORE
  * anything indented under it, which is why the pressed row is not handed to
- * `insertBlocks` with `'after'` — `insertBlocks.ts:41-42` advances by the
- * container's `nodeSize`, and a container holds its nested blocks
- * (`BlockContainer.ts:27`), so the new row would land below the whole subtree.
+ * `insertBlocks` with `'after'` — `getInsertionPos` puts it at the
+ * container's end (`getBlockInfoFromPos.ts:580-582`), and a container holds its nested blocks
+ * (`BlockContainer.ts:71`), so the new row would land below the whole subtree.
  * Referencing the first child with `'before'` is the same place the reader
  * gets from pressing Enter.
  *

@@ -8,11 +8,11 @@
  * only the node view is ours. Three things it does that the library's does not:
  *
  * - **`update`.** The library's block node views have none
- *   (`createSpec.ts:286-290`), so every prop change rebuilds the view — a
+ *   (`blockNodeView`, `createSpec.ts:276-314`), so every prop change rebuilds the view — a
  *   video playing when a co-editor changes its width would start again from
  *   the top. Here a prop change re-renders the same container and rewrites
  *   the block's own `data-*` attributes, which the library writes only when
- *   the view is built (`internal.ts:198-210`).
+ *   the view is built (`internal.ts:229-237`).
  * - **The page draws it.** The view builds the container and enters it in
  *   `document-media-views`; `DocumentMediaViews` renders into it through a
  *   portal, inside the page's React tree.
@@ -25,7 +25,7 @@
  *
  * The node itself comes from `addNodeAndExtensionsToSpec`: a spec made by
  * `createBlockSpec` has no node until the schema is built
- * (`createSpec.ts:437-456`), and the schema keeps a node it is handed.
+ * (`createSpec.ts:454-456`), and the schema keeps a node it is handed.
  */
 
 import { carriesFiles } from '@web/lib/stray-file-drop';

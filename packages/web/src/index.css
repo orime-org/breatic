@@ -669,7 +669,7 @@ body {
      line answers the question that drag is asking.
 
      ALL THREE ORIENTATIONS are named, because the colour comes from here alone:
-     `DropCursor.ts:121` writes an inline colour only when it was given one, and
+     `DropCursor.ts:139` writes an inline colour only when it was given one, and
      `applyOrientationClasses` (`DropCursor/utils.ts:141-170`) marks a text drop
      with `-inline` and a drop beside a column with `-vertical`. The library's
      own stylesheet gives those two transitions and no colour, so a selector
@@ -1129,7 +1129,7 @@ body {
 
 @layer components {
   /* BlockNote's rule is `[data-show-selection] { background-color: highlight;
-     padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:194-197`) — adding
+     padding: 2px 0 }` (`@blocknote/core/src/editor/editor.css:195-198`) — adding
      a property does not remove the ones already there, so all three are answered:
      the colour here, the padding by the rule below.
 
@@ -1879,7 +1879,7 @@ body {
     width: 2px;
     /* Stated because this pseudo-element is shared. BlockNote rides an empty
        block's placeholder on `::after` too, and gives it `margin-inline: -2px`
-       to take the caret's offset back (`Block.css:863-869`) — that rule arrives
+       to take the caret's offset back (`Block.css:922-928`) — that rule arrives
        in `@layer base` and loses every property this one names, so a property
        left unnamed is a property it still sets. Measured before this line: the
        segment beside an empty line sat at 614.5 against 616.5 for the blocks
@@ -2034,7 +2034,7 @@ body {
   }
 
   /* The table whose cells hold blocks (inner#1619) takes the width BlockNote's
-     own stylesheet gives its table (`editor.css:150-153`), which matches only
+     own stylesheet gives its table (`editor.css:151-154`), which matches only
      `[data-content-type="table"]`; the lines round its cells and its bold
      header cells are in the token rules below. */
   .doc-body [data-node-type='docTable'] table {
@@ -2044,7 +2044,8 @@ body {
 
   /* A table every column of which has a stored width is as wide as its columns,
      and scrolls in its frame when that is wider (inner#1126 A12). The library
-     pins every table to `width: auto !important` (`editor.css:150-153`), so the
+     pins its table to `width: auto !important` (`editor.css:151-154`), and the
+     rule above pins the table whose cells hold blocks the same way, so the
      width prosemirror-tables writes onto such a table never lands and the
      columns are squeezed to the frame; the table's own max-content width, which
      is the sum of its columns, is a floor it keeps. A table with a column the

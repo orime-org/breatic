@@ -10,9 +10,9 @@
  *   (`ReactBlockSpec.tsx:477`), and prosemirror-tables' `selectedCell`
  *   decoration would land on the wrapper instead of the cell.
  * - The table frame sits in the horizontal frame of `DocumentTableScroller`
- *   and draws its `<colgroup>` from the first row the way
- *   prosemirror-tables' `updateColumnsOnResize` does, which column resizing
- *   then drives during a drag.
+ *   and draws its `<colgroup>` the way prosemirror-tables'
+ *   `updateColumnsOnResize` does, each column sized from the first cell that
+ *   stands in it, which column resizing then drives during a drag.
  * - `docTable` keeps `dissolve: false`: `fixLayoutBlock` otherwise reads a row
  *   left with one empty cell as an empty row and takes the table apart.
  * - Rows allow no cells (`min: 0`): a row every cell of which is covered by a

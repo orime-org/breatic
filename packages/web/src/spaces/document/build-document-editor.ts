@@ -228,7 +228,7 @@ export function buildDocumentEditor(
     // The line that says where a dragged block will land. Withholding the
     // colour is what lets `index.css` paint it: given one, the extension
     // writes `#ddeeff` inline onto the element
-    // (`extensions/DropCursor/DropCursor.ts:121-122`), and an inline style
+    // (`extensions/DropCursor/DropCursor.ts:139-140`), and an inline style
     // beats any rule of ours — so the affordance would keep a fixed light
     // blue that follows neither theme nor our tokens. `false` is the
     // extension's own way of saying "class only".

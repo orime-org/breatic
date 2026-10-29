@@ -29,8 +29,10 @@ export interface ReadBlock {
 
 /**
  * Block attributes Markdown writes out; any other one set off its default is
- * lost by a Markdown rewrite. A merged cell's spans are written: a table with
- * one is written as an HTML table (`document-table-markdown.ts`).
+ * lost by a Markdown rewrite. A merged cell's spans are written for a table
+ * whose cells hold blocks: one with a span is written as an HTML table
+ * (`document-table-markdown.ts`). A stored table goes through BlockNote's
+ * export, which splits a merged cell into the cell and empty cells beside it.
  */
 const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan']);
 

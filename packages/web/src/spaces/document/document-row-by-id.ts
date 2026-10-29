@@ -27,7 +27,7 @@ export interface RowInDocument {
  * The block container carrying that id, as the document holds it now, or the
  * table carrying it, which stands with no container around it (inner#1619).
  *
- * The CONTAINER rather than its content: `BlockContainer.ts:27` is
+ * The CONTAINER rather than its content: `BlockContainer.ts:71` is
  * `blockContent blockGroup?`, so the container is what holds the row's own
  * words together with anything indented under it.
  * @param doc - The document to look in.

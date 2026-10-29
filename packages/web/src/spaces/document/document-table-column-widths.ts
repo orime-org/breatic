@@ -75,7 +75,7 @@ function drawnColumns(view: EditorView, table: PMNode, start: number): (number |
  * The widths are read while the pointer rests on a column's edge, before the
  * drag: the moment it starts, the library marks the dragged column's cells
  * `column-resize-dragging`, and the library stylesheet takes the 120px
- * minimum off a cell so marked (`editor.css:174-178`) — the column snaps to
+ * minimum off a cell so marked (`editor.css:176-179`) — the column snaps to
  * its words and its neighbours take the room before anything else runs.
  * @returns The plugin.
  */

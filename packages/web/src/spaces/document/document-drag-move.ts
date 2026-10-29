@@ -8,7 +8,8 @@
  * the row into three `dataTransfer` formats (`SideMenu/dragging.ts`), and a
  * `dragstart` listener on the editor's root then parses the `blocknote/html`
  * one back into nodes and hands them to ProseMirror as `view.dragging`
- * (`SideMenu.ts:295-318`; `:596` clears it again at `dragend`). So the slice
+ * (`SideMenu/blockDropHandling.ts:203-236`; `:362` clears it again at
+ * `dragend`). So the slice
  * ProseMirror would write at the landing is fixed at the moment the pointer
  * goes down, and a drop reads it rather than the document
  * (`prosemirror-view/src/input.ts:788-790`).
@@ -74,7 +75,7 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * What has to come out of the document for the row to leave.
  *
  * Usually the row itself. When the row is the only child of a NESTED
- * `blockGroup`, that group has to go with it: `BlockGroup.ts:11` is
+ * `blockGroup`, that group has to go with it: `BlockGroup.ts:12` is
  * `blockGroupChild+`, so a group left with no children is refilled by the
  * schema with an empty paragraph, and the reader would watch a blank row
  * appear under the block they dragged out of. The document's own top-level
