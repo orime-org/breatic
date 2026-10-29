@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-BSAL-1.0
 
 import { z } from 'zod';
-import type { ExactPresentationTime, VideoSourceLedgerCompanion, VideoSourceLedgerParseLimits, VideoSourceLedgerReceipt, VideoSourceLedgerState } from '@shared/upload/video-source-ledger-types.js';
+import { presentationTableSchema } from '@shared/mini-tools/video-presentation-table.js';
+import type {
+  ExactPresentationTime, VideoEditSpan, VideoSourceLedgerCompanion, VideoSourceLedgerFailureClass, VideoSourceLedgerParseLimits, VideoSourceLedgerReceipt,
+  VideoSourceLedgerReceiptV2, VideoSourceLedgerState, VideoSourceLedgerV2, VideoSourceRun,
+} from '@shared/upload/video-source-ledger-types.js';
 
 const ordinal = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const positiveCount = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -167,6 +171,91 @@ export const videoSourceLedgerStateSchema: z.ZodType<VideoSourceLedgerState> = z
     z.strictObject({ state: z.literal('failed'), ...identity, errorCode: z.string().regex(/^[a-z][a-z0-9_]*$/) }),
   ]),
 ]);
+
+const safeTick = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
+const httpsUrl = z.url().refine(value => value.startsWith('https://'));
+const identityV2 = { schemaVersion: z.literal(2), sourceFingerprint: hash, producerVersion: z.literal(2), attempt };
+const editSpan = z.strictObject({ sourceStart: exactTime, sourceEnd: exactTime, presentationStart: exactTime, rate: exactTime });
+
+/**
+ * Check that every run steps forward (a single frame steps by 0) and its last tick stays safe.
+ * @param runs - Structurally valid source runs.
+ * @returns Whether the runs are well formed.
+ * @throws {never} Never.
+ */
+function sourceRunsValid(runs: readonly VideoSourceRun[]): boolean {
+  return runs.every(run => (run.count === 1 ? run.step === 0 : run.step > 0) &&
+    BigInt(run.start) + BigInt(run.count - 1) * BigInt(run.step) <= BigInt(Number.MAX_SAFE_INTEGER));
+}
+
+/**
+ * Where a span ends in presentation time: its start plus its source length divided by its rate.
+ * @param span - A structurally valid span with a positive rate.
+ * @returns The end as an exact time.
+ * @throws {never} Never.
+ */
+function presentationEnd(span: VideoEditSpan): ExactPresentationTime {
+  const [start, sourceStart, sourceEnd, rate] = [span.presentationStart, span.sourceStart, span.sourceEnd, span.rate].map(value => [BigInt(value.numerator), BigInt(value.denominator)] as const);
+  const length = sourceEnd![0] * sourceStart![1] - sourceStart![0] * sourceEnd![1];
+  const lengthDenominator = sourceEnd![1] * sourceStart![1] * rate![0];
+  return { numerator: String(start![0] * lengthDenominator + length * rate![1] * start![1]), denominator: String(start![1] * lengthDenominator) };
+}
+
+/**
+ * Check that spans are non-empty, play forward, start at or after zero and follow each other without overlap.
+ * @param spans - Structurally valid spans in presentation order.
+ * @returns Whether the spans are well formed.
+ * @throws {never} Never.
+ */
+function spansValid(spans: readonly VideoEditSpan[]): boolean {
+  let previousEnd: ExactPresentationTime = { numerator: '0', denominator: '1' };
+  for (const span of spans) {
+    if (BigInt(span.rate.numerator) <= 0n || compare(span.sourceStart, span.sourceEnd) >= 0n || compare(span.presentationStart, previousEnd) < 0n) return false;
+    previousEnd = presentationEnd(span);
+  }
+  return true;
+}
+
+/** Stored source ledger v2: the compact presentation table, source ticks per presented frame and the edit spans. */
+export const videoSourceLedgerV2Schema: z.ZodType<VideoSourceLedgerV2> = z.strictObject({
+  ...identityV2,
+  presentation: presentationTableSchema,
+  source: z.strictObject({ timeBase: sourceClock, runs: z.array(z.strictObject({ start: safeTick, count: positiveCount, step: safeTick })).min(1) }),
+  videoEdits: z.array(editSpan).min(1).nullable(),
+  audioEdits: z.array(editSpan).nullable(),
+}).transform((value, ctx) => {
+  // A transform runs only after every field parsed, so the checks below see valid integers.
+  const presented = value.presentation.runs.reduce((total, run) => total + run.count, 0);
+  const sourced = value.source.runs.reduce((total, run) => total + run.count, 0);
+  if (sourced !== presented || !sourceRunsValid(value.source.runs) || (value.videoEdits !== null && !spansValid(value.videoEdits)) ||
+    (value.audioEdits !== null && !spansValid(value.audioEdits))) {
+    ctx.addIssue({ code: 'custom', message: 'Source runs must give one forward tick per presented frame and edit spans must be non-empty, forward and in order' });
+    return z.NEVER;
+  }
+  return value;
+});
+
+/** Stored receipt v2: the full ledger and the compact presentation table written with it. */
+export const videoSourceLedgerReceiptV2Schema: z.ZodType<VideoSourceLedgerReceiptV2> = z.strictObject({
+  ...identityV2, url: httpsUrl, etag: z.string().min(1), size: positiveCount, sha256: hash, contentType: z.literal('application/json'),
+  table: z.strictObject({ url: httpsUrl, sha256: hash, size: positiveCount, frameCount: positiveCount }),
+}).refine(value => value.table.url !== value.url, { message: 'The compact table and the full ledger are different objects' });
+
+// Codes the source bytes decide: producing again from the same bytes fails the same way.
+const CONTENT_FAILURES: ReadonlySet<string> = new Set([
+  'source_ledger_format_unknown', 'source_ledger_selection_unknown', 'unsupported_rate', 'invalid_edit', 'invalid_clock', 'invalid_ledger',
+  'classification_unknown', 'clock_unknown', 'metadata_unknown', 'audio_clock_unknown', 'probe_invalid', 'source_over_cap', 'no_presented_frames',
+]);
+
+/**
+ * Classify a source ledger failure code; every code outside the content list is transient.
+ * @param errorCode - The producer's or the store's failure code.
+ * @returns `content` when the source bytes decide the failure, otherwise `transient`.
+ * @throws {never} Never.
+ */
+export function classifyVideoSourceLedgerFailure(errorCode: string): VideoSourceLedgerFailureClass {
+  return CONTENT_FAILURES.has(errorCode) ? 'content' : 'transient';
+}
 
 /**
  * Validate full source JSON against its measured receipt and mandatory caller limits.
