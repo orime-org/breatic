@@ -33,18 +33,13 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  SUBMENU_SIDE_OFFSET,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { MiniToolIcon } from '@breatic/shared/mini-tools';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 
-/**
- * The tools submenu stands 4px off the menu's edge. `sideOffset` measures
- * from the trigger row, which sits inside the menu's 4px padding and 1px
- * border, so those 5px are added back.
- */
-const SUBMENU_SIDE_OFFSET = 4 + 5;
 
 /** One row of the tools submenu. */
 export interface NodeMenuTool {

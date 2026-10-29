@@ -232,6 +232,13 @@ export function DropdownMenuSubTrigger({
 }
 
 /**
+ * The `sideOffset` that stands a submenu 4px off the menu it opens from.
+ * `sideOffset` measures from the trigger row, which sits inside the menu
+ * surface's 4px padding and 1px border, so those 5px are added back.
+ */
+export const SUBMENU_SIDE_OFFSET = 4 + 5;
+
+/**
  * Submenu surface, capped and scrolling like the menu it opens from.
  * @param props - Radix SubContent props plus `rowsClassName`.
  * @returns The submenu panel.

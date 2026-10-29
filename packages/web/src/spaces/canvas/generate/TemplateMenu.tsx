@@ -20,6 +20,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  SUBMENU_SIDE_OFFSET,
 } from '@web/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -27,12 +28,6 @@ import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { templateServed } from '@web/spaces/canvas/generate/template-writes';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/**
- * A goal's submenu stands 4px off the menu's edge. `sideOffset` measures from
- * the goal row, which sits inside the menu's 4px padding and 1px border, so
- * those 5px are added back.
- */
-const SUBMENU_SIDE_OFFSET = 4 + 5;
 
 interface TemplateMenuProps {
   /** The panel's node type: it lists only that type's templates. */
